@@ -5,6 +5,7 @@ import PaymentActions from "@/components/bill/PaymentActions";
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Totals from "@/components/bill/Totals";
 import Header from "@/components/Header";
+import MenuSection from "@/components/menu/MenuSection";
 import OrderCard from "@/components/order/OrderCard";
 import OrderTabs from "@/components/order/OrderTabs";
 import Sidebar from "@/components/Sidebar";
@@ -12,7 +13,8 @@ import { Order } from "@/lib/types";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useRef } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const orders: Order[] = [
   {
@@ -43,7 +45,7 @@ const orders: Order[] = [
 
 const BillSection = ({ onPlaceOrder }: { onPlaceOrder: () => void }) => {
   return (
-    <View className="w-96 bg-white p-6 border-l border-gray-200">
+    <View className="w-96 bg-white p-6 border-gray-200">
       <OrderDetails />
       <BillSummary />
       <Totals />
@@ -70,58 +72,61 @@ const index = () => {
   };
 
   return (
-    <View className="flex-1 flex-row bg-white">
-      {/* Column 1: Sidebar */}
-      <Sidebar />
+    <SafeAreaView className="flex-1 bg-white">
+      <View className="flex-1 flex-row">
+        {/* Column 1: Sidebar */}
+        <Sidebar />
 
-      {/* Column 2: Main Content Area (takes up remaining space) */}
-      <View className="flex-1 p-6 bg-gray-50">
-        <Header />
-
-        {/* --- Order Line Section --- */}
-        <View className="mt-6">
-          <View className="flex-row justify-between items-center">
-            <Text className="text-2xl font-bold text-gray-800">Order Line</Text>
-            <View className="flex-row items-center space-x-2">
-              <TouchableOpacity className="p-2 bg-white border border-gray-200 rounded-full">
-                <ChevronLeft color="#374151" size={20} />
-              </TouchableOpacity>
-              <TouchableOpacity className="p-2 bg-blue-500 rounded-full">
-                <ChevronRight color="#FFFFFF" size={20} />
-              </TouchableOpacity>
-            </View>
+        {/* This new View wraps everything to the right of the sidebar */}
+        <View className="flex-1 flex-col">
+          {/* Header Section: Spans the full width of this column */}
+          <View className="px-6 pb-4 border-gray-200">
+            <Header />
           </View>
-          <OrderTabs onTabChange={handleTabChange} />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="mt-4"
-          >
-            {orders.map((order) => (
-              <OrderCard key={order.id} order={order} />
-            ))}
-          </ScrollView>
-        </View>
 
-        {/* --- Menu Section (Placeholder) --- */}
-        {/* TODO: You can now build out the menu components here */}
-        <View className="mt-6 flex-1">
-          <Text className="text-2xl font-bold text-gray-800">Menu</Text>
-          {/* Add MenuTabs, MenuCategories, SearchBar, and a ScrollView for MenuItems here */}
-          <View className="flex-1 bg-gray-100 mt-4 rounded-xl items-center justify-center">
-            <Text className="text-gray-400">Menu Grid Goes Here</Text>
+          {/* Content Section (Below Header) */}
+          <View className="flex-1 flex-row">
+            <View className="flex-1 p-6 pt-0">
+              <View>
+                <View className="flex-row justify-between items-center">
+                  <OrderTabs onTabChange={handleTabChange} />
+                  <View className="flex-row items-center gap-2 space-x-2">
+                    <TouchableOpacity className="p-2 bg-white border border-gray-200 rounded-full">
+                      <ChevronLeft color="#374151" size={20} />
+                    </TouchableOpacity>
+                    <TouchableOpacity className="p-2 bg-primary-400 rounded-full">
+                      <ChevronRight color="#FFFFFF" size={20} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  className="mt-4"
+                >
+                  {orders.map((order) => (
+                    <OrderCard key={order.id} order={order} />
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* --- Menu Section --- */}
+              <MenuSection />
+            </View>
+
+            {/* Bill Section (White Area) */}
+            <BillSection onPlaceOrder={handlePlaceOrder} />
           </View>
         </View>
       </View>
 
-      {/* Column 3: Bill Section */}
-      <BillSection onPlaceOrder={handlePlaceOrder} />
-
+      {/* Bottom Sheet remains at the root to overlay everything */}
       <PaymentBottomSheet
         ref={bottomSheetRef}
         onClose={handleCloseBottomSheet}
       />
-    </View>
+    </SafeAreaView>
   );
 };
 

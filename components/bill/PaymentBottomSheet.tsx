@@ -1,4 +1,7 @@
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -15,10 +18,18 @@ const PaymentBottomSheet = React.forwardRef<
 >(({ onClose }, ref) => {
   const snapPoints = useMemo(() => ["75%"], []);
 
-  const check = () => {
-    console.log("PRESSED");
-    onClose();
-  };
+  // Custom backdrop component
+  const renderBackdrop = useMemo(
+    () => (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
+    []
+  );
 
   return (
     <BottomSheet
@@ -30,15 +41,16 @@ const PaymentBottomSheet = React.forwardRef<
       handleComponent={null}
       backgroundStyle={{ backgroundColor: "#ffffff" }}
       activeOffsetY={[-10, 10]}
+      backdropComponent={renderBackdrop}
     >
       <BottomSheetView className="flex-1">
         {/* Top Dark Header */}
         <View
-          className="bg-gray-900 rounded-t-3xl p-6"
+          className="bg-gray-900 rounded-t-2xl p-6"
           pointerEvents="box-none"
         >
           <TouchableOpacity
-            onPress={check}
+            onPress={onClose}
             className="absolute top-6 right-6 bg-gray-700 p-2 rounded-full z-50"
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >

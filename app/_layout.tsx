@@ -3,17 +3,13 @@ import { PortalHost } from "@rn-primitives/portal";
 
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
-import {
-  DarkTheme,
-  DefaultTheme,
-  Theme,
-  ThemeProvider,
-} from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, Theme } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as React from "react";
 import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 const LIGHT_THEME: Theme = {
   ...DefaultTheme,
@@ -53,11 +49,13 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView>
-      <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
+      <SafeAreaProvider>
+        {/* <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}> */}
         <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
         <Stack screenOptions={{ headerShown: false }} />
         <PortalHost />
-      </ThemeProvider>
+        {/* </ThemeProvider> */}
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

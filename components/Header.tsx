@@ -6,7 +6,9 @@ const Header = () => {
     <View className="flex-row justify-between items-center">
       {/* The original design has the "Order Line" title in the main content, 
           this header is for the user profile. */}
-      <View></View>
+      <View>
+        <Text className="text-2xl font-bold text-gray-800">Order Line</Text>
+      </View>
       <View className="flex-row items-center">
         <Image
           source={{ uri: "https://placehold.co/40x40" }}

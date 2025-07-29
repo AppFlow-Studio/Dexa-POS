@@ -6,3 +6,12 @@ export interface Order {
   table: number;
   time: string;
 }
+
+export interface MenuItemType {
+  id: string;
+  name: string;
+  price: number;
+  cashPrice?: number;
+  image?: string;
+  // We can add category/meal types later for filtering
+}
