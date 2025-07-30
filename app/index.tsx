@@ -6,42 +6,13 @@ import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Totals from "@/components/bill/Totals";
 import Header from "@/components/Header";
 import MenuSection from "@/components/menu/MenuSection";
-import OrderCard from "@/components/order/OrderCard";
-import OrderTabs from "@/components/order/OrderTabs";
+import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
+import OrderLineSection from "@/components/order/OrderLineSection";
 import Sidebar from "@/components/Sidebar";
-import { Order } from "@/lib/types";
 import BottomSheet from "@gorhom/bottom-sheet";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useRef } from "react";
-import { ScrollView, TouchableOpacity, View } from "react-native";
+import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-const orders: Order[] = [
-  {
-    id: "45654",
-    customerName: "Jake Carter",
-    status: "Ready",
-    type: "Dine In",
-    table: 2,
-    time: "2 Minutes ago",
-  },
-  {
-    id: "45675",
-    customerName: "Emma Brooks",
-    status: "Preparing",
-    type: "Dine In",
-    table: 2,
-    time: "2 Minutes ago",
-  },
-  {
-    id: "45629",
-    customerName: "Mason Reed",
-    status: "Ready",
-    type: "Dine In",
-    table: 2,
-    time: "2 Minutes ago",
-  },
-];
 
 const BillSection = ({ onPlaceOrder }: { onPlaceOrder: () => void }) => {
   return (
@@ -66,13 +37,8 @@ const index = () => {
     bottomSheetRef.current?.close();
   };
 
-  const handleTabChange = (tabName: string) => {
-    console.log("Selected Tab:", tabName);
-    //TODO: Add filtering logic here
-  };
-
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-background-100">
       <View className="flex-1 flex-row">
         {/* Column 1: Sidebar */}
         <Sidebar />
@@ -87,29 +53,7 @@ const index = () => {
           {/* Content Section (Below Header) */}
           <View className="flex-1 flex-row">
             <View className="flex-1 p-6 pt-0">
-              <View>
-                <View className="flex-row justify-between items-center">
-                  <OrderTabs onTabChange={handleTabChange} />
-                  <View className="flex-row items-center gap-2 space-x-2">
-                    <TouchableOpacity className="p-2 bg-white border border-gray-200 rounded-full">
-                      <ChevronLeft color="#374151" size={20} />
-                    </TouchableOpacity>
-                    <TouchableOpacity className="p-2 bg-primary-400 rounded-full">
-                      <ChevronRight color="#FFFFFF" size={20} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  className="mt-4"
-                >
-                  {orders.map((order) => (
-                    <OrderCard key={order.id} order={order} />
-                  ))}
-                </ScrollView>
-              </View>
+              <OrderLineSection />
 
               {/* --- Menu Section --- */}
               <MenuSection />
@@ -126,6 +70,7 @@ const index = () => {
         ref={bottomSheetRef}
         onClose={handleCloseBottomSheet}
       />
+      <SearchBottomSheet />
     </SafeAreaView>
   );
 };

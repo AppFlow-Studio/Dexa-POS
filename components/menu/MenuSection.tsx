@@ -1,115 +1,65 @@
+import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
-// Mock Data for the menu items
-const mockMenuItems: MenuItemType[] = [
-  {
-    id: "1",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "2",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "3",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5 /* No image */,
-  },
-  {
-    id: "4",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "5",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "6",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "7",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5 /* No image */,
-  },
-  {
-    id: "8",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "9",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "10",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "11",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-  {
-    id: "12",
-    name: "Deluxe Crispyburger",
-    price: 6.99,
-    cashPrice: 6.5,
-    image: "https://placehold.co/300x200/F7D0B1/422C18?text=Burger",
-  },
-];
-
 const MenuSection: React.FC = () => {
-  // State to track which menu item is currently selected
-  const [selectedItemId, setSelectedItemId] = useState<string | null>("5"); // Pre-select item with ID '5'
+  // State for the active filters
+  const [activeMeal, setActiveMeal] = useState("Dinner");
+  const [activeCategory, setActiveCategory] = useState("Main Course");
 
+  // State to hold the items that are actually displayed after filtering
+  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
+    []
+  );
+
+  // State to track which menu item is currently selected
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const filtered = MOCK_MENU_ITEMS.filter((item) => {
+      const mealMatch = item.meal.includes(activeMeal as any);
+      const categoryMatch = item.category === activeCategory;
+      return mealMatch && categoryMatch;
+    });
+    setFilteredMenuItems(filtered);
+  }, [activeMeal, activeCategory]);
   return (
     <View className="mt-6 flex-1">
-      <Text className="text-2xl font-bold text-gray-800">Menu</Text>
-      <MenuControls />
+      <Text className="text-2xl font-bold text-gray-800 mb-4">Menu</Text>
+      <MenuControls
+        activeMeal={activeMeal}
+        onMealChange={setActiveMeal}
+        activeCategory={activeCategory}
+        onCategoryChange={setActiveCategory}
+      />
+
       <FlatList
-        data={mockMenuItems}
+        data={filteredMenuItems}
         keyExtractor={(item) => item.id}
         numColumns={3}
         className="mt-4"
         showsVerticalScrollIndicator={false}
-        columnWrapperStyle={{ justifyContent: "space-between" }}
+        columnWrapperStyle={{ gap: 16 }}
+        ListEmptyComponent={
+          <View className="flex-1 items-center justify-center h-48">
+            <Text className="text-gray-500 text-lg">
+              No items match the current filters.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <MenuItem
             item={item}
             isSelected={selectedItemId === item.id}
             onPress={() => setSelectedItemId(item.id)}
+            imageSource={
+              item.image
+                ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
+                : undefined
+            }
           />
         )}
       />

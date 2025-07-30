@@ -1,11 +1,10 @@
+import { useCartStore } from "@/stores/useCartStore";
 import React from "react";
 import { Text, View } from "react-native";
 
 const Totals: React.FC = () => {
-  const subtotal = 30.25;
-  const tax = 1.5;
+  const { subtotal, tax, total } = useCartStore();
   const voucher = 0.0;
-  const total = subtotal + tax - voucher;
 
   return (
     <View className="my-4">

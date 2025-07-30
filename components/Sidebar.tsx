@@ -60,7 +60,7 @@ const Sidebar = () => {
   ];
 
   return (
-    <View className="w-20 bg-white h-full p-2 flex-col justify-between items-center border-r border-gray-200">
+    <View className="w-20 bg-white h-full p-2 flex-col justify-between items-center">
       {/* Top Section: Menu Icon */}
       <View>
         <TouchableOpacity className="p-3 my-2 bg-gray-100 rounded-full">

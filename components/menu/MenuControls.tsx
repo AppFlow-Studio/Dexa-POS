@@ -1,5 +1,6 @@
+import { useSearchStore } from "@/stores/searchStore";
 import { Search } from "lucide-react-native";
-import React, { useState } from "react";
+import React from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const MEAL_TABS = ["Lunch", "Dinner", "Brunch", "Specials"];
@@ -11,10 +12,21 @@ const CATEGORY_TABS = [
   "Dessert",
 ];
 
-const MenuControls: React.FC = () => {
-  const [activeMeal, setActiveMeal] = useState("Dinner");
-  const [activeCategory, setActiveCategory] = useState("Appetizers");
+// Define the props the component will receive
+interface MenuControlsProps {
+  activeMeal: string;
+  onMealChange: (meal: string) => void;
+  activeCategory: string;
+  onCategoryChange: (category: string) => void;
+}
 
+const MenuControls: React.FC<MenuControlsProps> = ({
+  activeMeal,
+  onMealChange,
+  activeCategory,
+  onCategoryChange,
+}) => {
+  const { openSearch } = useSearchStore();
   return (
     <View className="flex-row justify-between items-start gap-4 space-x-4">
       {/* Left Section: All Tabs */}
@@ -24,7 +36,7 @@ const MenuControls: React.FC = () => {
           {MEAL_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
-              onPress={() => setActiveMeal(tab)}
+              onPress={() => onMealChange(tab)}
               className={`py-2 px-5 rounded-t-lg ${activeMeal === tab ? "bg-white" : "bg-transparent"}`}
             >
               <Text className={"font-semibold text-lg text-accent-500"}>
@@ -39,7 +51,7 @@ const MenuControls: React.FC = () => {
           {CATEGORY_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
-              onPress={() => setActiveCategory(tab)}
+              onPress={() => onCategoryChange(tab)}
               className={`py-2 px-4 rounded-full ${activeCategory === tab ? "border border-accent-300" : "border border-transparent"}`}
             >
               <Text className={"font-semibold text-base text-accent-400"}>
@@ -52,14 +64,18 @@ const MenuControls: React.FC = () => {
 
       {/* Right Section: Search Bar - Now positioned at the bottom */}
       <View className="flex-1 justify-end">
-        <View className="flex-row items-center bg-gray-100 rounded-2xl px-4 py-2 mt-12">
-          <Search color="#6b7280" size={22} />
+        <TouchableOpacity
+          onPress={openSearch}
+          className="flex-row items-center bg-background-300 border border-background-400 rounded-2xl px-4 py-1 mt-14"
+        >
+          <Search color="#5D5D73" size={22} />
           <TextInput
             placeholder="Search Item"
             className="ml-3 flex-1"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor="#5D5D73"
+            onPress={openSearch}
           />
-        </View>
+        </TouchableOpacity>
       </View>
     </View>
   );

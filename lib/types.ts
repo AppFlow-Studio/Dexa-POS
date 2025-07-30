@@ -13,5 +13,6 @@ export interface MenuItemType {
   price: number;
   cashPrice?: number;
   image?: string;
-  // We can add category/meal types later for filtering
+  meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
+  category: "Appetizers" | "Main Course" | "Sides" | "Drinks" | "Dessert";
 }

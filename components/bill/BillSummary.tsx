@@ -1,42 +1,13 @@
+import { useCartStore } from "@/stores/useCartStore";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
-import BillItem, { BillItemType } from "./BillItem";
-
-// Mock data
-const billItems: BillItemType[] = [
-  {
-    id: "1",
-    name: "Classic Crispyburger",
-    quantity: 3,
-    price: 4.75,
-    imageUrl: "https://placehold.co/100x100",
-  },
-  {
-    id: "2",
-    name: "Classic Crispyburger",
-    quantity: 3,
-    price: 4.75,
-    imageUrl: "https://placehold.co/100x100",
-  },
-  {
-    id: "3",
-    name: "Classic Crispyburger",
-    quantity: 3,
-    price: 4.75,
-    imageUrl: "https://placehold.co/100x100",
-  },
-  {
-    id: "4",
-    name: "Classic Crispyburger",
-    quantity: 3,
-    price: 4.75,
-    imageUrl: "https://placehold.co/100x100",
-  },
-];
+import BillItem from "./BillItem";
 
 const BillSummary: React.FC = () => {
+  const billItems = useCartStore((state) => state.items);
+
   return (
-    <View className="flex-1 my-4">
+    <View className="flex-1 my-4 min-h-40">
       <Text className="text-xl font-bold text-gray-800 mb-4">Bills</Text>
       <ScrollView showsVerticalScrollIndicator={true}>
         {billItems.map((item) => (

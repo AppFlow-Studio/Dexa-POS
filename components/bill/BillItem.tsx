@@ -1,23 +1,21 @@
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { CartItem } from "@/stores/useCartStore";
 import { Pencil } from "lucide-react-native";
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
-export interface BillItemType {
-  id: string;
-  name: string;
-  quantity: number;
-  price: number;
-  imageUrl: string;
-}
-
 interface BillItemProps {
-  item: BillItemType;
+  item: CartItem;
 }
 
 const BillItem: React.FC<BillItemProps> = ({ item }) => {
+  const imageSource = item.image
+    ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
+    : undefined;
+
   return (
     <View className="flex-row items-center mb-4">
-      <Image source={{ uri: item.imageUrl }} className="w-12 h-12 rounded-lg" />
+      <Image source={imageSource} className="w-12 h-12 rounded-lg" />
       <View className="flex-1 ml-3">
         <Text className="font-semibold text-base text-gray-800">
           {item.name}
