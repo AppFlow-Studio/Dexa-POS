@@ -15,22 +15,26 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
 
   return (
     <View className="flex-row items-center mb-4">
-      <Image source={imageSource} className="w-12 h-12 rounded-lg" />
+      <Image
+        source={imageSource}
+        className="w-12 h-12 rounded-lg"
+        resizeMode="contain"
+      />
       <View className="flex-1 ml-3">
-        <Text className="font-semibold text-base text-gray-800">
+        <Text className="font-semibold text-base text-accent-500">
           {item.name}
         </Text>
         <View className="flex-row items-center mt-1">
-          <Text className="text-sm text-gray-500">x {item.quantity}</Text>
-          <TouchableOpacity className="flex-row items-center ml-3 px-2 py-0.5 bg-blue-100 rounded-md">
-            <Text className="text-xs font-semibold text-blue-600 mr-1">
+          <Text className="text-sm text-accent-500">x {item.quantity}</Text>
+          <TouchableOpacity className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl">
+            <Text className="text-xs font-semibold text-primary-400 mr-1">
               Notes
             </Text>
             <Pencil color="#2563eb" size={10} />
           </TouchableOpacity>
         </View>
       </View>
-      <Text className="font-semibold text-base text-gray-800">
+      <Text className="font-semibold text-base text-accent-300">
         ${item.price.toFixed(2)}
       </Text>
     </View>

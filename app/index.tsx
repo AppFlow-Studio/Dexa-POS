@@ -1,9 +1,5 @@
-import BillSummary from "@/components/bill/BillSummary";
-import DiscountSection from "@/components/bill/DiscountSection";
-import OrderDetails from "@/components/bill/OrderDetails";
-import PaymentActions from "@/components/bill/PaymentActions";
+import BillSection from "@/components/bill/BillSection";
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
-import Totals from "@/components/bill/Totals";
 import Header from "@/components/Header";
 import MenuSection from "@/components/menu/MenuSection";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
@@ -13,18 +9,6 @@ import BottomSheet from "@gorhom/bottom-sheet";
 import React, { useRef } from "react";
 import { View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-const BillSection = ({ onPlaceOrder }: { onPlaceOrder: () => void }) => {
-  return (
-    <View className="w-96 bg-white p-6 border-gray-200">
-      <OrderDetails />
-      <BillSummary />
-      <Totals />
-      <DiscountSection />
-      <PaymentActions onPlaceOrder={onPlaceOrder} />
-    </View>
-  );
-};
 
 const index = () => {
   const bottomSheetRef = useRef<BottomSheet>(null);
@@ -38,7 +22,7 @@ const index = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background-100">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-background-100 pb-2">
       <View className="flex-1 flex-row">
         {/* Column 1: Sidebar */}
         <Sidebar />
@@ -52,7 +36,7 @@ const index = () => {
 
           {/* Content Section (Below Header) */}
           <View className="flex-1 flex-row">
-            <View className="flex-1 p-6 pt-0">
+            <View className="flex-1 p-6 px-4 pt-0">
               <OrderLineSection />
 
               {/* --- Menu Section --- */}

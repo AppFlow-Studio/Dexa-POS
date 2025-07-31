@@ -18,39 +18,40 @@ const PaymentActions: React.FC<PaymentActionsProps> = ({ onPlaceOrder }) => {
   ];
 
   return (
-    <View className="mt-4">
+    <View className="pt-2 px-4 bg-background-200">
       {/* Payment Method Selector */}
-      <View className="flex-row justify-between items-center bg-gray-100 p-1.5 rounded-xl">
+      <View className="flex-row justify-between items-center p-1.5 rounded-xl">
         {paymentMethods.map((method) => {
           const isActive = activeMethod === method.name;
           return (
             <TouchableOpacity
               key={method.name}
               onPress={() => setActiveMethod(method.name as PaymentMethod)}
-              className={`flex-1 items-center py-2.5 rounded-lg ${isActive ? "bg-white" : "bg-transparent"}`}
+              className={`flex-1 items-center py-2.5 rounded-xl ${isActive ? "bg-white border border-background-200" : "bg-transparent"}`}
             >
-              <method.icon color={isActive ? "#3b82f6" : "#4b5563"} size={24} />
+              <method.icon color={isActive ? "#659AF0" : "#5D5D73"} size={24} />
               <Text
-                className={`font-semibold mt-1 ${isActive ? "text-blue-600" : "text-gray-700"}`}
+                className={`font-semibold mt-1 ${isActive ? "text-accent-500" : "text-accent-300"}`}
               >
                 {method.name}
               </Text>
               {isActive && (
-                <View className="absolute bottom-0 h-1 w-8 bg-blue-500 rounded-full" />
+                <View className="absolute bottom-0 h-1 w-8 bg-primary-400 rounded-full" />
               )}
             </TouchableOpacity>
           );
         })}
+        gray-100
       </View>
 
       {/* Final Action Buttons */}
       <TouchableOpacity
-        className="w-full py-4 bg-blue-500 rounded-xl mt-4 items-center"
+        className="w-full py-4 bg-primary-400 rounded-xl mt-4 items-center"
         onPress={onPlaceOrder}
       >
         <Text className="text-white font-bold text-base">Place Order</Text>
       </TouchableOpacity>
-      <TouchableOpacity className="w-full py-4 bg-gray-100 rounded-xl mt-2 items-center border border-gray-200">
+      <TouchableOpacity className="w-full py-4 bg-gray-100 rounded-xl mt-2 items-center border border-background-500">
         <Text className="text-gray-800 font-bold text-base">Open Register</Text>
       </TouchableOpacity>
     </View>
