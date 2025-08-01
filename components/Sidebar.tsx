@@ -1,15 +1,44 @@
-import { logo } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
+import { usePathname } from "expo-router"; // We only need usePathname now
 import { Menu, X } from "lucide-react-native";
-import React, { useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import SidebarAccordion from "./sidebar/SidebarAccordion";
-import SidebarLink from "./sidebar/SidebarLink";
+
+const EXPANDED_WIDTH = 288;
+const COLLAPSED_WIDTH = 80;
 
 const Sidebar: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [activeId, setActiveId] = useState("home");
-  const [openAccordions, setOpenAccordions] = useState<string[]>(["menu"]);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [openAccordions, setOpenAccordions] = useState<string[]>([
+    "settings",
+    "basic",
+  ]);
+
+  const pathname = usePathname();
+  const activeId = pathname.substring(1);
+
+  const animatedWidth = useSharedValue(
+    isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH
+  );
+
+  useEffect(() => {
+    animatedWidth.value = withTiming(
+      isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+      {
+        duration: 300,
+      }
+    );
+  }, [isExpanded]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: animatedWidth.value,
+  }));
 
   const handleToggleAccordion = (id: string) => {
     setOpenAccordions((prev) =>
@@ -17,60 +46,51 @@ const Sidebar: React.FC = () => {
     );
   };
 
-  const containerWidth = isExpanded ? "w-64" : "w-20";
-
   return (
-    <View
-      className={`h-full bg-white p-4 border-r border-gray-200 transition-all duration-300 ${containerWidth}`}
+    <Animated.View
+      style={animatedStyle}
+      className="h-full bg-white p-2 border-r border-gray-200"
     >
-      {/* Header */}
-      <View className="flex-row items-center justify-between mb-6">
-        {isExpanded && (
-          <View className="flex-row items-center">
-            <Image source={logo} className="ml-4" />
-            <Text className="ml-2 text-xl font-bold text-gray-800">
-              MTechPOS
-            </Text>
-          </View>
-        )}
-        <TouchableOpacity
-          onPress={() => setIsExpanded(!isExpanded)}
-          className="p-2"
-        >
-          {isExpanded ? (
-            <X color="#4b5563" size={24} />
-          ) : (
-            <Menu color="#1f2937" size={26} />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View className="flex-row items-center justify-between p-2 mb-4">
+          {isExpanded && (
+            <View className="flex-row items-center flex-shrink-1">
+              <View className="w-8 h-8 bg-blue-500 rounded-md" />
+              <Text
+                className="ml-3 text-2xl font-bold text-gray-800"
+                numberOfLines={1}
+              >
+                MTechPOS
+              </Text>
+            </View>
           )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Navigation Items */}
-      <View className="flex-1 space-y-1">
-        {SIDEBAR_DATA.map((item) =>
-          item.subItems ? (
+          <TouchableOpacity
+            onPress={() => setIsExpanded(!isExpanded)}
+            className="p-2"
+          >
+            {isExpanded ? (
+              <X color="#4b5563" size={24} />
+            ) : (
+              <Menu color="#4b5563" size={24} />
+            )}
+          </TouchableOpacity>
+        </View>
+        <View className="space-y-1">
+          {SIDEBAR_DATA.map((item) => (
             <SidebarAccordion
               key={item.id}
               item={item}
-              isOpen={openAccordions.includes(item.id)}
-              onToggle={() => handleToggleAccordion(item.id)}
+              level={0}
+              isExpanded={isExpanded}
               activeId={activeId}
-              onSubItemPress={setActiveId}
-              isExpanded={isExpanded}
+              openAccordions={openAccordions}
+              onToggle={handleToggleAccordion}
+              activePath={pathname}
             />
-          ) : (
-            <SidebarLink
-              key={item.id}
-              label={item.label}
-              icon={item.icon}
-              isActive={activeId === item.id}
-              onPress={() => setActiveId(item.id)}
-              isExpanded={isExpanded}
-            />
-          )
-        )}
-      </View>
-    </View>
+          ))}
+        </View>
+      </ScrollView>
+    </Animated.View>
   );
 };
 
