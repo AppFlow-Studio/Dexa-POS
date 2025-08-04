@@ -1,8 +1,9 @@
+import { logo } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
 import { usePathname } from "expo-router"; // We only need usePathname now
 import { Menu, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,7 +22,7 @@ const Sidebar: React.FC = () => {
   ]);
 
   const pathname = usePathname();
-  const activeId = pathname.substring(1);
+  const activePath = pathname;
 
   const animatedWidth = useSharedValue(
     isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH
@@ -40,6 +41,12 @@ const Sidebar: React.FC = () => {
     width: animatedWidth.value,
   }));
 
+  const handleExpand = () => {
+    if (!isExpanded) {
+      setIsExpanded(true);
+    }
+  };
+
   const handleToggleAccordion = (id: string) => {
     setOpenAccordions((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -55,37 +62,34 @@ const Sidebar: React.FC = () => {
         <View className="flex-row items-center justify-between p-2 mb-4">
           {isExpanded && (
             <View className="flex-row items-center flex-shrink-1">
-              <View className="w-8 h-8 bg-blue-500 rounded-md" />
-              <Text
-                className="ml-3 text-2xl font-bold text-gray-800"
-                numberOfLines={1}
-              >
+              <Image source={logo} className="ml-4 h-8" resizeMode="contain" />
+              <Text className="ml-2 text-2xl font-bold text-accent-300">
                 MTechPOS
               </Text>
             </View>
           )}
           <TouchableOpacity
             onPress={() => setIsExpanded(!isExpanded)}
-            className="p-2"
+            className={`p-2 items-center justify-center ${isExpanded ? "" : "w-full"}`}
           >
             {isExpanded ? (
-              <X color="#4b5563" size={24} />
+              <X color="#1C1C28" size={24} />
             ) : (
-              <Menu color="#4b5563" size={24} />
+              <Menu color="#1C1C28" size={24} />
             )}
           </TouchableOpacity>
         </View>
-        <View className="space-y-1">
+        <View className="space-y-1 px-2">
           {SIDEBAR_DATA.map((item) => (
             <SidebarAccordion
               key={item.id}
               item={item}
               level={0}
               isExpanded={isExpanded}
-              activeId={activeId}
+              onExpand={handleExpand} // Pass the expand handler
+              activePath={activePath}
               openAccordions={openAccordions}
               onToggle={handleToggleAccordion}
-              activePath={pathname}
             />
           ))}
         </View>

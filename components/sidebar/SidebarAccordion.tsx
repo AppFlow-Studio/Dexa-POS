@@ -3,27 +3,29 @@ import { Href, Link } from "expo-router";
 import { ChevronDown } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import SidebarLink from "./SidebarLink";
 
 interface SidebarAccordionProps {
   item: SidebarNavigationItem;
   isExpanded: boolean;
-  activeId: string | null;
+  activePath: string;
   openAccordions: string[];
   onToggle: (id: string) => void;
+  onExpand: () => void; // Function to expand the sidebar
   level?: number;
-  activePath: string;
 }
 
 const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   item,
   isExpanded,
   activePath,
-  activeId,
   openAccordions,
   onToggle,
+  onExpand, // Receive the handler
   level = 0,
 }) => {
   const { id, label, icon: Icon, subItems = [], href } = item;
+  const hasSubItems = subItems.length > 0;
   const isOpen = openAccordions.includes(id);
 
   const isChildActive = (items: SidebarNavigationItem[]): boolean => {
@@ -34,48 +36,56 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
     );
   };
   const isActive = href === activePath || (!href && isChildActive(subItems));
+  const indentation = level * 4; // 4px indentation for each level
 
-  // Dynamic styles based on state
-  const textColor = isActive ? "text-gray-800" : "text-gray-500";
-  const iconColor = isActive ? "#374151" : "#6b7280";
-  const indentation = level * 24; // 24px indentation for each level
+  const handlePress = () => {
+    console.log("thisi sowrking");
+
+    // If the sidebar is collapsed...
+    if (!isExpanded) {
+      // ...and the item has children, expand the sidebar and open the accordion.
+      if (hasSubItems) {
+        onExpand();
+        onToggle(id);
+      }
+      // If it doesn't have children, the <Link> component will handle navigation automatically.
+    } else {
+      // If the sidebar is already expanded, just toggle the accordion.
+      if (hasSubItems) {
+        onToggle(id);
+      }
+      // If it has no sub-items, the <Link> will navigate.
+    }
+  };
 
   // When sidebar is collapsed, only render icons for top-level items
   if (!isExpanded) {
-    if (Icon) {
-      return (
-        <TouchableOpacity
-          // onPress={() => onLinkPress(id)}
-          className="items-center justify-center p-3 my-1 rounded-lg"
-        >
-          <Icon
-            color={isActive ? "#3b82f6" : "#4b5563"}
-            size={24}
-            strokeWidth={2.5}
+    return (
+      <Link href={(href || "#") as Href} asChild>
+        <TouchableOpacity onPress={handlePress}>
+          <SidebarLink
+            label={label}
+            icon={Icon}
+            isActive={isActive}
+            isExpanded={false}
           />
         </TouchableOpacity>
-      );
-    }
-    return null; // Don't render sub-items in collapsed mode
+      </Link>
+    );
   }
 
   // --- Expanded View ---
 
   // Case 1: The item is a simple link (no sub-items)
   if (href || subItems.length === 0) {
-    const isSelected = activeId === id;
-
     return (
       <Link href={href as Href} asChild>
-        <TouchableOpacity
-          // onPress={() => onLinkPress(id)}
-          style={{ paddingLeft: indentation + 16 }}
-          className={`py-2.5 rounded-lg ${isSelected ? "bg-blue-50" : ""}`}
-        >
-          <Text className={`text-base font-semibold ${textColor}`}>
-            {label}
-          </Text>
-        </TouchableOpacity>
+        <SidebarLink
+          label={label}
+          icon={Icon}
+          isActive={isActive}
+          isExpanded={isExpanded}
+        />
       </Link>
     );
   }
@@ -85,18 +95,20 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
     <View>
       <TouchableOpacity
         onPress={() => onToggle(id)}
-        style={{ paddingLeft: level === 0 ? 16 : indentation + 16 }}
+        style={{ paddingLeft: level === 0 ? 8 : indentation + 8 }}
         className="flex-row items-center justify-between py-3 rounded-lg"
       >
         <View className="flex-row items-center">
-          {Icon && <Icon className={textColor} size={22} strokeWidth={2} />}
-          <Text className={`ml-4 text-base font-semibold ${textColor}`}>
+          {Icon && (
+            <Icon className="text-accent-500" size={22} strokeWidth={2.5} />
+          )}
+          <Text className="ml-4 text-base font-semibold text-accent-500">
             {label}
           </Text>
         </View>
         <ChevronDown
           style={{ transform: [{ rotate: isOpen ? "180deg" : "0deg" }] }}
-          className={textColor}
+          className="text-accent-500"
           size={20}
         />
       </TouchableOpacity>
@@ -105,8 +117,8 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
       {isOpen && (
         <View
           style={{
-            marginLeft: level * 24 + (Icon ? 12 : 0),
-            paddingLeft: Icon ? 28 : 16,
+            marginLeft: level * 6 + 6,
+            paddingLeft: Icon ? 14 : 8,
           }}
           className="border-l-2 border-gray-200"
         >
@@ -117,7 +129,7 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
               item={subItem}
               level={level + 1}
               isExpanded={isExpanded}
-              activeId={activeId}
+              onExpand={onExpand}
               openAccordions={openAccordions}
               onToggle={onToggle}
               activePath={activePath}

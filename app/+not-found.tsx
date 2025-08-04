@@ -15,7 +15,7 @@ export default function NotFoundScreen() {
         <ThemedText style={styles.pathText}>
           Attempted path: {pathname}
         </ThemedText>
-        <Link href="/" style={styles.link}>
+        <Link href="/home" style={styles.link}>
           <ThemedText type="link">Go to home screen!</ThemedText>
         </Link>
       </ThemedView>

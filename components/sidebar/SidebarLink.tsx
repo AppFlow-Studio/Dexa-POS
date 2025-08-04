@@ -5,10 +5,9 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 interface SidebarLinkProps {
   label: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   isActive: boolean;
   isExpanded: boolean;
-  onPress: () => void;
 }
 
 const SidebarLink: React.FC<SidebarLinkProps> = ({
@@ -16,10 +15,10 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
   icon: Icon,
   isActive,
   isExpanded,
-  onPress,
+  ...props
 }) => {
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity {...props} activeOpacity={0.7}>
       {isActive ? (
         <>
           {isExpanded ? (
@@ -30,9 +29,9 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
               ]}
               start={{ x: 1, y: 0 }}
               end={{ x: 0, y: 0 }}
-              className="flex-row items-center py-3 px-4 rounded-xl overflow-hidden border-l-[3px] border-primary-400"
+              className="flex-row items-center py-3 px-2 rounded-xl overflow-hidden border-l-[3px] border-primary-400"
             >
-              <Icon color="#659AF0" size={22} strokeWidth={2.5} />
+              {!!Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
 
               <Text className="ml-4 text-base font-medium text-primary-400">
                 {label}
@@ -40,15 +39,15 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
             </LinearGradient>
           ) : (
             <View className="flex-row items-center justify-center py-3 px-4 rounded-lg bg-transparent">
-              <Icon color="#659AF0" size={22} strokeWidth={2.5} />
+              {Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
             </View>
           )}
         </>
       ) : (
         <View
-          className={`flex-row items-center py-3 px-4 rounded-lg bg-transparent ${isExpanded ? "" : "justify-center"}`}
+          className={`flex-row items-center py-3 px-2 rounded-lg bg-transparent ${isExpanded ? "" : "justify-center"}`}
         >
-          <Icon color="#2F2F3E" size={22} strokeWidth={2.5} />
+          {!!Icon && <Icon color="#2F2F3E" size={22} strokeWidth={2.5} />}
           {isExpanded && (
             <Text className={`ml-4 text-base text-accent-400 font-medium`}>
               {label}

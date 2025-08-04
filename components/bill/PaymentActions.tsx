@@ -41,7 +41,6 @@ const PaymentActions: React.FC<PaymentActionsProps> = ({ onPlaceOrder }) => {
             </TouchableOpacity>
           );
         })}
-        gray-100
       </View>
 
       {/* Final Action Buttons */}
