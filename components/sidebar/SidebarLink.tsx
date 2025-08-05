@@ -1,13 +1,20 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { LucideIcon } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import {
+  GestureResponderEvent,
+  Text,
+  TouchableOpacity,
+  TouchableOpacityProps,
+  View,
+} from "react-native";
 
-interface SidebarLinkProps {
+interface SidebarLinkProps extends TouchableOpacityProps {
   label: string;
   icon?: LucideIcon;
   isActive: boolean;
   isExpanded: boolean;
+  onCustomPress?: () => void;
 }
 
 const SidebarLink: React.FC<SidebarLinkProps> = ({
@@ -15,10 +22,21 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
   icon: Icon,
   isActive,
   isExpanded,
+  onCustomPress,
+  onPress,
   ...props
 }) => {
+  const handlePress = (event: GestureResponderEvent) => {
+    if (onCustomPress) {
+      onCustomPress();
+    }
+    if (onPress) {
+      onPress(event);
+    }
+  };
+
   return (
-    <TouchableOpacity {...props} activeOpacity={0.7}>
+    <TouchableOpacity {...props} onPress={handlePress} activeOpacity={0.7}>
       {isActive ? (
         <>
           {isExpanded ? (
@@ -45,7 +63,9 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
         </>
       ) : (
         <View
-          className={`flex-row items-center py-3 px-2 rounded-lg bg-transparent ${isExpanded ? "" : "justify-center"}`}
+          className={`flex-row items-center py-3 px-2 rounded-lg bg-transparent ${
+            isExpanded ? "" : "justify-center"
+          }`}
         >
           {!!Icon && <Icon color="#2F2F3E" size={22} strokeWidth={2.5} />}
           {isExpanded && (

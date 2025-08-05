@@ -1,43 +1,47 @@
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { X } from "lucide-react-native";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import Totals from "./Totals";
 
-interface PaymentBottomSheetProps {
-  onClose: () => void;
-}
+const PaymentBottomSheet = () => {
+  const { isOpen, close } = usePaymentStore();
+  const bottomSheetRef = useRef<BottomSheet>(null);
 
-const PaymentBottomSheet = React.forwardRef<
-  BottomSheet,
-  PaymentBottomSheetProps
->(({ onClose }, ref) => {
   const snapPoints = useMemo(() => ["75%"], []);
+
+  useEffect(() => {
+    if (isOpen) {
+      bottomSheetRef.current?.snapToIndex(0);
+    } else {
+      bottomSheetRef.current?.close();
+    }
+  }, [isOpen]);
 
   // Custom backdrop component
   const renderBackdrop = useMemo(
-    () => (props: any) => (
+    () => (props: any) =>
       <BottomSheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
         opacity={0.7}
-      />
-    ),
+      />,
     []
   );
 
   return (
     <BottomSheet
-      ref={ref}
+      ref={bottomSheetRef}
       index={-1}
       snapPoints={snapPoints}
       enablePanDownToClose={true}
-      onClose={onClose}
+      onClose={close}
       handleComponent={null}
       backgroundStyle={{ backgroundColor: "#ffffff" }}
       activeOffsetY={[-10, 10]}
@@ -50,7 +54,7 @@ const PaymentBottomSheet = React.forwardRef<
           pointerEvents="box-none"
         >
           <TouchableOpacity
-            onPress={onClose}
+            onPress={close}
             className="absolute top-6 right-6 bg-gray-700 p-2 rounded-full z-50"
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
@@ -79,13 +83,13 @@ const PaymentBottomSheet = React.forwardRef<
           {/* Action Buttons */}
           <View className="mt-auto pt-4 border-t border-gray-200 flex-row space-x-3 gap-4">
             <TouchableOpacity
-              onPress={onClose}
+              onPress={close}
               className="flex-1 py-4 bg-white border border-gray-300 rounded-xl items-center"
             >
               <Text className="text-gray-800 font-bold text-base">Close</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={onClose}
+              onPress={close}
               className="flex-1 py-4 bg-blue-500 rounded-xl items-center"
             >
               <Text className="text-white font-bold text-base">
@@ -97,6 +101,6 @@ const PaymentBottomSheet = React.forwardRef<
       </BottomSheetView>
     </BottomSheet>
   );
-});
+};
 
 export default PaymentBottomSheet;

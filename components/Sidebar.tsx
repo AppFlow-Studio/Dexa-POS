@@ -1,4 +1,4 @@
-import { logo } from "@/lib/image";
+import { images } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
 import { usePathname } from "expo-router"; // We only need usePathname now
 import { Menu, X } from "lucide-react-native";
@@ -15,7 +15,7 @@ const EXPANDED_WIDTH = 288;
 const COLLAPSED_WIDTH = 80;
 
 const Sidebar: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [openAccordions, setOpenAccordions] = useState<string[]>([
     "settings",
     "basic",
@@ -62,7 +62,11 @@ const Sidebar: React.FC = () => {
         <View className="flex-row items-center justify-between p-2 mb-4">
           {isExpanded && (
             <View className="flex-row items-center flex-shrink-1">
-              <Image source={logo} className="ml-4 h-8" resizeMode="contain" />
+              <Image
+                source={images.logo}
+                className="ml-4 h-8"
+                resizeMode="contain"
+              />
               <Text className="ml-2 text-2xl font-bold text-accent-300">
                 MTechPOS
               </Text>

@@ -1,9 +1,16 @@
 import "@/global.css";
 import { PortalHost } from "@rn-primitives/portal";
 
+import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
+import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { DarkTheme, DefaultTheme, Theme } from "@react-navigation/native";
+import {
+  DarkTheme,
+  DefaultTheme,
+  Theme,
+  ThemeProvider,
+} from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as React from "react";
@@ -50,11 +57,13 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView>
       <SafeAreaProvider>
-        {/* <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}> */}
-        <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false }} />
-        <PortalHost />
-        {/* </ThemeProvider> */}
+        <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
+          <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
+          <Stack screenOptions={{ headerShown: false }} />
+          <PortalHost />
+          <SearchBottomSheet />
+          <PaymentBottomSheet />
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

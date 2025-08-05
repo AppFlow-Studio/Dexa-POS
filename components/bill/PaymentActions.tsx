@@ -1,15 +1,13 @@
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { Banknote, Columns, CreditCard } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 type PaymentMethod = "Card" | "Split" | "Cash";
 
-interface PaymentActionsProps {
-  onPlaceOrder: () => void;
-}
-
-const PaymentActions: React.FC<PaymentActionsProps> = ({ onPlaceOrder }) => {
+const PaymentActions = () => {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>("Card");
+  const { open } = usePaymentStore();
 
   const paymentMethods = [
     { name: "Card", icon: CreditCard },
@@ -46,7 +44,7 @@ const PaymentActions: React.FC<PaymentActionsProps> = ({ onPlaceOrder }) => {
       {/* Final Action Buttons */}
       <TouchableOpacity
         className="w-full py-4 bg-primary-400 rounded-xl mt-4 items-center"
-        onPress={onPlaceOrder}
+        onPress={open}
       >
         <Text className="text-white font-bold text-base">Place Order</Text>
       </TouchableOpacity>

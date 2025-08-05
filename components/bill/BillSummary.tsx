@@ -1,4 +1,4 @@
-import { paperEffect } from "@/lib/image";
+import { images } from "@/lib/image";
 import { useCartStore } from "@/stores/useCartStore";
 import React from "react";
 import { Image, ScrollView, Text, View } from "react-native";
@@ -22,7 +22,11 @@ const BillSummary: React.FC = () => {
         </ScrollView>
       </View>
       <View className="absolute bottom-0 left-0 right-0">
-        <Image source={paperEffect} className="w-96" resizeMode="cover" />
+        <Image
+          source={images.paperEffect}
+          className="w-full"
+          resizeMode="cover"
+        />
       </View>
     </View>
   );

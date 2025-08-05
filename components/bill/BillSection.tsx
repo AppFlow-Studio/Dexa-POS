@@ -6,7 +6,7 @@ import OrderDetails from "./OrderDetails";
 import PaymentActions from "./PaymentActions";
 import Totals from "./Totals";
 
-const BillSection = ({ onPlaceOrder }: { onPlaceOrder: () => void }) => {
+const BillSection = () => {
   return (
     <ScrollView
       className="max-w-96 bg-background-100 border-gray-200"
@@ -16,7 +16,7 @@ const BillSection = ({ onPlaceOrder }: { onPlaceOrder: () => void }) => {
       <BillSummary />
       <Totals />
       <DiscountSection />
-      <PaymentActions onPlaceOrder={onPlaceOrder} />
+      <PaymentActions />
     </ScrollView>
   );
 };

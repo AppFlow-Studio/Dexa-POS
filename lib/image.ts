@@ -1,2 +1,5 @@
-export const paperEffect = require("../assets/images/paper-effect.png");
-export const logo = require("../assets/images/logo.png");
+export const images = {
+  paperEffect: require("../assets/images/paper-effect.png"),
+  logo: require("../assets/images/logo.png"),
+  loginBurger: require("../assets/images/login-burger.png"),
+};

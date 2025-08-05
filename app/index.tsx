@@ -3,7 +3,7 @@ import React from "react";
 
 const StartPage = () => {
   // This component will immediately redirect to the /home route.
-  return <Redirect href="/home" />;
+  return <Redirect href="/login" />;
 };
 
 export default StartPage;

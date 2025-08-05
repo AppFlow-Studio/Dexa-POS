@@ -39,8 +39,6 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   const indentation = level * 4; // 4px indentation for each level
 
   const handlePress = () => {
-    console.log("thisi sowrking");
-
     // If the sidebar is collapsed...
     if (!isExpanded) {
       // ...and the item has children, expand the sidebar and open the accordion.
@@ -61,15 +59,14 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   // When sidebar is collapsed, only render icons for top-level items
   if (!isExpanded) {
     return (
-      <Link href={(href || "#") as Href} asChild>
-        <TouchableOpacity onPress={handlePress}>
-          <SidebarLink
-            label={label}
-            icon={Icon}
-            isActive={isActive}
-            isExpanded={false}
-          />
-        </TouchableOpacity>
+      <Link href={(href || activePath) as Href} asChild>
+        <SidebarLink
+          label={label}
+          icon={Icon}
+          isActive={isActive}
+          isExpanded={false}
+          onCustomPress={handlePress}
+        />
       </Link>
     );
   }
