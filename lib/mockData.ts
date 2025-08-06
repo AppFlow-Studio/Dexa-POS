@@ -1,4 +1,4 @@
-import { MenuItemType, Order } from "./types";
+import { Discount, MenuItemType, Order } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
   {
@@ -83,6 +83,19 @@ export const MENU_IMAGE_MAP = {
   "eggs_benedict.png": require("../assets/images/eggs_benedict.png"),
 };
 
+const fifteenPercentOff: Discount = {
+  id: "promo1",
+  label: "15% Off",
+  value: 0.15,
+  type: "percentage",
+};
+const tenPercentOff: Discount = {
+  id: "promo2",
+  label: "10% Off",
+  value: 0.1,
+  type: "percentage",
+};
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
   // --- Main Course ---
   {
@@ -97,10 +110,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     id: "2",
     name: "BBQ Bacon Burger",
     price: 12.99,
-    cashPrice: 12.99,
     image: "bbq_bacon_burger.png",
     meal: ["Lunch", "Dinner"],
     category: "Main Course",
+    availableDiscount: fifteenPercentOff,
   },
   {
     id: "3",
@@ -186,6 +199,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     image: "pancakes.png",
     meal: ["Brunch", "Specials"],
     category: "Main Course",
+    availableDiscount: tenPercentOff,
   },
   {
     id: "13",

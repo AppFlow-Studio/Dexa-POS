@@ -1,4 +1,5 @@
-import { Discount, useCartStore } from "@/stores/useCartStore";
+import { Discount } from "@/lib/types";
+import { CartItem, useCartStore } from "@/stores/useCartStore";
 import { X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -71,7 +72,14 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(
     null
   );
-  const applyDiscountAction = useCartStore((state) => state.applyDiscount);
+  const [activeTab, setActiveTab] = useState<"check" | "items">("check");
+
+  const {
+    items: cartItems,
+    applyDiscountToCheck,
+    applyDiscountToItem,
+    removeDiscountFromItem,
+  } = useCartStore();
 
   // Reanimated value to control the vertical position of the sheet
   const translateY = useSharedValue(SCREEN_HEIGHT);
@@ -100,11 +108,22 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
     }
   }, [isVisible]);
 
-  const handleApply = () => {
-    if (selectedDiscount) {
-      applyDiscountAction(selectedDiscount);
-      onClose();
+  const itemsWithAvailableDiscounts = cartItems.filter(
+    (item) => !!item.availableDiscount
+  );
+
+  const handleApplyCheckDiscount = (discount: Discount) => {
+    applyDiscountToCheck(discount);
+    onClose();
+  };
+
+  const handleToggleItemDiscount = (itemInCart: CartItem) => {
+    if (itemInCart.appliedDiscount) {
+      removeDiscountFromItem(itemInCart.id);
+    } else {
+      applyDiscountToItem(itemInCart.id);
     }
+    onClose();
   };
 
   // We only render the component if isVisible is true, for performance.
@@ -137,26 +156,95 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
 
         {/* The rest of your UI is exactly the same */}
         <View className="flex-row bg-gray-100 p-1 rounded-xl self-start mb-4">
-          {/* ... tabs ... */}
+          <TouchableOpacity
+            onPress={() => setActiveTab("check")}
+            className={`py-2 px-4 rounded-lg ${activeTab === "check" ? "bg-white" : ""}`}
+          >
+            <Text
+              className={`font-semibold ${activeTab === "check" ? "text-primary-400" : "text-gray-500"}`}
+            >
+              Apply to check
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab("items")}
+            className={`py-2 px-4 rounded-lg ${activeTab === "items" ? "bg-white" : ""}`}
+          >
+            <Text
+              className={`font-semibold ${activeTab === "items" ? "text-primary-400" : "text-gray-500"}`}
+            >
+              Apply to items
+            </Text>
+          </TouchableOpacity>
         </View>
         <Text className="font-semibold text-gray-600 mb-4">
           Select a discount
         </Text>
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <View className="flex-row flex-wrap justify-between">
-            {mockDiscounts.map((d) => (
-              <DiscountButton
-                key={d.id}
-                discount={d}
-                isSelected={selectedDiscount?.id === d.id}
-                onPress={() => setSelectedDiscount(d)}
-              />
-            ))}
-          </View>
+        <ScrollView>
+          {activeTab === "check" && (
+            <View className="flex-row flex-wrap justify-between">
+              {mockDiscounts.map((d) => (
+                <TouchableOpacity
+                  key={d.id}
+                  onPress={() => handleApplyCheckDiscount(d)}
+                  className="w-[48%] p-4 border rounded-2xl mb-3 items-center justify-center h-20 bg-white border-gray-200"
+                >
+                  <Text className="font-bold text-center text-gray-700">
+                    {d.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+          {activeTab === "items" && (
+            <View className="space-y-3">
+              {itemsWithAvailableDiscounts.length > 0 ? (
+                itemsWithAvailableDiscounts.map((item) => {
+                  const isApplied = !!item.appliedDiscount;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      onPress={() => handleToggleItemDiscount(item)}
+                      className={`p-4 border rounded-2xl flex-row justify-between items-center ${isApplied ? "border-primary-400 bg-primary-100" : "bg-white border-gray-200"}`}
+                    >
+                      <View>
+                        <Text
+                          className={`font-bold ${isApplied ? "text-primary-400" : "text-gray-700"}`}
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          className={`font-semibold mt-1 ${isApplied ? "text-primary-400" : "text-gray-500"}`}
+                        >
+                          {item.availableDiscount?.label}
+                        </Text>
+                      </View>
+                      <Text
+                        className={`font-bold text-lg ${isApplied ? "text-primary-400" : "text-gray-700"}`}
+                      >
+                        {isApplied ? "Applied" : "Apply"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <Text className="text-center text-gray-500 mt-10">
+                  No items in the cart are eligible for a discount.
+                </Text>
+              )}
+            </View>
+          )}
         </ScrollView>
         <TouchableOpacity
-          onPress={handleApply}
-          className="w-full mt-4 p-4 bg-primary-400 rounded-xl items-center"
+          onPress={() => {
+            if (selectedDiscount) {
+              handleApplyCheckDiscount(selectedDiscount);
+            }
+          }}
+          disabled={!selectedDiscount} // Disable button if no discount is selected
+          className={`w-full mt-4 p-4 rounded-xl items-center ${
+            selectedDiscount ? "bg-primary-400" : "bg-gray-300"
+          }`}
         >
           <Text className="text-white font-bold text-base">Apply Discount</Text>
         </TouchableOpacity>

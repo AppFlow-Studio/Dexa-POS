@@ -7,6 +7,14 @@ export interface Order {
   time: string;
 }
 
+export interface Discount {
+  id: string;
+  label: string;
+  subLabel?: string;
+  value: number; // e.g., 0.15 for 15%
+  type: "percentage";
+}
+
 export interface MenuItemType {
   id: string;
   name: string;
@@ -15,4 +23,5 @@ export interface MenuItemType {
   image?: string;
   meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
   category: "Appetizers" | "Main Course" | "Sides" | "Drinks" | "Dessert";
+  availableDiscount?: Discount;
 }
