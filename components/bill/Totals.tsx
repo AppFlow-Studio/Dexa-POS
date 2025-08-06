@@ -3,7 +3,8 @@ import React from "react";
 import { Text, View } from "react-native";
 
 const Totals: React.FC = () => {
-  const { subtotal, tax, total } = useCartStore();
+  const { subtotal, tax, total, discountAmount } = useCartStore();
+
   const voucher = 0.0;
 
   return (
@@ -14,6 +15,14 @@ const Totals: React.FC = () => {
           ${subtotal.toFixed(2)}
         </Text>
       </View>
+      {discountAmount > 0 && (
+        <View className="flex-row justify-between items-center mb-2">
+          <Text className="text-base text-accent-300">Discount</Text>
+          <Text className="text-base text-accent-300">
+            -${discountAmount.toFixed(2)}
+          </Text>
+        </View>
+      )}
       <View className="flex-row justify-between items-center mb-2">
         <Text className="text-base text-accent-300">Tax</Text>
         <Text className="text-base text-accent-300">${tax.toFixed(2)}</Text>

@@ -10,13 +10,25 @@ export interface CartItem {
   image?: string;
 }
 
+export interface Discount {
+  id: string;
+  label: string;
+  subLabel?: string;
+  value: number; // e.g., 0.10 for 10%
+  type: "percentage";
+}
+
 interface CartState {
   items: CartItem[];
+  appliedDiscount: Discount | null; // The currently applied discount
+  discountAmount: number; // The calculated monetary value of the discount
   addItem: (itemToAdd: MenuItemType) => void;
   removeItem: (itemId: string) => void;
   increaseQuantity: (itemId: string) => void;
   decreaseQuantity: (itemId: string) => void;
   clearCart: () => void;
+  applyDiscount: (discount: Discount) => void;
+  removeDiscount: () => void;
   // --- Derived State (Getters) ---
   subtotal: number;
   tax: number;
@@ -28,14 +40,23 @@ const TAX_RATE = 0.05; // 5%
 
 export const useCartStore = create<CartState>((set, get) => {
   const recalculateTotals = () => {
-    const { items } = get();
+    const { items, appliedDiscount } = get();
     const subtotal = items.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0
     );
-    const tax = subtotal * TAX_RATE;
-    const total = subtotal + tax;
-    set({ subtotal, tax, total });
+    let discountAmount = 0;
+    // Calculate discount amount if one is applied
+    if (appliedDiscount) {
+      if (appliedDiscount.type === "percentage") {
+        discountAmount = subtotal * appliedDiscount.value;
+      }
+    }
+    const subtotalAfterDiscount = subtotal - discountAmount;
+    const tax = subtotalAfterDiscount * TAX_RATE;
+    const total = subtotalAfterDiscount + tax;
+
+    set({ subtotal, tax, discountAmount, total });
   };
 
   // --- RETURN THE PUBLIC STATE AND ACTIONS ---
@@ -44,6 +65,8 @@ export const useCartStore = create<CartState>((set, get) => {
     subtotal: 0,
     tax: 0,
     total: 0,
+    appliedDiscount: null,
+    discountAmount: 0,
 
     // --- ACTIONS ---
     addItem: (itemToAdd) => {
@@ -72,6 +95,16 @@ export const useCartStore = create<CartState>((set, get) => {
       }
       set({ items: updatedItems });
       // After updating items, call the private helper
+      recalculateTotals();
+    },
+
+    applyDiscount: (discount) => {
+      set({ appliedDiscount: discount });
+      recalculateTotals();
+    },
+
+    removeDiscount: () => {
+      set({ appliedDiscount: null });
       recalculateTotals();
     },
 

@@ -25,13 +25,14 @@ const PaymentBottomSheet = () => {
 
   // Custom backdrop component
   const renderBackdrop = useMemo(
-    () => (props: any) =>
+    () => (props: any) => (
       <BottomSheetBackdrop
         {...props}
         appearsOnIndex={0}
         disappearsOnIndex={-1}
         opacity={0.7}
-      />,
+      />
+    ),
     []
   );
 
