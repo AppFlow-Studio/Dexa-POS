@@ -1,5 +1,4 @@
 import { MenuItemType } from "@/lib/types";
-import { useCartStore } from "@/stores/useCartStore";
 import { Plus, Utensils } from "lucide-react-native";
 import React from "react";
 import {
@@ -12,26 +11,18 @@ import {
 
 interface MenuItemProps {
   item: MenuItemType;
-  isSelected: boolean;
-  onPress: () => void;
+  onAddToCart: () => void; // Changed from onpress to be more specific
   imageSource?: ImageSourcePropType;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
   item,
-  isSelected,
-  onPress,
+  onAddToCart,
   imageSource,
 }) => {
-  const addItem = useCartStore((state) => state.addItem);
-
-  const handleAddToCart = () => {
-    addItem(item);
-  };
-
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={onAddToCart}
       className="w-[32%] p-4 rounded-[20px] mb-3 bg-white border border-[#F5F5F5]"
     >
       <View className="flex-row items-center gap-2">
@@ -62,23 +53,12 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </View>
         </View>
       </View>
-      <TouchableOpacity
-        onPress={handleAddToCart}
-        className={`w-full mt-4 py-3 rounded-xl items-center justify-center ${
-          isSelected ? "bg-gray-100" : "bg-primary-100"
-        }`}
-      >
-        {isSelected ? (
-          <Text className="font-bold text-gray-500">Selected</Text>
-        ) : (
-          <View className="flex-row items-center">
-            <Plus color="#3D72C2" size={16} strokeWidth={3} />
-            <Text className="text-primary-500 font-bold ml-1.5">
-              Add to Cart
-            </Text>
-          </View>
-        )}
-      </TouchableOpacity>
+      <View className="w-full mt-4 py-3 rounded-xl items-center justify-center bg-primary-100">
+        <View className="flex-row items-center">
+          <Plus color="#3D72C2" size={16} strokeWidth={3} />
+          <Text className="text-primary-500 font-bold ml-1.5">Add to Cart</Text>
+        </View>
+      </View>
     </TouchableOpacity>
   );
 };

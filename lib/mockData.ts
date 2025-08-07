@@ -1,4 +1,4 @@
-import { Discount, MenuItemType, Order } from "./types";
+import { AddOn, Discount, ItemSize, MenuItemType, Order } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
   {
@@ -96,15 +96,29 @@ const tenPercentOff: Discount = {
   type: "percentage",
 };
 
+const standardSizes: ItemSize[] = [
+  { id: "size_reg", name: "Regular", priceModifier: 0.0 },
+  { id: "size_lg", name: "Large", priceModifier: 2.0 },
+];
+const burgerAddOns: AddOn[] = [
+  { id: "addon_onion", name: "Extra onions", price: 1.0 },
+  { id: "addon_cheese", name: "Extra Cheese", price: 1.5 },
+  { id: "addon_egg", name: "Extra Fried Egg", price: 2.0 },
+];
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
   // --- Main Course ---
   {
     id: "1",
     name: "Classic Burger",
+    description:
+      "Features with two juicy chicken patties, melted cheese, crisp lettuce, fresh tomatoes, etc. Perfect for those who crave a hearty, flavorful bite!",
     price: 9.99,
     image: "classic_burger.png",
     meal: ["Lunch", "Dinner"],
     category: "Main Course",
+    sizes: standardSizes,
+    addOns: burgerAddOns,
   },
   {
     id: "2",

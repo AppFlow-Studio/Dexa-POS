@@ -1,4 +1,4 @@
-import { Discount, MenuItemType } from "@/lib/types";
+import { AddOn, Discount, ItemSize, MenuItemType } from "@/lib/types";
 import { create } from "zustand";
 
 // This is the shape of an item once it's in the cart
@@ -6,9 +6,14 @@ export interface CartItem {
   id: string;
   name: string;
   originalPrice: number;
-  price: number;
+  price: number; // This will be the price after item-specific discounts
   quantity: number;
   image?: string;
+  customizations: {
+    size?: ItemSize;
+    addOns?: AddOn[];
+    notes?: string;
+  };
   availableDiscount?: Discount; // The discount this item is eligible for
   appliedDiscount?: Discount | null; // The discount currently applied to this item
 }
@@ -17,7 +22,14 @@ interface CartState {
   items: CartItem[];
   checkDiscount: Discount | null; // The currently applied discount
   discountAmount: number; // The calculated monetary value of the discount
-  addItem: (itemToAdd: MenuItemType) => void;
+  addItem: (itemData: {
+    menuItem: MenuItemType;
+    quantity: number;
+    size: ItemSize;
+    addOns: AddOn[];
+    notes: string;
+    finalPrice: number;
+  }) => void;
   removeItem: (itemId: string) => void;
   increaseQuantity: (itemId: string) => void;
   decreaseQuantity: (itemId: string) => void;
@@ -80,33 +92,22 @@ export const useCartStore = create<CartState>((set) => {
     tax: 0,
     total: 0,
 
-    addItem: (itemToAdd) => {
+    addItem: ({ menuItem, quantity, size, addOns, notes, finalPrice }) => {
       set((state) => {
-        const existingItem = state.items.find(
-          (item) => item.id === itemToAdd.id
-        );
-        if (existingItem) {
-          const updatedItems = state.items.map((item) =>
-            item.id === itemToAdd.id
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
-          );
-          return { items: updatedItems };
-        } else {
-          const newItem: CartItem = {
-            id: itemToAdd.id,
-            name: itemToAdd.name,
-            originalPrice: itemToAdd.price,
-            price: itemToAdd.price, // Initialize price with originalPrice
-            quantity: 1,
-            image: itemToAdd.image,
-            availableDiscount: itemToAdd.availableDiscount,
-            appliedDiscount: null,
-          };
-          return { items: [...state.items, newItem] };
-        }
+        const newItem: CartItem = {
+          id: `${menuItem.id}_${Date.now()}`, // Create a unique ID for this specific cart entry,
+          name: menuItem.name,
+          quantity,
+          originalPrice: menuItem.price, // Store the original price of the menu item
+          price: finalPrice, // Store the calculated final price for this specific cart item
+          image: menuItem.image,
+          customizations: { size, addOns, notes },
+          availableDiscount: menuItem.availableDiscount,
+          appliedDiscount: null,
+        };
+        return { items: [...state.items, newItem] };
       });
-      recalculateTotals();
+      recalculateTotals(); // Ensure this function is updated to use finalPrice
     },
 
     applyDiscountToCheck: (discount) => {

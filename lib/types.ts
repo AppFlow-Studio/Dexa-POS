@@ -15,13 +15,28 @@ export interface Discount {
   type: "percentage";
 }
 
+export interface ItemSize {
+  id: string;
+  name: string; // e.g., 'Regular', 'Large'
+  priceModifier: number; // e.g., 0 for Regular, 2.00 for Large
+}
+
+export interface AddOn {
+  id: string;
+  name: string; // e.g., 'Extra Onions'
+  price: number;
+}
+
 export interface MenuItemType {
   id: string;
   name: string;
+  description?: string;
   price: number;
   cashPrice?: number;
   image?: string;
   meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
   category: "Appetizers" | "Main Course" | "Sides" | "Drinks" | "Dessert";
   availableDiscount?: Discount;
+  sizes?: ItemSize[];
+  addOns?: AddOn[];
 }

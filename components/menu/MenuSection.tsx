@@ -2,6 +2,7 @@ import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
+import ItemCustomizationDialog from "./ItemCustomizationDialog";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
@@ -17,6 +18,9 @@ const MenuSection: React.FC = () => {
 
   // State to track which menu item is currently selected
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [isDialogVisible, setDialogVisible] = useState(false);
+  const [selectedItemForDialog, setSelectedItemForDialog] =
+    useState<MenuItemType | null>(null);
 
   useEffect(() => {
     const filtered = MOCK_MENU_ITEMS.filter((item) => {
@@ -26,6 +30,17 @@ const MenuSection: React.FC = () => {
     });
     setFilteredMenuItems(filtered);
   }, [activeMeal, activeCategory]);
+
+  const handleOpenDialog = (item: MenuItemType) => {
+    setSelectedItemForDialog(item);
+    setDialogVisible(true);
+  };
+
+  const handleCloseDialog = () => {
+    setDialogVisible(false);
+    setSelectedItemForDialog(null);
+  };
+
   return (
     <View className="mt-6 flex-1">
       <Text className="text-2xl font-bold text-gray-800 mb-4">Menu</Text>
@@ -53,8 +68,7 @@ const MenuSection: React.FC = () => {
         renderItem={({ item }) => (
           <MenuItem
             item={item}
-            isSelected={selectedItemId === item.id}
-            onPress={() => setSelectedItemId(item.id)}
+            onAddToCart={() => handleOpenDialog(item)}
             imageSource={
               item.image
                 ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
@@ -62,6 +76,12 @@ const MenuSection: React.FC = () => {
             }
           />
         )}
+      />
+      {/* Render the dialog */}
+      <ItemCustomizationDialog
+        isVisible={isDialogVisible}
+        onClose={handleCloseDialog}
+        item={selectedItemForDialog}
       />
     </View>
   );
