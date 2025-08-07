@@ -40,3 +40,25 @@ export interface MenuItemType {
   sizes?: ItemSize[];
   addOns?: AddOn[];
 }
+
+export type TableStatus = "Available" | "In Use" | "Needs Cleaning";
+export type TableShape = "circle" | "square";
+export type TableCapacity = "Small" | "Medium" | "Large";
+
+export interface TableOrder {
+  id: string;
+  customerName: string;
+  total: number;
+}
+
+export interface TableType {
+  id: string;
+  name: string;
+  status: TableStatus;
+  capacity: number;
+  shape: TableShape;
+  order?: TableOrder | null;
+  // Use x/y coordinates for precise positioning
+  x: number;
+  y: number;
+}
