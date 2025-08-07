@@ -12,7 +12,10 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
   // Get discount state and remove action from the store
-  const { appliedDiscount, removeDiscount } = useCartStore();
+  const {
+    checkDiscount: appliedDiscount,
+    removeCheckDiscount: removeDiscount,
+  } = useCartStore();
 
   return (
     <View className="p-4 bg-background-200">

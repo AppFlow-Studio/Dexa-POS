@@ -15,6 +15,11 @@ const PaymentActions = () => {
     { name: "Cash", icon: Banknote },
   ];
 
+  const handlePlaceOrder = () => {
+    // Pass the currently active method to the store when opening
+    open(activeMethod);
+  };
+
   return (
     <View className="pt-2 px-4 bg-background-200">
       {/* Payment Method Selector */}
@@ -44,7 +49,7 @@ const PaymentActions = () => {
       {/* Final Action Buttons */}
       <TouchableOpacity
         className="w-full py-4 bg-primary-400 rounded-xl mt-4 items-center"
-        onPress={open}
+        onPress={handlePlaceOrder}
       >
         <Text className="text-white font-bold text-base">Place Order</Text>
       </TouchableOpacity>

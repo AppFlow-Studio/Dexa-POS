@@ -1,7 +1,7 @@
 import { AddOn, ItemSize, MenuItemType } from "@/lib/types";
 import { useCartStore } from "@/stores/useCartStore";
 import { Minus, Plus } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   ScrollView,
@@ -23,31 +23,18 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
   isVisible,
   onClose,
 }) => {
-  if (!item) return null;
-
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState<ItemSize>(
-    item.sizes?.[0] || { id: "default", name: "Regular", priceModifier: 0 }
-  );
+  const [selectedSize, setSelectedSize] = useState<ItemSize>({
+    id: "default",
+    name: "Regular",
+    priceModifier: 0,
+  });
   const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>([]);
   const [notes, setNotes] = useState("");
-  const [total, setTotal] = useState(item.price);
 
   const addItemToCart = useCartStore((state) => state.addItem);
 
-  // Recalculate total whenever options change
-  useEffect(() => {
-    let newTotal = item.price;
-    if (selectedSize) {
-      newTotal += selectedSize.priceModifier;
-    }
-    selectedAddOns.forEach((addOn) => {
-      newTotal += addOn.price;
-    });
-    setTotal(newTotal * quantity);
-  }, [quantity, selectedSize, selectedAddOns, item]);
-
-  // Reset state when a new item is passed in
+  // Initialize state when item changes
   useEffect(() => {
     if (item) {
       setQuantity(1);
@@ -59,15 +46,31 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
     }
   }, [item]);
 
-  const handleAddOnToggle = (addOn: AddOn) => {
+  // Calculate total using useMemo for performance
+  const total = useMemo(() => {
+    if (!item) return 0;
+
+    let baseTotal = item.price;
+    if (selectedSize) {
+      baseTotal += selectedSize.priceModifier;
+    }
+    selectedAddOns.forEach((addOn) => {
+      baseTotal += addOn.price;
+    });
+    return baseTotal * quantity;
+  }, [quantity, selectedSize, selectedAddOns, item]);
+
+  const handleAddOnToggle = useCallback((addOn: AddOn) => {
     setSelectedAddOns((prev) =>
       prev.some((a) => a.id === addOn.id)
         ? prev.filter((a) => a.id !== addOn.id)
         : [...prev, addOn]
     );
-  };
+  }, []);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = useCallback(() => {
+    if (!item) return;
+
     addItemToCart({
       menuItem: item,
       quantity,
@@ -77,7 +80,18 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
       finalPrice: total / quantity,
     });
     onClose();
-  };
+  }, [
+    item,
+    quantity,
+    selectedSize,
+    selectedAddOns,
+    notes,
+    total,
+    addItemToCart,
+    onClose,
+  ]);
+
+  if (!item) return null;
 
   return (
     <Dialog open={isVisible} onOpenChange={onClose}>

@@ -1,7 +1,7 @@
 import "@/global.css";
 import { PortalHost } from "@rn-primitives/portal";
 
-import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
+import PaymentModal from "@/components/bill/PaymentModal";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
@@ -62,7 +62,7 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false }} />
           <PortalHost />
           <SearchBottomSheet />
-          <PaymentBottomSheet />
+          <PaymentModal />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
