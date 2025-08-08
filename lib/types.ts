@@ -109,3 +109,25 @@ export interface PreviousOrder {
   total: number;
   items: CartItem[]; // The detailed list of items for the notes modal
 }
+
+export type InventoryItemStatus =
+  | "Active"
+  | "Draft"
+  | "Inactive"
+  | "Out of Stock";
+
+export interface InventoryItem {
+  id: string; // e.g., '#2020E11'
+  serialNo: string;
+  name: string;
+  image?: string; // Filename from assets
+  description: string;
+  stock: number;
+  unit: "PCs" | "KGs" | "Liters";
+  lastUpdate: string; // e.g., '02/03/2025 10:30 AM'
+  status: InventoryItemStatus;
+  // Additional details for the forms
+  category: string;
+  modifier: string;
+  availability: boolean;
+}
