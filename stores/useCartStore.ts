@@ -5,8 +5,9 @@ import { create } from "zustand";
 export interface CartItem {
   id: string;
   name: string;
+  menuItemId: string;
   originalPrice: number;
-  price: number; // This will be the price after item-specific discounts
+  finalPrice: number;
   quantity: number;
   image?: string;
   customizations: {
@@ -99,11 +100,12 @@ export const useCartStore = create<CartState>((set) => {
           name: menuItem.name,
           quantity,
           originalPrice: menuItem.price, // Store the original price of the menu item
-          price: finalPrice, // Store the calculated final price for this specific cart item
+          finalPrice: finalPrice, // Store the calculated final price for this specific cart item
           image: menuItem.image,
           customizations: { size, addOns, notes },
           availableDiscount: menuItem.availableDiscount,
           appliedDiscount: null,
+          menuItemId: menuItem.id,
         };
         return { items: [...state.items, newItem] };
       });

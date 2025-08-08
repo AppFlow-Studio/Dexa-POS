@@ -1,6 +1,7 @@
 import { TableType } from "@/lib/types";
+import { Href, Link } from "expo-router";
 import React, { useEffect } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
@@ -80,32 +81,44 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const shapeClass = table.shape === "circle" ? "rounded-full" : "rounded-2xl";
   const sizeClass = table.shape === "circle" ? "w-24 h-24" : "w-32 h-20";
 
+  const Content = () => (
+    <Animated.View
+      style={animatedStyle}
+      className={`absolute top-0 left-0 border items-center justify-center ${sizeClass} ${shapeClass} ${statusClasses[table.status]}`}
+    >
+      {table.status === "Needs Cleaning" && (
+        <View
+          style={{
+            backgroundColor: "rgba(128, 128, 128, 0.2)",
+          }}
+          className="absolute inset-0"
+        />
+      )}
+      <Text className={`text-2xl font-bold ${statusTextClasses[table.status]}`}>
+        {table.id}
+      </Text>
+      <View className="absolute -top-2 -right-2 bg-gray-700 rounded-full w-6 h-6 items-center justify-center flex-row">
+        {/* <Users color="#FFFFFF" size={12} /> */}
+        <Text className="text-white text-xs font-bold ml-0.5">
+          {table.capacity}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View
-        style={animatedStyle}
-        className={`absolute top-0 left-0 border items-center justify-center ${sizeClass} ${shapeClass} ${statusClasses[table.status]}`}
-      >
-        {table.status === "Needs Cleaning" && (
-          <View
-            style={{
-              backgroundColor: "rgba(128, 128, 128, 0.2)",
-            }}
-            className="absolute inset-0"
-          />
-        )}
-        <Text
-          className={`text-2xl font-bold ${statusTextClasses[table.status]}`}
-        >
-          {table.id}
-        </Text>
-        <View className="absolute -top-2 -right-2 bg-gray-700 rounded-full w-6 h-6 items-center justify-center flex-row">
-          {/* <Users color="#FFFFFF" size={12} /> */}
-          <Text className="text-white text-xs font-bold ml-0.5">
-            {table.capacity}
-          </Text>
-        </View>
-      </Animated.View>
+      {isEditMode ? (
+        // If in edit mode, render without a link
+        <Content />
+      ) : (
+        // If NOT in edit mode, wrap the content in a Link
+        <Link href={`/tables/${table.id}` as Href} asChild>
+          <TouchableOpacity activeOpacity={0.7}>
+            <Content />
+          </TouchableOpacity>
+        </Link>
+      )}
     </GestureDetector>
   );
 };

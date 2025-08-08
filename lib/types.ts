@@ -1,3 +1,5 @@
+import { CartItem } from "@/stores/useCartStore";
+
 export interface Order {
   id: string;
   customerName: string;
@@ -61,4 +63,49 @@ export interface TableType {
   // Use x/y coordinates for precise positioning
   x: number;
   y: number;
+}
+
+export type OnlineOrderStatus =
+  | "New Orders"
+  | "Confirmed/In-Process"
+  | "Ready to Dispatch"
+  | "Dispatched";
+export type DeliveryPartner =
+  | "Door Dash"
+  | "grubhub"
+  | "Uber-Eats"
+  | "Food Panda";
+
+export interface OnlineOrder {
+  id: string; // e.g., #45654
+  status: OnlineOrderStatus;
+  deliveryPartner: DeliveryPartner;
+  customerName: string;
+  total: number;
+  itemCount: number;
+  timestamp: string; // e.g., '02/03/25, 05:36 PM'
+  // Detailed info for the details page
+  customerDetails: {
+    id: string;
+    phone: string;
+    email: string;
+  };
+  paymentStatus: "Paid" | "Pending";
+  items: CartItem[];
+}
+
+export type PaymentStatus = "Paid" | "In Progress" | "Refunded";
+export type OrderType = "Dine In" | "Takeout" | "Delivery";
+
+export interface PreviousOrder {
+  serialNo: string;
+  orderDate: string; // e.g., "Oct 16, 2024"
+  orderTime: string; // e.g., "09:31 AM"
+  orderId: string;
+  paymentStatus: PaymentStatus;
+  server: string;
+  itemCount: number;
+  type: OrderType;
+  total: number;
+  items: CartItem[]; // The detailed list of items for the notes modal
 }

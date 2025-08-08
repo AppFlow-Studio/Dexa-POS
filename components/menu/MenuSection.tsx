@@ -6,7 +6,13 @@ import ItemCustomizationDialog from "./ItemCustomizationDialog";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
-const MenuSection: React.FC = () => {
+interface MenuSectionProps {
+  isUpdateScreen?: boolean;
+}
+
+const MenuSection: React.FC<MenuSectionProps> = ({
+  isUpdateScreen = false,
+}) => {
   // State for the active filters
   const [activeMeal, setActiveMeal] = useState("Dinner");
   const [activeCategory, setActiveCategory] = useState("Main Course");
