@@ -5,8 +5,10 @@ import {
   InventoryItem,
   ItemSize,
   MenuItemType,
+  OfflineOrder,
   OnlineOrder,
   Order,
+  PaymentTerminal,
   PreviousOrder,
   PrinterDevice,
   PrinterRule,
@@ -843,3 +845,44 @@ export const MOCK_PRINTER_RULES: PrinterRule[] = [
     printerId: MOCK_PRINTERS[1].id,
   },
 ];
+
+export const MOCK_TERMINALS: PaymentTerminal[] = [
+  {
+    id: "TRM00123",
+    name: "Terminal A-123",
+    isEnabled: true,
+    status: "Connected",
+    batteryLevel: 85,
+  },
+  {
+    id: "TRM00124",
+    name: "Terminal B-124",
+    isEnabled: true,
+    status: "Disconnected",
+    batteryLevel: 62,
+  },
+  {
+    id: "TRM00234",
+    name: "Terminal D-234",
+    isEnabled: false,
+    status: "Disconnected",
+    batteryLevel: 45,
+  },
+];
+
+export const MOCK_FOUND_TERMINALS = [
+  { id: "Epson-TM", name: "Epson TM-m30II-NT" },
+  { id: "PIXMA-E3470", name: "PIXMA E3470" },
+  { id: "HP-9025", name: "HP OfficeJet Pro 9025" },
+  { id: "Canon-TR4520", name: "Canon PIXMA TR4520" },
+  { id: "Brother-HL", name: "Brother HL-L2390DW" },
+];
+
+export const MOCK_OFFLINE_ORDERS: OfflineOrder[] = Array(8).fill({
+  serialNo: "001",
+  orderDate: "Oct 16, 2024",
+  orderTime: "09:31 AM",
+  orderId: "#2010E10",
+  server: "Jake Carter",
+  total: 34.5,
+});

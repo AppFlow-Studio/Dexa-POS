@@ -153,6 +153,33 @@ export const SIDEBAR_DATA: SidebarNavigationItem[] = [
           },
         ],
       },
+      {
+        id: "appearance_and_security",
+        label: "Appearance and Security",
+        subItems: [
+          {
+            id: "security_and_login",
+            label: "Security and Login",
+            href: "/settings/appearance-and-security/security-and-login" as Href,
+          },
+        ],
+      },
+      {
+        id: "system_and_support",
+        label: "System and Support",
+        subItems: [
+          {
+            id: "device_and_support",
+            label: "Device & Support",
+            href: "/settings/system-and-support/device-and-support" as Href,
+          },
+          {
+            id: "reset_application",
+            label: "Reset Application",
+            href: "/settings/system-and-support/reset-application" as Href,
+          },
+        ],
+      },
     ],
   },
 ];

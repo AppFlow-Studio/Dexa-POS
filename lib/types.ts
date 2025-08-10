@@ -177,3 +177,20 @@ export interface PrinterRule {
   category: string; // e.g., 'Food', 'Drinks'
   printerId: string; // The ID of the printer to route to
 }
+
+export interface PaymentTerminal {
+  id: string; // e.g., 'TRM00123'
+  name: string; // e.g., 'Terminal A-123'
+  isEnabled: boolean;
+  status: "Connected" | "Disconnected";
+  batteryLevel: number; // e.g., 85
+}
+
+export interface OfflineOrder {
+  serialNo: string;
+  orderDate: string;
+  orderTime: string;
+  orderId: string;
+  server: string;
+  total: number;
+}

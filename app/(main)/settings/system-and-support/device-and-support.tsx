@@ -1,0 +1,84 @@
+import Header from "@/components/Header";
+import InfoField from "@/components/settings/InfoField";
+import React from "react";
+import { ScrollView, Text, View } from "react-native";
+
+// Reusable component for the Hardware Status rows
+const HardwareStatusRow = ({
+  device,
+  isConnected,
+}: {
+  device: string;
+  isConnected: boolean;
+}) => (
+  <View className="flex-row justify-between items-center bg-white p-4 rounded-2xl border border-gray-200">
+    <Text className="text-lg text-gray-800">{device}</Text>
+    <View
+      className={`flex-row items-center px-2 py-1 rounded-md ${isConnected ? "bg-green-100" : "bg-gray-200"}`}
+    >
+      <View
+        className={`w-2 h-2 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-gray-400"}`}
+      />
+      <Text
+        className={`font-semibold text-sm ${isConnected ? "text-green-800" : "text-gray-600"}`}
+      >
+        {isConnected ? "Connected" : "Disconnected"}
+      </Text>
+    </View>
+  </View>
+);
+
+const DeviceAndSupportScreen = () => {
+  // In a real app, this data would come from device APIs or a context
+  const deviceInfo = {
+    name: "Front Counter POS",
+    appVersion: "v1.2.3",
+    deviceId: "axb-123-ghk-456",
+    network: "Connected to Wi-Fi 'StoreNet'",
+  };
+
+  const hardwareStatus = {
+    receiptPrinter: true,
+    cardReader: false,
+  };
+
+  return (
+    <View className="flex-1 bg-gray-50 p-6">
+      <Header />
+      <Text className="text-3xl font-bold text-gray-800 my-4">
+        Device & Support
+      </Text>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View className="flex-1 space-y-6">
+          {/* Device Information Section */}
+          <View className="space-y-4">
+            <InfoField label="Device Name" value={deviceInfo.name} />
+            <InfoField label="App Version" value={deviceInfo.appVersion} />
+            <InfoField label="Device ID" value={deviceInfo.deviceId} />
+            <InfoField label="Network Status" value={deviceInfo.network} />
+          </View>
+
+          {/* Hardware Status Section */}
+          <View>
+            <Text className="text-xl font-bold text-gray-800 mb-4">
+              Hardware Status
+            </Text>
+            <View className="space-y-4">
+              <HardwareStatusRow
+                device="Reciept Printer"
+                isConnected={hardwareStatus.receiptPrinter}
+              />
+              <HardwareStatusRow
+                device="Card Reader"
+                isConnected={hardwareStatus.cardReader}
+              />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
+
+export default DeviceAndSupportScreen;
