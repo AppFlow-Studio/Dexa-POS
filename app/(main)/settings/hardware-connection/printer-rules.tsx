@@ -1,0 +1,236 @@
+import Header from "@/components/Header";
+// 1. Import the Select primitives directly from your UI library
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  MOCK_CATEGORIES,
+  MOCK_PRINTERS,
+  MOCK_PRINTER_RULES,
+} from "@/lib/mockData";
+import { PrinterRule } from "@/lib/types";
+import { Plus, Trash2 } from "lucide-react-native";
+import React, { useState } from "react";
+import { FlatList, Switch, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+// --- Reusable Component for a Single Rule Row ---
+
+interface RuleRowProps {
+  rule: PrinterRule;
+  onUpdate: (updatedRule: PrinterRule) => void;
+  onDelete: (id: string) => void;
+}
+
+const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
+  const printerOptions = MOCK_PRINTERS.map((p) => ({
+    label: p.name,
+    value: p.id,
+  }));
+  const insets = useSafeAreaInsets();
+  const contentInsets = {
+    top: insets.top,
+    bottom: insets.bottom,
+    left: 12,
+    right: 12,
+  };
+
+  return (
+    <View className="flex-row items-center p-4 bg-white border border-gray-200 rounded-2xl">
+      <Switch
+        value={rule.isEnabled}
+        onValueChange={(value) => onUpdate({ ...rule, isEnabled: value })}
+      />
+
+      <View className="flex-1 mx-4">
+        {/* 2. Use the correct Select implementation for Category */}
+        <Select
+          value={MOCK_CATEGORIES.find((c) => c.value === rule.category)}
+          onValueChange={(option) =>
+            option && onUpdate({ ...rule, category: option.value })
+          }
+        >
+          <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+            <SelectValue placeholder="Select Category" className="text-base" />
+          </SelectTrigger>
+          <SelectContent insets={contentInsets}>
+            <SelectGroup>
+              {MOCK_CATEGORIES.map((cat) => (
+                <SelectItem key={cat.value} label={cat.label} value={cat.value}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </View>
+
+      <View className="flex-1">
+        {/* 3. Use the correct Select implementation for Printer */}
+        <Select
+          value={printerOptions.find((p) => p.value === rule.printerId)}
+          onValueChange={(option) =>
+            option && onUpdate({ ...rule, printerId: option.value })
+          }
+        >
+          <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+            <SelectValue placeholder="Select Printer" className="text-base" />
+          </SelectTrigger>
+          <SelectContent insets={contentInsets}>
+            <SelectGroup>
+              {printerOptions.map((p) => (
+                <SelectItem key={p.value} label={p.label} value={p.value}>
+                  {p.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </View>
+
+      <TouchableOpacity onPress={() => onDelete(rule.id)} className="p-3 ml-4">
+        <Trash2 color="#4b5563" size={20} />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+// --- The Main Screen Component ---
+
+const PrinterRulesScreen = () => {
+  const [rules, setRules] = useState<PrinterRule[]>(MOCK_PRINTER_RULES);
+  const [newRuleCategory, setNewRuleCategory] = useState<
+    { label: string; value: string } | undefined
+  >();
+  const [newRulePrinter, setNewRulePrinter] = useState<
+    { label: string; value: string } | undefined
+  >();
+
+  const printerOptions = MOCK_PRINTERS.map((p) => ({
+    label: p.name,
+    value: p.id,
+  }));
+  const insets = useSafeAreaInsets();
+  const contentInsets = {
+    top: insets.top,
+    bottom: insets.bottom,
+    left: 12,
+    right: 12,
+  };
+
+  const handleUpdateRule = (updatedRule: PrinterRule) => {
+    setRules((currentRules) =>
+      currentRules.map((rule) =>
+        rule.id === updatedRule.id ? updatedRule : rule
+      )
+    );
+  };
+
+  const handleDeleteRule = (id: string) => {
+    setRules((currentRules) => currentRules.filter((rule) => rule.id !== id));
+  };
+
+  const handleAddRule = () => {
+    if (!newRuleCategory || !newRulePrinter) {
+      alert("Please select both a category and a printer.");
+      return;
+    }
+    const newRule: PrinterRule = {
+      id: `rule_${Date.now()}`,
+      isEnabled: true,
+      category: newRuleCategory.value,
+      printerId: newRulePrinter.value,
+    };
+    setRules((currentRules) => [...currentRules, newRule]);
+    setNewRuleCategory(undefined);
+    setNewRulePrinter(undefined);
+  };
+
+  return (
+    <View className="flex-1 bg-gray-50 p-6">
+      <Header />
+      <Text className="text-3xl font-bold text-gray-800 my-4">
+        Printer Rules
+      </Text>
+
+      <View className="flex-1">
+        <FlatList
+          data={rules}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <RuleRow
+              rule={item}
+              onUpdate={handleUpdateRule}
+              onDelete={handleDeleteRule}
+            />
+          )}
+          ItemSeparatorComponent={() => <View className="h-4" />}
+        />
+      </View>
+
+      <View className="mt-6 pt-6 border-t border-gray-200">
+        <View className="flex-row items-center mb-2">
+          <Plus color="#4b5563" size={16} />
+          <Text className="font-bold text-gray-700 ml-2">+ Add New</Text>
+        </View>
+        <View className="flex-row items-center p-4 bg-white border border-gray-200 rounded-2xl">
+          <View className="flex-1 mx-4">
+            <Select value={newRuleCategory} onValueChange={setNewRuleCategory}>
+              <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+                <SelectValue placeholder="Category" className="text-base" />
+              </SelectTrigger>
+              <SelectContent insets={contentInsets}>
+                <SelectGroup>
+                  {MOCK_CATEGORIES.map((cat) => (
+                    <SelectItem
+                      key={cat.value}
+                      label={cat.label}
+                      value={cat.value}
+                    >
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </View>
+          <View className="flex-1">
+            <Select value={newRulePrinter} onValueChange={setNewRulePrinter}>
+              <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+                <SelectValue placeholder="Printer" className="text-base" />
+              </SelectTrigger>
+              <SelectContent insets={contentInsets}>
+                <SelectGroup>
+                  {printerOptions.map((p) => (
+                    <SelectItem key={p.value} label={p.label} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </View>
+          <TouchableOpacity
+            onPress={handleAddRule}
+            className="py-2 px-4 ml-4 border border-gray-300 rounded-lg"
+          >
+            <Text className="font-bold text-gray-700">Add</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View className="flex-row justify-end mt-6 pt-4 border-t border-gray-200">
+        <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+          <Text className="font-bold text-white">Save Changes</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+export default PrinterRulesScreen;

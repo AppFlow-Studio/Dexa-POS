@@ -8,7 +8,12 @@ import {
   OnlineOrder,
   Order,
   PreviousOrder,
+  PrinterDevice,
+  PrinterRule,
+  ShiftHistoryEntry,
+  ShiftStatus,
   TableType,
+  UserProfile,
 } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
@@ -749,5 +754,92 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     category: "Breads",
     modifier: "Cream Cheese",
     availability: true,
+  },
+];
+
+export const MOCK_USER_PROFILE: UserProfile = {
+  id: "#54568",
+  employeeId: "JS002T",
+  fullName: "Tom Hardy",
+  dob: "04/09/1996",
+  gender: "Male",
+  country: "USA",
+  address: "New York, USA",
+  email: "tom@gmail.com",
+  phone: "+8037247534858347",
+  pin: "498843",
+  profileImageUrl: "tom_hardy.jpg",
+};
+
+export const MOCK_SHIFT_STATUS: ShiftStatus = {
+  status: "Clocked In",
+  duration: "5 h 24 m",
+  clockInTime: "08:01 AM",
+};
+
+export const MOCK_SHIFT_HISTORY: ShiftHistoryEntry[] = Array.from(
+  { length: 7 },
+  (_, i) => ({
+    id: i.toString(),
+    date: "02/03/2025",
+    clockIn: "10:30 AM",
+    breakInitiated: "12:30 PM",
+    breakEnded: "01:30 PM",
+    clockOut: "06:30 PM",
+    duration: "8h 11m",
+  })
+);
+
+export const MOCK_PRINTERS: PrinterDevice[] = [
+  {
+    id: "1",
+    name: "Receipt Printer",
+    isEnabled: true,
+    status: "Connected",
+    connectionType: "Wi-Fi",
+    ipAddress: "192.168.1.101",
+  },
+  {
+    id: "2",
+    name: "Kitchen Printer",
+    isEnabled: true,
+    status: "Disconnected",
+    connectionType: "Wi-Fi",
+    ipAddress: "192.168.1.102",
+  },
+  {
+    id: "3",
+    name: "Bar Printer",
+    isEnabled: false,
+    status: "Disconnected",
+    connectionType: "Bluetooth",
+  },
+];
+
+export const MOCK_CATEGORIES = [
+  { label: "Food", value: "Food" },
+  { label: "Drinks", value: "Drinks" },
+  { label: "Desserts", value: "Desserts" },
+  { label: "Appetizers", value: "Appetizers" },
+];
+
+export const MOCK_PRINTER_RULES: PrinterRule[] = [
+  {
+    id: "rule1",
+    isEnabled: true,
+    category: "Food",
+    printerId: MOCK_PRINTERS[0].id,
+  },
+  {
+    id: "rule2",
+    isEnabled: false,
+    category: "Drinks",
+    printerId: MOCK_PRINTERS[2].id,
+  },
+  {
+    id: "rule3",
+    isEnabled: false,
+    category: "Desserts",
+    printerId: MOCK_PRINTERS[1].id,
   },
 ];

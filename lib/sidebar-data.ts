@@ -109,7 +109,28 @@ export const SIDEBAR_DATA: SidebarNavigationItem[] = [
       {
         id: "hardware_connection",
         label: "Hardware Connection",
-        href: "/settings/hardware-connection" as Href,
+        subItems: [
+          {
+            id: "printer",
+            label: "Printer",
+            href: "/settings/hardware-connection/printer" as Href,
+          },
+          {
+            id: "printer_rules",
+            label: "Printer Rules",
+            href: "/settings/hardware-connection/printer-rules" as Href,
+          },
+          {
+            id: "payment_terminal",
+            label: "Payment Terminal (Card Reader)",
+            href: "/settings/hardware-connection/payment-terminal" as Href,
+          },
+          {
+            id: "customer_display",
+            label: "Customer Display",
+            href: "/settings/hardware-connection/customer-display" as Href,
+          },
+        ],
       },
       {
         id: "store_operation",

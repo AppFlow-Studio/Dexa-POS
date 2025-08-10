@@ -1,12 +1,12 @@
 import React from "react";
 import { Text, View } from "react-native";
 
-const HardwareConnection = () => {
+const CustomerDisplay = () => {
   return (
     <View>
-      <Text>hardware-connection</Text>
+      <Text>CustomerDisplay</Text>
     </View>
   );
 };
 
-export default HardwareConnection;
+export default CustomerDisplay;

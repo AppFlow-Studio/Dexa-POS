@@ -10,7 +10,7 @@ const UpdateStockForm = ({ onCancel, onSave }: any) => {
       <View className="bg-gray-100 p-1 rounded-xl flex-row">
         <TouchableOpacity
           onPress={() => setTab("in")}
-          className={`flex-1 py-2 items-center rounded-lg ${tab === "in" ? "bg-white shadow-sm" : ""}`}
+          className={`flex-1 py-2 items-center rounded-lg ${tab === "in" ? "bg-white" : ""}`}
         >
           <Text
             className={`font-bold ${tab === "in" ? "text-primary-400" : "text-gray-600"}`}
@@ -20,7 +20,7 @@ const UpdateStockForm = ({ onCancel, onSave }: any) => {
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setTab("out")}
-          className={`flex-1 py-2 items-center rounded-lg ${tab === "out" ? "bg-white shadow-sm" : ""}`}
+          className={`flex-1 py-2 items-center rounded-lg ${tab === "out" ? "bg-white" : ""}`}
         >
           <Text
             className={`font-bold ${tab === "out" ? "text-primary-400" : "text-gray-600"}`}

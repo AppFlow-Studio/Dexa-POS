@@ -131,3 +131,49 @@ export interface InventoryItem {
   modifier: string;
   availability: boolean;
 }
+
+export interface UserProfile {
+  id: string;
+  employeeId: string;
+  fullName: string;
+  dob: string;
+  gender: "Male" | "Female" | "Other";
+  country: string;
+  address: string;
+  email: string;
+  phone: string;
+  pin: string;
+  profileImageUrl?: string; // e.g., 'tom_hardy.png'
+}
+
+export interface ShiftStatus {
+  status: "Clocked In" | "Clocked Out";
+  duration: string;
+  clockInTime: string;
+}
+
+export interface ShiftHistoryEntry {
+  id: string;
+  date: string;
+  clockIn: string;
+  breakInitiated: string;
+  breakEnded: string;
+  clockOut: string;
+  duration: string;
+}
+
+export interface PrinterDevice {
+  id: string;
+  name: string;
+  isEnabled: boolean;
+  status: "Connected" | "Disconnected";
+  connectionType?: "Wi-Fi" | "Bluetooth";
+  ipAddress?: string;
+}
+
+export interface PrinterRule {
+  id: string; // A unique ID for the rule, e.g., a timestamp or UUID
+  isEnabled: boolean;
+  category: string; // e.g., 'Food', 'Drinks'
+  printerId: string; // The ID of the printer to route to
+}
