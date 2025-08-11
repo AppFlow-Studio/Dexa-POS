@@ -1,14 +1,12 @@
 import SalesLineChart from "@/components/analytics/SalesLineChart";
 import StatCard from "@/components/analytics/StatCard";
 import TopItemsBarChart from "@/components/analytics/TopItemsBarChart";
+import TrackOrderSection from "@/components/analytics/TrackOrderSection";
 import Header from "@/components/Header";
-import OrderLineSection from "@/components/order/OrderLineSection";
 import { DollarSign, ShoppingBasket, Tag, Trophy } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { Pie, PolarChart } from "victory-native";
-// import { Svg } from "react-native-svg";
-// import { VictoryPie } from "victory-native";
 
 const checksData = [
   { value: 77.81, label: "Closed", color: "#3b82f6" }, // Blue
@@ -83,14 +81,14 @@ const AnalyticsScreen = () => {
           </DashboardCard>
           {/* Open Checks Chart */}
           <DashboardCard title="Open vs Closed Checks" className="flex-1">
-            <View className="h-[200px] items-center justify-center">
+            <View className="h-[200px]">
               <PolarChart
                 data={checksData}
                 valueKey="value"
                 labelKey="label"
                 colorKey="color"
               >
-                <Pie.Chart innerRadius="75%" />
+                <Pie.Chart innerRadius="70%" />
               </PolarChart>
             </View>
             <View className="mt-4 space-y-2">
@@ -118,8 +116,9 @@ const AnalyticsScreen = () => {
         {/* Bottom Charts Row */}
         <View className="flex-row space-x-4 mt-4">
           {/* Check Status Chart */}
-          <DashboardCard title="Check Status Overview" className="flex-1">
-            <View className="h-[200px] items-center justify-center">
+          <DashboardCard title="Check Status Overview" className="flex-2">
+            {/* This parent View is left alone, so the chart renders correctly */}
+            <View className="h-[200px]">
               <PolarChart
                 data={checkStatusData}
                 valueKey="value"
@@ -128,11 +127,14 @@ const AnalyticsScreen = () => {
               >
                 <Pie.Chart innerRadius="70%" />
               </PolarChart>
-              {/* Central Text */}
-              <View className="absolute">
+
+              {/* 👇 The fix is applied here. This container now fills the parent and centers the text. */}
+              <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
                 <Text className="text-5xl font-bold text-gray-800">57%</Text>
               </View>
             </View>
+
+            {/* Legend below the chart */}
             <View className="mt-4 space-y-2">
               {checkStatusData.map((item) => (
                 <View
@@ -161,7 +163,7 @@ const AnalyticsScreen = () => {
 
         {/* Track Order Section */}
         <View className="mt-6">
-          <OrderLineSection />
+          <TrackOrderSection />
         </View>
       </ScrollView>
     </View>

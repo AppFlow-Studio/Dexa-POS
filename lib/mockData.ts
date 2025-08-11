@@ -15,6 +15,7 @@ import {
   ShiftHistoryEntry,
   ShiftStatus,
   TableType,
+  TrackedOrder,
   UserProfile,
 } from "./types";
 
@@ -918,4 +919,78 @@ export const topItemsData = [
   { name: "Spicy Chicken Burger", quantity: 10 },
   { name: "Beef Shawarma Wrap", quantity: 9 },
   { name: "BBQ Chicken Wings", quantity: 7 },
+];
+
+export const MOCK_TRACKED_ORDERS: TrackedOrder[] = [
+  {
+    id: "1",
+    customerName: "John Jones",
+    status: "On kitchen Hand",
+    type: "Dine In",
+    table: 2,
+    timestamp: "09:00 AM",
+    totalItems: 5,
+    items: [
+      { name: "Cheese pizza", quantity: 1 },
+      { name: "Coffee", quantity: 1 },
+      { name: "Cheese pizza", quantity: 1 },
+      { name: "Cheese pizza", quantity: 1 },
+      { name: "Fries", quantity: 1 },
+    ],
+  },
+  {
+    id: "2",
+    customerName: "Emily Smith",
+    status: "Preparing",
+    type: "Takeout",
+    table: 0,
+    timestamp: "09:02 AM",
+    totalItems: 3,
+    items: [
+      { name: "Vegan Wrap", quantity: 1 },
+      { name: "Salad", quantity: 1 },
+      { name: "Water", quantity: 1 },
+    ],
+  },
+  {
+    id: "3",
+    customerName: "Alex Ray",
+    status: "On kitchen Hand",
+    type: "Dine In",
+    table: 5,
+    timestamp: "09:05 AM",
+    totalItems: 2,
+    items: [
+      { name: "BBQ Bacon Burger", quantity: 1 },
+      { name: "Coke", quantity: 1 },
+    ],
+  },
+  {
+    id: "4",
+    customerName: "Sarah Day",
+    status: "Ready",
+    type: "Delivery",
+    table: 0,
+    timestamp: "09:08 AM",
+    totalItems: 6,
+    items: [
+      { name: "Margherita Pizza", quantity: 2 },
+      { name: "Garlic Bread", quantity: 2 },
+      { name: "Sprite", quantity: 2 },
+    ],
+  },
+  {
+    id: "5",
+    customerName: "Michael Bee",
+    status: "On kitchen Hand",
+    type: "Dine In",
+    table: 8,
+    timestamp: "09:10 AM",
+    totalItems: 4,
+    items: [
+      { name: "Pancakes", quantity: 1 },
+      { name: "Orange Juice", quantity: 1 },
+      { name: "Coffee", quantity: 2 },
+    ],
+  },
 ];

@@ -194,3 +194,19 @@ export interface OfflineOrder {
   server: string;
   total: number;
 }
+
+export interface TrackedOrderItem {
+  name: string;
+  quantity: number;
+}
+
+export interface TrackedOrder {
+  id: string;
+  customerName: string;
+  status: string; // e.g., 'On kitchen Hand'
+  type: "Dine In" | "Takeout" | "Delivery";
+  table: number;
+  timestamp: string; // e.g., '09:00 AM'
+  items: TrackedOrderItem[];
+  totalItems: number;
+}
