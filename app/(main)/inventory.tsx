@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import AddItemModal from "@/components/inventory/AddItemModal";
 import InventoryRow from "@/components/inventory/InventoryRow"; // Import the new row component
 import { MOCK_INVENTORY_ITEMS } from "@/lib/mockData";
@@ -34,9 +33,7 @@ const InventoryScreen = () => {
 
   return (
     <View className="flex-1 p-6 bg-white">
-      <Header />
       <View className="flex-row justify-between items-center my-4">
-        <Text className="text-3xl font-bold text-gray-800">Inventory</Text>
         {/* Search bar is now part of the toolbar */}
         <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
           <Search color="#6b7280" size={20} />

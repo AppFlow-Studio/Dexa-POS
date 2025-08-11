@@ -1,3 +1,4 @@
+import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import { Slot } from "expo-router";
 import React from "react";
@@ -14,7 +15,12 @@ export default function MainLayout() {
 
         {/* Column 2: The content of the active screen, rendered by Expo Router */}
         {/* The Slot will be replaced by home.tsx, settings/my-profile.tsx, etc. */}
-        <Slot />
+        <View className="flex-1 flex-col">
+          <View className="px-6 pb-4 border-gray-200">
+            <Header />
+          </View>
+          <Slot />
+        </View>
       </View>
     </SafeAreaView>
   );

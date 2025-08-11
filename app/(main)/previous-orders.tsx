@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
@@ -42,11 +41,6 @@ const PreviousOrdersScreen = () => {
 
   return (
     <View className="flex-1 p-6 bg-white">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 mt-4">
-        Previous Orders
-      </Text>
-
       {/* Toolbar */}
       <View className="flex-row items-center justify-between my-4">
         <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">

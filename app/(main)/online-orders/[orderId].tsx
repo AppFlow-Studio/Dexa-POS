@@ -1,8 +1,6 @@
-import Header from "@/components/Header";
 import OrderDetailItem from "@/components/online-orders/OrderDetailItem";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -38,22 +36,6 @@ const OnlineOrderDetailsScreen = () => {
 
   return (
     <View className="flex-1 bg-white">
-      <View className="p-6">
-        <Header />
-        {/* Page Header */}
-        <View className="flex-row items-center my-4">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="p-2 mr-4 bg-gray-100 rounded-lg"
-          >
-            <ArrowLeft color="#1f2937" size={24} />
-          </TouchableOpacity>
-          <Text className="text-3xl font-bold text-gray-800">
-            Online Order Details
-          </Text>
-        </View>
-      </View>
-
       <ScrollView className="flex-1 bg-gray-50 p-6">
         <View className="flex-row justify-between items-center mb-6">
           <Text className="text-4xl font-extrabold text-gray-800">

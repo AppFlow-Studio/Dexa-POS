@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import SettingsHeader from "@/components/settings/SettingsHeader";
 // 1. Import the Select primitives correctly
 import SwitchAccountModal from "@/components/settings/security-and-login/SwitchAccountModal";
@@ -45,11 +44,6 @@ const SecurityAndLoginScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Security and Login
-      </Text>
-
       <View className="flex-1 space-y-6">
         <View className="bg-white p-6 rounded-2xl border border-gray-200">
           <SettingsHeader

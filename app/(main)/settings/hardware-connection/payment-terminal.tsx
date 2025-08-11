@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import ConnectTerminalModal from "@/components/settings/terminal/ConnectTerminalModal";
 import EditTerminalModal from "@/components/settings/terminal/EditTerminalModal ";
 import { MOCK_TERMINALS } from "@/lib/mockData";
@@ -66,11 +65,6 @@ const PaymentTerminalScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Payment Terminal (Card Reader)
-      </Text>
-
       <View className="flex-1 space-y-4">
         {terminals.map((terminal) => (
           <TerminalRow

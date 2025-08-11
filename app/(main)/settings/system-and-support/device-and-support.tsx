@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import InfoField from "@/components/settings/InfoField";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -44,11 +43,6 @@ const DeviceAndSupportScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Device & Support
-      </Text>
-
       <ScrollView showsVerticalScrollIndicator={false}>
         <View className="flex-1 space-y-6">
           {/* Device Information Section */}

@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import OfflineOrderRow from "@/components/settings/sync-status/OfflineOrderRow";
 import { MOCK_OFFLINE_ORDERS } from "@/lib/mockData";
 import {
@@ -30,11 +29,6 @@ const SyncStatusScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Sync and Offline Mode Status
-      </Text>
-
       {/* Main Content */}
       <View className="flex-1 space-y-6">
         {/* Last Updated Card */}

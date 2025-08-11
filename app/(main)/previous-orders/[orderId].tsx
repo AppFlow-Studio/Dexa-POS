@@ -1,8 +1,7 @@
-import Header from "@/components/Header";
 import BillItem from "@/components/bill/BillItem"; // Reuse the BillItem component
 import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowLeft, Info, Printer } from "lucide-react-native";
+import { Info, Printer } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -34,21 +33,6 @@ const OrderDetailsScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50">
-      <View className="p-6 bg-white">
-        <Header />
-        <View className="flex-row items-center my-4">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="p-2 mr-4 bg-gray-100 rounded-lg"
-          >
-            <ArrowLeft color="#1f2937" size={24} />
-          </TouchableOpacity>
-          <Text className="text-3xl font-bold text-gray-800">
-            Order Details
-          </Text>
-        </View>
-      </View>
-
       <View className="flex-1 items-center justify-center p-6">
         <ScrollView className="w-full max-w-2xl bg-white rounded-2xl border border-gray-200">
           <View className="p-8">

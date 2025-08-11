@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import AddNewPrinterModal from "@/components/settings/AddNewPrinterModal";
 import EditPrinterModal from "@/components/settings/EditPrinterModal";
 import RemovePrinterModal from "@/components/settings/RemovePrinterModal";
@@ -49,9 +48,6 @@ const PrinterSettingsScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">Printer</Text>
-
       <View className="flex-1 space-y-4">
         {printers.map((printer) => (
           <PrinterRow

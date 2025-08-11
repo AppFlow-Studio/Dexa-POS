@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import RadioButton from "@/components/settings/RadioButton";
 import SettingsCard from "@/components/settings/SettingsCard";
 import SettingsHeader from "@/components/settings/SettingsHeader";
@@ -19,12 +18,6 @@ const ReceiptAndTippingRulesScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      {/* The title of this page in the design is "Customer Display", but the sidebar says "Receipt and Tipping Rules". Using the latter for clarity. */}
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Receipt and Tipping Rules
-      </Text>
-
       {/* Main Content Area */}
       <View className="flex-1 space-y-6">
         {/* Tipping Settings */}

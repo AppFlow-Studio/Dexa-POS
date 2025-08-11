@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Href, useRouter } from "expo-router";
 import {
@@ -80,7 +79,6 @@ const EndOfDayReportScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
       {/* Page Header */}
       <View className="flex-row items-center my-4">
         <TouchableOpacity

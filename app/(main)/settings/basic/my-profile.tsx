@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import HistoryTab from "@/components/profile/HistoryTab";
 import ProfileCard from "@/components/profile/ProfileCard";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
@@ -27,11 +26,6 @@ const MyProfileScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Profile Info
-      </Text>
-
       <View className="flex-1 bg-white p-6 rounded-2xl border border-gray-200">
         {/* Tab Bar */}
         <View className="bg-gray-100 p-1 rounded-xl flex-row self-start">

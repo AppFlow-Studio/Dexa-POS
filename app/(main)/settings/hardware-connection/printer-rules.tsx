@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 // 1. Import the Select primitives directly from your UI library
 import {
   Select,
@@ -153,11 +152,6 @@ const PrinterRulesScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Printer Rules
-      </Text>
-
       <View className="flex-1">
         <FlatList
           data={rules}

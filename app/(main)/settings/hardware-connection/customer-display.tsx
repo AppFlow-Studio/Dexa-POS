@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import RadioButton from "@/components/settings/RadioButton";
 import SettingsCard from "@/components/settings/SettingsCard";
 import React, { useState } from "react";
@@ -17,11 +16,6 @@ const CustomerDisplayScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Customer Display
-      </Text>
-
       {/* Main content area */}
       <View className="flex-1 space-y-6">
         {/* Enable/Disable Card */}

@@ -1,17 +1,63 @@
+import { usePathname, useRouter } from "expo-router";
+import { ArrowLeft } from "lucide-react-native";
 import React from "react";
-import { Image, Text, View } from "react-native";
+import { Image, Text, TouchableOpacity, View } from "react-native";
+
+const generateTitleFromPath = (pathname: string): string => {
+  if (pathname === "/" || pathname === "/home") return "Home";
+
+  // Handle dynamic online order route
+  if (
+    pathname.startsWith("/online-orders/") &&
+    pathname.split("/").length > 2
+  ) {
+    return "Online Order Details";
+  } else if (
+    pathname.startsWith("/previous-orders/") &&
+    pathname.split("/").length > 2
+  ) {
+    return "Previous Order Details";
+  }
+
+  const pathParts = pathname.split("/").filter(Boolean);
+  const lastPart = pathParts[pathParts.length - 1];
+
+  if (!lastPart) return "Order Line"; // Default for safety
+
+  const title = lastPart
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  return title;
+};
 
 const Header = () => {
+  const pathname = usePathname();
+  const router = useRouter();
+  const title = generateTitleFromPath(pathname);
+
+  const showBackButton =
+    (pathname.startsWith("/online-orders/") &&
+      pathname.split("/").length > 2) ||
+    (pathname.startsWith("/previous-orders/") &&
+      pathname.split("/").length > 2);
+
   return (
     <View className="flex-row justify-between items-center">
-      {/* The original design has the "Order Line" title in the main content, 
-          this header is for the user profile. */}
-      <View>
-        <Text className="text-2xl font-bold text-gray-800">Order Line</Text>
+      <View className="flex-row items-center">
+        {showBackButton && (
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="p-2 mr-4 bg-gray-100 rounded-lg"
+          >
+            <ArrowLeft color="#1f2937" size={24} />
+          </TouchableOpacity>
+        )}
+        <Text className="text-2xl font-bold text-gray-800">{title}</Text>
       </View>
       <View className="flex-row items-center">
         <Image
-          source={{ uri: "https://placehold.co/40x40" }}
+          source={require("@/assets/images/tom_hardy.jpg")}
           className="w-10 h-10 rounded-full"
         />
         <View className="ml-3">

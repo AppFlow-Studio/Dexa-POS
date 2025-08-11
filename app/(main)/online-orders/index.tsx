@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
 import { Calendar, Search } from "lucide-react-native";
@@ -43,11 +42,6 @@ const OnlineOrdersScreen = () => {
 
   return (
     <View className="flex-1 p-6 bg-white">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 mt-4">
-        Online Orders
-      </Text>
-
       {/* Toolbar */}
       <View className="flex-row items-center justify-between my-4">
         <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">

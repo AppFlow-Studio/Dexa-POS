@@ -2,7 +2,6 @@ import SalesLineChart from "@/components/analytics/SalesLineChart";
 import StatCard from "@/components/analytics/StatCard";
 import TopItemsBarChart from "@/components/analytics/TopItemsBarChart";
 import TrackOrderSection from "@/components/analytics/TrackOrderSection";
-import Header from "@/components/Header";
 import { DollarSign, ShoppingBasket, Tag, Trophy } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -35,12 +34,7 @@ const DashboardCard: React.FC<{
 const AnalyticsScreen = () => {
   return (
     <View className="flex-1 bg-gray-50">
-      <View className="p-6">
-        <Header />
-      </View>
       <ScrollView contentContainerClassName="p-6 pt-0">
-        <Text className="text-3xl font-bold text-gray-800">Analytics</Text>
-
         {/* Top Stat Cards */}
         <View className="flex-row space-x-4 mt-4">
           <StatCard

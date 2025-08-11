@@ -1,4 +1,3 @@
-import Header from "@/components/Header";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -22,11 +21,6 @@ const ResetApplicationScreen = () => {
 
   return (
     <View className="flex-1 bg-gray-50 p-6">
-      <Header />
-      <Text className="text-3xl font-bold text-gray-800 my-4">
-        Reset Application
-      </Text>
-
       {/* Main Content Card */}
       <View className="bg-white p-6 rounded-2xl border border-gray-200">
         <View className="flex-row space-x-2">
