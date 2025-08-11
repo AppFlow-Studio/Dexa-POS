@@ -886,3 +886,36 @@ export const MOCK_OFFLINE_ORDERS: OfflineOrder[] = Array(8).fill({
   server: "Jake Carter",
   total: 34.5,
 });
+
+export const salesData = [
+  { hour: 6, today: 180, yesterday: 320 },
+  { hour: 8, today: 250, yesterday: 410 },
+  { hour: 10, today: 310, yesterday: 240 },
+  { hour: 12, today: 190, yesterday: 445 },
+  { hour: 14, today: 360, yesterday: 330 },
+  { hour: 16, today: 420, yesterday: 290 },
+  { hour: 18, today: 320, yesterday: 500 },
+  { hour: 20, today: 380, yesterday: 240 },
+];
+
+// Mock data for the "Open vs Closed Checks" donut chart
+export const checksData = [
+  { x: "Open", y: 22.19 },
+  { x: "Closed", y: 77.81 },
+];
+
+// Mock data for the "Check Status Overview" donut chart
+export const checkStatusData = [
+  { x: "Completed", y: 56.2 },
+  { x: "Pending", y: 34.5 },
+  { x: "In Progress", y: 9.3 },
+];
+
+// Mock data for the "Top Selling Items" bar chart
+export const topItemsData = [
+  { name: "Crispy Cheese Burger", quantity: 18 },
+  { name: "Chicken Alfredo Pasta", quantity: 13 },
+  { name: "Spicy Chicken Burger", quantity: 10 },
+  { name: "Beef Shawarma Wrap", quantity: 9 },
+  { name: "BBQ Chicken Wings", quantity: 7 },
+];

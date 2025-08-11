@@ -41,6 +41,7 @@
     "@rn-primitives/toggle": "^1.2.0",
     "@rn-primitives/toggle-group": "^1.2.0",
     "@rn-primitives/tooltip": "^1.2.0",
+    "@shopify/react-native-skia": "2.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "expo": "~53.0.20",
@@ -64,7 +65,7 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
-    "react-native-gesture-handler": "^2.27.2",
+    "react-native-gesture-handler": "^2.28.0",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "~4.11.1",
@@ -74,6 +75,7 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^3.4.17",
     "tailwindcss-animate": "^1.0.7",
+    "victory-native": "^41.18.0",
     "zustand": "^5.0.6"
   },
   "devDependencies": {
