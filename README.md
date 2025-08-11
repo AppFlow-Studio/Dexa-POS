@@ -24,7 +24,7 @@ Welcome to **DEXA POS** – the next-generation Point of Sale system designed fo
 ## 🎨 Design & Prototyping
 
 Check out our Figma design for a sneak peek at the DEXA POS user experience:
-[DEXA POS Figma Design](https://www.figma.com/design/QXxTj5BueWo4UWrPJQPk5d/POS-System?node-id=0-1&p=f&t=R1OkpUPOmbJHwlhc-0)
+[DEXA POS Figma Design](https://www.figma.com/design/NkZX7aVPSDCtKq1wByeKCL/POS-design-Phase-1?node-id=0-1&p=f&t=eKojUwnjvZ6MOM1B-0)
 
 ## 📦 Getting Started
 
