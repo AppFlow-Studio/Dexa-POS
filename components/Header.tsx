@@ -17,6 +17,18 @@ const generateTitleFromPath = (pathname: string): string => {
     pathname.split("/").length > 2
   ) {
     return "Previous Order Details";
+  } else if (
+    pathname.startsWith("/tables/") &&
+    pathname.split("/").length === 3
+  ) {
+    const tableId = pathname.split("/")[2];
+    return `Tables/Table${tableId}`;
+  } else if (
+    pathname.startsWith("/tables/clean/") &&
+    pathname.split("/").length === 4
+  ) {
+    const tableId = pathname.split("/")[3];
+    return `Tables/Table ${tableId}`;
   }
 
   const pathParts = pathname.split("/").filter(Boolean);
@@ -40,7 +52,10 @@ const Header = () => {
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/previous-orders/") &&
-      pathname.split("/").length > 2);
+      pathname.split("/").length > 2) ||
+    (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
+    (pathname.startsWith("/tables/clean-table/") &&
+      pathname.split("/").length === 4);
 
   return (
     <View className="flex-row justify-between items-center">

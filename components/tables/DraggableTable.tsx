@@ -5,6 +5,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
+  SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -15,13 +16,21 @@ interface DraggableTableProps {
   position: { x: number; y: number };
   onDragEnd: (tableId: string, position: { x: number; y: number }) => void;
   isEditMode: boolean;
+  canvasScale: SharedValue<number>;
 }
+
+const STATUS_COLORS = {
+  Available: "#10B981", // Green
+  "In Use": "#3B82F6", // Blue
+  "Needs Cleaning": "#EF4444", // Red
+};
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
   position,
   onDragEnd,
   isEditMode,
+  canvasScale,
 }) => {
   const translateX = useSharedValue(position.x);
   const translateY = useSharedValue(position.y);
@@ -38,19 +47,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const gesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
-      // 3. When the drag starts, store the current position in our context variables.
-      // This freezes the starting point for the duration of the gesture.
       contextX.value = translateX.value;
       contextY.value = translateY.value;
     })
     .onUpdate((event) => {
-      // 4. Update the position based on the CONTEXT, not the stale `position` prop.
-      translateX.value = contextX.value + event.translationX;
-      translateY.value = contextY.value + event.translationY;
+      // 4. Adjust the translation by the current canvas scale
+      translateX.value =
+        contextX.value + event.translationX / canvasScale.value;
+      translateY.value =
+        contextY.value + event.translationY / canvasScale.value;
     })
     .onEnd(() => {
-      // 5. Use runOnJS to safely call the React state setter from the UI thread.
-      // This prevents potential race conditions.
       runOnJS(onDragEnd)(table.id, {
         x: translateX.value,
         y: translateY.value,
@@ -58,6 +65,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
+    position: "absolute", // Crucial for SVG positioning
+    top: 0,
+    left: 0,
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
@@ -76,32 +86,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     "Needs Cleaning": "text-gray-600",
   };
 
-  // TODO: Make table sizes dynamic based on capacity or a specific prop
-  // For now, using fixed sizes for demonstration
-  const shapeClass = table.shape === "circle" ? "rounded-full" : "rounded-2xl";
-  const sizeClass = table.shape === "circle" ? "w-24 h-24" : "w-32 h-20";
+  // Destructure the SVG component from the table data
+  const TableComponent = table.component;
 
   const Content = () => (
-    <Animated.View
-      style={animatedStyle}
-      className={`absolute top-0 left-0 border items-center justify-center ${sizeClass} ${shapeClass} ${statusClasses[table.status]}`}
-    >
-      {table.status === "Needs Cleaning" && (
-        <View
-          style={{
-            backgroundColor: "rgba(128, 128, 128, 0.2)",
-          }}
-          className="absolute inset-0"
-        />
-      )}
-      <Text className={`text-2xl font-bold ${statusTextClasses[table.status]}`}>
-        {table.id}
-      </Text>
-      <View className="absolute -top-2 -right-2 bg-gray-700 rounded-full w-6 h-6 items-center justify-center flex-row">
-        {/* <Users color="#FFFFFF" size={12} /> */}
-        <Text className="text-white text-xs font-bold ml-0.5">
-          {table.capacity}
-        </Text>
+    <Animated.View style={animatedStyle}>
+      <TableComponent color={STATUS_COLORS[table.status]} />
+      {/* Position the text label in the center of the SVG */}
+      <View className="absolute inset-0 items-center justify-center">
+        <Text className="text-white font-bold text-lg">{table.name}</Text>
       </View>
     </Animated.View>
   );
@@ -109,11 +102,16 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   return (
     <GestureDetector gesture={gesture}>
       {isEditMode ? (
-        // If in edit mode, render without a link
         <Content />
       ) : (
-        // If NOT in edit mode, wrap the content in a Link
-        <Link href={`/tables/${table.id}` as Href} asChild>
+        <Link
+          href={
+            table.status === "Needs Cleaning"
+              ? `/tables/clean-table/${table.id}`
+              : (`/tables/${table.id}` as Href)
+          }
+          asChild
+        >
           <TouchableOpacity activeOpacity={0.7}>
             <Content />
           </TouchableOpacity>

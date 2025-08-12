@@ -1,3 +1,5 @@
+import { ComponentType } from "react";
+
 export interface Order {
   id: string;
   customerName: string;
@@ -56,9 +58,9 @@ export interface TableType {
   name: string;
   status: TableStatus;
   capacity: number;
-  shape: TableShape;
+  // Instead of 'shape', we now reference the SVG component directly
+  component: ComponentType<any>;
   order?: TableOrder | null;
-  // Use x/y coordinates for precise positioning
   x: number;
   y: number;
 }

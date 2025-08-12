@@ -11,6 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 
 type TablePositions = {
   [key: string]: { x: number; y: number };
@@ -32,11 +37,51 @@ const ReusableSelect = ({
 
 const TablesScreen = () => {
   const [searchText, setSearchText] = useState("");
+  const [searchCustomerText, setSearchCustomerText] = useState("");
+
   const [statusFilter, setStatusFilter] = useState("All Table");
   const [capacityFilter, setCapacityFilter] = useState("All Capacity");
   const [tablePositions, setTablePositions] = useState<TablePositions>({});
   const [isEditMode, setIsEditMode] = useState(false);
   const { tables, updateTablePosition } = useTableStore();
+
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+
+  const panGesture = Gesture.Pan()
+    .enabled(!isEditMode) // Disable panning the whole canvas if we are editing a single table
+    .onUpdate((e) => {
+      translateX.value = savedTranslateX.value + e.translationX;
+      translateY.value = savedTranslateY.value + e.translationY;
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = savedScale.value * e.scale;
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+    });
+
+  // Combine gestures
+  const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
+
+  // 4. Create the animated style for the canvas container
+  const canvasAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
 
   const filteredTables = useMemo(() => {
     return tables.filter((table) => {
@@ -75,33 +120,45 @@ const TablesScreen = () => {
   };
 
   return (
-    <View className="flex-1 flex-row bg-gray-50">
-      {/* --- Left Panel: Tables List --- */}
-      <View className="w-96 bg-white border-r border-gray-200">
-        <View className="p-4 border-b border-gray-100">
-          <Text className="text-2xl font-bold text-gray-800">Tables List</Text>
-        </View>
-        <FlatList
-          data={filteredTables}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <TableListItem table={item} />}
+    <View className="flex-1 bg-gray-50 px-8 py-1">
+      <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 mb-4">
+        <Search color="#6b7280" size={20} />
+        <TextInput
+          placeholder="Search Customer"
+          value={searchCustomerText}
+          onChangeText={setSearchCustomerText}
+          className="ml-2 text-base flex-1"
         />
       </View>
 
-      {/* --- Right Panel: Floor Plan --- */}
-      <View className="flex-1 p-6">
-        {/* Toolbar */}
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center bg-white border border-gray-200 rounded-lg p-3 flex-1 max-w-xs">
-            <Search color="#6b7280" size={20} />
-            <TextInput
-              placeholder="Search table name..."
-              value={searchText}
-              onChangeText={setSearchText}
-              className="ml-2 text-base flex-1"
-            />
+      <View className="flex-1 flex-row bg-white rounded-lg border border-background-400">
+        {/* --- Left Panel: Tables List --- */}
+        <View className="w-96 bg-white border-r border-gray-200">
+          <View className="p-4 border-b border-gray-100">
+            <Text className="text-2xl font-bold text-gray-800">
+              Tables List
+            </Text>
           </View>
-          <View className="flex-row items-center space-x-2">
+          <FlatList
+            data={filteredTables}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <TableListItem table={item} />}
+          />
+        </View>
+
+        {/* --- Right Panel: Floor Plan --- */}
+        <View className="flex-1 p-6">
+          {/* Toolbar */}
+          <View className="flex-row items-end gap-2 w-full justify-end mb-4">
+            <View className="flex-row items-center bg-white border border-background-400 rounded-lg px-4 flex-1 max-w-xs">
+              <Search color="#6b7280" size={20} />
+              <TextInput
+                placeholder="Search table name..."
+                value={searchText}
+                onChangeText={setSearchText}
+                className="ml-2 text-base flex-1"
+              />
+            </View>
             <ReusableSelect
               options={["All Table", "Available", "In Use", "Needs Cleaning"]}
               placeholder={statusFilter}
@@ -119,40 +176,61 @@ const TablesScreen = () => {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Legend */}
-        <View className="flex-row items-center space-x-6 my-4">
-          <View className="flex-row items-center space-x-2">
-            <View className="w-3 h-3 rounded-full bg-green-500" />
-            <Text className="font-semibold text-gray-600">Available</Text>
-          </View>
-          <View className="flex-row items-center space-x-2">
-            <View className="w-3 h-3 rounded-full bg-red-500" />
-            <Text className="font-semibold text-gray-600">In Use</Text>
-          </View>
-          <View className="flex-row items-center space-x-2">
-            <View className="w-3 h-3 rounded-full bg-gray-400" />
-            <Text className="font-semibold text-gray-600">Needs Cleaning</Text>
-          </View>
-        </View>
+          <View className="bg-white border border-gray-200 rounded-xl flex-1 ">
+            {/* Legend */}
+            <View className="flex-row items-center gap-4 my-4 ml-4">
+              <View className="flex-row items-center gap-1">
+                <View className="w-3 h-3 rounded-full bg-green-500" />
+                <Text className="font-semibold text-gray-600">Available</Text>
+              </View>
+              <View className="flex-row items-center gap-1">
+                <View className="w-3 h-3 rounded-full bg-blue-500" />
+                <Text className="font-semibold text-gray-600">In Use</Text>
+              </View>
+              <View className="flex-row items-center gap-1">
+                <View className="w-3 h-3 rounded-full bg-red-500" />
+                <Text className="font-semibold text-gray-600">
+                  Needs Cleaning
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-1">
+                <View className="w-3 h-3 rounded-full bg-gray-400" />
+                <Text className="font-semibold text-gray-600">
+                  Available Soon
+                </Text>
+              </View>
+            </View>
 
-        {/* Floor Plan Area */}
-        <View className="flex-1 mt-4 bg-white border border-gray-200 rounded-xl relative overflow-hidden">
-          {filteredTables.map(
-            (table) =>
-              // Ensure we only render if the position is initialized
-              tablePositions[table.id] && (
-                <DraggableTable
-                  key={table.id}
-                  table={table}
-                  position={tablePositions[table.id]}
-                  onDragEnd={handleDragEnd}
-                  isEditMode={isEditMode}
-                />
-              )
-          )}
-          {/* ... Cashier and other static elements ... */}
+            {/* Floor Plan Area */}
+            <View className="flex-1 mt-4  relative overflow-hidden">
+              <GestureDetector gesture={combinedGesture}>
+                {/* This Animated.View is our "canvas" that will move and scale */}
+                <Animated.View
+                  style={canvasAnimatedStyle}
+                  className="w-full h-full"
+                >
+                  {tables.map((table) => (
+                    <DraggableTable
+                      key={table.id}
+                      table={table}
+                      position={{ x: table.x, y: table.y }}
+                      onDragEnd={updateTablePosition}
+                      isEditMode={isEditMode}
+                      // 6. Pass the current canvas scale to the draggable tables
+                      canvasScale={scale}
+                    />
+                  ))}
+                  {/* Static elements like the Cashier also need to be inside the canvas to move with it */}
+                  <View className="absolute top-[300px] left-[50px] w-20 h-40 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg items-center justify-center">
+                    <Text className="font-semibold text-gray-500 -rotate-90">
+                      Cashier
+                    </Text>
+                  </View>
+                </Animated.View>
+              </GestureDetector>
+            </View>
+          </View>
         </View>
       </View>
     </View>
