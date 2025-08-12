@@ -1,5 +1,7 @@
 import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { MenuItemType } from "@/lib/types";
+import { CartItem, MenuItemType } from "@/lib/types";
+import { useCartStore } from "@/stores/useCartStore";
+import { useTableStore } from "@/stores/useTableStore";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import ItemCustomizationDialog from "./ItemCustomizationDialog";
@@ -7,12 +9,10 @@ import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
 interface MenuSectionProps {
-  isUpdateScreen?: boolean;
+  tableId?: string;
 }
 
-const MenuSection: React.FC<MenuSectionProps> = ({
-  isUpdateScreen = false,
-}) => {
+const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
   // State for the active filters
   const [activeMeal, setActiveMeal] = useState("Dinner");
   const [activeCategory, setActiveCategory] = useState("Main Course");
@@ -27,6 +27,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({
   const [isDialogVisible, setDialogVisible] = useState(false);
   const [selectedItemForDialog, setSelectedItemForDialog] =
     useState<MenuItemType | null>(null);
+
+  const addToGoGlobalCart = useCartStore((state) => state.addItem);
+  const addItemToTableCart = useTableStore((state) => state.addItemToTableCart);
 
   useEffect(() => {
     const filtered = MOCK_MENU_ITEMS.filter((item) => {
@@ -45,6 +48,15 @@ const MenuSection: React.FC<MenuSectionProps> = ({
   const handleCloseDialog = () => {
     setDialogVisible(false);
     setSelectedItemForDialog(null);
+  };
+
+  const handleSaveItem = (newItem: CartItem) => {
+    if (tableId) {
+      addItemToTableCart(tableId, newItem);
+    } else {
+      addToGoGlobalCart(newItem);
+    }
+    handleCloseDialog();
   };
 
   return (
@@ -88,6 +100,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({
         isVisible={isDialogVisible}
         onClose={handleCloseDialog}
         item={selectedItemForDialog}
+        onSave={handleSaveItem}
       />
     </View>
   );

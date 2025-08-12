@@ -1,7 +1,9 @@
 import { useCartStore } from "@/stores/useCartStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useTableStore } from "@/stores/useTableStore";
+import { useRouter } from "expo-router";
 import { FileText, Printer, ShoppingBag } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react"; // Import useMemo
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const ReceiptRow = ({
@@ -18,16 +20,67 @@ const ReceiptRow = ({
 );
 
 const PaymentSuccessView = () => {
-  const { close, paymentMethod } = usePaymentStore();
-  const { items, subtotal, tax, totalDiscountAmount, total, clearCart } =
-    useCartStore();
+  const router = useRouter();
+  const { close, paymentMethod, activeTableId } = usePaymentStore();
+
+  // --- Get data and actions from ALL relevant stores ---
+  const {
+    items: globalCartItems,
+    subtotal: globalSubtotal,
+    tax: globalTax,
+    total: globalTotal,
+    clearCart: clearGlobalCart,
+  } = useCartStore();
+
+  const { getTableById, clearTableCart } = useTableStore();
+
+  // --- This is the core logic for selecting the correct cart data ---
+  const { items, subtotal, tax, total } = useMemo(() => {
+    if (activeTableId) {
+      const tableCart = getTableById(activeTableId);
+      // We need to recalculate totals for the specific table cart if it exists
+      const sub =
+        tableCart?.cart.reduce(
+          (acc, item) => acc + item.price * item.quantity,
+          0
+        ) || 0; // Provide fallback 0
+      const tx = sub * 0.05;
+      const tot = sub + tx;
+      return {
+        items: tableCart?.cart || [],
+        subtotal: sub,
+        tax: tx,
+        total: tot,
+      };
+    }
+    // If no tableId, fall back to the global cart's data
+    return {
+      items: globalCartItems,
+      subtotal: globalSubtotal,
+      tax: globalTax,
+      total: globalTotal,
+    };
+  }, [
+    activeTableId,
+    globalCartItems,
+    getTableById,
+    globalSubtotal,
+    globalTax,
+    globalTotal,
+  ]);
 
   const handleDone = () => {
-    clearCart();
-    close();
+    if (activeTableId) {
+      clearTableCart(activeTableId);
+      close();
+      router.push(`/tables/clean-table/${activeTableId}`);
+    } else {
+      clearGlobalCart();
+      close();
+    }
   };
 
-  // Create a simplified summary for the receipt
+  // Create a simplified summary for the receipt using the correct `items`
   const receiptSummary = items.reduce(
     (acc, item) => {
       const existing = acc.find((i) => i.name === item.name);
@@ -50,7 +103,7 @@ const PaymentSuccessView = () => {
 
   return (
     <>
-      {/* --- Section 1: Green Header --- */}
+      {/* --- Section 1: Green Header (unchanged) --- */}
       <View className="bg-green-500 p-6 rounded-t-2xl items-center">
         <View className="w-20 h-20 bg-white/20 rounded-full items-center justify-center">
           <View className="w-16 h-16 bg-white rounded-full items-center justify-center">
@@ -62,7 +115,7 @@ const PaymentSuccessView = () => {
         </Text>
       </View>
 
-      {/* --- Section 2: White Content Area (The Receipt) --- */}
+      {/* --- Section 2: White Content Area (The Receipt) (unchanged) --- */}
       <View className="bg-white p-6 rounded-b-2xl">
         <ScrollView className="max-h-80" showsVerticalScrollIndicator={false}>
           {/* Transaction Details */}

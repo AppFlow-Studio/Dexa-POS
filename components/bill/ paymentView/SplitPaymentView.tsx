@@ -1,4 +1,4 @@
-import { useCartStore } from "@/stores/useCartStore";
+import { useCartData } from "@/hooks/useCartData";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -13,7 +13,8 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { items, subtotal, tax, total } = useCartStore();
+  const { items, subtotal, tax, total } = useCartData();
+
   const { close, setView } = usePaymentStore();
 
   const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");

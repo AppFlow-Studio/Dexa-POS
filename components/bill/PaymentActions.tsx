@@ -5,7 +5,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 type PaymentMethod = "Card" | "Split" | "Cash";
 
-const PaymentActions = () => {
+const PaymentActions = ({ tableId }: { tableId?: string }) => {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>("Card");
   const { open } = usePaymentStore();
 
@@ -17,7 +17,7 @@ const PaymentActions = () => {
 
   const handlePlaceOrder = () => {
     // Pass the currently active method to the store when opening
-    open(activeMethod);
+    open(activeMethod, tableId);
   };
 
   return (

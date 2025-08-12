@@ -1,6 +1,7 @@
 import DraggableTable from "@/components/tables/DraggableTable";
 import TableListItem from "@/components/tables/TableListItem";
 import { MOCK_TABLES } from "@/lib/mockData";
+import { useTableStore } from "@/stores/useTableStore";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -35,9 +36,10 @@ const TablesScreen = () => {
   const [capacityFilter, setCapacityFilter] = useState("All Capacity");
   const [tablePositions, setTablePositions] = useState<TablePositions>({});
   const [isEditMode, setIsEditMode] = useState(false);
+  const { tables, updateTablePosition } = useTableStore();
 
   const filteredTables = useMemo(() => {
-    return MOCK_TABLES.filter((table) => {
+    return tables.filter((table) => {
       const matchesSearch = table.name
         .toLowerCase()
         .includes(searchText.toLowerCase());
@@ -137,7 +139,7 @@ const TablesScreen = () => {
 
         {/* Floor Plan Area */}
         <View className="flex-1 mt-4 bg-white border border-gray-200 rounded-xl relative overflow-hidden">
-          {MOCK_TABLES.map(
+          {filteredTables.map(
             (table) =>
               // Ensure we only render if the position is initialized
               tablePositions[table.id] && (

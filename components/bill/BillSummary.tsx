@@ -1,12 +1,16 @@
 import { images } from "@/lib/image";
-import { useCartStore } from "@/stores/useCartStore";
+import { CartItem } from "@/lib/types"; // Use your global CartItem type
 import React from "react";
 import { Image, ScrollView, Text, View } from "react-native";
 import BillItem from "./BillItem";
 
-const BillSummary: React.FC = () => {
-  const billItems = useCartStore((state) => state.items);
+// 1. The component now accepts a `cart` array as a prop
+interface BillSummaryProps {
+  cart: CartItem[];
+}
 
+const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
+  // 2. It no longer calls the useCartStore hook. It uses the cart prop directly.
   return (
     <View className="flex-1 ">
       <View className="my-4 px-4">
@@ -16,9 +20,13 @@ const BillSummary: React.FC = () => {
           className="max-h-40"
           nestedScrollEnabled={true}
         >
-          {billItems.map((item) => (
-            <BillItem key={item.id} item={item} />
-          ))}
+          {cart.length > 0 ? (
+            cart.map((item) => <BillItem key={item.id} item={item} />)
+          ) : (
+            <View className="h-24 items-center justify-center">
+              <Text className="text-gray-500">Cart is empty.</Text>
+            </View>
+          )}
         </ScrollView>
       </View>
       <View className="absolute bottom-0 left-0 right-0">

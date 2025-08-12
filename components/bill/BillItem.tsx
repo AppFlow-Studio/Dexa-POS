@@ -1,5 +1,5 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { CartItem } from "@/stores/useCartStore";
+import { CartItem } from "@/lib/types";
 import { Pencil } from "lucide-react-native";
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";

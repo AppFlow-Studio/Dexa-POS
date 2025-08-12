@@ -1,10 +1,10 @@
-import { useCartStore } from "@/stores/useCartStore";
+import { useCartData } from "@/hooks/useCartData";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
-  const { items, subtotal, tax, totalDiscountAmount, total } = useCartStore();
+  const { items, subtotal, tax, totalDiscountAmount, total } = useCartData();
   const { close, setView, paymentMethod } = usePaymentStore();
 
   return (

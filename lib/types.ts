@@ -1,5 +1,3 @@
-import { CartItem } from "@/stores/useCartStore";
-
 export interface Order {
   id: string;
   customerName: string;
@@ -75,6 +73,23 @@ export type DeliveryPartner =
   | "grubhub"
   | "Uber-Eats"
   | "Food Panda";
+
+export interface CartItem {
+  id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
+  menuItemId: string; // The original ID from the menu data
+  name: string;
+  quantity: number;
+  originalPrice: number;
+  price: number; // Final price after size/add-ons
+  image?: string; // Image filename is a top-level property
+  customizations: {
+    size?: ItemSize;
+    addOns?: AddOn[];
+    notes?: string;
+  };
+  availableDiscount?: Discount;
+  appliedDiscount?: Discount | null;
+}
 
 export interface OnlineOrder {
   id: string; // e.g., #45654

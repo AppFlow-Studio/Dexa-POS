@@ -1,36 +1,14 @@
-import { AddOn, Discount, ItemSize, MenuItemType } from "@/lib/types";
+import { CartItem, Discount } from "@/lib/types";
 import { create } from "zustand";
 
 // This is the shape of an item once it's in the cart
-export interface CartItem {
-  id: string;
-  name: string;
-  menuItemId: string;
-  originalPrice: number;
-  finalPrice: number;
-  quantity: number;
-  image?: string;
-  customizations: {
-    size?: ItemSize;
-    addOns?: AddOn[];
-    notes?: string;
-  };
-  availableDiscount?: Discount; // The discount this item is eligible for
-  appliedDiscount?: Discount | null; // The discount currently applied to this item
-}
 
 interface CartState {
   items: CartItem[];
   checkDiscount: Discount | null; // The currently applied discount
   discountAmount: number; // The calculated monetary value of the discount
-  addItem: (itemData: {
-    menuItem: MenuItemType;
-    quantity: number;
-    size: ItemSize;
-    addOns: AddOn[];
-    notes: string;
-    finalPrice: number;
-  }) => void;
+  addItem: (newItem: CartItem) => void;
+
   removeItem: (itemId: string) => void;
   increaseQuantity: (itemId: string) => void;
   decreaseQuantity: (itemId: string) => void;
@@ -93,23 +71,12 @@ export const useCartStore = create<CartState>((set) => {
     tax: 0,
     total: 0,
 
-    addItem: ({ menuItem, quantity, size, addOns, notes, finalPrice }) => {
-      set((state) => {
-        const newItem: CartItem = {
-          id: `${menuItem.id}_${Date.now()}`, // Create a unique ID for this specific cart entry,
-          name: menuItem.name,
-          quantity,
-          originalPrice: menuItem.price, // Store the original price of the menu item
-          finalPrice: finalPrice, // Store the calculated final price for this specific cart item
-          image: menuItem.image,
-          customizations: { size, addOns, notes },
-          availableDiscount: menuItem.availableDiscount,
-          appliedDiscount: null,
-          menuItemId: menuItem.id,
-        };
-        return { items: [...state.items, newItem] };
-      });
-      recalculateTotals(); // Ensure this function is updated to use finalPrice
+    addItem: (newItem) => {
+      // The logic is now much simpler. We just add the pre-constructed item.
+      set((state) => ({
+        items: [...state.items, newItem],
+      }));
+      recalculateTotals();
     },
 
     applyDiscountToCheck: (discount) => {

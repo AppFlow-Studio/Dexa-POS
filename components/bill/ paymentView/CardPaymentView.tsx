@@ -1,10 +1,10 @@
-import { useCartStore } from "@/stores/useCartStore";
+import { useCartData } from "@/hooks/useCartData";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CardPaymentView = () => {
-  const { subtotal, tax, totalDiscountAmount, total } = useCartStore();
+  const { subtotal, tax, total } = useCartData();
   const { close, setView } = usePaymentStore();
   const [status, setStatus] = useState<"processing" | "rejected" | "success">(
     "processing"

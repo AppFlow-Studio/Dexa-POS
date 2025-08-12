@@ -1,6 +1,6 @@
 import BillSection from "@/components/bill/BillSection";
 import MenuSection from "@/components/menu/MenuSection";
-import { MOCK_TABLES } from "@/lib/mockData";
+import { useTableStore } from "@/stores/useTableStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle, ArrowLeft, Minus, Plus } from "lucide-react-native";
 import React, { useState } from "react";
@@ -10,14 +10,11 @@ const UpdateTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams(); // Get the tableId from the URL
 
-  // Find the table data based on the ID
-  const table = MOCK_TABLES.find((t) => t.id === tableId);
-
   const [customerName, setCustomerName] = useState("John Doe");
   const [numberOfPeople, setNumberOfPeople] = useState(3);
 
-  // You might want a separate Zustand store for the order being built on this screen
-  // For now, it will use the global cart store.
+  const table = useTableStore((state) => state.getTableById(tableId as string));
+  const addItemToTableCart = useTableStore((state) => state.addItemToTableCart);
 
   if (!table) {
     return (
@@ -28,6 +25,9 @@ const UpdateTableScreen = () => {
       </View>
     );
   }
+  const handleAddItem = (itemData: any) => {
+    addItemToTableCart(table.id, itemData);
+  };
 
   return (
     <View className="flex-1 flex-row">
@@ -88,11 +88,11 @@ const UpdateTableScreen = () => {
         </View>
 
         {/* Menu Section */}
-        <MenuSection isUpdateScreen={true} />
+        <MenuSection tableId={tableId as string} />
       </View>
 
       {/* --- Right Panel: Bill Section for this table --- */}
-      <BillSection />
+      <BillSection tableId={tableId as string} />
 
       {/* --- Footer --- */}
       <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex-row justify-between items-center">
