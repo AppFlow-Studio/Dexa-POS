@@ -1,7 +1,7 @@
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
-import { CartItem } from "@/stores/useCartStore";
+import { CartItem } from "@/lib/types";
 import { Calendar, Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -50,7 +50,7 @@ const PreviousOrdersScreen = () => {
             className="ml-2 text-base flex-1"
           />
         </View>
-        <View className="flex-row items-center space-x-2">
+        <View className="flex-row items-center gap-2">
           {/* Select components would go here */}
           <TouchableOpacity className="p-3 bg-white border border-gray-200 rounded-lg">
             <Text className="font-semibold text-gray-600">Dine In/Takout</Text>

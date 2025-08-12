@@ -54,7 +54,7 @@ const MyProfileScreen = () => {
         </View>
 
         {/* Footer */}
-        <View className="flex-row justify-end space-x-2 pt-4 border-t border-gray-200">
+        <View className="flex-row justify-end gap-2 pt-4 border-t border-gray-200">
           <TouchableOpacity className="px-6 py-3 border border-gray-300 rounded-lg">
             <Text className="font-bold text-gray-700">Close</Text>
           </TouchableOpacity>

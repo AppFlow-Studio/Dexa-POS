@@ -48,7 +48,7 @@ const TrackOrderSection = () => {
     <View className="mt-6">
       <View className="flex-row justify-between items-center">
         <Text className="text-2xl font-bold text-gray-800">Track Order</Text>
-        <View className="flex-row items-center space-x-2">
+        <View className="flex-row items-center gap-2">
           <View className="flex-row items-center bg-white border border-gray-200 rounded-lg p-2 w-64">
             <Search color="#6b7280" size={20} />
             <TextInput

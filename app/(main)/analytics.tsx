@@ -36,7 +36,7 @@ const AnalyticsScreen = () => {
     <View className="flex-1 bg-gray-50">
       <ScrollView contentContainerClassName="p-6 pt-0">
         {/* Top Stat Cards */}
-        <View className="flex-row space-x-4 mt-4">
+        <View className="flex-row gap-4 mt-4">
           <StatCard
             title="Total Earning Today"
             value="$9856"
@@ -68,7 +68,7 @@ const AnalyticsScreen = () => {
         </View>
 
         {/* Main Charts Row */}
-        <View className="flex-row space-x-4 mt-4">
+        <View className="flex-row gap-4 mt-4">
           {/* Sales Chart */}
           <DashboardCard title="Today vs Yesterday Sales" className="flex-[2]">
             <SalesLineChart />
@@ -108,7 +108,7 @@ const AnalyticsScreen = () => {
         </View>
 
         {/* Bottom Charts Row */}
-        <View className="flex-row space-x-4 mt-4">
+        <View className="flex-row gap-4 mt-4">
           {/* Check Status Chart */}
           <DashboardCard title="Check Status Overview" className="flex-2">
             {/* This parent View is left alone, so the chart renders correctly */}

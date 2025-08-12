@@ -61,7 +61,7 @@ const PrinterSettingsScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end space-x-2 pt-4 border-t border-gray-200">
+      <View className="flex-row justify-end gap-2 pt-4 border-t border-gray-200">
         <TouchableOpacity
           onPress={() => setAddModalOpen(true)}
           className="px-6 py-3 border border-gray-300 rounded-lg"

@@ -23,7 +23,7 @@ const ResetApplicationScreen = () => {
     <View className="flex-1 bg-gray-50 p-6">
       {/* Main Content Card */}
       <View className="bg-white p-6 rounded-2xl border border-gray-200">
-        <View className="flex-row space-x-2">
+        <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={() => setModalType("clearCache")}
             className="py-2 px-6 border border-gray-300 rounded-lg"

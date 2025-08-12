@@ -20,7 +20,7 @@ const OrderDetails: React.FC = () => {
       </View>
 
       {/* Selectors */}
-      <View className="flex-row space-x-2 gap-2">
+      <View className="flex-row gap-2">
         <TouchableOpacity className="flex-1 flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
           <Text className="font-semibold text-accent-400">Select Table</Text>
           <ChevronDown color="#6b7280" size={20} />

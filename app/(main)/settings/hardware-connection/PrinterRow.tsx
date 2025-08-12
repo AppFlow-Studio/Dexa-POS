@@ -34,7 +34,7 @@ const PrinterRow: React.FC<PrinterRowProps> = ({
           </Text>
         </View>
       </View>
-      <View className="ml-auto flex-row items-center space-x-2">
+      <View className="ml-auto flex-row items-center gap-2">
         <TouchableOpacity className="py-2 px-4 border border-gray-300 rounded-lg">
           <Text className="font-bold text-gray-700">Test Print</Text>
         </TouchableOpacity>

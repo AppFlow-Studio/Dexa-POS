@@ -78,7 +78,7 @@ const ConnectTerminalModal = ({
                 </TouchableOpacity>
               ))}
             </View>
-            <View className="flex-row space-x-2">
+            <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={() => setView("searching")}
                 className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

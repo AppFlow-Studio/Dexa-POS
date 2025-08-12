@@ -86,7 +86,7 @@ const SyncStatusScreen = () => {
             <TouchableOpacity className="py-3 px-5 bg-primary-400 rounded-lg">
               <Text className="font-bold text-white">Sync Now</Text>
             </TouchableOpacity>
-            <View className="flex-row items-center space-x-2">
+            <View className="flex-row items-center gap-2">
               <TouchableOpacity className="p-2 border border-gray-300 rounded-md">
                 <ChevronLeft color="#4b5563" size={20} />
               </TouchableOpacity>

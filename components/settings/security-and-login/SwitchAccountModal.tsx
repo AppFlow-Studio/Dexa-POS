@@ -49,8 +49,8 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
           <TouchableOpacity className="self-end my-4">
             <Text className="font-semibold text-primary-400">Forgot Pin</Text>
           </TouchableOpacity>
-          <View className="flex-row space-x-2 border-t border-gray-200 pt-4">
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center space-x-2 py-3 border border-gray-300 rounded-lg">
+          <View className="flex-row gap-2 border-t border-gray-200 pt-4">
+            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
               <Clock color="#4b5563" size={20} />
               <Text className="font-bold text-gray-700">Timeclock</Text>
             </TouchableOpacity>

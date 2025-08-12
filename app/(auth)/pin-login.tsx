@@ -53,14 +53,14 @@ const PinLoginScreen = () => {
         <Text className="font-semibold text-primary-400">Forgot Pin</Text>
       </TouchableOpacity>
 
-      <View className="flex-row space-x-4 gap-4">
-        <TouchableOpacity className="flex-1 p-4 bg-background-100 border border-background-500 rounded-xl items-center flex-row justify-center space-x-2 gap-2">
+      <View className="flex-row gap-4">
+        <TouchableOpacity className="flex-1 p-4 bg-background-100 border border-background-500 rounded-xl items-center flex-row justify-center gap-2">
           <Text className="text-accent-500 text-lg font-bold">Timeclock</Text>
           <Clock className="text-accent-500" size={20} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleLogin}
-          className="flex-1 p-4 bg-primary-400 rounded-xl items-center flex-row justify-center space-x-2 gap-2"
+          className="flex-1 p-4 bg-primary-400 rounded-xl items-center flex-row justify-center gap-2"
         >
           <Text className="text-white text-lg font-bold">Login</Text>
           <ArrowLeft

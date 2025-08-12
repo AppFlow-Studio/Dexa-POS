@@ -57,7 +57,7 @@ const OrderDetailsScreen = () => {
                   <BillItem key={item.id} item={item} />
                 ))}
               </View>
-              <View className="flex-row space-x-2 mt-6">
+              <View className="flex-row gap-2 mt-6">
                 <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
                   <Text className="font-bold text-gray-700">Edit</Text>
                 </TouchableOpacity>
@@ -90,11 +90,11 @@ const OrderDetailsScreen = () => {
             </View>
 
             {/* Footer Actions */}
-            <View className="flex-row space-x-2 mt-8 border-t border-gray-200 pt-6">
+            <View className="flex-row gap-2 mt-8 border-t border-gray-200 pt-6">
               <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
                 <Text className="font-bold text-gray-700">Refund</Text>
               </TouchableOpacity>
-              <TouchableOpacity className="flex-1 flex-row justify-center items-center space-x-2 py-3 bg-primary-400 rounded-lg">
+              <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-primary-400 rounded-lg">
                 <Printer color="#FFFFFF" size={20} />
                 <Text className="font-bold text-white">Print Receipt</Text>
               </TouchableOpacity>

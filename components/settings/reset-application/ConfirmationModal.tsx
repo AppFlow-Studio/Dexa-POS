@@ -54,7 +54,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </DialogDescription>
           </DialogHeader>
         </View>
-        <DialogFooter className="p-6 flex-row space-x-2 border-t border-gray-200">
+        <DialogFooter className="p-6 flex-row gap-2 border-t border-gray-200">
           <TouchableOpacity
             onPress={onClose}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

@@ -156,12 +156,12 @@ const PaymentSuccessView = () => {
 
         {/* Action Buttons */}
         <View className="border-t border-gray-200 mt-6 pt-4 space-y-2">
-          <View className="flex-row space-x-2">
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center space-x-2 py-3 border border-gray-300 rounded-lg">
+          <View className="flex-row gap-2">
+            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
               <FileText color="#4b5563" size={20} />
               <Text className="font-bold text-gray-700">View Order</Text>
             </TouchableOpacity>
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center space-x-2 py-3 border border-gray-300 rounded-lg">
+            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
               <Printer color="#4b5563" size={20} />
               <Text className="font-bold text-gray-700">Print Receipt</Text>
             </TouchableOpacity>

@@ -11,7 +11,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
   return (
     <View className="p-4 border-b border-gray-100">
       <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center space-x-3">
+        <View className="flex-row items-center gap-3">
           <StatusIndicator status={table.status} />
           <Text className="text-base font-semibold text-gray-700">
             {table.name}

@@ -30,7 +30,7 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
         <View className="flex-row items-center mt-1">
           <Text className="text-sm text-accent-500">x {item.quantity}</Text>
           {item.appliedDiscount && (
-            <View className="flex-row items-baseline mt-1 space-x-2">
+            <View className="flex-row items-baseline mt-1 gap-2">
               <Text className="text-base font-bold text-green-600">
                 ${finalPrice.toFixed(2)}
               </Text>

@@ -76,12 +76,12 @@ const InventoryScreen = () => {
       <View className="flex-row justify-between items-center mt-4">
         <TouchableOpacity
           onPress={() => setAddModalOpen(true)}
-          className="flex-row items-center space-x-2 py-3 px-5 bg-primary-400 rounded-lg"
+          className="flex-row items-center gap-2 py-3 px-5 bg-primary-400 rounded-lg"
         >
           <Plus color="#FFFFFF" size={20} />
           <Text className="font-bold text-white">Add Item</Text>
         </TouchableOpacity>
-        <View className="flex-row items-center space-x-2">
+        <View className="flex-row items-center gap-2">
           <TouchableOpacity className="p-2 border border-gray-300 rounded-md">
             <ChevronLeft color="#4b5563" size={20} />
           </TouchableOpacity>

@@ -84,7 +84,7 @@ const CardPaymentView = () => {
         </View>
 
         {/* Buttons */}
-        <View className="flex-row space-x-4">
+        <View className="flex-row gap-4">
           <TouchableOpacity
             onPress={close}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

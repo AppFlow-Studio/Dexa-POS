@@ -43,7 +43,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
           </TouchableOpacity>
         </View>
       ) : (
-        <View className="flex-row items-center space-x-2 gap-2">
+        <View className="flex-row items-center gap-2">
           <TextInput
             placeholder="Add promo or voucher"
             className="flex-1 p-3 bg-background-100 rounded-xl text-base"

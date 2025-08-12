@@ -124,7 +124,7 @@ const CashPaymentView = () => {
         </View>
 
         {/* Actions */}
-        <View className="flex-row space-x-2 mt-8">
+        <View className="flex-row gap-2 mt-8">
           <TouchableOpacity
             onPress={close}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

@@ -27,7 +27,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
 
   return (
     <ScrollView>
-      <View className="flex-row space-x-6">
+      <View className="flex-row gap-6">
         {/* Left Column: Form Fields */}
         <View className="flex-1 space-y-4">
           {/* Item Image */}
@@ -66,7 +66,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
         </View>
       </View>
       {/* Footer Actions */}
-      <View className="flex-row space-x-2 mt-6 border-t border-gray-200 pt-4 justify-end">
+      <View className="flex-row gap-2 mt-6 border-t border-gray-200 pt-4 justify-end">
         <TouchableOpacity
           onPress={onCancel}
           className="px-6 py-3 border border-gray-300 rounded-lg"

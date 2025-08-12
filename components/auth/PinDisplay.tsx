@@ -11,7 +11,7 @@ const PinDisplay: React.FC<PinDisplayProps> = ({
   maxLength = 6,
 }) => {
   return (
-    <View className="flex-row items-center justify-center space-x-4 h-16 bg-white border border-gray-200 rounded-lg mb-8">
+    <View className="flex-row items-center justify-center gap-4 h-16 bg-white border border-gray-200 rounded-lg mb-8">
       {Array.from({ length: maxLength }).map((_, index) => (
         <View
           key={index}

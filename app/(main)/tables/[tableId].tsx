@@ -79,7 +79,7 @@ const UpdateTableScreen = () => {
                 <Text className="text-sm text-gray-500">
                   The number of people will be added into the table
                 </Text>
-                <View className="flex-row items-center space-x-2 bg-background-400 rounded-full">
+                <View className="flex-row items-center gap-2 bg-background-400 rounded-full">
                   <TouchableOpacity
                     onPress={() => setNumberOfGuests((p) => Math.max(1, p - 1))}
                     className="p-2 bg-white rounded-full"

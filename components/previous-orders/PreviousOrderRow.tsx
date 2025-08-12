@@ -70,7 +70,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         <View className="w-[10%]" onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
             onPress={() => onViewNotes(order.items)}
-            className="flex-row items-center space-x-1 bg-blue-50 py-1 px-2 rounded-md self-start"
+            className="flex-row items-center gap-1 bg-blue-50 py-1 px-2 rounded-md self-start"
           >
             <Text className="font-bold text-xs text-blue-600">Notes</Text>
             <Pencil size={12} color="#2563eb" />

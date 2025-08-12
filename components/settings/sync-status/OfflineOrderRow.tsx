@@ -22,7 +22,7 @@ const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
       </View>
       <Text className="w-1/6 font-semibold text-gray-600">{order.orderId}</Text>
       <View className="w-1/6">
-        <TouchableOpacity className="flex-row items-center space-x-1 bg-gray-100 py-1 px-2 rounded-md self-start">
+        <TouchableOpacity className="flex-row items-center gap-1 bg-gray-100 py-1 px-2 rounded-md self-start">
           <Text className="font-semibold text-xs text-gray-600">
             {order.server}
           </Text>

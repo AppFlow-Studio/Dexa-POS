@@ -5,7 +5,7 @@ import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const DetailRow = ({ children }: { children: React.ReactNode }) => (
-  <View className="flex-row space-x-8">{children}</View>
+  <View className="flex-row gap-8">{children}</View>
 );
 
 const DetailItem = ({ label, value, isTag = false, tagColor = "" }: any) => (
@@ -131,7 +131,7 @@ const OnlineOrderDetailsScreen = () => {
       </ScrollView>
 
       {/* Footer */}
-      <View className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex-row justify-end space-x-2">
+      <View className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex-row justify-end gap-2">
         <TouchableOpacity className="py-3 px-8 border border-gray-300 rounded-lg items-center">
           <Text className="font-bold text-gray-700">Reject</Text>
         </TouchableOpacity>

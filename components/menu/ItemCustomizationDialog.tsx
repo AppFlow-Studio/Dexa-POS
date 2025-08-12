@@ -111,7 +111,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
     <Dialog open={isVisible} onOpenChange={onClose}>
       <DialogContent className="p-0 rounded-[36px] max-w-lg bg-accent-600 border-none">
         {/* Dark Header */}
-        <View className="p-6 rounded-t-2xl flex-row items-center space-x-4">
+        <View className="p-6 rounded-t-2xl flex-row items-center gap-4">
           <Image
             source={require("@/assets/images/classic_burger.png")}
             className="w-24 h-24 rounded-lg"
@@ -134,7 +134,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
           <ScrollView className="p-6 max-h-96 ">
             <View className="flex-row justify-between items-center">
               <Text className="text-lg font-medium text-accent-500">Qty</Text>
-              <View className="flex-row items-center space-x-4 rounded-full bg-neutral-200 border border-neutral-200">
+              <View className="flex-row items-center gap-4 rounded-full bg-neutral-200 border border-neutral-200">
                 <TouchableOpacity
                   onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                   className="p-2 border border-gray-300 rounded-full bg-white"
@@ -159,7 +159,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
                 <Text className="text-lg font-medium text-accent-500 mb-2">
                   Size
                 </Text>
-                <View className="flex-row gap-2 space-x-2">
+                <View className="flex-row gap-2 gap-2">
                   {item.sizes.map((size) => {
                     const isSelected = selectedSize.id === size.id;
                     return (
@@ -232,7 +232,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
                 ${total.toFixed(2)}
               </Text>
             </View>
-            <View className="flex-row space-x-2">
+            <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={onClose}
                 className="px-8 py-3 rounded-lg border border-gray-300"

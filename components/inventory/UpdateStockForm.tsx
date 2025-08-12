@@ -30,7 +30,7 @@ const UpdateStockForm = ({ onCancel, onSave }: any) => {
         </TouchableOpacity>
       </View>
       {/* ... Other form fields ... */}
-      <View className="flex-row space-x-2 mt-6 pt-4 border-t border-gray-200 justify-end">
+      <View className="flex-row gap-2 mt-6 pt-4 border-t border-gray-200 justify-end">
         <TouchableOpacity
           onPress={onCancel}
           className="px-6 py-3 border border-gray-300 rounded-lg"

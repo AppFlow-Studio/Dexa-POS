@@ -13,15 +13,15 @@ const ProfileInfoTab = () => {
   const user = MOCK_USER_PROFILE;
   return (
     <View className="space-y-6">
-      <View className="flex-row space-x-6">
+      <View className="flex-row gap-6">
         <DetailRow label="Full Name" value={user.fullName} />
         <DetailRow label="Date of birth" value={user.dob} />
       </View>
-      <View className="flex-row space-x-6">
+      <View className="flex-row gap-6">
         <DetailRow label="Gender" value={user.gender} />
         <DetailRow label="Country" value={user.country} />
       </View>
-      <View className="flex-row space-x-6">
+      <View className="flex-row gap-6">
         <DetailRow label="Address" value={user.address} />
         <View className="flex-1" />
       </View>

@@ -108,7 +108,7 @@ const SplitPaymentView = () => {
             <Text className="text-base font-semibold text-gray-700 mb-3">
               Split Options
             </Text>
-            <View className="flex-row space-x-2">
+            <View className="flex-row gap-2">
               {["Split Evenly", "Split by Item", "Custom Amount"].map((opt) => {
                 const isSelected = splitOption === opt;
                 return (
@@ -133,7 +133,7 @@ const SplitPaymentView = () => {
             <Text className="text-base font-semibold text-gray-700 mb-3">
               Number of People:
             </Text>
-            <View className="flex-row space-x-2">
+            <View className="flex-row gap-2">
               {[2, 3, 4, 5, 6, 7, 8].map((num) => {
                 const isSelected = numberOfPeople === num;
                 return (
@@ -160,7 +160,7 @@ const SplitPaymentView = () => {
                 <Text className="text-base font-semibold text-gray-700 w-20">
                   Split {split.id}:
                 </Text>
-                <View className="flex-row space-x-2">
+                <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
                     className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card" ? "border-primary-400 bg-primary-400" : "border-gray-300"}`}
@@ -198,7 +198,7 @@ const SplitPaymentView = () => {
         </ScrollView>
 
         {/* Actions */}
-        <View className="flex-row space-x-2 mt-6 border-t border-gray-200 pt-4">
+        <View className="flex-row gap-2 mt-6 border-t border-gray-200 pt-4">
           <TouchableOpacity
             onPress={close}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

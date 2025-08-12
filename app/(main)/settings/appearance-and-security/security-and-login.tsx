@@ -104,7 +104,7 @@ const SecurityAndLoginScreen = () => {
               </View>
               <TouchableOpacity
                 onPress={() => setSwitchModalOpen(true)}
-                className="flex-row items-center space-x-2 py-2 px-4 border border-gray-300 rounded-lg"
+                className="flex-row items-center gap-2 py-2 px-4 border border-gray-300 rounded-lg"
               >
                 <LogOut color="#4b5563" size={16} />
                 <Text className="font-bold text-gray-700">Switch Account</Text>

@@ -18,7 +18,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
             {order.type} • Table {order.table}
           </Text>
         </View>
-        <View className="flex-row items-center space-x-4">
+        <View className="flex-row items-center gap-4">
           <View className="px-2 py-1 bg-gray-100 rounded-md">
             <Text className="font-semibold text-xs text-gray-600">
               {order.status}
@@ -49,7 +49,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
 
       {/* Footer */}
       <View className="flex-row justify-between items-center mt-3 border-t border-gray-200 pt-3">
-        <TouchableOpacity className="flex-row items-center space-x-1 bg-blue-50 py-1 px-2 rounded-md">
+        <TouchableOpacity className="flex-row items-center gap-1 bg-blue-50 py-1 px-2 rounded-md">
           <Text className="font-bold text-xs text-blue-600">Notes</Text>
           <Pencil size={12} color="#2563eb" />
         </TouchableOpacity>

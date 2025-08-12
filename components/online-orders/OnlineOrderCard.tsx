@@ -51,7 +51,7 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
           </Text>
         </View>
         {/* Footer */}
-        <View className="flex-row space-x-2">
+        <View className="flex-row gap-2">
           <TouchableOpacity className="flex-1 py-2.5 border border-gray-300 rounded-lg items-center">
             <Text className="font-bold text-gray-700">Reject</Text>
           </TouchableOpacity>

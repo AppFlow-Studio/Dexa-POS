@@ -125,7 +125,7 @@ const EndOfDayReportScreen = () => {
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 flex-row space-x-6">
+      <View className="flex-1 flex-row gap-6">
         {/* Left Column: Report Details */}
         <ScrollView className="flex-[2]" showsVerticalScrollIndicator={false}>
           <View className="space-y-4">
@@ -218,7 +218,7 @@ const EndOfDayReportScreen = () => {
 
         {/* Right Column: Actions & Status */}
         <View className="flex-1 space-y-4">
-          <View className="flex-row space-x-2">
+          <View className="flex-row gap-2">
             <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center bg-white">
               <Text className="font-bold text-gray-700">Run Sales Summary</Text>
             </TouchableOpacity>
@@ -264,7 +264,7 @@ const EndOfDayReportScreen = () => {
           />
 
           <View className="mt-auto pt-4 space-y-2 border-t border-gray-200">
-            <View className="flex-row space-x-2">
+            <View className="flex-row gap-2">
               <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center bg-white">
                 <Text className="font-bold text-gray-700">Print Receipt</Text>
               </TouchableOpacity>

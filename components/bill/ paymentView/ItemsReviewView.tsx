@@ -44,7 +44,7 @@ const ItemsReviewView = () => {
           </Text>
         </View>
         {/* Actions */}
-        <View className="flex-row space-x-2 mt-6">
+        <View className="flex-row gap-2 mt-6">
           <TouchableOpacity
             onPress={close}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"

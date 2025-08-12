@@ -28,7 +28,7 @@ const ReceiptAndTippingRulesScreen = () => {
             onValueChange={setTippingEnabled}
           />
           {isTippingEnabled && (
-            <View className="flex-row space-x-4 mt-4">
+            <View className="flex-row gap-4 mt-4">
               <TextInput
                 value={tip1}
                 onChangeText={setTip1}
