@@ -102,9 +102,9 @@ const PaymentSuccessView = () => {
   const totalItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <>
-      {/* --- Section 1: Green Header (unchanged) --- */}
-      <View className="bg-green-500 p-6 rounded-t-2xl items-center">
+    <View className="rounded-[36px] overflow-hidden bg-[#2BAE74]">
+      {/* Green Success Header */}
+      <View className="p-6 rounded-t-[36px] items-center">
         <View className="w-20 h-20 bg-white/20 rounded-full items-center justify-center">
           <View className="w-16 h-16 bg-white rounded-full items-center justify-center">
             <ShoppingBag color="#22c55e" size={32} />
@@ -115,8 +115,8 @@ const PaymentSuccessView = () => {
         </Text>
       </View>
 
-      {/* --- Section 2: White Content Area (The Receipt) (unchanged) --- */}
-      <View className="bg-white p-6 rounded-b-2xl">
+      {/* White Content */}
+      <View className="p-6 rounded-[36px] bg-background-100">
         <ScrollView className="max-h-80" showsVerticalScrollIndicator={false}>
           {/* Transaction Details */}
           <ReceiptRow label="No. Transaction" value="PZ05329283" />
@@ -146,17 +146,18 @@ const PaymentSuccessView = () => {
             <ReceiptRow label="Voucher" value={`$${(0.0).toFixed(2)}`} />
           </View>
 
-          <View className="flex-row justify-between items-center pt-4 mt-2">
-            <Text className="text-xl font-bold text-gray-900">Total</Text>
-            <Text className="text-xl font-bold text-gray-900">
+          {/* Total */}
+          <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300 mt-4">
+            <Text className="text-xl font-bold text-accent-500">Total</Text>
+            <Text className="text-xl font-bold text-accent-500">
               ${total.toFixed(2)}
             </Text>
           </View>
         </ScrollView>
 
         {/* Action Buttons */}
-        <View className="border-t border-gray-200 mt-6 pt-4 space-y-2">
-          <View className="flex-row gap-2">
+        <View className="border-t border-gray-200 pt-4 mt-6">
+          <View className="flex-row gap-3 mb-3">
             <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
               <FileText color="#4b5563" size={20} />
               <Text className="font-bold text-gray-700">View Order</Text>
@@ -174,7 +175,7 @@ const PaymentSuccessView = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </>
+    </View>
   );
 };
 

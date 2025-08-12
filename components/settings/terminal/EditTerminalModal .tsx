@@ -61,33 +61,39 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="bg-gray-800 p-6">
-          <DialogTitle className="text-white text-2xl font-bold text-center">
+      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] max-w-lg">
+        {/* Dark Header */}
+        <View className="p-4 pb-0 rounded-t-[36px]">
+          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
             Edit Terminal
           </DialogTitle>
         </View>
-        <View className="bg-white p-6 space-y-4">
+
+        {/* White Content */}
+        <View className="p-6 rounded-[36px] bg-background-100 space-y-4">
           <View>
-            <Text className="font-bold mb-2">Terminal Name</Text>
+            <Text className="font-bold mb-2 text-accent-500">
+              Terminal Name
+            </Text>
             <TextInput
               value={terminalName}
               onChangeText={setTerminalName}
-              className="p-3 bg-gray-100 rounded-lg"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
             />
           </View>
+
           <View>
-            <Text className="font-bold mb-2">Terminal ID</Text>
+            <Text className="font-bold mb-2 text-accent-500">Terminal ID</Text>
             <TextInput
               value={terminal.id}
-              className="p-3 bg-gray-100 rounded-lg"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
               editable={false}
             />
           </View>
 
-          {/* 3. Add the Select component for Configuration Type */}
+          {/* Configuration Type Select */}
           <View>
-            <Text className="font-bold mb-2 text-gray-700">
+            <Text className="font-bold mb-2 text-accent-500">
               Configuration Type
             </Text>
             <Select
@@ -97,7 +103,7 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
               <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
                 <SelectValue
                   placeholder="Select type..."
-                  className="text-base text-gray-800"
+                  className="text-base text-accent-500"
                 />
               </SelectTrigger>
               <SelectContent insets={contentInsets}>
@@ -115,16 +121,17 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
               </SelectContent>
             </Select>
           </View>
-        </View>
 
-        <DialogFooter className="p-6 border-t border-gray-200">
-          <TouchableOpacity
-            onPress={onSave}
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
-          >
-            <Text className="font-bold text-white">Done</Text>
-          </TouchableOpacity>
-        </DialogFooter>
+          {/* Footer with Button */}
+          <DialogFooter className="pt-6 border-t border-gray-200">
+            <TouchableOpacity
+              onPress={onSave}
+              className="w-full py-3 bg-primary-400 rounded-lg"
+            >
+              <Text className="font-bold text-white text-center">Done</Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </View>
       </DialogContent>
     </Dialog>
   );

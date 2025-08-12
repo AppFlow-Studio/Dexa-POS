@@ -2,14 +2,7 @@ import { AddOn, CartItem, ItemSize, MenuItemType } from "@/lib/types";
 import { useCartStore } from "@/stores/useCartStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Image,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 interface ItemCustomizationDialogProps {
@@ -109,7 +102,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
 
   return (
     <Dialog open={isVisible} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] max-w-lg bg-accent-600 border-none">
+      <DialogContent className="p-0 rounded-[36px] max-w-lg bg-[#11111A] border-none">
         {/* Dark Header */}
         <View className="p-6 rounded-t-2xl flex-row items-center gap-4">
           <Image
@@ -130,120 +123,119 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
         </View>
 
         {/* White Content */}
-        <View className="rounded-[36px] bg-neutral-100">
-          <ScrollView className="p-6 max-h-96 ">
-            <View className="flex-row justify-between items-center">
-              <Text className="text-lg font-medium text-accent-500">Qty</Text>
-              <View className="flex-row items-center gap-4 rounded-full bg-neutral-200 border border-neutral-200">
-                <TouchableOpacity
-                  onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-                  className="p-2 border border-gray-300 rounded-full bg-white"
-                >
-                  <Minus color="#4b5563" size={20} />
-                </TouchableOpacity>
-                <Text className="text-xl font-bold text-gray-800 w-8 text-center">
-                  {quantity}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setQuantity((q) => q + 1)}
-                  className="p-2 bg-primary-400 rounded-full"
-                >
-                  <Plus color="#FFFFFF" size={20} />
-                </TouchableOpacity>
-              </View>
+        <View className="rounded-[36px] p-6 bg-background-100">
+          <View className="flex-row justify-between items-center">
+            <Text className="text-lg font-medium text-accent-500">Qty</Text>
+            <View className="flex-row items-center gap-4 rounded-full bg-neutral-200 border border-neutral-200">
+              <TouchableOpacity
+                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                className="p-2 border border-gray-300 rounded-full bg-white"
+              >
+                <Minus color="#4b5563" size={20} />
+              </TouchableOpacity>
+              <Text className="text-xl font-bold text-gray-800 w-8 text-center">
+                {quantity}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setQuantity((q) => q + 1)}
+                className="p-2 bg-primary-400 rounded-full"
+              >
+                <Plus color="#FFFFFF" size={20} />
+              </TouchableOpacity>
             </View>
+          </View>
 
-            {/* Sizes */}
-            {item.sizes && (
-              <View className="mt-4">
-                <Text className="text-lg font-medium text-accent-500 mb-2">
-                  Size
-                </Text>
-                <View className="flex-row gap-2 gap-2">
-                  {item.sizes.map((size) => {
-                    const isSelected = selectedSize.id === size.id;
-                    return (
-                      <TouchableOpacity
-                        key={size.id}
-                        onPress={() => setSelectedSize(size)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
-                      >
-                        <View className="flex-row justify-between">
-                          <Text className="font-semibold text-accent-500">
-                            {size.name}
-                          </Text>
-                          <Text className="font-semibold text-accent-500">
-                            + ${size.priceModifier.toFixed(2)}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Add-ons */}
-            {item.addOns && (
-              <View className="mt-4">
-                <Text className="text-lg font-medium text-accent-500 mb-">
-                  Add-ons
-                </Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {item.addOns.map((addOn) => {
-                    const isSelected = selectedAddOns.some(
-                      (a) => a.id === addOn.id
-                    );
-                    return (
-                      <TouchableOpacity
-                        key={addOn.id}
-                        onPress={() => handleAddOnToggle(addOn)}
-                        className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
-                      >
-                        <Text className="font-semibold text-accent-500">
-                          {addOn.name} (+ ${addOn.price.toFixed(2)})
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Notes */}
-            <View className="my-4">
+          {/* Sizes */}
+          {item.sizes && (
+            <View className="mt-4">
               <Text className="text-lg font-medium text-accent-500 mb-2">
-                Notes
+                Size
               </Text>
-              <TextInput
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Make the cheese more melted"
-                multiline
-                className="p-3 border border-gray-300 rounded-lg h-20"
-              />
+              <View className="flex-row gap-2">
+                {item.sizes.map((size) => {
+                  const isSelected = selectedSize.id === size.id;
+                  return (
+                    <TouchableOpacity
+                      key={size.id}
+                      onPress={() => setSelectedSize(size)}
+                      className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
+                    >
+                      <View className="flex-row justify-between">
+                        <Text className="font-semibold text-accent-500">
+                          {size.name}
+                        </Text>
+                        <Text className="font-semibold text-accent-500">
+                          + ${size.priceModifier.toFixed(2)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </ScrollView>
+          )}
 
-          <DialogFooter className="p-6 flex-row justify-between items-center border-t border-gray-200 bg-neutral-100 rounded-b-[36px]">
-            <View>
-              <Text className="text-sm text-gray-500">Total</Text>
-              <Text className="text-2xl font-bold text-gray-800">
-                ${total.toFixed(2)}
+          {/* Add-ons */}
+          {item.addOns && (
+            <View className="mt-4">
+              <Text className="text-lg font-medium text-accent-500 mb-">
+                Add-ons
               </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {item.addOns.map((addOn) => {
+                  const isSelected = selectedAddOns.some(
+                    (a) => a.id === addOn.id
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={addOn.id}
+                      onPress={() => handleAddOnToggle(addOn)}
+                      className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
+                    >
+                      <Text className="font-semibold text-accent-500">
+                        {addOn.name} (+ ${addOn.price.toFixed(2)})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-            <View className="flex-row gap-2">
+          )}
+
+          {/* Notes */}
+          <View className="my-4">
+            <Text className="text-lg font-medium text-accent-500 mb-2">
+              Notes
+            </Text>
+            <TextInput
+              value={notes}
+              onChangeText={setNotes}
+              placeholder="Make the cheese more melted"
+              multiline
+              className="p-3 border bg-white border-[#F1F1F1] rounded-lg"
+            />
+          </View>
+          <View className="border-t border-gray-200 flex-row justify-between items-center py-2">
+            <Text className="text-accent-500 font-medium">Total</Text>
+            <Text className="text-2xl font-semibold text-accent-500">
+              ${total.toFixed(2)}
+            </Text>
+          </View>
+          <DialogFooter className=" rounded-b-[36px] border-t border-gray-200 ">
+            <View className="py-2 flex-row gap-2 justify-between items-center w-full ">
               <TouchableOpacity
                 onPress={onClose}
-                className="px-8 py-3 rounded-lg border border-gray-300"
+                className="px-8 py-3 flex-1 rounded-lg border border-gray-300 "
               >
-                <Text className="font-bold text-gray-700">Cancel</Text>
+                <Text className="font-bold text-gray-700 text-center">
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAddToCart}
-                className="px-8 py-3 rounded-lg bg-primary-400"
+                className="px-8 py-3 flex-1 rounded-lg bg-primary-400"
               >
-                <Text className="font-bold text-white">Add</Text>
+                <Text className="font-bold text-white text-center">Add</Text>
               </TouchableOpacity>
             </View>
           </DialogFooter>

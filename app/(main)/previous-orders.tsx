@@ -1,7 +1,9 @@
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
+import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
-import { CartItem } from "@/lib/types";
+import { CartItem, PreviousOrder } from "@/lib/types";
 import { Calendar, Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -27,16 +29,39 @@ const TABLE_HEADERS = [
 
 const PreviousOrdersScreen = () => {
   // State for the notes modal
-  const [isNotesModalVisible, setNotesModalVisible] = useState(false);
+  const [activeModal, setActiveModal] = useState<
+    "notes" | "print" | "delete" | "modifiers" | null
+  >(null);
+
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<PreviousOrder | null>(
+    null
+  );
 
   // State for filters would go here
   const [searchText, setSearchText] = useState("");
   const filteredOrders = useMemo(() => MOCK_PREVIOUS_ORDERS, []); // Add filtering logic later
 
-  const handleViewNotes = (items: CartItem[]) => {
+  const handleViewNotes = (items: PreviousOrder["items"]) => {
     setSelectedOrderItems(items);
-    setNotesModalVisible(true);
+    setActiveModal("notes");
+  };
+  const handleOpenDelete = (order: PreviousOrder) => {
+    setSelectedOrder(order);
+    setActiveModal("delete");
+  };
+
+  const handleOpenPrint = (order: PreviousOrder) => {
+    setSelectedOrder(order);
+    setActiveModal("print");
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedOrderItems) {
+      // This needs to be implemented with actual state management for MOCK_PREVIOUS_ORDERS
+      console.log("Deleting order:", selectedOrder?.orderId);
+    }
+    setActiveModal(null); // Close the modal
   };
 
   return (
@@ -49,18 +74,6 @@ const PreviousOrdersScreen = () => {
             placeholder="Search Order"
             className="ml-2 text-base flex-1"
           />
-        </View>
-        <View className="flex-row items-center gap-2">
-          {/* Select components would go here */}
-          <TouchableOpacity className="p-3 bg-white border border-gray-200 rounded-lg">
-            <Text className="font-semibold text-gray-600">Dine In/Takout</Text>
-          </TouchableOpacity>
-          <TouchableOpacity className="p-3 bg-white border border-gray-200 rounded-lg">
-            <Text className="font-semibold text-gray-600">Highest Price</Text>
-          </TouchableOpacity>
-          <TouchableOpacity className="p-3 bg-white border border-gray-200 rounded-lg">
-            <Text className="font-semibold text-gray-600">Highest Items</Text>
-          </TouchableOpacity>
         </View>
         <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
           <Text className="font-semibold text-gray-600 mr-2">
@@ -102,15 +115,35 @@ const PreviousOrdersScreen = () => {
           data={filteredOrders}
           keyExtractor={(item) => item.serialNo}
           renderItem={({ item }) => (
-            <PreviousOrderRow order={item} onViewNotes={handleViewNotes} />
+            <PreviousOrderRow
+              order={item}
+              onViewNotes={handleViewNotes}
+              onDelete={() => handleOpenDelete(item)}
+              onPrint={() => handleOpenPrint(item)}
+            />
           )}
         />
       </View>
 
       <OrderNotesModal
-        isOpen={isNotesModalVisible}
-        onClose={() => setNotesModalVisible(false)}
+        isOpen={activeModal === "notes"}
+        onClose={() => setActiveModal(null)}
         items={selectedOrderItems}
+      />
+      <ConfirmationModal
+        isOpen={activeModal === "delete"}
+        onClose={() => setActiveModal(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Order"
+        description="This will remove the order from the list and delete the data."
+        confirmText="Delete"
+        variant="destructive"
+      />
+
+      <PrintReceiptModal
+        isOpen={activeModal === "print"}
+        onClose={() => setActiveModal(null)}
+        order={selectedOrder}
       />
     </View>
   );

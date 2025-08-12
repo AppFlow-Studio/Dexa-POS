@@ -115,13 +115,18 @@ const ConnectTerminalModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="bg-gray-800 p-6">
-          <DialogTitle className="text-white text-2xl font-bold text-center">
+      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] w-[550px]">
+        {/* Dark Header */}
+        <View className="p-4 pb-0 rounded-t-[36px]">
+          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
             Connect New Terminal
           </DialogTitle>
         </View>
-        <View className="bg-white p-6">{renderContent()}</View>
+
+        {/* White Content */}
+        <View className="p-6 rounded-[36px] bg-background-100">
+          {renderContent()}
+        </View>
       </DialogContent>
     </Dialog>
   );

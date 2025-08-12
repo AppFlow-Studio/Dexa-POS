@@ -8,7 +8,7 @@ const ItemsReviewView = () => {
   const { close, setView, paymentMethod } = usePaymentStore();
 
   return (
-    <View className=" bg-background-100">
+    <View className=" bg-background-100 p-6 rounded-2xl">
       <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
         Items
       </Text>

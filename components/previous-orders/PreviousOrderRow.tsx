@@ -13,6 +13,8 @@ import {
 interface PreviousOrderRowProps {
   order: PreviousOrder;
   onViewNotes: (items: PreviousOrder["items"]) => void;
+  onPrint: () => void;
+  onDelete: () => void;
 }
 
 const statusClasses: Record<string, string> = {
@@ -24,6 +26,8 @@ const statusClasses: Record<string, string> = {
 const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
   order,
   onViewNotes,
+  onPrint,
+  onDelete,
 }) => {
   const orderPath = `/previous-orders/${order.orderId.replace("#", "")}`;
 
@@ -88,11 +92,11 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
                 <Pencil className="mr-2 h-4 w-4" color="#4b5563" />
                 <Text>View Notes</Text>
               </DropdownMenuItem>
-              <DropdownMenuItem onPress={() => console.log("Print")}>
+              <DropdownMenuItem onPress={onPrint}>
                 <Printer className="mr-2 h-4 w-4" color="#4b5563" />
                 <Text>Print Receipt</Text>
               </DropdownMenuItem>
-              <DropdownMenuItem onPress={() => alert("Delete")}>
+              <DropdownMenuItem onPress={onDelete}>
                 <Trash2 className="mr-2 h-4 w-4 text-red-500" color="#ef4444" />
                 <Text className="text-red-500">Delete</Text>
               </DropdownMenuItem>

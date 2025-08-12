@@ -57,30 +57,33 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="min-w-[580px] p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="bg-gray-800 p-6 w-full">
-          <DialogTitle className="text-white text-2xl font-bold text-center">
+      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] max-w-md">
+        {/* Dark Header */}
+        <View className="p-4 pb-0 rounded-t-[36px]">
+          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
             Add New Printer
           </DialogTitle>
         </View>
-        <View className="bg-white p-6 space-y-4 w-full">
+
+        {/* White Content */}
+        <View className="p-6 rounded-[36px] bg-background-100 gap-y-4">
           <View>
-            <Text className="font-bold mb-2 text-gray-700">Item Name</Text>
+            <Text className="font-bold mb-2 text-accent-500">Item Name</Text>
             <TextInput
               value={itemName}
               onChangeText={setItemName}
               placeholder="Printer Name"
-              className="p-3 bg-gray-100 rounded-lg text-base"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
             />
           </View>
+
           <View>
-            <Text className="font-bold mb-2 text-gray-700">
+            <Text className="font-bold mb-2 text-accent-500">
               Connection Type
             </Text>
             <Select
               value={connectionType}
               onValueChange={(option) => {
-                // This wrapper ensures the type is handled correctly
                 if (option) {
                   setConnectionType(option);
                 }
@@ -88,7 +91,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
             >
               <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
                 <SelectValue
-                  className="text-base text-gray-800"
+                  className="text-base text-accent-500"
                   placeholder="Select connection type..."
                 />
               </SelectTrigger>
@@ -108,14 +111,13 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
             </Select>
           </View>
 
-          {/* 4. The conditional rendering now checks the `.value` property of the state object */}
           {connectionType?.value === "wifi" && (
             <View>
               <TextInput
                 value={ipAddress}
                 onChangeText={setIpAddress}
                 placeholder="Type IP Address"
-                className="p-3 bg-gray-100 rounded-lg text-base"
+                className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
               />
             </View>
           )}
@@ -125,7 +127,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
               <Select value={selectedDevice} onValueChange={setSelectedDevice}>
                 <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
                   <SelectValue
-                    className="text-base text-gray-800"
+                    className="text-base text-accent-500"
                     placeholder="Select available device..."
                   />
                 </SelectTrigger>
@@ -145,15 +147,16 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
               </Select>
             </View>
           )}
+          {/* Footer with Button */}
+          <DialogFooter className="pt-6 border-t border-gray-200">
+            <TouchableOpacity
+              onPress={() => onAdd({})}
+              className="w-full py-3 bg-primary-400 rounded-lg"
+            >
+              <Text className="font-bold text-white text-center">Done</Text>
+            </TouchableOpacity>
+          </DialogFooter>
         </View>
-        <DialogFooter className="p-6 border-t border-gray-200 w-full">
-          <TouchableOpacity
-            onPress={() => onAdd({})}
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
-          >
-            <Text className="font-bold text-white">Done</Text>
-          </TouchableOpacity>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

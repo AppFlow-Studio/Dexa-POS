@@ -33,41 +33,49 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="bg-gray-800 p-6">
-          <DialogTitle className="text-white text-2xl font-bold text-center">
+      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] w-[550px]">
+        {/* Dark Header */}
+        <View className="p-4 pb-0 rounded-t-[36px]">
+          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
             {title}
           </DialogTitle>
         </View>
-        <View className="bg-white p-6 items-center text-center">
+
+        {/* White Content */}
+        <View className="p-6 rounded-[36px] bg-background-100 items-center">
           {isDestructive && (
             <View className="w-16 h-16 bg-red-100 rounded-full items-center justify-center border-4 border-red-200 mb-4">
               <AlertTriangle color="#ef4444" size={32} />
             </View>
           )}
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-center">
+            <DialogTitle className="text-xl font-bold text-accent-500 text-center">
               Are you sure?
             </DialogTitle>
-            <DialogDescription className="text-center text-gray-500 mt-2">
+            <DialogDescription className="text-center text-accent-500 mt-2">
               {description}
             </DialogDescription>
           </DialogHeader>
+          {/* Footer with Buttons */}
+          <DialogFooter className="pt-6 flex-row gap-3 border-t border-gray-200">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 border border-gray-300 rounded-lg"
+            >
+              <Text className="font-bold text-gray-700 text-center">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onConfirm}
+              className={`flex-1 py-3 rounded-lg ${isDestructive ? "bg-red-500" : "bg-primary-400"}`}
+            >
+              <Text className="font-bold text-white text-center">
+                {confirmText}
+              </Text>
+            </TouchableOpacity>
+          </DialogFooter>
         </View>
-        <DialogFooter className="p-6 flex-row gap-2 border-t border-gray-200">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
-          >
-            <Text className="font-bold text-gray-700">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onConfirm}
-            className={`flex-1 py-3 rounded-lg items-center ${isDestructive ? "bg-red-500" : "bg-primary-400"}`}
-          >
-            <Text className="font-bold text-white">{confirmText}</Text>
-          </TouchableOpacity>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

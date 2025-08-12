@@ -28,7 +28,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 }) => {
   const { openSearch } = useSearchStore();
   return (
-    <View className="flex-row justify-between items-start gap-4 gap-4">
+    <View className="flex-row justify-between items-start gap-4">
       {/* Left Section: All Tabs */}
       <View className="bg-background-300 border border-background-400 p-2 rounded-2xl flex-shrink">
         {/* Meal Tabs */}

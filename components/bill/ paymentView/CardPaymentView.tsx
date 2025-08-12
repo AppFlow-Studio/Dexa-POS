@@ -35,45 +35,45 @@ const CardPaymentView = () => {
   };
 
   return (
-    <>
-      {/* Header Section */}
-      <View className="bg-gray-800 p-6 rounded-t-2xl">
-        <Text className="text-2xl text-white font-bold">Card Payment</Text>
+    <View className="rounded-[36px] overflow-hidden bg-[#11111A]">
+      {/* Dark Header */}
+      <View className="p-6 rounded-t-[36px]">
+        <Text className="text-2xl text-[#F1F1F1] font-bold">Card Payment</Text>
         <Text className="text-primary-400 font-semibold mt-1">
           Please use payment terminal
         </Text>
-        <Text className="text-gray-300 mt-2">Purchase in Card</Text>
+        <Text className="text-[#F1F1F1] mt-2">Purchase in Card</Text>
       </View>
 
-      {/* Content Section */}
-      <View className="p-6 bg-white">
+      {/* White Content */}
+      <View className="p-6 rounded-[36px] bg-background-100">
         {/* Totals Summary */}
         <View className="space-y-2 mb-4">
           <View className="flex-row justify-between">
-            <Text className="text-gray-600">Subtotal</Text>
-            <Text className="text-gray-800">${subtotal.toFixed(2)}</Text>
+            <Text className="text-accent-500">Subtotal</Text>
+            <Text className="text-accent-500">${subtotal.toFixed(2)}</Text>
           </View>
           <View className="flex-row justify-between">
-            <Text className="text-gray-600">Tax</Text>
-            <Text className="text-gray-800">${tax.toFixed(2)}</Text>
+            <Text className="text-accent-500">Tax</Text>
+            <Text className="text-accent-500">${tax.toFixed(2)}</Text>
           </View>
           <View className="flex-row justify-between">
-            <Text className="text-gray-600">Voucher</Text>
+            <Text className="text-accent-500">Voucher</Text>
             <Text className="text-gray-400">${(0.0).toFixed(2)}</Text>
           </View>
         </View>
 
         {/* Total */}
         <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-300 mb-6">
-          <Text className="text-lg font-bold text-gray-900">Total</Text>
-          <Text className="text-lg font-bold text-gray-900">
+          <Text className="text-lg font-bold text-accent-500">Total</Text>
+          <Text className="text-lg font-bold text-accent-500">
             ${total.toFixed(2)}
           </Text>
         </View>
 
         {/* Payment Status */}
         <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-gray-600">Payment Status</Text>
+          <Text className="text-accent-500">Payment Status</Text>
           <View className={`px-3 py-1 rounded-full ${statusColors[status]}`}>
             <Text
               className={`font-semibold capitalize ${statusTextColors[status]}`}
@@ -84,22 +84,26 @@ const CardPaymentView = () => {
         </View>
 
         {/* Buttons */}
-        <View className="flex-row gap-4">
-          <TouchableOpacity
-            onPress={close}
-            className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
-          >
-            <Text className="font-bold text-gray-700">Close</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            disabled
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center opacity-50"
-          >
-            <Text className="font-bold text-white">Confirm Payment</Text>
-          </TouchableOpacity>
+        <View className="border-t border-gray-200 pt-4">
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={close}
+              className="flex-1 py-3 border border-gray-300 rounded-lg"
+            >
+              <Text className="font-bold text-gray-700 text-center">Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled
+              className="flex-1 py-3 bg-primary-400 rounded-lg opacity-50"
+            >
+              <Text className="font-bold text-white text-center">
+                Confirm Payment
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </>
+    </View>
   );
 };
 
