@@ -18,7 +18,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
             {order.type} • Table {order.table}
           </Text>
         </View>
-        <View className="flex-row items-center gap-4">
+        <View className="flex-col items-end gap-1">
           <View className="px-2 py-1 bg-gray-100 rounded-md">
             <Text className="font-semibold text-xs text-gray-600">
               {order.status}

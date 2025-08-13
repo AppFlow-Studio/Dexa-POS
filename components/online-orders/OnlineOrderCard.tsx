@@ -14,7 +14,7 @@ const partnerColors: { [key: string]: string } = {
 const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
   return (
     <Link href={`/online-orders/${order.id.replace("#", "")}` as Href}>
-      <View className="bg-white p-4 rounded-2xl border border-gray-200">
+      <View className="bg-white p-4 rounded-2xl border border-background-400 w-full">
         {/* Header */}
         <View className="flex-row justify-between items-center">
           <View>
@@ -52,10 +52,10 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
         </View>
         {/* Footer */}
         <View className="flex-row gap-2">
-          <TouchableOpacity className="flex-1 py-2.5 border border-gray-300 rounded-lg items-center">
+          <TouchableOpacity className="flex-1 py-2.5 border border-gray-300 rounded-xl items-center">
             <Text className="font-bold text-gray-700">Reject</Text>
           </TouchableOpacity>
-          <TouchableOpacity className="flex-1 py-2.5 bg-primary-400 rounded-lg items-center">
+          <TouchableOpacity className="flex-1 py-2.5 bg-primary-400 rounded-xl items-center">
             <Text className="font-bold text-white">Accept</Text>
           </TouchableOpacity>
         </View>

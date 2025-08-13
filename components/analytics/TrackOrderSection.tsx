@@ -49,7 +49,7 @@ const TrackOrderSection = () => {
       <View className="flex-row justify-between items-center">
         <Text className="text-2xl font-bold text-gray-800">Track Order</Text>
         <View className="flex-row items-center gap-2">
-          <View className="flex-row items-center bg-white border border-gray-200 rounded-lg p-2 w-64">
+          <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-2 w-64">
             <Search color="#6b7280" size={20} />
             <TextInput
               placeholder="Search Order"
@@ -60,13 +60,13 @@ const TrackOrderSection = () => {
           </View>
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 border border-gray-300 rounded-md"
+            className="p-2 border border-gray-300 rounded-full"
           >
             <ChevronLeft color="#4b5563" size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}
-            className="p-2 bg-primary-400 rounded-md"
+            className="p-2 bg-primary-400 rounded-full"
           >
             <ChevronRight color="white" size={20} />
           </TouchableOpacity>

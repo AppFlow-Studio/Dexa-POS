@@ -14,7 +14,7 @@ const TABLE_HEADERS = [
 ];
 
 const HistoryTableHeader = () => (
-  <View className="flex-row p-4 bg-gray-50 rounded-t-lg border-b border-gray-200">
+  <View className="flex-row p-4 bg-background-100 rounded-t-lg border-b border-gray-200">
     {TABLE_HEADERS.map((header) => (
       <Text key={header} className="flex-1 font-bold text-sm text-gray-500">
         {header}
@@ -30,13 +30,13 @@ const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
       <Text className="font-semibold text-gray-800">{item.clockIn}</Text>
     </View>
     <View className="flex-1">
-      <Text className="text-sm text-gray-500">{item.date}</Text>
+      <Text className="text-sm text-primary-400">{item.date}</Text>
       <Text className="font-semibold text-primary-400">
         {item.breakInitiated}
       </Text>
     </View>
     <View className="flex-1">
-      <Text className="text-sm text-gray-500">{item.date}</Text>
+      <Text className="text-sm text-primary-400">{item.date}</Text>
       <Text className="font-semibold text-primary-400">{item.breakEnded}</Text>
     </View>
     <View className="flex-1">
@@ -55,7 +55,7 @@ const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
 const HistoryTab = () => {
   return (
     // The FlatList component is perfect for rendering tabular data
-    <View className="flex-1 border border-gray-200 rounded-lg">
+    <View className="flex-1 rounded-lg">
       <FlatList
         data={MOCK_SHIFT_HISTORY}
         keyExtractor={(item) => item.id}

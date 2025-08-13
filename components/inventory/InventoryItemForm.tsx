@@ -52,7 +52,12 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
             <Text className="font-bold mb-2">Availability</Text>
             <View className="flex-row items-center justify-between p-3 bg-gray-100 rounded-lg">
               <Text>Enable and show this product in the menu</Text>
-              <Switch value={availability} onValueChange={setAvailability} />
+              <Switch
+                value={availability}
+                onValueChange={setAvailability}
+                trackColor={{ false: "#DCDCDC", true: "#31A961" }}
+                thumbColor={"#ffffff"}
+              />
             </View>
           </View>
         </View>

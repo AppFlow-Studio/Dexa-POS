@@ -47,8 +47,8 @@ const PrinterSettingsScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
-      <View className="flex-1 space-y-4">
+    <View className="flex-1 bg-background-300 p-6">
+      <View className="flex-1 gap-y-4">
         {printers.map((printer) => (
           <PrinterRow
             key={printer.id}
@@ -61,7 +61,7 @@ const PrinterSettingsScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end gap-2 pt-4 border-t border-gray-200">
+      <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
         <TouchableOpacity
           onPress={() => setAddModalOpen(true)}
           className="px-6 py-3 border border-gray-300 rounded-lg"

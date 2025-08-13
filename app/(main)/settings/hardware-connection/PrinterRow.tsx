@@ -20,10 +20,14 @@ const PrinterRow: React.FC<PrinterRowProps> = ({
       <Switch
         value={printer.isEnabled}
         onValueChange={() => onToggle(printer.id)}
+        trackColor={{ false: "#DCDCDC", true: "#31A961" }}
+        thumbColor={"#ffffff"}
       />
-      <View className="ml-4">
+      <View className="ml-4 flex-row gap-4">
         <Text className="font-bold text-lg text-gray-800">{printer.name}</Text>
-        <View className="flex-row items-center mt-1">
+        <View
+          className={`flex-row items-center mt-1 rounded-full px-2 ${printer.status === "Connected" ? "bg-[#2BAE7433]" : "bg-background-300"}`}
+        >
           <View
             className={`w-2 h-2 rounded-full mr-2 ${printer.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
           />
@@ -46,7 +50,7 @@ const PrinterRow: React.FC<PrinterRowProps> = ({
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onRemove}
-          className="p-3 border border-gray-300 rounded-lg"
+          className="p-3 border border-gray-300 rounded-full"
         >
           <Trash2 color="#4b5563" size={20} />
         </TouchableOpacity>

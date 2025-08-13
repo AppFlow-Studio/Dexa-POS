@@ -15,9 +15,9 @@ const CustomerDisplayScreen = () => {
     useState<TransactionScreenOption>("itemList");
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       {/* Main content area */}
-      <View className="flex-1 space-y-6">
+      <View className="flex-1 gap-y-6">
         {/* Enable/Disable Card */}
         <View className="bg-white flex-row justify-between items-center p-6 rounded-2xl border border-gray-200">
           <Text className="text-xl font-bold text-gray-800">
@@ -26,14 +26,14 @@ const CustomerDisplayScreen = () => {
           <Switch
             value={isEnabled}
             onValueChange={setIsEnabled}
-            trackColor={{ false: "#767577", true: "#81b0ff" }}
-            thumbColor={isEnabled ? "#3b82f6" : "#f4f3f4"}
+            trackColor={{ false: "#DCDCDC", true: "#31A961" }}
+            thumbColor={"#ffffff"}
           />
         </View>
 
         {/* Idle Screen Options */}
         <SettingsCard title="Select what to show when the screen is idle">
-          <View className="space-y-3">
+          <View className="gap-y-3">
             <RadioButton
               label="Show Store Logo"
               isSelected={idleOption === "logo"}
@@ -49,7 +49,7 @@ const CustomerDisplayScreen = () => {
 
         {/* Transaction Screen Options */}
         <SettingsCard title="Select what to show during a transaction">
-          <View className="space-y-3">
+          <View className="gap-y-3">
             <RadioButton
               label="Show Item List"
               isSelected={transactionOption === "itemList"}
@@ -65,7 +65,7 @@ const CustomerDisplayScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end gap-2 pt-4 border-t border-gray-200">
+      <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
         <TouchableOpacity className="px-6 py-3 border border-gray-300 rounded-lg">
           <Text className="font-bold text-gray-700">
             Connect a New Terminal

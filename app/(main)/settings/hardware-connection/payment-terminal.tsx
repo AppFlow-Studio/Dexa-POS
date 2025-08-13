@@ -11,10 +11,14 @@ const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
     <Switch
       value={terminal.isEnabled}
       onValueChange={() => onToggle(terminal.id)}
+      trackColor={{ false: "#DCDCDC", true: "#31A961" }}
+      thumbColor={"#ffffff"}
     />
-    <View className="ml-4">
+    <View className="ml-4 flex-row gap-4">
       <Text className="font-bold text-lg text-gray-800">{terminal.name}</Text>
-      <View className="flex-row items-center mt-1">
+      <View
+        className={`flex-row items-center mt-1 rounded-full px-2 ${terminal.status === "Connected" ? "bg-[#2BAE7433]" : "bg-background-300"}`}
+      >
         <View
           className={`w-2 h-2 rounded-full mr-2 ${terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
         />
@@ -31,13 +35,13 @@ const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
       </Text>
       <TouchableOpacity
         onPress={onEdit}
-        className="py-2 px-4 border border-gray-300 rounded-lg"
+        className="py-2 px-4 border border-gray-300 rounded-xl"
       >
         <Text className="font-bold text-gray-700">Edit Terminal</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onRemove}
-        className="p-3 border border-gray-300 rounded-lg"
+        className="p-3 border border-gray-300 rounded-full"
       >
         <Trash2 color="#4b5563" size={20} />
       </TouchableOpacity>
@@ -64,8 +68,8 @@ const PaymentTerminalScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
-      <View className="flex-1 space-y-4">
+    <View className="flex-1 bg-background-300 p-6">
+      <View className="flex-1 gap-y-4">
         {terminals.map((terminal) => (
           <TerminalRow
             key={terminal.id}
@@ -79,7 +83,7 @@ const PaymentTerminalScreen = () => {
         ))}
       </View>
 
-      <View className="flex-row justify-end gap-2 pt-4 border-t border-gray-200">
+      <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
         <TouchableOpacity
           onPress={() => setConnectModalOpen(true)}
           className="px-6 py-3 border border-gray-300 rounded-lg"

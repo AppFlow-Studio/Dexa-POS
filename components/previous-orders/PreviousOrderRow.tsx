@@ -12,9 +12,9 @@ import {
 
 interface PreviousOrderRowProps {
   order: PreviousOrder;
-  onViewNotes: (items: PreviousOrder["items"]) => void;
-  onPrint: () => void;
-  onDelete: () => void;
+  onViewNotes: (order: PreviousOrder) => void;
+  onPrint: (order: PreviousOrder) => void;
+  onDelete: (order: PreviousOrder) => void;
 }
 
 const statusClasses: Record<string, string> = {
@@ -73,7 +73,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         </Text>
         <View className="w-[10%]" onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
-            onPress={() => onViewNotes(order.items)}
+            onPress={() => onViewNotes(order)}
             className="flex-row items-center gap-1 bg-blue-50 py-1 px-2 rounded-md self-start"
           >
             <Text className="font-bold text-xs text-blue-600">Notes</Text>
@@ -88,15 +88,16 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
               </TouchableOpacity>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-48">
-              <DropdownMenuItem onPress={() => onViewNotes(order.items)}>
+              {/* Pass the whole order object to each handler */}
+              <DropdownMenuItem onPress={() => onViewNotes(order)}>
                 <Pencil className="mr-2 h-4 w-4" color="#4b5563" />
-                <Text>View Notes</Text>
+                <Text>View Modifiers</Text>
               </DropdownMenuItem>
-              <DropdownMenuItem onPress={onPrint}>
+              <DropdownMenuItem onPress={() => onPrint(order)}>
                 <Printer className="mr-2 h-4 w-4" color="#4b5563" />
                 <Text>Print Receipt</Text>
               </DropdownMenuItem>
-              <DropdownMenuItem onPress={onDelete}>
+              <DropdownMenuItem onPress={() => onDelete(order)}>
                 <Trash2 className="mr-2 h-4 w-4 text-red-500" color="#ef4444" />
                 <Text className="text-red-500">Delete</Text>
               </DropdownMenuItem>

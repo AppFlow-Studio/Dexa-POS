@@ -1,6 +1,7 @@
+import DatePicker from "@/components/date-picker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
-import { Calendar, Search } from "lucide-react-native";
+import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   ScrollView,
@@ -20,6 +21,7 @@ const COLUMNS = [
 
 const OnlineOrdersScreen = () => {
   const [activePartner, setActivePartner] = useState("All");
+  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
 
   const groupedOrders = useMemo(() => {
     const filtered = MOCK_ONLINE_ORDERS.filter(
@@ -41,17 +43,17 @@ const OnlineOrdersScreen = () => {
   }, [activePartner]);
 
   return (
-    <View className="flex-1 p-6 bg-white">
+    <View className="flex-1 px-6 bg-white">
       {/* Toolbar */}
+      <View className="flex-row items-center bg-background-300 rounded-2xl border border-background-400 p-3 py-0 w-full">
+        <Search color="#6b7280" size={20} />
+        <TextInput
+          placeholder="Search Order No."
+          className="ml-2 text-base flex-1"
+        />
+      </View>
       <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
-          <Search color="#6b7280" size={20} />
-          <TextInput
-            placeholder="Search Order No."
-            className="ml-2 text-base flex-1"
-          />
-        </View>
-        <View className="flex-row items-center bg-gray-100 p-1 rounded-xl">
+        <View className="flex-row items-center bg-background-300 border border-background-400 p-1 rounded-xl">
           {PARTNERS.map((partner) => (
             <TouchableOpacity
               key={partner}
@@ -66,12 +68,7 @@ const OnlineOrdersScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
-          <Text className="font-semibold text-gray-600 mr-2">
-            Date: 02/03/25
-          </Text>
-          <Calendar color="#6b7280" size={20} />
-        </TouchableOpacity>
+        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Kanban Board */}

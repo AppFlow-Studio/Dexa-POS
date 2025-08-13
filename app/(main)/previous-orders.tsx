@@ -1,18 +1,13 @@
+import DatePicker from "@/components/date-picker";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
 import { CartItem, PreviousOrder } from "@/lib/types";
-import { Calendar, Search } from "lucide-react-native";
+import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import {
-  FlatList,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { FlatList, Text, TextInput, View } from "react-native";
 
 const TABLE_HEADERS = [
   "# Serial No",
@@ -37,15 +32,17 @@ const PreviousOrdersScreen = () => {
   const [selectedOrder, setSelectedOrder] = useState<PreviousOrder | null>(
     null
   );
+  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
 
   // State for filters would go here
   const [searchText, setSearchText] = useState("");
   const filteredOrders = useMemo(() => MOCK_PREVIOUS_ORDERS, []); // Add filtering logic later
 
-  const handleViewNotes = (items: PreviousOrder["items"]) => {
-    setSelectedOrderItems(items);
+  const handleOpenNotes = (order: PreviousOrder) => {
+    setSelectedOrder(order);
     setActiveModal("notes");
   };
+
   const handleOpenDelete = (order: PreviousOrder) => {
     setSelectedOrder(order);
     setActiveModal("delete");
@@ -68,25 +65,20 @@ const PreviousOrdersScreen = () => {
     <View className="flex-1 p-6 bg-white">
       {/* Toolbar */}
       <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
+        <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-3 w-[300px]">
           <Search color="#6b7280" size={20} />
           <TextInput
             placeholder="Search Order"
             className="ml-2 text-base flex-1"
           />
         </View>
-        <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
-          <Text className="font-semibold text-gray-600 mr-2">
-            Date: 02/03/25
-          </Text>
-          <Calendar color="#6b7280" size={20} />
-        </TouchableOpacity>
+        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Table */}
-      <View className="flex-1 border border-gray-200 rounded-xl">
+      <View className="flex-1">
         {/* Table Header */}
-        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-gray-200">
+        <View className="flex-row p-4 rounded-t-xl border-b border-background-200">
           {TABLE_HEADERS.map((header, index) => {
             const widths: Record<number, string> = {
               0: "w-[8%]",
@@ -117,7 +109,7 @@ const PreviousOrdersScreen = () => {
           renderItem={({ item }) => (
             <PreviousOrderRow
               order={item}
-              onViewNotes={handleViewNotes}
+              onViewNotes={handleOpenNotes}
               onDelete={() => handleOpenDelete(item)}
               onPrint={() => handleOpenPrint(item)}
             />
@@ -128,7 +120,7 @@ const PreviousOrdersScreen = () => {
       <OrderNotesModal
         isOpen={activeModal === "notes"}
         onClose={() => setActiveModal(null)}
-        items={selectedOrderItems}
+        order={selectedOrder}
       />
       <ConfirmationModal
         isOpen={activeModal === "delete"}

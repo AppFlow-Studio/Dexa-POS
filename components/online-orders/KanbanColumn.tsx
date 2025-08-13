@@ -16,11 +16,11 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
 }) => {
   return (
     <View className="w-80 mr-4">
-      <View className={`p-3 rounded-t-xl`} style={{ backgroundColor: color }}>
+      <View className={`p-3 rounded-md`} style={{ backgroundColor: color }}>
         <Text className="font-bold text-white text-center">{title}</Text>
       </View>
-      <ScrollView className="bg-gray-100 p-2 rounded-b-xl">
-        <View className="space-y-3">
+      <ScrollView className="py-2">
+        <View className="gap-y-3">
           {orders.map((order) => (
             <OnlineOrderCard key={order.id} order={order} />
           ))}

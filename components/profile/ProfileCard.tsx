@@ -8,10 +8,10 @@ const ProfileCard = () => {
   const shift = MOCK_SHIFT_STATUS;
 
   return (
-    <View className="w-80 p-4 bg-white border border-gray-200 rounded-2xl items-center">
+    <View className="w-80 p-4 rounded-2xl items-center">
       <Image
         source={require("@/assets/images/tom_hardy.jpg")}
-        className="w-24 h-24 rounded-full"
+        className="w-24 h-24 rounded-2xl"
       />
       <Text className="text-xl font-bold text-gray-800 mt-4">
         {user.fullName}

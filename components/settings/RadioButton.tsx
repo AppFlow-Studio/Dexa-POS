@@ -23,10 +23,10 @@ const RadioButton: React.FC<RadioButtonProps> = ({
         {label}
       </Text>
       <View
-        className={`w-5 h-5 rounded-full border-2 items-center justify-center ${isSelected ? "border-primary-400" : "border-gray-300"}`}
+        className={`w-5 h-5 rounded-full border-2 items-center justify-center ${isSelected ? "border-[#30A25D]" : "border-gray-300"}`}
       >
         {isSelected && (
-          <View className="w-2.5 h-2.5 bg-primary-400 rounded-full" />
+          <View className="w-2.5 h-2.5 bg-[#30A25D] rounded-full" />
         )}
       </View>
     </TouchableOpacity>
