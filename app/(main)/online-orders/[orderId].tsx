@@ -36,22 +36,22 @@ const OnlineOrderDetailsScreen = () => {
 
   return (
     <View className="flex-1 bg-white">
-      <ScrollView className="flex-1 bg-gray-50 p-6">
-        <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-4xl font-extrabold text-gray-800">
-            {order.id}
+      <ScrollView className="flex-1 bg-white p-6">
+        <Text className="text-4xl font-extrabold text-gray-800 text-center">
+          {order.id}
+        </Text>
+        <View className="flex-row justify-between items-center mx-6">
+          <Text className="text-xl font-bold text-gray-800 mb-4">
+            Basic Info
           </Text>
           <Text className="text-base text-gray-500">{order.timestamp}</Text>
         </View>
 
         {/* --- Cards with Info --- */}
-        <View className="space-y-6">
+        <View className="gap-y-6">
           {/* Basic Info */}
           <View className="bg-white p-6 rounded-2xl border border-gray-200">
-            <Text className="text-xl font-bold text-gray-800 mb-4">
-              Basic Info
-            </Text>
-            <View className="space-y-4">
+            <View className="gap-y-4">
               <DetailRow>
                 <DetailItem
                   label="Customer ID"
@@ -80,7 +80,7 @@ const OnlineOrderDetailsScreen = () => {
 
           {/* Order Info */}
           <View className="bg-white p-6 rounded-2xl border border-gray-200">
-            <View className="space-y-4">
+            <View className="gap-y-4">
               <DetailRow>
                 <DetailItem label="Order Placed at" value={order.timestamp} />
                 <DetailItem label="Order Due time" value="02/03/25, 06:06 PM" />
@@ -118,7 +118,7 @@ const OnlineOrderDetailsScreen = () => {
             <Text className="text-xl font-bold text-gray-800 mb-4">
               Items ({order.itemCount})
             </Text>
-            <View className="space-y-3">
+            <View className="gap-y-3">
               {order.items.map((item) => (
                 <OrderDetailItem key={item.id} item={item} />
               ))}
@@ -126,16 +126,16 @@ const OnlineOrderDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Add some space for the floating footer */}
-        <View className="h-24" />
+        {/* Add some gap for the floating footer */}
+        <View className="h-12" />
       </ScrollView>
 
       {/* Footer */}
-      <View className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex-row justify-end gap-2">
-        <TouchableOpacity className="py-3 px-8 border border-gray-300 rounded-lg items-center">
+      <View className="p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex-row justify-end gap-2">
+        <TouchableOpacity className="py-3 px-8 border border-gray-300 flex-1 rounded-lg items-center">
           <Text className="font-bold text-gray-700">Reject</Text>
         </TouchableOpacity>
-        <TouchableOpacity className="py-3 px-8 bg-primary-400 rounded-lg items-center">
+        <TouchableOpacity className="py-3 px-8 bg-primary-400 flex-1 rounded-xl items-center">
           <Text className="font-bold text-white">Accept</Text>
         </TouchableOpacity>
       </View>
