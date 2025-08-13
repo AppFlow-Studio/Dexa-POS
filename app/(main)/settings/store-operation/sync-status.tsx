@@ -1,12 +1,8 @@
+import DatePicker from "@/components/date-picker";
 import OfflineOrderRow from "@/components/settings/sync-status/OfflineOrderRow";
 import { MOCK_OFFLINE_ORDERS } from "@/lib/mockData";
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-} from "lucide-react-native";
-import React from "react";
+import { ChevronLeft, ChevronRight, Search } from "lucide-react-native";
+import React, { useState } from "react";
 import {
   FlatList,
   Text,
@@ -25,12 +21,12 @@ const TABLE_HEADERS = [
 ];
 
 const SyncStatusScreen = () => {
-  // State for filters would go here
+  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       {/* Main Content */}
-      <View className="flex-1 space-y-6">
+      <View className="flex-1 gap-y-6">
         {/* Last Updated Card */}
         <View className="bg-white p-6 rounded-2xl border border-gray-200 flex-row justify-between items-center">
           <Text className="text-xl font-bold text-gray-800">Last Updated</Text>
@@ -45,25 +41,20 @@ const SyncStatusScreen = () => {
 
           {/* Toolbar */}
           <View className="flex-row items-center justify-between my-4">
-            <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
+            <View className="flex-row items-center bg-gray-100 rounded-lg px-3 w-[300px]">
               <Search color="#6b7280" size={20} />
               <TextInput
                 placeholder="Search Order"
                 className="ml-2 text-base flex-1"
               />
             </View>
-            <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
-              <Text className="font-semibold text-gray-600 mr-2">
-                Date: 02/03/25
-              </Text>
-              <Calendar color="#6b7280" size={20} />
-            </TouchableOpacity>
+            <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
           </View>
 
           {/* Table */}
-          <View className="flex-1 border border-gray-200 rounded-xl">
+          <View className="flex-1 rounded-xl">
             {/* Table Header */}
-            <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-gray-200">
+            <View className="flex-row p-4 bg-background-100 rounded-t-xl border-b border-background-400">
               {TABLE_HEADERS.map((header) => (
                 <Text
                   key={header}
@@ -87,10 +78,10 @@ const SyncStatusScreen = () => {
               <Text className="font-bold text-white">Sync Now</Text>
             </TouchableOpacity>
             <View className="flex-row items-center gap-2">
-              <TouchableOpacity className="p-2 border border-gray-300 rounded-md">
+              <TouchableOpacity className="p-2 border border-gray-300 rounded-full">
                 <ChevronLeft color="#4b5563" size={20} />
               </TouchableOpacity>
-              <TouchableOpacity className="p-2 border border-gray-300 rounded-md bg-primary-400">
+              <TouchableOpacity className="p-2 border border-gray-300 rounded-full bg-primary-400">
                 <ChevronRight color="white" size={20} />
               </TouchableOpacity>
             </View>

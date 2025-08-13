@@ -17,43 +17,45 @@ const ReceiptAndTippingRulesScreen = () => {
     useState<ReceiptOption>("alwaysPrint");
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       {/* Main Content Area */}
-      <View className="flex-1 space-y-6">
+      <View className="flex-1 gap-y-6">
         {/* Tipping Settings */}
-        <View className="bg-white p-6 rounded-2xl border border-gray-200">
+        <View className="bg-white p-6 pt-3 rounded-2xl border border-gray-200">
           <SettingsHeader
             title="Enable Tipping"
             value={isTippingEnabled}
             onValueChange={setTippingEnabled}
           />
-          {isTippingEnabled && (
-            <View className="flex-row gap-4 mt-4">
-              <TextInput
-                value={tip1}
-                onChangeText={setTip1}
-                className="flex-1 p-3 bg-gray-100 rounded-lg text-center font-semibold text-gray-700"
-                keyboardType="numeric"
-              />
-              <TextInput
-                value={tip2}
-                onChangeText={setTip2}
-                className="flex-1 p-3 bg-gray-100 rounded-lg text-center font-semibold text-gray-700"
-                keyboardType="numeric"
-              />
-              <TextInput
-                value={tip3}
-                onChangeText={setTip3}
-                className="flex-1 p-3 bg-gray-100 rounded-lg text-center font-semibold text-gray-700"
-                keyboardType="numeric"
-              />
-            </View>
-          )}
+          <View className="bg-background-300 p-4 rounded-2xl border border-gray-200">
+            {isTippingEnabled && (
+              <View className="flex-row gap-4">
+                <TextInput
+                  value={tip1}
+                  onChangeText={setTip1}
+                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  value={tip2}
+                  onChangeText={setTip2}
+                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                  keyboardType="numeric"
+                />
+                <TextInput
+                  value={tip3}
+                  onChangeText={setTip3}
+                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
+          </View>
         </View>
 
         {/* Receipt Printing Settings */}
         <SettingsCard title="Automatic Receipt Printing">
-          <View className="space-y-3">
+          <View className="gap-y-3">
             <RadioButton
               label="Always Print Receipt"
               isSelected={receiptOption === "alwaysPrint"}
@@ -74,7 +76,7 @@ const ReceiptAndTippingRulesScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end pt-4 border-t border-gray-200">
+      <View className="flex-row justify-start pt-4 border-t border-gray-200">
         <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
           <Text className="font-bold text-white">Save</Text>
         </TouchableOpacity>

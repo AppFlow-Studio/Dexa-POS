@@ -13,7 +13,7 @@ const HardwareStatusRow = ({
   <View className="flex-row justify-between items-center bg-white p-4 rounded-2xl border border-gray-200">
     <Text className="text-lg text-gray-800">{device}</Text>
     <View
-      className={`flex-row items-center px-2 py-1 rounded-md ${isConnected ? "bg-green-100" : "bg-gray-200"}`}
+      className={`flex-row items-center px-2 py-1 rounded-3xl ${isConnected ? "bg-green-100" : "bg-gray-200"}`}
     >
       <View
         className={`w-2 h-2 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-gray-400"}`}
@@ -42,11 +42,11 @@ const DeviceAndSupportScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="flex-1 space-y-6">
+        <View className="flex-1 gap-y-6">
           {/* Device Information Section */}
-          <View className="space-y-4">
+          <View className="gap-y-4">
             <InfoField label="Device Name" value={deviceInfo.name} />
             <InfoField label="App Version" value={deviceInfo.appVersion} />
             <InfoField label="Device ID" value={deviceInfo.deviceId} />
@@ -54,11 +54,11 @@ const DeviceAndSupportScreen = () => {
           </View>
 
           {/* Hardware Status Section */}
-          <View>
+          <View className="border border-background-400 p-6 rounded-2xl">
             <Text className="text-xl font-bold text-gray-800 mb-4">
               Hardware Status
             </Text>
-            <View className="space-y-4">
+            <View className="gap-y-4">
               <HardwareStatusRow
                 device="Reciept Printer"
                 isConnected={hardwareStatus.receiptPrinter}

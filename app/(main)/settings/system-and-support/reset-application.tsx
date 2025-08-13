@@ -20,9 +20,9 @@ const ResetApplicationScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       {/* Main Content Card */}
-      <View className="bg-white p-6 rounded-2xl border border-gray-200">
+      <View className="p-6">
         <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={() => setModalType("clearCache")}

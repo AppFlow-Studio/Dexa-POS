@@ -12,10 +12,8 @@ export default function MainLayout() {
       <View className="flex-1 flex-row">
         {/* The Sidebar is now a self-contained component that handles its own state */}
         <Sidebar />
-
-        {/* The Slot is the main content area that takes up the remaining space */}
         <View className="flex-1 flex-col">
-          <View className="px-6 pt-6 pb-4 border-b border-gray-200">
+          <View className="px-6 pt-3 pb-2">
             <Header />
           </View>
           <Slot />

@@ -11,7 +11,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-100">
+    <View className="flex-row items-center p-4 border-b border-background-400">
       {/* Column widths are set to match the header */}
       <Text className="w-1/6 font-semibold text-gray-600">
         {order.serialNo}

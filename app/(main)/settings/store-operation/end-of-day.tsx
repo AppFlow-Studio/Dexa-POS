@@ -1,7 +1,6 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Href, useRouter } from "expo-router";
 import {
-  ArrowLeft,
   Banknote,
   Calendar,
   CheckSquare,
@@ -78,20 +77,7 @@ const EndOfDayReportScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
-      {/* Page Header */}
-      <View className="flex-row items-center my-4">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="p-2 mr-4 bg-white rounded-lg border border-gray-200"
-        >
-          <ArrowLeft color="#1f2937" size={24} />
-        </TouchableOpacity>
-        <Text className="text-3xl font-bold text-gray-800">
-          Settings / Store Operation / End of Day Report
-        </Text>
-      </View>
-
+    <View className="flex-1 bg-background-100 p-6">
       {/* Top Toolbar */}
       <View className="flex-row justify-between items-center mb-6">
         <View className="bg-white p-1 rounded-xl flex-row self-start border border-gray-200">
@@ -127,8 +113,8 @@ const EndOfDayReportScreen = () => {
       {/* Main Content */}
       <View className="flex-1 flex-row gap-6">
         {/* Left Column: Report Details */}
-        <ScrollView className="flex-[2]" showsVerticalScrollIndicator={false}>
-          <View className="space-y-4">
+        <ScrollView className="w-[40%]" showsVerticalScrollIndicator={false}>
+          <View className="gap-y-4">
             <SummaryCard title="Sales & Taxes Summary">
               <SummaryRow
                 label="Total net sales"
@@ -217,7 +203,7 @@ const EndOfDayReportScreen = () => {
         </ScrollView>
 
         {/* Right Column: Actions & Status */}
-        <View className="flex-1 space-y-4">
+        <View className="w-[60%] gap-y-4">
           <View className="flex-row gap-2">
             <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center bg-white">
               <Text className="font-bold text-gray-700">Run Sales Summary</Text>
@@ -263,7 +249,7 @@ const EndOfDayReportScreen = () => {
             title="All payments captured"
           />
 
-          <View className="mt-auto pt-4 space-y-2 border-t border-gray-200">
+          <View className="mt-auto pt-4 gap-y-2 border-t border-gray-200">
             <View className="flex-row gap-2">
               <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center bg-white">
                 <Text className="font-bold text-gray-700">Print Receipt</Text>

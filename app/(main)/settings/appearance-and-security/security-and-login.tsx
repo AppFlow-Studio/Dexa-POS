@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronDown, LogOut } from "lucide-react-native";
+import { LogOut } from "lucide-react-native";
 import React, { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,8 +43,8 @@ const SecurityAndLoginScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
-      <View className="flex-1 space-y-6">
+    <View className="flex-1 bg-background-300 p-6">
+      <View className="flex-1 gap-y-6">
         <View className="bg-white p-6 rounded-2xl border border-gray-200">
           <SettingsHeader
             title="End Screen Lock"
@@ -52,7 +52,7 @@ const SecurityAndLoginScreen = () => {
             onValueChange={setScreenLockEnabled}
           />
           {isScreenLockEnabled && (
-            <View className="mt-4">
+            <View className="mt-4 bg-background-300 p-4 rounded-lg flex-row items-center gap-4">
               <Text className="font-semibold text-gray-700 mb-2">
                 Lock After
               </Text>
@@ -60,13 +60,13 @@ const SecurityAndLoginScreen = () => {
               <Select
                 value={lockAfter}
                 onValueChange={(option) => option && setLockAfter(option)}
+                className="flex-1"
               >
-                <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+                <SelectTrigger className="flex-grow p-3 bg-white rounded-lg flex-row items-center">
                   <SelectValue
                     placeholder="Select time..."
                     className="text-base text-gray-800"
                   />
-                  <ChevronDown color="#6b7280" size={20} />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
                   <SelectGroup>
@@ -94,7 +94,7 @@ const SecurityAndLoginScreen = () => {
             onValueChange={setSwitchUserEnabled}
           />
           {isSwitchUserEnabled && (
-            <View className="mt-4 flex-row justify-between items-center p-4 bg-gray-50 rounded-lg">
+            <View className="mt-4 flex-row justify-between items-center p-4 bg-background-300 rounded-lg">
               <View className="flex-row items-center">
                 <Image
                   source={require("@/assets/images/tom_hardy.jpg")}
