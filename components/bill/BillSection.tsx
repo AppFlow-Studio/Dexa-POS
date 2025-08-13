@@ -1,8 +1,9 @@
+import { images } from "@/lib/image";
 import { CartItem } from "@/lib/types";
 import { useCartStore } from "@/stores/useCartStore";
 import { useTableStore } from "@/stores/useTableStore";
 import React, { useState } from "react";
-import { ScrollView } from "react-native";
+import { Image, ScrollView } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
@@ -47,6 +48,7 @@ const BillSection = ({ tableId }: { tableId?: string }) => {
       className="max-w-96 bg-background-100 border-gray-200"
       contentContainerStyle={{ flexGrow: 1 }}
     >
+      <Image source={images.topBar} className="w-full" resizeMode="cover" />
       <OrderDetails />
       {tableId && table ? (
         <BillSectionContent cart={table.cart} />

@@ -12,7 +12,7 @@ interface BillSummaryProps {
 const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
   // 2. It no longer calls the useCartStore hook. It uses the cart prop directly.
   return (
-    <View className="flex-1 ">
+    <View className="flex-1 bg-white">
       <View className="my-4 px-4">
         <Text className="text-xl font-bold text-accent-500 mb-4">Bills</Text>
         <ScrollView

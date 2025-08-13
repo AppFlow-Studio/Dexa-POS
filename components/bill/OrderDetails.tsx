@@ -4,7 +4,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const OrderDetails: React.FC = () => {
   return (
-    <View className="mb-4 px-4">
+    <View className="pb-4 px-4 bg-white">
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <TouchableOpacity className="p-2.5 bg-background-300 rounded-full">

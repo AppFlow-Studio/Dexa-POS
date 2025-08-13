@@ -10,13 +10,12 @@ export default function MainLayout() {
     // SafeAreaView handles the top notch and bottom system bar
     <SafeAreaView edges={["top"]} className="flex-1 bg-white">
       <View className="flex-1 flex-row">
-        {/* Column 1: The persistent Sidebar */}
+        {/* The Sidebar is now a self-contained component that handles its own state */}
         <Sidebar />
 
-        {/* Column 2: The content of the active screen, rendered by Expo Router */}
-        {/* The Slot will be replaced by home.tsx, settings/my-profile.tsx, etc. */}
+        {/* The Slot is the main content area that takes up the remaining space */}
         <View className="flex-1 flex-col">
-          <View className="px-6 pb-4 border-gray-200">
+          <View className="px-6 pt-6 pb-4 border-b border-gray-200">
             <Header />
           </View>
           <Slot />
