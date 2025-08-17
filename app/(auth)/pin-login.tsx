@@ -1,6 +1,6 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { ArrowLeft, Clock } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -49,15 +49,19 @@ const PinLoginScreen = () => {
 
       <PinNumpad onKeyPress={handleKeyPress} />
 
-      <TouchableOpacity className="self-end my-6">
-        <Text className="font-semibold text-primary-400">Forgot Pin</Text>
-      </TouchableOpacity>
+      <Link href="/forgot-pin" asChild>
+        <TouchableOpacity className="self-end my-6">
+          <Text className="font-semibold text-primary-400">Forgot Pin</Text>
+        </TouchableOpacity>
+      </Link>
 
       <View className="flex-row gap-4">
-        <TouchableOpacity className="flex-1 p-4 bg-background-100 border border-background-500 rounded-xl items-center flex-row justify-center gap-2">
-          <Text className="text-accent-500 text-lg font-bold">Timeclock</Text>
-          <Clock className="text-accent-500" size={20} />
-        </TouchableOpacity>
+        <Link href="/timeclock" asChild>
+          <TouchableOpacity className="flex-1 p-4 bg-background-100 border border-background-500 rounded-xl items-center flex-row justify-center gap-2">
+            <Text className="text-accent-500 text-lg font-bold">Timeclock</Text>
+            <Clock className="text-accent-500" size={20} />
+          </TouchableOpacity>
+        </Link>
         <TouchableOpacity
           onPress={handleLogin}
           className="flex-1 p-4 bg-primary-400 rounded-xl items-center flex-row justify-center gap-2"
