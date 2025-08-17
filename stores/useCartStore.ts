@@ -8,7 +8,7 @@ interface CartState {
   checkDiscount: Discount | null; // The currently applied discount
   discountAmount: number; // The calculated monetary value of the discount
   addItem: (newItem: CartItem) => void;
-
+  updateItem: (updatedItem: CartItem) => void;
   removeItem: (itemId: string) => void;
   increaseQuantity: (itemId: string) => void;
   decreaseQuantity: (itemId: string) => void;
@@ -75,6 +75,15 @@ export const useCartStore = create<CartState>((set) => {
       // The logic is now much simpler. We just add the pre-constructed item.
       set((state) => ({
         items: [...state.items, newItem],
+      }));
+      recalculateTotals();
+    },
+
+    updateItem: (updatedItem) => {
+      set((state) => ({
+        items: state.items.map((item) =>
+          item.id === updatedItem.id ? updatedItem : item
+        ),
       }));
       recalculateTotals();
     },

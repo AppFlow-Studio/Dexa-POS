@@ -1,9 +1,10 @@
+import { useCartData } from "@/hooks/useCartData";
 import { useCartStore } from "@/stores/useCartStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTableStore } from "@/stores/useTableStore";
 import { useRouter } from "expo-router";
 import { FileText, Printer, ShoppingBag } from "lucide-react-native";
-import React, { useMemo } from "react"; // Import useMemo
+import React from "react"; // Import useMemo
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const ReceiptRow = ({
@@ -24,50 +25,9 @@ const PaymentSuccessView = () => {
   const { close, paymentMethod, activeTableId } = usePaymentStore();
 
   // --- Get data and actions from ALL relevant stores ---
-  const {
-    items: globalCartItems,
-    subtotal: globalSubtotal,
-    tax: globalTax,
-    total: globalTotal,
-    clearCart: clearGlobalCart,
-  } = useCartStore();
-
-  const { getTableById, clearTableCart } = useTableStore();
-
-  // --- This is the core logic for selecting the correct cart data ---
-  const { items, subtotal, tax, total } = useMemo(() => {
-    if (activeTableId) {
-      const tableCart = getTableById(activeTableId);
-      // We need to recalculate totals for the specific table cart if it exists
-      const sub =
-        tableCart?.cart.reduce(
-          (acc, item) => acc + item.price * item.quantity,
-          0
-        ) || 0; // Provide fallback 0
-      const tx = sub * 0.05;
-      const tot = sub + tx;
-      return {
-        items: tableCart?.cart || [],
-        subtotal: sub,
-        tax: tx,
-        total: tot,
-      };
-    }
-    // If no tableId, fall back to the global cart's data
-    return {
-      items: globalCartItems,
-      subtotal: globalSubtotal,
-      tax: globalTax,
-      total: globalTotal,
-    };
-  }, [
-    activeTableId,
-    globalCartItems,
-    getTableById,
-    globalSubtotal,
-    globalTax,
-    globalTotal,
-  ]);
+  const { items, subtotal, tax, total, totalDiscountAmount } = useCartData();
+  const { clearTableCart } = useTableStore();
+  const { clearCart: clearGlobalCart } = useCartStore();
 
   const handleDone = () => {
     if (activeTableId) {
@@ -142,6 +102,12 @@ const PaymentSuccessView = () => {
           {/* Financial Details */}
           <View className="mt-4">
             <ReceiptRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} />
+            {totalDiscountAmount > 0 && (
+              <ReceiptRow
+                label="Discount"
+                value={`-$${totalDiscountAmount.toFixed(2)}`}
+              />
+            )}
             <ReceiptRow label="Tax" value={`$${tax.toFixed(2)}`} />
             <ReceiptRow label="Voucher" value={`$${(0.0).toFixed(2)}`} />
           </View>

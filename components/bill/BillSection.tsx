@@ -34,34 +34,28 @@ const BillSection = ({ tableId }: { tableId?: string }) => {
   const handleCloseDiscounts = () => {
     setDiscountOverlayVisible(false);
   };
-  const handlePaymentSuccess = () => {
-    if (tableId) {
-      // When payment is successful, clear this table's cart
-      // The store logic will automatically mark it as 'Needs Cleaning'
-      clearTableCart(tableId);
-      // You would also close the payment modal here
-    }
-  };
 
   return (
-    <ScrollView
-      className="max-w-96 bg-background-100 border-gray-200"
-      contentContainerStyle={{ flexGrow: 1 }}
-    >
-      <Image source={images.topBar} className="w-full" resizeMode="cover" />
-      <OrderDetails />
-      {tableId && table ? (
-        <BillSectionContent cart={table.cart} />
-      ) : (
-        <BillSectionContent cart={globalCart} />
-      )}
-      <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-      <PaymentActions tableId={tableId} />
-      <DiscountOverlay
-        isVisible={isDiscountOverlayVisible}
-        onClose={handleCloseDiscounts}
-      />
-    </ScrollView>
+    <>
+      <ScrollView
+        className="max-w-96 bg-background-100 border-gray-200"
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        <Image source={images.topBar} className="w-full" resizeMode="cover" />
+        <OrderDetails />
+        {tableId && table ? (
+          <BillSectionContent cart={table.cart} />
+        ) : (
+          <BillSectionContent cart={globalCart} />
+        )}
+        <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
+        <PaymentActions tableId={tableId} />
+        <DiscountOverlay
+          isVisible={isDiscountOverlayVisible}
+          onClose={handleCloseDiscounts}
+        />
+      </ScrollView>
+    </>
   );
 };
 

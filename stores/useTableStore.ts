@@ -13,7 +13,8 @@ interface TableState {
     tableId: string,
     newPosition: { x: number; y: number }
   ) => void;
-  addItemToTableCart: (tableId: string, newItem: CartItem) => void; // Using 'any' for simplicity, can be typed later
+  addItemToTableCart: (tableId: string, newItem: CartItem) => void;
+  updateItemInTableCart: (tableId: string, updatedItem: CartItem) => void;
   updateTableStatus: (tableId: string, newStatus: TableStatus) => void;
   getTableById: (tableId: string) => TableWithCart | undefined;
   clearTableCart: (tableId: string) => void;
@@ -39,6 +40,21 @@ export const useTableStore = create<TableState>((set, get) => ({
         if (table.id === tableId) {
           const newCart = [...table.cart, newItem];
           return { ...table, cart: newCart, status: "In Use" };
+        }
+        return table;
+      }),
+    }));
+  },
+
+  updateItemInTableCart: (tableId, updatedItem) => {
+    set((state) => ({
+      tables: state.tables.map((table) => {
+        if (table.id === tableId) {
+          // Find the item in this table's cart and update it
+          const updatedCart = table.cart.map((item) =>
+            item.id === updatedItem.id ? updatedItem : item
+          );
+          return { ...table, cart: updatedCart };
         }
         return table;
       }),

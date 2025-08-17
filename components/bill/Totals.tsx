@@ -1,38 +1,44 @@
-import { CartItem } from "@/lib/types"; // Use your global CartItem type
+import { CartItem } from "@/lib/types";
+import { useCartStore } from "@/stores/useCartStore";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 
-// 1. The component now accepts a `cart` array as a prop
 interface TotalsProps {
   cart: CartItem[];
 }
 
-const TAX_RATE = 0.05; // It's good practice to keep constants like this here
+const TAX_RATE = 0.05;
 
 const Totals: React.FC<TotalsProps> = ({ cart }) => {
-  // 2. It no longer calls the useCartStore hook.
-  // Instead, it calculates the totals based on the passed-in cart prop.
-  const { subtotal, tax, total, totalDiscountAmount } = useMemo(() => {
-    // This logic should mirror the recalculateTotals function in your store
-    const sub = cart.reduce(
-      (acc, item) => acc + item.originalPrice * item.quantity,
-      0
-    );
+  // We still need the global store to check for a check-level discount
+  const checkDiscount = useCartStore((state) => state.checkDiscount);
 
+  const { subtotal, tax, total, totalDiscountAmount } = useMemo(() => {
+    // --- THIS IS THE FIX ---
+    // 1. Calculate the subtotal based on `item.price` (the price with customizations)
+    const sub = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+    // 2. Calculate item-level discounts based on the final item price
     const itemDiscounts = cart.reduce((acc, item) => {
       if (item.appliedDiscount) {
-        return (
-          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-        );
+        // The discount is a percentage of the final item price
+        return acc + item.price * item.appliedDiscount.value * item.quantity;
       }
       return acc;
     }, 0);
 
-    // Assuming check-level discounts are handled globally or passed down if needed
-    const totalDiscount = itemDiscounts; // + checkDiscountAmount
-    const subAfterDiscount = sub - totalDiscount;
-    const tx = subAfterDiscount * TAX_RATE;
-    const tot = subAfterDiscount + tx;
+    const subtotalAfterItemDiscounts = sub - itemDiscounts;
+
+    // 3. Calculate check-level discount based on the subtotal *after* item discounts
+    let checkDiscountAmount = 0;
+    if (checkDiscount) {
+      checkDiscountAmount = subtotalAfterItemDiscounts * checkDiscount.value;
+    }
+
+    const totalDiscount = itemDiscounts + checkDiscountAmount;
+    const finalSubtotal = sub - totalDiscount;
+    const tx = finalSubtotal * TAX_RATE;
+    const tot = finalSubtotal + tx;
 
     return {
       subtotal: sub,
@@ -40,7 +46,7 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
       total: tot,
       totalDiscountAmount: totalDiscount,
     };
-  }, [cart]);
+  }, [cart, checkDiscount]); // Add checkDiscount to the dependency array
 
   const voucher = 0.0;
 
@@ -54,8 +60,8 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
       </View>
       {totalDiscountAmount > 0 && (
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-base text-accent-300">Discount</Text>
-          <Text className="text-base text-accent-300">
+          <Text className="text-base text-green-600">Discount</Text>
+          <Text className="text-base text-green-600">
             -${totalDiscountAmount.toFixed(2)}
           </Text>
         </View>

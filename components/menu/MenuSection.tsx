@@ -1,10 +1,8 @@
 import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { CartItem, MenuItemType } from "@/lib/types";
-import { useCartStore } from "@/stores/useCartStore";
-import { useTableStore } from "@/stores/useTableStore";
+import { MenuItemType } from "@/lib/types";
+import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
-import ItemCustomizationDialog from "./ItemCustomizationDialog";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
@@ -22,14 +20,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
     []
   );
 
-  // State to track which menu item is currently selected
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [isDialogVisible, setDialogVisible] = useState(false);
-  const [selectedItemForDialog, setSelectedItemForDialog] =
-    useState<MenuItemType | null>(null);
-
-  const addToGoGlobalCart = useCartStore((state) => state.addItem);
-  const addItemToTableCart = useTableStore((state) => state.addItemToTableCart);
+  const openDialog = useCustomizationStore((state) => state.openToAdd);
 
   useEffect(() => {
     const filtered = MOCK_MENU_ITEMS.filter((item) => {
@@ -39,25 +30,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
     });
     setFilteredMenuItems(filtered);
   }, [activeMeal, activeCategory]);
-
-  const handleOpenDialog = (item: MenuItemType) => {
-    setSelectedItemForDialog(item);
-    setDialogVisible(true);
-  };
-
-  const handleCloseDialog = () => {
-    setDialogVisible(false);
-    setSelectedItemForDialog(null);
-  };
-
-  const handleSaveItem = (newItem: CartItem) => {
-    if (tableId) {
-      addItemToTableCart(tableId, newItem);
-    } else {
-      addToGoGlobalCart(newItem);
-    }
-    handleCloseDialog();
-  };
 
   return (
     <View className="mt-6 flex-1">
@@ -86,7 +58,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
         renderItem={({ item }) => (
           <MenuItem
             item={item}
-            onAddToCart={() => handleOpenDialog(item)}
+            onAddToCart={() => openDialog(item, tableId)}
             imageSource={
               item.image
                 ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
@@ -94,13 +66,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
             }
           />
         )}
-      />
-      {/* Render the dialog */}
-      <ItemCustomizationDialog
-        isVisible={isDialogVisible}
-        onClose={handleCloseDialog}
-        item={selectedItemForDialog}
-        onSave={handleSaveItem}
       />
     </View>
   );

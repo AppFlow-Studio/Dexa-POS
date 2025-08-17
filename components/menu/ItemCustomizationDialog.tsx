@@ -1,51 +1,49 @@
-import { AddOn, CartItem, ItemSize, MenuItemType } from "@/lib/types";
+import { AddOn, CartItem, ItemSize } from "@/lib/types";
 import { useCartStore } from "@/stores/useCartStore";
+import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useTableStore } from "@/stores/useTableStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
-interface ItemCustomizationDialogProps {
-  item: MenuItemType | null;
-  isVisible: boolean;
-  onClose: () => void;
-  onSave: (newItem: CartItem) => void;
-}
+const ItemCustomizationDialog: React.FC = () => {
+  const { isOpen, mode, menuItem, cartItem, tableId, close } =
+    useCustomizationStore();
+  // Get actions from the cart/table stores
+  const addGlobalItem = useCartStore((state) => state.addItem);
+  const updateGlobalItem = useCartStore((state) => state.updateItem);
+  const addTableItem = useTableStore((state) => state.addItemToTableCart);
+  const updateTableItem = useTableStore((state) => state.updateItemInTableCart); // You'll need to add this action
 
-const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
-  item,
-  isVisible,
-  onClose,
-  onSave,
-}) => {
+  // Internal state for the form
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState<ItemSize>({
-    id: "default",
-    name: "Regular",
-    priceModifier: 0,
-  });
+  const [selectedSize, setSelectedSize] = useState<ItemSize | undefined>();
   const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>([]);
   const [notes, setNotes] = useState("");
 
-  const addItemToCart = useCartStore((state) => state.addItem);
-
-  // Initialize state when item changes
+  // Effect to populate the form when the dialog opens
   useEffect(() => {
-    if (item) {
-      setQuantity(1);
-      setSelectedSize(
-        item.sizes?.[0] || { id: "default", name: "Regular", priceModifier: 0 }
-      );
-      setSelectedAddOns([]);
-      setNotes("");
+    if (isOpen) {
+      const itemToLoad = mode === "edit" ? cartItem : menuItem;
+      if (itemToLoad) {
+        setQuantity(mode === "edit" ? cartItem!.quantity : 1);
+        setSelectedSize(
+          mode === "edit" ? cartItem!.customizations.size : menuItem!.sizes?.[0]
+        );
+        setSelectedAddOns(
+          mode === "edit" ? cartItem!.customizations.addOns || [] : []
+        );
+        setNotes(mode === "edit" ? cartItem!.customizations.notes || "" : "");
+      }
     }
-  }, [item]);
+  }, [isOpen, mode, menuItem, cartItem]);
 
   // Calculate total using useMemo for performance
   const total = useMemo(() => {
-    if (!item) return 0;
+    if (!menuItem) return 0;
 
-    let baseTotal = item.price;
+    let baseTotal = menuItem.price;
     if (selectedSize) {
       baseTotal += selectedSize.priceModifier;
     }
@@ -53,7 +51,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
       baseTotal += addOn.price;
     });
     return baseTotal * quantity;
-  }, [quantity, selectedSize, selectedAddOns, item]);
+  }, [quantity, selectedSize, selectedAddOns, menuItem]);
 
   const handleAddOnToggle = useCallback((addOn: AddOn) => {
     setSelectedAddOns((prev) =>
@@ -63,45 +61,48 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
     );
   }, []);
 
-  const handleAddToCart = useCallback(() => {
-    if (!item) return;
+  const handleSave = useCallback(() => {
+    if (!menuItem) return;
 
-    // Create the final item data object
-    const newItem: CartItem = {
-      id: `${item.id}_${Date.now()}`,
-      menuItemId: item.id,
-      name: item.name,
+    const newItemData: Partial<CartItem> = {
+      menuItemId: menuItem.id,
+      name: menuItem.name,
       quantity,
-      originalPrice: item.price,
+      originalPrice: menuItem.price,
       price: total / quantity,
-      image: item.image, // The image filename is now a top-level property
-      customizations: {
-        size: selectedSize,
-        addOns: selectedAddOns,
-        notes,
-      },
-      availableDiscount: item.availableDiscount,
-      appliedDiscount: null,
+      image: menuItem.image,
+      customizations: { size: selectedSize, addOns: selectedAddOns, notes },
+      availableDiscount: menuItem.availableDiscount,
     };
 
-    // Call the onSave function passed down from the parent (MenuSection)
-    onSave(newItem);
-    onClose();
-  }, [
-    item,
-    quantity,
-    selectedSize,
-    selectedAddOns,
-    notes,
-    total,
-    onSave,
-    onClose,
-  ]);
+    if (mode === "edit" && cartItem) {
+      // Update existing item
+      const updatedItem = { ...cartItem, ...newItemData };
+      if (tableId) {
+        updateTableItem(tableId, updatedItem);
+      } else {
+        updateGlobalItem(updatedItem);
+      }
+    } else {
+      // Add new item
+      const newItem = {
+        ...newItemData,
+        id: `${menuItem.id}_${Date.now()}`,
+        appliedDiscount: null,
+      } as CartItem;
+      if (tableId) {
+        addTableItem(tableId, newItem);
+      } else {
+        addGlobalItem(newItem);
+      }
+    }
+    close();
+  }, [menuItem, quantity, selectedSize, selectedAddOns, notes, total, close]);
 
-  if (!item) return null;
+  if (!isOpen || !menuItem) return null;
 
   return (
-    <Dialog open={isVisible} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={close}>
       <DialogContent className="p-0 rounded-[36px] max-w-lg bg-[#11111A] border-none">
         {/* Dark Header */}
         <View className="p-6 rounded-t-2xl flex-row items-center gap-4">
@@ -111,13 +112,13 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
           />
           <View className="flex-1">
             <DialogTitle className="text-[#F1F1F1] text-2xl font-bold">
-              {item.name}
+              {menuItem.name}
             </DialogTitle>
             <Text className="text-[#F1F1F1] mt-1 text-sm">
-              {item.description}
+              {menuItem.description}
             </Text>
             <Text className="text-[#F1F1F1] font-medium text-lg mt-2">
-              ${item.price.toFixed(2)}
+              ${menuItem.price.toFixed(2)}
             </Text>
           </View>
         </View>
@@ -146,14 +147,14 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
           </View>
 
           {/* Sizes */}
-          {item.sizes && (
+          {menuItem.sizes && (
             <View className="mt-4">
               <Text className="text-lg font-medium text-accent-500 mb-2">
                 Size
               </Text>
               <View className="flex-row gap-2">
-                {item.sizes.map((size) => {
-                  const isSelected = selectedSize.id === size.id;
+                {menuItem.sizes.map((size) => {
+                  const isSelected = selectedSize?.id === size.id;
                   return (
                     <TouchableOpacity
                       key={size.id}
@@ -176,13 +177,13 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
           )}
 
           {/* Add-ons */}
-          {item.addOns && (
+          {menuItem.addOns && (
             <View className="mt-4">
               <Text className="text-lg font-medium text-accent-500 mb-">
                 Add-ons
               </Text>
               <View className="flex-row flex-wrap gap-2">
-                {item.addOns.map((addOn) => {
+                {menuItem.addOns.map((addOn) => {
                   const isSelected = selectedAddOns.some(
                     (a) => a.id === addOn.id
                   );
@@ -224,7 +225,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
           <DialogFooter className=" rounded-b-[36px] border-t border-gray-200 ">
             <View className="py-2 flex-row gap-2 justify-between items-center w-full ">
               <TouchableOpacity
-                onPress={onClose}
+                onPress={close}
                 className="px-8 py-3 flex-1 rounded-lg border border-gray-300 "
               >
                 <Text className="font-bold text-gray-700 text-center">
@@ -232,7 +233,7 @@ const ItemCustomizationDialog: React.FC<ItemCustomizationDialogProps> = ({
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleAddToCart}
+                onPress={handleSave}
                 className="px-8 py-3 flex-1 rounded-lg bg-primary-400"
               >
                 <Text className="font-bold text-white text-center">Add</Text>
