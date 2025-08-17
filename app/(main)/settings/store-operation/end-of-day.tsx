@@ -1,3 +1,8 @@
+import PaymentDetailsCard from "@/components/settings/end-of-day/PaymentDetailsCard";
+import RevenueCentersCard from "@/components/settings/end-of-day/RevenueCentersCard";
+import SalesTaxesSummaryCard from "@/components/settings/end-of-day/SalesTaxesSummaryCard";
+import ServerTipoutsCard from "@/components/settings/end-of-day/ServerTipoutsCard";
+import TotalVoidsCard from "@/components/settings/end-of-day/TotalVoidsCard";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Href, useRouter } from "expo-router";
 import {
@@ -116,88 +121,125 @@ const EndOfDayReportScreen = () => {
         <ScrollView className="w-[40%]" showsVerticalScrollIndicator={false}>
           <View className="gap-y-4">
             <SummaryCard title="Sales & Taxes Summary">
-              <SummaryRow
-                label="Total net sales"
-                value={`$${summary.netSales.toFixed(2)}`}
-              />
-              <SummaryRow label="Tax" value={`$${summary.tax.toFixed(2)}`} />
-              <View className="border-t border-dashed my-2" />
-              <View className="flex-row justify-between items-center">
-                <Text className="font-bold text-lg">Total Sales</Text>
-                <Text className="font-bold text-lg">
-                  ${summary.totalSales.toFixed(2)}
-                </Text>
-              </View>
+              {activeTab === "statement" ? (
+                <>
+                  <SummaryRow
+                    label="Total net sales"
+                    value={`$${summary.netSales.toFixed(2)}`}
+                  />
+                  <SummaryRow
+                    label="Tax"
+                    value={`$${summary.tax.toFixed(2)}`}
+                  />
+                  <View className="border-t border-dashed my-2" />
+                  <View className="flex-row justify-between items-center">
+                    <Text className="font-bold text-lg">Total Sales</Text>
+                    <Text className="font-bold text-lg">
+                      ${summary.totalSales.toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <SalesTaxesSummaryCard />
+              )}
             </SummaryCard>
 
             <SummaryCard title="Revenue Centers">
-              <View className="flex-row justify-between mb-2">
-                <Text className="font-bold text-gray-500">Revenue Centers</Text>
-                <Text className="font-bold text-gray-500">Qty</Text>
-                <Text className="font-bold text-gray-500">Net Sales</Text>
-              </View>
-              <SummaryRow
-                label="Dinning Room"
-                value={`${summary.diningRoomQty}\t\t$${summary.diningRoomSales.toFixed(2)}`}
-              />
-              <SummaryRow
-                label="Tax"
-                value={`${summary.taxQty}\t\t$${summary.tax.toFixed(2)}`}
-              />
+              {activeTab === "statement" ? (
+                <>
+                  <View className="flex-row justify-between mb-2">
+                    <Text className="font-bold text-gray-500">
+                      Revenue Centers
+                    </Text>
+                    <Text className="font-bold text-gray-500">Qty</Text>
+                    <Text className="font-bold text-gray-500">Net Sales</Text>
+                  </View>
+                  <SummaryRow
+                    label="Dinning Room"
+                    value={`${summary.diningRoomQty}\t\t$${summary.diningRoomSales.toFixed(2)}`}
+                  />
+                  <SummaryRow
+                    label="Tax"
+                    value={`${summary.taxQty}\t\t$${summary.tax.toFixed(2)}`}
+                  />
+                </>
+              ) : (
+                <RevenueCentersCard />
+              )}
             </SummaryCard>
 
             <SummaryCard title="Payment Details">
-              <SummaryRow
-                label="Total"
-                value={`$${summary.totalPayments.toFixed(2)}`}
-              />
-              <View className="border-t border-dashed my-2" />
-              <View className="flex-row justify-between items-center">
-                <Text className="font-bold text-lg">
-                  Total Payments - Total Sales =
-                </Text>
-                <Text className="font-bold text-lg">
-                  -${(summary.totalSales - summary.totalPayments).toFixed(2)}
-                </Text>
-              </View>
+              {activeTab === "statement" ? (
+                <>
+                  <SummaryRow
+                    label="Total"
+                    value={`$${summary.totalPayments.toFixed(2)}`}
+                  />
+                  <View className="border-t border-dashed my-2" />
+                  <View className="flex-row justify-between items-center">
+                    <Text className="font-bold text-lg">
+                      Total Payments - Total Sales =
+                    </Text>
+                    <Text className="font-bold text-lg">
+                      -$
+                      {(summary.totalSales - summary.totalPayments).toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <PaymentDetailsCard />
+              )}
             </SummaryCard>
 
             <SummaryCard title="Server Tipouts">
-              <SummaryRow
-                label="Cash before tipouts"
-                value={`$${summary.cashTipouts.toFixed(2)}`}
-              />
-              <Text className="text-sm text-gray-400">
-                ( Total Tips and fees Tipped out: $0.00 )
-              </Text>
-              <View className="border-t border-dashed my-2" />
-              <View className="flex-row justify-between items-center">
-                <Text className="font-bold text-lg">
-                  Total Payments - Total Sales
-                </Text>
-                <Text className="font-bold text-lg">
-                  -${(summary.totalSales - summary.totalPayments).toFixed(2)}
-                </Text>
-              </View>
+              {activeTab === "statement" ? (
+                <>
+                  <SummaryRow
+                    label="Cash before tipouts"
+                    value={`$${summary.cashTipouts.toFixed(2)}`}
+                  />
+                  <Text className="text-sm text-gray-400">
+                    ( Total Tips and fees Tipped out: $0.00 )
+                  </Text>
+                  <View className="border-t border-dashed my-2" />
+                  <View className="flex-row justify-between items-center">
+                    <Text className="font-bold text-lg">
+                      Total Payments - Total Sales
+                    </Text>
+                    <Text className="font-bold text-lg">
+                      -$
+                      {(summary.totalSales - summary.totalPayments).toFixed(2)}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <ServerTipoutsCard />
+              )}
             </SummaryCard>
 
             <SummaryCard title="Total Voids">
-              <SummaryRow
-                label="Void amount"
-                value={`$${summary.voidAmount.toFixed(2)}`}
-              />
-              <SummaryRow
-                label="Void order count"
-                value={summary.voidOrderCount.toString()}
-              />
-              <SummaryRow
-                label="Voit item count"
-                value={summary.voidItemCount.toString()}
-              />
-              <SummaryRow
-                label="Void percentage"
-                value={`${summary.voidPercentage.toFixed(1)}%`}
-              />
+              {activeTab === "statement" ? (
+                <>
+                  <SummaryRow
+                    label="Void amount"
+                    value={`$${summary.voidAmount.toFixed(2)}`}
+                  />
+                  <SummaryRow
+                    label="Void order count"
+                    value={summary.voidOrderCount.toString()}
+                  />
+                  <SummaryRow
+                    label="Voit item count"
+                    value={summary.voidItemCount.toString()}
+                  />
+                  <SummaryRow
+                    label="Void percentage"
+                    value={`${summary.voidPercentage.toFixed(1)}%`}
+                  />
+                </>
+              ) : (
+                <TotalVoidsCard />
+              )}
             </SummaryCard>
           </View>
         </ScrollView>
