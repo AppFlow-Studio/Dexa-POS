@@ -1,20 +1,15 @@
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
-import { useCartStore } from "@/stores/useCartStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
-import { useTableStore } from "@/stores/useTableStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
-  const { isOpen, mode, menuItem, cartItem, tableId, close } =
+  const { isOpen, mode, menuItem, cartItem, activeOrderId, close } =
     useCustomizationStore();
-  // Get actions from the cart/table stores
-  const addGlobalItem = useCartStore((state) => state.addItem);
-  const updateGlobalItem = useCartStore((state) => state.updateItem);
-  const addTableItem = useTableStore((state) => state.addItemToTableCart);
-  const updateTableItem = useTableStore((state) => state.updateItemInTableCart); // You'll need to add this action
+  const { addItemToActiveOrder, updateItemInActiveOrder } = useOrderStore();
 
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
@@ -64,40 +59,45 @@ const ItemCustomizationDialog: React.FC = () => {
   const handleSave = useCallback(() => {
     if (!menuItem) return;
 
-    const newItemData: Partial<CartItem> = {
-      menuItemId: menuItem.id,
-      name: menuItem.name,
-      quantity,
-      originalPrice: menuItem.price,
-      price: total / quantity,
-      image: menuItem.image,
-      customizations: { size: selectedSize, addOns: selectedAddOns, notes },
-      availableDiscount: menuItem.availableDiscount,
-    };
-
     if (mode === "edit" && cartItem) {
-      // Update existing item
-      const updatedItem = { ...cartItem, ...newItemData };
-      if (tableId) {
-        updateTableItem(tableId, updatedItem);
-      } else {
-        updateGlobalItem(updatedItem);
-      }
+      // If in edit mode, create an updated version of the existing cartItem
+      const updatedItem: CartItem = {
+        ...cartItem,
+        quantity,
+        price: total / quantity,
+        customizations: { size: selectedSize, addOns: selectedAddOns, notes },
+      };
+      updateItemInActiveOrder(updatedItem);
     } else {
-      // Add new item
-      const newItem = {
-        ...newItemData,
+      // If in add mode, create a brand new CartItem
+      const newItem: CartItem = {
         id: `${menuItem.id}_${Date.now()}`,
+        menuItemId: menuItem.id,
+        name: menuItem.name,
+        quantity,
+        originalPrice: menuItem.price,
+        price: total / quantity,
+        image: menuItem.image,
+        customizations: { size: selectedSize, addOns: selectedAddOns, notes },
+        availableDiscount: menuItem.availableDiscount,
         appliedDiscount: null,
-      } as CartItem;
-      if (tableId) {
-        addTableItem(tableId, newItem);
-      } else {
-        addGlobalItem(newItem);
-      }
+      };
+      addItemToActiveOrder(newItem);
     }
     close();
-  }, [menuItem, quantity, selectedSize, selectedAddOns, notes, total, close]);
+  }, [
+    menuItem,
+    cartItem,
+    mode,
+    quantity,
+    selectedSize,
+    selectedAddOns,
+    notes,
+    total,
+    close,
+    addItemToActiveOrder,
+    updateItemInActiveOrder,
+  ]);
 
   if (!isOpen || !menuItem) return null;
 

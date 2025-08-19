@@ -1,5 +1,5 @@
 import { Discount } from "@/lib/types";
-import { CartItem, useCartStore } from "@/stores/useCartStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -75,11 +75,15 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
   const [activeTab, setActiveTab] = useState<"check" | "items">("check");
 
   const {
-    items: cartItems,
+    activeOrderId,
+    orders,
     applyDiscountToCheck,
     applyDiscountToItem,
     removeDiscountFromItem,
-  } = useCartStore();
+  } = useOrderStore();
+
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const cartItems = activeOrder?.items || []; // Use the active order's cart
 
   // Reanimated value to control the vertical position of the sheet
   const translateY = useSharedValue(SCREEN_HEIGHT);
@@ -113,16 +117,21 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
   );
 
   const handleApplyCheckDiscount = (discount: Discount) => {
-    applyDiscountToCheck(discount);
-    onClose();
+    if (activeOrderId) {
+      applyDiscountToCheck(activeOrderId, discount);
+      onClose();
+    }
   };
 
   const handleToggleItemDiscount = (itemInCart: CartItem) => {
+    if (!activeOrderId) return;
+
     if (itemInCart.appliedDiscount) {
-      removeDiscountFromItem(itemInCart.id);
+      removeDiscountFromItem(activeOrderId, itemInCart.id);
     } else {
-      applyDiscountToItem(itemInCart.id);
+      applyDiscountToItem(activeOrderId, itemInCart.id);
     }
+    // We might not want to close immediately to allow applying multiple item discounts
     onClose();
   };
 

@@ -1,4 +1,4 @@
-import { useCartStore } from "@/stores/useCartStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { Tag, X } from "lucide-react-native";
 import React from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -12,10 +12,18 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
   // Get discount state and remove action from the store
-  const {
-    checkDiscount: appliedDiscount,
-    removeCheckDiscount: removeDiscount,
-  } = useCartStore();
+  const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
+
+  // Find the full active order object
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // Get the check-level discount from that specific order
+  const appliedDiscount = activeOrder?.checkDiscount;
+
+  const handleRemoveDiscount = () => {
+    if (activeOrderId) {
+      removeCheckDiscount(activeOrderId);
+    }
+  };
 
   return (
     <View className="p-4 bg-background-200">
@@ -36,7 +44,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
             {appliedDiscount.label}
           </Text>
           <TouchableOpacity
-            onPress={removeDiscount}
+            onPress={handleRemoveDiscount}
             className="p-1 bg-blue-100 rounded-full"
           >
             <X color="#2563eb" size={14} />

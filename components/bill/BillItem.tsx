@@ -1,19 +1,18 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { CartItem } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
-import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { Pencil, Utensils } from "lucide-react-native";
 import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 interface BillItemProps {
   item: CartItem;
-  tableId?: string;
 }
 
-const BillItem: React.FC<BillItemProps> = ({ item, tableId }) => {
-  const { activeTableId } = usePaymentStore();
+const BillItem: React.FC<BillItemProps> = ({ item }) => {
   const openDialogToEdit = useCustomizationStore((state) => state.openToEdit);
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
 
   const imageSource = item.image
     ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
@@ -60,7 +59,7 @@ const BillItem: React.FC<BillItemProps> = ({ item, tableId }) => {
           )}
           <TouchableOpacity
             className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl"
-            onPress={() => openDialogToEdit(item, activeTableId || undefined)}
+            onPress={() => openDialogToEdit(item, activeOrderId)}
           >
             <Text className="text-xs font-semibold text-primary-400 mr-1">
               Notes

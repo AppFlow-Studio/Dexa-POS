@@ -1,7 +1,6 @@
-import { useCartData } from "@/hooks/useCartData";
-import { useCartStore } from "@/stores/useCartStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { useTableStore } from "@/stores/useTableStore";
 import { useRouter } from "expo-router";
 import { FileText, Printer, ShoppingBag } from "lucide-react-native";
 import React from "react"; // Import useMemo
@@ -23,19 +22,36 @@ const ReceiptRow = ({
 const PaymentSuccessView = () => {
   const router = useRouter();
   const { close, paymentMethod, activeTableId } = usePaymentStore();
-
-  // --- Get data and actions from ALL relevant stores ---
-  const { items, subtotal, tax, total, totalDiscountAmount } = useCartData();
-  const { clearTableCart } = useTableStore();
-  const { clearCart: clearGlobalCart } = useCartStore();
+  const { updateTableStatus } = useFloorPlanStore();
+  const {
+    activeOrderId,
+    orders,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderTotal,
+    activeOrderDiscount,
+    closeActiveOrder,
+  } = useOrderStore();
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const items = activeOrder?.items || [];
 
   const handleDone = () => {
+    const { activeOrderId } = useOrderStore.getState(); // Get the current active order ID
+
+    if (activeOrderId) {
+      // Close the order in the order store
+      closeActiveOrder();
+    }
+
     if (activeTableId) {
-      clearTableCart(activeTableId);
+      // If the order was for a table, update the table's status
+      updateTableStatus(activeTableId, "Needs Cleaning");
+      // Close the payment modal
       close();
+      // Navigate to the clean table screen using the correct path format
       router.push(`/tables/clean-table/${activeTableId}`);
     } else {
-      clearGlobalCart();
+      // If it was a global/walk-in order, just close the modal
       close();
     }
   };
@@ -101,14 +117,17 @@ const PaymentSuccessView = () => {
 
           {/* Financial Details */}
           <View className="mt-4">
-            <ReceiptRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} />
-            {totalDiscountAmount > 0 && (
+            <ReceiptRow
+              label="Subtotal"
+              value={`$${activeOrderSubtotal.toFixed(2)}`}
+            />
+            {activeOrderDiscount > 0 && (
               <ReceiptRow
                 label="Discount"
-                value={`-$${totalDiscountAmount.toFixed(2)}`}
+                value={`-$${activeOrderDiscount.toFixed(2)}`}
               />
             )}
-            <ReceiptRow label="Tax" value={`$${tax.toFixed(2)}`} />
+            <ReceiptRow label="Tax" value={`$${activeOrderTax.toFixed(2)}`} />
             <ReceiptRow label="Voucher" value={`$${(0.0).toFixed(2)}`} />
           </View>
 
@@ -116,7 +135,7 @@ const PaymentSuccessView = () => {
           <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300 mt-4">
             <Text className="text-xl font-bold text-accent-500">Total</Text>
             <Text className="text-xl font-bold text-accent-500">
-              ${total.toFixed(2)}
+              ${activeOrderTotal.toFixed(2)}
             </Text>
           </View>
         </ScrollView>

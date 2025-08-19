@@ -1,5 +1,4 @@
 import { TableType } from "@/lib/types";
-import { Href, Link } from "expo-router";
 import React, { useEffect } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -17,6 +16,7 @@ interface DraggableTableProps {
   onDragEnd: (tableId: string, position: { x: number; y: number }) => void;
   isEditMode: boolean;
   canvasScale: SharedValue<number>;
+  onPress: () => void;
 }
 
 const STATUS_COLORS = {
@@ -24,6 +24,7 @@ const STATUS_COLORS = {
   "In Use": "#3B82F6", // Blue
   "Needs Cleaning": "#EF4444", // Red
 };
+const CHAIR_COLOR = "#D1D5DB"; // Gray for chairs
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
@@ -31,14 +32,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onDragEnd,
   isEditMode,
   canvasScale,
+  onPress, // 2. Receive the onPress handler
 }) => {
+  // --- All gesture and animation logic is unchanged ---
   const translateX = useSharedValue(position.x);
   const translateY = useSharedValue(position.y);
-
   const contextX = useSharedValue(0);
   const contextY = useSharedValue(0);
 
-  // Sync with parent state
   useEffect(() => {
     translateX.value = withSpring(position.x);
     translateY.value = withSpring(position.y);
@@ -51,7 +52,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       contextY.value = translateY.value;
     })
     .onUpdate((event) => {
-      // 4. Adjust the translation by the current canvas scale
       translateX.value =
         contextX.value + event.translationX / canvasScale.value;
       translateY.value =
@@ -65,7 +65,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     });
 
   const animatedStyle = useAnimatedStyle(() => ({
-    position: "absolute", // Crucial for SVG positioning
+    position: "absolute",
     top: 0,
     left: 0,
     transform: [
@@ -74,25 +74,14 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ],
   }));
 
-  // Visual styles remain similar to FloorPlanTable
-  const statusClasses: { [key: string]: string } = {
-    Available: "bg-white border-gray-200",
-    "In Use": "bg-red-500 border-red-600",
-    "Needs Cleaning": "bg-gray-200 border-gray-300",
-  };
-  const statusTextClasses: { [key: string]: string } = {
-    Available: "text-gray-800",
-    "In Use": "text-white",
-    "Needs Cleaning": "text-gray-600",
-  };
-
-  // Destructure the SVG component from the table data
   const TableComponent = table.component;
 
   const Content = () => (
     <Animated.View style={animatedStyle}>
-      <TableComponent color={STATUS_COLORS[table.status]} />
-      {/* Position the text label in the center of the SVG */}
+      <TableComponent
+        color={STATUS_COLORS[table.status]}
+        chairColor={CHAIR_COLOR}
+      />
       <View className="absolute inset-0 items-center justify-center">
         <Text className="text-white font-bold text-lg">{table.name}</Text>
       </View>
@@ -101,21 +90,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   return (
     <GestureDetector gesture={gesture}>
+      {/* 3. The logic is now much simpler */}
       {isEditMode ? (
+        // If editing, the content is just a view (not pressable)
         <Content />
       ) : (
-        <Link
-          href={
-            table.status === "Needs Cleaning"
-              ? `/tables/clean-table/${table.id}`
-              : (`/tables/${table.id}` as Href)
-          }
-          asChild
-        >
-          <TouchableOpacity activeOpacity={0.7}>
-            <Content />
-          </TouchableOpacity>
-        </Link>
+        // If not editing, the content is a pressable button
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+          <Content />
+        </TouchableOpacity>
       )}
     </GestureDetector>
   );

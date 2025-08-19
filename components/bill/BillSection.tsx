@@ -1,7 +1,6 @@
 import { images } from "@/lib/image";
 import { CartItem } from "@/lib/types";
-import { useCartStore } from "@/stores/useCartStore";
-import { useTableStore } from "@/stores/useTableStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
 import { Image, ScrollView } from "react-native";
 import BillSummary from "./BillSummary";
@@ -20,10 +19,10 @@ const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
   );
 };
 
-const BillSection = ({ tableId }: { tableId?: string }) => {
-  const clearTableCart = useTableStore((state) => state.clearTableCart);
-  const globalCart = useCartStore((state) => state.items); // Get the global cart
-  const table = useTableStore((state) => state.getTableById(tableId || "")); // Get the table-specific cart
+const BillSection = () => {
+  const { activeOrderId, orders } = useOrderStore();
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const cart = activeOrder?.items || [];
 
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
@@ -43,13 +42,9 @@ const BillSection = ({ tableId }: { tableId?: string }) => {
       >
         <Image source={images.topBar} className="w-full" resizeMode="cover" />
         <OrderDetails />
-        {tableId && table ? (
-          <BillSectionContent cart={table.cart} />
-        ) : (
-          <BillSectionContent cart={globalCart} />
-        )}
+        <BillSectionContent cart={cart} />
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-        <PaymentActions tableId={tableId} />
+        <PaymentActions />
         <DiscountOverlay
           isVisible={isDiscountOverlayVisible}
           onClose={handleCloseDiscounts}

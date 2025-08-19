@@ -1,7 +1,7 @@
 import BillSection from "@/components/bill/BillSection";
 import MenuSection from "@/components/menu/MenuSection";
-import { usePaymentStore } from "@/stores/usePaymentStore";
-import { useTableStore } from "@/stores/useTableStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle, Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -37,19 +37,30 @@ const UpdateTableScreen = () => {
   const [orderId, setOrderId] = useState("#021943");
   const [numberOfGuests, setNumberOfGuests] = useState(4);
 
-  const table = useTableStore((state) => state.getTableById(tableId as string));
+  const { tables } = useFloorPlanStore();
+  const { orders, setActiveOrder, startNewOrder, updateOrderDetails } =
+    useOrderStore();
+
+  const table = tables.find((t) => t.id === tableId);
+  // Find the active order for this table
+  const activeOrder = orders.find(
+    (o) => o.service_location_id === tableId && o.order_status === "Open"
+  );
 
   useEffect(() => {
-    // (See next step for store update)
-    const { setActiveTableId } = usePaymentStore.getState();
-    setActiveTableId(tableId as string);
+    let orderToActivate = activeOrder;
+    if (!orderToActivate && tableId) {
+      // If no open order exists for this table, create one.
+      orderToActivate = startNewOrder(tableId as string);
+    }
 
-    // 3. When the screen unmounts, clear the active table ID
-    return () => {
-      const { clearActiveTableId } = usePaymentStore.getState();
-      clearActiveTableId();
-    };
-  }, [tableId]); // Rerun if the tableId changes
+    if (orderToActivate) {
+      setActiveOrder(orderToActivate.id);
+    }
+
+    // On screen unmount, clear the active order from the global state
+    return () => setActiveOrder(null);
+  }, [tableId, orders, activeOrder, startNewOrder, setActiveOrder]);
 
   if (!table) {
     return (
@@ -81,7 +92,7 @@ const UpdateTableScreen = () => {
           <View className="flex-row gap-8 my-1">
             <FormInput
               label="Order"
-              value={orderId}
+              value={activeOrder?.id || "N/A"}
               onChangeText={setOrderId}
             />
             <View className="flex-1">
@@ -116,9 +127,9 @@ const UpdateTableScreen = () => {
       </View>
       <View className="flex-1 flex-row ">
         <View className="flex-1 p-6 px-4 pt-0">
-          <MenuSection tableId={tableId as string} />
+          <MenuSection />
         </View>
-        <BillSection tableId={tableId as string} />
+        <BillSection />
       </View>
 
       {/* --- Fixed Footer (Not Scrollable) --- */}

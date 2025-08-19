@@ -1,11 +1,17 @@
-import { useCartData } from "@/hooks/useCartData";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const CashPaymentView = () => {
   // Get totals from the cart store
-  const { subtotal, tax, total } = useCartData();
+  const {
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderTotal,
+    activeOrderDiscount,
+  } = useOrderStore();
+
   const { close, setView } = usePaymentStore();
 
   // State to manage the amount tendered by the customer
@@ -16,7 +22,10 @@ const CashPaymentView = () => {
   >("exact");
 
   // Calculate change due. Ensure it's not negative.
-  const changeDue = Math.max(0, parseFloat(amountTendered || "0") - total);
+  const changeDue = Math.max(
+    0,
+    parseFloat(amountTendered || "0") - activeOrderTotal
+  );
 
   // Suggested amounts for quick selection
   const suggestedAmounts = [5, 10, 15, 20, 25, 30, 35, 40, 50, 100];
@@ -28,7 +37,7 @@ const CashPaymentView = () => {
   };
 
   const handleSelectExact = () => {
-    setAmountTendered(total.toFixed(2));
+    setAmountTendered(activeOrderTotal.toFixed(2));
     setSelectedAmountId("exact");
   };
 
@@ -46,11 +55,23 @@ const CashPaymentView = () => {
         <View className="space-y-2 mb-4">
           <View className="flex-row justify-between">
             <Text className="text-accent-500">Subtotal</Text>
-            <Text className="text-accent-500">${subtotal.toFixed(2)}</Text>
+            <Text className="text-accent-500">
+              ${activeOrderSubtotal.toFixed(2)}
+            </Text>
           </View>
+          {activeOrderDiscount > 0 && (
+            <View className="flex-row justify-between">
+              <Text className="text-green-600">Discount</Text>
+              <Text className="text-green-600">
+                -${activeOrderDiscount.toFixed(2)}
+              </Text>
+            </View>
+          )}
           <View className="flex-row justify-between">
             <Text className="text-accent-500">Tax</Text>
-            <Text className="text-accent-500">${tax.toFixed(2)}</Text>
+            <Text className="text-accent-500">
+              ${activeOrderTax.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between">
             <Text className="text-accent-500">Voucher</Text>
@@ -62,7 +83,7 @@ const CashPaymentView = () => {
         <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-300 mb-6">
           <Text className="text-lg font-bold text-accent-500">Total</Text>
           <Text className="text-lg font-bold text-accent-500">
-            ${total.toFixed(2)}
+            ${activeOrderTotal.toFixed(2)}
           </Text>
         </View>
 
@@ -121,7 +142,7 @@ const CashPaymentView = () => {
           <TextInput
             value={amountTendered}
             onChangeText={setAmountTendered}
-            placeholder={`+ $${total.toFixed(2)}`}
+            placeholder={`+ $${activeOrderTotal.toFixed(2)}`}
             keyboardType="numeric"
             className="w-full p-4 bg-gray-100 border border-gray-200 rounded-lg text-lg text-right font-semibold text-accent-500"
           />

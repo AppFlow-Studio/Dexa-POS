@@ -1,11 +1,21 @@
-import { useCartData } from "@/hooks/useCartData";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
-  const { items, subtotal, tax, totalDiscountAmount, total } = useCartData();
+  const {
+    activeOrderId,
+    orders,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderDiscount,
+    activeOrderTotal,
+  } = useOrderStore();
   const { close, setView, paymentMethod } = usePaymentStore();
+
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const items = activeOrder?.items || [];
 
   return (
     <View className=" bg-background-100 p-6 rounded-2xl">
@@ -22,25 +32,35 @@ const ItemsReviewView = () => {
         <View className="flex-row justify-between items-center mb-2">
           <Text className="text-base text-gray-600">Subtotal</Text>
           <Text className="text-base text-gray-800">
-            ${subtotal.toFixed(2)}
+            ${activeOrderSubtotal.toFixed(2)}
           </Text>
         </View>
+        {activeOrderDiscount > 0 && (
+          <View className="flex-row justify-between">
+            <Text className="text-green-600">Discount</Text>
+            <Text className="text-green-600">
+              -${activeOrderDiscount.toFixed(2)}
+            </Text>
+          </View>
+        )}
         <View className="flex-row justify-between items-center mb-2">
           <Text className="text-base text-gray-600">Tax</Text>
-          <Text className="text-base text-gray-800">${tax.toFixed(2)}</Text>
+          <Text className="text-base text-gray-800">
+            ${activeOrderTax.toFixed(2)}
+          </Text>
         </View>
-        {totalDiscountAmount > 0 && (
+        {activeOrderTax > 0 && (
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-base text-green-600">Discount</Text>
             <Text className="text-base text-green-600">
-              -${totalDiscountAmount.toFixed(2)}
+              -${activeOrderTax.toFixed(2)}
             </Text>
           </View>
         )}
         <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300">
           <Text className="text-lg font-bold text-gray-900">Total</Text>
           <Text className="text-lg font-bold text-gray-900">
-            ${total.toFixed(2)}
+            ${activeOrderTotal.toFixed(2)}
           </Text>
         </View>
         {/* Actions */}

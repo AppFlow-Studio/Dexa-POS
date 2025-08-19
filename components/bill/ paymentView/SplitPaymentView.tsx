@@ -1,4 +1,4 @@
-import { useCartData } from "@/hooks/useCartData";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -13,7 +13,14 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { items, subtotal, tax, total } = useCartData();
+  const {
+    activeOrderId,
+    orders,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderTotal,
+    activeOrderDiscount,
+  } = useOrderStore();
 
   const { close, setView } = usePaymentStore();
 
@@ -21,10 +28,13 @@ const SplitPaymentView = () => {
   const [numberOfPeople, setNumberOfPeople] = useState(2);
   const [splits, setSplits] = useState<Split[]>([]);
 
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const items = activeOrder?.items || [];
+
   // This effect recalculates the splits whenever the total or number of people changes
   useMemo(() => {
     const newSplits: Split[] = [];
-    const amountPerPerson = total / numberOfPeople;
+    const amountPerPerson = activeOrderTotal / numberOfPeople;
     for (let i = 1; i <= numberOfPeople; i++) {
       newSplits.push({
         id: i,
@@ -33,7 +43,7 @@ const SplitPaymentView = () => {
       });
     }
     setSplits(newSplits);
-  }, [total, numberOfPeople]);
+  }, [activeOrderTotal, numberOfPeople]);
 
   const handleSetPaymentType = (splitId: number, type: PaymentType) => {
     setSplits((currentSplits) =>
@@ -89,11 +99,23 @@ const SplitPaymentView = () => {
           <View className="space-y-2 mb-4 mt-4">
             <View className="flex-row justify-between">
               <Text className="text-accent-500">Subtotal</Text>
-              <Text className="text-accent-500">${subtotal.toFixed(2)}</Text>
+              <Text className="text-accent-500">
+                ${activeOrderSubtotal.toFixed(2)}
+              </Text>
             </View>
+            {activeOrderDiscount > 0 && (
+              <View className="flex-row justify-between">
+                <Text className="text-green-600">Discount</Text>
+                <Text className="text-green-600">
+                  -${activeOrderDiscount.toFixed(2)}
+                </Text>
+              </View>
+            )}
             <View className="flex-row justify-between">
               <Text className="text-accent-500">Tax</Text>
-              <Text className="text-accent-500">${tax.toFixed(2)}</Text>
+              <Text className="text-accent-500">
+                ${activeOrderTax.toFixed(2)}
+              </Text>
             </View>
           </View>
 
@@ -101,7 +123,7 @@ const SplitPaymentView = () => {
           <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-300 mb-6">
             <Text className="text-lg font-bold text-accent-500">Total</Text>
             <Text className="text-lg font-bold text-accent-500">
-              ${total.toFixed(2)}
+              ${activeOrderTotal.toFixed(2)}
             </Text>
           </View>
 
@@ -222,7 +244,7 @@ const SplitPaymentView = () => {
               Total Split
             </Text>
             <Text className="text-lg font-bold text-accent-500">
-              ${total.toFixed(2)}
+              ${activeOrderTotal.toFixed(2)}
             </Text>
           </View>
         </ScrollView>

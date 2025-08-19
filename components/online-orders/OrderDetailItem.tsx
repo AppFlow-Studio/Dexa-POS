@@ -1,5 +1,5 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { CartItem } from "@/stores/useCartStore";
+import { CartItem } from "@/lib/types";
 import React from "react";
 import { Image, Text, View } from "react-native";
 
@@ -47,7 +47,7 @@ const OrderDetailItem: React.FC<{ item: CartItem }> = ({ item }) => {
       {/* Total */}
       <View className="w-[12.5%] items-end">
         <Text className="font-bold text-gray-800">
-          ${(item.finalPrice * item.quantity).toFixed(2)}
+          ${(item.price * item.quantity).toFixed(2)}
         </Text>
       </View>
     </View>

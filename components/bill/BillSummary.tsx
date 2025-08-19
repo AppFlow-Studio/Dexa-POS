@@ -10,7 +10,6 @@ interface BillSummaryProps {
 }
 
 const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
-  // 2. It no longer calls the useCartStore hook. It uses the cart prop directly.
   return (
     <View className="flex-1 bg-white">
       <View className="my-4 px-4">
@@ -21,7 +20,9 @@ const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
           nestedScrollEnabled={true}
         >
           {cart.length > 0 ? (
-            cart.map((item) => <BillItem key={item.id} item={item} />)
+            cart.map((item, index) => (
+              <BillItem key={`${item.id}-${index}`} item={item} />
+            ))
           ) : (
             <View className="h-24 items-center justify-center">
               <Text className="text-gray-500">Cart is empty.</Text>

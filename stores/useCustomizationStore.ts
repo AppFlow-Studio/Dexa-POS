@@ -9,11 +9,12 @@ interface CustomizationState {
   mode: DialogMode;
   menuItem: MenuItemType | null; // The original menu item (for price, options, etc.)
   cartItem: CartItem | null; // The existing cart item if in 'edit' mode
-  tableId: string | null; // The table to add/update the item on
+  activeOrderId: string | null; // The ID of the order to add/update items in
 
   // Actions
-  openToAdd: (menuItem: MenuItemType, tableId?: string) => void;
-  openToEdit: (cartItem: CartItem, tableId?: string) => void;
+  openToAdd: (menuItem: MenuItemType, orderId: string | null) => void;
+  openToEdit: (cartItem: CartItem, orderId: string | null) => void;
+
   close: () => void;
 }
 
@@ -21,27 +22,28 @@ export const useCustomizationStore = create<CustomizationState>((set) => ({
   isOpen: false,
   mode: "add",
   menuItem: null,
-  cartItem: null,
-  tableId: null,
+  cartItem: null, // The existing cart item if in 'edit' mode
+  activeOrderId: null, // The ID of the order to add/update items in
 
-  openToAdd: (menuItem, tableId) =>
+  openToAdd: (menuItem, orderId) =>
     set({
       isOpen: true,
       mode: "add",
       menuItem: menuItem,
-      cartItem: null, // Ensure cartItem is null in 'add' mode
-      tableId: tableId || null,
+      cartItem: null,
+      // 3. Store the activeOrderId
+      activeOrderId: orderId,
     }),
 
-  openToEdit: (cartItem, tableId) =>
+  openToEdit: (cartItem, orderId) =>
     set({
       isOpen: true,
       mode: "edit",
-      // In edit mode, we still need the original MenuItem for its options (sizes, addOns)
       menuItem:
         MOCK_MENU_ITEMS.find((mi) => mi.id === cartItem.menuItemId) || null,
       cartItem: cartItem,
-      tableId: tableId || null,
+      // 3. Store the activeOrderId
+      activeOrderId: orderId,
     }),
 
   close: () =>
@@ -49,6 +51,6 @@ export const useCustomizationStore = create<CustomizationState>((set) => ({
       isOpen: false,
       menuItem: null,
       cartItem: null,
-      tableId: null,
+      activeOrderId: null,
     }),
 }));

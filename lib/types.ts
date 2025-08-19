@@ -227,3 +227,33 @@ export interface TrackedOrder {
   items: TrackedOrderItem[];
   totalItems: number;
 }
+
+export interface OrderProfile {
+  id: string; // The unique ID for this order (e.g., "order_1755...")
+
+  // Link to the physical location. Crucially, this is `string | null`.
+  // If it's `null`, it's not a dine-in order.
+  service_location_id: string | null;
+
+  // The current lifecycle stage of the order.
+  order_status: "Open" | "Closed" | "Cancelled";
+
+  // The type of fulfillment for this order.
+  order_type: "Dine-In" | "Take-Out" | "Delivery";
+
+  // The actual items in the order. This is the "cart".
+  items: CartItem[];
+
+  // Timestamps for tracking order lifecycle
+  opened_at: string; // ISO String format is recommended
+  closed_at?: string; // Optional, set when the order is closed
+
+  // Final calculated values, set upon closing the order
+  total_amount?: number;
+  total_tax?: number;
+
+  // Additional optional details
+  customer_name?: string;
+  server_name?: string;
+  checkDiscount?: Discount | null;
+}

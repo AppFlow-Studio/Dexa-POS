@@ -1,4 +1,4 @@
-import { useTableStore } from "@/stores/useTableStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
 import React from "react";
@@ -9,10 +9,11 @@ const CleanTableScreen = () => {
   const { tableId } = useLocalSearchParams();
 
   // Get the specific table's data from the store
-  const table = useTableStore((state) =>
+  const table = useFloorPlanStore((state) =>
     state.tables.find((t) => t.id === tableId)
   );
-  const { updateTableStatus } = useTableStore();
+
+  const { updateTableStatus } = useFloorPlanStore();
 
   const handleCleanTable = () => {
     if (tableId) {

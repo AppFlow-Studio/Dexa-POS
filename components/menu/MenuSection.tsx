@@ -1,16 +1,13 @@
 import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
-interface MenuSectionProps {
-  tableId?: string;
-}
-
-const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
+const MenuSection: React.FC = () => {
   // State for the active filters
   const [activeMeal, setActiveMeal] = useState("Dinner");
   const [activeCategory, setActiveCategory] = useState("Main Course");
@@ -21,6 +18,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
   );
 
   const openDialog = useCustomizationStore((state) => state.openToAdd);
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
 
   useEffect(() => {
     const filtered = MOCK_MENU_ITEMS.filter((item) => {
@@ -58,7 +56,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ tableId }) => {
         renderItem={({ item }) => (
           <MenuItem
             item={item}
-            onAddToCart={() => openDialog(item, tableId)}
+            onAddToCart={() => openDialog(item, activeOrderId)}
             imageSource={
               item.image
                 ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]

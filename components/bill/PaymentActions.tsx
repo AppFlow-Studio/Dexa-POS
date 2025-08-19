@@ -1,3 +1,4 @@
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { Banknote, Columns, CreditCard } from "lucide-react-native";
 import React, { useState } from "react";
@@ -5,9 +6,13 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 type PaymentMethod = "Card" | "Split" | "Cash";
 
-const PaymentActions = ({ tableId }: { tableId?: string }) => {
+const PaymentActions = () => {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>("Card");
-  const { open } = usePaymentStore();
+  const openPaymentModal = usePaymentStore((state) => state.open);
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const activeOrder = useOrderStore((state) =>
+    state.orders.find((o) => o.id === state.activeOrderId)
+  );
 
   const paymentMethods = [
     { name: "Card", icon: CreditCard },
@@ -16,8 +21,8 @@ const PaymentActions = ({ tableId }: { tableId?: string }) => {
   ];
 
   const handlePlaceOrder = () => {
-    // Pass the currently active method to the store when opening
-    open(activeMethod, tableId);
+    const tableIdForOrder = activeOrder?.service_location_id;
+    openPaymentModal(activeMethod, tableIdForOrder);
   };
 
   return (
@@ -48,7 +53,8 @@ const PaymentActions = ({ tableId }: { tableId?: string }) => {
 
       {/* Final Action Buttons */}
       <TouchableOpacity
-        className="w-full py-4 bg-primary-400 rounded-xl mt-4 items-center"
+        disabled={!activeOrder || activeOrder.items.length === 0}
+        className={`w-full py-4 bg-primary-400 rounded-xl mt-4 items-center ${!activeOrder || activeOrder.items.length === 0 ? "opacity-50" : ""}`}
         onPress={handlePlaceOrder}
       >
         <Text className="text-white font-bold text-base">Place Order</Text>

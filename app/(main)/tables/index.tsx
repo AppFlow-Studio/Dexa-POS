@@ -1,7 +1,10 @@
 import DraggableTable from "@/components/tables/DraggableTable";
 import TableListItem from "@/components/tables/TableListItem";
 import { MOCK_TABLES } from "@/lib/mockData";
-import { useTableStore } from "@/stores/useTableStore";
+import { TableType } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { router } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -43,7 +46,9 @@ const TablesScreen = () => {
   const [capacityFilter, setCapacityFilter] = useState("All Capacity");
   const [tablePositions, setTablePositions] = useState<TablePositions>({});
   const [isEditMode, setIsEditMode] = useState(false);
-  const { tables, updateTablePosition } = useTableStore();
+  const { tables, updateTablePosition, updateTableStatus } =
+    useFloorPlanStore();
+  const { startNewOrder, orders } = useOrderStore();
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -107,16 +112,32 @@ const TablesScreen = () => {
     setTablePositions(initialPositions);
   }, []);
 
-  // Callback for when a drag gesture ends
-  const handleDragEnd = (
-    tableId: string,
-    newPosition: { x: number; y: number }
-  ) => {
-    setTablePositions((prev) => ({
-      ...prev,
-      [tableId]: newPosition,
-    }));
-    // In a real app, you would also save this new position to your backend here.
+  const handleTablePress = (table: TableType) => {
+    // Find if there's an open order for this table
+    const activeOrder = orders.find(
+      (o) => o.service_location_id === table.id && o.order_status === "Open"
+    );
+
+    switch (table.status) {
+      case "Available":
+        // If available, start a new order and navigate to its screen
+        updateTableStatus(table.id, "In Use");
+        router.push(`/tables/${table.id}`); // Navigate to the new dynamic order page
+        break;
+      case "In Use":
+        // If in use, find the active order and navigate to it
+        if (activeOrder) {
+          router.push(`/tables/${table.id}`);
+        } else {
+          // Data inconsistency, handle gracefully
+          alert(`Error: Table is "In Use" but no open order was found.`);
+        }
+        break;
+      case "Needs Cleaning":
+        // If needs cleaning, navigate to the clean table screen
+        router.push(`/tables/clean-table/${table.id}`);
+        break;
+    }
   };
 
   return (
@@ -219,6 +240,7 @@ const TablesScreen = () => {
                       isEditMode={isEditMode}
                       // 6. Pass the current canvas scale to the draggable tables
                       canvasScale={scale}
+                      onPress={() => handleTablePress(table)}
                     />
                   ))}
                   {/* Static elements like the Cashier also need to be inside the canvas to move with it */}
