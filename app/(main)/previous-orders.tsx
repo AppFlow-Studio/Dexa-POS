@@ -66,7 +66,7 @@ const PreviousOrdersScreen = () => {
       {/* Toolbar */}
       <View className="flex-row items-center justify-between my-4">
         <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-3 w-[300px]">
-          <Search color="#6b7280" size={20} />
+          <Search color="#6b7280" size={16} />
           <TextInput
             placeholder="Search Order"
             className="ml-2 text-base flex-1"

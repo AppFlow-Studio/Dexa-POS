@@ -46,7 +46,7 @@ const OnlineOrdersScreen = () => {
     <View className="flex-1 px-6 bg-white">
       {/* Toolbar */}
       <View className="flex-row items-center bg-background-300 rounded-2xl border border-background-400 p-3 py-0 w-full">
-        <Search color="#6b7280" size={20} />
+        <Search color="#6b7280" size={16} />
         <TextInput
           placeholder="Search Order No."
           className="ml-2 text-base flex-1"

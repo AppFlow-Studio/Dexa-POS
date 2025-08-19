@@ -50,7 +50,7 @@ const TrackOrderSection = () => {
         <Text className="text-2xl font-bold text-gray-800">Track Order</Text>
         <View className="flex-row items-center gap-2">
           <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-2 w-64">
-            <Search color="#6b7280" size={20} />
+            <Search color="#6b7280" size={16} />
             <TextInput
               placeholder="Search Order"
               value={searchText}

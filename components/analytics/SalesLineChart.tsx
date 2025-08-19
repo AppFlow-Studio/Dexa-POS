@@ -8,9 +8,15 @@ import {
   Text as SkiaText,
   useFont,
 } from "@shopify/react-native-skia";
-import React from "react";
+import React, { useEffect } from "react";
 import { Text, View } from "react-native";
-import { SharedValue, useDerivedValue } from "react-native-reanimated";
+import Animated, {
+  SharedValue,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { Area, CartesianChart, Line, useChartPressState } from "victory-native";
 
 // Assumed font path. Please adjust to your project structure.
@@ -129,9 +135,21 @@ const SalesLineChart = () => {
     y: { today: 0, yesterday: 0 },
   });
 
+  const translateY = useSharedValue(300);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+    };
+  });
+
+  useEffect(() => {
+    translateY.value = withTiming(0, { duration: 800 });
+  }, [translateY]);
+
   return (
     <View>
-      <View className="flex-row justify-end mt-2 mb-3">
+      <View className="flex-row justify-end mt-2 mb-3 ">
         <View className="flex-row items-center ml-5">
           <View
             className="w-2.5 h-2.5 rounded-full mr-2"
@@ -147,102 +165,108 @@ const SalesLineChart = () => {
           <Text className="text-sm text-gray-500">Yesterday</Text>
         </View>
       </View>
-      <View className="h-[300px]">
-        <CartesianChart
-          data={salesData}
-          xKey="hour"
-          yKeys={["today", "yesterday"]}
-          domainPadding={{ top: 30, bottom: 20 }}
-          xAxis={{
-            font,
-            labelColor: COLORS.text,
-            // 👇 Renamed from labelFormatter to formatXLabel
-            formatXLabel: (v) =>
-              `${v % 12 === 0 ? 12 : v % 12}:00 ${v < 12 ? "AM" : "PM"}`,
-          }}
-          yAxis={[
-            {
+      <View className="h-[300px] overflow-hidden">
+        <Animated.View style={[{ height: 300 }, animatedStyle]}>
+          <CartesianChart
+            data={salesData}
+            xKey="hour"
+            yKeys={["today", "yesterday"]}
+            domainPadding={{ top: 30, bottom: 20 }}
+            xAxis={{
               font,
               labelColor: COLORS.text,
-              // 👇 Renamed from labelFormatter to formatYLabel
-              formatYLabel: (v) => `$${v}`,
-              lineColor: COLORS.grid,
-              lineWidth: 1,
-              linePathEffect: <DashPathEffect intervals={[4, 8]} />,
-            },
-          ]}
-          chartPressState={state}
-        >
-          {({ points, chartBounds }) => (
-            <>
-              <Area
-                points={points.today}
-                y0={chartBounds.bottom}
-                color={COLORS.today}
-                opacity={0.2}
-                curveType="natural"
-              />
-              <Line
-                points={points.today}
-                color={COLORS.today}
-                strokeWidth={4}
-                curveType="natural"
-              />
-              <Line
-                points={points.yesterday}
-                color={COLORS.yesterday}
-                strokeWidth={3}
-                curveType="natural"
-              >
-                <DashPathEffect intervals={[5, 5]} />
-              </Line>
+              // 👇 Renamed from labelFormatter to formatXLabel
+              formatXLabel: (v) =>
+                `${v % 12 === 0 ? 12 : v % 12}:00 ${v < 12 ? "AM" : "PM"}`,
+            }}
+            yAxis={[
+              {
+                font,
+                labelColor: COLORS.text,
+                // 👇 Renamed from labelFormatter to formatYLabel
+                formatYLabel: (v) => `$${v}`,
+                lineColor: COLORS.grid,
+                lineWidth: 1,
+                linePathEffect: <DashPathEffect intervals={[4, 8]} />,
+              },
+            ]}
+            chartPressState={state}
+          >
+            {({ points, chartBounds }) => (
+              <>
+                <Area
+                  points={points.today}
+                  y0={chartBounds.bottom}
+                  color={COLORS.today}
+                  opacity={0.2}
+                  curveType="natural"
+                  animate={{ type: "timing", duration: 800 }}
+                />
+                <Line
+                  points={points.today}
+                  color={COLORS.today}
+                  strokeWidth={4}
+                  curveType="natural"
+                  animate={{ type: "timing", duration: 800 }}
+                />
+                <Line
+                  points={points.yesterday}
+                  color={COLORS.yesterday}
+                  strokeWidth={3}
+                  curveType="natural"
+                  animate={{ type: "timing", duration: 800 }}
+                >
+                  <DashPathEffect intervals={[5, 5]} />
+                </Line>
 
-              {isActive && (
-                <>
-                  {/* The points array for the cursor line is cleaner without unnecessary xValue/yValue */}
-                  <Line
-                    points={[
-                      {
-                        x: state.x.position.value,
-                        y: chartBounds.top,
-                        xValue: 0,
-                        yValue: 0,
-                      },
-                      {
-                        x: state.x.position.value,
-                        y: chartBounds.bottom,
-                        xValue: 0,
-                        yValue: 0,
-                      },
-                    ]}
-                    color={COLORS.cursor}
-                    strokeWidth={1}
-                  />
-                  <Circle
-                    cx={state.x.position}
-                    cy={state.y.today.position}
-                    r={6}
-                    color={COLORS.today}
-                  />
-                  <Circle
-                    cx={state.x.position}
-                    cy={state.y.yesterday.position}
-                    r={6}
-                    color={COLORS.yesterday}
-                  />
-                  <Tooltip
-                    x={state.x.position}
-                    y={state.y.today.position}
-                    activeValueToday={state.y.today.value}
-                    activeValueYesterday={state.y.yesterday.value}
-                    font={font}
-                    boldFont={boldFont}
-                  />
-                </>
-              )}
-            </>
-          )}
-        </CartesianChart>
+                {isActive && (
+                  <>
+                    {/* The points array for the cursor line is cleaner without unnecessary xValue/yValue */}
+                    <Line
+                      points={[
+                        {
+                          x: state.x.position.value,
+                          y: chartBounds.top,
+                          xValue: 0,
+                          yValue: 0,
+                        },
+                        {
+                          x: state.x.position.value,
+                          y: chartBounds.bottom,
+                          xValue: 0,
+                          yValue: 0,
+                        },
+                      ]}
+                      color={COLORS.cursor}
+                      strokeWidth={1}
+                      animate={{ type: "timing", duration: 800 }}
+                    />
+                    <Circle
+                      cx={state.x.position}
+                      cy={state.y.today.position}
+                      r={6}
+                      color={COLORS.today}
+                    />
+                    <Circle
+                      cx={state.x.position}
+                      cy={state.y.yesterday.position}
+                      r={6}
+                      color={COLORS.yesterday}
+                    />
+                    <Tooltip
+                      x={state.x.position}
+                      y={state.y.today.position}
+                      activeValueToday={state.y.today.value}
+                      activeValueYesterday={state.y.yesterday.value}
+                      font={font}
+                      boldFont={boldFont}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </CartesianChart>
+        </Animated.View>
       </View>
     </View>
   );

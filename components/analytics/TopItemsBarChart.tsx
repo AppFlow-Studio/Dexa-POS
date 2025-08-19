@@ -1,10 +1,15 @@
 import { topItemsData } from "@/lib/mockData";
 import { RoundedRect, useFont } from "@shopify/react-native-skia";
-import React from "react";
+import React, { useEffect } from "react";
 import { Text, View } from "react-native";
 import { CartesianChart } from "victory-native";
 
 // Assumed font path. Adjust to your project structure.
+import {
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import inter from "../../assets/fonts/Inter-Medium.ttf";
 
 // 2. Pre-process data for the chart
@@ -15,6 +20,42 @@ const processedData = topItemsData
     ...item,
     category: index, // Add a numeric index for the Y-axis
   }));
+
+const AnimatedBar = ({
+  point,
+  chartBounds,
+  barHeight,
+  color,
+}: {
+  point: { x: number; y: number };
+  chartBounds: { left: number; top: number; right: number; bottom: number };
+  barHeight: number;
+  color: string;
+}) => {
+  // Shared value for animation progress (0 to 1)
+  const progress = useSharedValue(0);
+
+  // Animate the progress value when the component mounts
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 800 });
+  }, [progress]);
+
+  // Create a derived value for the animated width
+  const animatedWidth = useDerivedValue(() => {
+    return (point.x - chartBounds.left) * progress.value;
+  });
+
+  return (
+    <RoundedRect
+      x={chartBounds.left}
+      y={point.y - barHeight / 2}
+      width={animatedWidth}
+      height={barHeight}
+      color={color}
+      r={4}
+    />
+  );
+};
 
 const TopItemsBarChart = () => {
   const font = useFont(inter as any, 12);
@@ -53,15 +94,12 @@ const TopItemsBarChart = () => {
             const barHeight = bandHeight * 0.8; // 80% of the band, leaving 20% for padding
 
             return points.category.map((point) => (
-              <RoundedRect
+              <AnimatedBar
                 key={point.yValue}
-                x={chartBounds.left} // Ensure x is a number
-                y={(point?.y || 0) - barHeight / 2} // Safely access point.y
-                width={point.x - chartBounds.left} // Extends from left edge to the point's x-value
-                height={barHeight}
+                point={{ x: point.x, y: point.y || 0 }}
+                chartBounds={chartBounds}
+                barHeight={barHeight}
                 color={"#60a5fa"}
-                // Round the right corners of the bar
-                r={4} // Use 'r' for uniform corner radius
               />
             ));
           }}

@@ -64,7 +64,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         {/* Header */}
         <View className="flex-row items-center border-b border-background-400 bg-background-300 rounded-2xl px-4">
           <View className="flex-1 flex-row items-center ">
-            <Search color="#6b7280" size={22} />
+            <Search color="#6b7280" size={18} />
             <BottomSheetTextInput
               value={searchText}
               onChangeText={setSearchText}

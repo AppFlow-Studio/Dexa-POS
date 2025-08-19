@@ -68,7 +68,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           onPress={openSearch}
           className="flex-row items-center bg-background-300 border border-background-400 rounded-2xl px-4 py-1 mt-14"
         >
-          <Search color="#5D5D73" size={22} />
+          <Search color="#5D5D73" size={16} />
           <TextInput
             placeholder="Search Item"
             className="ml-3 flex-1"

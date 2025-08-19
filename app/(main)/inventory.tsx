@@ -36,7 +36,7 @@ const InventoryScreen = () => {
       <View className="flex-row justify-between items-center my-4">
         {/* Search bar is now part of the toolbar */}
         <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
-          <Search color="#6b7280" size={20} />
+          <Search color="#6b7280" size={16} />
           <TextInput
             placeholder="Search Customer"
             className="ml-2 text-base flex-1"

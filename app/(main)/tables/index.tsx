@@ -122,7 +122,7 @@ const TablesScreen = () => {
   return (
     <View className="flex-1 bg-gray-50 px-8 py-1">
       <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 mb-4">
-        <Search color="#6b7280" size={20} />
+        <Search color="#6b7280" size={16} />
         <TextInput
           placeholder="Search Customer"
           value={searchCustomerText}
@@ -151,7 +151,7 @@ const TablesScreen = () => {
           {/* Toolbar */}
           <View className="flex-row items-end gap-2 w-full justify-end mb-4">
             <View className="flex-row items-center bg-white border border-background-400 rounded-lg px-4 flex-1 max-w-xs">
-              <Search color="#6b7280" size={20} />
+              <Search color="#6b7280" size={16} />
               <TextInput
                 placeholder="Search table name..."
                 value={searchText}

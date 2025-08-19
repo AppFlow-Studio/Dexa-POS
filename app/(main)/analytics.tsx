@@ -1,3 +1,4 @@
+import AnimatedDonutChart from "@/components/analytics/AnimatedDonutChart";
 import SalesLineChart from "@/components/analytics/SalesLineChart";
 import StatCard from "@/components/analytics/StatCard";
 import TopItemsBarChart from "@/components/analytics/TopItemsBarChart";
@@ -5,7 +6,6 @@ import TrackOrderSection from "@/components/analytics/TrackOrderSection";
 import { DollarSign, ShoppingBasket, Tag, Trophy } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
-import { Pie, PolarChart } from "victory-native";
 
 const checksData = [
   { value: 77.81, label: "Closed", color: "#3b82f6" }, // Blue
@@ -75,15 +75,12 @@ const AnalyticsScreen = () => {
           </DashboardCard>
           {/* Open Checks Chart */}
           <DashboardCard title="Open vs Closed Checks" className="flex-1">
-            <View className="h-[200px]">
-              <PolarChart
+            <View className="h-[200px] m-auto">
+              <AnimatedDonutChart
                 data={checksData}
-                valueKey="value"
-                labelKey="label"
-                colorKey="color"
-              >
-                <Pie.Chart innerRadius="70%" />
-              </PolarChart>
+                size={200}
+                strokeWidth={25}
+              />
             </View>
             <View className="mt-4 space-y-2">
               {checksData.map((item) => (
@@ -113,14 +110,11 @@ const AnalyticsScreen = () => {
           <DashboardCard title="Check Status Overview" className="flex-2">
             {/* This parent View is left alone, so the chart renders correctly */}
             <View className="h-[200px]">
-              <PolarChart
+              <AnimatedDonutChart
                 data={checkStatusData}
-                valueKey="value"
-                labelKey="label"
-                colorKey="color"
-              >
-                <Pie.Chart innerRadius="70%" />
-              </PolarChart>
+                size={200}
+                strokeWidth={30}
+              />
 
               {/* 👇 The fix is applied here. This container now fills the parent and centers the text. */}
               <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
