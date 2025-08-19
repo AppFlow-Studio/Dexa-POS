@@ -1,9 +1,10 @@
 import BillSection from "@/components/bill/BillSection";
 import MenuSection from "@/components/menu/MenuSection";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTableStore } from "@/stores/useTableStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle, Minus, Plus } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const FormInput = ({
@@ -37,6 +38,18 @@ const UpdateTableScreen = () => {
   const [numberOfGuests, setNumberOfGuests] = useState(4);
 
   const table = useTableStore((state) => state.getTableById(tableId as string));
+
+  useEffect(() => {
+    // (See next step for store update)
+    const { setActiveTableId } = usePaymentStore.getState();
+    setActiveTableId(tableId as string);
+
+    // 3. When the screen unmounts, clear the active table ID
+    return () => {
+      const { clearActiveTableId } = usePaymentStore.getState();
+      clearActiveTableId();
+    };
+  }, [tableId]); // Rerun if the tableId changes
 
   if (!table) {
     return (

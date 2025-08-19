@@ -13,6 +13,8 @@ interface PaymentState {
   open: (method: PaymentMethod, tableId?: string | null) => void;
   close: () => void;
   setView: (view: PaymentView) => void;
+  setActiveTableId: (tableId: string | null) => void;
+  clearActiveTableId: () => void;
 }
 
 export const usePaymentStore = create<PaymentState>((set) => ({
@@ -32,4 +34,7 @@ export const usePaymentStore = create<PaymentState>((set) => ({
     }),
   close: () => set({ isOpen: false, paymentMethod: null, activeTableId: null }),
   setView: (view) => set({ view }),
+  setActiveTableId: (tableId) => set({ activeTableId: tableId }),
+
+  clearActiveTableId: () => set({ activeTableId: null }),
 }));

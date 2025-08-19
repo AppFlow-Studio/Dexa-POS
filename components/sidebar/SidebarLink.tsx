@@ -40,21 +40,21 @@ const SidebarLink: React.FC<SidebarLinkProps> = ({
       {isActive ? (
         <>
           {isExpanded ? (
-            <LinearGradient
-              colors={[
-                "rgba(101, 154, 240, 0.04)",
-                "rgba(101, 154, 240, 0.12)",
-              ]}
-              start={{ x: 1, y: 0 }}
-              end={{ x: 0, y: 0 }}
-              className="flex-row items-center py-3 px-2 rounded-xl overflow-hidden border-l-[3px] border-primary-400"
-            >
-              {!!Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
-
+            <View className="flex-row items-center py-3 px-2 rounded-xl bg-blue-50 overflow-hidden border-l-[3px] border-primary-400">
+              <LinearGradient
+                colors={[
+                  "rgba(101, 154, 240, 0.0)",
+                  "rgba(101, 154, 240, 0.12)",
+                ]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                className="absolute inset-0"
+              />
+              {Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
               <Text className="ml-4 text-base font-medium text-primary-400">
                 {label}
               </Text>
-            </LinearGradient>
+            </View>
           ) : (
             <View className="flex-row items-center justify-center py-3 px-4 rounded-lg bg-transparent">
               {Icon && <Icon color="#659AF0" size={22} strokeWidth={2.5} />}
