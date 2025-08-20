@@ -55,6 +55,7 @@ const TotalVoidsCard = () => {
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
             {/* Data Arcs */}
+
             {totalVoidsData.map((item, index) => {
               // The order of the rings is reversed to match the design (largest value = outermost ring)
               const reversedIndex = totalVoidsData.length - 1 - index;

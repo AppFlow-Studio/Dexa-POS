@@ -38,8 +38,7 @@ const UpdateTableScreen = () => {
   const [numberOfGuests, setNumberOfGuests] = useState(4);
 
   const { tables } = useFloorPlanStore();
-  const { orders, setActiveOrder, startNewOrder, updateOrderDetails } =
-    useOrderStore();
+  const { orders, setActiveOrder, startNewOrder } = useOrderStore();
 
   const table = tables.find((t) => t.id === tableId);
   // Find the active order for this table

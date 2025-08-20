@@ -4,7 +4,7 @@ import SalesTaxesSummaryCard from "@/components/settings/end-of-day/SalesTaxesSu
 import ServerTipoutsCard from "@/components/settings/end-of-day/ServerTipoutsCard";
 import TotalVoidsCard from "@/components/settings/end-of-day/TotalVoidsCard";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { Href, useRouter } from "expo-router";
+import { Href, Link, useRouter } from "expo-router";
 import {
   Banknote,
   Calendar,
@@ -248,7 +248,12 @@ const EndOfDayReportScreen = () => {
         <View className="w-[60%] gap-y-4">
           <View className="flex-row gap-2">
             <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center bg-white">
-              <Text className="font-bold text-gray-700">Run Sales Summary</Text>
+              <Link
+                href="/(main)/settings/store-operation/end-of-day/sales-summary"
+                className="font-bold text-gray-700"
+              >
+                Run Sales Summary
+              </Link>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setModalOpen(true)}
@@ -264,26 +269,42 @@ const EndOfDayReportScreen = () => {
             icon={<CheckSquare color="#4b5563" size={24} />}
             title="All Checks Closed"
             description="Make sure non-cash tips are added..."
-            action={() => router.push("/checks" as Href)}
+            action={() =>
+              router.push(
+                "/(main)/settings/store-operation/end-of-day/checks" as Href
+              )
+            }
             actionText="View Checks"
           />
           <StatusRow
             icon={<HardDrive color="#4b5563" size={24} />}
             title="All drawers are closed"
-            action={() => {}}
+            action={() =>
+              router.push(
+                "/(main)/settings/store-operation/end-of-day/drawers" as Href
+              )
+            }
             actionText="View Drawers"
           />
           <StatusRow
             icon={<Users color="#4b5563" size={24} />}
             title="1 Employee Clocked in"
             description="2 Employees clocked out"
-            action={() => {}}
+            action={() => {
+              router.push(
+                "/(main)/settings/store-operation/end-of-day/employees" as Href
+              );
+            }}
             actionText="View Employees"
           />
           <StatusRow
             icon={<Banknote color="#4b5563" size={24} />}
             title="0 Deposits"
-            action={() => {}}
+            action={() => {
+              router.push(
+                "/(main)/settings/store-operation/end-of-day/add-cash-to-register" as Href
+              );
+            }}
             actionText="Create Deposit"
           />
           <StatusRow

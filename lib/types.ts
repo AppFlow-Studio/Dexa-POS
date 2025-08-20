@@ -257,3 +257,58 @@ export interface OrderProfile {
   server_name?: string;
   checkDiscount?: Discount | null;
 }
+
+export type CheckStatus = "Pending" | "Cleared" | "Voided";
+
+export interface Check {
+  serialNo: string;
+  checkNo: string;
+  payee: string;
+  amount: number;
+  dateIssued: string; // e.g., 'Oct 16, 2024'
+  timeIssued: string; // e.g., '09:31 AM'
+  status: CheckStatus;
+  // Details for the modal
+  items: { name: string; price: number }[];
+  subtotal: number;
+  tax: number;
+  tips: number;
+  total: number;
+}
+
+export type DrawerStatus = "Closed" | "Open" | "Cleared";
+
+export interface DrawerSummary {
+  id: string; // Unique ID for the drawer session
+  status: DrawerStatus;
+  cashier: string;
+  drawerName: string;
+  startingCash: number;
+  expectedCash: number;
+  actualCash: number | null; // Can be null if not yet counted
+  difference: number | null; // Can be null if not yet counted
+  dateIssued: string; // e.g., 'Oct 16, 2024'
+  timeIssued: string; // e.g., '09:31 AM'
+}
+
+export type EmployeeClockStatus = "Clocked In" | "Clocked Out";
+
+export interface EmployeeShift {
+  id: string; // Unique ID for the employee
+  name: string;
+  jobTitle: "Manager" | "Cashier" | "Chef";
+  clockInStatus: EmployeeClockStatus;
+  clockOutStatus: EmployeeClockStatus | "N/A";
+  clockInTime: string | "N/A";
+  clockOutTime: string | "N/A";
+  totalHours: string | "N/A";
+  // Additional details for the profile modal
+  profile: {
+    id: string;
+    dob: string;
+    role: string;
+    gender: string;
+    country: string;
+    address: string;
+  };
+}
