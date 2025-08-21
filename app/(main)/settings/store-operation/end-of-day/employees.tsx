@@ -1,3 +1,4 @@
+import DatePicker from "@/components/date-picker";
 import ManagerApprovalModal from "@/components/settings/end-of-day/ManagerApprovalModal";
 import ViewProfileModal from "@/components/settings/end-of-day/ViewProfileModal";
 import {
@@ -8,9 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { MOCK_EMPLOYEE_SHIFTS } from "@/lib/mockData";
 import { EmployeeShift } from "@/lib/types";
-import { useRouter } from "expo-router";
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
   MoreHorizontal,
@@ -41,7 +40,7 @@ const EmployeeRow = ({
       ? "bg-green-100 text-green-800"
       : "bg-red-100 text-red-800";
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-100">
+    <View className="flex-row items-center p-4 border-b border-background-400">
       <Text className="w-[15%] font-semibold text-gray-800">
         {employee.name}
       </Text>
@@ -101,12 +100,12 @@ const EmployeeRow = ({
 };
 
 const ViewEmployeesScreen = () => {
-  const router = useRouter();
   const [activeModal, setActiveModal] = useState<
     "viewProfile" | "managerApproval" | null
   >(null);
   const [selectedEmployee, setSelectedEmployee] =
     useState<EmployeeShift | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const handleRowAction = (
     employee: EmployeeShift,
@@ -130,23 +129,18 @@ const ViewEmployeesScreen = () => {
   return (
     <View className="flex-1 bg-white p-6">
       <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
+        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 py-0 w-[300px]">
           <Search color="#6b7280" size={20} />
           <TextInput
-            placeholder="Search Employee"
+            placeholder="Search by Check Number or Payee"
             className="ml-2 text-base flex-1"
           />
         </View>
-        <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
-          <Text className="font-semibold text-gray-600 mr-2">
-            Date: 02/03/25
-          </Text>
-          <Calendar color="#6b7280" size={20} />
-        </TouchableOpacity>
+        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
-      <View className="flex-1 border border-gray-200 rounded-xl">
-        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-gray-200">
+      <View className="flex-1">
+        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-background-400">
           {[
             "Employees Name",
             "Job Title",
@@ -178,10 +172,10 @@ const ViewEmployeesScreen = () => {
       </View>
 
       <View className="flex-row justify-end items-center mt-4 gap-2">
-        <TouchableOpacity className="p-2 border rounded-md">
+        <TouchableOpacity className="p-2 rounded-full">
           <ChevronLeft />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 border rounded-md bg-primary-400">
+        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
           <ChevronRight color="white" />
         </TouchableOpacity>
       </View>

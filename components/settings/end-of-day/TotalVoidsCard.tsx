@@ -1,18 +1,76 @@
-import { Canvas, Path } from "@shopify/react-native-skia";
-import React from "react";
+import { Canvas, interpolateColors, Path } from "@shopify/react-native-skia";
+import React, { useEffect, type FC } from "react";
 import { View } from "react-native";
-import LegendRow from "./LegendRow";
+import {
+  SharedValue,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import LegendRow from "./LegendRow"; // Assuming this component exists
 
 // --- Mock Data & Colors ---
 const totalVoidsData = [
   { label: "Void amount", value: 27.25, color: "#86efac" }, // green-300
   { label: "Void order count", value: 100, color: "#fcd34d" }, // amber-300
   { label: "Voit item count", value: 15, color: "#a5b4fc" }, // indigo-300
-  { label: "Void percentage", value: 123.5, color: "#f97316" }, // orange-500
+  { label: "Void percentage", value: 1238.5, color: "#f97316" }, // orange-500
 ];
+
+// --- Type Definitions for AnimatedArc ---
+interface AnimatedArcProps {
+  center: number;
+  radius: number;
+  strokeWidth: number;
+  startAngle: number;
+  sweepAngle: number;
+  color: string;
+  progress: SharedValue<number>;
+}
+
+// Reusable Animated Arc Component ---
+const AnimatedArc: FC<AnimatedArcProps> = ({
+  center,
+  radius,
+  strokeWidth,
+  startAngle,
+  sweepAngle,
+  color,
+  progress,
+}) => {
+  // Animate the path of the arc based on progress
+  const animatedPath = useDerivedValue(() => {
+    const currentSweep = sweepAngle * progress.value;
+    const startRad = startAngle * (Math.PI / 180);
+    const endRad = (startAngle + currentSweep) * (Math.PI / 180);
+    return `M ${center + radius * Math.cos(startRad)} ${center + radius * Math.sin(startRad)}
+            A ${radius} ${radius} 0 ${currentSweep > 180 ? 1 : 0} 1 ${center + radius * Math.cos(endRad)} ${center + radius * Math.sin(endRad)}`;
+  });
+
+  // Animate the color of the arc
+  const animatedColor = useDerivedValue(() => {
+    return interpolateColors(progress.value, [0, 1], ["#f3f4f6", color]); // gray-100 to final color
+  });
+
+  return (
+    <Path
+      path={animatedPath}
+      color={animatedColor}
+      style="stroke"
+      strokeWidth={strokeWidth}
+      strokeCap="butt" // Use "butt" for flat ends
+    />
+  );
+};
 
 // --- Main Card Component ---
 const TotalVoidsCard = () => {
+  // Animation Setup ---
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 1200 });
+  }, [progress]);
+
   // --- Chart Calculations ---
   const size = 150;
   const strokeWidth = 15;
@@ -24,28 +82,15 @@ const TotalVoidsCard = () => {
     center - strokeWidth * 3.5,
   ];
 
-  // Normalize values for arc length calculation
   const maxValue = Math.max(...totalVoidsData.map((item) => item.value));
-  const totalAngle = 270; // The arc will span 270 degrees
-  const startAngle = 135; // Start from the bottom-left
+  const totalAngle = 270;
+  const startAngle = 135;
 
   // --- Helper to format values for the legend ---
   const formatValue = (item: (typeof totalVoidsData)[0]) => {
-    if (item.label.includes("amount")) {
-      return `$${item.value.toFixed(2)}`;
-    }
-    if (item.label.includes("percentage")) {
-      return `${item.value.toFixed(1)}%`;
-    }
+    if (item.label.includes("amount")) return `$${item.value.toFixed(2)}`;
+    if (item.label.includes("percentage")) return `${item.value.toFixed(1)}%`;
     return item.value.toString();
-  };
-
-  // --- Helper to create an SVG arc path ---
-  const createArcPath = (radius: number, sweepAngle: number) => {
-    const startRad = startAngle * (Math.PI / 180);
-    const endRad = (startAngle + sweepAngle) * (Math.PI / 180);
-    return `M ${center + radius * Math.cos(startRad)} ${center + radius * Math.sin(startRad)}
-            A ${radius} ${radius} 0 ${sweepAngle > 180 ? 1 : 0} 1 ${center + radius * Math.cos(endRad)} ${center + radius * Math.sin(endRad)}`;
   };
 
   return (
@@ -54,22 +99,20 @@ const TotalVoidsCard = () => {
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
-            {/* Data Arcs */}
-
+            {/* 4. Render the Animated Arcs */}
             {totalVoidsData.map((item, index) => {
-              // The order of the rings is reversed to match the design (largest value = outermost ring)
               const reversedIndex = totalVoidsData.length - 1 - index;
               const sweepAngle = (item.value / maxValue) * totalAngle;
-              const path = createArcPath(radii[reversedIndex], sweepAngle);
               return (
-                <Path
+                <AnimatedArc
                   key={item.label}
-                  path={path}
-                  color={item.color}
-                  style="stroke"
+                  center={center}
+                  radius={radii[reversedIndex]}
                   strokeWidth={strokeWidth}
-                  // 👇 This is the key for flat ends
-                  strokeCap="butt"
+                  startAngle={startAngle}
+                  sweepAngle={sweepAngle}
+                  color={item.color}
+                  progress={progress}
                 />
               );
             })}

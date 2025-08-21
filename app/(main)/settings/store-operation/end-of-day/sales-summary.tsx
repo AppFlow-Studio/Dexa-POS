@@ -44,7 +44,7 @@ const DashboardCard: React.FC<{
 
 const SalesSummaryScreen = () => {
   return (
-    <View className="flex-1 bg-gray-100">
+    <View className="flex-1 bg-background-300">
       <ScrollView contentContainerClassName="p-6">
         {/* Top Stat Cards */}
         <View className="flex-row gap-4">

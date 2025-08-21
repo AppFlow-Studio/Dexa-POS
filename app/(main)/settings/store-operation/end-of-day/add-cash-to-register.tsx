@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useRouter } from "expo-router";
-import { Calendar, ChevronDown } from "lucide-react-native";
+import { Calendar } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   ScrollView,
@@ -62,7 +62,7 @@ const AddCashToRegisterScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-background-300 p-6">
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stat Cards */}
         <View className="flex-row gap-6">
@@ -84,7 +84,7 @@ const AddCashToRegisterScreen = () => {
               <Text className="font-semibold text-gray-700 mb-2">
                 Deposit Date
               </Text>
-              <TouchableOpacity className="flex-row justify-between items-center p-4 bg-gray-100 rounded-lg border border-gray-200">
+              <TouchableOpacity className="flex-row justify-between items-center p-4  rounded-lg border border-gray-200">
                 <Text className="text-lg">{depositDate}</Text>
                 <Calendar color="#6b7280" size={20} />
               </TouchableOpacity>
@@ -96,7 +96,7 @@ const AddCashToRegisterScreen = () => {
               <TextInput
                 value={slipNumber}
                 onChangeText={setSlipNumber}
-                className="p-4 bg-gray-100 rounded-lg border border-gray-200 text-lg"
+                className="px-4 rounded-lg border border-gray-200 text-lg"
               />
             </View>
             <View>
@@ -107,12 +107,11 @@ const AddCashToRegisterScreen = () => {
                 value={selectedRegister}
                 onValueChange={setSelectedRegister}
               >
-                <SelectTrigger className="w-full p-4 bg-gray-100 rounded-lg flex-row justify-between items-center border border-gray-200">
+                <SelectTrigger className="w-full px-4 rounded-lg flex-row justify-between items-center border border-gray-200">
                   <SelectValue
                     placeholder="Select"
-                    className="text-lg text-gray-800"
+                    className=" text-gray-800"
                   />
-                  <ChevronDown color="#6b7280" size={20} />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
                   <SelectGroup>
@@ -138,28 +137,31 @@ const AddCashToRegisterScreen = () => {
                 onChangeText={setNotes}
                 multiline
                 placeholder="Write a note..."
-                className="p-4 bg-gray-100 rounded-lg border border-gray-200 text-lg h-24"
+                className="px-4 rounded-lg border border-gray-200 text-lg h-24"
               />
             </View>
           </View>
+          {/* Footer */}
+          <View className="flex-row gap-2 pt-4 mt-6 border-t border-gray-200">
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="flex-1 px-8 py-3 rounded-lg border border-gray-300 bg-white"
+            >
+              <Text className="font-bold text-gray-700 text-center">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setConfirmModalOpen(true)}
+              className="flex-1 px-8 py-3 rounded-lg bg-primary-400"
+            >
+              <Text className="font-bold text-white text-center">
+                Add Cash to Register
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
-
-      {/* Footer */}
-      <View className="flex-row justify-end gap-2 pt-4 mt-6 border-t border-gray-200">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="px-8 py-3 rounded-lg border border-gray-300 bg-white"
-        >
-          <Text className="font-bold text-gray-700">Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setConfirmModalOpen(true)}
-          className="px-8 py-3 rounded-lg bg-primary-400"
-        >
-          <Text className="font-bold text-white">Add Cash to Register</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* Confirmation Modal */}
       <ConfirmationModal

@@ -1,3 +1,4 @@
+import DatePicker from "@/components/date-picker";
 import CheckDetailsModal from "@/components/settings/end-of-day/CheckDetailsModal";
 import {
   DropdownMenu,
@@ -8,7 +9,6 @@ import {
 import { MOCK_CHECKS } from "@/lib/mockData";
 import { Check } from "@/lib/types";
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -40,7 +40,7 @@ const CheckRow = ({
     Voided: "bg-red-100 text-red-800",
   };
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-100">
+    <View className="flex-row items-center p-4 border-b border-background-400">
       <Text className="w-[10%] font-semibold text-gray-600">
         {check.serialNo}
       </Text>
@@ -94,6 +94,7 @@ const CheckRow = ({
 const ChecksScreen = () => {
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<Check | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   const handleRowAction = (check: Check, action: "view" | "delete") => {
     setSelectedCheck(check);
@@ -105,27 +106,22 @@ const ChecksScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-white p-6">
+    <View className="flex-1 bg-background-100 p-6">
       {/* Toolbar */}
       <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
+        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 py-0 w-[300px]">
           <Search color="#6b7280" size={20} />
           <TextInput
             placeholder="Search by Check Number or Payee"
             className="ml-2 text-base flex-1"
           />
         </View>
-        <TouchableOpacity className="flex-row items-center p-3 bg-gray-100 rounded-lg">
-          <Text className="font-semibold text-gray-600 mr-2">
-            Date: 02/03/25
-          </Text>
-          <Calendar color="#6b7280" size={20} />
-        </TouchableOpacity>
+        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Table */}
-      <View className="flex-1 border border-gray-200 rounded-xl">
-        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-gray-200">
+      <View className="flex-1">
+        <View className="flex-row p-4 rounded-t-xl border-b border-background-400">
           {[
             "# Serial No",
             "# Check No",
@@ -157,10 +153,10 @@ const ChecksScreen = () => {
 
       {/* Footer */}
       <View className="flex-row justify-end items-center mt-4 gap-2">
-        <TouchableOpacity className="p-2 border rounded-md">
+        <TouchableOpacity className="p-2 rounded-full">
           <ChevronLeft />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 border rounded-md bg-primary-400">
+        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
           <ChevronRight color="white" />
         </TouchableOpacity>
       </View>

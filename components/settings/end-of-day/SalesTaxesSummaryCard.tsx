@@ -1,6 +1,12 @@
-import { Canvas, Path } from "@shopify/react-native-skia";
-import React from "react";
+import { Canvas, Path, interpolateColors } from "@shopify/react-native-skia";
+import React, { useEffect, useMemo, type FC } from "react";
 import { Text, View } from "react-native";
+import {
+  SharedValue,
+  useDerivedValue,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import LegendRow from "./LegendRow";
 
 // --- Mock Data & Colors ---
@@ -11,25 +17,74 @@ const salesTaxesData = [
 
 const totalValue = salesTaxesData.reduce((acc, item) => acc + item.value, 0);
 
-// --- Main Card Component ---
+// --- Type Definitions for AnimatedArc ---
+interface AnimatedArcProps {
+  center: { x: number; y: number };
+  innerRadius: number;
+  strokeWidth: number;
+  startAngle: number;
+  sweepAngle: number;
+  color: string;
+  // 👇 2. Use the correct type for the progress shared value
+  progress: SharedValue<number>;
+}
+
+// --- Reusable Animated Arc Component ---
+const AnimatedArc: FC<AnimatedArcProps> = ({
+  center,
+  innerRadius,
+  strokeWidth,
+  startAngle,
+  sweepAngle,
+  color,
+  progress,
+}) => {
+  const animatedPath = useDerivedValue(() => {
+    const currentSweep = sweepAngle * progress.value;
+    const startRad = startAngle * (Math.PI / 180);
+    const endRad = (startAngle + currentSweep) * (Math.PI / 180);
+
+    return `M ${center.x + innerRadius * Math.cos(startRad)} ${center.y + innerRadius * Math.sin(startRad)}
+            A ${innerRadius} ${innerRadius} 0 0 1 ${center.x + innerRadius * Math.cos(endRad)} ${center.y + innerRadius * Math.sin(endRad)}`;
+  });
+
+  const animatedColor = useDerivedValue(() => {
+    return interpolateColors(progress.value, [0, 1], ["#f3f4f6", color]);
+  });
+
+  return (
+    <Path
+      path={animatedPath}
+      color={animatedColor}
+      style="stroke"
+      strokeWidth={strokeWidth}
+      strokeCap="round"
+    />
+  );
+};
+
+// --- Main Card Component (No changes needed here) ---
 const SalesTaxesSummaryCard = () => {
-  // --- Chart Calculations ---
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    progress.value = withTiming(1, { duration: 1200 });
+  }, [progress]);
+
   const strokeWidth = 20;
   const radius = 80;
   const innerRadius = radius - strokeWidth;
   const size = radius * 2;
   const center = { x: radius, y: radius };
 
-  // Calculate the sweep angle for each segment
-  let startAngle = -180; // Start from the far left
-  const chartSegments = salesTaxesData.map((item) => {
-    const sweepAngle = (item.value / totalValue) * 180; // 180 degrees for a semi-circle
-    const path = `M ${center.x + innerRadius * Math.cos(startAngle * (Math.PI / 180))} ${center.y + innerRadius * Math.sin(startAngle * (Math.PI / 180))}
-                   A ${innerRadius} ${innerRadius} 0 0 1 ${center.x + innerRadius * Math.cos((startAngle + sweepAngle) * (Math.PI / 180))} ${center.y + innerRadius * Math.sin((startAngle + sweepAngle) * (Math.PI / 180))}`;
-
-    startAngle += sweepAngle;
-    return { ...item, path };
-  });
+  const chartSegments = useMemo(() => {
+    let startAngle = -180;
+    return salesTaxesData.map((item) => {
+      const sweepAngle = (item.value / totalValue) * 180;
+      const segment = { ...item, startAngle, sweepAngle };
+      startAngle += sweepAngle;
+      return segment;
+    });
+  }, []);
 
   return (
     <View className="bg-white ">
@@ -45,20 +100,21 @@ const SalesTaxesSummaryCard = () => {
               left: 0,
             }}
           >
-            {/* The comment has been removed from here */}
             {chartSegments.map((segment, index) => (
-              <Path
+              <AnimatedArc
                 key={index}
-                path={segment.path}
-                color={segment.color}
-                style="stroke"
+                center={center}
+                innerRadius={innerRadius}
                 strokeWidth={strokeWidth}
-                strokeCap="round"
+                startAngle={segment.startAngle}
+                sweepAngle={segment.sweepAngle}
+                color={segment.color}
+                progress={progress}
               />
             ))}
           </Canvas>
 
-          {/* This part is correct because it's OUTSIDE the Canvas */}
+          {/* Center Label */}
           <View className="absolute top-10 left-0 right-0 bottom-0 flex items-center justify-start pt-2">
             <Text className="text-sm text-gray-500">Total Sales</Text>
             <Text className="text-2xl font-bold text-gray-800">

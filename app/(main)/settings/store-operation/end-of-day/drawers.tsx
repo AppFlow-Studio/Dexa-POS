@@ -30,7 +30,7 @@ const DrawerRow = ({ drawer }: { drawer: DrawerSummary }) => {
     Cleared: "bg-blue-100 text-blue-800",
   };
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-100">
+    <View className="flex-row items-center p-4 border-b border-background-400">
       <View className="w-[11%]">
         <View
           className={`px-2 py-1 rounded-full self-start ${statusClasses[drawer.status]}`}
@@ -94,7 +94,7 @@ const DrawerSummaryScreen = () => {
     <View className="flex-1 bg-background-100 p-6">
       {/* Toolbar */}
       <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center bg-background-300 rounded-2xl border border-background-400 p-3 py-0 w-[300px]">
+        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 py-0 w-[300px]">
           <Search color="#6b7280" size={20} />
           <TextInput
             placeholder="Search by Check Number or Payee"
@@ -105,8 +105,8 @@ const DrawerSummaryScreen = () => {
       </View>
 
       {/* Table */}
-      <View className="flex-1 border border-gray-200 rounded-xl">
-        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-gray-200">
+      <View className="flex-1 rounded-xl">
+        <View className="flex-row p-4 rounded-t-xl border-b border-background-400">
           {[
             "Drawer Status",
             "Cashier",
@@ -135,10 +135,10 @@ const DrawerSummaryScreen = () => {
 
       {/* Footer */}
       <View className="flex-row justify-end items-center mt-4 gap-2">
-        <TouchableOpacity className="p-2 border rounded-md">
+        <TouchableOpacity className="p-2 rounded-full">
           <ChevronLeft />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 border rounded-md bg-primary-400">
+        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
           <ChevronRight color="white" />
         </TouchableOpacity>
       </View>

@@ -55,7 +55,12 @@ const Header = () => {
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
-      pathname.split("/").length === 4);
+      pathname.split("/").length === 4) ||
+    pathname === "/settings/store-operation/end-of-day/checks" ||
+    pathname === "/settings/store-operation/end-of-day/drawers" ||
+    pathname === "/settings/store-operation/end-of-day/employees" ||
+    pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||
+    pathname === "/settings/store-operation/end-of-day/sales-summary";
 
   return (
     <View className="flex-row justify-between items-center">
