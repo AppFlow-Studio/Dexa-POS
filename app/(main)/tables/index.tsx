@@ -48,7 +48,7 @@ const TablesScreen = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const { tables, updateTablePosition, updateTableStatus } =
     useFloorPlanStore();
-  const { startNewOrder, orders } = useOrderStore();
+  const { orders } = useOrderStore();
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -121,7 +121,6 @@ const TablesScreen = () => {
     switch (table.status) {
       case "Available":
         // If available, start a new order and navigate to its screen
-        updateTableStatus(table.id, "In Use");
         router.push(`/tables/${table.id}`); // Navigate to the new dynamic order page
         break;
       case "In Use":

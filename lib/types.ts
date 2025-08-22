@@ -236,7 +236,7 @@ export interface OrderProfile {
   service_location_id: string | null;
 
   // The current lifecycle stage of the order.
-  order_status: "Open" | "Closed" | "Cancelled";
+  order_status: "Open" | "Closed" | "Cancelled" | "Preparing" | "Ready";
 
   // The type of fulfillment for this order.
   order_type: "Dine-In" | "Take-Out" | "Delivery";

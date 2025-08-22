@@ -1,6 +1,7 @@
 import DatePicker from "@/components/date-picker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
+import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
 import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -23,8 +24,11 @@ const OnlineOrdersScreen = () => {
   const [activePartner, setActivePartner] = useState("All");
   const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
 
+  const orders = useOnlineOrderStore((state) => state.orders);
+
   const groupedOrders = useMemo(() => {
-    const filtered = MOCK_ONLINE_ORDERS.filter(
+    // 3. Filter the live data from the store
+    const filtered = orders.filter(
       (order) =>
         activePartner === "All" || order.deliveryPartner === activePartner
     );
@@ -40,7 +44,7 @@ const OnlineOrdersScreen = () => {
       },
       {} as Record<string, typeof MOCK_ONLINE_ORDERS>
     );
-  }, [activePartner]);
+  }, [orders, activePartner]);
 
   return (
     <View className="flex-1 px-6 bg-white">

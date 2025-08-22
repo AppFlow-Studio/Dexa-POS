@@ -7,8 +7,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { FileText, Pencil } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,26 +24,84 @@ const ORDER_TYPE_OPTIONS: SelectOption[] = [
 ];
 
 const OrderDetails: React.FC = () => {
-  // Add state to manage the selected values for each dropdown
-  const [selectedTable, setSelectedTable] = useState<
-    SelectOption | undefined
-  >();
+  // 2. Get the necessary state and actions from the stores
+  const { tables, updateTableStatus } = useFloorPlanStore();
+  const {
+    activeOrderId,
+    orders,
+    assignOrderToTable,
+    updateActiveOrderDetails,
+  } = useOrderStore();
+
+  // Find the full active order object
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+  // 3. The state now reflects the data from the global store
+  const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
+    activeOrder?.service_location_id
+      ? {
+          label:
+            tables.find((t) => t.id === activeOrder.service_location_id)
+              ?.name || "",
+          value: activeOrder.service_location_id,
+        }
+      : undefined
+  );
+
   const [selectedOrderType, setSelectedOrderType] = useState<
     SelectOption | undefined
   >();
 
-  // Get the list of all tables from our global store
-  const tables = useFloorPlanStore((state) => state.tables);
+  useEffect(() => {
+    if (selectedTable) {
+      handleTableSelect(selectedTable);
+    }
+  }, [selectedTable]);
 
-  // Filter and map the tables to get only the "Available" ones
-  // useMemo ensures this calculation only runs when the tables array changes
   const availableTableOptions = useMemo(() => {
+    // Show the currently assigned table PLUS all available tables
     return tables
-      .filter((table) => table.status === "Available")
-      .map((table) => ({ label: table.name, value: table.id }));
-  }, [tables]);
+      .filter(
+        (t) =>
+          t.status === "Available" || t.id === activeOrder?.service_location_id
+      )
+      .map((t) => ({ label: t.name, value: t.id }));
+  }, [tables, activeOrder]);
 
-  // Get safe area insets for proper dropdown positioning
+  // --- 5. THIS IS THE KEY LOGIC ---
+  const handleTableSelect = (option: SelectOption | undefined) => {
+    if (!option || !activeOrderId) return;
+
+    const newTableId = option.value;
+    const oldTableId = activeOrder?.service_location_id;
+
+    // Assign the active order to the new table
+    assignOrderToTable(activeOrderId, newTableId);
+
+    // Update the status of the new table
+    updateTableStatus(newTableId, "In Use");
+    setSelectedTable(undefined);
+
+    // If the order was previously on another table, make that one available again
+    if (oldTableId && oldTableId !== newTableId) {
+      updateTableStatus(oldTableId, "Available");
+    }
+
+    toast.success("Table assigned successfully!", {
+      duration: 4000,
+      position: ToastPosition.BOTTOM,
+    });
+
+    setSelectedOrderType(undefined);
+  };
+
+  const handleOrderTypeSelect = (option: SelectOption | undefined) => {
+    if (!option || !activeOrderId) return;
+
+    updateActiveOrderDetails({ order_type: option.value as any });
+    setSelectedOrderType(option);
+  };
+
   const insets = useSafeAreaInsets();
   const contentInsets = {
     top: insets.top,
@@ -70,10 +130,7 @@ const OrderDetails: React.FC = () => {
       <View className="flex-row gap-2">
         {/* --- Select Table Dropdown --- */}
         <View className="flex-1">
-          <Select
-            value={selectedTable}
-            onValueChange={(option) => option && setSelectedTable(option)}
-          >
+          <Select value={selectedTable}>
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Select Table"
@@ -87,6 +144,7 @@ const OrderDetails: React.FC = () => {
                     key={tableOption.value}
                     label={tableOption.label}
                     value={tableOption.value}
+                    onPress={() => handleTableSelect(tableOption)}
                   >
                     {tableOption.label}
                   </SelectItem>
@@ -100,7 +158,7 @@ const OrderDetails: React.FC = () => {
         <View className="flex-1">
           <Select
             value={selectedOrderType}
-            onValueChange={(option) => option && setSelectedOrderType(option)}
+            onValueChange={handleOrderTypeSelect}
           >
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue

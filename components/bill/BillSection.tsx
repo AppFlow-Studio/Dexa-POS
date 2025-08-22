@@ -19,7 +19,13 @@ const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
   );
 };
 
-const BillSection = () => {
+const BillSection = ({
+  showOrderDetails = true,
+  showPlaymentActions = true,
+}: {
+  showOrderDetails?: boolean;
+  showPlaymentActions?: boolean;
+}) => {
   const { activeOrderId, orders } = useOrderStore();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
@@ -41,10 +47,10 @@ const BillSection = () => {
         contentContainerStyle={{ flexGrow: 1 }}
       >
         <Image source={images.topBar} className="w-full" resizeMode="cover" />
-        <OrderDetails />
+        {showOrderDetails && <OrderDetails />}
         <BillSectionContent cart={cart} />
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-        <PaymentActions />
+        {showPlaymentActions && <PaymentActions />}
         <DiscountOverlay
           isVisible={isDiscountOverlayVisible}
           onClose={handleCloseDiscounts}

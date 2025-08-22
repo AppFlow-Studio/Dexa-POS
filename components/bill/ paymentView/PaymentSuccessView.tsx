@@ -43,6 +43,7 @@ const PaymentSuccessView = () => {
       closeActiveOrder();
     }
 
+    console.log("Table ID:", activeTableId);
     if (activeTableId) {
       // If the order was for a table, update the table's status
       updateTableStatus(activeTableId, "Needs Cleaning");

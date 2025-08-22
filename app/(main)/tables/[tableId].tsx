@@ -1,65 +1,70 @@
 import BillSection from "@/components/bill/BillSection";
+import SelectPaymentMethodModal from "@/components/bill/SelectPaymentMethodModal";
 import MenuSection from "@/components/menu/MenuSection";
+import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AlertCircle, Minus, Plus } from "lucide-react-native";
+import { AlertCircle } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
-
-const FormInput = ({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-}) => (
-  <View className="flex-1">
-    <Text className="text-base font-semibold text-gray-600 mb-2">{label}</Text>
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      className="py-3 px-4 bg-[#FAFAFA] rounded-xl text-lg border border-background-400"
-    />
-  </View>
-);
+import { Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-  const [serverName, setServerName] = useState("James Cameron");
-  const [customerName, setCustomerName] = useState("Jake Carter");
-  const [orderId, setOrderId] = useState("#021943");
-  const [numberOfGuests, setNumberOfGuests] = useState(4);
 
-  const { tables } = useFloorPlanStore();
-  const { orders, setActiveOrder, startNewOrder } = useOrderStore();
+  const [isPaymentSelectOpen, setPaymentSelectOpen] = useState(false);
+
+  const { tables, updateTableStatus } = useFloorPlanStore();
+  const {
+    orders,
+    activeOrderId,
+    setActiveOrder,
+    startNewOrder,
+    assignOrderToTable,
+  } = useOrderStore();
+  const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
   const table = tables.find((t) => t.id === tableId);
-  // Find the active order for this table
-  const activeOrder = orders.find(
+  // Find if an order is ALREADY assigned to this table
+  const existingOrderForTable = orders.find(
     (o) => o.service_location_id === tableId && o.order_status === "Open"
   );
 
+  // --- Core Logic ---
   useEffect(() => {
-    let orderToActivate = activeOrder;
-    if (!orderToActivate && tableId) {
-      // If no open order exists for this table, create one.
-      orderToActivate = startNewOrder(tableId as string);
+    if (existingOrderForTable) {
+      // If we navigated to a table that's already in use, make its order active.
+      setActiveOrder(existingOrderForTable.id);
+    } else {
+      // If the table is AVAILABLE, create a NEW, unassigned order and make IT active.
+      const newUnassignedOrder = startNewOrder();
+
+      setActiveOrder(newUnassignedOrder.id);
     }
 
-    if (orderToActivate) {
-      setActiveOrder(orderToActivate.id);
-    }
-
-    // On screen unmount, clear the active order from the global state
     return () => setActiveOrder(null);
-  }, [tableId, orders, activeOrder, startNewOrder, setActiveOrder]);
+  }, [tableId, existingOrderForTable, setActiveOrder, startNewOrder]);
+
+  useEffect(() => {
+    if (tableId) {
+      setActiveTableId(tableId as string);
+    }
+
+    return () => {
+      clearActiveTableId();
+    };
+  }, [tableId]);
+
+  const handleAssignToTable = () => {
+    if (activeOrderId && tableId) {
+      // This is the key action. It links the active order to the table.
+      assignOrderToTable(activeOrderId, tableId as string);
+      updateTableStatus(tableId as string, "In Use");
+      router.push("/tables");
+    }
+  };
 
   if (!table) {
     return (
@@ -74,61 +79,15 @@ const UpdateTableScreen = () => {
   return (
     <View className="flex-1 bg-gray-50">
       {/* --- Customer Info Section (Top) --- */}
-      <View className="bg-white p-6 border-b border-gray-200">
-        <View className="space-y-4">
-          <View className="flex-row gap-8 my-1">
-            <FormInput
-              label="Server/Employee Name"
-              value={serverName}
-              onChangeText={setServerName}
-            />
-            <FormInput
-              label="Customer Name"
-              value={customerName}
-              onChangeText={setCustomerName}
-            />
-          </View>
-          <View className="flex-row gap-8 my-1">
-            <FormInput
-              label="Order"
-              value={activeOrder?.id || "N/A"}
-              onChangeText={setOrderId}
-            />
-            <View className="flex-1">
-              <Text className="text-base font-semibold text-gray-600 mb-2">
-                Guests
-              </Text>
-              <View className="flex-row items-center justify-between p-2 pl-4 bg-[#FAFAFA] rounded-xl border border-background-400">
-                <Text className="text-sm text-gray-500">
-                  The number of people will be added into the table
-                </Text>
-                <View className="flex-row items-center gap-2 bg-background-400 rounded-full">
-                  <TouchableOpacity
-                    onPress={() => setNumberOfGuests((p) => Math.max(1, p - 1))}
-                    className="p-2 bg-white rounded-full"
-                  >
-                    <Minus color="#4b5563" size={20} />
-                  </TouchableOpacity>
-                  <Text className="text-xl font-bold text-gray-800 w-8 text-center">
-                    {numberOfGuests}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setNumberOfGuests((p) => p + 1)}
-                    className="p-2 bg-primary-400 rounded-full"
-                  >
-                    <Plus color="#FFFFFF" size={20} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
+      <View className="px-2 mt-2">
+        <OrderInfoHeader />
       </View>
+
       <View className="flex-1 flex-row ">
         <View className="flex-1 p-6 px-4 pt-0">
           <MenuSection />
         </View>
-        <BillSection />
+        <BillSection showOrderDetails={false} showPlaymentActions={false} />
       </View>
 
       {/* --- Fixed Footer (Not Scrollable) --- */}
@@ -146,11 +105,27 @@ const UpdateTableScreen = () => {
           >
             <Text className="font-bold text-gray-700">Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity className="px-8 py-3 rounded-lg bg-primary-400">
-            <Text className="font-bold text-white">Take Order</Text>
-          </TouchableOpacity>
+          {existingOrderForTable ? (
+            <TouchableOpacity
+              onPress={() => setPaymentSelectOpen(true)}
+              className="px-8 py-3 rounded-lg bg-primary-400"
+            >
+              <Text className="font-bold text-white">Pay</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              className="px-8 py-3 rounded-lg bg-primary-400"
+              onPress={handleAssignToTable}
+            >
+              <Text className="font-bold text-white">Take Order</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
+      <SelectPaymentMethodModal
+        isOpen={isPaymentSelectOpen}
+        onClose={() => setPaymentSelectOpen(false)}
+      />
     </View>
   );
 };

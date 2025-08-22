@@ -25,6 +25,11 @@ interface OrderState {
   removeCheckDiscount: (orderId: string) => void;
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
+  assignOrderToTable: (orderId: string, tableId: string) => void;
+  updateOrderStatus: (
+    orderId: string,
+    status: OrderProfile["order_status"]
+  ) => void;
 
   closeActiveOrder: () => string | null; // Returns the tableId if it exists
 }
@@ -96,12 +101,12 @@ export const useOrderStore = create<OrderState>((set, get) => {
       recalculateTotals(orderId);
     },
 
-    startNewOrder: (tableId) => {
+    startNewOrder: () => {
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
-        service_location_id: tableId || null,
-        order_status: "Open",
-        order_type: tableId ? "Dine-In" : "Take-Out",
+        service_location_id: null,
+        order_status: "Preparing",
+        order_type: "Take-Out",
         items: [],
         opened_at: new Date().toISOString(),
       };
@@ -218,6 +223,24 @@ export const useOrderStore = create<OrderState>((set, get) => {
         }),
       }));
       recalculateTotals(get().activeOrderId);
+    },
+
+    assignOrderToTable: (orderId, tableId) => {
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId
+            ? { ...o, service_location_id: tableId, order_type: "Dine-In" }
+            : o
+        ),
+      }));
+    },
+
+    updateOrderStatus: (orderId, status) => {
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId ? { ...o, order_status: status } : o
+        ),
+      }));
     },
 
     closeActiveOrder: () => {
