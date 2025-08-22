@@ -63,10 +63,8 @@ const Sidebar: React.FC = () => {
   };
 
   return (
-    // We use a Fragment because the components are positioned absolutely
-    // relative to the parent layout in `_layout.tsx`.
     <>
-      {/* --- Part 1: The Static, Always-Visible Icon Bar --- */}
+      {/* The Static, Always-Visible Icon Bar --- */}
       <View className="w-20 h-full bg-white p-2 border-r border-gray-200 items-center z-10">
         <TouchableOpacity
           onPress={() => setIsExpanded(true)}
@@ -90,7 +88,7 @@ const Sidebar: React.FC = () => {
         </View>
       </View>
 
-      {/* --- Part 2: The Animated Overlay and Expanded Panel --- */}
+      {/*The Animated Overlay and Expanded Panel --- */}
       {/* These float on top of the main content and the static icon bar */}
 
       <Animated.View

@@ -27,16 +27,38 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   const { id, label, icon: Icon, subItems = [], href } = item;
   const hasSubItems = subItems.length > 0;
   const isOpen = openAccordions.includes(id);
-
-  const isChildActive = (items: SidebarNavigationItem[]): boolean => {
-    return items.some(
-      (child) =>
-        child.href === activePath ||
-        (child.subItems && isChildActive(child.subItems))
-    );
-  };
-  const isActive = href === activePath || (!href && isChildActive(subItems));
   const indentation = level * 4; // 4px indentation for each level
+
+  const isActive = React.useMemo(() => {
+    // A link is active if the current path *starts with* its href.
+    //    e.g., if href is '/tables', it will be active for '/tables/23'.
+    //    We check `typeof href === 'string' && href.length > 1` to avoid matching the root '/' for every link. (href can be an object too)
+    if (
+      typeof href === "string" &&
+      href.length > 1 &&
+      activePath.startsWith(href)
+    ) {
+      return true;
+    }
+    // A link is also active if it's an exact match (useful for '/home').
+    if (href && activePath === href) {
+      return true;
+    }
+    // An accordion header is active if any of its children are active (recursive check).
+    const checkChildren = (items: SidebarNavigationItem[]): boolean => {
+      return items.some((child) => {
+        if (typeof child.href === "string" && activePath.startsWith(child.href))
+          return true;
+        if (child.subItems) return checkChildren(child.subItems);
+        return false;
+      });
+    };
+    if (hasSubItems) {
+      return checkChildren(subItems);
+    }
+
+    return false;
+  }, [activePath, href, subItems, hasSubItems]);
 
   const handlePress = () => {
     // If the sidebar is collapsed...

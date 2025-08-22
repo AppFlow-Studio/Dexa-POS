@@ -1,4 +1,6 @@
 import { MenuItemType } from "@/lib/types";
+import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { Plus, Utensils } from "lucide-react-native";
 import React from "react";
 import {
@@ -11,19 +13,39 @@ import {
 
 interface MenuItemProps {
   item: MenuItemType;
-  onAddToCart: () => void; // Changed from onpress to be more specific
   imageSource?: ImageSourcePropType;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({
-  item,
-  onAddToCart,
-  imageSource,
-}) => {
+const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
+  const { activeOrderId, orders } = useOrderStore();
+  const { openToAdd, openToEdit } = useCustomizationStore();
+
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+  // Check if an item with this `menuItemId` is already in the active cart
+  const itemInCart = activeOrder?.items.find(
+    (cartItem) => cartItem.menuItemId === item.id
+  );
+  const isSelected = !!itemInCart;
+
+  const handlePress = () => {
+    if (isSelected) {
+      // If the item is already in the cart, open the dialog in 'edit' mode
+      openToEdit(itemInCart, activeOrderId);
+    } else {
+      // If it's not in the cart, open the dialog in 'add' mode
+      openToAdd(item, activeOrderId);
+    }
+  };
+
   return (
     <TouchableOpacity
-      onPress={onAddToCart}
-      className="w-[32%] p-4 rounded-[20px] mb-3 bg-white border border-[#F5F5F5]"
+      onPress={handlePress}
+      className={`w-[32%] p-4 rounded-[20px] mb-3 bg-white  ${
+        isSelected
+          ? " border-b-primary-400 border-b-4 "
+          : "border border-[#F5F5F5]"
+      }`}
     >
       <View className="flex-row items-center gap-2">
         {imageSource ? (
@@ -53,11 +75,27 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </View>
         </View>
       </View>
-      <View className="w-full mt-4 py-3 rounded-xl items-center justify-center bg-primary-100">
-        <View className="flex-row items-center">
-          <Plus color="#3D72C2" size={16} strokeWidth={3} />
-          <Text className="text-primary-500 font-bold ml-1.5">Add to Cart</Text>
-        </View>
+
+      {/* The "Add to Cart" / "Selected" button now renders conditionally */}
+      <View
+        className={`w-full mt-4 py-3 rounded-xl items-center justify-center ${
+          isSelected ? "bg-gray-100" : "bg-primary-100"
+        }`}
+      >
+        {isSelected ? (
+          // "Selected" state
+          <View className="flex-row items-center">
+            <Text className="font-bold text-gray-500 ml-1.5">Selected</Text>
+          </View>
+        ) : (
+          // "Add to Cart" state
+          <View className="flex-row items-center">
+            <Plus color="#3D72C2" size={16} strokeWidth={3} />
+            <Text className="text-primary-500 font-bold ml-1.5">
+              Add to Cart
+            </Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
