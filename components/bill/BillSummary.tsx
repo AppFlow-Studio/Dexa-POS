@@ -13,10 +13,10 @@ const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
   return (
     <View className="flex-1 bg-white">
       <View className="my-4 px-4">
-        <Text className="text-xl font-bold text-accent-500 mb-4">Bills</Text>
+        <Text className="text-xl font-bold text-accent-500">Bills</Text>
         <ScrollView
           showsVerticalScrollIndicator={true}
-          className="max-h-40"
+          className="max-h-40 mb-2"
           nestedScrollEnabled={true}
         >
           {cart.length > 0 ? (

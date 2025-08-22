@@ -6,6 +6,7 @@ import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { Toasts } from "@backpackapp-io/react-native-toast";
 import {
   DarkTheme,
   DefaultTheme,
@@ -65,6 +66,23 @@ export default function RootLayout() {
           <SearchBottomSheet />
           <PaymentModal />
           <ItemCustomizationDialog />
+          <Toasts
+            defaultStyle={{
+              view: {
+                backgroundColor: "#ffffff",
+                borderWidth: 1,
+                borderColor: "#e5e7eb",
+              },
+              text: {
+                color: "#1f2937",
+                fontWeight: "bold",
+                fontSize: 16,
+              },
+              indicator: {
+                backgroundColor: "#659AF0",
+              },
+            }}
+          />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

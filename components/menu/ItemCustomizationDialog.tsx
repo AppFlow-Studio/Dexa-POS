@@ -1,6 +1,7 @@
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -84,6 +85,12 @@ const ItemCustomizationDialog: React.FC = () => {
       };
       addItemToActiveOrder(newItem);
     }
+    // Trigger the toast notification with the item's details
+    toast.success(`${menuItem.name} $${total.toFixed(2)} added`, {
+      duration: 4000, // Show for 4 seconds
+      position: ToastPosition.BOTTOM,
+    });
+
     close();
   }, [
     menuItem,
