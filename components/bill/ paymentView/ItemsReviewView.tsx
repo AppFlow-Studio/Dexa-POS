@@ -49,11 +49,11 @@ const ItemsReviewView = () => {
             ${activeOrderTax.toFixed(2)}
           </Text>
         </View>
-        {activeOrderTax > 0 && (
+        {activeOrderDiscount > 0 && (
           <View className="flex-row justify-between items-center mb-4">
             <Text className="text-base text-green-600">Discount</Text>
             <Text className="text-base text-green-600">
-              -${activeOrderTax.toFixed(2)}
+              -${activeOrderDiscount.toFixed(2)}
             </Text>
           </View>
         )}

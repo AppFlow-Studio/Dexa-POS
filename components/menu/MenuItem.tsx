@@ -18,7 +18,7 @@ interface MenuItemProps {
 
 const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
   const { activeOrderId, orders } = useOrderStore();
-  const { openToAdd, openToEdit } = useCustomizationStore();
+  const { openToAdd } = useCustomizationStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -29,13 +29,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
   const isSelected = !!itemInCart;
 
   const handlePress = () => {
-    if (isSelected) {
-      // If the item is already in the cart, open the dialog in 'edit' mode
-      openToEdit(itemInCart, activeOrderId);
-    } else {
-      // If it's not in the cart, open the dialog in 'add' mode
-      openToAdd(item, activeOrderId);
-    }
+    openToAdd(item, activeOrderId);
   };
 
   return (
@@ -82,20 +76,10 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
           isSelected ? "bg-gray-100" : "bg-primary-100"
         }`}
       >
-        {isSelected ? (
-          // "Selected" state
-          <View className="flex-row items-center">
-            <Text className="font-bold text-gray-500 ml-1.5">Selected</Text>
-          </View>
-        ) : (
-          // "Add to Cart" state
-          <View className="flex-row items-center">
-            <Plus color="#3D72C2" size={16} strokeWidth={3} />
-            <Text className="text-primary-500 font-bold ml-1.5">
-              Add to Cart
-            </Text>
-          </View>
-        )}
+        <View className="flex-row items-center">
+          <Plus color="#3D72C2" size={16} strokeWidth={3} />
+          <Text className="text-primary-500 font-bold ml-1.5">Add to Cart</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );

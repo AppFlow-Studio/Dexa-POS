@@ -1,4 +1,4 @@
-import { CartItem, Discount, OrderProfile } from "@/lib/types";
+import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import { create } from "zustand";
 
 const TAX_RATE = 0.05;
@@ -29,6 +29,11 @@ interface OrderState {
   updateOrderStatus: (
     orderId: string,
     status: OrderProfile["order_status"]
+  ) => void;
+  addPaymentToOrder: (
+    orderId: string,
+    amount: number,
+    method: PaymentType
   ) => void;
 
   closeActiveOrder: () => string | null; // Returns the tableId if it exists
@@ -86,6 +91,32 @@ export const useOrderStore = create<OrderState>((set, get) => {
     }
   };
 
+  // --- Helper function to check for deep equality of customizations ---
+  const areCustomizationsEqual = (
+    custA: CartItem["customizations"],
+    custB: CartItem["customizations"]
+  ): boolean => {
+    // 1. Check if sizes are the same
+    if (custA.size?.id !== custB.size?.id) {
+      return false;
+    }
+    // 2. Check if notes are the same
+    if (custA.notes !== custB.notes) {
+      return false;
+    }
+    // 3. Check if add-ons are the same (must have same add-ons in any order)
+    const addOnsA = custA.addOns?.map((a) => a.id).sort() || [];
+    const addOnsB = custB.addOns?.map((a) => a.id).sort() || [];
+    if (
+      addOnsA.length !== addOnsB.length ||
+      !addOnsA.every((id, index) => id === addOnsB[index])
+    ) {
+      return false;
+    }
+    // 4. If all checks pass, they are equal
+    return true;
+  };
+
   return {
     // --- INITIAL STATE ---
     orders: [],
@@ -115,15 +146,50 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     addItemToActiveOrder: (newItem) => {
-      const { activeOrderId } = get();
+      const { activeOrderId, orders } = get();
       if (!activeOrderId) return;
 
+      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      if (!activeOrder) return;
+
+      // Find an existing item in the cart that is an exact match
+      const existingItemIndex = activeOrder.items.findIndex(
+        (cartItem) =>
+          cartItem.menuItemId === newItem.menuItemId &&
+          areCustomizationsEqual(
+            cartItem.customizations,
+            newItem.customizations
+          )
+      );
+
       set((state) => ({
-        orders: state.orders.map((o) =>
-          o.id === activeOrderId ? { ...o, items: [...o.items, newItem] } : o
-        ),
+        orders: state.orders.map((o) => {
+          if (o.id === activeOrderId) {
+            let updatedCart: CartItem[];
+
+            if (existingItemIndex > -1) {
+              // --- Item Merge Logic ---
+              // If a match is found, update the quantity of the existing item
+              updatedCart = o.items.map((item, index) => {
+                if (index === existingItemIndex) {
+                  return {
+                    ...item,
+                    quantity: item.quantity + newItem.quantity,
+                  };
+                }
+                return item;
+              });
+            } else {
+              // --- Add New Item Logic ---
+              // If no match, add the new item to the cart
+              updatedCart = [...o.items, newItem];
+            }
+            return { ...o, items: updatedCart };
+          }
+          return o;
+        }),
       }));
-      recalculateTotals(activeOrderId);
+      recalculateTotals(activeOrderId); // Recalculate after updating the cart
     },
 
     updateItemInActiveOrder: (updatedItem) => {
@@ -240,6 +306,18 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId ? { ...o, order_status: status } : o
         ),
+      }));
+    },
+
+    addPaymentToOrder: (orderId, amount, method) => {
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          if (o.id === orderId) {
+            const newPayments = [...(o.payments || []), { amount, method }];
+            return { ...o, payments: newPayments };
+          }
+          return o;
+        }),
       }));
     },
 

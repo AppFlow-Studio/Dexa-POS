@@ -228,6 +228,8 @@ export interface TrackedOrder {
   totalItems: number;
 }
 
+export type PaymentType = "Card" | "Cash" | "Split";
+
 export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
 
@@ -256,6 +258,8 @@ export interface OrderProfile {
   customer_name?: string;
   server_name?: string;
   checkDiscount?: Discount | null;
+  paymentMethod?: PaymentType; // Example usage
+  payments?: { amount: number; method: PaymentType }[]; // Example usage
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

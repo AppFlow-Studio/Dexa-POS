@@ -8,8 +8,7 @@ import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
-  const { isOpen, mode, menuItem, cartItem, activeOrderId, close } =
-    useCustomizationStore();
+  const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
   const { addItemToActiveOrder, updateItemInActiveOrder } = useOrderStore();
 
   // Internal state for the form

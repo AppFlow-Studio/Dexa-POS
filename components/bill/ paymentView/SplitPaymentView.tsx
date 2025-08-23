@@ -1,76 +1,424 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
+import { CartItem } from "@/lib/types";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { Minus } from "lucide-react-native";
 type SplitOption = "Split Evenly" | "Split by Item" | "Custom Amount";
 type PaymentType = "Card" | "Cash";
 
 interface Split {
   id: number;
   amount: number;
+  items: CartItem[];
   paymentType: PaymentType;
 }
 
 const SplitPaymentView = () => {
-  const {
-    activeOrderId,
-    orders,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderTotal,
-    activeOrderDiscount,
-  } = useOrderStore();
-
+  const { activeOrderId, orders, activeOrderTotal } = useOrderStore();
   const { close, setView } = usePaymentStore();
-
-  const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");
-  const [numberOfPeople, setNumberOfPeople] = useState(2);
-  const [splits, setSplits] = useState<Split[]>([]);
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
-  // This effect recalculates the splits whenever the total or number of people changes
-  useMemo(() => {
-    const newSplits: Split[] = [];
-    const amountPerPerson = activeOrderTotal / numberOfPeople;
-    for (let i = 1; i <= numberOfPeople; i++) {
-      newSplits.push({
-        id: i,
-        amount: amountPerPerson,
-        paymentType: "Card", // Default to Card
-      });
-    }
-    setSplits(newSplits);
-  }, [activeOrderTotal, numberOfPeople]);
+  // --- State Management ---
+  const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");
+  const [numberOfPeople, setNumberOfPeople] = useState(2);
+  const [splits, setSplits] = useState<Split[]>([]);
+  const [unassignedItems, setUnassignedItems] = useState<CartItem[]>([]); // For "Split by Item"
 
+  const totalInCents = useMemo(
+    () => Math.round(activeOrderTotal * 100),
+    [activeOrderTotal]
+  );
+
+  // --- Core Logic ---
   const handleSetPaymentType = (splitId: number, type: PaymentType) => {
-    setSplits((currentSplits) =>
-      currentSplits.map((split) =>
+    setSplits((prevSplits) =>
+      prevSplits.map((split) =>
         split.id === splitId ? { ...split, paymentType: type } : split
       )
     );
   };
 
-  // A simplified summary of items for the bill preview
-  const billSummary = items.reduce(
-    (acc, item) => {
-      const existing = acc.find((i) => i.name === item.name);
-      if (existing) {
-        existing.quantity += item.quantity;
-        existing.totalPrice += item.price * item.quantity;
-      } else {
-        acc.push({
-          name: item.name,
-          quantity: item.quantity,
-          totalPrice: item.price * item.quantity,
-        });
-      }
-      return acc;
-    },
-    [] as { name: string; quantity: number; totalPrice: number }[]
+  const billSummary = useMemo(() => {
+    return items.reduce(
+      (acc, item) => {
+        const existing = acc.find((i) => i.name === item.name);
+        if (existing) {
+          existing.quantity += item.quantity;
+          existing.totalPrice += item.price * item.quantity;
+        } else {
+          acc.push({
+            name: item.name,
+            quantity: item.quantity,
+            totalPrice: item.price * item.quantity,
+          });
+        }
+        return acc;
+      },
+      [] as { name: string; quantity: number; totalPrice: number }[]
+    );
+  }, [items]);
+
+  const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
+    useOrderStore();
+
+  useEffect(() => {
+    // Recalculate splits whenever the primary option changes
+    if (splitOption === "Split Evenly") {
+      const amountPerPerson = activeOrderTotal / numberOfPeople;
+      const newSplits = Array.from({ length: numberOfPeople }, (_, i) => ({
+        id: i + 1,
+        amount: amountPerPerson,
+        items: [], // Not needed for "Split Evenly"
+        paymentType: "Card" as PaymentType, // Default to Card
+      }));
+      setSplits(newSplits);
+    } else if (splitOption === "Split by Item") {
+      setUnassignedItems(items); // Start with all items unassigned
+      setSplits(
+        Array.from({ length: 2 }, (_, i) => ({
+          id: i + 1,
+          amount: 0,
+          items: [],
+          paymentType: "Card",
+        }))
+      );
+    } else {
+      // Custom Amount
+      setSplits([
+        {
+          id: 1,
+          amount: 0,
+          items: [],
+          paymentType: "Card",
+        },
+      ]);
+    }
+  }, [splitOption, numberOfPeople, activeOrderTotal, items]);
+
+  // Create a stable, string-based dependency for the item calculation effect
+  const itemDependency = JSON.stringify(
+    splits.map((s) => s.items.map((i) => i.id + i.quantity))
   );
+
+  useEffect(() => {
+    if (splitOption === "Split by Item") {
+      setSplits((currentSplits) =>
+        currentSplits.map((split) => {
+          const newAmount = split.items.reduce(
+            (acc, item) => acc + item.price * item.quantity,
+            0
+          );
+          // Only update if the amount is actually different
+          if (split.amount !== newAmount) {
+            return { ...split, amount: newAmount };
+          }
+          return split;
+        })
+      );
+    }
+  }, [itemDependency, splitOption]);
+
+  const totalPaid = splits.reduce((acc, split) => acc + split.amount, 0);
+  const remainingBalance = activeOrderTotal - totalPaid;
+
+  const handleAssignItem = (itemToAssign: CartItem, targetSplitId: number) => {
+    // Remove from unassigned
+    setUnassignedItems((prev) =>
+      prev.filter((item) => item.id !== itemToAssign.id)
+    );
+    // Add to the target split
+    setSplits((prev) =>
+      prev.map((split) =>
+        split.id === targetSplitId
+          ? { ...split, items: [...split.items, itemToAssign] }
+          : split
+      )
+    );
+  };
+
+  const handleUnassignItem = (
+    itemToUnassign: CartItem,
+    sourceSplitId: number
+  ) => {
+    // Add back to unassigned
+    setUnassignedItems((prev) => [...prev, itemToUnassign]);
+    // Remove from the source split
+    setSplits((prev) =>
+      prev.map((split) =>
+        split.id === sourceSplitId
+          ? {
+              ...split,
+              items: split.items.filter(
+                (item) => item.id !== itemToUnassign.id
+              ),
+            }
+          : split
+      )
+    );
+  };
+
+  const handleAddSplit = () => {
+    const newId =
+      splits.length > 0 ? Math.max(...splits.map((s) => s.id)) + 1 : 1;
+    setSplits((prev) => [
+      ...prev,
+      { id: newId, amount: remainingBalance, items: [], paymentType: "Card" },
+    ]);
+  };
+
+  const handleRemoveSplit = (splitToRemove: Split) => {
+    // Don't allow removing the last split
+    if (splits.length <= 1) {
+      alert("Cannot remove the last split.");
+      return;
+    }
+
+    // Return all items from the removed split back to the unassigned pool
+    setUnassignedItems((prev) => [...prev, ...splitToRemove.items]);
+
+    // Filter out the removed split from the main splits array
+    setSplits((prev) => prev.filter((s) => s.id !== splitToRemove.id));
+  };
+
+  const handleCustomAmountChange = (splitId: number, textValue: string) => {
+    // Sanitize the input to allow for a single decimal
+    let sanitizedText = textValue.replace(/[^0-9.]/g, "");
+    if ((sanitizedText.match(/\./g) || []).length > 1) return;
+    console.log("sanitizedText", sanitizedText);
+    if (sanitizedText === "") sanitizedText = "0";
+
+    setSplits((currentSplits) =>
+      currentSplits.map((split) =>
+        split.id === splitId
+          ? {
+              ...split,
+              amount: parseFloat(sanitizedText),
+            }
+          : split
+      )
+    );
+  };
+
+  const handleAddSplitInCustomMode = () => {
+    const newId =
+      splits.length > 0 ? Math.max(...splits.map((s) => s.id)) + 1 : 1;
+    // Auto-fill with the remaining balance in DOLLARS
+    setSplits((prev) => [
+      ...prev,
+      {
+        id: newId,
+        amount: parseFloat(remainingBalance.toFixed(2)),
+        items: [],
+        paymentType: "Card",
+      },
+    ]);
+  };
+
+  const handleNext = () => {
+    if (splitOption === "Custom Amount") {
+      const totalSplitAmount = splits.reduce(
+        (acc, split) => acc + split.amount,
+        0
+      );
+      if (totalSplitAmount > activeOrderTotal + 0.001) {
+        toast.error("split total cannot exceed the order total.", {
+          position: ToastPosition.BOTTOM,
+        });
+        return;
+      }
+    }
+    setView("success");
+  };
+
+  const renderSplitContent = () => {
+    switch (splitOption) {
+      case "Split Evenly":
+        return (
+          <View className="mt-6">
+            <Text className="text-base font-semibold text-accent-500 mb-3">
+              Number of People:
+            </Text>
+            <View className="flex-row gap-2">
+              {[2, 3, 4, 5, 6, 7, 8].map((num) => {
+                const isSelected = numberOfPeople === num;
+                return (
+                  <TouchableOpacity
+                    key={num}
+                    onPress={() => setNumberOfPeople(num)}
+                    className={`w-10 h-10 rounded-lg border items-center justify-center ${
+                      isSelected
+                        ? "border-primary-400 bg-primary-400"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    <Text
+                      className={`font-semibold ${
+                        isSelected ? "text-white" : "text-gray-600"
+                      }`}
+                    >
+                      {num}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        );
+      case "Split by Item":
+        return (
+          <View className="mt-6 gap-y-4">
+            {/* Unassigned Items Section */}
+            <View>
+              <Text className="text-base font-semibold text-accent-500 mb-3">
+                Unassigned Items
+              </Text>
+              {unassignedItems.length > 0 ? (
+                unassignedItems.map((item) => (
+                  <View key={item.id} className="p-2 border-b border-gray-200">
+                    <Text className="font-semibold">
+                      {item.name} (x{item.quantity})
+                    </Text>
+                    <View className="flex-row gap-2 mt-1">
+                      {splits.map((split) => (
+                        <TouchableOpacity
+                          key={split.id}
+                          onPress={() => handleAssignItem(item, split.id)}
+                          className="py-1 px-2 bg-gray-200 rounded-md"
+                        >
+                          <Text className="text-xs font-bold text-gray-700">
+                            To Split {split.id}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text className="text-gray-500">
+                  All items have been assigned.
+                </Text>
+              )}
+            </View>
+            {/* Assigned Items Section */}
+            <View className="gap-y-3">
+              {splits.map((split) => (
+                <View
+                  key={split.id}
+                  className="p-3 bg-white border border-gray-200 rounded-lg"
+                >
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-base font-bold text-primary-400 mb-2">
+                      Split {split.id} - ${split.amount.toFixed(2)}
+                    </Text>
+                    {splits.length > 1 && ( // Only show remove button if there's more than one split
+                      <TouchableOpacity
+                        onPress={() => handleRemoveSplit(split)}
+                        className="p-1 bg-red-100 rounded-full"
+                      >
+                        <Minus color="#ef4444" size={16} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  {split.items.map((item) => (
+                    <View
+                      key={item.id}
+                      className="flex-row justify-between items-center"
+                    >
+                      <Text className="text-gray-700">
+                        {item.name} (x{item.quantity})
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => handleUnassignItem(item, split.id)}
+                      >
+                        <Text className="text-red-500 font-semibold">
+                          Unassign
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity
+              onPress={handleAddSplit}
+              className="py-2 border border-dashed border-gray-400 rounded-lg items-center"
+            >
+              <Text className="font-bold text-gray-600">
+                + Add Another Split
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      case "Custom Amount":
+        return (
+          <View className="mt-6 gap-y-4">
+            <Text className="text-base font-semibold text-accent-500 mb-2">
+              Enter amount for each split:
+            </Text>
+
+            {splits.map((split, index) => {
+              // Convert amount to string for the TextInput, handling the '0' case
+              const displayValue =
+                split.amount > 0 ? split.amount.toString() : "";
+
+              return (
+                <View
+                  key={split.id}
+                  className="flex-row items-center justify-between p-3 bg-white border border-gray-200 rounded-lg"
+                >
+                  <Text className="text-base font-bold text-primary-400 w-24">
+                    Split {index + 1}
+                  </Text>
+                  <View className="flex-1 flex-row items-center bg-gray-100 rounded-md px-2">
+                    <Text className="font-bold text-gray-500">$</Text>
+                    <TextInput
+                      className="flex-1 p-2 text-lg font-semibold text-right"
+                      value={displayValue} // Use the string displayValue
+                      onChangeText={(text) =>
+                        handleCustomAmountChange(split.id, text)
+                      }
+                      placeholder="0.00"
+                      keyboardType="decimal-pad" // Use decimal-pad for better UX
+                    />
+                  </View>
+                  {splits.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveSplit(split)}
+                      className="p-2 ml-2"
+                    >
+                      <Minus color="#ef4444" size={20} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+
+            {/* Only show the "Add Split" button if the balance hasn't been met */}
+            {remainingBalance > 0.005 && ( // Use a small epsilon for float comparison
+              <TouchableOpacity
+                onPress={handleAddSplitInCustomMode}
+                className="py-2 border border-dashed border-gray-400 rounded-lg items-center"
+              >
+                <Text className="font-bold text-gray-600">
+                  + Add Another Split
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        );
+    }
+  };
 
   return (
     <View className="rounded-[36px] overflow-hidden bg-[#11111A]">
@@ -82,7 +430,10 @@ const SplitPaymentView = () => {
 
       {/* White Content */}
       <View className="p-6 rounded-[36px] bg-background-100">
-        <ScrollView className="max-h-96" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          className="max-h-[500px]"
+          showsVerticalScrollIndicator={false}
+        >
           {/* Bill Preview */}
           {billSummary.map((item) => (
             <View key={item.name} className="flex-row justify-between mb-1">
@@ -96,7 +447,7 @@ const SplitPaymentView = () => {
           ))}
 
           {/* Totals Summary */}
-          <View className="space-y-2 mb-4 mt-4">
+          <View className="gap-y-2 mb-4 mt-4">
             <View className="flex-row justify-between">
               <Text className="text-accent-500">Subtotal</Text>
               <Text className="text-accent-500">
@@ -158,45 +509,16 @@ const SplitPaymentView = () => {
             </View>
           </View>
 
-          {/* Number of People */}
-          <View className="mt-6">
-            <Text className="text-base font-semibold text-accent-500 mb-3">
-              Number of People:
-            </Text>
-            <View className="flex-row gap-2">
-              {[2, 3, 4, 5, 6, 7, 8].map((num) => {
-                const isSelected = numberOfPeople === num;
-                return (
-                  <TouchableOpacity
-                    key={num}
-                    onPress={() => setNumberOfPeople(num)}
-                    className={`w-10 h-10 rounded-lg border items-center justify-center ${
-                      isSelected
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
-                  >
-                    <Text
-                      className={`font-semibold ${
-                        isSelected ? "text-white" : "text-gray-600"
-                      }`}
-                    >
-                      {num}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          {renderSplitContent()}
 
           {/* Split Details */}
-          <View className="mt-6 space-y-4">
+          <View className="mt-6 gap-y-4">
             {splits.map((split) => (
               <View key={split.id} className="flex-row items-center">
                 <Text className="text-base font-semibold text-accent-500 w-20">
                   Split {split.id}:
                 </Text>
-                <View className="flex-row gap-2">
+                <View className="flex-row gap-2 items-center">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
                     className={`py-2 px-4 rounded-lg border ${
@@ -233,6 +555,9 @@ const SplitPaymentView = () => {
                       Cash
                     </Text>
                   </TouchableOpacity>
+                  <Text className="text-lg font-bold text-accent-500">
+                    ${split.amount.toFixed(2)}
+                  </Text>
                 </View>
               </View>
             ))}
@@ -252,9 +577,7 @@ const SplitPaymentView = () => {
         {/* Actions */}
         <View className="flex-row gap-2 mt-6 border-t border-gray-200 pt-4">
           <TouchableOpacity
-            onPress={() => {
-              setView("success");
-            }}
+            onPress={handleNext}
             className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
           >
             <Text className="font-bold text-white">Next Split</Text>
