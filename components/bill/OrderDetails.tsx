@@ -12,6 +12,7 @@ import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { FileText, Pencil } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 // Define a consistent type for our dropdown options
@@ -138,18 +139,20 @@ const OrderDetails: React.FC = () => {
               />
             </SelectTrigger>
             <SelectContent insets={contentInsets} className="max-h-64">
-              <SelectGroup>
-                {availableTableOptions.map((tableOption) => (
-                  <SelectItem
-                    key={tableOption.value}
-                    label={tableOption.label}
-                    value={tableOption.value}
-                    onPress={() => handleTableSelect(tableOption)}
-                  >
-                    {tableOption.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
+              <ScrollView>
+                <SelectGroup>
+                  {availableTableOptions.map((tableOption) => (
+                    <SelectItem
+                      key={tableOption.value}
+                      label={tableOption.label}
+                      value={tableOption.value}
+                      onPress={() => handleTableSelect(tableOption)}
+                    >
+                      {tableOption.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </ScrollView>
             </SelectContent>
           </Select>
         </View>

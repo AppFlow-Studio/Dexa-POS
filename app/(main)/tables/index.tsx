@@ -115,7 +115,9 @@ const TablesScreen = () => {
   const handleTablePress = (table: TableType) => {
     // Find if there's an open order for this table
     const activeOrder = orders.find(
-      (o) => o.service_location_id === table.id && o.order_status === "Open"
+      (o) =>
+        o.service_location_id === table.id &&
+        (o.order_status === "Preparing" || "Reday")
     );
 
     switch (table.status) {

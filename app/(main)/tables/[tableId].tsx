@@ -29,7 +29,9 @@ const UpdateTableScreen = () => {
   const table = tables.find((t) => t.id === tableId);
   // Find if an order is ALREADY assigned to this table
   const existingOrderForTable = orders.find(
-    (o) => o.service_location_id === tableId && o.order_status === "Open"
+    (o) =>
+      o.service_location_id === tableId &&
+      (o.order_status === "Preparing" || "Reday")
   );
 
   // --- Core Logic ---
@@ -59,7 +61,7 @@ const UpdateTableScreen = () => {
 
   const handleAssignToTable = () => {
     if (activeOrderId && tableId) {
-      // This is the key action. It links the active order to the table.
+      // This is the key action. It links the active order to the table
       assignOrderToTable(activeOrderId, tableId as string);
       updateTableStatus(tableId as string, "In Use");
       router.push("/tables");
