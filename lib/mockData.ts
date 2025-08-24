@@ -273,12 +273,11 @@ export const MOCK_TABLES: TableType[] = [
   {
     id: "6",
     name: "T-6",
-    status: "In Use",
+    status: "Available",
     capacity: 2,
     component: TableSquare2Chair,
     x: 280,
     y: 40,
-    order: { id: "#...", customerName: "...", total: 55 },
   },
   {
     id: "5",
@@ -339,12 +338,11 @@ export const MOCK_TABLES: TableType[] = [
   {
     id: "9",
     name: "T-9",
-    status: "In Use",
+    status: "Available",
     capacity: 4,
     component: TableSquare4Chair,
     x: 350,
     y: 250,
-    order: { id: "#...", customerName: "...", total: 82 },
   },
   {
     id: "11",

@@ -24,6 +24,7 @@ const UpdateTableScreen = () => {
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
+    updateOrderStatus,
     updateActiveOrderDetails,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
@@ -73,6 +74,7 @@ const UpdateTableScreen = () => {
       // This is the key action. It links the active order to the table
       assignOrderToTable(activeOrderId, tableId as string);
       updateTableStatus(tableId as string, "In Use");
+      updateOrderStatus(activeOrderId, "Preparing");
       router.push("/tables");
     }
   };

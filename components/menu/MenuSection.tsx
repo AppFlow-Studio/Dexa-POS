@@ -41,6 +41,7 @@ const MenuSection: React.FC = () => {
         className="mt-4"
         showsVerticalScrollIndicator={false}
         columnWrapperStyle={{ gap: 16 }}
+        removeClippedSubviews={false}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center h-48">
             <Text className="text-gray-500 text-lg">
