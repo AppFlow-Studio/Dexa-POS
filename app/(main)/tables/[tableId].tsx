@@ -5,6 +5,7 @@ import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -68,6 +69,20 @@ const UpdateTableScreen = () => {
     }
   };
 
+  const handlePay = () => {
+    const order = orders.find((o) => o.id === activeOrderId);
+    if (order) {
+      if (order.order_status === "Preparing") {
+        toast.error("The order is not yet ready", {
+          duration: 4000,
+          position: ToastPosition.BOTTOM,
+        });
+        return;
+      }
+    }
+    setPaymentSelectOpen(true);
+  };
+
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center">
@@ -109,7 +124,7 @@ const UpdateTableScreen = () => {
           </TouchableOpacity>
           {existingOrderForTable ? (
             <TouchableOpacity
-              onPress={() => setPaymentSelectOpen(true)}
+              onPress={handlePay}
               className="px-8 py-3 rounded-lg bg-primary-400"
             >
               <Text className="font-bold text-white">Pay</Text>

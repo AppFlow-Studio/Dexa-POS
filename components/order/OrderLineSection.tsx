@@ -82,7 +82,10 @@ const OrderLineSection: React.FC = () => {
   return (
     <View>
       <View className="flex-row justify-between items-center">
-        <OrderTabs onTabChange={handleTabChange} />
+        <OrderTabs
+          onTabChange={handleTabChange}
+          totalOrder={filteredOrders.length}
+        />
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}

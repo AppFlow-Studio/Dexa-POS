@@ -11,17 +11,17 @@ interface Tab {
 
 interface OrderTabsProps {
   onTabChange: (tab: TabName) => void;
+  totalOrder: number;
 }
 
-const TABS: Tab[] = [
-  { name: "All", count: 14 },
-  { name: "Dine In" },
-  { name: "Take Away" },
-  { name: "Delivery" },
-];
-
-const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange }) => {
+const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
   const [activeWindow, setActiveWindow] = useState("All");
+  const TABS: Tab[] = [
+    { name: "All", count: totalOrder },
+    { name: "Dine In" },
+    { name: "Take Away" },
+    { name: "Delivery" },
+  ];
 
   const handlePress = (tabName: TabName) => {
     setActiveWindow(tabName);

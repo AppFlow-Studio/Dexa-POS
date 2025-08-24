@@ -1,6 +1,7 @@
 import { MenuItemType } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus, Utensils } from "lucide-react-native";
 import React from "react";
 import {
@@ -18,7 +19,7 @@ interface MenuItemProps {
 
 const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
   const { activeOrderId, orders } = useOrderStore();
-  const { openToAdd } = useCustomizationStore();
+  const { openToAdd, openToEdit } = useCustomizationStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -29,7 +30,23 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
   const isSelected = !!itemInCart;
 
   const handlePress = () => {
-    openToAdd(item, activeOrderId);
+    // 2. Add validation check before opening the dialog
+    if (!activeOrder?.order_type) {
+      toast.error("Please select an Order Type", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+      return; // Stop execution
+    }
+
+    // 3. If validation passes, proceed with the original logic
+    if (isSelected && itemInCart) {
+      // If the item is already in the cart, open the dialog in 'edit' mode
+      openToEdit(itemInCart, activeOrderId);
+    } else {
+      // If it's not in the cart, open the dialog in 'add' mode
+      openToAdd(item, activeOrderId);
+    }
   };
 
   return (

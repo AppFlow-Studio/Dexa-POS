@@ -36,14 +36,7 @@ const PaymentSuccessView = () => {
   const items = activeOrder?.items || [];
 
   const handleDone = () => {
-    const { activeOrderId } = useOrderStore.getState(); // Get the current active order ID
-
-    if (activeOrderId) {
-      // Close the order in the order store
-      closeActiveOrder();
-    }
-
-    console.log("Table ID:", activeTableId);
+    const { activeOrderId, updateOrderStatus } = useOrderStore.getState(); // Get the current active order ID
     if (activeTableId) {
       // If the order was for a table, update the table's status
       updateTableStatus(activeTableId, "Needs Cleaning");
@@ -52,6 +45,9 @@ const PaymentSuccessView = () => {
       // Navigate to the clean table screen using the correct path format
       router.push(`/tables/clean-table/${activeTableId}`);
     } else {
+      if (activeOrderId) {
+        updateOrderStatus(activeOrderId, "Preparing");
+      }
       // If it was a global/walk-in order, just close the modal
       close();
     }

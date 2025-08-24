@@ -10,7 +10,7 @@ const index = () => {
 
   useEffect(() => {
     let activeOrder = orders.find(
-      (o) => o.service_location_id === null && o.order_status === "Preparing"
+      (o) => o.service_location_id === null && o.order_status === "Building"
     );
     if (!activeOrder) {
       activeOrder = startNewOrder(); // No tableId, creates a global order

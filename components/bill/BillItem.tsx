@@ -3,10 +3,8 @@ import { CartItem } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Pencil, Trash2, Utensils } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
-// 1. Import Gesture Handler and Reanimated
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -17,42 +15,36 @@ interface BillItemProps {
   item: CartItem;
 }
 
-const DELETE_BUTTON_WIDTH = 75; // The width of the delete button area
+const DELETE_BUTTON_WIDTH = 75;
 
 const BillItem: React.FC<BillItemProps> = ({ item }) => {
   const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
   const openDialogToEdit = useCustomizationStore((state) => state.openToEdit);
 
-  // --- Animation State ---
+  // Add a state to track if the delete button is visible
+  const [isDeleteVisible, setDeleteVisible] = useState(false);
   const translateX = useSharedValue(0);
 
-  // --- Gesture Handler ---
-  const panGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      // Allow swiping from right to left, but not too far
-      translateX.value = Math.max(
-        -DELETE_BUTTON_WIDTH,
-        Math.min(0, event.translationX)
-      );
-    })
-    .onEnd(() => {
-      // If swiped more than halfway, snap open. Otherwise, snap closed.
-      if (translateX.value < -DELETE_BUTTON_WIDTH / 2) {
-        translateX.value = withTiming(-DELETE_BUTTON_WIDTH);
-      } else {
-        translateX.value = withTiming(0);
-      }
-    });
+  // This is the handler for tapping the item
+  const handleItemPress = () => {
+    // Toggle the visibility state
+    const newIsVisible = !isDeleteVisible;
+    setDeleteVisible(newIsVisible);
 
-  // Animated style for the main content that will slide
+    // Animate based on the new state
+    if (newIsVisible) {
+      translateX.value = withTiming(-DELETE_BUTTON_WIDTH);
+    } else {
+      translateX.value = withTiming(0);
+    }
+  };
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
 
-  // Handler for the delete button press
   const handleDelete = () => {
     if (activeOrderId) {
-      // Use runOnJS if you experience issues, but it's often fine for Zustand
       removeItemFromActiveOrder(item.id);
     }
   };
@@ -62,22 +54,23 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
     : undefined;
 
   return (
-    <View className="rounded-lg overflow-hidden">
+    <View className="mb-4 rounded-lg overflow-hidden bg-white">
       {/* --- Delete Button (positioned underneath) --- */}
       <View className="absolute top-0 right-0 h-full w-full justify-center items-end">
         <TouchableOpacity
           onPress={handleDelete}
-          className="w-14 h-full bg-red-500 items-center justify-center"
+          className="w-[75px] h-full bg-red-500 items-center justify-center"
         >
           <Trash2 color="white" size={24} />
         </TouchableOpacity>
       </View>
 
-      {/* --- Main Swipeable Content --- */}
-      <GestureDetector gesture={panGesture}>
+      {/* --- Main Tappable Content --- */}
+      {/* Replace GestureDetector with a TouchableOpacity */}
+      <TouchableOpacity onPress={handleItemPress} activeOpacity={0.9}>
         <Animated.View
           style={animatedStyle}
-          className="flex-row items-center px-2 py-1 bg-white"
+          className="flex-row items-center p-2 bg-white" // Add padding here
         >
           {imageSource ? (
             <Image
@@ -97,10 +90,12 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
             </Text>
             <View className="flex-row items-center mt-1">
               <Text className="text-sm text-accent-500">x {item.quantity}</Text>
-              {/* "Notes" button now opens the edit dialog */}
               <TouchableOpacity
                 className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl"
-                onPress={() => openDialogToEdit(item, activeOrderId)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  openDialogToEdit(item, activeOrderId);
+                }}
               >
                 <Text className="text-xs font-semibold text-primary-400 mr-1">
                   Notes
@@ -113,7 +108,7 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
             ${(item.price * item.quantity).toFixed(2)}
           </Text>
         </Animated.View>
-      </GestureDetector>
+      </TouchableOpacity>
     </View>
   );
 };

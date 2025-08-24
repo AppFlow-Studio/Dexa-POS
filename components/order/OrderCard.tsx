@@ -30,10 +30,16 @@ const OrderCard: React.FC<OrderCardProps> = ({
       </Text>
       <View className="flex-row justify-between mt-2">
         <Text className="text-sm text-accent-500 ">
-          {order.order_type} • Table {order.service_location_id || "N/A"}
+          {order.order_type}
+          {order.service_location_id && (
+            <>• Table {order.service_location_id}</>
+          )}
         </Text>
         <Text className="text-sm text-accent-500">
-          {new Date(order.opened_at).toLocaleTimeString()}
+          {new Date(order.opened_at).toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </Text>
       </View>
       <View className="flex-row justify-between items-center mt-2">

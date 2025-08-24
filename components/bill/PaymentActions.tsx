@@ -1,5 +1,6 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Banknote, Columns, CreditCard } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -9,7 +10,6 @@ type PaymentMethod = "Card" | "Split" | "Cash";
 const PaymentActions = () => {
   const [activeMethod, setActiveMethod] = useState<PaymentMethod>("Card");
   const openPaymentModal = usePaymentStore((state) => state.open);
-  const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const activeOrder = useOrderStore((state) =>
     state.orders.find((o) => o.id === state.activeOrderId)
   );
@@ -22,6 +22,15 @@ const PaymentActions = () => {
 
   const handlePlaceOrder = () => {
     const tableIdForOrder = activeOrder?.service_location_id;
+
+    if (activeOrder?.order_type === "Dine In" && !tableIdForOrder) {
+      toast.error("Please assign a table", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+
+      return;
+    }
     openPaymentModal(activeMethod, tableIdForOrder);
   };
 

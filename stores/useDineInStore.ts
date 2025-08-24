@@ -38,7 +38,7 @@ export const useDineInStore = create<DineInState>((set, get) => ({
       id: `order_${Date.now()}`,
       service_location_id: tableId,
       order_status: "Open", // Default status for a new order
-      order_type: "Dine-In", // Since it's from a table
+      order_type: "Dine In", // Since it's from a table
       items: [],
       opened_at: new Date().toISOString(), // Current timestamp
       // ... other properties

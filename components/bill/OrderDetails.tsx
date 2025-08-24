@@ -25,19 +25,19 @@ const ORDER_TYPE_OPTIONS: SelectOption[] = [
 ];
 
 const OrderDetails: React.FC = () => {
-  // 2. Get the necessary state and actions from the stores
   const { tables, updateTableStatus } = useFloorPlanStore();
   const {
     activeOrderId,
     orders,
-    assignOrderToTable,
     updateActiveOrderDetails,
+    updateOrderStatus,
+    assignActiveOrderToTable,
   } = useOrderStore();
 
   // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
-  // 3. The state now reflects the data from the global store
+  // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
     activeOrder?.service_location_id
       ? {
@@ -52,12 +52,19 @@ const OrderDetails: React.FC = () => {
   const [selectedOrderType, setSelectedOrderType] = useState<
     SelectOption | undefined
   >();
+  const [tableSelectKey, setTableSelectKey] = useState(Date.now());
+  const [orderTypeSelectKey, setOrderTypeSelectKey] = useState(Date.now());
 
   useEffect(() => {
     if (selectedTable) {
       handleTableSelect(selectedTable);
     }
   }, [selectedTable]);
+
+  useEffect(() => {
+    setSelectedOrderType(undefined);
+    setOrderTypeSelectKey(Date.now());
+  }, [activeOrderId]);
 
   const availableTableOptions = useMemo(() => {
     // Show the currently assigned table PLUS all available tables
@@ -69,31 +76,33 @@ const OrderDetails: React.FC = () => {
       .map((t) => ({ label: t.name, value: t.id }));
   }, [tables, activeOrder]);
 
-  // --- 5. THIS IS THE KEY LOGIC ---
   const handleTableSelect = (option: SelectOption | undefined) => {
-    if (!option || !activeOrderId) return;
+    if (!option) return;
 
-    const newTableId = option.value;
-    const oldTableId = activeOrder?.service_location_id;
-
-    // Assign the active order to the new table
-    assignOrderToTable(activeOrderId, newTableId);
-
-    // Update the status of the new table
-    updateTableStatus(newTableId, "In Use");
-    setSelectedTable(undefined);
-
-    // If the order was previously on another table, make that one available again
-    if (oldTableId && oldTableId !== newTableId) {
-      updateTableStatus(oldTableId, "Available");
+    if (selectedOrderType?.value === "Take Away") {
+      toast.error("Order type is take away can't assign table", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+      setTableSelectKey(Date.now());
+      return;
     }
 
-    toast.success("Table assigned successfully!", {
+    const tableId = option.value;
+    if (activeOrderId) {
+      updateOrderStatus(activeOrderId, "Preparing");
+    }
+    assignActiveOrderToTable(tableId);
+    updateTableStatus(tableId, "In Use");
+
+    // 2. After successfully assigning, change the key of the Select component
+    // This will force it to re-mount and reset to its initial placeholder state.
+    setTableSelectKey(Date.now());
+
+    toast.success(`Order assigned to ${option.label}`, {
       duration: 4000,
       position: ToastPosition.BOTTOM,
     });
-
-    setSelectedOrderType(undefined);
   };
 
   const handleOrderTypeSelect = (option: SelectOption | undefined) => {
@@ -131,7 +140,7 @@ const OrderDetails: React.FC = () => {
       <View className="flex-row gap-2">
         {/* --- Select Table Dropdown --- */}
         <View className="flex-1">
-          <Select value={selectedTable}>
+          <Select key={tableSelectKey} value={selectedTable}>
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Select Table"
@@ -160,6 +169,7 @@ const OrderDetails: React.FC = () => {
         {/* --- Order Type Dropdown --- */}
         <View className="flex-1">
           <Select
+            key={orderTypeSelectKey}
             value={selectedOrderType}
             onValueChange={handleOrderTypeSelect}
           >

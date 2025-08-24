@@ -1,4 +1,5 @@
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 
 const TAX_RATE = 0.05;
@@ -26,6 +27,7 @@ interface OrderState {
   applyDiscountToItem: (orderId: string, itemId: string) => void;
   removeDiscountFromItem: (orderId: string, itemId: string) => void;
   assignOrderToTable: (orderId: string, tableId: string) => void;
+  assignActiveOrderToTable: (tableId: string) => void;
   updateOrderStatus: (
     orderId: string,
     status: OrderProfile["order_status"]
@@ -136,8 +138,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: null,
-        order_status: "Preparing",
-        order_type: "Take-Out",
+        order_status: "Building",
         items: [],
         opened_at: new Date().toISOString(),
       };
@@ -295,10 +296,55 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === orderId
-            ? { ...o, service_location_id: tableId, order_type: "Dine-In" }
+            ? { ...o, service_location_id: tableId, order_type: "Dine In" }
             : o
         ),
       }));
+    },
+
+    assignActiveOrderToTable: (tableId) => {
+      const { activeOrderId, orders } = get();
+      if (!activeOrderId) return;
+
+      const orderToAssign = orders.find((o) => o.id === activeOrderId);
+      if (!orderToAssign || orderToAssign.items.length === 0) {
+        console.warn("Cannot assign an empty order to a table.");
+        toast.error("Cart is empty", {
+          duration: 4000,
+          position: ToastPosition.BOTTOM,
+        });
+        return;
+      }
+
+      // Update the current order with the table ID
+      const updatedOrders = orders.map((o) =>
+        o.id === activeOrderId
+          ? {
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+            }
+          : o
+      );
+
+      // Create a new, empty global "walk-in" order for the next customer
+      const newGlobalOrder: OrderProfile = {
+        id: `order_${Date.now()}`,
+        service_location_id: null,
+        order_status: "Preparing",
+        order_type: "Take-Away",
+        items: [],
+        opened_at: new Date().toISOString(),
+      };
+
+      set({
+        orders: [...updatedOrders, newGlobalOrder],
+        // Set the new global order as the active one for the home screen
+        activeOrderId: newGlobalOrder.id,
+      });
+
+      // Recalculate totals, which will now be zero for the active (new global) order
+      recalculateTotals(get().activeOrderId);
     },
 
     updateOrderStatus: (orderId, status) => {
