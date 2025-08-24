@@ -39,14 +39,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource }) => {
       return; // Stop execution
     }
 
-    // 3. If validation passes, proceed with the original logic
-    if (isSelected && itemInCart) {
-      // If the item is already in the cart, open the dialog in 'edit' mode
-      openToEdit(itemInCart, activeOrderId);
-    } else {
-      // If it's not in the cart, open the dialog in 'add' mode
-      openToAdd(item, activeOrderId);
-    }
+    openToAdd(item, activeOrderId);
   };
 
   return (

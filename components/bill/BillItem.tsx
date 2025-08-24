@@ -79,7 +79,7 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
               <Image
                 source={imageSource}
                 className="w-12 h-12 rounded-lg"
-                resizeMode="cover"
+                resizeMode="contain"
               />
             ) : (
               <View className="w-12 h-12 rounded-lg bg-gray-100 items-center justify-center">

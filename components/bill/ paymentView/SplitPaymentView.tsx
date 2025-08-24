@@ -195,7 +195,6 @@ const SplitPaymentView = () => {
     // Sanitize the input to allow for a single decimal
     let sanitizedText = textValue.replace(/[^0-9.]/g, "");
     if ((sanitizedText.match(/\./g) || []).length > 1) return;
-    console.log("sanitizedText", sanitizedText);
     if (sanitizedText === "") sanitizedText = "0";
 
     setSplits((currentSplits) =>
