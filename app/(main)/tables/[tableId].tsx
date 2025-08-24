@@ -24,6 +24,7 @@ const UpdateTableScreen = () => {
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
+    updateActiveOrderDetails,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
@@ -37,14 +38,21 @@ const UpdateTableScreen = () => {
 
   // --- Core Logic ---
   useEffect(() => {
+    if (table?.status === "Needs Cleaning") {
+      router.push("/tables");
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
     if (existingOrderForTable) {
       // If we navigated to a table that's already in use, make its order active.
       setActiveOrder(existingOrderForTable.id);
     } else {
       // If the table is AVAILABLE, create a NEW, unassigned order and make IT active.
       const newUnassignedOrder = startNewOrder();
-
       setActiveOrder(newUnassignedOrder.id);
+      updateActiveOrderDetails({ order_type: "Dine In" });
     }
 
     return () => setActiveOrder(null);
