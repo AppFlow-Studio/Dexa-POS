@@ -2,7 +2,7 @@ import { MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { CartItem, MenuItemType } from "@/lib/types";
 import { create } from "zustand";
 
-type DialogMode = "add" | "edit";
+type DialogMode = "add" | "edit" | "view";
 
 interface CustomizationState {
   isOpen: boolean;
@@ -14,6 +14,7 @@ interface CustomizationState {
   // Actions
   openToAdd: (menuItem: MenuItemType, orderId: string | null) => void;
   openToEdit: (cartItem: CartItem, orderId: string | null) => void;
+  openToView: (cartItem: CartItem) => void;
 
   close: () => void;
 }
@@ -44,6 +45,16 @@ export const useCustomizationStore = create<CustomizationState>((set) => ({
       cartItem: cartItem,
       // 3. Store the activeOrderId
       activeOrderId: orderId,
+    }),
+
+  openToView: (cartItem) =>
+    set({
+      isOpen: true,
+      mode: "view", // Set the new mode
+      menuItem:
+        MOCK_MENU_ITEMS.find((mi) => mi.id === cartItem.menuItemId) || null,
+      cartItem: cartItem,
+      activeOrderId: null, // No order context needed for just viewing
     }),
 
   close: () =>

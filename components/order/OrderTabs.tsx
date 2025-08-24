@@ -47,10 +47,10 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
             >
               {tab.name}
             </Text>
-            {tab.count && (
+            {tab.count !== undefined && tab.count > 0 && (
               <View className="bg-primary-400 rounded-full w-6 h-6 items-center justify-center ml-2">
                 <Text className="text-white font-bold text-xs">
-                  {tab.count}
+                  {String(tab.count)}
                 </Text>
               </View>
             )}

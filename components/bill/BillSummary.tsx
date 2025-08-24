@@ -21,7 +21,11 @@ const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
         >
           {cart.length > 0 ? (
             cart.map((item, index) => (
-              <BillItem key={`${item.id}-${index}`} item={item} />
+              <BillItem
+                key={`${item.id}-${index}`}
+                item={item}
+                isEditable={true}
+              />
             ))
           ) : (
             <View className="h-24 items-center justify-center">

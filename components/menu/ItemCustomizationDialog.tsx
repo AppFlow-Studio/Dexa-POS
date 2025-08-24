@@ -17,6 +17,8 @@ const ItemCustomizationDialog: React.FC = () => {
   const [selectedAddOns, setSelectedAddOns] = useState<AddOn[]>([]);
   const [notes, setNotes] = useState("");
 
+  const isReadOnly = mode === "view";
+
   // Effect to populate the form when the dialog opens
   useEffect(() => {
     if (isOpen) {
@@ -135,6 +137,7 @@ const ItemCustomizationDialog: React.FC = () => {
             <Text className="text-lg font-medium text-accent-500">Qty</Text>
             <View className="flex-row items-center gap-4 rounded-full bg-neutral-200 border border-neutral-200">
               <TouchableOpacity
+                disabled={isReadOnly}
                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                 className="p-2 border border-gray-300 rounded-full bg-white"
               >
@@ -144,6 +147,7 @@ const ItemCustomizationDialog: React.FC = () => {
                 {quantity}
               </Text>
               <TouchableOpacity
+                disabled={isReadOnly}
                 onPress={() => setQuantity((q) => q + 1)}
                 className="p-2 bg-primary-400 rounded-full"
               >
@@ -163,6 +167,7 @@ const ItemCustomizationDialog: React.FC = () => {
                   const isSelected = selectedSize?.id === size.id;
                   return (
                     <TouchableOpacity
+                      disabled={isReadOnly}
                       key={size.id}
                       onPress={() => setSelectedSize(size)}
                       className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
@@ -195,6 +200,7 @@ const ItemCustomizationDialog: React.FC = () => {
                   );
                   return (
                     <TouchableOpacity
+                      disabled={isReadOnly}
                       key={addOn.id}
                       onPress={() => handleAddOnToggle(addOn)}
                       className={`w-[49%] p-3 rounded-xl border ${isSelected ? "border-[#659AF0] bg-[#659AF01F]" : "border-neutral-200"}`}
@@ -215,6 +221,7 @@ const ItemCustomizationDialog: React.FC = () => {
               Notes
             </Text>
             <TextInput
+              editable={!isReadOnly}
               value={notes}
               onChangeText={setNotes}
               placeholder="Make the cheese more melted"
@@ -229,22 +236,28 @@ const ItemCustomizationDialog: React.FC = () => {
             </Text>
           </View>
           <DialogFooter className=" rounded-b-[36px] border-t border-gray-200 ">
-            <View className="py-2 flex-row gap-2 justify-between items-center w-full ">
-              <TouchableOpacity
-                onPress={close}
-                className="px-8 py-3 flex-1 rounded-lg border border-gray-300 "
-              >
-                <Text className="font-bold text-gray-700 text-center">
-                  Cancel
-                </Text>
+            {isReadOnly ? (
+              <TouchableOpacity onPress={close} className="flex-1 py-3 ">
+                <Text>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSave}
-                className="px-8 py-3 flex-1 rounded-lg bg-primary-400"
-              >
-                <Text className="font-bold text-white text-center">Add</Text>
-              </TouchableOpacity>
-            </View>
+            ) : (
+              <View className="py-2 flex-row gap-2 justify-between items-center w-full ">
+                <TouchableOpacity
+                  onPress={close}
+                  className="px-8 py-3 flex-1 rounded-lg border border-gray-300 "
+                >
+                  <Text className="font-bold text-gray-700 text-center">
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSave}
+                  className="px-8 py-3 flex-1 rounded-lg bg-primary-400"
+                >
+                  <Text className="font-bold text-white text-center">Add</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </DialogFooter>
         </View>
       </DialogContent>

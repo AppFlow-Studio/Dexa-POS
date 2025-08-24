@@ -39,14 +39,7 @@ const OrderDetails: React.FC = () => {
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
-    activeOrder?.service_location_id
-      ? {
-          label:
-            tables.find((t) => t.id === activeOrder.service_location_id)
-              ?.name || "",
-          value: activeOrder.service_location_id,
-        }
-      : undefined
+    undefined
   );
 
   const [selectedOrderType, setSelectedOrderType] = useState<

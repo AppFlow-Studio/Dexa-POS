@@ -84,7 +84,7 @@ const OrderLineSection: React.FC = () => {
       <View className="flex-row justify-between items-center">
         <OrderTabs
           onTabChange={handleTabChange}
-          totalOrder={filteredOrders.length}
+          totalOrder={filteredOrders.length || 0}
         />
         <View className="flex-row items-center gap-2">
           <TouchableOpacity

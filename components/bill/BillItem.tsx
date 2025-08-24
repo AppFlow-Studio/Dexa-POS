@@ -13,30 +13,22 @@ import Animated, {
 
 interface BillItemProps {
   item: CartItem;
+  isEditable?: boolean;
 }
 
 const DELETE_BUTTON_WIDTH = 75;
 
-const BillItem: React.FC<BillItemProps> = ({ item }) => {
+const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
   const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
-  const openDialogToEdit = useCustomizationStore((state) => state.openToEdit);
-
-  // Add a state to track if the delete button is visible
+  const { openToEdit, openToView } = useCustomizationStore();
   const [isDeleteVisible, setDeleteVisible] = useState(false);
   const translateX = useSharedValue(0);
 
-  // This is the handler for tapping the item
   const handleItemPress = () => {
-    // Toggle the visibility state
+    if (!isEditable) return;
     const newIsVisible = !isDeleteVisible;
     setDeleteVisible(newIsVisible);
-
-    // Animate based on the new state
-    if (newIsVisible) {
-      translateX.value = withTiming(-DELETE_BUTTON_WIDTH);
-    } else {
-      translateX.value = withTiming(0);
-    }
+    translateX.value = withTiming(newIsVisible ? -DELETE_BUTTON_WIDTH : 0);
   };
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -46,6 +38,18 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
   const handleDelete = () => {
     if (activeOrderId) {
       removeItemFromActiveOrder(item.id);
+      // Reset the position after deletion
+      translateX.value = withTiming(0);
+      setDeleteVisible(false);
+    }
+  };
+
+  const handleNotesPress = (e: any) => {
+    e.stopPropagation();
+    if (isEditable) {
+      openToEdit(item, activeOrderId);
+    } else {
+      openToView(item);
     }
   };
 
@@ -55,60 +59,59 @@ const BillItem: React.FC<BillItemProps> = ({ item }) => {
 
   return (
     <View className="mb-4 rounded-lg overflow-hidden bg-white">
-      {/* --- Delete Button (positioned underneath) --- */}
-      <View className="absolute top-0 right-0 h-full w-full justify-center items-end">
-        <TouchableOpacity
-          onPress={handleDelete}
-          className="w-[75px] h-full bg-red-500 items-center justify-center"
-        >
-          <Trash2 color="white" size={24} />
-        </TouchableOpacity>
-      </View>
+      {/* Delete Button - Positioned absolutely but behind the content */}
+      {isEditable && (
+        <View className="absolute top-0 right-0 h-full justify-center items-end z-10">
+          <TouchableOpacity
+            onPress={handleDelete}
+            className="w-[75px] h-full bg-red-500 items-center justify-center"
+          >
+            <Trash2 color="white" size={24} />
+          </TouchableOpacity>
+        </View>
+      )}
 
-      {/* --- Main Tappable Content --- */}
-      {/* Replace GestureDetector with a TouchableOpacity */}
-      <TouchableOpacity onPress={handleItemPress} activeOpacity={0.9}>
-        <Animated.View
-          style={animatedStyle}
-          className="flex-row items-center p-2 bg-white" // Add padding here
-        >
-          {imageSource ? (
-            <Image
-              source={imageSource}
-              className="w-12 h-12 rounded-lg"
-              resizeMode="cover"
-            />
-          ) : (
-            <View className="w-12 h-12 rounded-lg bg-gray-100 items-center justify-center">
-              <Utensils color="#9ca3af" size={20} />
-            </View>
-          )}
+      {/* Main Content - This will slide to reveal the delete button */}
+      <Animated.View style={animatedStyle} className="bg-white z-20">
+        <TouchableOpacity onPress={handleItemPress} activeOpacity={0.9}>
+          <View className="flex-row items-center p-2">
+            {imageSource ? (
+              <Image
+                source={imageSource}
+                className="w-12 h-12 rounded-lg"
+                resizeMode="cover"
+              />
+            ) : (
+              <View className="w-12 h-12 rounded-lg bg-gray-100 items-center justify-center">
+                <Utensils color="#9ca3af" size={20} />
+              </View>
+            )}
 
-          <View className="flex-1 ml-3">
-            <Text className="font-semibold text-base text-accent-500">
-              {item.name}
-            </Text>
-            <View className="flex-row items-center mt-1">
-              <Text className="text-sm text-accent-500">x {item.quantity}</Text>
-              <TouchableOpacity
-                className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl"
-                onPress={(e) => {
-                  e.stopPropagation();
-                  openDialogToEdit(item, activeOrderId);
-                }}
-              >
-                <Text className="text-xs font-semibold text-primary-400 mr-1">
-                  Notes
+            <View className="flex-1 ml-3">
+              <Text className="font-semibold text-base text-accent-500">
+                {item.name}
+              </Text>
+              <View className="flex-row items-center mt-1">
+                <Text className="text-sm text-accent-500">
+                  x {item.quantity}
                 </Text>
-                <Pencil color="#2563eb" size={10} />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl"
+                  onPress={handleNotesPress}
+                >
+                  <Text className="text-xs font-semibold text-primary-400 mr-1">
+                    Notes
+                  </Text>
+                  <Pencil color="#2563eb" size={10} />
+                </TouchableOpacity>
+              </View>
             </View>
+            <Text className="font-semibold text-base text-accent-300">
+              ${(item.price * item.quantity).toFixed(2)}
+            </Text>
           </View>
-          <Text className="font-semibold text-base text-accent-300">
-            ${(item.price * item.quantity).toFixed(2)}
-          </Text>
-        </Animated.View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 };
