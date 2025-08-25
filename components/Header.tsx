@@ -18,6 +18,11 @@ const generateTitleFromPath = (pathname: string): string => {
   ) {
     return "Previous Order Details";
   } else if (
+    pathname.startsWith("/tables/edit-layout") &&
+    pathname.split("/").length === 3
+  ) {
+    return "Edit Layout";
+  } else if (
     pathname.startsWith("/tables/") &&
     pathname.split("/").length === 3
   ) {

@@ -1,3 +1,4 @@
+import CashierStand from "@/components/tables/svg/CashierStand";
 import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
 import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
 import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
@@ -191,7 +192,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "2",
     name: "BBQ Bacon Burger",
-    description: "Smoky BBQ sauce, crispy bacon, and melted cheddar on a juicy patty.",
+    description:
+      "Smoky BBQ sauce, crispy bacon, and melted cheddar on a juicy patty.",
     price: 12.99,
     image: "bbq_bacon_burger.png",
     meal: ["Lunch", "Dinner"],
@@ -202,7 +204,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "3",
     name: "Vegan Wrap",
-    description: "Fresh veggies, hummus, and greens wrapped in a soft tortilla.",
+    description:
+      "Fresh veggies, hummus, and greens wrapped in a soft tortilla.",
     price: 8.99,
     image: "vegan_wrap.png",
     meal: ["Lunch", "Dinner"],
@@ -212,7 +215,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "4",
     name: "Margherita Pizza",
-    description: "Classic tomato, fresh mozzarella, and basil on a crispy crust.",
+    description:
+      "Classic tomato, fresh mozzarella, and basil on a crispy crust.",
     price: 14.5,
     image: "margherita_pizza.png",
     meal: ["Dinner", "Specials"],
@@ -223,7 +227,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "5",
     name: "Chicken Caesar Salad",
-    description: "Crisp romaine, Caesar dressing, and croutons with shaved parmesan.",
+    description:
+      "Crisp romaine, Caesar dressing, and croutons with shaved parmesan.",
     price: 7.5,
     image: "chicken_caesar_salad.png",
     meal: ["Lunch", "Dinner"],
@@ -308,7 +313,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "13",
     name: "Eggs Benedict",
-    description: "Poached eggs, Canadian bacon, and hollandaise on an English muffin.",
+    description:
+      "Poached eggs, Canadian bacon, and hollandaise on an English muffin.",
     price: 10.5,
     image: "eggs_benedict.png",
     meal: ["Brunch"],
@@ -320,6 +326,17 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
 export const MOCK_TABLES: TableType[] = [
   // Top Row (Circles)
   {
+    id: "cashier-1",
+    name: "",
+    status: "Available", // Status doesn't really apply, but we need one
+    capacity: 0,
+    component: CashierStand,
+    x: 50,
+    y: 300,
+    rotation: 0,
+    type: "static-object", // Set its type
+  },
+  {
     id: "8",
     name: "T-8",
     status: "Available",
@@ -327,6 +344,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 40,
     y: 40,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "7",
@@ -336,6 +355,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 160,
     y: 40,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "6",
@@ -345,6 +366,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 280,
     y: 40,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "5",
@@ -354,6 +377,9 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 400,
     y: 40,
+    rotation: 0,
+
+    type: "table",
   },
   {
     id: "1",
@@ -363,6 +389,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 600,
     y: 40,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "2",
@@ -372,6 +400,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 720,
     y: 40,
+    rotation: 0,
+    type: "table",
   },
   // Second Row
   {
@@ -382,6 +412,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 600,
     y: 150,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "3",
@@ -391,6 +423,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 720,
     y: 150,
+    rotation: 0,
+    type: "table",
   },
   // Middle Rows (Squares)
   {
@@ -401,6 +435,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 200,
     y: 250,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "9",
@@ -410,6 +446,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 350,
     y: 250,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "11",
@@ -419,6 +457,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 200,
     y: 350,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "12",
@@ -428,6 +468,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare4Chair,
     x: 350,
     y: 350,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "13",
@@ -437,6 +479,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare8Chair,
     x: 660,
     y: 280,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "14",
@@ -446,6 +490,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare8Chair,
     x: 660,
     y: 380,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "15",
@@ -455,6 +501,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare8Chair,
     x: 660,
     y: 480,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "21",
@@ -464,6 +512,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 200,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "20",
@@ -473,6 +523,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 320,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "19",
@@ -482,6 +534,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 440,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "18",
@@ -491,6 +545,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 560,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "17",
@@ -500,6 +556,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 680,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
   {
     id: "16",
@@ -509,6 +567,8 @@ export const MOCK_TABLES: TableType[] = [
     component: TableSquare2Chair,
     x: 800,
     y: 600,
+    rotation: 0,
+    type: "table",
   },
 ];
 

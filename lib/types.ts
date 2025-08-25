@@ -63,6 +63,8 @@ export interface TableType {
   order?: TableOrder | null;
   x: number;
   y: number;
+  rotation: number;
+  type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
 }
 
 export type OnlineOrderStatus =
@@ -243,12 +245,12 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-  | "Open"
-  | "Closed"
-  | "Cancelled"
-  | "Preparing"
-  | "Ready"
-  | "Building";
+    | "Open"
+    | "Closed"
+    | "Cancelled"
+    | "Preparing"
+    | "Ready"
+    | "Building";
 
   // The type of fulfillment for this order.
   order_type?: "Dine In" | "Take-Away" | "Delivery";

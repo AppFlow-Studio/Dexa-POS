@@ -1,4 +1,7 @@
 import { TableType } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useRouter } from "expo-router";
+import { RotateCcw, Trash2 } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -12,11 +15,12 @@ import Animated, {
 
 interface DraggableTableProps {
   table: TableType;
-  position: { x: number; y: number };
-  onDragEnd: (tableId: string, position: { x: number; y: number }) => void;
+
   isEditMode: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
   canvasScale: SharedValue<number>;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 const STATUS_COLORS = {
@@ -28,41 +32,58 @@ const CHAIR_COLOR = "#D1D5DB"; // Gray for chairs
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
-  position,
-  onDragEnd,
   isEditMode,
+  isSelected,
+  onSelect,
   canvasScale,
-  onPress, // 2. Receive the onPress handler
+  onPress,
 }) => {
-  // --- All gesture and animation logic is unchanged ---
-  const translateX = useSharedValue(position.x);
-  const translateY = useSharedValue(position.y);
-  const contextX = useSharedValue(0);
-  const contextY = useSharedValue(0);
+  // 3. Get the actions directly from the store
+  const { updateTablePosition, updateTableRotation, removeTable } =
+    useFloorPlanStore();
+  const router = useRouter();
+
+  // --- Animation and Gesture state
+  const translateX = useSharedValue(table.x);
+  const translateY = useSharedValue(table.y);
+  const rotation = useSharedValue(table.rotation);
+  const dragContext = useSharedValue({ x: 0, y: 0 });
 
   useEffect(() => {
-    translateX.value = withSpring(position.x);
-    translateY.value = withSpring(position.y);
-  }, [position]);
+    translateX.value = withSpring(table.x);
+    translateY.value = withSpring(table.y);
+    rotation.value = withSpring(table.rotation);
+  }, [table]);
 
-  const gesture = Gesture.Pan()
+  const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
-      contextX.value = translateX.value;
-      contextY.value = translateY.value;
+      dragContext.value = { x: translateX.value, y: translateY.value };
     })
     .onUpdate((event) => {
       translateX.value =
-        contextX.value + event.translationX / canvasScale.value;
+        dragContext.value.x + event.translationX / canvasScale.value;
       translateY.value =
-        contextY.value + event.translationY / canvasScale.value;
+        dragContext.value.y + event.translationY / canvasScale.value;
     })
     .onEnd(() => {
-      runOnJS(onDragEnd)(table.id, {
+      runOnJS(updateTablePosition)(table.id, {
         x: translateX.value,
         y: translateY.value,
       });
     });
+
+  // ---  Handlers that call the store ---
+  const handleRotate = () => {
+    const newRotation = (rotation.value + 45) % 360;
+    // We can call the store action directly, no need for a prop
+    updateTableRotation(table.id, newRotation);
+  };
+
+  const handleDelete = () => {
+    // Call the store action directly
+    removeTable(table.id);
+  };
 
   const animatedStyle = useAnimatedStyle(() => ({
     position: "absolute",
@@ -71,35 +92,51 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
+      { rotate: `${rotation.value}deg` },
     ],
+    borderWidth: 2,
+    borderColor: isSelected && isEditMode ? "#3B82F6" : "transparent",
+    borderRadius: 18, // A generic border radius
+    padding: 4,
   }));
 
   const TableComponent = table.component;
 
-  const Content = () => (
-    <Animated.View style={animatedStyle}>
-      <TableComponent
-        color={STATUS_COLORS[table.status]}
-        chairColor={CHAIR_COLOR}
-      />
-      <View className="absolute inset-0 items-center justify-center">
-        <Text className="text-white font-bold text-lg">{table.name}</Text>
-      </View>
-    </Animated.View>
-  );
-
   return (
-    <GestureDetector gesture={gesture}>
-      {/* 3. The logic is now much simpler */}
-      {isEditMode ? (
-        // If editing, the content is just a view (not pressable)
-        <Content />
-      ) : (
-        // If not editing, the content is a pressable button
-        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-          <Content />
+    <GestureDetector gesture={dragGesture}>
+      <Animated.View style={animatedStyle}>
+        <TouchableOpacity
+          onPress={isEditMode ? onSelect : onPress}
+          activeOpacity={0.8}
+        >
+          <TableComponent
+            color={
+              table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
+            }
+            chairColor={CHAIR_COLOR}
+          />
+          <View className="absolute inset-0 items-center justify-center">
+            <Text className="text-white font-bold text-lg">{table.name}</Text>
+          </View>
         </TouchableOpacity>
-      )}
+
+        {isSelected && isEditMode && (
+          <View className="absolute -top-12 left-1/2 flex-row bg-white p-1.5 rounded-full z-50">
+            <TouchableOpacity
+              onPress={handleRotate}
+              className="p-2 bg-black/10 rounded-full"
+            >
+              <RotateCcw color="black" size={18} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDelete}
+              className="p-2 ml-1 bg-black/10 rounded-full"
+            >
+              <Trash2 color="red" size={18} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
     </GestureDetector>
   );
 };
