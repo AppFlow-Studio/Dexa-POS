@@ -1,6 +1,7 @@
-import { MOCK_SHIFT_STATUS, MOCK_USER_PROFILE } from "@/lib/mockData";
+import { MOCK_USER_PROFILE } from "@/lib/mockData";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Clock, Timer } from "lucide-react-native";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 type ClockStatus = "clockedOut" | "clockedIn" | "onBreak";
@@ -12,6 +13,18 @@ interface UserProfileCardProps {
   onStartBreak: () => void;
 }
 
+// Helper function to format the duration from milliseconds
+const formatDuration = (milliseconds: number): string => {
+  if (isNaN(milliseconds) || milliseconds < 0) return "0 h 00 m";
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
+    2,
+    "0"
+  );
+  return `${hours} h ${minutes} m`;
+};
+
 const UserProfileCard: React.FC<UserProfileCardProps> = ({
   status,
   onClockIn,
@@ -19,7 +32,25 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
   onStartBreak,
 }) => {
   const user = MOCK_USER_PROFILE;
-  const shift = MOCK_SHIFT_STATUS; // Using mock data for display
+  // 2. Get the live clockInTime from the store
+  const clockInTime = useTimeclockStore((state) => state.clockInTime);
+
+  // --- State for the live timers ---
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [shiftDuration, setShiftDuration] = useState("0 h 00 m");
+
+  // Effect to update the timers every second
+  useEffect(() => {
+    const timerId = setInterval(() => {
+      setCurrentTime(new Date());
+      if (clockInTime) {
+        const durationMs = new Date().getTime() - clockInTime.getTime();
+        setShiftDuration(formatDuration(durationMs));
+      }
+    }, 1000); // Update every second
+
+    return () => clearInterval(timerId); // Cleanup on unmount
+  }, [clockInTime]);
 
   const renderContent = () => {
     switch (status) {
@@ -38,9 +69,9 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
               <View className="flex-row items-center">
                 <Timer className="text-accent-600" size={16} />
                 <Text className="ml-2 text-neutral-600">
-                  Duration :{" "}
+                  Duration :
                   <Text className="text-accent-600 font-medium">
-                    {shift.duration}
+                    {shiftDuration}
                   </Text>
                 </Text>
               </View>
@@ -49,7 +80,12 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({
                 <Text className="ml-2 text-neutral-600">
                   Clock in at :{" "}
                   <Text className="text-accent-600 font-medium">
-                    {shift.clockInTime}
+                    {clockInTime
+                      ? clockInTime.toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "..."}
                   </Text>
                 </Text>
               </View>
