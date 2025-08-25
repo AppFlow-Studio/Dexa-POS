@@ -14,6 +14,13 @@ interface OrderState {
   activeOrderTax: number;
   activeOrderTotal: number;
   activeOrderDiscount: number;
+  // Outstanding (unpaid) totals for the ACTIVE order
+  activeOrderOutstandingSubtotal: number;
+  activeOrderOutstandingTax: number;
+  activeOrderOutstandingTotal: number;
+
+  // --- PENDING TABLE SELECTION ---
+  pendingTableSelection: string | null; // Store pending table selection
 
   // --- ACTIONS ---
   setActiveOrder: (orderId: string | null) => void;
@@ -21,6 +28,10 @@ interface OrderState {
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   removeItemFromActiveOrder: (itemId: string) => void;
+  updateItemStatusInActiveOrder: (
+    itemId: string,
+    status: "Preparing" | "Ready"
+  ) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => void;
   applyDiscountToCheck: (orderId: string, discount: Discount) => void;
   removeCheckDiscount: (orderId: string) => void;
@@ -38,27 +49,66 @@ interface OrderState {
     method: PaymentType
   ) => void;
 
+  markOrderAsPaid: (orderId: string) => void;
+  setPendingTableSelection: (tableId: string | null) => void;
+
   closeActiveOrder: () => string | null; // Returns the tableId if it exists
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
   // --- PRIVATE HELPER FUNCTION ---
   // This function calculates and sets the totals for the currently active order.
+  const normalizePaidQuantitiesFromPayments = (orderId: string | null) => {
+    if (!orderId) return;
+    const { orders } = get();
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+    const totalPaid = (order.payments || []).reduce(
+      (acc, p) => acc + p.amount,
+      0
+    );
+    // Calculate how many units should be marked paid across items FIFO
+    let remaining = totalPaid;
+    const updatedItems = order.items.map((item) => {
+      const unitPrice = item.price;
+      const currentPaid = item.paidQuantity || 0;
+      const unpaidQty = item.quantity - currentPaid;
+      if (remaining <= 0 || unpaidQty <= 0) return item;
+      const canCover = Math.min(
+        unpaidQty,
+        Math.floor(remaining / unitPrice + 1e-6)
+      );
+      if (canCover <= 0) return item;
+      remaining -= canCover * unitPrice;
+      return { ...item, paidQuantity: currentPaid + canCover };
+    });
+
+    // Return updated items so callers can set state when safe
+    return updatedItems;
+  };
+
   const recalculateTotals = (orderId: string | null) => {
     const { orders } = get();
     const activeOrder = orders.find((o) => o.id === orderId);
 
     if (activeOrder && activeOrder.items) {
+      // Subtotal must reflect modifiers (size/add-ons) captured in item.price
       const subtotal = activeOrder.items.reduce(
-        (acc, item) => acc + item.originalPrice * item.quantity,
+        (acc, item) => acc + item.price * item.quantity,
         0
       );
+
+      // Compute outstanding subtotal (unpaid amount) used for badges/logic
+      const outstandingSubtotal = activeOrder.items.reduce((acc, item) => {
+        const unpaidQty = item.quantity - (item.paidQuantity || 0);
+        return acc + unpaidQty * item.price;
+      }, 0);
 
       const itemDiscountsTotal = activeOrder.items.reduce((acc, item) => {
         if (item.appliedDiscount) {
           return (
             acc +
-            item.originalPrice * item.appliedDiscount.value * item.quantity
+            item.price * item.appliedDiscount.value * item.quantity
           );
         }
         return acc;
@@ -77,18 +127,50 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const tax = finalSubtotal * TAX_RATE;
       const total = finalSubtotal + tax;
 
+      // Outstanding totals derived from unpaid quantities at item price level
+      const outstandingTax = outstandingSubtotal * TAX_RATE;
+      const outstandingTotal = outstandingSubtotal + outstandingTax;
+
       set({
         activeOrderSubtotal: subtotal,
         activeOrderTax: tax,
         activeOrderTotal: total,
         activeOrderDiscount: totalDiscountAmount,
+        activeOrderOutstandingSubtotal: outstandingSubtotal,
+        activeOrderOutstandingTax: outstandingTax,
+        activeOrderOutstandingTotal: outstandingTotal,
       });
+
+      // Auto-manage paid_status only when there are items and at least one payment
+      const hasItems = (activeOrder.items?.length || 0) > 0;
+      const hasPayments = (activeOrder.payments?.length || 0) > 0;
+      if (hasItems && hasPayments) {
+        if (outstandingSubtotal <= 1e-6 && activeOrder.paid_status !== "Paid") {
+          set((state) => ({
+            orders: state.orders.map((o) =>
+              o.id === orderId ? { ...o, paid_status: "Paid" } : o
+            ),
+          }));
+        } else if (
+          outstandingSubtotal > 1e-6 && activeOrder.paid_status === "Paid"
+        ) {
+          // If new items were added after full payment, reflect Pending
+          set((state) => ({
+            orders: state.orders.map((o) =>
+              o.id === orderId ? { ...o, paid_status: "Pending" } : o
+            ),
+          }));
+        }
+      }
     } else {
       set({
         activeOrderSubtotal: 0,
         activeOrderTax: 0,
         activeOrderTotal: 0,
         activeOrderDiscount: 0,
+        activeOrderOutstandingSubtotal: 0,
+        activeOrderOutstandingTax: 0,
+        activeOrderOutstandingTotal: 0,
       });
     }
   };
@@ -127,10 +209,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
     activeOrderTax: 0,
     activeOrderTotal: 0,
     activeOrderDiscount: 0,
+    activeOrderOutstandingSubtotal: 0,
+    activeOrderOutstandingTax: 0,
+    activeOrderOutstandingTotal: 0,
+    pendingTableSelection: null,
 
     // --- PUBLIC ACTIONS ---
     setActiveOrder: (orderId) => {
       set({ activeOrderId: orderId });
+      // Avoid mutating orders here to prevent effects that depend on `orders` from looping
+      // Totals are derived and safe to compute
       recalculateTotals(orderId);
     },
 
@@ -139,6 +227,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         id: `order_${Date.now()}`,
         service_location_id: null,
         order_status: "Building",
+        paid_status: "Unpaid",
         items: [],
         opened_at: new Date().toISOString(),
       };
@@ -176,6 +265,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
                   return {
                     ...item,
                     quantity: item.quantity + newItem.quantity,
+                    // Newly added quantities are unpaid
+                    paidQuantity: item.paidQuantity || 0,
                   };
                 }
                 return item;
@@ -183,7 +274,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
             } else {
               // --- Add New Item Logic ---
               // If no match, add the new item to the cart
-              updatedCart = [...o.items, newItem];
+              updatedCart = [
+                ...o.items,
+                { ...newItem, paidQuantity: newItem.paidQuantity ?? 0 },
+              ];
             }
             return { ...o, items: updatedCart };
           }
@@ -201,15 +295,32 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === updatedItem.id ? updatedItem : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === updatedItem.id ? updatedItem : i
+              ),
+            }
             : o
         ),
       }));
       recalculateTotals(activeOrderId);
+    },
+
+    updateItemStatusInActiveOrder: (itemId, status) => {
+      const { activeOrderId } = get();
+      if (!activeOrderId) return;
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === activeOrderId
+            ? {
+              ...o,
+              items: o.items.map((i) =>
+                i.id === itemId ? { ...i, item_status: status } : i
+              ),
+            }
+            : o
+        ),
+      }));
     },
 
     removeItemFromActiveOrder: (itemId) => {
@@ -316,14 +427,24 @@ export const useOrderStore = create<OrderState>((set, get) => {
         return;
       }
 
-      // Update the current order with the table ID
+      // For dine-in orders, check if the order is paid before assigning to table
+      if (orderToAssign.order_type === "Dine In" && orderToAssign.paid_status !== "Paid") {
+        toast.error("Order must be paid before assigning to table", {
+          duration: 4000,
+          position: ToastPosition.BOTTOM,
+        });
+        return;
+      }
+
+      // Update the current order with the table ID and set status to Preparing
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-              ...o,
-              service_location_id: tableId,
-              order_type: "Dine In" as const,
-            }
+            ...o,
+            service_location_id: tableId,
+            order_type: "Dine In" as const,
+            order_status: "Preparing" as const,
+          }
           : o
       );
 
@@ -331,8 +452,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const newGlobalOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: null,
-        order_status: "Preparing",
+        order_status: "Building",
         order_type: "Take-Away",
+        paid_status: "Unpaid",
         items: [],
         opened_at: new Date().toISOString(),
       };
@@ -360,11 +482,36 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) => {
           if (o.id === orderId) {
             const newPayments = [...(o.payments || []), { amount, method }];
-            return { ...o, payments: newPayments };
+            // Mark items as paid in FIFO order until amount is exhausted
+            let remaining = amount;
+            const updatedItems = o.items.map((item) => {
+              const unitPrice = item.price; // price already includes customizations
+              const unpaidQty = item.quantity - (item.paidQuantity || 0);
+              if (remaining <= 0 || unpaidQty <= 0) return item;
+
+              const maxCoverQty = Math.min(unpaidQty, Math.floor(remaining / unitPrice + 1e-6));
+              if (maxCoverQty <= 0) return item;
+              remaining -= maxCoverQty * unitPrice;
+              return { ...item, paidQuantity: (item.paidQuantity || 0) + maxCoverQty };
+            });
+
+            return { ...o, payments: newPayments, items: updatedItems };
           }
           return o;
         }),
       }));
+    },
+
+    markOrderAsPaid: (orderId) => {
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId ? { ...o, paid_status: "Paid" } : o
+        ),
+      }));
+    },
+
+    setPendingTableSelection: (tableId) => {
+      set({ pendingTableSelection: tableId });
     },
 
     closeActiveOrder: () => {

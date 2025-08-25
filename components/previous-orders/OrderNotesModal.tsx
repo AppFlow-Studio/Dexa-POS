@@ -50,7 +50,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
 }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg p-6 rounded-2xl bg-gray-50">
+      <DialogContent className="max-w-xl w-full p-6 rounded-2xl bg-gray-50">
         <DialogHeader className="flex-row justify-between items-center mb-4">
           <DialogTitle className="text-2xl font-bold text-gray-800">
             Modifiers

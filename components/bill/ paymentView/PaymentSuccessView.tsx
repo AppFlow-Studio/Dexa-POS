@@ -3,7 +3,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useRouter } from "expo-router";
 import { FileText, Printer, ShoppingBag } from "lucide-react-native";
-import React from "react"; // Import useMemo
+import React, { useEffect, useRef } from "react"; // Import useMemo
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const ReceiptRow = ({
@@ -30,20 +30,40 @@ const PaymentSuccessView = () => {
     activeOrderTax,
     activeOrderTotal,
     activeOrderDiscount,
+    activeOrderOutstandingTotal,
+    addPaymentToOrder,
     closeActiveOrder,
   } = useOrderStore();
+  // Apply payment once when this success view mounts
+  const appliedRef = useRef(false);
+  useEffect(() => {
+    if (appliedRef.current) return;
+    if (activeOrderId && activeOrderOutstandingTotal > 0) {
+      addPaymentToOrder(activeOrderId, activeOrderOutstandingTotal, (paymentMethod || "Card") as any);
+    }
+    appliedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
   const handleDone = () => {
-    const { activeOrderId, updateOrderStatus } = useOrderStore.getState(); // Get the current active order ID
+    const { activeOrderId, updateOrderStatus, markOrderAsPaid, assignActiveOrderToTable, setPendingTableSelection } = useOrderStore.getState(); // Get the current active order ID
+
+    if (activeOrderId) {
+      // Mark the order as paid
+      markOrderAsPaid(activeOrderId);
+    }
+
     if (activeTableId) {
-      // If the order was for a table, update the table's status
-      updateTableStatus(activeTableId, "Needs Cleaning");
+      // For dine-in orders, assign the pending table selection to the order
+      assignActiveOrderToTable(activeTableId);
+      updateTableStatus(activeTableId, "In Use");
+      // Clear the pending table selection
+      setPendingTableSelection(null);
       // Close the payment modal
       close();
-      // Navigate to the clean table screen using the correct path format
-      router.push(`/tables/clean-table/${activeTableId}`);
     } else {
       if (activeOrderId) {
         updateOrderStatus(activeOrderId, "Preparing");

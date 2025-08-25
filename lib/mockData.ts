@@ -131,6 +131,49 @@ const burgerAddOns: AddOn[] = [
   { id: "addon_egg", name: "Extra Fried Egg", price: 2.0 },
 ];
 
+// --- Custom Add-Ons (Category-Specific) ---
+const wrapAddOns: AddOn[] = [
+  { id: "wrap1", name: "Extra Avocado", price: 1.0 },
+  { id: "wrap2", name: "Gluten-Free Wrap", price: 1.5 },
+  { id: "wrap3", name: "Spicy Mayo", price: 0.5 },
+];
+
+const pizzaAddOns: AddOn[] = [
+  { id: "pizza1", name: "Extra Cheese", price: 1.5 },
+  { id: "pizza2", name: "Pepperoni", price: 2.0 },
+  { id: "pizza3", name: "Mushrooms", price: 1.0 },
+];
+
+const saladAddOns: AddOn[] = [
+  { id: "salad1", name: "Grilled Chicken", price: 2.0 },
+  { id: "salad2", name: "Parmesan", price: 0.75 },
+  { id: "salad3", name: "Croutons", price: 0.5 },
+];
+
+const sidesAddOns: AddOn[] = [
+  { id: "side1", name: "Garlic Aioli", price: 0.5 },
+  { id: "side2", name: "Cheese Sauce", price: 0.75 },
+  { id: "side3", name: "Truffle Oil Drizzle", price: 1.0 },
+];
+
+const drinksAddOns: AddOn[] = [
+  { id: "drink1", name: "Lemon Slice", price: 0.25 },
+  { id: "drink2", name: "Extra Ice", price: 0.0 },
+  { id: "drink3", name: "Flavor Shot (Vanilla)", price: 0.5 },
+];
+
+const dessertAddOns: AddOn[] = [
+  { id: "dessert1", name: "Vanilla Ice Cream Scoop", price: 1.5 },
+  { id: "dessert2", name: "Chocolate Syrup", price: 0.5 },
+  { id: "dessert3", name: "Strawberries", price: 1.0 },
+];
+
+const brunchAddOns: AddOn[] = [
+  { id: "brunch1", name: "Maple Syrup", price: 0.5 },
+  { id: "brunch2", name: "Fresh Berries", price: 1.5 },
+  { id: "brunch3", name: "Whipped Cream", price: 0.75 },
+];
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
   // --- Main Course ---
   {
@@ -148,105 +191,129 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "2",
     name: "BBQ Bacon Burger",
+    description: "Smoky BBQ sauce, crispy bacon, and melted cheddar on a juicy patty.",
     price: 12.99,
     image: "bbq_bacon_burger.png",
     meal: ["Lunch", "Dinner"],
     category: "Main Course",
     availableDiscount: fifteenPercentOff,
+    addOns: burgerAddOns,
   },
   {
     id: "3",
     name: "Vegan Wrap",
+    description: "Fresh veggies, hummus, and greens wrapped in a soft tortilla.",
     price: 8.99,
     image: "vegan_wrap.png",
     meal: ["Lunch", "Dinner"],
     category: "Main Course",
+    addOns: wrapAddOns,
   },
   {
     id: "4",
     name: "Margherita Pizza",
+    description: "Classic tomato, fresh mozzarella, and basil on a crispy crust.",
     price: 14.5,
     image: "margherita_pizza.png",
     meal: ["Dinner", "Specials"],
     category: "Main Course",
+    addOns: pizzaAddOns,
   },
   // --- Appetizers ---
   {
     id: "5",
     name: "Chicken Caesar Salad",
+    description: "Crisp romaine, Caesar dressing, and croutons with shaved parmesan.",
     price: 7.5,
     image: "chicken_caesar_salad.png",
     meal: ["Lunch", "Dinner"],
     category: "Appetizers",
+    addOns: saladAddOns,
   },
   // --- Sides ---
   {
     id: "6",
     name: "French Fries",
+    description: "Golden and crispy fries, lightly seasoned.",
     price: 3.99,
     image: "french_fries.png",
     meal: ["Lunch", "Dinner", "Brunch"],
     category: "Sides",
+    addOns: sidesAddOns,
   },
   {
     id: "7",
     name: "Onion Rings",
+    description: "Beer-battered onion rings with a crunchy bite.",
     price: 4.99,
     image: "onion_rings.png",
     meal: ["Lunch", "Dinner"],
     category: "Sides",
+    addOns: sidesAddOns,
   },
   // --- Drinks ---
   {
     id: "8",
     name: "Coca-Cola",
+    description: "Refreshing classic cola served chilled.",
     price: 1.99,
     image: "coke.png",
     meal: ["Lunch", "Dinner", "Brunch", "Specials"],
     category: "Drinks",
+    addOns: drinksAddOns,
   },
   {
     id: "9",
     name: "Sprite",
+    description: "Lemon-lime soda with a crisp, clean taste.",
     price: 1.99,
     image: "sprite.png",
     meal: ["Lunch", "Dinner", "Brunch", "Specials"],
     category: "Drinks",
+    addOns: drinksAddOns,
   },
   // --- Desserts ---
   {
     id: "10",
     name: "Chocolate Lava Cake",
+    description: "Warm chocolate cake with a gooey molten center.",
     price: 6.99,
     image: "chocolate_cake.png",
     meal: ["Dinner"],
     category: "Dessert",
+    addOns: dessertAddOns,
   },
   {
     id: "11",
     name: "New York Cheesecake",
+    description: "Rich and creamy cheesecake on a buttery graham crust.",
     price: 7.25,
     image: "cheesecake.png",
     meal: ["Dinner"],
     category: "Dessert",
+    addOns: dessertAddOns,
   },
   // --- Brunch ---
   {
     id: "12",
     name: "Fluffy Pancakes",
+    description: "Stack of light, fluffy pancakes served with butter.",
     price: 8.5,
     image: "pancakes.png",
     meal: ["Brunch", "Specials"],
     category: "Main Course",
     availableDiscount: tenPercentOff,
+    addOns: brunchAddOns,
   },
   {
     id: "13",
     name: "Eggs Benedict",
+    description: "Poached eggs, Canadian bacon, and hollandaise on an English muffin.",
     price: 10.5,
     image: "eggs_benedict.png",
     meal: ["Brunch"],
     category: "Main Course",
+    addOns: brunchAddOns,
   },
 ];
 

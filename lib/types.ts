@@ -81,6 +81,10 @@ export interface CartItem {
   menuItemId: string; // The original ID from the menu data
   name: string;
   quantity: number;
+  // Tracks how many of the quantity have been fully paid. Defaults to 0.
+  paidQuantity?: number;
+  // Per-item preparation status tracking for table workflow
+  item_status?: "Preparing" | "Ready";
   originalPrice: number;
   price: number; // Final price after size/add-ons
   image?: string; // Image filename is a top-level property
@@ -239,15 +243,18 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Building";
+  | "Open"
+  | "Closed"
+  | "Cancelled"
+  | "Preparing"
+  | "Ready"
+  | "Building";
 
   // The type of fulfillment for this order.
   order_type?: "Dine In" | "Take-Away" | "Delivery";
+
+  // Payment status for the order
+  paid_status: "Paid" | "Pending" | "Unpaid";
 
   // The actual items in the order. This is the "cart".
   items: CartItem[];

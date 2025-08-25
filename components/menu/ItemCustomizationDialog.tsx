@@ -78,11 +78,12 @@ const ItemCustomizationDialog: React.FC = () => {
         name: menuItem.name,
         quantity,
         originalPrice: menuItem.price,
-        price: total / quantity,
+        price: total / quantity, // includes size/add-ons
         image: menuItem.image,
         customizations: { size: selectedSize, addOns: selectedAddOns, notes },
         availableDiscount: menuItem.availableDiscount,
         appliedDiscount: null,
+        paidQuantity: 0,
       };
       addItemToActiveOrder(newItem);
     }
@@ -111,7 +112,7 @@ const ItemCustomizationDialog: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={close}>
-      <DialogContent className="p-0 rounded-[36px] max-w-lg bg-[#11111A] border-none">
+      <DialogContent className="p-0 rounded-[36px] max-w-xl bg-[#11111A] border-none">
         {/* Dark Header */}
         <View className="p-6 rounded-t-2xl flex-row items-center gap-4">
           <Image

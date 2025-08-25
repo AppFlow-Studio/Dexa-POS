@@ -3,8 +3,8 @@ import * as React from 'react';
 import { Platform, View, type ViewProps } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { buttonTextVariants, buttonVariants } from '~/components/ui/button';
-import { cn } from '~/lib/utils';
 import { TextClassContext } from '~/components/ui/text';
+import { cn } from '~/lib/utils';
 
 const AlertDialog = AlertDialogPrimitive.Root;
 
@@ -74,7 +74,7 @@ function AlertDialogContent({
       <AlertDialogOverlay>
         <AlertDialogPrimitive.Content
           className={cn(
-            'z-50 max-w-lg gap-4 border border-border bg-background p-6 shadow-lg shadow-foreground/10 web:duration-200 rounded-lg',
+            'z-50 max-w-xl w-full gap-4 border border-border bg-background p-6 shadow-lg shadow-foreground/10 web:duration-200 rounded-lg',
             open
               ? 'web:animate-in web:fade-in-0 web:zoom-in-95'
               : 'web:animate-out web:fade-out-0 web:zoom-out-95',
@@ -168,5 +168,6 @@ export {
   AlertDialogOverlay,
   AlertDialogPortal,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialogTrigger
 };
+

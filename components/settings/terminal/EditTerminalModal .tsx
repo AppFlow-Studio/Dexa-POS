@@ -61,7 +61,7 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] max-w-lg">
+      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] max-w-xl w-full">
         {/* Dark Header */}
         <View className="p-4 pb-0 rounded-t-[36px]">
           <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">

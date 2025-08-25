@@ -11,6 +11,9 @@ const ItemsReviewView = () => {
     activeOrderTax,
     activeOrderDiscount,
     activeOrderTotal,
+    activeOrderOutstandingSubtotal,
+    activeOrderOutstandingTax,
+    activeOrderOutstandingTotal,
   } = useOrderStore();
   const { close, setView, paymentMethod } = usePaymentStore();
 
@@ -62,6 +65,21 @@ const ItemsReviewView = () => {
           <Text className="text-lg font-bold text-gray-900">
             ${activeOrderTotal.toFixed(2)}
           </Text>
+        </View>
+        {/* Outstanding section (to be charged now) */}
+        <View className="mt-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+          <View className="flex-row justify-between items-center mb-1">
+            <Text className="text-sm font-semibold text-yellow-800">Outstanding Subtotal</Text>
+            <Text className="text-sm font-bold text-yellow-900">${activeOrderOutstandingSubtotal.toFixed(2)}</Text>
+          </View>
+          <View className="flex-row justify-between items-center mb-1">
+            <Text className="text-sm text-yellow-800">Outstanding Tax</Text>
+            <Text className="text-sm font-semibold text-yellow-900">${activeOrderOutstandingTax.toFixed(2)}</Text>
+          </View>
+          <View className="flex-row justify-between items-center">
+            <Text className="text-base font-bold text-yellow-900">Amount to Charge</Text>
+            <Text className="text-base font-bold text-yellow-900">${activeOrderOutstandingTotal.toFixed(2)}</Text>
+          </View>
         </View>
         {/* Actions */}
         <View className="flex-row gap-2 mt-6">

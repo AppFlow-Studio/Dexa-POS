@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useOrderStore } from "./useOrderStore";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
 type PaymentView = "review" | "cash" | "card" | "split" | "success";
@@ -26,11 +27,34 @@ export const usePaymentStore = create<PaymentState>((set) => ({
     method,
     tableId // tableId can be undefined or null
   ) =>
-    set({
-      isOpen: true,
-      paymentMethod: method,
-      view: "review",
-      activeTableId: tableId || null, // Ensure it's stored as null if not provided
+    set((state) => {
+      // Normalize paid quantities once on opening modal to avoid recursive loops
+      try {
+        const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore.getState();
+        if (activeOrderId) {
+          // Use the helper to compute updated items without writing inside setActiveOrder
+          const normalize = (useOrderStore as any).getState().normalizePaidQuantitiesFromPayments;
+          if (typeof normalize === "function") {
+            const updatedItems = normalize(activeOrderId);
+            if (updatedItems) {
+              // Commit items update safely
+              useOrderStore.setState((prev: any) => ({
+                orders: prev.orders.map((o: any) =>
+                  o.id === activeOrderId ? { ...o, items: updatedItems } : o
+                ),
+              }));
+            }
+          }
+        }
+      } catch (e) {
+        // no-op safeguard
+      }
+      return {
+        isOpen: true,
+        paymentMethod: method,
+        view: "review",
+        activeTableId: tableId || null,
+      };
     }),
   close: () => set({ isOpen: false, paymentMethod: null, activeTableId: null }),
   setView: (view) => set({ view }),
