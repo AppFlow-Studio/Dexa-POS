@@ -69,14 +69,21 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     // Only sync order status for orders that are assigned to tables or in kitchen workflow
     // Don't sync for orders that are still being built
-    if (order.order_status === "Building" || order.service_location_id === null) {
+    if (
+      order.order_status === "Building" ||
+      order.service_location_id === null
+    ) {
       return;
     }
 
     // For dine-in orders, sync based on individual item statuses
     if (order.order_type === "Dine In") {
-      const allItemsReady = order.items.every((item) => item.item_status === "Ready");
-      const anyItemsPreparing = order.items.some((item) => item.item_status === "Preparing");
+      const allItemsReady = order.items.every(
+        (item) => item.item_status === "Ready"
+      );
+      const anyItemsPreparing = order.items.some(
+        (item) => item.item_status === "Preparing"
+      );
 
       let newOrderStatus = order.order_status;
       if (allItemsReady) {
@@ -135,17 +142,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         0
       );
 
-      // Compute outstanding subtotal (unpaid amount) used for badges/logic
-      const outstandingSubtotal = activeOrder.items.reduce((acc, item) => {
-        const unpaidQty = item.quantity - (item.paidQuantity || 0);
-        return acc + unpaidQty * item.price;
-      }, 0);
-
       const itemDiscountsTotal = activeOrder.items.reduce((acc, item) => {
         if (item.appliedDiscount) {
           return (
             acc +
-            item.price * item.appliedDiscount.value * item.quantity
+            item.originalPrice * item.appliedDiscount.value * item.quantity
           );
         }
         return acc;
@@ -164,9 +165,24 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const tax = finalSubtotal * TAX_RATE;
       const total = finalSubtotal + tax;
 
-      // Outstanding totals derived from unpaid quantities at item price level
-      const outstandingTax = outstandingSubtotal * TAX_RATE;
-      const outstandingTotal = outstandingSubtotal + outstandingTax;
+      // Compute outstanding subtotal (unpaid amount) used for badges/logic
+      const outstandingSubtotal = activeOrder.items.reduce((acc, item) => {
+        const unpaidQty = item.quantity - (item.paidQuantity || 0);
+        return acc + unpaidQty * item.price;
+      }, 0);
+
+      // This is a fair way to distribute a check-level discount.
+      const proportionOfSubtotalOutstanding =
+        subtotal > 0 ? outstandingSubtotal / subtotal : 0;
+      const outstandingDiscountAmount =
+        totalDiscountAmount * proportionOfSubtotalOutstanding; // This line was causing the redeclaration error
+
+      // Calculate the final outstanding total, including discounts
+      const outstandingSubtotalAfterDiscount =
+        outstandingSubtotal - outstandingDiscountAmount;
+      const outstandingTax = outstandingSubtotalAfterDiscount * TAX_RATE;
+      const outstandingTotal =
+        outstandingSubtotalAfterDiscount + outstandingTax;
 
       set({
         activeOrderSubtotal: subtotal,
@@ -189,7 +205,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
             ),
           }));
         } else if (
-          outstandingSubtotal > 1e-6 && activeOrder.paid_status === "Paid"
+          outstandingSubtotal > 1e-6 &&
+          activeOrder.paid_status === "Paid"
         ) {
           // If new items were added after full payment, reflect Pending
           set((state) => ({
@@ -313,23 +330,34 @@ export const useOrderStore = create<OrderState>((set, get) => {
               // --- Add New Item Logic ---
               // For dine-in orders, set item_status to "Preparing" when assigned to table
               // For takeaway orders, don't set item_status (whole order is managed together)
-              const shouldSetItemStatus = o.order_type === "Dine In" && o.order_status !== "Building" && o.service_location_id !== null;
+              const shouldSetItemStatus =
+                o.order_type === "Dine In" &&
+                o.order_status !== "Building" &&
+                o.service_location_id !== null;
 
               updatedCart = [
                 ...o.items,
                 {
                   ...newItem,
                   paidQuantity: newItem.paidQuantity ?? 0,
-                  item_status: shouldSetItemStatus ? "Preparing" : undefined
+                  item_status: shouldSetItemStatus ? "Preparing" : undefined,
                 },
               ];
             }
 
             // Only sync order status for dine-in orders that are assigned to tables
             // Don't sync for orders that are still being built or takeaway orders
-            if (o.order_type === "Dine In" && o.order_status !== "Building" && o.service_location_id !== null) {
-              const allItemsReady = updatedCart.every((item) => item.item_status === "Ready");
-              const anyItemsPreparing = updatedCart.some((item) => item.item_status === "Preparing");
+            if (
+              o.order_type === "Dine In" &&
+              o.order_status !== "Building" &&
+              o.service_location_id !== null
+            ) {
+              const allItemsReady = updatedCart.every(
+                (item) => item.item_status === "Ready"
+              );
+              const anyItemsPreparing = updatedCart.some(
+                (item) => item.item_status === "Preparing"
+              );
 
               let newOrderStatus = o.order_status;
               if (allItemsReady && updatedCart.length > 0) {
@@ -341,14 +369,14 @@ export const useOrderStore = create<OrderState>((set, get) => {
               return {
                 ...o,
                 items: updatedCart,
-                order_status: newOrderStatus
+                order_status: newOrderStatus,
               };
             }
 
             // For orders still being built or takeaway orders, just update the cart without changing order status
             return {
               ...o,
-              items: updatedCart
+              items: updatedCart,
             };
           }
           return o;
@@ -365,11 +393,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === updatedItem.id ? updatedItem : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === updatedItem.id ? updatedItem : i
+                ),
+              }
             : o
         ),
       }));
@@ -389,9 +417,17 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
             // Only sync order status for dine-in orders that are assigned to tables
             // Don't sync for orders that are still being built or takeaway orders
-            if (o.order_type === "Dine In" && o.order_status !== "Building" && o.service_location_id !== null) {
-              const allItemsReady = updatedItems.every((item) => item.item_status === "Ready");
-              const anyItemsPreparing = updatedItems.some((item) => item.item_status === "Preparing");
+            if (
+              o.order_type === "Dine In" &&
+              o.order_status !== "Building" &&
+              o.service_location_id !== null
+            ) {
+              const allItemsReady = updatedItems.every(
+                (item) => item.item_status === "Ready"
+              );
+              const anyItemsPreparing = updatedItems.some(
+                (item) => item.item_status === "Preparing"
+              );
 
               let newOrderStatus = o.order_status;
               if (allItemsReady && updatedItems.length > 0) {
@@ -525,7 +561,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }
 
       // For dine-in orders, check if the order is paid before assigning to table
-      if (orderToAssign.order_type === "Dine In" && orderToAssign.paid_status !== "Paid") {
+      if (
+        orderToAssign.order_type === "Dine In" &&
+        orderToAssign.paid_status !== "Paid"
+      ) {
         toast.error("Order must be paid before assigning to table", {
           duration: 4000,
           position: ToastPosition.BOTTOM,
@@ -537,11 +576,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-            ...o,
-            service_location_id: tableId,
-            order_type: "Dine In" as const,
-            order_status: "Preparing" as const,
-          }
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+              order_status: "Preparing" as const,
+            }
           : o
       );
 
@@ -593,10 +632,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
               const unpaidQty = item.quantity - (item.paidQuantity || 0);
               if (remaining <= 0 || unpaidQty <= 0) return item;
 
-              const maxCoverQty = Math.min(unpaidQty, Math.floor(remaining / unitPrice + 1e-6));
+              const maxCoverQty = Math.min(
+                unpaidQty,
+                Math.floor(remaining / unitPrice + 1e-6)
+              );
               if (maxCoverQty <= 0) return item;
               remaining -= maxCoverQty * unitPrice;
-              return { ...item, paidQuantity: (item.paidQuantity || 0) + maxCoverQty };
+              return {
+                ...item,
+                paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
+              };
             });
 
             return { ...o, payments: newPayments, items: updatedItems };
@@ -607,38 +652,47 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     markOrderAsPaid: (orderId) => {
-      const { orders } = get();
+      const { orders, activeOrderDiscount } = get(); // Get the calculated discount
       const order = orders.find((o) => o.id === orderId);
+      if (!order) return;
 
-      // Calculate total before marking as paid
-      const total = order?.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) || 0;
-      const tax = total * TAX_RATE;
+      // Calculate total based on items (this is the subtotal)
+      const subtotal = order.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
+      // The final subtotal is the subtotal MINUS the calculated discount
+      const finalSubtotal = subtotal - activeOrderDiscount;
+      const tax = finalSubtotal * TAX_RATE;
+      const total = finalSubtotal + tax;
 
       set((state) => ({
         orders: state.orders.map((o) =>
-          o.id === orderId ? {
-            ...o,
-            paid_status: "Paid",
-            check_status: "Closed",
-            total_amount: total + tax,
-            total_tax: tax
-          } : o
+          o.id === orderId
+            ? {
+                ...o,
+                paid_status: "Paid",
+                check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
+              }
+            : o
         ),
       }));
 
       // Save to previous orders when marked as paid
-      if (order) {
-        const { addOrderToHistory } = usePreviousOrdersStore.getState();
-        // Pass the updated order with totals
-        const updatedOrder = {
-          ...order,
-          paid_status: "Paid" as const,
-          check_status: "Closed" as const,
-          total_amount: total + tax,
-          total_tax: tax
-        };
-        addOrderToHistory(updatedOrder);
-      }
+      const { addOrderToHistory } = usePreviousOrdersStore.getState();
+      const updatedOrderForHistory: OrderProfile = {
+        ...order,
+        paid_status: "Paid",
+        check_status: "Closed",
+        total_amount: total,
+        total_tax: tax,
+        total_discount: activeOrderDiscount,
+      };
+      addOrderToHistory(updatedOrderForHistory);
     },
 
     setPendingTableSelection: (tableId) => {
@@ -657,7 +711,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       let tableId: string | null = null;
 
       // Calculate total before closing
-      const total = order?.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) || 0;
+      const total =
+        order?.items.reduce(
+          (sum, item) => sum + item.price * item.quantity,
+          0
+        ) || 0;
       const tax = total * TAX_RATE;
 
       set((state) => ({
@@ -669,7 +727,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
               order_status: "Closed",
               closed_at: new Date().toISOString(),
               total_amount: total + tax,
-              total_tax: tax
+              total_tax: tax,
             };
           }
           return o;
@@ -685,7 +743,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           order_status: "Closed" as const,
           closed_at: new Date().toISOString(),
           total_amount: total + tax,
-          total_tax: tax
+          total_tax: tax,
         };
         addOrderToHistory(updatedOrder);
       }

@@ -23,12 +23,12 @@ interface DraggableTableProps {
   onPress?: () => void;
 }
 
-const STATUS_COLORS = {
+const STATUS_COLORS: Record<TableType["status"], string> = {
   Available: "#10B981", // Green
   "In Use": "#3B82F6", // Blue
-  "Needs Cleaning": "#EF4444", // Red
+  "Needs Cleaning": "#EF4444", // Red,
+  "Not in Service": "#6B7280", // Gray
 };
-const CHAIR_COLOR = "#D1D5DB"; // Gray for chairs
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
@@ -38,7 +38,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
 }) => {
-  // 3. Get the actions directly from the store
+  // Get the actions directly from the store
   const { updateTablePosition, updateTableRotation, removeTable } =
     useFloorPlanStore();
   const router = useRouter();
@@ -48,6 +48,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const translateY = useSharedValue(table.y);
   const rotation = useSharedValue(table.rotation);
   const dragContext = useSharedValue({ x: 0, y: 0 });
+  const rotateContext = useSharedValue(0);
 
   useEffect(() => {
     translateX.value = withSpring(table.x);
@@ -73,12 +74,26 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       });
     });
 
-  // ---  Handlers that call the store ---
-  const handleRotate = () => {
-    const newRotation = (rotation.value + 45) % 360;
-    // We can call the store action directly, no need for a prop
-    updateTableRotation(table.id, newRotation);
-  };
+  const rotateGesture = Gesture.Pan()
+    .enabled(isEditMode)
+    .onStart(() => {
+      // Store the starting rotation when the drag begins
+      rotateContext.value = rotation.value;
+    })
+    .onUpdate((event) => {
+      // Calculate the angle from the center of the component to the touch point
+      // Note: The (50, 40) values are half the component's rough size. A more robust
+      // solution would be to measure the component with onLayout.
+      const angle = Math.atan2(event.translationY, event.translationX);
+      const angleInDegrees = angle * (180 / Math.PI);
+      rotation.value = rotateContext.value + angleInDegrees;
+    })
+    .onEnd(() => {
+      // Snap to the nearest 45-degree angle for clean layouts
+      const snappedRotation = Math.round(rotation.value / 45) * 45;
+      rotation.value = withSpring(snappedRotation);
+      runOnJS(updateTableRotation)(table.id, snappedRotation);
+    });
 
   const handleDelete = () => {
     // Call the store action directly
@@ -113,7 +128,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             color={
               table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
             }
-            chairColor={CHAIR_COLOR}
+            chairColor={
+              table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
+            }
           />
           <View className="absolute inset-0 items-center justify-center">
             <Text className="text-white font-bold text-lg">{table.name}</Text>
@@ -122,12 +139,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
         {isSelected && isEditMode && (
           <View className="absolute -top-12 left-1/2 flex-row bg-white p-1.5 rounded-full z-50">
-            <TouchableOpacity
-              onPress={handleRotate}
-              className="p-2 bg-black/10 rounded-full"
-            >
-              <RotateCcw color="black" size={18} />
-            </TouchableOpacity>
+            <GestureDetector gesture={rotateGesture}>
+              <View className="p-2 bg-gray-100 rounded-full cursor-grab">
+                <RotateCcw color="black" size={18} />
+              </View>
+            </GestureDetector>
             <TouchableOpacity
               onPress={handleDelete}
               className="p-2 ml-1 bg-black/10 rounded-full"

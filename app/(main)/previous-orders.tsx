@@ -38,7 +38,8 @@ const PreviousOrdersScreen = () => {
   const [searchText, setSearchText] = useState("");
 
   // Get orders from the store
-  const { previousOrders, searchOrders, getOrdersByDate } = usePreviousOrdersStore();
+  const { previousOrders, searchOrders, getOrdersByDate } =
+    usePreviousOrdersStore();
 
   const filteredOrders = useMemo(() => {
     let orders = previousOrders;

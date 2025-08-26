@@ -60,9 +60,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
             </Text>
           </View>
           {order.refunded && (
-            <Text className="text-xs text-red-600 mt-1">
-              Refunded
-            </Text>
+            <Text className="text-xs text-red-600 mt-1">Refunded</Text>
           )}
         </View>
         <Text className="w-[12%] font-semibold text-gray-600">
