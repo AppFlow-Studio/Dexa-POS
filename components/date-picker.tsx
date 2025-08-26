@@ -17,7 +17,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TouchableOpacity className="flex-row items-center p-3 gap-2">
+        <TouchableOpacity className="flex-row items-center p-3 gap-2 mr-20">
           <Text className="font-semibold text-gray-600">Date:</Text>
           <CalendarIcon color="#6b7280" size={20} />
           <Text className="font-semibold text-gray-600">
@@ -29,7 +29,7 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
           </Text>
         </TouchableOpacity>
       </PopoverTrigger>
-      <PopoverContent className="p-0">
+      <PopoverContent className="p-0 left-8">
         <Calendar
           onDayPress={handleDayPress}
           markedDates={{
