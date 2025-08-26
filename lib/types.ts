@@ -248,7 +248,11 @@ export interface OrderProfile {
   | "Cancelled"
   | "Preparing"
   | "Ready"
-  | "Building";
+  | "Building"
+  | "Voided";
+
+  // The editable state of the check itself (separate from fulfillment status)
+  check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
   order_type?: "Dine In" | "Take-Away" | "Delivery";

@@ -22,10 +22,8 @@ const CashPaymentView = () => {
   >("exact");
 
   // Calculate change due. Ensure it's not negative.
-  const changeDue = Math.max(
-    0,
-    parseFloat(amountTendered || "0") - activeOrderTotal
-  );
+  const changeDue = parseFloat(amountTendered || "0") - activeOrderTotal;
+
 
   // Suggested amounts for quick selection
   const suggestedAmounts = [5, 10, 15, 20, 25, 30, 35, 40, 50, 100];
@@ -153,8 +151,8 @@ const CashPaymentView = () => {
           <Text className="text-base font-semibold text-accent-500">
             Change Due
           </Text>
-          <Text className="text-2xl font-bold text-green-600">
-            ${changeDue.toFixed(2)}
+          <Text className={`text-2xl font-bold ${changeDue >= 0 ? "text-green-600" : "text-red-600"}`}>
+            ${(changeDue).toFixed(2)}
           </Text>
         </View>
 

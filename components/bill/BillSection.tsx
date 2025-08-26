@@ -2,7 +2,7 @@ import { images } from "@/lib/image";
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
-import { Image, ScrollView, Text, View } from "react-native";
+import { Image, ScrollView, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
@@ -11,9 +11,20 @@ import PaymentActions from "./PaymentActions";
 import Totals from "./Totals";
 
 const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
+  // State for managing expanded item
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  const handleToggleExpand = (itemId: string) => {
+    setExpandedItemId(expandedItemId === itemId ? null : itemId);
+  };
+
   return (
     <>
-      <BillSummary cart={cart} />
+      <BillSummary
+        cart={cart}
+        expandedItemId={expandedItemId}
+        onToggleExpand={handleToggleExpand}
+      />
       <Totals cart={cart} />
     </>
   );
@@ -42,11 +53,10 @@ const BillSection = ({
 
   return (
     <>
-      <ScrollView
-        className="max-w-96 bg-background-100 border-gray-200 "
-        contentContainerStyle={{ flexGrow: 1 }}
+      <View
+        className="max-w-96 bg-background-100 border-gray-200 flex-1"
       >
-        <Image source={images.topBar} className="w-full" resizeMode="cover" />
+        <Image source={images.topBar} className="w-full h-12" resizeMode="cover" />
         {/* Paid / Status badges */}
         {/* {activeOrder && (
           <View className="px-4 py-2 flex-row gap-2 items-center">
@@ -85,7 +95,7 @@ const BillSection = ({
           isVisible={isDiscountOverlayVisible}
           onClose={handleCloseDiscounts}
         />
-      </ScrollView>
+      </View>
     </>
   );
 };

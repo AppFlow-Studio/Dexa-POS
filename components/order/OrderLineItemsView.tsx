@@ -1,4 +1,5 @@
 import { useOrderStore } from "@/stores/useOrderStore";
+import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../bill/BillItem"; // Reuse the BillItem component
 
@@ -16,6 +17,13 @@ const OrderLineItemsView = ({ onClose }: { onClose: () => void }) => {
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
+  // State for managing expanded item
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  const handleToggleExpand = (itemId: string) => {
+    setExpandedItemId(expandedItemId === itemId ? null : itemId);
+  };
+
   return (
     <View className="bg-background-100 p-6 rounded-2xl">
       <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
@@ -23,8 +31,12 @@ const OrderLineItemsView = ({ onClose }: { onClose: () => void }) => {
       </Text>
       <ScrollView className="max-h-80" showsVerticalScrollIndicator={false}>
         {items.map((item) => (
-          // You can pass an onEdit handler here if you want to allow editing from this view
-          <BillItem key={item.id} item={item} />
+          <BillItem
+            key={item.id}
+            item={item}
+            expandedItemId={expandedItemId}
+            onToggleExpand={handleToggleExpand}
+          />
         ))}
       </ScrollView>
       <View className="border-t border-gray-200 pt-4 mt-4">

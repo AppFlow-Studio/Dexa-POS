@@ -9,7 +9,7 @@ import {
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { FileText, Pencil } from "lucide-react-native";
+import { Check, FileText, Pencil, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
@@ -61,6 +61,10 @@ const OrderDetails: React.FC = () => {
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
 
+  // Order naming state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+
   const availableTableOptions = useMemo(() => {
     // Show the currently assigned table PLUS all available tables
     return tables
@@ -97,6 +101,16 @@ const OrderDetails: React.FC = () => {
     setSelectedOrderType(undefined);
     setOrderTypeSelectKey(Date.now());
   }, [activeOrderId]);
+
+  // Initialize customer name from active order
+  useEffect(() => {
+    if (activeOrder?.customer_name) {
+      setCustomerName(activeOrder.customer_name);
+    } else {
+      setCustomerName("");
+    }
+    setIsEditingName(false);
+  }, [activeOrderId, activeOrder?.customer_name]);
 
   const handleTableSelect = (option: SelectOption | undefined) => {
     if (!option) return;
@@ -215,6 +229,27 @@ const OrderDetails: React.FC = () => {
     setIsOpenItemModalVisible(false);
   };
 
+  // Customer name editing handlers
+  const handleEditName = () => {
+    setIsEditingName(true);
+  };
+
+  const handleSaveName = () => {
+    if (activeOrderId) {
+      updateActiveOrderDetails({ customer_name: customerName.trim() });
+      setIsEditingName(false);
+      toast.success("Customer name updated", {
+        duration: 2000,
+        position: ToastPosition.BOTTOM,
+      });
+    }
+  };
+
+  const handleCancelEditName = () => {
+    setCustomerName(activeOrder?.customer_name || "");
+    setIsEditingName(false);
+  };
+
   const insets = useSafeAreaInsets();
   const contentInsets = {
     top: insets.top,
@@ -230,12 +265,34 @@ const OrderDetails: React.FC = () => {
         <TouchableOpacity className="p-2.5 bg-background-300 rounded-full">
           <FileText color="#5D5D73" size={20} />
         </TouchableOpacity>
-        <View className="items-center">
-          <Text className="text-xl font-bold text-accent-500">Jake Carter</Text>
-          <Text className="text-sm text-accent-500">Order Number #45654</Text>
-
+        <View className="items-center flex-1 mx-4">
+          {isEditingName ? (
+            <View className="flex-row items-center">
+              <TextInput
+                className="text-xl font-bold text-accent-500 text-center flex-1 mr-2 px-2 py-1 border border-accent-300 rounded"
+                value={customerName}
+                onChangeText={setCustomerName}
+                placeholder="Enter customer name"
+                placeholderTextColor="#9CA3AF"
+                autoFocus
+              />
+              <TouchableOpacity onPress={handleSaveName} className="p-1">
+                <Check color="#10B981" size={16} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleCancelEditName} className="p-1">
+                <X color="#EF4444" size={16} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="flex-row items-center">
+              <Text className="text-xl font-bold text-accent-500">
+                {customerName || "Name Not Assigned"}
+              </Text>
+            </View>
+          )}
+          <Text className="text-sm text-accent-500">Order Number #{activeOrderId?.slice(-5) || "00000"}</Text>
         </View>
-        <TouchableOpacity className="p-2.5 bg-background-300 rounded-full">
+        <TouchableOpacity onPress={handleEditName} className="p-2.5 bg-background-300 rounded-full">
           <Pencil color="#5D5D73" size={20} />
         </TouchableOpacity>
       </View>

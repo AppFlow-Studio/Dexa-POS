@@ -7,9 +7,15 @@ import BillItem from "./BillItem";
 // 1. The component now accepts a `cart` array as a prop
 interface BillSummaryProps {
   cart: CartItem[];
+  expandedItemId?: string | null;
+  onToggleExpand?: (itemId: string) => void;
 }
 
-const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
+const BillSummary: React.FC<BillSummaryProps> = ({
+  cart,
+  expandedItemId,
+  onToggleExpand
+}) => {
   return (
     <View className="flex-1 bg-white ">
       <View className="my-4 px-4 ">
@@ -30,6 +36,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({ cart }) => {
                 key={`${item.id}-${index}`}
                 item={item}
                 isEditable={true}
+                expandedItemId={expandedItemId}
+                onToggleExpand={onToggleExpand}
               />
             ))
           ) : (

@@ -9,7 +9,7 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
@@ -18,6 +18,7 @@ const UpdateTableScreen = () => {
 
   const [isPaymentSelectOpen, setPaymentSelectOpen] = useState(false);
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
+  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
   const { tables, updateTableStatus } = useFloorPlanStore();
   const {
@@ -41,6 +42,17 @@ const UpdateTableScreen = () => {
       o.order_status !== "Closed"
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+  // --- Derived helpers ---
+  const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
+  const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
+  const isReopenedPaidNoNewItems = useMemo(() => {
+    if (!activeOrder) return false;
+    const totalQty = activeOrder.items.reduce((acc, i) => acc + i.quantity, 0);
+    const paidQty = activeOrder.items.reduce((acc, i) => acc + (i.paidQuantity || 0), 0);
+    // Previously paid order (Paid) that was reopened to Pending, and no new items added
+    return activeOrder.paid_status !== "Paid" && paidQty === totalQty;
+  }, [activeOrder]);
 
   // --- Core Logic ---
   useEffect(() => {
@@ -84,6 +96,7 @@ const UpdateTableScreen = () => {
     }
   };
 
+  console.log(activeOrder)
   const handlePay = () => {
     const order = orders.find((o) => o.id === activeOrderId);
     if (order) {
@@ -101,11 +114,41 @@ const UpdateTableScreen = () => {
   const handleReopenCheck = () => {
     if (!activeOrderId) return;
     // Mark as pending to allow adding new items
-    updateActiveOrderDetails({ paid_status: "Pending" });
+    updateActiveOrderDetails({ paid_status: "Pending", check_status: "Opened" });
     toast.success("Check reopened. You can add items now.", {
       duration: 3000,
       position: ToastPosition.BOTTOM,
     });
+  };
+
+  // Close/ Void check behavior
+  const handleCloseCheck = () => {
+    if (!activeOrder) return;
+
+    // 1) If unpaid and has items => prompt to void
+    if (!hasPayments && hasAnyItems) {
+      setVoidConfirmOpen(true);
+      return;
+    }
+
+    // 2) If reopened and fully covered (no new items) => simply close
+    if (isReopenedPaidNoNewItems) {
+      updateOrderStatus(activeOrder.id, "Closed");
+      toast.success("Check closed.", { duration: 2500, position: ToastPosition.BOTTOM });
+      return;
+    }
+
+    // Fallback: if no items or already closed
+    updateOrderStatus(activeOrder.id, "Closed");
+  };
+
+  const confirmVoid = () => {
+    if (!activeOrder) return;
+    updateOrderStatus(activeOrder.id, "Voided");
+    updateTableStatus(tableId as string, "Available");
+    setVoidConfirmOpen(false);
+    toast.success("Check voided.", { duration: 2500, position: ToastPosition.BOTTOM });
+    router.back();
   };
 
   const handleClearTable = () => {
@@ -128,7 +171,6 @@ const UpdateTableScreen = () => {
       </View>
     );
   }
-  console.log(activeOrder)
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -203,7 +245,7 @@ const UpdateTableScreen = () => {
         <View className="flex-row items-center gap-2">
           <AlertCircle color="#f97316" size={20} />
           <Text className="font-semibold text-gray-600">
-            Table No. {table.name}, Table Size - Medium, {table.capacity}
+            Table No. {table?.name}, Table Size - Medium, {table?.capacity}
           </Text>
         </View>
         {/* Paid / Status badges for table order */}
@@ -233,24 +275,40 @@ const UpdateTableScreen = () => {
                 {activeOrder.order_status}
               </Text>
             </View>
+            <View
+              className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-100" : "bg-gray-100"}`}
+            >
+              <Text
+                className={`text-xs font-semibold ${activeOrder.check_status === "Opened" ? "text-purple-800" : "text-gray-800"}`}
+              >
+                {activeOrder.check_status}
+              </Text>
+            </View>
           </View>
         )}
         <View className="flex-row gap-2">
-          <TouchableOpacity
+          {/* <TouchableOpacity
             onPress={() => router.back()}
             className="px-8 py-3 rounded-lg border border-gray-300"
           >
             <Text className="font-bold text-gray-700">Cancel</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           {existingOrderForTable ? (
             activeOrder?.paid_status === "Paid" ? (
+              // After payment: show Reopen Check and Clear Table
               <>
-                <TouchableOpacity
+                {activeOrder?.check_status === "Closed" ? <TouchableOpacity
                   onPress={handleReopenCheck}
                   className="px-8 py-3 rounded-lg bg-primary-400"
                 >
                   <Text className="font-bold text-white">Reopen Check</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> :
+                  <TouchableOpacity
+                    onPress={handleCloseCheck}
+                    className="px-8 py-3 rounded-lg bg-primary-400"
+                  >
+                    <Text className="font-bold text-white">Close Check</Text>
+                  </TouchableOpacity>}
                 <TouchableOpacity
                   onPress={handleClearTable}
                   className="px-8 py-3 rounded-lg border border-gray-300"
@@ -259,12 +317,21 @@ const UpdateTableScreen = () => {
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity
-                onPress={handlePay}
-                className="px-8 py-3 rounded-lg bg-primary-400"
-              >
-                <Text className="font-bold text-white">Pay</Text>
-              </TouchableOpacity>
+              // Unpaid: show Pay and Close (which may void)
+              <>
+                <TouchableOpacity
+                  onPress={handlePay}
+                  className="px-8 py-3 rounded-lg bg-primary-400"
+                >
+                  <Text className="font-bold text-white">Pay</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleCloseCheck}
+                  className="px-8 py-3 rounded-lg border border-gray-300"
+                >
+                  <Text className="font-bold text-gray-700">Close Check</Text>
+                </TouchableOpacity>
+              </>
             )
           ) : (
             <TouchableOpacity
@@ -276,10 +343,6 @@ const UpdateTableScreen = () => {
           )}
         </View>
       </View>
-      <SelectPaymentMethodModal
-        isOpen={isPaymentSelectOpen}
-        onClose={() => setPaymentSelectOpen(false)}
-      />
 
       {/* Confirm: items not ready */}
       <AlertDialog open={isNotReadyConfirmOpen} onOpenChange={setNotReadyConfirmOpen}>
@@ -309,6 +372,38 @@ const UpdateTableScreen = () => {
           </View>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirm: void unpaid check */}
+      <AlertDialog open={isVoidConfirmOpen} onOpenChange={setVoidConfirmOpen}>
+        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
+          <Text className="text-xl font-bold text-accent-500 mb-2">
+            Void check?
+          </Text>
+          <Text className="text-accent-400 mb-6">
+            No payment has been made. Do you want to void this check?
+          </Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => setVoidConfirmOpen(false)}
+              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+            >
+              <Text className="font-bold text-gray-700">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={confirmVoid}
+              className="flex-1 py-3 bg-red-500 rounded-lg items-center"
+            >
+              <Text className="font-bold text-white">Void Check</Text>
+            </TouchableOpacity>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Payment method selection modal */}
+      <SelectPaymentMethodModal
+        isOpen={isPaymentSelectOpen}
+        onClose={() => setPaymentSelectOpen(false)}
+      />
     </View>
   );
 };

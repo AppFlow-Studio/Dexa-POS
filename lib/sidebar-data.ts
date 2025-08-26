@@ -30,12 +30,12 @@ export const SIDEBAR_DATA: SidebarNavigationItem[] = [
     icon: UtensilsCrossed,
     href: "/tables" as Href,
   },
-  {
-    id: "customers",
-    label: "Customers List",
-    icon: Users,
-    href: "/customers-list" as Href,
-  },
+  // {
+  //   id: "customers",
+  //   label: "Customers List",
+  //   icon: Users,
+  //   href: "/customers-list" as Href,
+  // },
   {
     id: "online_orders",
     label: "Online Orders",

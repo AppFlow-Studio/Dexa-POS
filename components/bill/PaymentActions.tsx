@@ -47,7 +47,7 @@ const PaymentActions = () => {
   };
 
   return (
-    <View className="pt-2 px-4 bg-background-200">
+    <View className="py-1 px-4 bg-background-200">
       {/* Payment Method Selector */}
       <View className="flex-row justify-between items-center p-1.5 rounded-xl">
         {paymentMethods.map((method) => {

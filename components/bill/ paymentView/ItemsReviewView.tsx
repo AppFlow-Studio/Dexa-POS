@@ -1,5 +1,6 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
@@ -20,6 +21,13 @@ const ItemsReviewView = () => {
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
+  // State for managing expanded item
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  const handleToggleExpand = (itemId: string) => {
+    setExpandedItemId(expandedItemId === itemId ? null : itemId);
+  };
+
   return (
     <View className=" bg-background-100 p-6 rounded-2xl">
       <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
@@ -27,7 +35,12 @@ const ItemsReviewView = () => {
       </Text>
       <ScrollView>
         {items.map((item) => (
-          <BillItem key={item.id} item={item} />
+          <BillItem
+            key={item.id}
+            item={item}
+            expandedItemId={expandedItemId}
+            onToggleExpand={handleToggleExpand}
+          />
         ))}
       </ScrollView>
       <View className="border-t border-gray-200 pt-4 mt-4">
@@ -68,32 +81,54 @@ const ItemsReviewView = () => {
         </View>
         {/* Outstanding section (to be charged now) */}
         <View className="mt-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
+          <Text className="text-sm font-semibold text-yellow-800 mb-2">
+            Outstanding Amount
+          </Text>
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-sm font-semibold text-yellow-800">Outstanding Subtotal</Text>
-            <Text className="text-sm font-bold text-yellow-900">${activeOrderOutstandingSubtotal.toFixed(2)}</Text>
+            <Text className="text-sm text-yellow-700">Subtotal</Text>
+            <Text className="text-sm font-medium text-yellow-800">
+              ${activeOrderOutstandingSubtotal.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-sm text-yellow-800">Outstanding Tax</Text>
-            <Text className="text-sm font-semibold text-yellow-900">${activeOrderOutstandingTax.toFixed(2)}</Text>
+            <Text className="text-sm text-yellow-700">Tax</Text>
+            <Text className="text-sm font-medium text-yellow-800">
+              ${activeOrderOutstandingTax.toFixed(2)}
+            </Text>
           </View>
-          <View className="flex-row justify-between items-center">
-            <Text className="text-base font-bold text-yellow-900">Amount to Charge</Text>
-            <Text className="text-base font-bold text-yellow-900">${activeOrderOutstandingTotal.toFixed(2)}</Text>
+          <View className="flex-row justify-between items-center pt-2 border-t border-yellow-200">
+            <Text className="text-base font-bold text-yellow-800">Total</Text>
+            <Text className="text-base font-bold text-yellow-800">
+              ${activeOrderOutstandingTotal.toFixed(2)}
+            </Text>
           </View>
         </View>
-        {/* Actions */}
-        <View className="flex-row gap-2 mt-6">
+
+        {/* Action Buttons */}
+        <View className="flex-row gap-3 mt-6">
           <TouchableOpacity
             onPress={close}
-            className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+            className="flex-1 py-3 border border-gray-300 rounded-lg"
           >
-            <Text className="font-bold text-gray-700">Return</Text>
+            <Text className="font-bold text-gray-700 text-center">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setView(paymentMethod!.toLowerCase() as any)}
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+            onPress={() => {
+              // Route to the correct payment method view based on the selected method
+              if (paymentMethod === "Card") {
+                setView("card");
+              } else if (paymentMethod === "Cash") {
+                setView("cash");
+              } else if (paymentMethod === "Split") {
+                setView("split");
+              } else {
+                // Default to cash if no method is selected
+                setView("cash");
+              }
+            }}
+            className="flex-1 py-3 bg-accent-400 rounded-lg"
           >
-            <Text className="font-bold text-white">Checkout</Text>
+            <Text className="font-bold text-white text-center">Continue</Text>
           </TouchableOpacity>
         </View>
       </View>

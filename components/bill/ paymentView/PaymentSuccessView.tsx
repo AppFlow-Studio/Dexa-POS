@@ -49,7 +49,7 @@ const PaymentSuccessView = () => {
   const items = activeOrder?.items || [];
 
   const handleDone = () => {
-    const { activeOrderId, updateOrderStatus, markOrderAsPaid, assignActiveOrderToTable, setPendingTableSelection } = useOrderStore.getState(); // Get the current active order ID
+    const { activeOrderId, updateOrderStatus, markOrderAsPaid, assignActiveOrderToTable, setPendingTableSelection, startNewOrder, setActiveOrder } = useOrderStore.getState(); // Get the current active order ID
 
     if (activeOrderId) {
       // Mark the order as paid
@@ -68,8 +68,14 @@ const PaymentSuccessView = () => {
       if (activeOrderId) {
         updateOrderStatus(activeOrderId, "Preparing");
       }
-      // If it was a global/walk-in order, just close the modal
+      // If it was a global/walk-in order, close the modal and start a new order
       close();
+
+      // Start a new order for the next customer
+      setTimeout(() => {
+        const newOrder = startNewOrder();
+        setActiveOrder(newOrder.id);
+      }, 100); // Small delay to ensure the modal closes first
     }
   };
 

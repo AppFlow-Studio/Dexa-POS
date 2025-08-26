@@ -227,6 +227,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         id: `order_${Date.now()}`,
         service_location_id: null,
         order_status: "Building",
+        check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
         opened_at: new Date().toISOString(),
@@ -454,6 +455,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         service_location_id: null,
         order_status: "Building",
         order_type: "Take-Away",
+        check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
         opened_at: new Date().toISOString(),
@@ -471,9 +473,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     updateOrderStatus: (orderId, status) => {
       set((state) => ({
-        orders: state.orders.map((o) =>
-          o.id === orderId ? { ...o, order_status: status } : o
-        ),
+        orders: state.orders.map((o) => {
+          if (o.id !== orderId) return o;
+          // Keep check_status in sync for terminal states
+          const next: Partial<OrderProfile> = { order_status: status } as any;
+          if (status === "Closed" || status === "Voided") {
+            (next as any).check_status = "Closed";
+          }
+          return { ...o, ...next };
+        }),
       }));
     },
 
@@ -505,7 +513,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
     markOrderAsPaid: (orderId) => {
       set((state) => ({
         orders: state.orders.map((o) =>
-          o.id === orderId ? { ...o, paid_status: "Paid" } : o
+          o.id === orderId ? { ...o, paid_status: "Paid", check_status: "Closed" } : o
         ),
       }));
     },
