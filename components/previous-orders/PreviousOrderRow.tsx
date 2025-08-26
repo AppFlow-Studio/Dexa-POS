@@ -42,12 +42,15 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         <Text className="w-[8%] font-semibold text-gray-600">
           {order.serialNo}
         </Text>
-        <View className="w-[12%]">
+        <View className="w-[10%]">
           <Text className="text-gray-800 font-semibold">{order.orderDate}</Text>
           <Text className="text-sm text-gray-500">{order.orderTime}</Text>
         </View>
         <Text className="w-[10%] font-semibold text-gray-600">
           {order.orderId.slice(0, 11)}...
+        </Text>
+        <Text className="w-[12%] font-semibold text-gray-800">
+          {order.customer}
         </Text>
         <View className="w-[12%]">
           <View
@@ -63,9 +66,11 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
             <Text className="text-xs text-red-600 mt-1">Refunded</Text>
           )}
         </View>
+
         <Text className="w-[12%] font-semibold text-gray-600">
           {order.server}
         </Text>
+
         <Text className="w-[10%] font-semibold text-gray-600 text-center">
           {order.itemCount}
         </Text>

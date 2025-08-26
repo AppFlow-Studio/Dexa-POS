@@ -134,6 +134,7 @@ export interface PreviousOrder {
   orderTime: string; // e.g., "09:31 AM"
   orderId: string;
   paymentStatus: PaymentStatus;
+  customer: string;
   server: string;
   itemCount: number;
   type: OrderType;

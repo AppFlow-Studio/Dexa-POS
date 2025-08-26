@@ -16,7 +16,6 @@ const FormInput = ({ label, value, onChangeText }: any) => (
 
 const OrderInfoHeader = () => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [customerName, setCustomerName] = useState("Jake Carter");
 
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
@@ -24,6 +23,12 @@ const OrderInfoHeader = () => {
   // We still use local state for fields NOT stored in the order (server, guests)
   const [serverName, setServerName] = useState("James Cameron");
   const [numberOfGuests, setNumberOfGuests] = useState(4);
+
+  const handleCustomerNameChange = (name: string) => {
+    if (activeOrder) {
+      updateActiveOrderDetails({ customer_name: name });
+    }
+  };
 
   if (!activeOrder) return null;
 
@@ -39,7 +44,10 @@ const OrderInfoHeader = () => {
         </Text>
         <Text className="mx-4 text-gray-300">|</Text>
         <Text className="font-semibold text-gray-700">
-          Customer: <Text className="font-normal">{customerName}</Text>
+          Customer:{" "}
+          <Text className="font-normal">
+            {activeOrder.customer_name || "Walk-In"}
+          </Text>
         </Text>
         <Text className="mx-4 text-gray-300">|</Text>
         <Text className="font-semibold text-gray-700">
@@ -68,8 +76,8 @@ const OrderInfoHeader = () => {
           />
           <FormInput
             label="Customer Name"
-            value={customerName}
-            onChangeText={setCustomerName}
+            value={activeOrder.customer_name || ""}
+            onChangeText={handleCustomerNameChange}
           />
         </View>
         <View className="flex-row gap-4">

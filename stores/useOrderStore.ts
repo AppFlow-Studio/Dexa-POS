@@ -281,6 +281,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         id: `order_${Date.now()}`,
         service_location_id: null,
         order_status: "Building",
+        customer_name: "Walk-In Customer",
         check_status: "Opened",
         paid_status: "Unpaid",
         items: [],

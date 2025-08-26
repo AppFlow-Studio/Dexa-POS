@@ -13,6 +13,7 @@ const TABLE_HEADERS = [
   "# Serial No",
   "Order Date",
   "Order ID",
+  "Customer",
   "Payment Status",
   "Server/Cashier",
   "Items in order",
@@ -37,23 +38,32 @@ const PreviousOrdersScreen = () => {
   // State for filters would go here
   const [searchText, setSearchText] = useState("");
 
+  const { previousOrders } = usePreviousOrdersStore();
+
   // Get orders from the store
-  const { previousOrders, searchOrders, getOrdersByDate } =
-    usePreviousOrdersStore();
-
   const filteredOrders = useMemo(() => {
-    let orders = previousOrders;
+    // Start with all orders for the selected date
+    const dateString = selectedDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    let orders = previousOrders.filter(
+      (order) => order.orderDate === dateString
+    );
 
-    // Filter by search text
+    // If there is search text, further filter the date-filtered list
     if (searchText.trim()) {
-      orders = searchOrders(searchText);
+      const lowerQuery = searchText.toLowerCase();
+      orders = orders.filter(
+        (order) =>
+          order.orderId.toLowerCase().includes(lowerQuery) ||
+          order.customer.toLowerCase().includes(lowerQuery)
+      );
     }
 
-    // Filter by date
-    orders = getOrdersByDate(selectedDate);
-
     return orders;
-  }, [previousOrders, searchText, selectedDate, searchOrders, getOrdersByDate]);
+  }, [previousOrders, searchText, selectedDate]);
 
   const handleOpenNotes = (order: PreviousOrder) => {
     setSelectedOrder(order);
@@ -101,15 +111,16 @@ const PreviousOrdersScreen = () => {
           {TABLE_HEADERS.map((header, index) => {
             const widths: Record<number, string> = {
               0: "w-[8%]",
-              1: "w-[12%]",
+              1: "w-[10%]",
               2: "w-[10%]",
               3: "w-[12%]",
               4: "w-[12%]",
-              5: "w-[10%]",
+              5: "w-[12%]",
               6: "w-[10%]",
               7: "w-[10%]",
               8: "w-[10%]",
-              9: "w-[6%]",
+              9: "w-[10%]",
+              10: "w-[6%]",
             };
             return (
               <Text

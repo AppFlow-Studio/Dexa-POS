@@ -80,6 +80,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         }),
         orderId: order.id,
         paymentStatus: order.paid_status === "Paid" ? "Paid" : "In Progress",
+        customer: order.customer_name || "Walk-In Customer",
         server: order.server_name || "Unknown",
         itemCount: order.items.length,
         type: order.order_type || "Dine In",
@@ -110,7 +111,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           order.server.toLowerCase().includes(lowerQuery) ||
           order.items.some((item) =>
             item.name.toLowerCase().includes(lowerQuery)
-          )
+          ) ||
+          order.customer.toLowerCase().includes(lowerQuery)
       );
     },
 
