@@ -1,7 +1,7 @@
 import { SidebarNavigationItem } from "@/lib/sidebar-data";
 import { Href, Link } from "expo-router";
 import { ChevronDown } from "lucide-react-native";
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SidebarLink from "./SidebarLink";
 
@@ -11,7 +11,7 @@ interface SidebarAccordionProps {
   activePath: string;
   openAccordions: string[];
   onToggle: (id: string) => void;
-  onExpand: () => void; // Function to expand the sidebar
+  onExpand: () => void;
   onActiveLayout: (y: number) => void;
   level?: number;
 }
@@ -29,14 +29,11 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   const { id, label, icon: Icon, subItems = [], href } = item;
   const hasSubItems = subItems.length > 0;
   const isOpen = openAccordions.includes(id);
-  const indentation = level * 4; // 4px indentation for each level
+  const indentation = level * 4;
 
   const viewRef = useRef<View>(null);
 
   const isActive = React.useMemo(() => {
-    // A link is active if the current path *starts with* its href.
-    //    e.g., if href is '/tables', it will be active for '/tables/23'.
-    //    We check `typeof href === 'string' && href.length > 1` to avoid matching the root '/' for every link. (href can be an object too)
     if (
       typeof href === "string" &&
       href.length > 1 &&
@@ -44,11 +41,9 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
     ) {
       return true;
     }
-    // A link is also active if it's an exact match (useful for '/home').
     if (href && activePath === href) {
       return true;
     }
-    // An accordion header is active if any of its children are active (recursive check).
     const checkChildren = (items: SidebarNavigationItem[]): boolean => {
       return items.some((child) => {
         if (typeof child.href === "string" && activePath.startsWith(child.href))
@@ -60,37 +55,41 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
     if (hasSubItems) {
       return checkChildren(subItems);
     }
-
     return false;
   }, [activePath, href, subItems, hasSubItems]);
 
   const handlePress = () => {
-    // If the sidebar is collapsed...
     if (!isExpanded) {
-      // ...and the item has children, expand the sidebar and open the accordion.
       if (hasSubItems) {
         onExpand();
         onToggle(id);
       }
-      // If it doesn't have children, the <Link> component will handle navigation automatically.
     } else {
-      // If the sidebar is already expanded, just toggle the accordion.
       if (hasSubItems) {
         onToggle(id);
       }
-      // If it has no sub-items, the <Link> will navigate.
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
+    // Only measure and report if this item is currently active AND the sidebar is expanded.
+    // Also, ensure the accordion containing it is open if it has sub-items.
     if (isActive && isExpanded && viewRef.current) {
-      viewRef.current.measure((_x, _y, _width, _height, _pageX, pageY) => {
-        onActiveLayout(pageY);
-      });
-    }
-  }, [isActive, isExpanded, onActiveLayout]);
+      // Use a short delay to ensure layout has settled after accordions open
+      const measureTimer = setTimeout(() => {
+        viewRef.current?.measureInWindow((x, y, width, height) => {
+          // console.log(`Measuring ${label} (id: ${id}): y=${y}`);
+          if (y > 0) {
+            // Ensure y is a valid position (not off-screen negatively)
+            onActiveLayout(y);
+          }
+        });
+      }, 50); // Shorter delay for individual item measurement
 
-  // When sidebar is collapsed, only render icons for top-level items
+      return () => clearTimeout(measureTimer);
+    }
+  }, [isActive, isExpanded, onActiveLayout, isOpen, label, id]); // Added label and id for better debug context
+
   if (!isExpanded) {
     return (
       <Link href={(href || activePath) as Href} asChild>
@@ -110,7 +109,7 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   // Case 1: The item is a simple link (no sub-items)
   if (href || subItems.length === 0) {
     return (
-      <View ref={viewRef}>
+      <View ref={isActive ? viewRef : null}>
         <Link href={href as Href} asChild>
           <SidebarLink
             label={label}
@@ -125,7 +124,7 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
 
   // Case 2: The item is an accordion (has sub-items)
   return (
-    <View ref={viewRef}>
+    <View ref={isActive ? viewRef : null}>
       <TouchableOpacity
         onPress={() => onToggle(id)}
         style={{ paddingLeft: level === 0 ? 8 : indentation + 8 }}
@@ -156,7 +155,6 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
           className="border-l-2 border-gray-200"
         >
           {subItems.map((subItem) => (
-            // The recursive call now correctly passes ALL necessary props
             <SidebarAccordion
               key={subItem.id}
               item={subItem}
