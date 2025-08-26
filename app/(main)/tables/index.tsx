@@ -113,6 +113,8 @@ const TablesScreen = () => {
   }, []);
 
   const handleTablePress = (table: TableType) => {
+    if (table.type !== "table") return;
+
     // Find if there's an open order for this table
     const activeOrder = orders.find(
       (o) =>
@@ -162,7 +164,7 @@ const TablesScreen = () => {
             </Text>
           </View>
           <FlatList
-            data={filteredTables}
+            data={filteredTables.filter((table) => table.status !== "Not in Service")}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => <TableListItem table={item} />}
           />
@@ -190,12 +192,10 @@ const TablesScreen = () => {
               placeholder={capacityFilter}
             />
             <TouchableOpacity
-              onPress={() => setIsEditMode((prev) => !prev)}
-              className={`py-3 px-5 rounded-lg ${isEditMode ? "bg-green-500" : "bg-primary-400"}`}
+              onPress={() => router.push("/tables/edit-layout")}
+              className="py-3 px-5 rounded-lg bg-primary-400 "
             >
-              <Text className="font-bold text-white">
-                {isEditMode ? "Save Layout" : "Edit Layout"}
-              </Text>
+              <Text className="font-bold text-white">Edit Layout</Text>
             </TouchableOpacity>
           </View>
 
@@ -236,20 +236,13 @@ const TablesScreen = () => {
                     <DraggableTable
                       key={table.id}
                       table={table}
-                      position={{ x: table.x, y: table.y }}
-                      onDragEnd={updateTablePosition}
-                      isEditMode={isEditMode}
-                      // 6. Pass the current canvas scale to the draggable tables
+                      isEditMode={false} // Never edit mode here
+                      isSelected={false} // Never selected here
+                      onSelect={() => {}} // Does nothing here
                       canvasScale={scale}
                       onPress={() => handleTablePress(table)}
                     />
                   ))}
-                  {/* Static elements like the Cashier also need to be inside the canvas to move with it */}
-                  <View className="absolute top-[300px] left-[50px] w-20 h-40 bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg items-center justify-center">
-                    <Text className="font-semibold text-gray-500 -rotate-90">
-                      Cashier
-                    </Text>
-                  </View>
                 </Animated.View>
               </GestureDetector>
             </View>

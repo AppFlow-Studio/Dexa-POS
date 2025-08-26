@@ -18,12 +18,12 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
   // Get the full list of orders from the store
   const { orders } = useOrderStore();
 
-  // Find the single "Open" order that is associated with THIS table.
+  // Find the single order that is associated with THIS table.
   // This is the core logic that connects the table to its live data.
   const activeOrderForThisTable = orders.find(
     (o) =>
       o.service_location_id === table.id &&
-      (o.order_status === "Preparing" || "Ready")
+      o.order_status !== "Voided" // Show all orders except voided ones
   );
 
   // Calculate the total for this specific order's cart
@@ -35,7 +35,6 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
 
   // The table's status from the floor plan store is the source of truth for its state
   const status = table.status;
-
   return (
     <View className="p-4 border-b border-gray-100">
       <View className="flex-row items-center justify-between">
@@ -57,6 +56,9 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
         <Text className="text-sm text-gray-500 ml-6 mt-1">
           Order {activeOrderForThisTable.id.slice(-5)}
           {activeOrderForThisTable.customer_name || ""}
+          {activeOrderForThisTable.order_status === "Closed" && (
+            <Text className="text-red-600 font-semibold"> (Closed)</Text>
+          )}
         </Text>
       )}
     </View>

@@ -1,5 +1,5 @@
-import BillSection from "@/components/bill/BillSection";
 import SelectPaymentMethodModal from "@/components/bill/SelectPaymentMethodModal";
+import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
@@ -19,6 +19,7 @@ const UpdateTableScreen = () => {
   const [isPaymentSelectOpen, setPaymentSelectOpen] = useState(false);
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+  const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false);
 
   const { tables, updateTableStatus } = useFloorPlanStore();
   const {
@@ -30,16 +31,17 @@ const UpdateTableScreen = () => {
     updateOrderStatus,
     updateActiveOrderDetails,
     updateItemStatusInActiveOrder,
+    syncOrderStatus,
     closeActiveOrder
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
   const table = tables.find((t) => t.id === tableId);
-  // Find if an order is ALREADY assigned to this table (and not closed)
+  // Find if an order is ALREADY assigned to this table (including closed orders)
   const existingOrderForTable = orders.find(
     (o) =>
       o.service_location_id === tableId &&
-      o.order_status !== "Closed"
+      o.order_status !== "Voided" // Show all orders except voided ones
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -96,7 +98,6 @@ const UpdateTableScreen = () => {
     }
   };
 
-  console.log(activeOrder)
   const handlePay = () => {
     const order = orders.find((o) => o.id === activeOrderId);
     if (order) {
@@ -113,8 +114,16 @@ const UpdateTableScreen = () => {
 
   const handleReopenCheck = () => {
     if (!activeOrderId) return;
-    // Mark as pending to allow adding new items
-    updateActiveOrderDetails({ paid_status: "Pending", check_status: "Opened" });
+    // Mark as pending to allow adding new items and reopen the order
+    updateActiveOrderDetails({
+      paid_status: "Pending",
+      check_status: "Opened",
+      order_status: "Preparing" // Reopen the order status
+    });
+
+    // Sync order status based on existing items
+    syncOrderStatus(activeOrderId);
+
     toast.success("Check reopened. You can add items now.", {
       duration: 3000,
       position: ToastPosition.BOTTOM,
@@ -162,6 +171,15 @@ const UpdateTableScreen = () => {
       position: ToastPosition.BOTTOM,
     });
   };
+
+  // Function to check if order is closed and show warning
+  const checkOrderClosedAndWarn = () => {
+    if (activeOrder?.order_status === "Closed") {
+      setOrderClosedWarningOpen(true);
+      return true; // Order is closed
+    }
+    return false; // Order is not closed
+  };
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center">
@@ -181,9 +199,9 @@ const UpdateTableScreen = () => {
 
       <View className="flex-1 flex-row ">
         <View className="flex-1 p-6 px-4 pt-0">
-          <MenuSection />
+          <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
         </View>
-        <BillSection showOrderDetails={false} showPlaymentActions={false} />
+        <TableBillSection showOrderDetails={false} />
       </View>
 
       {/* Per-item status tracker */}
@@ -270,11 +288,11 @@ const UpdateTableScreen = () => {
                 {activeOrder.paid_status}
               </Text>
             </View>
-            <View className="px-2 py-1 rounded-full bg-blue-100">
+            {/* <View className="px-2 py-1 rounded-full bg-blue-100">
               <Text className="text-xs font-semibold text-blue-800">
                 {activeOrder.order_status}
               </Text>
-            </View>
+            </View> */}
             <View
               className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-100" : "bg-gray-100"}`}
             >
@@ -294,26 +312,36 @@ const UpdateTableScreen = () => {
             <Text className="font-bold text-gray-700">Cancel</Text>
           </TouchableOpacity> */}
           {existingOrderForTable ? (
-            activeOrder?.paid_status === "Paid" ? (
-              // After payment: show Reopen Check and Clear Table
+            activeOrder?.check_status === "Closed" ? (
+              // Closed order: show Reopen Check and Clear Table
               <>
-                {activeOrder?.check_status === "Closed" ? <TouchableOpacity
+                <TouchableOpacity
                   onPress={handleReopenCheck}
                   className="px-8 py-3 rounded-lg bg-primary-400"
                 >
                   <Text className="font-bold text-white">Reopen Check</Text>
-                </TouchableOpacity> :
-                  <TouchableOpacity
-                    onPress={handleCloseCheck}
-                    className="px-8 py-3 rounded-lg bg-primary-400"
-                  >
-                    <Text className="font-bold text-white">Close Check</Text>
-                  </TouchableOpacity>}
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleClearTable}
-                  className="px-8 py-3 rounded-lg border border-gray-300"
+                  className="px-8 py-3 rounded-lg border border-red-300 bg-red-50"
                 >
-                  <Text className="font-bold text-gray-700">Clear Table</Text>
+                  <Text className="font-bold text-red-700">Clear Table</Text>
+                </TouchableOpacity>
+              </>
+            ) : activeOrder?.paid_status === "Paid" ? (
+              // Paid but not closed: show Close Check and Clear Table
+              <>
+                <TouchableOpacity
+                  onPress={handleCloseCheck}
+                  className="px-8 py-3 rounded-lg bg-primary-400"
+                >
+                  <Text className="font-bold text-white">Close Check</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleClearTable}
+                  className="px-8 py-3 rounded-lg border border-red-300 bg-red-50"
+                >
+                  <Text className="font-bold text-red-700">Clear Table</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -404,8 +432,29 @@ const UpdateTableScreen = () => {
         isOpen={isPaymentSelectOpen}
         onClose={() => setPaymentSelectOpen(false)}
       />
+
+      {/* Order closed warning */}
+      <AlertDialog open={isOrderClosedWarningOpen} onOpenChange={setOrderClosedWarningOpen}>
+        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
+          <Text className="text-xl font-bold text-accent-500 mb-2">
+            Order is Closed
+          </Text>
+          <Text className="text-accent-400 mb-6">
+            This order is currently closed. Please reopen the check to add items.
+          </Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => setOrderClosedWarningOpen(false)}
+              className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+            >
+              <Text className="font-bold text-white">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
     </View>
   );
 };
 
 export default UpdateTableScreen;
+

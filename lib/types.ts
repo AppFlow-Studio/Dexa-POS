@@ -43,7 +43,7 @@ export interface MenuItemType {
   addOns?: AddOn[];
 }
 
-export type TableStatus = "Available" | "In Use" | "Needs Cleaning";
+export type TableStatus = "Available" | "In Use" | "Needs Cleaning" | "Not in Service";
 export type TableShape = "circle" | "square";
 export type TableCapacity = "Small" | "Medium" | "Large";
 
@@ -63,6 +63,8 @@ export interface TableType {
   order?: TableOrder | null;
   x: number;
   y: number;
+  rotation: number;
+  type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
 }
 
 export type OnlineOrderStatus =
@@ -115,8 +117,8 @@ export interface OnlineOrder {
   items: CartItem[];
 }
 
-export type PaymentStatus = "Paid" | "In Progress" | "Refunded";
-export type OrderType = "Dine In" | "Takeout" | "Delivery";
+export type PaymentStatus = "Paid" | "In Progress" | "Refunded" | "Partially Refunded";
+export type OrderType = "Dine In" | "Take-Away" | "Delivery";
 
 export interface PreviousOrder {
   serialNo: string;
@@ -129,6 +131,10 @@ export interface PreviousOrder {
   type: OrderType;
   total: number;
   items: CartItem[]; // The detailed list of items for the notes modal
+  // Refund tracking fields
+  refunded?: boolean;
+  refundedAmount?: number;
+  originalTotal?: number;
 }
 
 export type InventoryItemStatus =

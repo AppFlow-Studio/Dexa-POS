@@ -1,7 +1,9 @@
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -14,8 +16,21 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
   const { activeTableId } = usePaymentStore();
+  const { orders, activeOrderId } = useOrderStore();
 
   const handleAddToCart = () => {
+    // Check if the active order is closed
+    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    if (activeOrder?.order_status === "Closed") {
+      // Show a toast warning instead of opening dialog
+      toast.error("Order is closed. Please reopen the check to add items.", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+      closeSearchSheet();
+      return;
+    }
+
     openDialog(item, activeTableId || undefined);
     closeSearchSheet();
   };

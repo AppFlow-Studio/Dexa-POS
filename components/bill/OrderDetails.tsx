@@ -33,6 +33,7 @@ const OrderDetails: React.FC = () => {
     updateActiveOrderDetails,
     updateOrderStatus,
     assignActiveOrderToTable,
+    assignOrderToTable,
     addItemToActiveOrder,
     setPendingTableSelection,
   } = useOrderStore();
@@ -143,10 +144,7 @@ const OrderDetails: React.FC = () => {
 
     // For non-dine-in orders, proceed with normal assignment
     const tableId = option.value;
-    if (activeOrderId) {
-      updateOrderStatus(activeOrderId, "Preparing");
-    }
-    assignActiveOrderToTable(tableId);
+    assignOrderToTable(activeOrderId!, tableId);
     updateTableStatus(tableId, "In Use");
 
     // 2. After successfully assigning, change the key of the Select component
@@ -189,6 +187,16 @@ const OrderDetails: React.FC = () => {
     const price = parseFloat(openItemPrice);
     if (isNaN(price) || price <= 0) {
       toast.error("Please enter a valid price", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
+    // Check if the active order is closed
+    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    if (activeOrder?.order_status === "Closed") {
+      toast.error("Order is closed. Please reopen the check to add items.", {
         duration: 4000,
         position: ToastPosition.BOTTOM,
       });

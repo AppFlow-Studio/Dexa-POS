@@ -23,7 +23,7 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { activeOrderId, orders, activeOrderTotal } = useOrderStore();
+  const { activeOrderId, orders, activeOrderOutstandingTotal } = useOrderStore();
   const { close, setView } = usePaymentStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
@@ -36,8 +36,8 @@ const SplitPaymentView = () => {
   const [unassignedItems, setUnassignedItems] = useState<CartItem[]>([]); // For "Split by Item"
 
   const totalInCents = useMemo(
-    () => Math.round(activeOrderTotal * 100),
-    [activeOrderTotal]
+    () => Math.round(activeOrderOutstandingTotal * 100),
+    [activeOrderOutstandingTotal]
   );
 
   // --- Core Logic ---
@@ -75,7 +75,7 @@ const SplitPaymentView = () => {
   useEffect(() => {
     // Recalculate splits whenever the primary option changes
     if (splitOption === "Split Evenly") {
-      const amountPerPerson = activeOrderTotal / numberOfPeople;
+      const amountPerPerson = activeOrderOutstandingTotal / numberOfPeople;
       const newSplits = Array.from({ length: numberOfPeople }, (_, i) => ({
         id: i + 1,
         amount: amountPerPerson,
@@ -104,7 +104,7 @@ const SplitPaymentView = () => {
         },
       ]);
     }
-  }, [splitOption, numberOfPeople, activeOrderTotal, items]);
+  }, [splitOption, numberOfPeople, activeOrderOutstandingTotal, items]);
 
   // Create a stable, string-based dependency for the item calculation effect
   const itemDependency = JSON.stringify(
@@ -130,7 +130,7 @@ const SplitPaymentView = () => {
   }, [itemDependency, splitOption]);
 
   const totalPaid = splits.reduce((acc, split) => acc + split.amount, 0);
-  const remainingBalance = activeOrderTotal - totalPaid;
+  const remainingBalance = activeOrderOutstandingTotal - totalPaid;
 
   const handleAssignItem = (itemToAssign: CartItem, targetSplitId: number) => {
     // Remove from unassigned
@@ -158,11 +158,11 @@ const SplitPaymentView = () => {
       prev.map((split) =>
         split.id === sourceSplitId
           ? {
-              ...split,
-              items: split.items.filter(
-                (item) => item.id !== itemToUnassign.id
-              ),
-            }
+            ...split,
+            items: split.items.filter(
+              (item) => item.id !== itemToUnassign.id
+            ),
+          }
           : split
       )
     );
@@ -201,9 +201,9 @@ const SplitPaymentView = () => {
       currentSplits.map((split) =>
         split.id === splitId
           ? {
-              ...split,
-              amount: parseFloat(sanitizedText),
-            }
+            ...split,
+            amount: parseFloat(sanitizedText),
+          }
           : split
       )
     );
@@ -230,8 +230,8 @@ const SplitPaymentView = () => {
         (acc, split) => acc + split.amount,
         0
       );
-      if (totalSplitAmount > activeOrderTotal + 0.001) {
-        toast.error("split total cannot exceed the order total.", {
+      if (totalSplitAmount > activeOrderOutstandingTotal + 0.001) {
+        toast.error("split total cannot exceed the outstanding amount.", {
           position: ToastPosition.BOTTOM,
         });
         return;
@@ -255,16 +255,14 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={num}
                     onPress={() => setNumberOfPeople(num)}
-                    className={`w-10 h-10 rounded-lg border items-center justify-center ${
-                      isSelected
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-10 h-10 rounded-lg border items-center justify-center ${isSelected
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`font-semibold ${
-                        isSelected ? "text-white" : "text-gray-600"
-                      }`}
+                      className={`font-semibold ${isSelected ? "text-white" : "text-gray-600"
+                        }`}
                     >
                       {num}
                     </Text>
@@ -470,10 +468,10 @@ const SplitPaymentView = () => {
           </View>
 
           {/* Total */}
-          <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-300 mb-6">
+          <View className="flex-row justify-between pt-4 border-dashed border-gray-300 mb-6">
             <Text className="text-lg font-bold text-accent-500">Total</Text>
             <Text className="text-lg font-bold text-accent-500">
-              ${activeOrderTotal.toFixed(2)}
+              ${activeOrderOutstandingTotal.toFixed(2)}
             </Text>
           </View>
 
@@ -489,16 +487,14 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt as SplitOption)}
-                    className={`py-2 px-4 rounded-lg border ${
-                      isSelected
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-2 px-4 rounded-lg border ${isSelected
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`font-semibold ${
-                        isSelected ? "text-white" : "text-gray-600"
-                      }`}
+                      className={`font-semibold ${isSelected ? "text-white" : "text-gray-600"
+                        }`}
                     >
                       {opt}
                     </Text>
@@ -520,36 +516,32 @@ const SplitPaymentView = () => {
                 <View className="flex-row gap-2 items-center">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-2 px-4 rounded-lg border ${
-                      split.paymentType === "Card"
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card"
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`font-semibold ${
-                        split.paymentType === "Card"
-                          ? "text-white"
-                          : "text-gray-600"
-                      }`}
+                      className={`font-semibold ${split.paymentType === "Card"
+                        ? "text-white"
+                        : "text-gray-600"
+                        }`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-2 px-4 rounded-lg border ${
-                      split.paymentType === "Cash"
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Cash"
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`font-semibold ${
-                        split.paymentType === "Cash"
-                          ? "text-white"
-                          : "text-gray-600"
-                      }`}
+                      className={`font-semibold ${split.paymentType === "Cash"
+                        ? "text-white"
+                        : "text-gray-600"
+                        }`}
                     >
                       Cash
                     </Text>
@@ -568,7 +560,7 @@ const SplitPaymentView = () => {
               Total Split
             </Text>
             <Text className="text-lg font-bold text-accent-500">
-              ${activeOrderTotal.toFixed(2)}
+              ${activeOrderOutstandingTotal.toFixed(2)}
             </Text>
           </View>
         </ScrollView>

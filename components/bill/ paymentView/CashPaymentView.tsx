@@ -6,10 +6,10 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 const CashPaymentView = () => {
   // Get totals from the cart store
   const {
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderTotal,
     activeOrderDiscount,
+    activeOrderOutstandingSubtotal,
+    activeOrderOutstandingTax,
+    activeOrderOutstandingTotal,
   } = useOrderStore();
 
   const { close, setView } = usePaymentStore();
@@ -22,7 +22,7 @@ const CashPaymentView = () => {
   >("exact");
 
   // Calculate change due. Ensure it's not negative.
-  const changeDue = parseFloat(amountTendered || "0") - activeOrderTotal;
+  const changeDue = parseFloat(amountTendered || "0") - activeOrderOutstandingTotal;
 
 
   // Suggested amounts for quick selection
@@ -35,7 +35,7 @@ const CashPaymentView = () => {
   };
 
   const handleSelectExact = () => {
-    setAmountTendered(activeOrderTotal.toFixed(2));
+    setAmountTendered(activeOrderOutstandingTotal.toFixed(2));
     setSelectedAmountId("exact");
   };
 
@@ -54,7 +54,7 @@ const CashPaymentView = () => {
           <View className="flex-row justify-between">
             <Text className="text-accent-500">Subtotal</Text>
             <Text className="text-accent-500">
-              ${activeOrderSubtotal.toFixed(2)}
+              ${activeOrderOutstandingSubtotal.toFixed(2)}
             </Text>
           </View>
           {activeOrderDiscount > 0 && (
@@ -68,7 +68,7 @@ const CashPaymentView = () => {
           <View className="flex-row justify-between">
             <Text className="text-accent-500">Tax</Text>
             <Text className="text-accent-500">
-              ${activeOrderTax.toFixed(2)}
+              ${activeOrderOutstandingTax.toFixed(2)}
             </Text>
           </View>
           <View className="flex-row justify-between">
@@ -78,10 +78,10 @@ const CashPaymentView = () => {
         </View>
 
         {/* Total */}
-        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-300 mb-6">
+        <View className="flex-row justify-between pt-4 border-dashed border-gray-300 mb-6">
           <Text className="text-lg font-bold text-accent-500">Total</Text>
           <Text className="text-lg font-bold text-accent-500">
-            ${activeOrderTotal.toFixed(2)}
+            ${activeOrderOutstandingTotal.toFixed(2)}
           </Text>
         </View>
 
@@ -97,16 +97,14 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={amount}
                   onPress={() => handleSelectAmount(amount)}
-                  className={`py-2 px-4 rounded-lg border ${
-                    isSelected
-                      ? "border-primary-400 bg-primary-100"
-                      : "border-gray-300"
-                  }`}
+                  className={`py-2 px-4 rounded-lg border ${isSelected
+                    ? "border-primary-400 bg-primary-100"
+                    : "border-gray-300"
+                    }`}
                 >
                   <Text
-                    className={`font-semibold ${
-                      isSelected ? "text-primary-400" : "text-gray-600"
-                    }`}
+                    className={`font-semibold ${isSelected ? "text-primary-400" : "text-gray-600"
+                      }`}
                   >
                     ${amount}
                   </Text>
@@ -115,16 +113,14 @@ const CashPaymentView = () => {
             })}
             <TouchableOpacity
               onPress={handleSelectExact}
-              className={`py-2 px-4 rounded-lg border ${
-                selectedAmountId === "exact"
-                  ? "border-primary-400 bg-primary-400"
-                  : "border-gray-300"
-              }`}
+              className={`py-2 px-4 rounded-lg border ${selectedAmountId === "exact"
+                ? "border-primary-400 bg-primary-400"
+                : "border-gray-300"
+                }`}
             >
               <Text
-                className={`font-semibold ${
-                  selectedAmountId === "exact" ? "text-white" : "text-gray-600"
-                }`}
+                className={`font-semibold ${selectedAmountId === "exact" ? "text-white" : "text-gray-600"
+                  }`}
               >
                 Exact Amount
               </Text>
@@ -140,7 +136,7 @@ const CashPaymentView = () => {
           <TextInput
             value={amountTendered}
             onChangeText={setAmountTendered}
-            placeholder={`+ $${activeOrderTotal.toFixed(2)}`}
+            placeholder={`+ $${activeOrderOutstandingTotal.toFixed(2)}`}
             keyboardType="numeric"
             className="w-full p-4 bg-gray-100 border border-gray-200 rounded-lg text-lg text-right font-semibold text-accent-500"
           />

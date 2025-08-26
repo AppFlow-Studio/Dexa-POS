@@ -2,7 +2,7 @@ import { images } from "@/lib/image";
 import { SIDEBAR_DATA } from "@/lib/sidebar-data";
 import { usePathname } from "expo-router";
 import { Menu, X } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -28,6 +28,8 @@ const Sidebar: React.FC = () => {
   const pathname = usePathname();
   const activePath = pathname;
 
+  const scrollViewRef = useRef<ScrollView>(null);
+
   const animationProgress = useSharedValue(0);
 
   useEffect(() => {
@@ -51,6 +53,34 @@ const Sidebar: React.FC = () => {
     // When collapsed, move it off-screen and disable pointer events
     zIndex: isExpanded ? 20 : -1,
   }));
+
+  const handleActiveLayout = (yPosition: number) => {
+    // The `measure` method gives the position relative to the screen,
+    // so we can scroll directly to it.
+    // We add a small offset to not have it at the very top.
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({ y: yPosition - 100, animated: true });
+    }
+  };
+
+  useEffect(() => {
+    // When the sidebar is expanded, we need to find which accordions to open
+    // to reveal the active link.
+    if (isExpanded) {
+      const findPath = (items: typeof SIDEBAR_DATA, path: string): string[] => {
+        for (const item of items) {
+          if (item.href === path) return [item.id];
+          if (item.subItems) {
+            const found = findPath(item.subItems, path);
+            if (found.length > 0) return [item.id, ...found];
+          }
+        }
+        return [];
+      };
+      const openPath = findPath(SIDEBAR_DATA, activePath);
+      setOpenAccordions(openPath);
+    }
+  }, [isExpanded, activePath]);
 
   const handleToggleAccordion = (id: string) => {
     setOpenAccordions((prev) =>
@@ -83,6 +113,7 @@ const Sidebar: React.FC = () => {
               activePath={activePath}
               openAccordions={openAccordions}
               onToggle={handleToggleAccordion}
+              onActiveLayout={handleActiveLayout}
             />
           ))}
         </View>
@@ -149,6 +180,7 @@ const Sidebar: React.FC = () => {
                 activePath={activePath}
                 openAccordions={openAccordions}
                 onToggle={handleToggleAccordion}
+                onActiveLayout={handleActiveLayout}
               />
             ))}
           </View>

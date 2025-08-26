@@ -21,6 +21,7 @@ const statusClasses: Record<string, string> = {
   Paid: "bg-green-100 text-green-800",
   "In Progress": "bg-orange-100 text-orange-800",
   Refunded: "bg-gray-200 text-gray-600",
+  "Partially Refunded": "bg-yellow-100 text-yellow-800",
 };
 
 const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
@@ -29,7 +30,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
   onPrint,
   onDelete,
 }) => {
-  const orderPath = `/previous-orders/${order.orderId.replace("#", "")}`;
+  const orderPath = `/previous-orders/${order.orderId}`;
 
   return (
     <Link href={orderPath as Href} asChild>
@@ -46,7 +47,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           <Text className="text-sm text-gray-500">{order.orderTime}</Text>
         </View>
         <Text className="w-[10%] font-semibold text-gray-600">
-          {order.orderId}
+          {order.orderId.slice(0, 11)}...
         </Text>
         <View className="w-[12%]">
           <View
@@ -58,6 +59,11 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
               {order.paymentStatus}
             </Text>
           </View>
+          {order.refunded && (
+            <Text className="text-xs text-red-600 mt-1">
+              Refunded
+            </Text>
+          )}
         </View>
         <Text className="w-[12%] font-semibold text-gray-600">
           {order.server}
@@ -68,9 +74,16 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         <Text className="w-[10%] font-semibold text-gray-600">
           {order.type}
         </Text>
-        <Text className="w-[10%] font-bold text-gray-800">
-          ${order.total.toFixed(2)}
-        </Text>
+        <View className="w-[10%]">
+          <Text className="font-bold text-gray-800">
+            ${order.total.toFixed(2)}
+          </Text>
+          {order.refundedAmount && order.refundedAmount > 0 && (
+            <Text className="text-xs text-red-600">
+              Refunded: ${order.refundedAmount.toFixed(2)}
+            </Text>
+          )}
+        </View>
         <View className="w-[10%]" onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
             onPress={() => onViewNotes(order)}
@@ -97,6 +110,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
                 <Printer className="mr-2 h-4 w-4" color="#4b5563" />
                 <Text>Print Receipt</Text>
               </DropdownMenuItem>
+
               <DropdownMenuItem onPress={() => onDelete(order)}>
                 <Trash2 className="mr-2 h-4 w-4 text-red-500" color="#ef4444" />
                 <Text className="text-red-500">Delete</Text>

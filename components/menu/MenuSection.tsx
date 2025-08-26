@@ -5,7 +5,11 @@ import { FlatList, Text, View } from "react-native";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 
-const MenuSection: React.FC = () => {
+interface MenuSectionProps {
+  onOrderClosedCheck?: () => boolean;
+}
+
+const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
   const [activeMeal, setActiveMeal] = useState("Dinner");
   const [activeCategory, setActiveCategory] = useState("Main Course");
@@ -57,6 +61,7 @@ const MenuSection: React.FC = () => {
                 ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
                 : undefined
             }
+            onOrderClosedCheck={onOrderClosedCheck}
           />
         )}
       />

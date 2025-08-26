@@ -2,9 +2,10 @@ import BreakEndedModal from "@/components/timeclock/BreakEndedModal"; // 1. Impo
 import BreakModal from "@/components/timeclock/BreakModal";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { MOCK_SHIFT_HISTORY } from "@/lib/mockData";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
 const TABLE_HEADERS = [
@@ -18,32 +19,42 @@ const TABLE_HEADERS = [
 ];
 
 const TimeclockScreen = () => {
-  const [clockStatus, setClockStatus] = useState<
-    "clockedOut" | "clockedIn" | "onBreak"
-  >("clockedOut");
+  // Get all state and actions from the Zustand store
+  const { status, clockIn, clockOut, startBreak, endBreak, breakStartTime } =
+    useTimeclockStore();
 
-  // 2. State to manage which modal is visible
-  const [activeModal, setActiveModal] = useState<"break" | "breakEnded" | null>(
-    null
-  );
+  // The modal state is now simpler
+  const [isBreakModalOpen, setBreakModalOpen] = useState(false);
+  const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
+  const [breakSessionStartTime, setBreakSessionStartTime] =
+    useState<Date | null>(null);
 
-  const handleClockIn = () => setClockStatus("clockedIn");
-  const handleClockOut = () => setClockStatus("clockedOut");
-
-  const handleStartBreak = () => {
-    setClockStatus("onBreak");
-    setActiveModal("break"); // Open the "Break Initiated" modal
-  };
+  // This effect opens the break modal when the global status changes to 'onBreak'
+  useEffect(() => {
+    if (status === "onBreak") {
+      setBreakModalOpen(true);
+    } else {
+      setBreakModalOpen(false);
+    }
+  }, [status]);
 
   const handleEndBreak = () => {
-    // When the break ends, close the first modal and open the second one
-    setActiveModal("breakEnded");
+    // 2. Before clearing the store, capture the current `breakStartTime`.
+    const startTimeForSession = useTimeclockStore.getState().breakStartTime;
+    setBreakSessionStartTime(startTimeForSession);
+
+    // 3. Now, call the action that clears the value in the store.
+    endBreak();
+
+    // 4. Proceed with the modal transition.
+    setBreakModalOpen(false);
+    setBreakEndedModalOpen(true);
   };
 
   const handleReturnToClockIn = () => {
-    // This is called from the "Break Ended" modal
-    setActiveModal(null); // Close all modals
-    setClockStatus("clockedIn"); // Set the status back to clocked in
+    setBreakEndedModalOpen(false);
+    // Reset our temporary state variable
+    setBreakSessionStartTime(null);
   };
 
   return (
@@ -62,10 +73,10 @@ const TimeclockScreen = () => {
 
       <View className="flex-1 flex-row gap-6">
         <UserProfileCard
-          status={clockStatus}
-          onClockIn={handleClockIn}
-          onClockOut={handleClockOut}
-          onStartBreak={handleStartBreak}
+          status={status}
+          onClockIn={clockIn}
+          onClockOut={clockOut}
+          onStartBreak={startBreak}
         />
 
         <View className="flex-1">
@@ -116,13 +127,12 @@ const TimeclockScreen = () => {
       </View>
 
       {/* --- Modals --- */}
-      <BreakModal
-        isOpen={activeModal === "break"}
-        onEndBreak={handleEndBreak}
-      />
+      <BreakModal isOpen={isBreakModalOpen} onEndBreak={handleEndBreak} />
       <BreakEndedModal
-        isOpen={activeModal === "breakEnded"}
+        isOpen={isBreakEndedModalOpen}
         onClockIn={handleReturnToClockIn}
+        // Pass the start time to the modal for display
+        startTime={breakSessionStartTime}
       />
     </View>
   );

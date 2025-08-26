@@ -1,7 +1,7 @@
 import { SidebarNavigationItem } from "@/lib/sidebar-data";
 import { Href, Link } from "expo-router";
 import { ChevronDown } from "lucide-react-native";
-import React from "react";
+import React, { useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import SidebarLink from "./SidebarLink";
 
@@ -12,6 +12,7 @@ interface SidebarAccordionProps {
   openAccordions: string[];
   onToggle: (id: string) => void;
   onExpand: () => void; // Function to expand the sidebar
+  onActiveLayout: (y: number) => void;
   level?: number;
 }
 
@@ -21,13 +22,16 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   activePath,
   openAccordions,
   onToggle,
-  onExpand, // Receive the handler
+  onExpand,
+  onActiveLayout,
   level = 0,
 }) => {
   const { id, label, icon: Icon, subItems = [], href } = item;
   const hasSubItems = subItems.length > 0;
   const isOpen = openAccordions.includes(id);
   const indentation = level * 4; // 4px indentation for each level
+
+  const viewRef = useRef<View>(null);
 
   const isActive = React.useMemo(() => {
     // A link is active if the current path *starts with* its href.
@@ -78,6 +82,14 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
     }
   };
 
+  React.useEffect(() => {
+    if (isActive && isExpanded && viewRef.current) {
+      viewRef.current.measure((_x, _y, _width, _height, _pageX, pageY) => {
+        onActiveLayout(pageY);
+      });
+    }
+  }, [isActive, isExpanded, onActiveLayout]);
+
   // When sidebar is collapsed, only render icons for top-level items
   if (!isExpanded) {
     return (
@@ -98,20 +110,22 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
   // Case 1: The item is a simple link (no sub-items)
   if (href || subItems.length === 0) {
     return (
-      <Link href={href as Href} asChild>
-        <SidebarLink
-          label={label}
-          icon={Icon}
-          isActive={isActive}
-          isExpanded={isExpanded}
-        />
-      </Link>
+      <View ref={viewRef}>
+        <Link href={href as Href} asChild>
+          <SidebarLink
+            label={label}
+            icon={Icon}
+            isActive={isActive}
+            isExpanded={isExpanded}
+          />
+        </Link>
+      </View>
     );
   }
 
   // Case 2: The item is an accordion (has sub-items)
   return (
-    <View>
+    <View ref={viewRef}>
       <TouchableOpacity
         onPress={() => onToggle(id)}
         style={{ paddingLeft: level === 0 ? 8 : indentation + 8 }}
@@ -152,6 +166,7 @@ const SidebarAccordion: React.FC<SidebarAccordionProps> = ({
               openAccordions={openAccordions}
               onToggle={onToggle}
               activePath={activePath}
+              onActiveLayout={onActiveLayout}
             />
           ))}
         </View>

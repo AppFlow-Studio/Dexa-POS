@@ -1,8 +1,9 @@
 import BillItem from "@/components/bill/BillItem"; // Reuse the BillItem component
-import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
+import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModal";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info, Printer } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const DetailRow = ({
@@ -21,12 +22,34 @@ const DetailRow = ({
 const OrderDetailsScreen = () => {
   const router = useRouter();
   const { orderId } = useLocalSearchParams();
-  const order = MOCK_PREVIOUS_ORDERS.find((o) => o.orderId === `#${orderId}`);
+  const { getOrderById, previousOrders } = usePreviousOrdersStore();
+  const order = getOrderById(orderId as string);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+
+  // Debug: Log available orders and the search
+  console.log("Available orders:", previousOrders.map(o => o.orderId));
+  console.log("Looking for orderId:", orderId);
+  console.log("Found order:", order);
 
   if (!order) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-2xl font-bold text-red-500">Order Not Found</Text>
+      <View className="flex-1 items-center justify-center p-6">
+        <Text className="text-2xl font-bold text-red-500 mb-4">Order Not Found</Text>
+        <Text className="text-lg text-gray-600 mb-2">Looking for: {orderId}</Text>
+        <Text className="text-lg text-gray-600 mb-4">Available orders:</Text>
+        <ScrollView className="max-h-60">
+          {previousOrders.map((o, index) => (
+            <Text key={index} className="text-sm text-gray-500 mb-1">
+              {o.orderId} - {o.orderDate} - ${o.total.toFixed(2)}
+            </Text>
+          ))}
+        </ScrollView>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mt-4 px-6 py-3 bg-blue-500 rounded-lg"
+        >
+          <Text className="text-white font-bold">Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -39,7 +62,7 @@ const OrderDetailsScreen = () => {
             {/* Order Header */}
             <View className="text-center items-center">
               <Text className="text-4xl font-extrabold text-gray-800">
-                Order No. {order.orderId}
+                {order.orderId}
               </Text>
               <Text className="text-lg text-gray-500 mt-1">{order.server}</Text>
               <TouchableOpacity className="absolute top-0 right-0 p-2 bg-orange-100 rounded-full">
@@ -57,44 +80,48 @@ const OrderDetailsScreen = () => {
                   <BillItem key={item.id} item={item} />
                 ))}
               </View>
-              <View className="flex-row gap-2 mt-6">
-                <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
-                  <Text className="font-bold text-gray-700">Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="flex-1 py-3 bg-primary-400 rounded-lg items-center">
-                  <Text className="font-bold text-white">Add Item</Text>
-                </TouchableOpacity>
-              </View>
             </View>
 
             {/* Transaction Details & Totals */}
             <View className="space-y-2">
-              <DetailRow label="No. Transaction" value="PZ05329283" />
-              <DetailRow label="Table" value="T-12, T-05, T-14" />
-              <DetailRow label="Payment" value="Cash" />
+              <DetailRow label="Order ID" value={order.orderId} />
+              <DetailRow label="Order Type" value={order.type} />
+              <DetailRow label="Server/Cashier" value={order.server} />
+              <DetailRow label="Payment Status" value={order.paymentStatus} />
+              {order.refunded && (
+                <DetailRow label="Refund Status" value="Refunded" />
+              )}
+              {order.refundedAmount && order.refundedAmount > 0 && (
+                <DetailRow label="Refunded Amount" value={`$${order.refundedAmount.toFixed(2)}`} />
+              )}
               <DetailRow
                 label="Subtotal"
-                value={`$${order.total.toFixed(2)}`}
+                value={`$${(order.total / 1.05).toFixed(2)}`}
               />
               <DetailRow
                 label="Tax"
-                value={`$${(order.total * 0.05).toFixed(2)}`}
+                value={`$${(order.total - (order.total / 1.05)).toFixed(2)}`}
               />
               <DetailRow label="Voucher" value="$0.00" />
-              <View className="flex-row justify-between items-center pt-4 mt-2">
+              <View className="flex-row justify-between items-center pt-4 mt-2 border-t border-gray-300">
                 <Text className="text-xl font-bold text-gray-900">Total</Text>
                 <Text className="text-xl font-bold text-gray-900">
-                  ${(order.total * 1.05).toFixed(2)}
+                  ${order.total.toFixed(2)}
                 </Text>
               </View>
             </View>
 
             {/* Footer Actions */}
             <View className="flex-row gap-2 mt-8 border-t border-gray-200 pt-6">
-              <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
-                <Text className="font-bold text-gray-700">Refund</Text>
-              </TouchableOpacity>
-              <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-primary-400 rounded-lg">
+              {order.paymentStatus === "Paid" && !order.refunded && (
+                <TouchableOpacity
+                  onPress={() => setIsRefundModalOpen(true)}
+                  className="flex-1 py-3 border border-red-300 rounded-lg items-center"
+                >
+                  <Text className="font-bold text-red-600">Process Refund</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-blue-500 rounded-lg">
                 <Printer color="#FFFFFF" size={20} />
                 <Text className="font-bold text-white">Print Receipt</Text>
               </TouchableOpacity>
@@ -102,6 +129,13 @@ const OrderDetailsScreen = () => {
           </View>
         </ScrollView>
       </View>
+
+      {/* Advanced Refund Modal */}
+      <AdvancedRefundModal
+        isOpen={isRefundModalOpen}
+        onClose={() => setIsRefundModalOpen(false)}
+        order={order}
+      />
     </View>
   );
 };

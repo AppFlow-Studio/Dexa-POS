@@ -41,6 +41,7 @@ export const useDineInStore = create<DineInState>((set, get) => ({
       order_type: "Dine In", // Since it's from a table
       items: [],
       opened_at: new Date().toISOString(), // Current timestamp
+      paid_status: "Unpaid",
       // ... other properties
     };
 

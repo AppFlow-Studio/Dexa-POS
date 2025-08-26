@@ -10,7 +10,7 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  const { orders, updateOrderStatus } = useOrderStore();
+  const { orders, updateOrderStatus, syncOrderStatus } = useOrderStore();
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
@@ -19,11 +19,11 @@ const OrderLineSection: React.FC = () => {
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
-    // Show only orders that are in a "kitchen" state
+    // Show only orders that are in a "kitchen" state (not closed)
     const kitchenOrders = orders.filter(
       (o) =>
-        // Condition 1: Must be in Preparing state
-        o.order_status === "Preparing" &&
+        // Condition 1: Must be in Preparing or Ready state (not closed)
+        (o.order_status === "Preparing" || o.order_status === "Ready") &&
         // Condition 2: Must have one or more items
         o.items.length > 0
     );
@@ -75,8 +75,8 @@ const OrderLineSection: React.FC = () => {
   };
 
   const handleCompleteOrder = (orderId: string) => {
-    // Logic to update status. Could be a cycle: Open -> Preparing -> Ready
-    updateOrderStatus(orderId, "Ready");
+    // Sync order status based on item statuses
+    syncOrderStatus(orderId);
   };
 
   return (

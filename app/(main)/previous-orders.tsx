@@ -3,8 +3,8 @@ import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { MOCK_PREVIOUS_ORDERS } from "@/lib/mockData";
 import { CartItem, PreviousOrder } from "@/lib/types";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { FlatList, Text, TextInput, View } from "react-native";
@@ -32,11 +32,27 @@ const PreviousOrdersScreen = () => {
   const [selectedOrder, setSelectedOrder] = useState<PreviousOrder | null>(
     null
   );
-  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
   // State for filters would go here
   const [searchText, setSearchText] = useState("");
-  const filteredOrders = useMemo(() => MOCK_PREVIOUS_ORDERS, []); // Add filtering logic later
+
+  // Get orders from the store
+  const { previousOrders, searchOrders, getOrdersByDate } = usePreviousOrdersStore();
+
+  const filteredOrders = useMemo(() => {
+    let orders = previousOrders;
+
+    // Filter by search text
+    if (searchText.trim()) {
+      orders = searchOrders(searchText);
+    }
+
+    // Filter by date
+    orders = getOrdersByDate(selectedDate);
+
+    return orders;
+  }, [previousOrders, searchText, selectedDate, searchOrders, getOrdersByDate]);
 
   const handleOpenNotes = (order: PreviousOrder) => {
     setSelectedOrder(order);
@@ -70,6 +86,8 @@ const PreviousOrdersScreen = () => {
           <TextInput
             placeholder="Search Order"
             className="ml-2 text-base flex-1"
+            value={searchText}
+            onChangeText={setSearchText}
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
