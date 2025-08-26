@@ -174,7 +174,7 @@ const UpdateTableScreen = () => {
 
   // Function to check if order is closed and show warning
   const checkOrderClosedAndWarn = () => {
-    if (activeOrder?.order_status === "Closed") {
+    if (activeOrder?.check_status === "Closed") {
       setOrderClosedWarningOpen(true);
       return true; // Order is closed
     }
