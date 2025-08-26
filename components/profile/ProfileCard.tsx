@@ -20,22 +20,25 @@ const ProfileCard = () => {
   const user = MOCK_USER_PROFILE;
 
   // 2. Get the live timeclock state and actions from the store
-  const { status, clockInTime, clockIn, clockOut } = useTimeclockStore();
+  const { status, currentShift, clockIn, clockOut } = useTimeclockStore();
   const [shiftDuration, setShiftDuration] = useState("0 h 00 m");
 
   // 3. Effect to update the duration timer every second, but only if clocked in
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (status === "clockedIn" && clockInTime) {
+    if (status === "clockedIn" && currentShift?.clockInTime) {
       interval = setInterval(() => {
-        const durationMs = new Date().getTime() - clockInTime.getTime();
+        const durationMs =
+          new Date().getTime() - currentShift.clockInTime!.getTime();
         setShiftDuration(formatDuration(durationMs));
       }, 1000);
+    } else {
+      setShiftDuration("0 h 00 m"); // Reset duration if not clocked in
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [status, clockInTime]);
+  }, [status, currentShift]);
 
   const renderShiftStatus = () => {
     if (status === "clockedIn" || status === "onBreak") {
@@ -59,8 +62,8 @@ const ProfileCard = () => {
             <View className="flex-row items-center">
               <Clock color="#6b7280" size={16} />
               <Text className="ml-2 text-gray-600">
-                Clock in at :{" "}
-                {clockInTime?.toLocaleTimeString([], {
+                Clock in at :
+                {currentShift?.clockInTime?.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
                 }) || "..."}

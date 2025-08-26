@@ -1,8 +1,7 @@
-import BreakEndedModal from "@/components/timeclock/BreakEndedModal"; // 1. Import the new modal
+import BreakEndedModal from "@/components/timeclock/BreakEndedModal";
 import BreakModal from "@/components/timeclock/BreakModal";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
-import { MOCK_SHIFT_HISTORY } from "@/lib/mockData";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { Shift, useTimeclockStore } from "@/stores/useTimeclockStore"; // 1. Import the Shift type
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -19,42 +18,48 @@ const TABLE_HEADERS = [
 ];
 
 const TimeclockScreen = () => {
-  // Get all state and actions from the Zustand store
-  const { status, clockIn, clockOut, startBreak, endBreak, breakStartTime } =
-    useTimeclockStore();
+  // --- STATE FROM THE STORE ---
+  // Get all necessary state and actions from the store.
+  const { status, shiftHistory, endBreak } = useTimeclockStore();
 
-  // The modal state is now simpler
-  const [isBreakModalOpen, setBreakModalOpen] = useState(false);
-  const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
-  const [breakSessionStartTime, setBreakSessionStartTime] =
-    useState<Date | null>(null);
+  // --- LOCAL UI STATE ---
+  // This state is ONLY for controlling which modal is visible.
+  const [activeModal, setActiveModal] = useState<"break" | "breakEnded" | null>(
+    null
+  );
+  // This state holds the data for the break that just ended, to pass to the modal.
+  const [lastBreakSession, setLastBreakSession] = useState<Shift | null>(null);
 
-  // This effect opens the break modal when the global status changes to 'onBreak'
+  // --- LIFECYCLE EFFECT ---
+  // This effect opens the "Break Initiated" modal when the global status changes to 'onBreak'.
   useEffect(() => {
     if (status === "onBreak") {
-      setBreakModalOpen(true);
+      setActiveModal("break");
     } else {
-      setBreakModalOpen(false);
+      // If the status is no longer 'onBreak' (e.g., clocked out), ensure the modal is closed.
+      if (activeModal === "break") {
+        setActiveModal(null);
+      }
     }
   }, [status]);
 
+  // --- HANDLERS ---
   const handleEndBreak = () => {
-    // 2. Before clearing the store, capture the current `breakStartTime`.
-    const startTimeForSession = useTimeclockStore.getState().breakStartTime;
-    setBreakSessionStartTime(startTimeForSession);
+    // 1. Capture the current shift data *before* it's modified.
+    const shiftForSession = useTimeclockStore.getState().currentShift;
+    setLastBreakSession(shiftForSession);
 
-    // 3. Now, call the action that clears the value in the store.
+    // 2. Call the store action to end the break.
     endBreak();
 
-    // 4. Proceed with the modal transition.
-    setBreakModalOpen(false);
-    setBreakEndedModalOpen(true);
+    // 3. Transition from the 'break' modal to the 'breakEnded' modal.
+    setActiveModal("breakEnded");
   };
 
   const handleReturnToClockIn = () => {
-    setBreakEndedModalOpen(false);
-    // Reset our temporary state variable
-    setBreakSessionStartTime(null);
+    // This is called from the "Break Ended" modal. We just need to close it.
+    setActiveModal(null);
+    setLastBreakSession(null); // Clear the temporary session data
   };
 
   return (
@@ -72,12 +77,7 @@ const TimeclockScreen = () => {
       </View>
 
       <View className="flex-1 flex-row gap-6">
-        <UserProfileCard
-          status={status}
-          onClockIn={clockIn}
-          onClockOut={clockOut}
-          onStartBreak={startBreak}
-        />
+        <UserProfileCard />
 
         <View className="flex-1">
           <View className="flex-1 border border-gray-200 rounded-xl">
@@ -92,9 +92,9 @@ const TimeclockScreen = () => {
                 </Text>
               ))}
             </View>
-            {/* Table Body */}
+            {/* Table Body now renders the live history from the store */}
             <FlatList
-              data={MOCK_SHIFT_HISTORY}
+              data={shiftHistory}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <View className="flex-row p-4 border-b border-gray-100">
@@ -102,7 +102,7 @@ const TimeclockScreen = () => {
                     {item.date}
                   </Text>
                   <Text className="flex-1 font-semibold text-gray-700">
-                    Chef
+                    {item.role}
                   </Text>
                   <Text className="flex-1 font-semibold text-gray-700">
                     {item.clockIn}
@@ -127,12 +127,15 @@ const TimeclockScreen = () => {
       </View>
 
       {/* --- Modals --- */}
-      <BreakModal isOpen={isBreakModalOpen} onEndBreak={handleEndBreak} />
+      <BreakModal
+        isOpen={activeModal === "break"}
+        onEndBreak={handleEndBreak}
+      />
       <BreakEndedModal
-        isOpen={isBreakEndedModalOpen}
+        isOpen={activeModal === "breakEnded"}
         onClockIn={handleReturnToClockIn}
-        // Pass the start time to the modal for display
-        startTime={breakSessionStartTime}
+        // Pass the captured shift data to the modal
+        shift={lastBreakSession}
       />
     </View>
   );

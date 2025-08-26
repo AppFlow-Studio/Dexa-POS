@@ -1,3 +1,4 @@
+import { Shift } from "@/stores/useTimeclockStore";
 import { Clock } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -5,8 +6,8 @@ import { Dialog, DialogContent } from "../ui/dialog";
 
 interface BreakEndedModalProps {
   isOpen: boolean;
-  onClockIn: () => void; // This will close the modal and set the status
-  startTime: Date | null;
+  onClockIn: () => void;
+  shift: Shift | null;
 }
 
 // Helper function to format the duration from milliseconds
@@ -27,17 +28,20 @@ const formatDuration = (milliseconds: number): string => {
 const BreakEndedModal: React.FC<BreakEndedModalProps> = ({
   isOpen,
   onClockIn,
-  startTime,
+  shift,
 }) => {
-  const endTime = new Date(); // Capture the end time when the component renders
+  // All data now comes from the `shift` object that was captured when the break ended.
+  const endTime = shift?.breakEndTime || new Date();
+  const startTime = shift?.breakStartTime || null;
 
-  // Calculate the duration in milliseconds
-  const durationMs = startTime ? endTime.getTime() - startTime.getTime() : 0;
+  const durationMs =
+    startTime && endTime ? endTime.getTime() - startTime.getTime() : 0;
 
-  // In a real app, this data would be passed in as props
   const breakDetails = {
-    start: startTime ? startTime.toLocaleTimeString() : "N/A",
-    end: new Date().toLocaleTimeString(),
+    start: startTime
+      ? startTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      : "N/A",
+    end: endTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     duration: formatDuration(durationMs),
   };
 

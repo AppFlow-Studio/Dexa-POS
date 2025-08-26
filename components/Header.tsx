@@ -1,7 +1,24 @@
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { usePathname, useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
-import React from "react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Coffee,
+  LogOut,
+  User,
+} from "lucide-react-native";
+import React, { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
+import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
+import BreakEndedModal from "./timeclock/BreakEndedModal";
+import BreakModal from "./timeclock/BreakModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 
 const generateTitleFromPath = (pathname: string): string => {
   if (pathname === "/" || pathname === "/home") return "Home";
@@ -53,6 +70,12 @@ const Header = () => {
   const router = useRouter();
   const title = generateTitleFromPath(pathname);
 
+  const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
+  const [activeModal, setActiveModal] = useState<
+    "switchAccount" | "break" | "breakEnded" | null
+  >(null);
+  const [lastBreakSession, setLastBreakSession] = useState<any>(null);
+
   const showBackButton =
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
@@ -67,30 +90,98 @@ const Header = () => {
     pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||
     pathname === "/settings/store-operation/end-of-day/sales-summary";
 
+  const handleStartBreak = () => {
+    if (status === "clockedIn") {
+      startBreak();
+      // The timeclock store now handles the status, we just open the modal
+      setActiveModal("break");
+    } else {
+      alert("You must be clocked in to start a break.");
+    }
+  };
+
+  const handleEndBreak = () => {
+    const shiftForSession = useTimeclockStore.getState().currentShift;
+    setLastBreakSession(shiftForSession);
+    endBreak();
+    setActiveModal("breakEnded");
+  };
+
+  const handleReturnToClockIn = () => {
+    setActiveModal(null);
+    setLastBreakSession(null);
+  };
+
   return (
-    <View className="flex-row justify-between items-center">
-      <View className="flex-row items-center">
-        {showBackButton && (
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="p-2 mr-4 bg-gray-100 rounded-lg"
-          >
-            <ArrowLeft color="#1f2937" size={24} />
-          </TouchableOpacity>
-        )}
-        <Text className="text-2xl font-bold text-gray-800">{title}</Text>
-      </View>
-      <View className="flex-row items-center">
-        <Image
-          source={require("@/assets/images/tom_hardy.jpg")}
-          className="w-10 h-10 rounded-full"
-        />
-        <View className="ml-3">
-          <Text className="font-semibold">Jessica</Text>
-          <Text className="text-gray-500">New York</Text>
+    <>
+      <View className="flex-row justify-between items-center">
+        <View className="flex-row items-center">
+          {showBackButton && (
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="p-2 mr-4 bg-gray-100 rounded-lg"
+            >
+              <ArrowLeft color="#1f2937" size={24} />
+            </TouchableOpacity>
+          )}
+          <Text className="text-2xl font-bold text-gray-800">{title}</Text>
         </View>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TouchableOpacity className="flex-row items-center cursor-pointer">
+              <Image
+                source={require("@/assets/images/tom_hardy.jpg")}
+                className="w-10 h-10 rounded-full"
+              />
+              <View className="ml-3">
+                <Text className="font-semibold">Jessica</Text>
+                <Text className="text-gray-500">New York</Text>
+              </View>
+              <ChevronDown color="#6b7280" size={20} className="ml-2" />
+            </TouchableOpacity>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56">
+            <DropdownMenuItem
+              onPress={() => router.push("/settings/basic/my-profile")}
+            >
+              <User className="mr-2 h-4 w-4" />
+              <Text>My Profile</Text>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onPress={handleStartBreak}
+              disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
+            >
+              <Coffee className="mr-2 h-4 w-4" />
+              <Text>
+                {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
+              </Text>
+            </DropdownMenuItem>
+            <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
+              <LogOut className="mr-2 h-4 w-4" />
+              <Text>Switch Account</Text>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onPress={() => alert("Logging out...")}>
+              <LogOut className="mr-2 h-4 w-4 text-red-500" />
+              <Text className="text-red-500">Logout</Text>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </View>
-    </View>
+      <SwitchAccountModal
+        isOpen={activeModal === "switchAccount"}
+        onClose={() => setActiveModal(null)}
+      />
+      <BreakModal
+        isOpen={activeModal === "break"}
+        onEndBreak={handleEndBreak}
+      />
+      <BreakEndedModal
+        isOpen={activeModal === "breakEnded"}
+        onClockIn={handleReturnToClockIn}
+        shift={lastBreakSession}
+      />
+    </>
   );
 };
 

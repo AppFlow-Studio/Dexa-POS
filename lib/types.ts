@@ -195,6 +195,7 @@ export interface ShiftHistoryEntry {
   breakEnded: string;
   clockOut: string;
   duration: string;
+  role: string;
 }
 
 export interface PrinterDevice {

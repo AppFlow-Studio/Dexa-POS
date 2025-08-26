@@ -1,11 +1,22 @@
+import { ShiftHistoryEntry } from "@/lib/types"; // Assuming this type is in types.ts
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 
 type ClockStatus = "clockedOut" | "clockedIn" | "onBreak";
 
-interface TimeclockState {
-  status: ClockStatus;
+// Define the shape of a single shift
+export interface Shift {
   clockInTime: Date | null;
   breakStartTime: Date | null;
+  breakEndTime: Date | null;
+  clockOutTime: Date | null;
+  hasTakenBreak: boolean;
+}
+
+interface TimeclockState {
+  status: ClockStatus;
+  currentShift: Shift | null;
+  shiftHistory: ShiftHistoryEntry[]; // To hold the table data
 
   // Actions
   clockIn: () => void;
@@ -14,30 +25,97 @@ interface TimeclockState {
   endBreak: () => void;
 }
 
-export const useTimeclockStore = create<TimeclockState>((set) => ({
+// Default break duration in minutes
+const BREAK_DURATION_MINUTES = 30;
+
+export const useTimeclockStore = create<TimeclockState>((set, get) => ({
   status: "clockedOut",
-  clockInTime: null,
-  breakStartTime: null,
+  currentShift: null,
+  shiftHistory: [], // Start with empty history
 
-  clockIn: () => set({ status: "clockedIn", clockInTime: new Date() }),
+  clockIn: () => {
+    const newShift: Shift = {
+      clockInTime: new Date(),
+      breakStartTime: null,
+      breakEndTime: null,
+      clockOutTime: null,
+      hasTakenBreak: false,
+    };
+    set({ status: "clockedIn", currentShift: newShift });
+  },
 
-  clockOut: () =>
-    set({ status: "clockedOut", clockInTime: null, breakStartTime: null }),
+  clockOut: () => {
+    const { currentShift } = get();
+    if (!currentShift || !currentShift.clockInTime) return;
 
-  startBreak: () =>
+    const clockOutTime = new Date();
+    const durationMs =
+      clockOutTime.getTime() - currentShift.clockInTime.getTime();
+    const durationHours = (durationMs / (1000 * 60 * 60)).toFixed(2);
+
+    const newHistoryEntry: ShiftHistoryEntry = {
+      id: `shift_${Date.now()}`,
+      date: currentShift.clockInTime.toLocaleDateString(),
+      role: "Cashier",
+      clockIn: currentShift.clockInTime.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      breakInitiated:
+        currentShift.breakStartTime?.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) || "N/A",
+      breakEnded:
+        currentShift.breakEndTime?.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }) || "N/A",
+      clockOut: clockOutTime.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      duration: `${durationHours}h`,
+    };
+
+    set((state) => ({
+      status: "clockedOut",
+      currentShift: null,
+      shiftHistory: [newHistoryEntry, ...state.shiftHistory],
+    }));
+  },
+
+  startBreak: () => {
+    const { currentShift } = get();
+    if (currentShift?.hasTakenBreak) {
+      toast.error("Break Already Taken", {
+        position: ToastPosition.BOTTOM,
+        duration: 4000,
+      });
+      return;
+    }
+
+    set((state) => ({
+      status: "onBreak",
+      currentShift: state.currentShift
+        ? { ...state.currentShift, breakStartTime: new Date() }
+        : null,
+    }));
+  },
+
+  endBreak: () => {
     set((state) => {
-      if (state.status === "clockedIn") {
-        return { status: "onBreak", breakStartTime: new Date() };
+      if (state.status === "onBreak" && state.currentShift) {
+        return {
+          status: "clockedIn",
+          currentShift: {
+            ...state.currentShift,
+            breakEndTime: new Date(),
+            hasTakenBreak: true, // Mark the break as used
+          },
+        };
       }
       return {};
-    }),
-
-  endBreak: () =>
-    set((state) => {
-      if (state.status === "onBreak") {
-        // In a real app, you'd log the break duration here
-        return { status: "clockedIn", breakStartTime: null };
-      }
-      return {};
-    }),
+    });
+  },
 }));

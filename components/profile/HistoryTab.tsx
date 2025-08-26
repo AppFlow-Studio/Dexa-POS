@@ -1,5 +1,5 @@
-import { MOCK_SHIFT_HISTORY } from "@/lib/mockData";
 import { ShiftHistoryEntry } from "@/lib/types";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import React from "react";
 import { FlatList, Text, View } from "react-native";
 
@@ -53,11 +53,13 @@ const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
 // --- Main HistoryTab Component ---
 
 const HistoryTab = () => {
+  const { shiftHistory } = useTimeclockStore();
+
   return (
     // The FlatList component is perfect for rendering tabular data
     <View className="flex-1 rounded-lg">
       <FlatList
-        data={MOCK_SHIFT_HISTORY}
+        data={shiftHistory}
         keyExtractor={(item) => item.id}
         // The ListHeaderComponent renders our custom table header once
         ListHeaderComponent={<HistoryTableHeader />}
