@@ -27,15 +27,22 @@ const OrderDetailsScreen = () => {
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 
   // Debug: Log available orders and the search
-  console.log("Available orders:", previousOrders.map(o => o.orderId));
+  console.log(
+    "Available orders:",
+    previousOrders.map((o) => o.orderId)
+  );
   console.log("Looking for orderId:", orderId);
   console.log("Found order:", order);
 
   if (!order) {
     return (
       <View className="flex-1 items-center justify-center p-6">
-        <Text className="text-2xl font-bold text-red-500 mb-4">Order Not Found</Text>
-        <Text className="text-lg text-gray-600 mb-2">Looking for: {orderId}</Text>
+        <Text className="text-2xl font-bold text-red-500 mb-4">
+          Order Not Found
+        </Text>
+        <Text className="text-lg text-gray-600 mb-2">
+          Looking for: {orderId}
+        </Text>
         <Text className="text-lg text-gray-600 mb-4">Available orders:</Text>
         <ScrollView className="max-h-60">
           {previousOrders.map((o, index) => (
@@ -91,8 +98,11 @@ const OrderDetailsScreen = () => {
               {order.refunded && (
                 <DetailRow label="Refund Status" value="Refunded" />
               )}
-              {order.refundedAmount && order.refundedAmount > 0 && (
-                <DetailRow label="Refunded Amount" value={`$${order.refundedAmount.toFixed(2)}`} />
+              {order.refundedAmount != null && order.refundedAmount > 0 && (
+                <DetailRow
+                  label="Refunded Amount"
+                  value={`$${order.refundedAmount.toFixed(2)}`}
+                />
               )}
               <DetailRow
                 label="Subtotal"
@@ -100,7 +110,7 @@ const OrderDetailsScreen = () => {
               />
               <DetailRow
                 label="Tax"
-                value={`$${(order.total - (order.total / 1.05)).toFixed(2)}`}
+                value={`$${(order.total - order.total / 1.05).toFixed(2)}`}
               />
               <DetailRow label="Voucher" value="$0.00" />
               <View className="flex-row justify-between items-center pt-4 mt-2 border-t border-gray-300">

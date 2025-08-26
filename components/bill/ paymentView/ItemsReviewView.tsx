@@ -83,7 +83,7 @@ const ItemsReviewView = () => {
               ${activeOrderOutstandingSubtotal.toFixed(2)}
             </Text>
           </View>
-          {activeOrderDiscount && (
+          {activeOrderDiscount > 0 && (
             <View className="flex-row justify-between items-center mb-1">
               <Text className="text-sm text-yellow-700">Discount</Text>
               <Text className="text-sm font-medium text-yellow-800">
@@ -91,6 +91,7 @@ const ItemsReviewView = () => {
               </Text>
             </View>
           )}
+
           <View className="flex-row justify-between items-center mb-1">
             <Text className="text-sm text-yellow-700">Tax</Text>
             <Text className="text-sm font-medium text-yellow-800">

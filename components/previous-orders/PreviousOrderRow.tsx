@@ -76,12 +76,13 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           <Text className="font-bold text-gray-800">
             ${order.total.toFixed(2)}
           </Text>
-          {order.refundedAmount && order.refundedAmount > 0 && (
+          {order.refundedAmount != null && order.refundedAmount > 0 && (
             <Text className="text-xs text-red-600">
               Refunded: ${order.refundedAmount.toFixed(2)}
             </Text>
           )}
         </View>
+
         <View className="w-[10%]" onTouchStart={(e) => e.stopPropagation()}>
           <TouchableOpacity
             onPress={() => onViewNotes(order)}
