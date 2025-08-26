@@ -43,7 +43,11 @@ export interface MenuItemType {
   addOns?: AddOn[];
 }
 
-export type TableStatus = "Available" | "In Use" | "Needs Cleaning" | "Not in Service";
+export type TableStatus =
+  | "Available"
+  | "In Use"
+  | "Needs Cleaning"
+  | "Not in Service";
 export type TableShape = "circle" | "square";
 export type TableCapacity = "Small" | "Medium" | "Large";
 
@@ -117,7 +121,11 @@ export interface OnlineOrder {
   items: CartItem[];
 }
 
-export type PaymentStatus = "Paid" | "In Progress" | "Refunded" | "Partially Refunded";
+export type PaymentStatus =
+  | "Paid"
+  | "In Progress"
+  | "Refunded"
+  | "Partially Refunded";
 export type OrderType = "Dine In" | "Take-Away" | "Delivery";
 
 export interface PreviousOrder {
@@ -249,13 +257,13 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-  | "Open"
-  | "Closed"
-  | "Cancelled"
-  | "Preparing"
-  | "Ready"
-  | "Building"
-  | "Voided";
+    | "Open"
+    | "Closed"
+    | "Cancelled"
+    | "Preparing"
+    | "Ready"
+    | "Building"
+    | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
@@ -276,6 +284,7 @@ export interface OrderProfile {
   // Final calculated values, set upon closing the order
   total_amount?: number;
   total_tax?: number;
+  total_discount?: number;
 
   // Additional optional details
   customer_name?: string;

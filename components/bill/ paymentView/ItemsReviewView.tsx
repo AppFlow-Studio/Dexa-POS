@@ -65,14 +65,6 @@ const ItemsReviewView = () => {
             ${activeOrderTax.toFixed(2)}
           </Text>
         </View>
-        {activeOrderDiscount > 0 && (
-          <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-base text-green-600">Discount</Text>
-            <Text className="text-base text-green-600">
-              -${activeOrderDiscount.toFixed(2)}
-            </Text>
-          </View>
-        )}
         <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300">
           <Text className="text-lg font-bold text-gray-900">Total</Text>
           <Text className="text-lg font-bold text-gray-900">
@@ -84,12 +76,21 @@ const ItemsReviewView = () => {
           <Text className="text-sm font-semibold text-yellow-800 mb-2">
             Outstanding Amount
           </Text>
+
           <View className="flex-row justify-between items-center mb-1">
             <Text className="text-sm text-yellow-700">Subtotal</Text>
             <Text className="text-sm font-medium text-yellow-800">
               ${activeOrderOutstandingSubtotal.toFixed(2)}
             </Text>
           </View>
+          {activeOrderDiscount && (
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-sm text-yellow-700">Discount</Text>
+              <Text className="text-sm font-medium text-yellow-800">
+                - ${activeOrderDiscount.toFixed(2)}
+              </Text>
+            </View>
+          )}
           <View className="flex-row justify-between items-center mb-1">
             <Text className="text-sm text-yellow-700">Tax</Text>
             <Text className="text-sm font-medium text-yellow-800">
