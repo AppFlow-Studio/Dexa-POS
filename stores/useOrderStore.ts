@@ -54,7 +54,8 @@ interface OrderState {
   setPendingTableSelection: (tableId: string | null) => void;
   syncOrderStatus: (orderId: string) => void;
 
-  closeActiveOrder: () => string | null; // Returns the tableId if it exists
+  archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
+  markAllItemsAsReady: (orderId: string) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -321,6 +322,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
                   return {
                     ...item,
                     quantity: item.quantity + newItem.quantity,
+                    item_status: "Preparing",
                     // Newly added quantities are unpaid
                     paidQuantity: item.paidQuantity || 0,
                   };
@@ -590,7 +592,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         id: `order_${Date.now()}`,
         service_location_id: null,
         order_status: "Building",
-        order_type: "Take-Away",
         check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
@@ -652,21 +653,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
     },
 
-    markOrderAsPaid: (orderId) => {
-      const { orders, activeOrderDiscount } = get(); // Get the calculated discount
+    markOrderAsPaid: (orderId: string) => {
+      const { orders } = get();
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
-      // Calculate total based on items (this is the subtotal)
-      const subtotal = order.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      );
-
-      // The final subtotal is the subtotal MINUS the calculated discount
-      const finalSubtotal = subtotal - activeOrderDiscount;
-      const tax = finalSubtotal * TAX_RATE;
-      const total = finalSubtotal + tax;
+      // Note: We are not calculating totals here. We assume they are up-to-date
+      // from the last recalculateTotals() call during the payment process.
 
       set((state) => ({
         orders: state.orders.map((o) =>
@@ -674,26 +667,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
             ? {
                 ...o,
                 paid_status: "Paid",
+                // For both Dine-In and Take-Away, once an order is fully paid,
+                // the check should be considered "Closed" to prevent adding new items
+                // without explicitly reopening it.
                 check_status: "Closed",
-                total_amount: total, // Save the correct final total
-                total_tax: tax,
-                total_discount: activeOrderDiscount, // Save the discount amount
               }
             : o
         ),
       }));
 
-      // Save to previous orders when marked as paid
-      const { addOrderToHistory } = usePreviousOrdersStore.getState();
-      const updatedOrderForHistory: OrderProfile = {
-        ...order,
-        paid_status: "Paid",
-        check_status: "Closed",
-        total_amount: total,
-        total_tax: tax,
-        total_discount: activeOrderDiscount,
-      };
-      addOrderToHistory(updatedOrderForHistory);
+      // IMPORTANT: REMOVED the call to addOrderToHistory from this function.
     },
 
     setPendingTableSelection: (tableId) => {
@@ -704,11 +687,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       syncOrderStatus(orderId);
     },
 
-    closeActiveOrder: () => {
-      const { activeOrderId, orders } = get();
-      if (!activeOrderId) return null;
+    archiveOrder: (orderId: string) => {
+      const { orders } = get();
+      const order = orders.find((o) => o.id === orderId);
 
-      const order = orders.find((o) => o.id === activeOrderId);
       let tableId: string | null = null;
 
       // Calculate total before closing
@@ -721,7 +703,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       set((state) => ({
         orders: state.orders.map((o) => {
-          if (o.id === activeOrderId) {
+          if (o.id === order?.id) {
             tableId = o.service_location_id;
             return {
               ...o,
@@ -751,9 +733,37 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       // After closing, there is no active order
       set({ activeOrderId: null });
-      recalculateTotals(activeOrderId);
+      recalculateTotals(null);
 
       return tableId;
+    },
+    markAllItemsAsReady: (orderId) => {
+      set((state) => ({
+        orders: state.orders.map((order) => {
+          if (order.id === orderId) {
+            // Create a new items array where every item's status is "Ready"
+            const updatedItems = order.items.map((item) => ({
+              ...item,
+              item_status: "Ready" as const, // Use 'as const' for strict typing
+            }));
+
+            // Return the order with the updated items and the overall order status also set to "Ready"
+            return {
+              ...order,
+              items: updatedItems,
+              order_status: "Ready" as const,
+            };
+          }
+          return order;
+        }),
+      }));
+      const { orders } = get();
+      const order = orders.find((o) => o.id === orderId);
+
+      if (order?.order_type === "Take Away") {
+        //if order type is take away then add it archive after ready
+        get().archiveOrder(orderId);
+      }
     },
   };
 });

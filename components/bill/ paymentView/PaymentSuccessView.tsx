@@ -1,7 +1,6 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { useRouter } from "expo-router";
 import { FileText, Printer, ShoppingBag } from "lucide-react-native";
 import React, { useEffect, useRef } from "react"; // Import useMemo
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -20,7 +19,6 @@ const ReceiptRow = ({
 );
 
 const PaymentSuccessView = () => {
-  const router = useRouter();
   const { close, paymentMethod, activeTableId } = usePaymentStore();
   const { updateTableStatus } = useFloorPlanStore();
   const {
@@ -32,14 +30,17 @@ const PaymentSuccessView = () => {
     activeOrderDiscount,
     activeOrderOutstandingTotal,
     addPaymentToOrder,
-    closeActiveOrder,
   } = useOrderStore();
   // Apply payment once when this success view mounts
   const appliedRef = useRef(false);
   useEffect(() => {
     if (appliedRef.current) return;
     if (activeOrderId && activeOrderOutstandingTotal > 0) {
-      addPaymentToOrder(activeOrderId, activeOrderOutstandingTotal, (paymentMethod || "Card") as any);
+      addPaymentToOrder(
+        activeOrderId,
+        activeOrderOutstandingTotal,
+        (paymentMethod || "Card") as any
+      );
     }
     appliedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,7 +50,15 @@ const PaymentSuccessView = () => {
   const items = activeOrder?.items || [];
 
   const handleDone = () => {
-    const { activeOrderId, updateOrderStatus, markOrderAsPaid, assignActiveOrderToTable, setPendingTableSelection, startNewOrder, setActiveOrder } = useOrderStore.getState(); // Get the current active order ID
+    const {
+      activeOrderId,
+      updateOrderStatus,
+      markOrderAsPaid,
+      assignActiveOrderToTable,
+      setPendingTableSelection,
+      startNewOrder,
+      setActiveOrder,
+    } = useOrderStore.getState(); // Get the current active order ID
 
     if (activeOrderId) {
       // Mark the order as paid

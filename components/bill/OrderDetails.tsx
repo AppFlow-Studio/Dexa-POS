@@ -14,7 +14,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
@@ -53,9 +59,9 @@ const OrderDetails: React.FC = () => {
   const [orderTypeSelectKey, setOrderTypeSelectKey] = useState(Date.now());
 
   // Temporary storage for selected table (not yet assigned to order)
-  const [pendingTableSelection, setLocalPendingTableSelection] = useState<SelectOption | undefined>(
-    undefined
-  );
+  const [pendingTableSelection, setLocalPendingTableSelection] = useState<
+    SelectOption | undefined
+  >(undefined);
 
   // Open Item Modal State
   const [isOpenItemModalVisible, setIsOpenItemModalVisible] = useState(false);
@@ -78,7 +84,11 @@ const OrderDetails: React.FC = () => {
 
   useEffect(() => {
     // Initialize selected table from active order if it exists (only for already assigned tables)
-    if (activeOrder?.service_location_id && activeOrder.order_status === "Preparing" && !selectedTable) {
+    if (
+      activeOrder?.service_location_id &&
+      activeOrder.order_status === "Preparing" &&
+      !selectedTable
+    ) {
       const tableOption = availableTableOptions.find(
         (option) => option.value === activeOrder.service_location_id
       );
@@ -96,11 +106,18 @@ const OrderDetails: React.FC = () => {
         setSelectedTable(tableOption);
       }
     }
-  }, [activeOrder, availableTableOptions, selectedTable, pendingTableSelection]);
+  }, [
+    activeOrder,
+    availableTableOptions,
+    selectedTable,
+    pendingTableSelection,
+  ]);
 
   useEffect(() => {
     setSelectedOrderType(undefined);
     setOrderTypeSelectKey(Date.now());
+    setSelectedTable(undefined);
+    setTableSelectKey(Date.now());
   }, [activeOrderId]);
 
   // Initialize customer name from active order
@@ -132,7 +149,7 @@ const OrderDetails: React.FC = () => {
       // Only update order type, don't assign table yet
       if (activeOrderId) {
         updateActiveOrderDetails({
-          order_type: "Dine In"
+          order_type: "Dine In",
         });
       }
       toast.success(`Table ${option.label} selected`, {
@@ -298,9 +315,14 @@ const OrderDetails: React.FC = () => {
               </Text>
             </View>
           )}
-          <Text className="text-sm text-accent-500">Order Number #{activeOrderId?.slice(-5) || "00000"}</Text>
+          <Text className="text-sm text-accent-500">
+            Order Number #{activeOrderId?.slice(-5) || "00000"}
+          </Text>
         </View>
-        <TouchableOpacity onPress={handleEditName} className="p-2.5 bg-background-300 rounded-full">
+        <TouchableOpacity
+          onPress={handleEditName}
+          className="p-2.5 bg-background-300 rounded-full"
+        >
           <Pencil color="#5D5D73" size={20} />
         </TouchableOpacity>
       </View>
@@ -374,7 +396,10 @@ const OrderDetails: React.FC = () => {
       </TouchableOpacity>
 
       {/* Open Item Modal */}
-      <Dialog open={isOpenItemModalVisible} onOpenChange={setIsOpenItemModalVisible}>
+      <Dialog
+        open={isOpenItemModalVisible}
+        onOpenChange={setIsOpenItemModalVisible}
+      >
         <DialogContent className="p-0 rounded-[36px] max-w-xl w-full bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-t-2xl">
@@ -393,7 +418,9 @@ const OrderDetails: React.FC = () => {
 
             {/* Item Name Input */}
             <View className="mb-4">
-              <Text className="text-accent-500 font-semibold mb-2">Item Name</Text>
+              <Text className="text-accent-500 font-semibold mb-2">
+                Item Name
+              </Text>
               <TextInput
                 className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
                 placeholder="Enter item name"

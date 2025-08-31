@@ -30,10 +30,12 @@ export const usePaymentStore = create<PaymentState>((set) => ({
     set((state) => {
       // Normalize paid quantities once on opening modal to avoid recursive loops
       try {
-        const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore.getState();
+        const { activeOrderId, orders, addItemToActiveOrder } =
+          useOrderStore.getState();
         if (activeOrderId) {
           // Use the helper to compute updated items without writing inside setActiveOrder
-          const normalize = (useOrderStore as any).getState().normalizePaidQuantitiesFromPayments;
+          const normalize = (useOrderStore as any).getState()
+            .normalizePaidQuantitiesFromPayments;
           if (typeof normalize === "function") {
             const updatedItems = normalize(activeOrderId);
             if (updatedItems) {
@@ -56,7 +58,7 @@ export const usePaymentStore = create<PaymentState>((set) => ({
         activeTableId: tableId || null,
       };
     }),
-  close: () => set({ isOpen: false, paymentMethod: null, activeTableId: null }),
+  close: () => set({ isOpen: false, paymentMethod: null }),
   setView: (view) => set({ view }),
   setActiveTableId: (tableId) => set({ activeTableId: tableId }),
 

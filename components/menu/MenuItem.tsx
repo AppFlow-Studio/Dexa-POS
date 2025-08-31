@@ -18,7 +18,11 @@ interface MenuItemProps {
   onOrderClosedCheck?: () => boolean;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource, onOrderClosedCheck }) => {
+const MenuItem: React.FC<MenuItemProps> = ({
+  item,
+  imageSource,
+  onOrderClosedCheck,
+}) => {
   const { activeOrderId, orders } = useOrderStore();
   const { openToAdd, openToEdit } = useCustomizationStore();
 
@@ -51,10 +55,11 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource, onOrderClosedChe
   return (
     <TouchableOpacity
       onPress={handlePress}
-      className={`w-[32%] p-4 rounded-[20px] mb-3 bg-white  ${isSelected
-        ? " border-b-primary-400 border-b-4 "
-        : "border border-[#F5F5F5]"
-        }`}
+      className={`w-[32%] p-4 rounded-[20px] mb-3 bg-white  ${
+        isSelected
+          ? " border-b-primary-400 border-b-4 "
+          : "border border-[#F5F5F5]"
+      }`}
     >
       <View className="flex-row items-center gap-2">
         {imageSource ? (
@@ -87,8 +92,9 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource, onOrderClosedChe
 
       {/* The "Add to Cart" / "Selected" button now renders conditionally */}
       <View
-        className={`w-full mt-4 py-3 rounded-xl items-center justify-center ${isSelected ? "bg-gray-100" : "bg-primary-100"
-          }`}
+        className={`w-full mt-4 py-3 rounded-xl items-center justify-center ${
+          isSelected ? "bg-gray-100" : "bg-primary-100"
+        }`}
       >
         <View className="flex-row items-center">
           <Plus color="#3D72C2" size={16} strokeWidth={3} />

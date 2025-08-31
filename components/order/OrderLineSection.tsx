@@ -10,12 +10,16 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  const { orders, updateOrderStatus, syncOrderStatus } = useOrderStore();
+  const { orders, markAllItemsAsReady } = useOrderStore();
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+
+  const totalOrder = orders.filter(
+    (o) => o.order_status === "Preparing" || o.order_status === "Ready"
+  ).length;
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
@@ -75,17 +79,13 @@ const OrderLineSection: React.FC = () => {
   };
 
   const handleCompleteOrder = (orderId: string) => {
-    // Sync order status based on item statuses
-    syncOrderStatus(orderId);
+    markAllItemsAsReady(orderId);
   };
 
   return (
     <View>
       <View className="flex-row justify-between items-center">
-        <OrderTabs
-          onTabChange={handleTabChange}
-          totalOrder={filteredOrders.length || 0}
-        />
+        <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder || 0} />
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}

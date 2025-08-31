@@ -126,7 +126,7 @@ export type PaymentStatus =
   | "In Progress"
   | "Refunded"
   | "Partially Refunded";
-export type OrderType = "Dine In" | "Take-Away" | "Delivery";
+export type OrderType = "Dine In" | "Take Away" | "Delivery";
 
 export interface PreviousOrder {
   serialNo: string;
@@ -271,7 +271,7 @@ export interface OrderProfile {
   check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
-  order_type?: "Dine In" | "Take-Away" | "Delivery";
+  order_type?: "Dine In" | "Take Away" | "Delivery";
 
   // Payment status for the order
   paid_status: "Paid" | "Pending" | "Unpaid";
