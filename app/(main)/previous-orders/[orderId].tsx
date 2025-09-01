@@ -26,14 +26,6 @@ const OrderDetailsScreen = () => {
   const order = getOrderById(orderId as string);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 
-  // Debug: Log available orders and the search
-  console.log(
-    "Available orders:",
-    previousOrders.map((o) => o.orderId)
-  );
-  console.log("Looking for orderId:", orderId);
-  console.log("Found order:", order);
-
   if (!order) {
     return (
       <View className="flex-1 items-center justify-center p-6">

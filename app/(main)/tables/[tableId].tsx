@@ -168,8 +168,22 @@ const UpdateTableScreen = () => {
   };
 
   const handleClearTable = () => {
-    if (!tableId || !activeOrderId) return;
-    // Move table to cleaning flow and close order
+    if (!tableId || !activeOrderId || !activeOrder) return;
+
+    // Check if all items are ready
+    const allItemsReady = activeOrder.items.every(
+      (item) => (item.item_status || "Preparing") === "Ready"
+    );
+
+    if (!allItemsReady) {
+      toast.error("Cannot clear table: Not all items are ready.", {
+        duration: 3000,
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
+    // Only proceed if all items are ready
     updateTableStatus(tableId as string, "Needs Cleaning");
     archiveOrder(activeOrderId);
     router.back();

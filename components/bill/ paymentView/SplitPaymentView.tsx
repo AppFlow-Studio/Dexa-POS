@@ -23,7 +23,8 @@ interface Split {
 }
 
 const SplitPaymentView = () => {
-  const { activeOrderId, orders, activeOrderOutstandingTotal } = useOrderStore();
+  const { activeOrderId, orders, activeOrderOutstandingTotal } =
+    useOrderStore();
   const { close, setView } = usePaymentStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
@@ -158,11 +159,11 @@ const SplitPaymentView = () => {
       prev.map((split) =>
         split.id === sourceSplitId
           ? {
-            ...split,
-            items: split.items.filter(
-              (item) => item.id !== itemToUnassign.id
-            ),
-          }
+              ...split,
+              items: split.items.filter(
+                (item) => item.id !== itemToUnassign.id
+              ),
+            }
           : split
       )
     );
@@ -201,9 +202,9 @@ const SplitPaymentView = () => {
       currentSplits.map((split) =>
         split.id === splitId
           ? {
-            ...split,
-            amount: parseFloat(sanitizedText),
-          }
+              ...split,
+              amount: parseFloat(sanitizedText),
+            }
           : split
       )
     );
@@ -255,14 +256,16 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={num}
                     onPress={() => setNumberOfPeople(num)}
-                    className={`w-10 h-10 rounded-lg border items-center justify-center ${isSelected
-                      ? "border-primary-400 bg-primary-400"
-                      : "border-gray-300"
-                      }`}
+                    className={`w-10 h-10 rounded-lg border items-center justify-center ${
+                      isSelected
+                        ? "border-primary-400 bg-primary-400"
+                        : "border-gray-300"
+                    }`}
                   >
                     <Text
-                      className={`font-semibold ${isSelected ? "text-white" : "text-gray-600"
-                        }`}
+                      className={`font-semibold ${
+                        isSelected ? "text-white" : "text-gray-600"
+                      }`}
                     >
                       {num}
                     </Text>
@@ -487,14 +490,16 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt as SplitOption)}
-                    className={`py-2 px-4 rounded-lg border ${isSelected
-                      ? "border-primary-400 bg-primary-400"
-                      : "border-gray-300"
-                      }`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      isSelected
+                        ? "border-primary-400 bg-primary-400"
+                        : "border-gray-300"
+                    }`}
                   >
                     <Text
-                      className={`font-semibold ${isSelected ? "text-white" : "text-gray-600"
-                        }`}
+                      className={`font-semibold ${
+                        isSelected ? "text-white" : "text-gray-600"
+                      }`}
                     >
                       {opt}
                     </Text>
@@ -516,32 +521,36 @@ const SplitPaymentView = () => {
                 <View className="flex-row gap-2 items-center">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card"
-                      ? "border-primary-400 bg-primary-400"
-                      : "border-gray-300"
-                      }`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Card"
+                        ? "border-primary-400 bg-primary-400"
+                        : "border-gray-300"
+                    }`}
                   >
                     <Text
-                      className={`font-semibold ${split.paymentType === "Card"
-                        ? "text-white"
-                        : "text-gray-600"
-                        }`}
+                      className={`font-semibold ${
+                        split.paymentType === "Card"
+                          ? "text-white"
+                          : "text-gray-600"
+                      }`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Cash"
-                      ? "border-primary-400 bg-primary-400"
-                      : "border-gray-300"
-                      }`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Cash"
+                        ? "border-primary-400 bg-primary-400"
+                        : "border-gray-300"
+                    }`}
                   >
                     <Text
-                      className={`font-semibold ${split.paymentType === "Cash"
-                        ? "text-white"
-                        : "text-gray-600"
-                        }`}
+                      className={`font-semibold ${
+                        split.paymentType === "Cash"
+                          ? "text-white"
+                          : "text-gray-600"
+                      }`}
                     >
                       Cash
                     </Text>

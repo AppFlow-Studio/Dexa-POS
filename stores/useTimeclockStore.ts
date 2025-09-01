@@ -17,12 +17,15 @@ interface TimeclockState {
   status: ClockStatus;
   currentShift: Shift | null;
   shiftHistory: ShiftHistoryEntry[]; // To hold the table data
+  isClockInWallOpen: boolean;
 
   // Actions
   clockIn: () => void;
   clockOut: () => void;
   startBreak: () => void;
   endBreak: () => void;
+  showClockInWall: () => void;
+  hideClockInWall: () => void;
 }
 
 // Default break duration in minutes
@@ -32,6 +35,7 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
   status: "clockedOut",
   currentShift: null,
   shiftHistory: [], // Start with empty history
+  isClockInWallOpen: false,
 
   clockIn: () => {
     const newShift: Shift = {
@@ -118,4 +122,6 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       return {};
     });
   },
+  showClockInWall: () => set({ isClockInWallOpen: true }),
+  hideClockInWall: () => set({ isClockInWallOpen: false }),
 }));

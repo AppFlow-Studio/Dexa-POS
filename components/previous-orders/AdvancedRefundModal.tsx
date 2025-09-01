@@ -172,7 +172,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
           </View>
         </DialogHeader>
 
-        <ScrollView className="">
+        <ScrollView>
           {/* Refund Type Selection */}
           <View className="mb-6">
             <Text className="text-lg font-semibold text-gray-800 mb-3">
@@ -273,7 +273,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
               <Text className="text-lg font-semibold text-gray-800 mb-3">
                 Select Items to Refund
               </Text>
-              <ScrollView className="max-h-80">
+              <View>
                 {order.items.map((item) => {
                   const isSelected = selectedItems.some(
                     (selected) => selected.itemId === item.id
@@ -304,13 +304,13 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                             toggleItemSelection(item.id, item.quantity)
                           }
                           className={`p-2 rounded-lg ${
-                            isSelected ? "bg-blue-500" : "bg-gray-200"
+                            isSelected ? "bg-gray-200" : "bg-blue-500"
                           }`}
                         >
                           {isSelected ? (
-                            <Check color="white" size={16} />
-                          ) : (
                             <X color="gray" size={16} />
+                          ) : (
+                            <Check color="white" size={16} />
                           )}
                         </TouchableOpacity>
                       </View>
@@ -348,7 +348,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           )}
 

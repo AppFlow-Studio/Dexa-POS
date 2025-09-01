@@ -1,6 +1,7 @@
 import { MenuItemType } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus, Utensils } from "lucide-react-native";
 import React from "react";
@@ -24,7 +25,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
   onOrderClosedCheck,
 }) => {
   const { activeOrderId, orders } = useOrderStore();
-  const { openToAdd, openToEdit } = useCustomizationStore();
+  const { openToAdd } = useCustomizationStore();
+  const { status: clockStatus, showClockInWall } = useTimeclockStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -35,6 +37,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const isSelected = !!itemInCart;
 
   const handlePress = () => {
+    if (clockStatus !== "clockedIn") {
+      showClockInWall(); // Show the modal
+      return; // Stop execution
+    }
+
     // Check if order is closed first
     if (onOrderClosedCheck && onOrderClosedCheck()) {
       return; // Stop execution if order is closed
