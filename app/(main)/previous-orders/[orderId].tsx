@@ -3,7 +3,7 @@ import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModa
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info, Printer } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const DetailRow = ({
@@ -25,6 +25,36 @@ const OrderDetailsScreen = () => {
   const { getOrderById, previousOrders } = usePreviousOrdersStore();
   const order = getOrderById(orderId as string);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+
+  const canStillRefund = useMemo(() => {
+    if (!order) return false;
+
+    // If the status is "Refunded", no more refunds are allowed.
+    if (order.paymentStatus === "Refunded") {
+      return false;
+    }
+
+    if (order.paymentStatus === "Partially Refunded") {
+      const refundableItems = order.items.filter(
+        (item) => (item.refundedQuantity || 0) < item.quantity
+      );
+
+      if (refundableItems.length === 0) {
+        return false;
+      }
+    }
+
+    // If the status is "Paid" or "Partially Refunded", a refund is possible.
+    if (
+      order.paymentStatus === "Paid" ||
+      order.paymentStatus === "Partially Refunded"
+    ) {
+      return true;
+    }
+
+    // For any other status, no refunds.
+    return false;
+  }, [order]);
 
   if (!order) {
     return (
@@ -115,7 +145,7 @@ const OrderDetailsScreen = () => {
 
             {/* Footer Actions */}
             <View className="flex-row gap-2 mt-8 border-t border-gray-200 pt-6">
-              {order.paymentStatus === "Paid" && !order.refunded && (
+              {canStillRefund && (
                 <TouchableOpacity
                   onPress={() => setIsRefundModalOpen(true)}
                   className="flex-1 py-3 border border-red-300 rounded-lg items-center"

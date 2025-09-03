@@ -83,6 +83,7 @@ export type DeliveryPartner =
   | "Food Panda";
 
 export interface CartItem {
+  itemId: string;
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
   name: string;
@@ -101,6 +102,7 @@ export interface CartItem {
   };
   availableDiscount?: Discount;
   appliedDiscount?: Discount | null;
+  refundedQuantity?: number;
 }
 
 export interface OnlineOrder {
