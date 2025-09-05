@@ -46,10 +46,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         <View className="flex flex-row items-center justify-between pb-4">
           <Text className="text-2xl font-bold text-gray-800 ">Menu</Text>
           {/* Right Section: Search Bar - Now positioned at the bottom */}
-          <View className="w-fit">
+          <View className="w-[50%]">
             <TouchableOpacity
               onPress={openSearch}
-              className="flex-row items-center bg-background-300 border border-background-400 rounded-2xl px-4 py-1 justify-center"
+              className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 py-3 justify-start"
             >
               <Search color="#5D5D73" size={16} />
               <Text className="text-gray-600 ml-4">Search</Text>
