@@ -27,7 +27,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
 
   return (
     <ScrollView>
-      <View className="flex-row gap-6">
+      <View className="flex-row gap-6 h-full w-full">
         {/* Left Column: Form Fields */}
         <View className="flex-1 space-y-4">
           {/* Item Image */}

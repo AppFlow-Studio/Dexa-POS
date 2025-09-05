@@ -12,6 +12,7 @@ import {
   InventoryItem,
   ItemSize,
   MenuItemType,
+  ModifierCategory,
   OfflineOrder,
   OnlineOrder,
   Order,
@@ -23,7 +24,7 @@ import {
   ShiftStatus,
   TableType,
   TrackedOrder,
-  UserProfile,
+  UserProfile
 } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
@@ -107,6 +108,22 @@ export const MENU_IMAGE_MAP = {
   "cheesecake.png": require("../assets/images/cheesecake.png"),
   "pancakes.png": require("../assets/images/pancakes.png"),
   "eggs_benedict.png": require("../assets/images/eggs_benedict.png"),
+  // New menu item images
+  // "pepperoni_supreme_pizza.png": require("../assets/images/pepperoni_supreme_pizza.png"),
+  // "mediterranean_quinoa_bowl.png": require("../assets/images/mediterranean_quinoa_bowl.png"),
+  // "club_sandwich.png": require("../assets/images/club_sandwich.png"),
+  // "alfredo_pasta.png": require("../assets/images/alfredo_pasta.png"),
+  // "buffalo_wings.png": require("../assets/images/buffalo_wings.png"),
+  // "loaded_nachos.png": require("../assets/images/loaded_nachos.png"),
+  // "tomato_basil_soup.png": require("../assets/images/tomato_basil_soup.png"),
+  // "chicken_noodle_soup.png": require("../assets/images/chicken_noodle_soup.png"),
+  // "fresh_coffee.png": require("../assets/images/fresh_coffee.png"),
+  // "tropical_smoothie.png": require("../assets/images/tropical_smoothie.png"),
+  // "orange_juice.png": require("../assets/images/orange_juice.png"),
+  // "belgian_waffles.png": require("../assets/images/belgian_waffles.png"),
+  // "avocado_toast.png": require("../assets/images/avocado_toast.png"),
+  // "tiramisu.png": require("../assets/images/tiramisu.png"),
+  // "chocolate_chip_cookies.png": require("../assets/images/chocolate_chip_cookies.png"),
 };
 
 const fifteenPercentOff: Discount = {
@@ -157,6 +174,95 @@ const sidesAddOns: AddOn[] = [
   { id: "side3", name: "Truffle Oil Drizzle", price: 1.0 },
 ];
 
+// --- Detailed Modifiers for Burgers ---
+const burgerModifiers: ModifierCategory[] = [
+  {
+    id: "size",
+    name: "Size",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "single", name: "Single", price: 0 },
+      { id: "double", name: "Double", price: 2.0 },
+    ],
+  },
+  {
+    id: "patty",
+    name: "Patty",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "beef", name: "Beef", price: 0 },
+      { id: "turkey", name: "Turkey", price: 0.5 },
+      { id: "veggie", name: "Veggie", price: 0.5 },
+    ],
+  },
+  {
+    id: "cheese",
+    name: "Cheese",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "cheddar", name: "Cheddar", price: 0.75 },
+      { id: "american", name: "American", price: 0.75 },
+      { id: "swiss", name: "Swiss", price: 0.75 },
+      { id: "no_cheese", name: "No Cheese", price: 0 },
+    ],
+  },
+  {
+    id: "toppings",
+    name: "Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 3,
+    description: "Included up to 3; extras +$0.25 each",
+    options: [
+      { id: "lettuce", name: "Lettuce", price: 0 },
+      { id: "tomato", name: "Tomato", price: 0 },
+      { id: "onion", name: "Onion", price: 0 },
+      { id: "pickles", name: "Pickles", price: 0 },
+      { id: "jalapenos", name: "Jalapeños", price: 0 },
+      { id: "bacon", name: "Bacon", price: 1.0 },
+    ],
+  },
+  {
+    id: "sauces",
+    name: "Sauces",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 2,
+    description: "Choose up to 2",
+    options: [
+      { id: "ketchup", name: "Ketchup", price: 0 },
+      { id: "mayo", name: "Mayo", price: 0 },
+      { id: "bbq", name: "BBQ", price: 0 },
+      { id: "secret", name: "Secret Sauce", price: 0 },
+    ],
+  },
+  {
+    id: "bun",
+    name: "Bun",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "sesame", name: "Sesame", price: 0 },
+      { id: "brioche", name: "Brioche", price: 0.5, isAvailable: false }, // 86'd
+      { id: "gluten_free", name: "Gluten-free", price: 1.0 },
+    ],
+  },
+  {
+    id: "prep",
+    name: "Prep",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "rare", name: "Rare", price: 0 },
+      { id: "medium", name: "Medium", price: 0 },
+      { id: "well_done", name: "Well-done", price: 0 },
+    ],
+  },
+];
+
 const drinksAddOns: AddOn[] = [
   { id: "drink1", name: "Lemon Slice", price: 0.25 },
   { id: "drink2", name: "Extra Ice", price: 0.0 },
@@ -175,6 +281,569 @@ const brunchAddOns: AddOn[] = [
   { id: "brunch3", name: "Whipped Cream", price: 0.75 },
 ];
 
+// --- Additional Modifier Categories for New Items ---
+const pizzaModifiers: ModifierCategory[] = [
+  {
+    id: "size",
+    name: "Size",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "small", name: "Small (10\")", price: 0 },
+      { id: "medium", name: "Medium (12\")", price: 3.0 },
+      { id: "large", name: "Large (14\")", price: 5.0 },
+    ],
+  },
+  {
+    id: "crust",
+    name: "Crust",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "thin", name: "Thin Crust", price: 0 },
+      { id: "regular", name: "Regular", price: 0 },
+      { id: "thick", name: "Thick Crust", price: 1.0 },
+      { id: "gluten_free", name: "Gluten-Free", price: 2.0 },
+    ],
+  },
+  {
+    id: "toppings",
+    name: "Extra Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 5,
+    description: "First 2 free, then $1.50 each",
+    options: [
+      { id: "pepperoni", name: "Pepperoni", price: 1.5 },
+      { id: "sausage", name: "Italian Sausage", price: 1.5 },
+      { id: "mushrooms", name: "Mushrooms", price: 1.5 },
+      { id: "olives", name: "Black Olives", price: 1.5 },
+      { id: "peppers", name: "Bell Peppers", price: 1.5 },
+      { id: "onions", name: "Red Onions", price: 1.5 },
+      { id: "pineapple", name: "Pineapple", price: 1.5 },
+      { id: "bacon", name: "Bacon", price: 2.0 },
+    ],
+  },
+];
+
+const saladModifiers: ModifierCategory[] = [
+  {
+    id: "dressing",
+    name: "Dressing",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "caesar", name: "Caesar", price: 0 },
+      { id: "ranch", name: "Ranch", price: 0 },
+      { id: "balsamic", name: "Balsamic Vinaigrette", price: 0 },
+      { id: "italian", name: "Italian", price: 0 },
+      { id: "honey_mustard", name: "Honey Mustard", price: 0 },
+      { id: "no_dressing", name: "No Dressing", price: 0 },
+    ],
+  },
+  {
+    id: "protein",
+    name: "Protein",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "grilled_chicken", name: "Grilled Chicken", price: 3.0 },
+      { id: "crispy_chicken", name: "Crispy Chicken", price: 3.5 },
+      { id: "salmon", name: "Grilled Salmon", price: 5.0 },
+      { id: "shrimp", name: "Grilled Shrimp", price: 4.0 },
+      { id: "steak", name: "Sliced Steak", price: 4.5 },
+      { id: "tofu", name: "Grilled Tofu", price: 2.5 },
+    ],
+  },
+  {
+    id: "extras",
+    name: "Extra Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 4,
+    description: "First 2 included, extras $0.75 each",
+    options: [
+      { id: "avocado", name: "Avocado", price: 0.75 },
+      { id: "cheese", name: "Extra Cheese", price: 0.75 },
+      { id: "croutons", name: "Croutons", price: 0.75 },
+      { id: "nuts", name: "Candied Nuts", price: 1.0 },
+      { id: "cranberries", name: "Dried Cranberries", price: 0.75 },
+    ],
+  },
+];
+
+const sandwichModifiers: ModifierCategory[] = [
+  {
+    id: "bread",
+    name: "Bread",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "white", name: "White", price: 0 },
+      { id: "wheat", name: "Wheat", price: 0 },
+      { id: "sourdough", name: "Sourdough", price: 0.5 },
+      { id: "ciabatta", name: "Ciabatta", price: 0.5 },
+      { id: "gluten_free", name: "Gluten-Free", price: 1.0 },
+    ],
+  },
+  {
+    id: "protein",
+    name: "Protein",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "turkey", name: "Turkey", price: 0 },
+      { id: "ham", name: "Ham", price: 0 },
+      { id: "roast_beef", name: "Roast Beef", price: 1.0 },
+      { id: "chicken", name: "Grilled Chicken", price: 1.0 },
+      { id: "tuna", name: "Tuna Salad", price: 0.5 },
+    ],
+  },
+  {
+    id: "cheese",
+    name: "Cheese",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "swiss", name: "Swiss", price: 0.75 },
+      { id: "cheddar", name: "Cheddar", price: 0.75 },
+      { id: "provolone", name: "Provolone", price: 0.75 },
+      { id: "no_cheese", name: "No Cheese", price: 0 },
+    ],
+  },
+  {
+    id: "veggies",
+    name: "Vegetables",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 5,
+    description: "All included",
+    options: [
+      { id: "lettuce", name: "Lettuce", price: 0 },
+      { id: "tomato", name: "Tomato", price: 0 },
+      { id: "onion", name: "Onion", price: 0 },
+      { id: "cucumber", name: "Cucumber", price: 0 },
+      { id: "peppers", name: "Bell Peppers", price: 0 },
+    ],
+  },
+];
+
+const pastaModifiers: ModifierCategory[] = [
+  {
+    id: "pasta_type",
+    name: "Pasta Type",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "spaghetti", name: "Spaghetti", price: 0 },
+      { id: "penne", name: "Penne", price: 0 },
+      { id: "fettuccine", name: "Fettuccine", price: 0 },
+      { id: "linguine", name: "Linguine", price: 0 },
+      { id: "gluten_free", name: "Gluten-Free Pasta", price: 2.0 },
+    ],
+  },
+  {
+    id: "protein",
+    name: "Protein",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "chicken", name: "Grilled Chicken", price: 3.0 },
+      { id: "shrimp", name: "Shrimp", price: 4.0 },
+      { id: "meatballs", name: "Meatballs", price: 2.5 },
+      { id: "sausage", name: "Italian Sausage", price: 2.5 },
+    ],
+  },
+  {
+    id: "spice_level",
+    name: "Spice Level",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "mild", name: "Mild", price: 0 },
+      { id: "medium", name: "Medium", price: 0 },
+      { id: "spicy", name: "Spicy", price: 0 },
+      { id: "extra_spicy", name: "Extra Spicy", price: 0 },
+    ],
+  },
+];
+
+const soupModifiers: ModifierCategory[] = [
+  {
+    id: "size",
+    name: "Size",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "cup", name: "Cup", price: 0 },
+      { id: "bowl", name: "Bowl", price: 2.0 },
+    ],
+  },
+  {
+    id: "bread",
+    name: "Bread",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "dinner_roll", name: "Dinner Roll", price: 1.0 },
+      { id: "garlic_bread", name: "Garlic Bread", price: 1.5 },
+      { id: "crackers", name: "Crackers", price: 0.5 },
+      { id: "no_bread", name: "No Bread", price: 0 },
+    ],
+  },
+];
+
+const coffeeModifiers: ModifierCategory[] = [
+  {
+    id: "size",
+    name: "Size",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "small", name: "Small (8oz)", price: 0 },
+      { id: "medium", name: "Medium (12oz)", price: 0.5 },
+      { id: "large", name: "Large (16oz)", price: 1.0 },
+    ],
+  },
+  {
+    id: "milk",
+    name: "Milk",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "whole", name: "Whole Milk", price: 0 },
+      { id: "skim", name: "Skim Milk", price: 0 },
+      { id: "oat", name: "Oat Milk", price: 0.5 },
+      { id: "almond", name: "Almond Milk", price: 0.5 },
+      { id: "soy", name: "Soy Milk", price: 0.5 },
+      { id: "no_milk", name: "No Milk", price: 0 },
+    ],
+  },
+  {
+    id: "flavors",
+    name: "Flavors",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 2,
+    description: "First flavor free, second +$0.50",
+    options: [
+      { id: "vanilla", name: "Vanilla", price: 0 },
+      { id: "caramel", name: "Caramel", price: 0.5 },
+      { id: "hazelnut", name: "Hazelnut", price: 0.5 },
+      { id: "cinnamon", name: "Cinnamon", price: 0.5 },
+    ],
+  },
+];
+
+// --- Additional Add-Ons for New Categories ---
+const pastaAddOns: AddOn[] = [
+  { id: "pasta1", name: "Extra Parmesan", price: 0.75 },
+  { id: "pasta2", name: "Red Pepper Flakes", price: 0.25 },
+  { id: "pasta3", name: "Garlic Bread", price: 2.0 },
+];
+
+const soupAddOns: AddOn[] = [
+  { id: "soup1", name: "Extra Crackers", price: 0.5 },
+  { id: "soup2", name: "Side Salad", price: 3.0 },
+  { id: "soup3", name: "Extra Bread", price: 1.0 },
+];
+
+const sandwichAddOns: AddOn[] = [
+  { id: "sandwich1", name: "Extra Mayo", price: 0.25 },
+  { id: "sandwich2", name: "Mustard", price: 0.25 },
+  { id: "sandwich3", name: "Side Pickles", price: 0.5 },
+];
+
+const coffeeAddOns: AddOn[] = [
+  { id: "coffee1", name: "Extra Shot", price: 0.75 },
+  { id: "coffee2", name: "Whipped Cream", price: 0.5 },
+  { id: "coffee3", name: "Extra Hot", price: 0.0 },
+];
+
+const smoothieAddOns: AddOn[] = [
+  { id: "smoothie1", name: "Protein Powder", price: 1.5 },
+  { id: "smoothie2", name: "Extra Fruit", price: 1.0 },
+  { id: "smoothie3", name: "Honey", price: 0.5 },
+];
+
+const breakfastAddOns: AddOn[] = [
+  { id: "breakfast1", name: "Extra Butter", price: 0.25 },
+  { id: "breakfast2", name: "Side Bacon", price: 2.0 },
+  { id: "breakfast3", name: "Fresh Fruit", price: 1.5 },
+];
+
+// --- Additional Modifier Categories for Expanded Menu ---
+const steakModifiers: ModifierCategory[] = [
+  {
+    id: "cut",
+    name: "Cut",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "ribeye", name: "Ribeye", price: 0 },
+      { id: "sirloin", name: "Sirloin", price: -2.0 },
+      { id: "filet", name: "Filet Mignon", price: 5.0 },
+      { id: "strip", name: "New York Strip", price: 2.0 },
+    ],
+  },
+  {
+    id: "cooking_temp",
+    name: "Cooking Temperature",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "rare", name: "Rare", price: 0 },
+      { id: "medium_rare", name: "Medium Rare", price: 0 },
+      { id: "medium", name: "Medium", price: 0 },
+      { id: "medium_well", name: "Medium Well", price: 0 },
+      { id: "well_done", name: "Well Done", price: 0 },
+    ],
+  },
+  {
+    id: "sides",
+    name: "Sides",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 2,
+    description: "Choose up to 2 sides",
+    options: [
+      { id: "mashed_potatoes", name: "Mashed Potatoes", price: 0 },
+      { id: "baked_potato", name: "Baked Potato", price: 0 },
+      { id: "french_fries", name: "French Fries", price: 0 },
+      { id: "steamed_broccoli", name: "Steamed Broccoli", price: 0 },
+      { id: "grilled_asparagus", name: "Grilled Asparagus", price: 1.0 },
+    ],
+  },
+];
+
+const seafoodModifiers: ModifierCategory[] = [
+  {
+    id: "preparation",
+    name: "Preparation",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "grilled", name: "Grilled", price: 0 },
+      { id: "pan_seared", name: "Pan Seared", price: 0 },
+      { id: "blackened", name: "Blackened", price: 1.0 },
+      { id: "crispy", name: "Crispy", price: 2.0 },
+    ],
+  },
+  {
+    id: "sauce",
+    name: "Sauce",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "lemon_butter", name: "Lemon Butter", price: 0 },
+      { id: "tartar", name: "Tartar Sauce", price: 0 },
+      { id: "cocktail", name: "Cocktail Sauce", price: 0 },
+      { id: "remoulade", name: "Remoulade", price: 0.5 },
+      { id: "no_sauce", name: "No Sauce", price: 0 },
+    ],
+  },
+];
+
+const tacoModifiers: ModifierCategory[] = [
+  {
+    id: "shell",
+    name: "Shell",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "soft", name: "Soft Tortilla", price: 0 },
+      { id: "hard", name: "Hard Shell", price: 0 },
+      { id: "crispy", name: "Crispy Corn", price: 0.5 },
+      { id: "lettuce_wrap", name: "Lettuce Wrap", price: 0 },
+    ],
+  },
+  {
+    id: "protein",
+    name: "Protein",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "ground_beef", name: "Ground Beef", price: 0 },
+      { id: "chicken", name: "Grilled Chicken", price: 0 },
+      { id: "carnitas", name: "Carnitas", price: 1.0 },
+      { id: "fish", name: "Grilled Fish", price: 2.0 },
+      { id: "veggie", name: "Veggie", price: -1.0 },
+    ],
+  },
+  {
+    id: "toppings",
+    name: "Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 4,
+    description: "All included",
+    options: [
+      { id: "lettuce", name: "Lettuce", price: 0 },
+      { id: "tomato", name: "Tomato", price: 0 },
+      { id: "onion", name: "Onion", price: 0 },
+      { id: "cheese", name: "Cheese", price: 0 },
+      { id: "sour_cream", name: "Sour Cream", price: 0 },
+      { id: "guacamole", name: "Guacamole", price: 1.0 },
+    ],
+  },
+];
+
+const ramenModifiers: ModifierCategory[] = [
+  {
+    id: "broth",
+    name: "Broth",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "tonkotsu", name: "Tonkotsu", price: 0 },
+      { id: "miso", name: "Miso", price: 0 },
+      { id: "shoyu", name: "Shoyu", price: 0 },
+      { id: "vegetable", name: "Vegetable", price: 0 },
+    ],
+  },
+  {
+    id: "noodles",
+    name: "Noodles",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "thin", name: "Thin Noodles", price: 0 },
+      { id: "thick", name: "Thick Noodles", price: 0 },
+      { id: "udon", name: "Udon Noodles", price: 1.0 },
+    ],
+  },
+  {
+    id: "toppings",
+    name: "Extra Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 3,
+    description: "First 2 included, extras $1.50 each",
+    options: [
+      { id: "egg", name: "Soft Boiled Egg", price: 1.5 },
+      { id: "pork_belly", name: "Pork Belly", price: 2.0 },
+      { id: "seaweed", name: "Seaweed", price: 1.5 },
+      { id: "corn", name: "Corn", price: 1.5 },
+      { id: "bamboo", name: "Bamboo Shoots", price: 1.5 },
+    ],
+  },
+];
+
+const sushiModifiers: ModifierCategory[] = [
+  {
+    id: "rice",
+    name: "Rice",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "white", name: "White Rice", price: 0 },
+      { id: "brown", name: "Brown Rice", price: 0.5 },
+      { id: "no_rice", name: "No Rice (Sashimi)", price: 0 },
+    ],
+  },
+  {
+    id: "wasabi",
+    name: "Wasabi",
+    type: "optional",
+    selectionType: "single",
+    options: [
+      { id: "regular", name: "Regular", price: 0 },
+      { id: "extra", name: "Extra", price: 0.5 },
+      { id: "none", name: "None", price: 0 },
+    ],
+  },
+];
+
+const iceCreamModifiers: ModifierCategory[] = [
+  {
+    id: "size",
+    name: "Size",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "single", name: "Single Scoop", price: 0 },
+      { id: "double", name: "Double Scoop", price: 2.0 },
+      { id: "triple", name: "Triple Scoop", price: 4.0 },
+    ],
+  },
+  {
+    id: "flavor",
+    name: "Flavor",
+    type: "required",
+    selectionType: "single",
+    options: [
+      { id: "vanilla", name: "Vanilla", price: 0 },
+      { id: "chocolate", name: "Chocolate", price: 0 },
+      { id: "strawberry", name: "Strawberry", price: 0 },
+      { id: "mint_chip", name: "Mint Chip", price: 0.5 },
+      { id: "cookies_cream", name: "Cookies & Cream", price: 0.5 },
+    ],
+  },
+  {
+    id: "toppings",
+    name: "Toppings",
+    type: "optional",
+    selectionType: "multiple",
+    maxSelections: 3,
+    description: "First topping free, extras $0.75 each",
+    options: [
+      { id: "sprinkles", name: "Sprinkles", price: 0 },
+      { id: "nuts", name: "Chopped Nuts", price: 0.75 },
+      { id: "cherry", name: "Cherry", price: 0.75 },
+      { id: "whipped_cream", name: "Whipped Cream", price: 0.75 },
+    ],
+  },
+];
+
+// --- Additional Add-Ons for Expanded Categories ---
+const steakAddOns: AddOn[] = [
+  { id: "steak1", name: "Mushroom Sauce", price: 2.0 },
+  { id: "steak2", name: "Peppercorn Sauce", price: 2.0 },
+  { id: "steak3", name: "Garlic Butter", price: 1.0 },
+];
+
+const seafoodAddOns: AddOn[] = [
+  { id: "seafood1", name: "Extra Lemon", price: 0.25 },
+  { id: "seafood2", name: "Side Rice", price: 2.0 },
+  { id: "seafood3", name: "Coleslaw", price: 1.5 },
+];
+
+const tacoAddOns: AddOn[] = [
+  { id: "taco1", name: "Extra Salsa", price: 0.5 },
+  { id: "taco2", name: "Side Chips", price: 1.5 },
+  { id: "taco3", name: "Refried Beans", price: 1.0 },
+];
+
+const ramenAddOns: AddOn[] = [
+  { id: "ramen1", name: "Extra Noodles", price: 2.0 },
+  { id: "ramen2", name: "Side Gyoza", price: 3.0 },
+  { id: "ramen3", name: "Extra Broth", price: 1.0 },
+];
+
+const sushiAddOns: AddOn[] = [
+  { id: "sushi1", name: "Extra Ginger", price: 0.25 },
+  { id: "sushi2", name: "Soy Sauce", price: 0.0 },
+  { id: "sushi3", name: "Side Miso Soup", price: 2.0 },
+];
+
+const iceCreamAddOns: AddOn[] = [
+  { id: "icecream1", name: "Waffle Cone", price: 1.0 },
+  { id: "icecream2", name: "Chocolate Dip", price: 1.5 },
+  { id: "icecream3", name: "Extra Hot Fudge", price: 1.0 },
+];
+
+const teaAddOns: AddOn[] = [
+  { id: "tea1", name: "Honey", price: 0.5 },
+  { id: "tea2", name: "Lemon Slice", price: 0.25 },
+  { id: "tea3", name: "Extra Hot Water", price: 0.0 },
+];
+
+const energyDrinkAddOns: AddOn[] = [
+  { id: "energy1", name: "Extra Ice", price: 0.0 },
+  { id: "energy2", name: "Energy Shot", price: 2.0 },
+  { id: "energy3", name: "Vitamin Boost", price: 1.5 },
+];
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
   // --- Main Course ---
   {
@@ -188,6 +857,9 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     sizes: standardSizes,
     addOns: burgerAddOns,
+    modifiers: burgerModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-red-50",
   },
   {
     id: "2",
@@ -200,6 +872,9 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     availableDiscount: fifteenPercentOff,
     addOns: burgerAddOns,
+    modifiers: burgerModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-orange-100",
   },
   {
     id: "3",
@@ -211,6 +886,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner"],
     category: "Main Course",
     addOns: wrapAddOns,
+    cardBgColor: "bg-green-100",
   },
   {
     id: "4",
@@ -222,6 +898,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Dinner", "Specials"],
     category: "Main Course",
     addOns: pizzaAddOns,
+    cardBgColor: "bg-yellow-100",
   },
   // --- Appetizers ---
   {
@@ -234,6 +911,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner"],
     category: "Appetizers",
     addOns: saladAddOns,
+    cardBgColor: "bg-green-100",
   },
   // --- Sides ---
   {
@@ -245,6 +923,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner", "Brunch"],
     category: "Sides",
     addOns: sidesAddOns,
+    cardBgColor: "bg-yellow-100",
   },
   {
     id: "7",
@@ -255,6 +934,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner"],
     category: "Sides",
     addOns: sidesAddOns,
+    cardBgColor: "bg-purple-100",
   },
   // --- Drinks ---
   {
@@ -266,6 +946,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner", "Brunch", "Specials"],
     category: "Drinks",
     addOns: drinksAddOns,
+    cardBgColor: "bg-gray-100",
   },
   {
     id: "9",
@@ -276,6 +957,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Lunch", "Dinner", "Brunch", "Specials"],
     category: "Drinks",
     addOns: drinksAddOns,
+    cardBgColor: "bg-green-100",
   },
   // --- Desserts ---
   {
@@ -287,6 +969,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Dinner"],
     category: "Dessert",
     addOns: dessertAddOns,
+    cardBgColor: "bg-red-100",
   },
   {
     id: "11",
@@ -297,6 +980,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Dinner"],
     category: "Dessert",
     addOns: dessertAddOns,
+    cardBgColor: "bg-pink-100",
   },
   // --- Brunch ---
   {
@@ -309,6 +993,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     availableDiscount: tenPercentOff,
     addOns: brunchAddOns,
+    cardBgColor: "bg-indigo-100",
   },
   {
     id: "13",
@@ -320,6 +1005,478 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     meal: ["Brunch"],
     category: "Main Course",
     addOns: brunchAddOns,
+    cardBgColor: "bg-cyan-100",
+  },
+  // --- Additional Main Course Items ---
+  {
+    id: "14",
+    name: "Pepperoni Supreme Pizza",
+    description:
+      "Loaded with pepperoni, Italian sausage, mushrooms, bell peppers, and mozzarella on our signature crust.",
+    price: 16.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    sizes: standardSizes,
+    addOns: pizzaAddOns,
+    modifiers: pizzaModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-red-100",
+  },
+  {
+    id: "15",
+    name: "Mediterranean Quinoa Bowl",
+    description:
+      "Nutrient-packed quinoa with roasted vegetables, feta cheese, olives, and lemon-tahini dressing.",
+    price: 11.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: saladAddOns,
+    modifiers: saladModifiers,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-green-100",
+  },
+  {
+    id: "16",
+    name: "Classic Club Sandwich",
+    description:
+      "Triple-decker with turkey, bacon, lettuce, tomato, and mayo on toasted bread.",
+    price: 9.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: sandwichAddOns,
+    modifiers: sandwichModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-yellow-100",
+  },
+  {
+    id: "17",
+    name: "Creamy Alfredo Pasta",
+    description:
+      "Rich and creamy alfredo sauce over perfectly cooked pasta with parmesan cheese.",
+    price: 13.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: pastaAddOns,
+    modifiers: pastaModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-white",
+  },
+  // --- Appetizers ---
+  {
+    id: "18",
+    name: "Buffalo Wings",
+    description:
+      "Crispy chicken wings tossed in our signature buffalo sauce, served with celery and blue cheese.",
+    price: 8.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-orange-100",
+  },
+  {
+    id: "19",
+    name: "Loaded Nachos",
+    description:
+      "Tortilla chips topped with melted cheese, jalapeños, sour cream, and guacamole.",
+    price: 7.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-yellow-100",
+  },
+  // --- Soups (as Appetizers) ---
+  {
+    id: "20",
+    name: "Tomato Basil Soup",
+    description:
+      "Rich and creamy tomato soup with fresh basil, perfect comfort food.",
+    price: 5.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: soupAddOns,
+    modifiers: soupModifiers,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-red-50",
+  },
+  {
+    id: "21",
+    name: "Chicken Noodle Soup",
+    description:
+      "Classic comfort soup with tender chicken, egg noodles, and fresh vegetables.",
+    price: 6.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: soupAddOns,
+    modifiers: soupModifiers,
+    allergens: ["Gluten", "Eggs"],
+    cardBgColor: "bg-yellow-50",
+  },
+  // --- Drinks ---
+  {
+    id: "22",
+    name: "Fresh Brewed Coffee",
+    description:
+      "Premium blend of Arabica beans, freshly ground and brewed to perfection.",
+    price: 2.99,
+    meal: ["Lunch", "Dinner", "Brunch"],
+    category: "Drinks",
+    addOns: coffeeAddOns,
+    modifiers: coffeeModifiers,
+    allergens: [],
+    cardBgColor: "bg-amber-100",
+  },
+  {
+    id: "23",
+    name: "Tropical Smoothie",
+    description:
+      "Blend of mango, pineapple, banana, and coconut milk for a refreshing treat.",
+    price: 6.99,
+    meal: ["Lunch", "Brunch"],
+    category: "Drinks",
+    addOns: smoothieAddOns,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-orange-100",
+  },
+  {
+    id: "24",
+    name: "Fresh Orange Juice",
+    description:
+      "Freshly squeezed orange juice, rich in vitamin C and natural sweetness.",
+    price: 3.99,
+    meal: ["Brunch"],
+    category: "Drinks",
+    allergens: [],
+    cardBgColor: "bg-orange-50",
+  },
+  // --- Breakfast Items (as Main Course) ---
+  {
+    id: "25",
+    name: "Belgian Waffles",
+    description:
+      "Light and fluffy Belgian waffles served with butter and maple syrup.",
+    price: 9.99,
+    meal: ["Brunch"],
+    category: "Main Course",
+    addOns: breakfastAddOns,
+    allergens: ["Gluten", "Dairy", "Eggs"],
+    cardBgColor: "bg-yellow-100",
+  },
+  {
+    id: "26",
+    name: "Avocado Toast",
+    description:
+      "Smashed avocado on artisan bread with cherry tomatoes, feta, and balsamic glaze.",
+    price: 8.99,
+    meal: ["Brunch"],
+    category: "Main Course",
+    addOns: breakfastAddOns,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-green-100",
+  },
+  // --- Desserts ---
+  {
+    id: "27",
+    name: "Tiramisu",
+    description:
+      "Classic Italian dessert with layers of coffee-soaked ladyfingers and mascarpone cream.",
+    price: 7.99,
+    meal: ["Dinner"],
+    category: "Dessert",
+    addOns: dessertAddOns,
+    allergens: ["Dairy", "Eggs", "Gluten"],
+    cardBgColor: "bg-amber-100",
+  },
+  {
+    id: "28",
+    name: "Chocolate Chip Cookies",
+    description:
+      "Warm, gooey chocolate chip cookies baked fresh daily, served with milk.",
+    price: 4.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Dessert",
+    addOns: dessertAddOns,
+    allergens: ["Gluten", "Dairy", "Eggs"],
+    cardBgColor: "bg-brown-100",
+  },
+  // --- Additional Main Course Items (29-40) ---
+  {
+    id: "29",
+    name: "Grilled Ribeye Steak",
+    description:
+      "Premium ribeye steak grilled to perfection, served with your choice of sides.",
+    price: 24.99,
+    meal: ["Dinner"],
+    category: "Main Course",
+    addOns: steakAddOns,
+    modifiers: steakModifiers,
+    allergens: [],
+    cardBgColor: "bg-red-200",
+  },
+  {
+    id: "30",
+    name: "Grilled Salmon Fillet",
+    description:
+      "Fresh Atlantic salmon fillet grilled with herbs and lemon, served with seasonal vegetables.",
+    price: 18.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: seafoodAddOns,
+    modifiers: seafoodModifiers,
+    allergens: ["Fish"],
+    cardBgColor: "bg-blue-100",
+  },
+  {
+    id: "31",
+    name: "Fish Tacos",
+    description:
+      "Three soft tacos filled with grilled fish, cabbage slaw, and chipotle aioli.",
+    price: 12.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: tacoAddOns,
+    modifiers: tacoModifiers,
+    allergens: ["Fish", "Gluten"],
+    cardBgColor: "bg-yellow-100",
+  },
+  {
+    id: "32",
+    name: "Chicken Tacos",
+    description:
+      "Three soft tacos with grilled chicken, pico de gallo, and avocado crema.",
+    price: 11.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: tacoAddOns,
+    modifiers: tacoModifiers,
+    allergens: ["Gluten"],
+    cardBgColor: "bg-green-100",
+  },
+  {
+    id: "33",
+    name: "Tonkotsu Ramen",
+    description:
+      "Rich pork bone broth with chashu pork, soft-boiled egg, and fresh noodles.",
+    price: 14.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: ramenAddOns,
+    modifiers: ramenModifiers,
+    allergens: ["Gluten", "Eggs", "Soy"],
+    cardBgColor: "bg-orange-100",
+  },
+  {
+    id: "34",
+    name: "Miso Ramen",
+    description:
+      "Savory miso broth with tofu, corn, and bamboo shoots over fresh noodles.",
+    price: 13.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: ramenAddOns,
+    modifiers: ramenModifiers,
+    allergens: ["Gluten", "Soy"],
+    cardBgColor: "bg-amber-100",
+  },
+  {
+    id: "35",
+    name: "California Roll",
+    description:
+      "Crab, avocado, and cucumber roll topped with sesame seeds and served with wasabi.",
+    price: 8.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: sushiAddOns,
+    modifiers: sushiModifiers,
+    allergens: ["Fish", "Soy"],
+    cardBgColor: "bg-green-50",
+  },
+  {
+    id: "36",
+    name: "Spicy Tuna Roll",
+    description:
+      "Fresh tuna mixed with spicy mayo, wrapped in seaweed and rice.",
+    price: 9.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: sushiAddOns,
+    modifiers: sushiModifiers,
+    allergens: ["Fish", "Soy"],
+    cardBgColor: "bg-red-50",
+  },
+  {
+    id: "37",
+    name: "Chicken Teriyaki Bowl",
+    description:
+      "Grilled chicken glazed with teriyaki sauce over steamed rice with vegetables.",
+    price: 13.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: pastaAddOns,
+    allergens: ["Soy"],
+    cardBgColor: "bg-orange-50",
+  },
+  {
+    id: "38",
+    name: "Beef Stir Fry",
+    description:
+      "Tender beef strips with mixed vegetables in a savory sauce over rice.",
+    price: 15.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: pastaAddOns,
+    allergens: ["Soy"],
+    cardBgColor: "bg-brown-50",
+  },
+  {
+    id: "39",
+    name: "Vegetarian Buddha Bowl",
+    description:
+      "Quinoa, roasted vegetables, chickpeas, and tahini dressing in a nourishing bowl.",
+    price: 12.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: saladAddOns,
+    modifiers: saladModifiers,
+    allergens: ["Sesame"],
+    cardBgColor: "bg-green-50",
+  },
+  {
+    id: "40",
+    name: "BBQ Pulled Pork Sandwich",
+    description:
+      "Slow-cooked pulled pork with tangy BBQ sauce on a brioche bun with coleslaw.",
+    price: 11.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Main Course",
+    addOns: sandwichAddOns,
+    modifiers: sandwichModifiers,
+    allergens: ["Gluten"],
+    cardBgColor: "bg-orange-100",
+  },
+  // --- Additional Appetizers (41-45) ---
+  {
+    id: "41",
+    name: "Mozzarella Sticks",
+    description:
+      "Crispy breaded mozzarella sticks served with marinara sauce.",
+    price: 6.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-yellow-100",
+  },
+  {
+    id: "42",
+    name: "Spinach Artichoke Dip",
+    description:
+      "Creamy spinach and artichoke dip served with tortilla chips.",
+    price: 7.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-green-100",
+  },
+  {
+    id: "43",
+    name: "Chicken Quesadilla",
+    description:
+      "Grilled chicken, cheese, and peppers in a crispy tortilla with sour cream.",
+    price: 8.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-orange-100",
+  },
+  {
+    id: "44",
+    name: "Calamari Rings",
+    description:
+      "Crispy fried calamari rings served with marinara and lemon aioli.",
+    price: 9.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Seafood", "Gluten"],
+    cardBgColor: "bg-blue-100",
+  },
+  {
+    id: "45",
+    name: "Stuffed Mushrooms",
+    description:
+      "Button mushrooms stuffed with herbed cream cheese and breadcrumbs.",
+    price: 6.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Appetizers",
+    addOns: sidesAddOns,
+    allergens: ["Dairy", "Gluten"],
+    cardBgColor: "bg-brown-100",
+  },
+  // --- Additional Sides (46-47) ---
+  {
+    id: "46",
+    name: "Sweet Potato Fries",
+    description:
+      "Crispy sweet potato fries seasoned with sea salt and herbs.",
+    price: 4.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Sides",
+    addOns: sidesAddOns,
+    allergens: [],
+    cardBgColor: "bg-orange-100",
+  },
+  {
+    id: "47",
+    name: "Mac and Cheese",
+    description:
+      "Creamy three-cheese macaroni and cheese with a crispy breadcrumb topping.",
+    price: 5.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Sides",
+    addOns: sidesAddOns,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-yellow-100",
+  },
+  // --- Additional Drinks (48-50) ---
+  {
+    id: "48",
+    name: "Green Tea",
+    description:
+      "Premium green tea leaves steeped to perfection, served hot or iced.",
+    price: 2.99,
+    meal: ["Lunch", "Dinner", "Brunch"],
+    category: "Drinks",
+    addOns: teaAddOns,
+    allergens: [],
+    cardBgColor: "bg-green-50",
+  },
+  {
+    id: "49",
+    name: "Energy Drink",
+    description:
+      "Refreshing energy drink with natural caffeine and B-vitamins.",
+    price: 3.99,
+    meal: ["Lunch", "Dinner"],
+    category: "Drinks",
+    addOns: energyDrinkAddOns,
+    allergens: [],
+    cardBgColor: "bg-red-100",
+  },
+  {
+    id: "50",
+    name: "Iced Tea",
+    description:
+      "Freshly brewed black tea served over ice with lemon.",
+    price: 2.49,
+    meal: ["Lunch", "Dinner", "Brunch"],
+    category: "Drinks",
+    addOns: teaAddOns,
+    allergens: [],
+    cardBgColor: "bg-amber-100",
   },
 ];
 
@@ -729,6 +1886,7 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderTime: "09:31 AM",
     orderId: "#2010E10",
     paymentStatus: "In Progress",
+    customer: "John Doe",
     server: "Jake Carter",
     itemCount: 5,
     type: "Dine In",
@@ -741,9 +1899,10 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderTime: "09:35 AM",
     orderId: "#2010E11",
     paymentStatus: "Paid",
+    customer: "Jane Smith",
     server: "Jessica",
     itemCount: 3,
-    type: "Takeout",
+    type: "Take-Away",
     total: 22.75,
     items: [],
   },
@@ -753,6 +1912,7 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderTime: "09:40 AM",
     orderId: "#2010E12",
     paymentStatus: "Paid",
+    customer: "Alex Johnson",
     server: "Jake Carter",
     itemCount: 8,
     type: "Delivery",
@@ -765,6 +1925,7 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     orderTime: "08:15 PM",
     orderId: "#2009E95",
     paymentStatus: "Refunded",
+    customer: "Sarah Wilson",
     server: "Jessica",
     itemCount: 2,
     type: "Dine In",
@@ -920,6 +2081,7 @@ export const MOCK_SHIFT_HISTORY: ShiftHistoryEntry[] = Array.from(
     breakEnded: "01:30 PM",
     clockOut: "06:30 PM",
     duration: "8h 11m",
+    role: "Cashier",
   })
 );
 

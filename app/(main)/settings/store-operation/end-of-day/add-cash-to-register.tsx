@@ -65,7 +65,7 @@ const AddCashToRegisterScreen = () => {
     <View className="flex-1 bg-background-300 p-6">
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Stat Cards */}
-        <View className="flex-row gap-6">
+        <View className="flex-row gap-6 h-full w-full">
           <StatCard title="Total Cash in Register" value={MOCK_TOTAL_CASH} />
           <StatCard
             title="Amount to Add" // Ensure value is passed as a number

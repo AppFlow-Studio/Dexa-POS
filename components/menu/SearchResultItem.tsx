@@ -1,6 +1,7 @@
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
@@ -17,6 +18,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
   const { activeTableId } = usePaymentStore();
   const { orders, activeOrderId } = useOrderStore();
+  const { openToAdd } = useModifierSidebarStore();
 
   const handleAddToCart = () => {
     // Check if the active order is closed
@@ -31,8 +33,17 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
       return;
     }
 
-    openDialog(item, activeTableId || undefined);
+    if (!activeOrder?.order_type) {
+      toast.error("Please select an Order Type", {
+        duration: 4000,
+        position: ToastPosition.BOTTOM,
+      });
+      return; // Stop execution
+    }
+
+    openToAdd(item, activeOrderId);
     closeSearchSheet();
+
   };
 
   return (

@@ -1,13 +1,15 @@
 import { images } from "@/lib/image";
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useState } from "react";
-import { Image, ScrollView, View } from "react-native";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import React, { useRef, useState } from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
+import MoreOptionsBottomSheet from "./MoreOptionsBottomSheet";
 import OrderDetails from "./OrderDetails";
-import PaymentActions from "./PaymentActions";
+import PaymentMethodDialog from "./PaymentMethodDialog";
 import Totals from "./Totals";
 
 const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
@@ -37,11 +39,30 @@ const BillSection = ({
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
 }) => {
-  const { activeOrderId, orders } = useOrderStore();
+  const { activeOrderId, orders,
+    activeOrderTotal,
+    startNewOrder,
+  } = useOrderStore();
+
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
 
+  const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
+  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
+
+
+  const handleOpenMoreOptions = () => {
+    moreOptionsSheetRef.current?.snapToIndex(0);
+  };
+
+  const handlePayClick = () => {
+    setPaymentDialogVisible(true);
+  };
+
+  const handleClosePaymentDialog = () => {
+    setPaymentDialogVisible(false);
+  };
 
   const handleOpenDiscounts = () => {
     setDiscountOverlayVisible(true);
@@ -51,14 +72,33 @@ const BillSection = ({
     setDiscountOverlayVisible(false);
   };
 
+  if( !activeOrderId ) return(
+  <View className="w-1/3 items-center justify-center bg-gray-50 p-8">
+    <Text className="text-lg font-semibold text-gray-700 mb-4">
+      No Active Order
+    </Text>
+    <TouchableOpacity
+      className="px-6 py-3 bg-blue-600 rounded-full shadow-md active:opacity-80"
+      onPress={() => {
+        // Start a new order using the store
+        startNewOrder();
+      }}
+    >
+      <Text className="text-white text-base font-bold tracking-wide">
+        Start New Order
+      </Text>
+    </TouchableOpacity>
+  </View>
+  );
+
   return (
-    <>
-      <View
-        className="max-w-96 bg-background-100 border-gray-200 flex-1"
-      >
-        <Image source={images.topBar} className="w-full h-12" resizeMode="cover" />
-        {/* Paid / Status badges */}
-        {/* {activeOrder && (
+
+    <View
+      className="w-1/3 bg-white border-gray-200 "
+    >
+      <Image source={images.topBar} className="w-full h-12" resizeMode="cover" />
+      {/* Paid / Status badges */}
+      {/* {activeOrder && (
           <View className="px-4 py-2 flex-row gap-2 items-center">
             <View
               className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
@@ -87,16 +127,59 @@ const BillSection = ({
             </View>
           </View>
         )} */}
-        {showOrderDetails && <OrderDetails />}
-        <BillSectionContent cart={cart} />
-        <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-        {showPlaymentActions && <PaymentActions />}
-        <DiscountOverlay
-          isVisible={isDiscountOverlayVisible}
-          onClose={handleCloseDiscounts}
-        />
-      </View>
-    </>
+      {showOrderDetails && <OrderDetails />}
+      <BillSectionContent cart={cart} />
+      <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
+      <View className="h-[1px] w-[90%] self-center bg-gray-200 " />
+      {/* More and Pay Buttons */}
+      {showPlaymentActions && (
+        <View className="p-4 bg-background-200">
+          <View className="flex-row gap-3">
+            {/* More Button */}
+            <TouchableOpacity
+              onPress={handleOpenMoreOptions}
+              className="flex-1 py-3 bg-white rounded-xl border border-gray-200"
+            >
+              <Text className="text-center font-bold text-gray-800">More</Text>
+            </TouchableOpacity>
+
+            {/* Pay Button */}
+            <TouchableOpacity
+              onPress={handlePayClick}
+              disabled={!activeOrder || activeOrder.items.length === 0}
+              className={`flex-1 py-3 rounded-xl ${!activeOrder || activeOrder.items.length === 0
+                ? "bg-gray-300"
+                : "bg-primary-400"
+                }`}
+            >
+              <Text className={`text-center font-bold ${!activeOrder || activeOrder.items.length === 0
+                ? "text-gray-500"
+                : "text-white "
+                }`}>
+                Pay ${activeOrderTotal.toFixed(2)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+
+      {/* More Options Bottom Sheet */}
+      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
+
+      {/* Payment Method Dialog */}
+      <PaymentMethodDialog
+        isVisible={isPaymentDialogVisible}
+        onClose={handleClosePaymentDialog}
+      />
+
+      {/* Discount Overlay */}
+      <DiscountOverlay
+        isVisible={isDiscountOverlayVisible}
+        onClose={handleCloseDiscounts}
+      />
+    </View>
+
   );
 };
 

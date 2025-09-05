@@ -21,7 +21,8 @@ import {
 } from "./ui/dropdown-menu";
 
 const generateTitleFromPath = (pathname: string): string => {
-  if (pathname === "/" || pathname === "/home") return "Home";
+  if (pathname === "/" || pathname === "/home") return "Menu";
+  if (pathname === "/order-processing") return "Back to Menu";
 
   // Handle dynamic online order route
   if (
@@ -77,6 +78,15 @@ const Header = () => {
   const [lastBreakSession, setLastBreakSession] = useState<any>(null);
 
   const showBackButton =
+    pathname === "/tables" ||
+    pathname === "/tables/edit-layout" ||
+    pathname === "/inventory" ||
+    pathname === "/analytics" ||
+    pathname === "/previous-orders" ||
+    pathname === "/order-processing" ||
+    pathname === "/online-orders" ||
+    pathname === "/customers-list" ||
+    pathname === "/settings" ||
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/previous-orders/") &&
@@ -84,7 +94,9 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4) ||
-    pathname === "/settings/store-operation/end-of-day/checks" ||
+    (pathname.startsWith("/settings") &&
+      pathname.split("/").length === 4)
+  pathname === "/settings/store-operation/end-of-day/checks" ||
     pathname === "/settings/store-operation/end-of-day/drawers" ||
     pathname === "/settings/store-operation/end-of-day/employees" ||
     pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||

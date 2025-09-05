@@ -1,4 +1,6 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { Smartphone, Wrench } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -7,6 +9,24 @@ const ResetApplicationScreen = () => {
   const [modalType, setModalType] = useState<"clearCache" | "resetApp" | null>(
     null
   );
+
+  const systemSubsections = [
+    {
+      id: "device-support",
+      title: "Device & Support",
+      subtitle: "System Information",
+      route: "/settings/system-and-support/device-and-support",
+      icon: <Smartphone color="#3b82f6" size={20} />,
+    },
+    {
+      id: "reset-application",
+      title: "Reset Application",
+      subtitle: "Factory Reset",
+      route: "/settings/system-and-support/reset-application",
+      icon: <Wrench color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+  ];
 
   const handleClearCache = () => {
     console.log("Clearing cache...");
@@ -21,25 +41,37 @@ const ResetApplicationScreen = () => {
 
   return (
     <View className="flex-1 bg-background-300 p-6">
-      {/* Main Content Card */}
-      <View className="p-6">
-        <View className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => setModalType("clearCache")}
-            className="py-2 px-6 border border-gray-300 rounded-lg"
-          >
-            <Text className="font-bold text-gray-700">Clear Cache</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setModalType("resetApp")}
-            className="py-2 px-6 bg-red-500 rounded-lg"
-          >
-            <Text className="font-bold text-white">Reset Application</Text>
-          </TouchableOpacity>
-        </View>
+      <View className="flex-row gap-6 h-full w-full">
+        {/* Sidebar */}
+        <SettingsSidebar
+          title="System & Support"
+          subsections={systemSubsections}
+          currentRoute="/settings/system-and-support/reset-application"
+        />
 
-        {/* The empty space */}
-        <View className="h-96" />
+        {/* Main Content */}
+        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+          {/* Main Content Card */}
+          <View className="p-6">
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setModalType("clearCache")}
+                className="py-2 px-6 border border-gray-300 rounded-lg"
+              >
+                <Text className="font-bold text-gray-700">Clear Cache</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setModalType("resetApp")}
+                className="py-2 px-6 bg-red-500 rounded-lg"
+              >
+                <Text className="font-bold text-white">Reset Application</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* The empty space */}
+            <View className="h-96" />
+          </View>
+        </View>
       </View>
 
       {/* --- Modals --- */}

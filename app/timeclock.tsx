@@ -76,7 +76,7 @@ const TimeclockScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <View className="flex-1 flex-row gap-6">
+      <View className="flex-1 flex-row gap-6 h-full w-full">
         <UserProfileCard />
 
         <View className="flex-1">

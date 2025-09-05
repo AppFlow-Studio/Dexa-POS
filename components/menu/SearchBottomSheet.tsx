@@ -15,7 +15,7 @@ import SearchResultItem from "./SearchResultItem";
 
 const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["75%"], []);
+  const snapPoints = useMemo(() => ["70%", "75%"], []);
   const [searchText, setSearchText] = useState("");
   const [searchResults, setSearchResults] =
     useState<MenuItemType[]>(MOCK_MENU_ITEMS);
@@ -59,11 +59,12 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       onClose={closeSearch}
       handleComponent={null}
       backdropComponent={renderBackdrop}
+      keyboardBehavior="extend"
     >
-      <BottomSheetView className="flex-1 bg-white rounded-t-3xl overflow-hidden">
+      <BottomSheetView className=" bg-white rounded-t-3xl overflow-hidden">
         {/* Header */}
         <View className="flex-row items-center border-b border-background-400 bg-background-300 rounded-2xl px-4">
-          <View className="flex-1 flex-row items-center ">
+          <View className="flex-row items-center">
             <Search color="#6b7280" size={18} />
             <BottomSheetTextInput
               value={searchText}
@@ -71,6 +72,9 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
               placeholder="Search Item"
               className="flex-1 py-3 ml-3 text-lg text-gray-900"
               placeholderTextColor="#6b7280"
+              autoFocus={true}
+              focusable
+              
             />
           </View>
           <TouchableOpacity

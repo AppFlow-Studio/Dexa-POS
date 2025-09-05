@@ -26,7 +26,6 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   activeCategory,
   onCategoryChange,
 }) => {
-  const { openSearch } = useSearchStore();
   return (
     <View className="flex-row justify-between items-start gap-4">
       {/* Left Section: All Tabs */}
@@ -37,7 +36,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             <TouchableOpacity
               key={tab}
               onPress={() => onMealChange(tab)}
-              className={`py-2 px-5 rounded-t-lg ${activeMeal === tab ? "bg-white" : "bg-transparent"}`}
+              className={`py-2 px-5 rounded-t-lg ${activeMeal === tab ? "bg-white border border-b-white " : "bg-transparent"}`}
             >
               <Text className={"font-semibold text-lg text-accent-500"}>
                 {tab}
@@ -47,7 +46,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         </View>
 
         {/* Category Pills Container */}
-        <View className="bg-white p-1 rounded-xl flex-row items-center gap-1">
+        <View className="bg-white border p-1 rounded-xl flex-row items-center gap-1">
           {CATEGORY_TABS.map((tab) => (
             <TouchableOpacity
               key={tab}
@@ -62,21 +61,6 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         </View>
       </View>
 
-      {/* Right Section: Search Bar - Now positioned at the bottom */}
-      <View className="flex-1 justify-end">
-        <TouchableOpacity
-          onPress={openSearch}
-          className="flex-row items-center bg-background-300 border border-background-400 rounded-2xl px-4 py-1 mt-14"
-        >
-          <Search color="#5D5D73" size={16} />
-          <TextInput
-            placeholder="Search Item"
-            className="ml-3 flex-1"
-            placeholderTextColor="#5D5D73"
-            onPress={openSearch}
-          />
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };

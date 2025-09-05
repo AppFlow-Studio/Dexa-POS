@@ -26,7 +26,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   };
 
   return (
-    <View className="p-4 bg-background-200">
+    <View className="px-4 bg-background-200">
       <TouchableOpacity
         onPress={onOpenDiscounts}
         className="flex-row items-center mb-2"
@@ -38,7 +38,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
           <Text className="font-bold text-base text-accent-300">Discounts</Text>
         </View>
       </TouchableOpacity>
-      {appliedDiscount ? (
+      {appliedDiscount && (
         <View className="flex-row items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-xl">
           <Text className="font-bold text-blue-600">
             {appliedDiscount.label}
@@ -48,17 +48,6 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
             className="p-1 bg-blue-100 rounded-full"
           >
             <X color="#2563eb" size={14} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View className="flex-row items-center gap-2">
-          <TextInput
-            placeholder="Add promo or voucher"
-            className="flex-1 p-3 bg-background-100 rounded-xl text-base"
-            placeholderTextColor="#6b7280"
-          />
-          <TouchableOpacity className="px-6 py-3 bg-primary-400 rounded-xl">
-            <Text className="text-white font-bold">Apply</Text>
           </TouchableOpacity>
         </View>
       )}
