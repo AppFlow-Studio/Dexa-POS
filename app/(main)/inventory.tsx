@@ -13,7 +13,7 @@ import {
 
 const TABLE_HEADERS = [
   { label: "# No", width: "w-[5%]" },
-  { label: "Item Name", width: "w-[15%]" },
+  { label: "Item Name", width: "w-[20%]" },
   { label: "Description", width: "w-[20%]" },
   { label: "Stock", width: "w-[8%]" },
   { label: "Unit", width: "w-[8%]" },

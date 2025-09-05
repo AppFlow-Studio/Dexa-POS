@@ -43,7 +43,7 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
         {item.serialNo}
       </Text>
       {/* <Text className="w-[10%] font-semibold text-gray-600">{item.id}</Text> */}
-      <View className="w-[15%] flex-row items-center">
+      <View className="w-[20%] flex-row items-center">
         {item.image ? (
           <Image
             source={imageSource}
