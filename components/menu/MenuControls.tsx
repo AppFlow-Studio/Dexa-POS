@@ -51,7 +51,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             <TouchableOpacity
               key={tab}
               onPress={() => onCategoryChange(tab)}
-              className={`py-2 px-4 rounded-full ${activeCategory === tab ? "border border-accent-300" : "border border-transparent"}`}
+              className={`py-2 px-4 rounded-full ${activeCategory === tab ? "border border-accent-300 bg-accent-100" : "border border-transparent"}`}
             >
               <Text className={"font-semibold text-base text-accent-400"}>
                 {tab}

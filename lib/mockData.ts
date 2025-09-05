@@ -1059,7 +1059,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: pastaAddOns,
     modifiers: pastaModifiers,
     allergens: ["Gluten", "Dairy"],
-    cardBgColor: "bg-white",
+    cardBgColor: "bg-orange-100",
   },
   // --- Appetizers ---
   {
@@ -1125,7 +1125,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: coffeeAddOns,
     modifiers: coffeeModifiers,
     allergens: [],
-    cardBgColor: "bg-amber-100",
+    cardBgColor: "bg-yellow-100",
   },
   {
     id: "23",
@@ -1186,7 +1186,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Dessert",
     addOns: dessertAddOns,
     allergens: ["Dairy", "Eggs", "Gluten"],
-    cardBgColor: "bg-amber-100",
+    cardBgColor: "bg-purple-100",
   },
   {
     id: "28",
@@ -1198,7 +1198,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Dessert",
     addOns: dessertAddOns,
     allergens: ["Gluten", "Dairy", "Eggs"],
-    cardBgColor: "bg-brown-100",
+    cardBgColor: "bg-red-100",
   },
   // --- Additional Main Course Items (29-40) ---
   {
@@ -1212,7 +1212,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: steakAddOns,
     modifiers: steakModifiers,
     allergens: [],
-    cardBgColor: "bg-red-200",
+    cardBgColor: "bg-purple-100",
   },
   {
     id: "30",
@@ -1277,7 +1277,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: ramenAddOns,
     modifiers: ramenModifiers,
     allergens: ["Gluten", "Soy"],
-    cardBgColor: "bg-amber-100",
+    cardBgColor: "bg-blue-100",
   },
   {
     id: "35",
@@ -1315,7 +1315,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     addOns: pastaAddOns,
     allergens: ["Soy"],
-    cardBgColor: "bg-orange-50",
+    cardBgColor: "bg-orange-100",
   },
   {
     id: "38",
@@ -1327,7 +1327,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     addOns: pastaAddOns,
     allergens: ["Soy"],
-    cardBgColor: "bg-brown-50",
+    cardBgColor: "bg-green-200",
   },
   {
     id: "39",
@@ -1414,7 +1414,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Appetizers",
     addOns: sidesAddOns,
     allergens: ["Dairy", "Gluten"],
-    cardBgColor: "bg-brown-100",
+    cardBgColor: "bg-yellow-200",
   },
   // --- Additional Sides (46-47) ---
   {
@@ -1476,7 +1476,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Drinks",
     addOns: teaAddOns,
     allergens: [],
-    cardBgColor: "bg-amber-100",
+    cardBgColor: "bg-yellow-200",
   },
 ];
 
