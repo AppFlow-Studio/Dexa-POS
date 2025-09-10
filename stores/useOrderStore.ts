@@ -29,6 +29,7 @@ interface OrderState {
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   removeItemFromActiveOrder: (itemId: string) => void;
+  confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
     itemId: string,
     status: "Preparing" | "Ready"
@@ -282,7 +283,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         id: `order_${Date.now()}`,
         service_location_id: null,
         order_status: "Building",
-        customer_name: "Walk-In Customer",
+        customer_name: "",
         check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
@@ -473,6 +474,25 @@ export const useOrderStore = create<OrderState>((set, get) => {
       recalculateTotals(activeOrderId);
     },
 
+    confirmDraftItem: (itemId) => {
+      const { activeOrderId } = get();
+      if (!activeOrderId) return;
+
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === activeOrderId
+            ? {
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === itemId ? { ...i, isDraft: false } : i
+                ),
+              }
+            : o
+        ),
+      }));
+      recalculateTotals(activeOrderId);
+    },
+
     updateActiveOrderDetails: (details) => {
       const { activeOrderId } = get();
       if (!activeOrderId) return;
@@ -654,12 +674,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     markOrderAsPaid: (orderId: string) => {
-      const { orders } = get();
+      const { orders, activeOrderDiscount } = get();
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
-      // Note: We are not calculating totals here. We assume they are up-to-date
-      // from the last recalculateTotals() call during the payment process.
+      // Calculate total based on items (this is the subtotal)
+      const subtotal = order.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
+      // The final subtotal is the subtotal MINUS the calculated discount
+      const finalSubtotal = subtotal - activeOrderDiscount;
+      const tax = finalSubtotal * TAX_RATE;
+      const total = finalSubtotal + tax;
 
       set((state) => ({
         orders: state.orders.map((o) =>
@@ -667,10 +695,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
             ? {
                 ...o,
                 paid_status: "Paid",
-                // For both Dine-In and Take-Away, once an order is fully paid,
-                // the check should be considered "Closed" to prevent adding new items
-                // without explicitly reopening it.
                 check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
               }
             : o
         ),

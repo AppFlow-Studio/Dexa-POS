@@ -1,5 +1,5 @@
 import { InventoryItem } from "@/lib/types";
-import { Eye, MoreHorizontal, Pen, Trash2 } from "lucide-react-native";
+import { Eye, MoreHorizontal, Package, Pen, Trash2 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -42,12 +42,18 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
       <Text className="w-[5%] font-semibold text-gray-600">
         {item.serialNo}
       </Text>
-      <Text className="w-[10%] font-semibold text-gray-600">{item.id}</Text>
-      <View className="w-[15%] flex-row items-center">
-        <Image
-          source={imageSource}
-          className="w-10 h-10 rounded-lg bg-gray-100"
-        />
+      {/* <Text className="w-[10%] font-semibold text-gray-600">{item.id}</Text> */}
+      <View className="w-[20%] flex-row items-center">
+        {item.image ? (
+          <Image
+            source={imageSource}
+            className="w-10 h-10 rounded-lg bg-gray-100"
+          />
+        ) : (
+          <View className="w-10 h-10 rounded-lg bg-gray-100 items-center justify-center">
+            <Package color="#9ca3af" size={20} />
+          </View>
+        )}
         <Text className="ml-3 font-bold text-gray-800">{item.name}</Text>
       </View>
       <Text className="w-[20%] text-gray-600" numberOfLines={2}>

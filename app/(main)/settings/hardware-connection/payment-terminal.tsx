@@ -1,8 +1,9 @@
+import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import ConnectTerminalModal from "@/components/settings/terminal/ConnectTerminalModal";
 import EditTerminalModal from "@/components/settings/terminal/EditTerminalModal ";
 import { MOCK_TERMINALS } from "@/lib/mockData";
 import { PaymentTerminal } from "@/lib/types";
-import { Trash2 } from "lucide-react-native";
+import { CreditCard, Monitor, Printer, Receipt, Trash2 } from "lucide-react-native";
 import React, { useState } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
 
@@ -56,6 +57,37 @@ const PaymentTerminalScreen = () => {
   const [selectedTerminal, setSelectedTerminal] =
     useState<PaymentTerminal | null>(null);
 
+  const hardwareSubsections = [
+    {
+      id: "printer",
+      title: "Printers",
+      subtitle: "Receipt & Kitchen",
+      route: "/settings/hardware-connection/printer",
+      icon: <Printer color="#3b82f6" size={20} />,
+    },
+    {
+      id: "printer-rules",
+      title: "Printer Rules",
+      subtitle: "Print Configuration",
+      route: "/settings/hardware-connection/printer-rules",
+      icon: <Receipt color="#3b82f6" size={20} />,
+    },
+    {
+      id: "customer-display",
+      title: "Customer Display",
+      subtitle: "Order Display",
+      route: "/settings/hardware-connection/customer-display",
+      icon: <Monitor color="#3b82f6" size={20} />,
+    },
+    {
+      id: "payment-terminal",
+      title: "Payment Terminal",
+      subtitle: "Card Processing",
+      route: "/settings/hardware-connection/payment-terminal",
+      icon: <CreditCard color="#3b82f6" size={20} />,
+    },
+  ];
+
   const handleOpenEditModal = (terminal: PaymentTerminal) => {
     setSelectedTerminal(terminal);
     setEditModalOpen(true);
@@ -69,32 +101,44 @@ const PaymentTerminalScreen = () => {
 
   return (
     <View className="flex-1 bg-background-300 p-6">
-      <View className="flex-1 gap-y-4">
-        {terminals.map((terminal) => (
-          <TerminalRow
-            key={terminal.id}
-            terminal={terminal}
-            onToggle={handleToggle}
-            onEdit={() => handleOpenEditModal(terminal)}
-            onRemove={() => {
-              /* Open remove modal */
-            }}
-          />
-        ))}
-      </View>
+      <View className="flex-row gap-6 h-full w-full">
+        {/* Sidebar */}
+        <SettingsSidebar
+          title="Hardware & Connection"
+          subsections={hardwareSubsections}
+          currentRoute="/settings/hardware-connection/payment-terminal"
+        />
 
-      <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
-        <TouchableOpacity
-          onPress={() => setConnectModalOpen(true)}
-          className="px-6 py-3 border border-gray-300 rounded-lg"
-        >
-          <Text className="font-bold text-gray-700">
-            Connect a New Terminal
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
-          <Text className="font-bold text-white">Save</Text>
-        </TouchableOpacity>
+        {/* Main Content */}
+        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+          <View className="flex-1 gap-y-4">
+            {terminals.map((terminal) => (
+              <TerminalRow
+                key={terminal.id}
+                terminal={terminal}
+                onToggle={handleToggle}
+                onEdit={() => handleOpenEditModal(terminal)}
+                onRemove={() => {
+                  /* Open remove modal */
+                }}
+              />
+            ))}
+          </View>
+
+          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
+            <TouchableOpacity
+              onPress={() => setConnectModalOpen(true)}
+              className="px-6 py-3 border border-gray-300 rounded-lg"
+            >
+              <Text className="font-bold text-gray-700">
+                Connect a New Terminal
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+              <Text className="font-bold text-white">Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {/* Modals */}

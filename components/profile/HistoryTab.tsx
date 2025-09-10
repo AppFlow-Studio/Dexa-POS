@@ -29,16 +29,29 @@ const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
       <Text className="text-sm text-gray-500">{item.date}</Text>
       <Text className="font-semibold text-gray-800">{item.clockIn}</Text>
     </View>
-    <View className="flex-1">
-      <Text className="text-sm text-primary-400">{item.date}</Text>
-      <Text className="font-semibold text-primary-400">
-        {item.breakInitiated}
-      </Text>
-    </View>
-    <View className="flex-1">
-      <Text className="text-sm text-primary-400">{item.date}</Text>
-      <Text className="font-semibold text-primary-400">{item.breakEnded}</Text>
-    </View>
+    {item.breakInitiated !== "N/A" ? (
+      <>
+        <View className="flex-1">
+          <Text className="text-sm text-primary-400">{item.date}</Text>
+          <Text className="font-semibold text-primary-400">
+            {item.breakInitiated}
+          </Text>
+        </View>
+        <View className="flex-1">
+          <Text className="text-sm text-primary-400">{item.date}</Text>
+          <Text className="font-semibold text-primary-400">{item.breakEnded}</Text>
+        </View>
+      </>
+    ) : (
+      <>
+        <View className="flex-1 items-start justify-start">
+          <Text className="text-sm text-gray-400 italic">No break initiated</Text>
+        </View>
+        <View className="flex-1 items-start justify-start">
+          <Text className="text-sm text-gray-400 italic">No break initiated</Text>
+        </View>
+      </>
+    )}
     <View className="flex-1">
       <Text className="text-sm text-gray-500">{item.date}</Text>
       <Text className="font-semibold text-gray-800">{item.clockOut}</Text>

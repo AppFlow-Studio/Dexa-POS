@@ -1,6 +1,8 @@
 import RadioButton from "@/components/settings/RadioButton";
 import SettingsCard from "@/components/settings/SettingsCard";
 import SettingsHeader from "@/components/settings/SettingsHeader";
+import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { Receipt, RefreshCcw, Store } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -16,70 +18,109 @@ const ReceiptAndTippingRulesScreen = () => {
   const [receiptOption, setReceiptOption] =
     useState<ReceiptOption>("alwaysPrint");
 
+  const storeOperationSubsections = [
+    {
+      id: "end-of-day",
+      title: "End of Day",
+      subtitle: "Daily Operations",
+      route: "/settings/store-operation/end-of-day",
+      icon: <Store color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+    {
+      id: "receipt-rules",
+      title: "Receipt Rules",
+      subtitle: "Receipt Configuration",
+      route: "/settings/store-operation/receipt-rules",
+      icon: <Receipt color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+    {
+      id: "sync-status",
+      title: "Sync Status",
+      subtitle: "Data Synchronization",
+      route: "/settings/store-operation/sync-status",
+      icon: <RefreshCcw color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+  ];
+
   return (
     <View className="flex-1 bg-background-300 p-6">
-      {/* Main Content Area */}
-      <View className="flex-1 gap-y-6">
-        {/* Tipping Settings */}
-        <View className="bg-white p-6 pt-3 rounded-2xl border border-gray-200">
-          <SettingsHeader
-            title="Enable Tipping"
-            value={isTippingEnabled}
-            onValueChange={setTippingEnabled}
-          />
-          <View className="bg-background-300 p-4 rounded-2xl border border-gray-200">
-            {isTippingEnabled && (
-              <View className="flex-row gap-4">
-                <TextInput
-                  value={tip1}
-                  onChangeText={setTip1}
-                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
-                  keyboardType="numeric"
+      <View className="flex-row gap-6 h-full w-full">
+        {/* Sidebar */}
+        <SettingsSidebar
+          title="Store Operation"
+          subsections={storeOperationSubsections}
+          currentRoute="/settings/store-operation/receipt-rules"
+        />
+
+        {/* Main Content */}
+        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+          {/* Main Content Area */}
+          <View className="flex-1 gap-y-6">
+            {/* Tipping Settings */}
+            <View className="bg-white p-6 pt-3 rounded-2xl border border-gray-200">
+              <SettingsHeader
+                title="Enable Tipping"
+                value={isTippingEnabled}
+                onValueChange={setTippingEnabled}
+              />
+              <View className="bg-background-300 p-4 rounded-2xl border border-gray-200">
+                {isTippingEnabled && (
+                  <View className="flex-row gap-4">
+                    <TextInput
+                      value={tip1}
+                      onChangeText={setTip1}
+                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      keyboardType="numeric"
+                    />
+                    <TextInput
+                      value={tip2}
+                      onChangeText={setTip2}
+                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      keyboardType="numeric"
+                    />
+                    <TextInput
+                      value={tip3}
+                      onChangeText={setTip3}
+                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      keyboardType="numeric"
+                    />
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Receipt Printing Settings */}
+            <SettingsCard title="Automatic Receipt Printing">
+              <View className="gap-y-3">
+                <RadioButton
+                  label="Always Print Receipt"
+                  isSelected={receiptOption === "alwaysPrint"}
+                  onPress={() => setReceiptOption("alwaysPrint")}
                 />
-                <TextInput
-                  value={tip2}
-                  onChangeText={setTip2}
-                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
-                  keyboardType="numeric"
+                <RadioButton
+                  label="Always Ask Customer"
+                  isSelected={receiptOption === "alwaysAsk"}
+                  onPress={() => setReceiptOption("alwaysAsk")}
                 />
-                <TextInput
-                  value={tip3}
-                  onChangeText={setTip3}
-                  className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
-                  keyboardType="numeric"
+                <RadioButton
+                  label="Never Print Receipt (Email Only)"
+                  isSelected={receiptOption === "neverPrint"}
+                  onPress={() => setReceiptOption("neverPrint")}
                 />
               </View>
-            )}
+            </SettingsCard>
+          </View>
+
+          {/* Footer */}
+          <View className="flex-row justify-start pt-4 border-t border-gray-200">
+            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+              <Text className="font-bold text-white">Save</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* Receipt Printing Settings */}
-        <SettingsCard title="Automatic Receipt Printing">
-          <View className="gap-y-3">
-            <RadioButton
-              label="Always Print Receipt"
-              isSelected={receiptOption === "alwaysPrint"}
-              onPress={() => setReceiptOption("alwaysPrint")}
-            />
-            <RadioButton
-              label="Always Ask Customer"
-              isSelected={receiptOption === "alwaysAsk"}
-              onPress={() => setReceiptOption("alwaysAsk")}
-            />
-            <RadioButton
-              label="Never Print Receipt (Email Only)"
-              isSelected={receiptOption === "neverPrint"}
-              onPress={() => setReceiptOption("neverPrint")}
-            />
-          </View>
-        </SettingsCard>
-      </View>
-
-      {/* Footer */}
-      <View className="flex-row justify-start pt-4 border-t border-gray-200">
-        <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
-          <Text className="font-bold text-white">Save</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );

@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -243,7 +244,18 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
               )}
             </View>
           )}
+
         </ScrollView>
+        <View className="flex-row items-center gap-2">
+          <TextInput
+            placeholder="Add promo or voucher"
+            className="flex-1 p-3 bg-background-100 rounded-xl text-base"
+            placeholderTextColor="#6b7280"
+          />
+          <TouchableOpacity className="px-6 py-3 bg-primary-400 rounded-xl">
+            <Text className="text-white font-bold">Apply</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity
           onPress={() => {
             if (selectedDiscount) {
@@ -251,9 +263,8 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
             }
           }}
           disabled={!selectedDiscount} // Disable button if no discount is selected
-          className={`w-full mt-4 p-4 rounded-xl items-center ${
-            selectedDiscount ? "bg-primary-400" : "bg-gray-300"
-          }`}
+          className={`w-full mt-4 p-4 rounded-xl items-center ${selectedDiscount ? "bg-primary-400" : "bg-gray-300"
+            }`}
         >
           <Text className="text-white font-bold text-base">Apply Discount</Text>
         </TouchableOpacity>

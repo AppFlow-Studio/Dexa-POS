@@ -1,6 +1,6 @@
 import AddItemModal from "@/components/inventory/AddItemModal";
 import InventoryRow from "@/components/inventory/InventoryRow"; // Import the new row component
-import { MOCK_INVENTORY_ITEMS } from "@/lib/mockData";
+import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -13,8 +13,7 @@ import {
 
 const TABLE_HEADERS = [
   { label: "# No", width: "w-[5%]" },
-  { label: "ID", width: "w-[10%]" },
-  { label: "Item Name", width: "w-[15%]" },
+  { label: "Item Name", width: "w-[20%]" },
   { label: "Description", width: "w-[20%]" },
   { label: "Stock", width: "w-[8%]" },
   { label: "Unit", width: "w-[8%]" },
@@ -25,6 +24,29 @@ const TABLE_HEADERS = [
 
 const InventoryScreen = () => {
   const [isAddModalOpen, setAddModalOpen] = useState(false);
+
+  // Transform MOCK_MENU_ITEMS into inventory format
+  const inventoryItems = MOCK_MENU_ITEMS.map((item, index) => ({
+    id: item.id,
+    serialNo: (index + 1).toString().padStart(3, '0'),
+    name: item.name,
+    image: item.image ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : null,
+    description: item.description || "No description available",
+    stock: Math.floor(Math.random() * 500) + 50, // Random stock between 50-550
+    unit: "PCs" as const,
+    lastUpdate: new Date().toLocaleDateString('en-US', {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    }),
+    status: Math.random() > 0.8 ? "Out of Stock" as const : Math.random() > 0.9 ? "Draft" as const : "Active" as const,
+    category: item.category,
+    modifier: item.modifiers && item.modifiers.length > 0 ? "Customizable" : "None",
+    availability: Math.random() > 0.1, // 90% availability
+  }));
 
   // Handlers for the row actions
   const handleViewDetails = () => alert("View Details");
@@ -59,7 +81,7 @@ const InventoryScreen = () => {
         </View>
         {/* Table Body */}
         <FlatList
-          data={MOCK_INVENTORY_ITEMS}
+          data={inventoryItems}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <InventoryRow

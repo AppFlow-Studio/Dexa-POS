@@ -1,5 +1,6 @@
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import { RotateCcw, Trash2 } from "lucide-react-native";
 import React, { useEffect } from "react";
@@ -41,6 +42,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // Get the actions directly from the store
   const { updateTablePosition, updateTableRotation, removeTable } =
     useFloorPlanStore();
+  const { orders } = useOrderStore();
+
   const router = useRouter();
 
   // --- Animation and Gesture state
@@ -115,6 +118,20 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     padding: 4,
   }));
 
+
+  const activeOrderForThisTable = orders.find(
+    (o) =>
+      o.service_location_id === table.id &&
+      o.order_status !== "Voided" // Show all orders except voided ones
+  );
+
+  // Calculate the total for this specific order's cart
+  const orderTotal =
+    activeOrderForThisTable?.items.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0
+    ) || 0;
+
   const TableComponent = table.component;
 
   return (
@@ -134,6 +151,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           />
           <View className="absolute inset-0 items-center justify-center">
             <Text className="text-white font-bold text-lg">{table.name}</Text>
+            {table.type === "table" && (
+              <Text className="text-white font-bold text-lg">${orderTotal.toFixed(2)}</Text>
+            )}
           </View>
         </TouchableOpacity>
 

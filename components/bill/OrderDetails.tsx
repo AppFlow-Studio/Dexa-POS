@@ -9,7 +9,7 @@ import {
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { Check, FileText, Pencil, X } from "lucide-react-native";
+import { Edit3, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
@@ -69,8 +69,10 @@ const OrderDetails: React.FC = () => {
   const [openItemPrice, setOpenItemPrice] = useState("");
 
   // Order naming state
-  const [isEditingName, setIsEditingName] = useState(false);
   const [customerName, setCustomerName] = useState("");
+  const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] =
+    useState(false);
+  const [tempCustomerName, setTempCustomerName] = useState("");
 
   const availableTableOptions = useMemo(() => {
     // Show the currently assigned table PLUS all available tables
@@ -127,7 +129,6 @@ const OrderDetails: React.FC = () => {
     } else {
       setCustomerName("");
     }
-    setIsEditingName(false);
   }, [activeOrderId, activeOrder?.customer_name]);
 
   const handleTableSelect = (option: SelectOption | undefined) => {
@@ -223,6 +224,7 @@ const OrderDetails: React.FC = () => {
     // Create a new cart item for the open item
     const newOpenItem = {
       id: `open_item_${Date.now()}`,
+      itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
       name: openItemName.trim(),
       quantity: 1,
@@ -254,25 +256,31 @@ const OrderDetails: React.FC = () => {
     setIsOpenItemModalVisible(false);
   };
 
-  // Customer name editing handlers
-  const handleEditName = () => {
-    setIsEditingName(true);
+  // Customer name modal handlers
+  const handleAddCustomerName = () => {
+    setTempCustomerName(customerName);
+    setIsCustomerNameModalVisible(true);
   };
 
-  const handleSaveName = () => {
+  const handleSaveCustomerName = () => {
     if (activeOrderId) {
-      updateActiveOrderDetails({ customer_name: customerName.trim() });
-      setIsEditingName(false);
-      toast.success("Customer name updated", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
+      const trimmedName = tempCustomerName.trim();
+      setCustomerName(trimmedName);
+      updateActiveOrderDetails({ customer_name: trimmedName });
+      setIsCustomerNameModalVisible(false);
+      toast.success(
+        trimmedName ? "Customer name updated" : "Customer name removed",
+        {
+          duration: 2000,
+          position: ToastPosition.BOTTOM,
+        }
+      );
     }
   };
 
-  const handleCancelEditName = () => {
-    setCustomerName(activeOrder?.customer_name || "");
-    setIsEditingName(false);
+  const handleCancelCustomerName = () => {
+    setTempCustomerName(customerName);
+    setIsCustomerNameModalVisible(false);
   };
 
   const insets = useSafeAreaInsets();
@@ -284,47 +292,42 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className="pb-4 px-4 bg-white">
+    <View className="pb-4 px-4 bg-background-200 overflow-hidden rounded-t-3xl">
       {/* Header */}
-      <View className="flex-row items-center justify-between mb-4">
-        <TouchableOpacity className="p-2.5 bg-background-300 rounded-full">
-          <FileText color="#5D5D73" size={20} />
-        </TouchableOpacity>
-        <View className="items-center flex-1 mx-4">
-          {isEditingName ? (
-            <View className="flex-row items-center">
-              <TextInput
-                className="text-xl font-bold text-accent-500 text-center flex-1 mr-2 px-2 py-1 border border-accent-300 rounded"
-                value={customerName}
-                onChangeText={setCustomerName}
-                placeholder="Enter customer name"
-                placeholderTextColor="#9CA3AF"
-                autoFocus
-              />
-              <TouchableOpacity onPress={handleSaveName} className="p-1">
-                <Check color="#10B981" size={16} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCancelEditName} className="p-1">
-                <X color="#EF4444" size={16} />
-              </TouchableOpacity>
-            </View>
+      <View className="flex-row items-center justify-between my-2 w-full">
+        <View className="flex-1">
+          {/* Customer Name Button */}
+          {customerName && customerName !== "Walk-In Customer" ? (
+            // Edit Mode - Show customer name with edit icon
+            <TouchableOpacity
+              onPress={handleAddCustomerName}
+              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-accent-400 bg-accent-50 w-full"
+            >
+              <View className="flex-row items-center flex-1">
+                <Text className="text-lg font-semibold text-accent-500 flex-1">
+                  {customerName}
+                </Text>
+              </View>
+              <Edit3 color="#3B82F6" size={18} />
+            </TouchableOpacity>
           ) : (
-            <View className="flex-row items-center">
-              <Text className="text-xl font-bold text-accent-500">
-                {customerName || "Name Not Assigned"}
+            // Add Mode - Show add button with plus icon
+            <TouchableOpacity
+              onPress={handleAddCustomerName}
+              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 w-full"
+            >
+              <Plus color="#9CA3AF" size={20} />
+              <Text className="font-semibold text-gray-500">
+                Add Customer Name
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
-          <Text className="text-sm text-accent-500">
+
+          {/* Order Number */}
+          <Text className="text-sm text-accent-500 mt-2 text-center">
             Order Number #{activeOrderId?.slice(-5) || "00000"}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={handleEditName}
-          className="p-2.5 bg-background-300 rounded-full"
-        >
-          <Pencil color="#5D5D73" size={20} />
-        </TouchableOpacity>
       </View>
 
       {/* Selectors */}
@@ -392,7 +395,7 @@ const OrderDetails: React.FC = () => {
         className="mt-2 w-full items-center py-3 border border-background-400 rounded-lg"
         onPress={handleOpenItemPress}
       >
-        <Text className="font-bold text-accent-400">Open Item</Text>
+        <Text className="font-bold text-accent-400">Add Custom Item</Text>
       </TouchableOpacity>
 
       {/* Open Item Modal */}
@@ -400,11 +403,11 @@ const OrderDetails: React.FC = () => {
         open={isOpenItemModalVisible}
         onOpenChange={setIsOpenItemModalVisible}
       >
-        <DialogContent className="p-0 rounded-[36px] max-w-xl w-full bg-[#11111A] border-none">
+        <DialogContent className="p-0 rounded-[36px] max-w-2xl w-full bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-t-2xl">
             <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
-              Add Open Item
+              Add Custom Item
             </DialogTitle>
           </View>
 
@@ -460,6 +463,65 @@ const OrderDetails: React.FC = () => {
               >
                 <Text className="font-bold text-white text-center">
                   Add Item
+                </Text>
+              </TouchableOpacity>
+            </DialogFooter>
+          </View>
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Name Modal */}
+      <Dialog
+        open={isCustomerNameModalVisible}
+        onOpenChange={setIsCustomerNameModalVisible}
+      >
+        <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
+          {/* Dark Header */}
+          <View className="p-6 rounded-lg ">
+            <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
+              {customerName ? "Edit Customer Name" : "Add Customer Name"}
+            </DialogTitle>
+          </View>
+
+          {/* White Content */}
+          <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
+            <DialogHeader>
+              <Text className="text-accent-500 text-center mb-4">
+                Enter the customer's name for this order
+              </Text>
+            </DialogHeader>
+
+            {/* Customer Name Input */}
+            <View className="mb-6">
+              <Text className="text-accent-500 font-semibold mb-2">
+                Customer Name
+              </Text>
+              <TextInput
+                className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
+                placeholder="Enter customer name"
+                placeholderTextColor="#9CA3AF"
+                value={tempCustomerName}
+                onChangeText={setTempCustomerName}
+                autoFocus
+              />
+            </View>
+
+            {/* Footer with Buttons */}
+            <DialogFooter className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={handleCancelCustomerName}
+                className="flex-1 py-3 border border-gray-300 rounded-lg"
+              >
+                <Text className="font-bold text-gray-700 text-center">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveCustomerName}
+                className="flex-1 py-3 bg-accent-400 rounded-lg"
+              >
+                <Text className="font-bold text-white text-center">
+                  {customerName ? "Update" : "Add"}
                 </Text>
               </TouchableOpacity>
             </DialogFooter>

@@ -1,4 +1,5 @@
 // 1. Import the Select primitives directly from your UI library
+import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,7 @@ import {
   MOCK_PRINTER_RULES,
 } from "@/lib/mockData";
 import { PrinterRule } from "@/lib/types";
-import { Plus, Trash2 } from "lucide-react-native";
+import { CreditCard, Monitor, Plus, Printer, Receipt, Trash2 } from "lucide-react-native";
 import React, { useState } from "react";
 import { FlatList, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -115,6 +116,37 @@ const PrinterRulesScreen = () => {
     { label: string; value: string } | undefined
   >();
 
+  const hardwareSubsections = [
+    {
+      id: "printer",
+      title: "Printers",
+      subtitle: "Receipt & Kitchen",
+      route: "/settings/hardware-connection/printer",
+      icon: <Printer color="#3b82f6" size={20} />,
+    },
+    {
+      id: "printer-rules",
+      title: "Printer Rules",
+      subtitle: "Print Configuration",
+      route: "/settings/hardware-connection/printer-rules",
+      icon: <Receipt color="#3b82f6" size={20} />,
+    },
+    {
+      id: "customer-display",
+      title: "Customer Display",
+      subtitle: "Order Display",
+      route: "/settings/hardware-connection/customer-display",
+      icon: <Monitor color="#3b82f6" size={20} />,
+    },
+    {
+      id: "payment-terminal",
+      title: "Payment Terminal",
+      subtitle: "Card Processing",
+      route: "/settings/hardware-connection/payment-terminal",
+      icon: <CreditCard color="#3b82f6" size={20} />,
+    },
+  ];
+
   const printerOptions = MOCK_PRINTERS.map((p) => ({
     label: p.name,
     value: p.id,
@@ -157,76 +189,88 @@ const PrinterRulesScreen = () => {
 
   return (
     <View className="flex-1 bg-background-300 p-6">
-      <View className="flex-1">
-        <FlatList
-          data={rules}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <RuleRow
-              rule={item}
-              onUpdate={handleUpdateRule}
-              onDelete={handleDeleteRule}
-            />
-          )}
-          ItemSeparatorComponent={() => <View className="h-4" />}
+      <View className="flex-row gap-6 h-full w-full">
+        {/* Sidebar */}
+        <SettingsSidebar
+          title="Hardware & Connection"
+          subsections={hardwareSubsections}
+          currentRoute="/settings/hardware-connection/printer-rules"
         />
-      </View>
 
-      <View className="mt-6 pt-6 border-t border-gray-200">
-        <View className="flex-row items-center mb-2">
-          <Plus color="#4b5563" size={16} />
-          <Text className="font-bold text-gray-700 ml-2">+ Add New</Text>
-        </View>
-        <View className="flex-row items-center p-4 border border-background-400 rounded-2xl">
-          <View className="flex-1 mx-4">
-            <Select value={newRuleCategory} onValueChange={setNewRuleCategory}>
-              <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-                <SelectValue placeholder="Category" className="text-base" />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <SelectGroup>
-                  {MOCK_CATEGORIES.map((cat) => (
-                    <SelectItem
-                      key={cat.value}
-                      label={cat.label}
-                      value={cat.value}
-                    >
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </View>
+        {/* Main Content */}
+        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
           <View className="flex-1">
-            <Select value={newRulePrinter} onValueChange={setNewRulePrinter}>
-              <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-                <SelectValue placeholder="Printer" className="text-base" />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <SelectGroup>
-                  {printerOptions.map((p) => (
-                    <SelectItem key={p.value} label={p.label} value={p.value}>
-                      {p.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+            <FlatList
+              data={rules}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <RuleRow
+                  rule={item}
+                  onUpdate={handleUpdateRule}
+                  onDelete={handleDeleteRule}
+                />
+              )}
+              ItemSeparatorComponent={() => <View className="h-4" />}
+            />
           </View>
-          <TouchableOpacity
-            onPress={handleAddRule}
-            className="py-2 px-4 ml-4 border border-gray-300 rounded-xl"
-          >
-            <Text className="font-bold text-gray-700">Add</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      <View className="flex-row justify-start mt-6 pt-4 border-t border-gray-200">
-        <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
-          <Text className="font-bold text-white">Save Changes</Text>
-        </TouchableOpacity>
+          <View className="mt-6 pt-6 border-t border-gray-200">
+            <View className="flex-row items-center mb-2">
+              <Plus color="#4b5563" size={16} />
+              <Text className="font-bold text-gray-700 ml-2">+ Add New</Text>
+            </View>
+            <View className="flex-row items-center p-4 border border-background-400 rounded-2xl">
+              <View className="flex-1 mx-4">
+                <Select value={newRuleCategory} onValueChange={setNewRuleCategory}>
+                  <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
+                    <SelectValue placeholder="Category" className="text-base" />
+                  </SelectTrigger>
+                  <SelectContent insets={contentInsets}>
+                    <SelectGroup>
+                      {MOCK_CATEGORIES.map((cat) => (
+                        <SelectItem
+                          key={cat.value}
+                          label={cat.label}
+                          value={cat.value}
+                        >
+                          {cat.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </View>
+              <View className="flex-1">
+                <Select value={newRulePrinter} onValueChange={setNewRulePrinter}>
+                  <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
+                    <SelectValue placeholder="Printer" className="text-base" />
+                  </SelectTrigger>
+                  <SelectContent insets={contentInsets}>
+                    <SelectGroup>
+                      {printerOptions.map((p) => (
+                        <SelectItem key={p.value} label={p.label} value={p.value}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </View>
+              <TouchableOpacity
+                onPress={handleAddRule}
+                className="py-2 px-4 ml-4 border border-gray-300 rounded-xl"
+              >
+                <Text className="font-bold text-gray-700">Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View className="flex-row justify-start mt-6 pt-4 border-t border-gray-200">
+            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+              <Text className="font-bold text-white">Save Changes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </View>
   );

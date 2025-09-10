@@ -21,33 +21,33 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
 
   return (
     <View className="px-4 py-2 bg-background-200">
-      <View className="flex-row justify-between items-center mb-2">
-        <Text className="text-base text-accent-300">Subtotal</Text>
-        <Text className="text-base text-accent-300">
+      <View className="flex-row justify-between items-center mb-2 mt-2">
+        <Text className="text-xl text-accent-300">Subtotal</Text>
+        <Text className="text-xl text-accent-300">
           ${activeOrderSubtotal.toFixed(2)}
         </Text>
       </View>
       {activeOrderDiscount > 0 && (
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-base text-green-600">Discount</Text>
-          <Text className="text-base text-green-600">
+          <Text className="text-xl text-green-600">Discount</Text>
+          <Text className="text-xl text-green-600">
             -${activeOrderDiscount.toFixed(2)}
           </Text>
         </View>
       )}
       <View className="flex-row justify-between items-center mb-2">
-        <Text className="text-base text-accent-300">Tax</Text>
-        <Text className="text-base text-accent-300">
+        <Text className="text-xl text-accent-300">Tax</Text>
+        <Text className="text-xl text-accent-300">
           ${activeOrderTax.toFixed(2)}
         </Text>
       </View>
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-base text-accent-300">Voucher</Text>
-        <Text className="text-base text-accent-300">${voucher.toFixed(2)}</Text>
+      <View className="flex-row justify-between items-center mb-2">
+        <Text className="text-xl text-accent-300">Voucher</Text>
+        <Text className="text-xl text-accent-300">${voucher.toFixed(2)}</Text>
       </View>
       <View className="border-t border-dashed border-gray-300 pt-2 flex-row justify-between items-center">
-        <Text className="text-lg font-bold text-accent-500">Total</Text>
-        <Text className="text-lg font-bold text-accent-500">
+        <Text className="text-xl font-bold text-accent-500">Total</Text>
+        <Text className="text-xl font-bold text-accent-500">
           ${activeOrderTotal.toFixed(2)}
         </Text>
       </View>

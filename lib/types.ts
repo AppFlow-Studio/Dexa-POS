@@ -29,6 +29,23 @@ export interface AddOn {
   price: number;
 }
 
+export interface ModifierOption {
+  id: string;
+  name: string;
+  price: number;
+  isAvailable?: boolean; // For items that are "86'd" (unavailable)
+}
+
+export interface ModifierCategory {
+  id: string;
+  name: string;
+  type: "required" | "optional";
+  selectionType: "single" | "multiple";
+  maxSelections?: number; // For multiple selection with limits
+  description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
+  options: ModifierOption[];
+}
+
 export interface MenuItemType {
   id: string;
   name: string;
@@ -41,6 +58,9 @@ export interface MenuItemType {
   availableDiscount?: Discount;
   sizes?: ItemSize[];
   addOns?: AddOn[];
+  modifiers?: ModifierCategory[];
+  allergens?: string[];
+  cardBgColor?: string;
 }
 
 export type TableStatus =
@@ -92,12 +112,23 @@ export interface CartItem {
   paidQuantity?: number;
   // Per-item preparation status tracking for table workflow
   item_status?: "Preparing" | "Ready";
+  // Indicates if this item is a draft (not yet confirmed)
+  isDraft?: boolean;
   originalPrice: number;
   price: number; // Final price after size/add-ons
   image?: string; // Image filename is a top-level property
   customizations: {
     size?: ItemSize;
     addOns?: AddOn[];
+    modifiers?: {
+      categoryId: string;
+      categoryName: string;
+      options: {
+        id: string;
+        name: string;
+        price: number;
+      }[];
+    }[];
     notes?: string;
   };
   availableDiscount?: Discount;
@@ -261,13 +292,13 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Building"
-    | "Voided";
+  | "Open"
+  | "Closed"
+  | "Cancelled"
+  | "Preparing"
+  | "Ready"
+  | "Building"
+  | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";

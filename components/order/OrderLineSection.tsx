@@ -27,7 +27,7 @@ const OrderLineSection: React.FC = () => {
     const kitchenOrders = orders.filter(
       (o) =>
         // Condition 1: Must be in Preparing or Ready state (not closed)
-        (o.order_status === "Preparing" || o.order_status === "Ready") &&
+        o.order_status === "Preparing" &&
         // Condition 2: Must have one or more items
         o.items.length > 0
     );

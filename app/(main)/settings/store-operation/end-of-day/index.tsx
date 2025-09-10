@@ -5,6 +5,7 @@ import SalesTaxesSummaryCard from "@/components/settings/end-of-day/SalesTaxesSu
 import ServerTipoutsCard from "@/components/settings/end-of-day/ServerTipoutsCard";
 import TotalVoidsCard from "@/components/settings/end-of-day/TotalVoidsCard";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import { Href, Link, useRouter } from "expo-router";
 import {
   Banknote,
@@ -13,7 +14,10 @@ import {
   CreditCard,
   HardDrive,
   Printer,
+  Receipt,
   Recycle,
+  RefreshCcw,
+  Store,
   Users,
 } from "lucide-react-native";
 import React, { useState } from "react";
@@ -69,6 +73,33 @@ const EndOfDayReportScreen = () => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
+  const storeOperationSubsections = [
+    {
+      id: "end-of-day",
+      title: "End of Day",
+      subtitle: "Daily Operations",
+      route: "/settings/store-operation/end-of-day",
+      icon: <Store color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+    {
+      id: "receipt-rules",
+      title: "Receipt Rules",
+      subtitle: "Receipt Configuration",
+      route: "/settings/store-operation/receipt-rules",
+      icon: <Receipt color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+    {
+      id: "sync-status",
+      title: "Sync Status",
+      subtitle: "Data Synchronization",
+      route: "/settings/store-operation/sync-status",
+      icon: <RefreshCcw color="#3b82f6" size={20} />,
+      isLocked: true,
+    },
+  ];
+
   // Mock data for the statement
   const summary = {
     netSales: 27.25,
@@ -87,317 +118,326 @@ const EndOfDayReportScreen = () => {
 
   return (
     <View className="flex-1 bg-background-100 p-6">
-      {/* Main Content */}
-      <View className="flex-1 flex-row justify-between">
-        {/* Left Column: Report Details */}
-        <View className="w-[40%]">
-          <View className="bg-white p-1 rounded-xl flex-row self-start border border-gray-200 mb-6">
-            <TouchableOpacity
-              onPress={() => setActiveTab("statement")}
-              className={`py-2 px-4 rounded-lg ${activeTab === "statement" ? "bg-primary-100" : ""}`}
-            >
-              <Text
-                className={`font-semibold ${activeTab === "statement" ? "text-primary-400" : "text-gray-500"}`}
+      <View className="flex-row gap-6 h-full w-full">
+        {/* Sidebar */}
+        <SettingsSidebar
+          title="Store Operation"
+          subsections={storeOperationSubsections}
+          currentRoute="/settings/store-operation/end-of-day"
+        />
+
+        {/* Main Content */}
+        <View className="flex-1 flex-row justify-between">
+          {/* Left Column: Report Details */}
+          <View className="w-[40%]">
+            <View className="bg-white p-1 rounded-xl flex-row self-start border border-gray-200 mb-6">
+              <TouchableOpacity
+                onPress={() => setActiveTab("statement")}
+                className={`py-2 px-4 rounded-lg ${activeTab === "statement" ? "bg-primary-100" : ""}`}
               >
-                Statement
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setActiveTab("chart")}
-              className={`py-2 px-4 rounded-lg ${activeTab === "chart" ? "bg-primary-100" : ""}`}
-            >
-              <Text
-                className={`font-semibold ${activeTab === "chart" ? "text-primary-400" : "text-gray-500"}`}
+                <Text
+                  className={`font-semibold ${activeTab === "statement" ? "text-primary-400" : "text-gray-500"}`}
+                >
+                  Statement
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setActiveTab("chart")}
+                className={`py-2 px-4 rounded-lg ${activeTab === "chart" ? "bg-primary-100" : ""}`}
               >
-                Chart
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  className={`font-semibold ${activeTab === "chart" ? "text-primary-400" : "text-gray-500"}`}
+                >
+                  Chart
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView className="w-full" showsVerticalScrollIndicator={false}>
+              <View className="gap-y-4">
+                <SummaryCard title="Sales & Taxes Summary">
+                  {activeTab === "statement" ? (
+                    <>
+                      <SummaryRow
+                        label="Total net sales"
+                        value={`$${summary.netSales.toFixed(2)}`}
+                      />
+                      <SummaryRow
+                        label="Tax"
+                        value={`$${summary.tax.toFixed(2)}`}
+                      />
+                      <View className="border-t border-dashed my-2" />
+                      <View className="flex-row justify-between items-center">
+                        <Text className="font-bold text-lg">Total Sales</Text>
+                        <Text className="font-bold text-lg">
+                          ${summary.totalSales.toFixed(2)}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <SalesTaxesSummaryCard />
+                  )}
+                </SummaryCard>
+
+                <SummaryCard title="Revenue Centers">
+                  {activeTab === "statement" ? (
+                    <>
+                      <View className="flex-row justify-between mb-2">
+                        <Text className="font-bold text-gray-500">
+                          Revenue Centers
+                        </Text>
+                        <Text className="font-bold text-gray-500">Qty</Text>
+                        <Text className="font-bold text-gray-500">Net Sales</Text>
+                      </View>
+                      <SummaryRow
+                        label="Dinning Room"
+                        value={`${summary.diningRoomQty}\t\t$${summary.diningRoomSales.toFixed(2)}`}
+                      />
+                      <SummaryRow
+                        label="Tax"
+                        value={`${summary.taxQty}\t\t$${summary.tax.toFixed(2)}`}
+                      />
+                    </>
+                  ) : (
+                    <RevenueCentersCard />
+                  )}
+                </SummaryCard>
+
+                <SummaryCard title="Payment Details">
+                  {activeTab === "statement" ? (
+                    <>
+                      <SummaryRow
+                        label="Total"
+                        value={`$${summary.totalPayments.toFixed(2)}`}
+                      />
+                      <View className="border-t border-dashed my-2" />
+                      <View className="flex-row justify-between items-center">
+                        <Text className="font-bold text-lg">
+                          Total Payments - Total Sales =
+                        </Text>
+                        <Text className="font-bold text-lg">
+                          -$
+                          {(summary.totalSales - summary.totalPayments).toFixed(
+                            2
+                          )}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <PaymentDetailsCard />
+                  )}
+                </SummaryCard>
+
+                <SummaryCard title="Server Tipouts">
+                  {activeTab === "statement" ? (
+                    <>
+                      <SummaryRow
+                        label="Cash before tipouts"
+                        value={`$${summary.cashTipouts.toFixed(2)}`}
+                      />
+                      <Text className="text-sm text-gray-400">
+                        ( Total Tips and fees Tipped out: $0.00 )
+                      </Text>
+                      <View className="border-t border-dashed my-2" />
+                      <View className="flex-row justify-between items-center">
+                        <Text className="font-bold text-lg">
+                          Total Payments - Total Sales
+                        </Text>
+                        <Text className="font-bold text-lg">
+                          -$
+                          {(summary.totalSales - summary.totalPayments).toFixed(
+                            2
+                          )}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
+                    <ServerTipoutsCard />
+                  )}
+                </SummaryCard>
+
+                <SummaryCard title="Total Voids">
+                  {activeTab === "statement" ? (
+                    <>
+                      <SummaryRow
+                        label="Void amount"
+                        value={`$${summary.voidAmount.toFixed(2)}`}
+                      />
+                      <SummaryRow
+                        label="Void order count"
+                        value={summary.voidOrderCount.toString()}
+                      />
+                      <SummaryRow
+                        label="Voit item count"
+                        value={summary.voidItemCount.toString()}
+                      />
+                      <SummaryRow
+                        label="Void percentage"
+                        value={`${summary.voidPercentage.toFixed(1)}%`}
+                      />
+                    </>
+                  ) : (
+                    <TotalVoidsCard />
+                  )}
+                </SummaryCard>
+              </View>
+            </ScrollView>
           </View>
-          <ScrollView className="w-full" showsVerticalScrollIndicator={false}>
-            <View className="gap-y-4">
-              <SummaryCard title="Sales & Taxes Summary">
-                {activeTab === "statement" ? (
-                  <>
-                    <SummaryRow
-                      label="Total net sales"
-                      value={`$${summary.netSales.toFixed(2)}`}
-                    />
-                    <SummaryRow
-                      label="Tax"
-                      value={`$${summary.tax.toFixed(2)}`}
-                    />
-                    <View className="border-t border-dashed my-2" />
-                    <View className="flex-row justify-between items-center">
-                      <Text className="font-bold text-lg">Total Sales</Text>
-                      <Text className="font-bold text-lg">
-                        ${summary.totalSales.toFixed(2)}
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <SalesTaxesSummaryCard />
-                )}
-              </SummaryCard>
 
-              <SummaryCard title="Revenue Centers">
-                {activeTab === "statement" ? (
-                  <>
-                    <View className="flex-row justify-between mb-2">
-                      <Text className="font-bold text-gray-500">
-                        Revenue Centers
-                      </Text>
-                      <Text className="font-bold text-gray-500">Qty</Text>
-                      <Text className="font-bold text-gray-500">Net Sales</Text>
-                    </View>
-                    <SummaryRow
-                      label="Dinning Room"
-                      value={`${summary.diningRoomQty}\t\t$${summary.diningRoomSales.toFixed(2)}`}
-                    />
-                    <SummaryRow
-                      label="Tax"
-                      value={`${summary.taxQty}\t\t$${summary.tax.toFixed(2)}`}
-                    />
-                  </>
-                ) : (
-                  <RevenueCentersCard />
-                )}
-              </SummaryCard>
-
-              <SummaryCard title="Payment Details">
-                {activeTab === "statement" ? (
-                  <>
-                    <SummaryRow
-                      label="Total"
-                      value={`$${summary.totalPayments.toFixed(2)}`}
-                    />
-                    <View className="border-t border-dashed my-2" />
-                    <View className="flex-row justify-between items-center">
-                      <Text className="font-bold text-lg">
-                        Total Payments - Total Sales =
-                      </Text>
-                      <Text className="font-bold text-lg">
-                        -$
-                        {(summary.totalSales - summary.totalPayments).toFixed(
-                          2
-                        )}
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <PaymentDetailsCard />
-                )}
-              </SummaryCard>
-
-              <SummaryCard title="Server Tipouts">
-                {activeTab === "statement" ? (
-                  <>
-                    <SummaryRow
-                      label="Cash before tipouts"
-                      value={`$${summary.cashTipouts.toFixed(2)}`}
-                    />
-                    <Text className="text-sm text-gray-400">
-                      ( Total Tips and fees Tipped out: $0.00 )
-                    </Text>
-                    <View className="border-t border-dashed my-2" />
-                    <View className="flex-row justify-between items-center">
-                      <Text className="font-bold text-lg">
-                        Total Payments - Total Sales
-                      </Text>
-                      <Text className="font-bold text-lg">
-                        -$
-                        {(summary.totalSales - summary.totalPayments).toFixed(
-                          2
-                        )}
-                      </Text>
-                    </View>
-                  </>
-                ) : (
-                  <ServerTipoutsCard />
-                )}
-              </SummaryCard>
-
-              <SummaryCard title="Total Voids">
-                {activeTab === "statement" ? (
-                  <>
-                    <SummaryRow
-                      label="Void amount"
-                      value={`$${summary.voidAmount.toFixed(2)}`}
-                    />
-                    <SummaryRow
-                      label="Void order count"
-                      value={summary.voidOrderCount.toString()}
-                    />
-                    <SummaryRow
-                      label="Voit item count"
-                      value={summary.voidItemCount.toString()}
-                    />
-                    <SummaryRow
-                      label="Void percentage"
-                      value={`${summary.voidPercentage.toFixed(1)}%`}
-                    />
-                  </>
-                ) : (
-                  <TotalVoidsCard />
-                )}
-              </SummaryCard>
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Right Column: Actions & Status */}
-        <View className="w-[58%] gap-y-4 bg-background-300 p-6 rounded-2xl border border-gray-200">
-          <TouchableOpacity className="flex-row items-center justify-end">
-            <View className="flex-row items-center bg-white border border-gray-200 rounded-lg">
-              <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
-            </View>
-          </TouchableOpacity>
-          <View className="flex-row gap-2 ">
-            <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
-              <Link
-                href="/(main)/settings/store-operation/end-of-day/sales-summary"
-                className="font-bold text-gray-700"
+          {/* Right Column: Actions & Status */}
+          <View className="w-[58%] gap-y-4 bg-background-300 p-6 rounded-2xl border border-gray-200">
+            <TouchableOpacity className="flex-row items-center justify-end">
+              <View className="flex-row items-center bg-white border border-gray-200 rounded-lg">
+                <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+              </View>
+            </TouchableOpacity>
+            <View className="flex-row gap-2 ">
+              <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
+                <Link
+                  href="/(main)/settings/store-operation/end-of-day/sales-summary"
+                  className="font-bold text-gray-700"
+                >
+                  Run Sales Summary
+                </Link>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setModalOpen(true)}
+                className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
               >
-                Run Sales Summary
-              </Link>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setModalOpen(true)}
-              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
-            >
-              <Text className="font-bold text-gray-700">
-                Close Credit Card Batch
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-            <View className="p-2 rounded-full">
-              <CheckSquare color="#4b5563" size={24} />
-            </View>
-            <View className="flex-1 mx-4">
-              <Text className="font-bold text-gray-800">All Checks Closed</Text>
-
-              <Text className="text-sm text-gray-500">
-                Make sure non-cash tips are added. Non-cash tips cannot be
-                adjusted after 24 hours
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() =>
-                router.push(
-                  "/(main)/settings/store-operation/end-of-day/checks" as Href
-                )
-              }
-              className="py-2 px-4"
-            >
-              <Text className="font-bold text-primary-400 text-sm">
-                View Checks
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-            <View className="p-2 rounded-full">
-              <HardDrive color="#4b5563" size={24} />
-            </View>
-            <View className="flex-1 mx-4">
-              <Text className="font-bold text-gray-800">
-                All drawers are closed
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() =>
-                router.push(
-                  "/(main)/settings/store-operation/end-of-day/drawers" as Href
-                )
-              }
-              className="py-2 px-4"
-            >
-              <Text className="font-bold text-primary-400 text-sm">
-                View Drawers
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-            <View className="p-2 rounded-full">
-              <Users color="#4b5563" size={24} />
-            </View>
-            <View className="flex-1 mx-4">
-              <Text className="font-bold text-gray-800">
-                1 Employee Clocked in
-              </Text>
-
-              <Text className="text-sm text-gray-500">
-                2 Employees clocked out
-              </Text>
-            </View>
-            <TouchableOpacity className="py-2 px-4 border border-background-500 rounded-xl mr-2">
-              <Text className="text-accent-500 text-sm font-medium">
-                Clock out all
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() =>
-                router.push(
-                  "/(main)/settings/store-operation/end-of-day/employees" as Href
-                )
-              }
-              className="py-2 px-4 bg-primary-400 rounded-xl"
-            >
-              <Text className="font-bold text-white text-sm">
-                View Employees
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-            <View className="p-2 rounded-full">
-              <Banknote color="#4b5563" size={24} />
-            </View>
-            <View className="flex-1 mx-4">
-              <Text className="font-bold text-gray-800">0 Deposits</Text>
-            </View>
-
-            <TouchableOpacity
-              onPress={() =>
-                router.push(
-                  "/(main)/settings/store-operation/end-of-day/add-cash-to-register" as Href
-                )
-              }
-              className="py-2 px-4 bg-primary-400 rounded-xl"
-            >
-              <Text className="font-bold text-white text-sm">
-                Create Deposit
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-            <View className="p-2 rounded-full">
-              <CreditCard color="#4b5563" size={24} />
-            </View>
-            <View className="flex-1 mx-4">
-              <Text className="font-bold text-gray-800">
-                All payments captured
-              </Text>
-            </View>
-          </View>
-
-          <View className="mt-auto pt-4 gap-y-2 border-t border-gray-200">
-            <View className="flex-row gap-2">
-              <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
-                <Printer className="h-2 w-2" />
-                <Text className="font-bold text-gray-700">Print Receipt</Text>
+                <Text className="font-bold text-gray-700">
+                  Close Credit Card Batch
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
-                <Recycle className="h-2 w-2" />
-                <Text className="font-bold text-gray-700">Auto-resolve</Text>
+            </View>
+
+            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+              <View className="p-2 rounded-full">
+                <CheckSquare color="#4b5563" size={24} />
+              </View>
+              <View className="flex-1 mx-4">
+                <Text className="font-bold text-gray-800">All Checks Closed</Text>
+
+                <Text className="text-sm text-gray-500">
+                  Make sure non-cash tips are added. Non-cash tips cannot be
+                  adjusted after 24 hours
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    "/(main)/settings/store-operation/end-of-day/checks" as Href
+                  )
+                }
+                className="py-2 px-4"
+              >
+                <Text className="font-bold text-primary-400 text-sm">
+                  View Checks
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 bg-primary-400 rounded-lg items-center">
-                <Check className="h-2 w-2 text-white" />
-                <Text className="font-bold text-white">End Day</Text>
+            </View>
+
+            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+              <View className="p-2 rounded-full">
+                <HardDrive color="#4b5563" size={24} />
+              </View>
+              <View className="flex-1 mx-4">
+                <Text className="font-bold text-gray-800">
+                  All drawers are closed
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    "/(main)/settings/store-operation/end-of-day/drawers" as Href
+                  )
+                }
+                className="py-2 px-4"
+              >
+                <Text className="font-bold text-primary-400 text-sm">
+                  View Drawers
+                </Text>
               </TouchableOpacity>
+            </View>
+
+            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+              <View className="p-2 rounded-full">
+                <Users color="#4b5563" size={24} />
+              </View>
+              <View className="flex-1 mx-4">
+                <Text className="font-bold text-gray-800">
+                  1 Employee Clocked in
+                </Text>
+
+                <Text className="text-sm text-gray-500">
+                  2 Employees clocked out
+                </Text>
+              </View>
+              <TouchableOpacity className="py-2 px-4 border border-background-500 rounded-xl mr-2">
+                <Text className="text-accent-500 text-sm font-medium">
+                  Clock out all
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    "/(main)/settings/store-operation/end-of-day/employees" as Href
+                  )
+                }
+                className="py-2 px-4 bg-primary-400 rounded-xl"
+              >
+                <Text className="font-bold text-white text-sm">
+                  View Employees
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+              <View className="p-2 rounded-full">
+                <Banknote color="#4b5563" size={24} />
+              </View>
+              <View className="flex-1 mx-4">
+                <Text className="font-bold text-gray-800">0 Deposits</Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    "/(main)/settings/store-operation/end-of-day/add-cash-to-register" as Href
+                  )
+                }
+                className="py-2 px-4 bg-primary-400 rounded-xl"
+              >
+                <Text className="font-bold text-white text-sm">
+                  Create Deposit
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+              <View className="p-2 rounded-full">
+                <CreditCard color="#4b5563" size={24} />
+              </View>
+              <View className="flex-1 mx-4">
+                <Text className="font-bold text-gray-800">
+                  All payments captured
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-auto pt-4 gap-y-2 border-t border-gray-200">
+              <View className="flex-row gap-2">
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
+                  <Printer className="h-2 w-2" />
+                  <Text className="font-bold text-gray-700">Print Receipt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
+                  <Recycle className="h-2 w-2" />
+                  <Text className="font-bold text-gray-700">Auto-resolve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 bg-primary-400 rounded-lg items-center">
+                  <Check className="h-2 w-2 text-white" />
+                  <Text className="font-bold text-white">End Day</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>

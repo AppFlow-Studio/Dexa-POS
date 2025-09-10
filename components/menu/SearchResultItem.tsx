@@ -1,8 +1,8 @@
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus } from "lucide-react-native";
 import React from "react";
@@ -15,25 +15,27 @@ interface SearchResultItemProps {
 const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
-  const { activeTableId } = usePaymentStore();
-  const { orders, activeOrderId } = useOrderStore();
+  const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
+  const { openFullscreen } = useModifierSidebarStore();
+
+  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const { openToAdd } = useModifierSidebarStore();
 
   const handleAddToCart = () => {
-    // Check if the active order is closed
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "Closed") {
-      // Show a toast warning instead of opening dialog
-      toast.error("Order is closed. Please reopen the check to add items.", {
+
+    // 2. Add validation check before opening the dialog
+    if (!activeOrder?.order_type) {
+      toast.error("Please select an Order Type", {
         duration: 4000,
         position: ToastPosition.BOTTOM,
       });
-      closeSearchSheet();
-      return;
+      return; // Stop execution
     }
 
-    openDialog(item, activeTableId || undefined);
+    openFullscreen(item, activeOrderId);
     closeSearchSheet();
   };
+
 
   return (
     <View className="flex-row justify-between items-center py-4 border-b border-gray-100">
