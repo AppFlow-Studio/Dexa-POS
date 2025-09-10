@@ -24,7 +24,7 @@ import {
   ShiftStatus,
   TableType,
   TrackedOrder,
-  UserProfile
+  UserProfile,
 } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
@@ -289,9 +289,9 @@ const pizzaModifiers: ModifierCategory[] = [
     type: "required",
     selectionType: "single",
     options: [
-      { id: "small", name: "Small (10\")", price: 0 },
-      { id: "medium", name: "Medium (12\")", price: 3.0 },
-      { id: "large", name: "Large (14\")", price: 5.0 },
+      { id: "small", name: 'Small (10")', price: 0 },
+      { id: "medium", name: 'Medium (12")', price: 3.0 },
+      { id: "large", name: 'Large (14")', price: 5.0 },
     ],
   },
   {
@@ -1359,8 +1359,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "41",
     name: "Mozzarella Sticks",
-    description:
-      "Crispy breaded mozzarella sticks served with marinara sauce.",
+    description: "Crispy breaded mozzarella sticks served with marinara sauce.",
     price: 6.99,
     meal: ["Lunch", "Dinner"],
     category: "Appetizers",
@@ -1371,8 +1370,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "42",
     name: "Spinach Artichoke Dip",
-    description:
-      "Creamy spinach and artichoke dip served with tortilla chips.",
+    description: "Creamy spinach and artichoke dip served with tortilla chips.",
     price: 7.99,
     meal: ["Lunch", "Dinner"],
     category: "Appetizers",
@@ -1420,8 +1418,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "46",
     name: "Sweet Potato Fries",
-    description:
-      "Crispy sweet potato fries seasoned with sea salt and herbs.",
+    description: "Crispy sweet potato fries seasoned with sea salt and herbs.",
     price: 4.99,
     meal: ["Lunch", "Dinner"],
     category: "Sides",
@@ -1469,8 +1466,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
   {
     id: "50",
     name: "Iced Tea",
-    description:
-      "Freshly brewed black tea served over ice with lemon.",
+    description: "Freshly brewed black tea served over ice with lemon.",
     price: 2.49,
     meal: ["Lunch", "Dinner", "Brunch"],
     category: "Drinks",
@@ -1902,7 +1898,7 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     customer: "Jane Smith",
     server: "Jessica",
     itemCount: 3,
-    type: "Take-Away",
+    type: "Take Away",
     total: 22.75,
     items: [],
   },
