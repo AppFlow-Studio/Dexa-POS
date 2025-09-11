@@ -1,5 +1,5 @@
 import InventoryRow from "@/components/inventory/InventoryRow";
-import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useItemStore } from "@/stores/useItemStore";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react-native";
 import React from "react";
@@ -25,11 +25,13 @@ const TABLE_HEADERS = [
 const InventoryScreen = () => {
   const router = useRouter();
   // Fetch items from the new Zustand store
-  const { inventoryItems } = useInventoryStore();
+  const { items } = useItemStore();
 
   // Handlers for the row actions (can be implemented later)
   const handleViewDetails = () => alert("View Details");
-  const handleEdit = () => alert("Edit Item");
+  const handleEdit = (itemId: string) => {
+    router.push(`/inventory/${itemId}`);
+  };
   const handleDelete = () => alert("Delete Item");
 
   return (
@@ -60,13 +62,13 @@ const InventoryScreen = () => {
         </View>
         {/* Table Body */}
         <FlatList
-          data={inventoryItems}
+          data={items}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <InventoryRow
               item={item}
               onViewDetails={handleViewDetails}
-              onEdit={handleEdit}
+              onEdit={() => handleEdit(item.id)}
               onDelete={handleDelete}
             />
           )}

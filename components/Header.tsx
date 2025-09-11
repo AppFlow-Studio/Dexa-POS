@@ -23,6 +23,9 @@ import {
 const generateTitleFromPath = (pathname: string): string => {
   if (pathname === "/" || pathname === "/home") return "Menu";
   if (pathname === "/order-processing") return "Back to Menu";
+  if (pathname === "/inventory/add-item") return "Add Item";
+  if (pathname.startsWith("/inventory/") && pathname !== "/inventory")
+    return "Edit Item";
 
   // Handle dynamic online order route
   if (
@@ -87,6 +90,7 @@ const Header = () => {
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname === "/settings" ||
+    pathname.startsWith("/inventory/") ||
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/previous-orders/") &&
@@ -94,8 +98,7 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4) ||
-    (pathname.startsWith("/settings") &&
-      pathname.split("/").length === 4)
+    (pathname.startsWith("/settings") && pathname.split("/").length === 4);
   pathname === "/settings/store-operation/end-of-day/checks" ||
     pathname === "/settings/store-operation/end-of-day/drawers" ||
     pathname === "/settings/store-operation/end-of-day/employees" ||

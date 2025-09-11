@@ -1,4 +1,5 @@
-import { InventoryItem } from "@/lib/types";
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
+import { MenuItemType } from "@/lib/types";
 import { Eye, MoreHorizontal, Package, Pen, Trash2 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
@@ -10,7 +11,7 @@ import {
 } from "../ui/dropdown-menu";
 
 interface InventoryRowProps {
-  item: InventoryItem;
+  item: MenuItemType;
   // Add handlers for actions
   onViewDetails: () => void;
   onEdit: () => void;
@@ -33,7 +34,9 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
   // Use useMemo to avoid re-creating the image source on every render
   const imageSource = useMemo(() => {
     // Assuming item.image is a string URL or a local require path
-    return typeof item.image === "string" ? { uri: item.image } : item.image;
+    return item.image
+      ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
+      : undefined;
   }, [item.image]);
 
   return (

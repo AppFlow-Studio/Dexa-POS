@@ -1,6 +1,7 @@
-import { MENU_IMAGE_MAP, MOCK_MENU_ITEMS } from "@/lib/mockData";
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
+import { useItemStore } from "@/stores/useItemStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -19,21 +20,26 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const [activeCategory, setActiveCategory] = useState("Main Course");
   const { isOpen, mode, cartItem, close } = useModifierSidebarStore();
 
+  const { items } = useItemStore();
+
   // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
   );
   const { openSearch } = useSearchStore();
 
-
   useEffect(() => {
-    const filtered = MOCK_MENU_ITEMS.filter((item) => {
+    const filtered = items.filter((item) => {
+      // Only show items that are marked as available
+      if (!item.availability) {
+        return false;
+      }
       const mealMatch = item.meal.includes(activeMeal as any);
       const categoryMatch = item.category === activeCategory;
       return mealMatch && categoryMatch;
     });
     setFilteredMenuItems(filtered);
-  }, [activeMeal, activeCategory]);
+  }, [activeMeal, activeCategory, items]);
 
   // Show modifier screen when in fullscreen mode (both add and edit), otherwise show regular menu
   if (isOpen && mode === "fullscreen") {
@@ -92,7 +98,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           )}
         />
       </View>
-
     </>
   );
 };

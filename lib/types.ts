@@ -36,31 +36,57 @@ export interface ModifierOption {
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
 }
 
-export interface ModifierCategory {
+export interface ModifierGroup {
   id: string;
   name: string;
-  type: "required" | "optional";
-  selectionType: "single" | "multiple";
-  maxSelections?: number; // For multiple selection with limits
-  description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
+  isEnabled: boolean;
+  minSelections: number;
+  maxSelections: number;
+  type?: "required" | "optional";
+  selectionType?: "single" | "multiple";
   options: ModifierOption[];
 }
 
+export type PricingType = "fixed" | "at_sale";
+export type ItemStatus = "Active" | "Draft" | "Inactive" | "Out of Stock";
+
 export interface MenuItemType {
+  // Core Item Details
   id: string;
   name: string;
   description?: string;
-  price: number;
-  cashPrice?: number;
   image?: string;
-  meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
-  category: "Appetizers" | "Main Course" | "Sides" | "Drinks" | "Dessert";
+  color?: string; // For the POS tile color
+  category:
+    | "Appetizers"
+    | "Main Course"
+    | "Sides"
+    | "Drinks"
+    | "Dessert"
+    | "Pastries"
+    | "Breads";
+
+  // Pricing & Tax
+  pricingType: PricingType;
+  price: number;
+  taxIds?: string[];
   availableDiscount?: Discount;
+
+  // Menu & Modifiers
+  meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
+  modifierGroupIds?: string[];
   sizes?: ItemSize[];
   addOns?: AddOn[];
-  modifiers?: ModifierCategory[];
   allergens?: string[];
-  cardBgColor?: string;
+  availability: boolean; // Enable/disable on menu
+
+  // Inventory & Tracking
+  serialNo: string;
+  stock: number;
+  unit: "PCs" | "KGs" | "Liters";
+  status: ItemStatus;
+  lastUpdate: string;
+  parLevel?: number; // For low-stock alerts
 }
 
 export type TableStatus =
@@ -176,28 +202,6 @@ export interface PreviousOrder {
   refunded?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
-}
-
-export type InventoryItemStatus =
-  | "Active"
-  | "Draft"
-  | "Inactive"
-  | "Out of Stock";
-
-export interface InventoryItem {
-  id: string; // e.g., '#2020E11'
-  serialNo: string;
-  name: string;
-  image?: string; // Filename from assets
-  description: string;
-  stock: number;
-  unit: "PCs" | "KGs" | "Liters";
-  lastUpdate: string; // e.g., '02/03/2025 10:30 AM'
-  status: InventoryItemStatus;
-  // Additional details for the forms
-  category: string;
-  modifier: string;
-  availability: boolean;
 }
 
 export interface UserProfile {

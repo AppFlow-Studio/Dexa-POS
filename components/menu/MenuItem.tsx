@@ -57,7 +57,8 @@ const MenuItem: React.FC<MenuItemProps> = ({
   return (
     <TouchableOpacity
       onPress={handlePress}
-      className={`w-[32%] p-4 rounded-[20px] mb-3 ${item.cardBgColor} border border-[#F5F5F5]`}
+      className={`w-[32%] p-4 rounded-[20px] mb-3 border border-[#F5F5F5]`}
+      style={{ backgroundColor: item.color }}
     >
       <View className="flex-row items-center gap-2">
         {/* {imageSource ? (
@@ -76,7 +77,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Text className="text-base font-bold text-accent-500 mt-3 flex-1">
               {item.name}
             </Text>
-            {item.modifiers && item.modifiers.length > 0 && (
+            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
               <Settings color="#3b82f6" size={16} className="ml-2" />
             )}
           </View>
@@ -84,11 +85,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Text className="text-base font-semibold text-accent-500">
               ${item.price.toFixed(2)}
             </Text>
-            {item.cashPrice && (
-              <Text className="text-xs text-accent-500 ml-2">
-                Cash Price: ${item.cashPrice.toFixed(2)}
-              </Text>
-            )}
           </View>
         </View>
       </View>
