@@ -1,18 +1,21 @@
-// /app/(main)/settings/basic/modifiers.tsx
+import GroupEditorModal from "@/components/settings/modifiers/GroupEditorModal";
+import OptionEditorModal from "@/components/settings/modifiers/OptionEditorModal";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import { ModifierGroup, ModifierOption } from "@/lib/types";
 import { useModifierGroupStore } from "@/stores/useModifierGroupStore";
-import { Edit, Plus, Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
-import { FlatList, Switch, Text, TouchableOpacity, View } from "react-native";
-// import { CreateEditModifierGroupModal } from '@/components/settings/modifiers/CreateEditModifierGroupModal';
 import {
   Building2,
   Database,
+  Edit,
+  Plus,
   Receipt,
-  Settings as SettingsIcon,
+  SettingsIcon,
+  Trash2,
   User,
 } from "lucide-react-native";
+import React, { useState } from "react";
+import { FlatList, Switch, Text, TouchableOpacity, View } from "react-native";
 
 // Row component for displaying each modifier option
 const ModifierOptionRow = ({
@@ -47,11 +50,29 @@ const ModifiersScreen = () => {
     updateGroup,
     deleteGroup,
     addOptionToGroup,
+    updateOptionInGroup,
+    deleteOptionFromGroup,
   } = useModifierGroupStore();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // State for modals
+  const [isGroupModalOpen, setGroupModalOpen] = useState(false);
+  const [isOptionModalOpen, setOptionModalOpen] = useState(false);
+  const [isDeleteGroupModalOpen, setDeleteGroupModalOpen] = useState(false);
+  const [isDeleteOptionModalOpen, setDeleteOptionModalOpen] = useState(false);
+
+  // State to hold the item being edited or deleted
   const [selectedGroup, setSelectedGroup] = useState<ModifierGroup | null>(
     null
   );
+  const [selectedOption, setSelectedOption] = useState<{
+    groupId: string;
+    option: ModifierOption;
+  } | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<string | null>(null);
+  const [optionToDelete, setOptionToDelete] = useState<{
+    groupId: string;
+    optionId: string;
+  } | null>(null);
 
   const handleSaveGroup = (
     groupData: Omit<ModifierGroup, "id" | "options">
@@ -62,6 +83,19 @@ const ModifiersScreen = () => {
       createGroup(groupData);
     }
     setSelectedGroup(null);
+  };
+
+  const handleSaveOption = (optionData: Omit<ModifierOption, "id">) => {
+    if (selectedOption) {
+      updateOptionInGroup(
+        selectedOption.groupId,
+        selectedOption.option.id,
+        optionData
+      );
+    } else if (selectedGroup) {
+      // Adding a new option to the currently viewed group
+      addOptionToGroup(selectedGroup.id, optionData);
+    }
   };
 
   const basicSubsections = [
@@ -118,7 +152,7 @@ const ModifiersScreen = () => {
             <TouchableOpacity
               onPress={() => {
                 setSelectedGroup(null);
-                setIsModalOpen(true);
+                setGroupModalOpen(true);
               }}
               className="flex-row items-center gap-2 py-2 px-4 bg-primary-400 rounded-lg"
             >
@@ -149,12 +183,17 @@ const ModifiersScreen = () => {
                     <TouchableOpacity
                       onPress={() => {
                         setSelectedGroup(item);
-                        setIsModalOpen(true);
+                        setGroupModalOpen(true);
                       }}
                     >
                       <Edit size={20} color="#4b5563" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteGroup(item.id)}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setGroupToDelete(item.id);
+                        setDeleteGroupModalOpen(true);
+                      }}
+                    >
                       <Trash2 size={20} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
@@ -164,21 +203,29 @@ const ModifiersScreen = () => {
                     <ModifierOptionRow
                       key={opt.id}
                       option={opt}
-                      onEdit={() => {}}
-                      onDelete={() => {}}
+                      onEdit={() => {
+                        setSelectedOption({ groupId: item.id, option: opt });
+                        setOptionModalOpen(true);
+                      }}
+                      onDelete={() => {
+                        setOptionToDelete({
+                          groupId: item.id,
+                          optionId: opt.id,
+                        });
+                        setDeleteOptionModalOpen(true);
+                      }}
                     />
                   ))}
                   <TouchableOpacity
-                    onPress={() =>
-                      addOptionToGroup(item.id, {
-                        name: "New Option",
-                        price: 0,
-                      })
-                    }
+                    onPress={() => {
+                      setSelectedGroup(item);
+                      setSelectedOption(null);
+                      setOptionModalOpen(true);
+                    }}
                     className="py-2 mt-2 border-2 border-dashed border-gray-300 rounded-lg items-center"
                   >
                     <Text className="font-semibold text-gray-600">
-                      + Add Modifier
+                      + Add Modifier Option
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -188,12 +235,49 @@ const ModifiersScreen = () => {
         </View>
       </View>
 
-      {/* <CreateEditModifierGroupModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+      {/* --- MODALS --- */}
+      <GroupEditorModal
+        isOpen={isGroupModalOpen}
+        onClose={() => setGroupModalOpen(false)}
         onSave={handleSaveGroup}
         initialData={selectedGroup}
-      /> */}
+      />
+      <OptionEditorModal
+        isOpen={isOptionModalOpen}
+        onClose={() => setOptionModalOpen(false)}
+        onSave={handleSaveOption}
+        initialData={selectedOption?.option}
+      />
+
+      <ConfirmationModal
+        isOpen={isDeleteGroupModalOpen}
+        onClose={() => setDeleteGroupModalOpen(false)}
+        onConfirm={() => {
+          if (groupToDelete) deleteGroup(groupToDelete);
+          setDeleteGroupModalOpen(false);
+        }}
+        title="Delete Group"
+        description="Are you sure? This will remove the group and all its options."
+        confirmText="Delete"
+        variant="destructive"
+      />
+
+      <ConfirmationModal
+        isOpen={isDeleteOptionModalOpen}
+        onClose={() => setDeleteOptionModalOpen(false)}
+        onConfirm={() => {
+          if (optionToDelete)
+            deleteOptionFromGroup(
+              optionToDelete.groupId,
+              optionToDelete.optionId
+            );
+          setDeleteOptionModalOpen(false);
+        }}
+        title="Delete Option"
+        description="Are you sure you want to delete this modifier option?"
+        confirmText="Delete"
+        variant="destructive"
+      />
     </View>
   );
 };

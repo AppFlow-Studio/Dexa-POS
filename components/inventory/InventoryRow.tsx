@@ -1,6 +1,13 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
-import { Eye, MoreHorizontal, Package, Pen, Trash2 } from "lucide-react-native";
+import {
+  Eye,
+  EyeOff,
+  MoreHorizontal,
+  Package,
+  Pen,
+  Trash2,
+} from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -13,7 +20,7 @@ import {
 interface InventoryRowProps {
   item: MenuItemType;
   // Add handlers for actions
-  onViewDetails: () => void;
+  onToggleActive: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -27,7 +34,7 @@ const statusClasses: Record<string, string> = {
 
 const InventoryRow: React.FC<InventoryRowProps> = ({
   item,
-  onViewDetails,
+  onToggleActive,
   onEdit,
   onDelete,
 }) => {
@@ -38,6 +45,8 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
       ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
       : undefined;
   }, [item.image]);
+
+  const isActive = item.status === "Active";
 
   return (
     <View className="flex-row items-center p-4 border-b border-gray-100">
@@ -84,9 +93,13 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48">
-            <DropdownMenuItem onPress={onViewDetails}>
-              <Eye className="mr-2 h-4 w-4" color="#4b5563" />
-              <Text>View Details</Text>
+            <DropdownMenuItem onPress={onToggleActive}>
+              {isActive ? (
+                <EyeOff className="mr-2 h-4 w-4" color="#4b5563" />
+              ) : (
+                <Eye className="mr-2 h-4 w-4" color="#4b5563" />
+              )}
+              <Text>{isActive ? "Deactivate" : "Activate"}</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={onEdit}>
               <Pen className="mr-2 h-4 w-4" color="#4b5563" />

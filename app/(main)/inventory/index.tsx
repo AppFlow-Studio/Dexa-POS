@@ -1,8 +1,10 @@
 import InventoryRow from "@/components/inventory/InventoryRow";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { MenuItemType } from "@/lib/types";
 import { useItemStore } from "@/stores/useItemStore";
 import { useRouter } from "expo-router";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
   FlatList,
   Text,
@@ -25,20 +27,36 @@ const TABLE_HEADERS = [
 const InventoryScreen = () => {
   const router = useRouter();
   // Fetch items from the new Zustand store
-  const { items } = useItemStore();
+  const { items, updateItem, deleteItem } = useItemStore();
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-  // Handlers for the row actions (can be implemented later)
-  const handleViewDetails = () => alert("View Details");
   const handleEdit = (itemId: string) => {
     router.push(`/inventory/${itemId}`);
   };
-  const handleDelete = () => alert("Delete Item");
+  const openDeleteModal = (itemId: string) => {
+    setItemToDelete(itemId);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (itemToDelete) {
+      deleteItem(itemToDelete);
+    }
+    setDeleteModalOpen(false);
+    setItemToDelete(null);
+  };
+
+  const handleToggleActive = (item: MenuItemType) => {
+    const newStatus = item.status === "Active" ? "Inactive" : "Active";
+    updateItem(item.id, { status: newStatus });
+  };
 
   return (
     <View className="flex-1 p-6 bg-white">
       <View className="flex-row justify-between items-center my-4">
         {/* Search bar is now part of the toolbar */}
-        <View className="flex-row items-center bg-gray-100 rounded-lg p-3 w-[300px]">
+        <View className="flex-row items-center bg-gray-100 rounded-lg px-3 w-[300px]">
           <Search color="#6b7280" size={16} />
           <TextInput
             placeholder="Search Inventory"
@@ -67,9 +85,9 @@ const InventoryScreen = () => {
           renderItem={({ item }) => (
             <InventoryRow
               item={item}
-              onViewDetails={handleViewDetails}
+              onToggleActive={() => handleToggleActive(item)}
               onEdit={() => handleEdit(item.id)}
-              onDelete={handleDelete}
+              onDelete={() => openDeleteModal(item.id)}
             />
           )}
         />
@@ -93,6 +111,15 @@ const InventoryScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
+      <ConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Item"
+        description="Are you sure you want to permanently delete this item? This action cannot be undone."
+        confirmText="Delete"
+        variant="destructive"
+      />
     </View>
   );
 };

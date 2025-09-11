@@ -1,4 +1,5 @@
 import { MenuItemType } from "@/lib/types";
+import { useItemStore } from "@/stores/useItemStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -29,9 +30,22 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
+  const liveItem = useItemStore((state) =>
+    state.items.find((i) => i.id === item.id)
+  );
+  const isAvailable = liveItem
+    ? liveItem.availability &&
+      liveItem.stock > 0 &&
+      liveItem.status === "Active"
+    : false;
+
   // Menu items always add new items, not edit existing ones
 
   const handlePress = () => {
+    if (!isAvailable) {
+      return;
+    }
+
     if (clockStatus !== "clockedIn") {
       showClockInWall(); // Show the modal
       return; // Stop execution
@@ -57,8 +71,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
   return (
     <TouchableOpacity
       onPress={handlePress}
+      disabled={!isAvailable}
       className={`w-[32%] p-4 rounded-[20px] mb-3 border border-[#F5F5F5]`}
-      style={{ backgroundColor: item.color }}
+      style={{ backgroundColor: item.color, opacity: isAvailable ? 1 : 0.5 }}
     >
       <View className="flex-row items-center gap-2">
         {/* {imageSource ? (
