@@ -398,11 +398,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === updatedItem.id ? updatedItem : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === updatedItem.id ? updatedItem : i
+                ),
+              }
             : o
         ),
       }));
@@ -483,11 +483,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === itemId ? { ...i, isDraft: false } : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === itemId ? { ...i, isDraft: false } : i
+                ),
+              }
             : o
         ),
       }));
@@ -600,11 +600,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-            ...o,
-            service_location_id: tableId,
-            order_type: "Dine In" as const,
-            order_status: "Preparing" as const,
-          }
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+              order_status: "Preparing" as const,
+            }
           : o
       );
 
@@ -675,17 +675,26 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     markOrderAsPaid: (orderId: string) => {
-      const { orders } = get();
+      const { orders, activeOrderDiscount } = get();
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
-      // Note: We are not calculating totals here. We assume they are up-to-date
-      // from the last recalculateTotals() call during the payment process.
+      // Calculate total based on items (this is the subtotal)
+      const subtotal = order.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+
+      // The final subtotal is the subtotal MINUS the calculated discount
+      const finalSubtotal = subtotal - activeOrderDiscount;
+      const tax = finalSubtotal * TAX_RATE;
+      const total = finalSubtotal + tax;
 
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
+<<<<<<< HEAD
               ...o,
               paid_status: "Paid",
               // For both Dine-In and Take-Away, once an order is fully paid,
@@ -693,6 +702,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
               // without explicitly reopening it.
               check_status: "Closed",
             }
+=======
+                ...o,
+                paid_status: "Paid",
+                check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
+              }
+>>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
             : o
         ),
       }));

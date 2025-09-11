@@ -71,7 +71,8 @@ const OrderDetails: React.FC = () => {
 
   // Order naming state
   const [customerName, setCustomerName] = useState("");
-  const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] = useState(false);
+  const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] =
+    useState(false);
   const [tempCustomerName, setTempCustomerName] = useState("");
 
   const availableTableOptions = useMemo(() => {
@@ -224,6 +225,7 @@ const OrderDetails: React.FC = () => {
     // Create a new cart item for the open item
     const newOpenItem = {
       id: `open_item_${Date.now()}`,
+      itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
       name: openItemName.trim(),
       quantity: 1,
@@ -267,10 +269,13 @@ const OrderDetails: React.FC = () => {
       setCustomerName(trimmedName);
       updateActiveOrderDetails({ customer_name: trimmedName });
       setIsCustomerNameModalVisible(false);
-      toast.success(trimmedName ? "Customer name updated" : "Customer name removed", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
+      toast.success(
+        trimmedName ? "Customer name updated" : "Customer name removed",
+        {
+          duration: 2000,
+          position: ToastPosition.BOTTOM,
+        }
+      );
     }
   };
 
@@ -304,10 +309,7 @@ const OrderDetails: React.FC = () => {
                   {customerName}
                 </Text>
               </View>
-              <Edit3
-                color="#3B82F6"
-                size={18}
-              />
+              <Edit3 color="#3B82F6" size={18} />
             </TouchableOpacity>
           ) : (
             // Add Mode - Show add button with plus icon
@@ -471,7 +473,10 @@ const OrderDetails: React.FC = () => {
       </Dialog>
 
       {/* Customer Name Modal */}
-      <Dialog open={isCustomerNameModalVisible} onOpenChange={setIsCustomerNameModalVisible}>
+      <Dialog
+        open={isCustomerNameModalVisible}
+        onOpenChange={setIsCustomerNameModalVisible}
+      >
         <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-lg ">
@@ -490,7 +495,9 @@ const OrderDetails: React.FC = () => {
 
             {/* Customer Name Input */}
             <View className="mb-6">
-              <Text className="text-accent-500 font-semibold mb-2">Customer Name</Text>
+              <Text className="text-accent-500 font-semibold mb-2">
+                Customer Name
+              </Text>
               <TextInput
                 className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
                 placeholder="Enter customer name"

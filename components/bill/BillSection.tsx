@@ -3,7 +3,11 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Send } from "lucide-react-native";
 import React, { useRef, useState } from "react";
+<<<<<<< HEAD
 import { Text, TouchableOpacity, View } from "react-native";
+=======
+import { Image, Text, TouchableOpacity, View } from "react-native";
+>>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
@@ -39,11 +43,16 @@ const BillSection = ({
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
 }) => {
+<<<<<<< HEAD
   const { activeOrderId, orders,
     activeOrderTotal,
     startNewOrder,
     fireActiveOrderToKitchen,
   } = useOrderStore();
+=======
+  const { activeOrderId, orders, activeOrderTotal, startNewOrder } =
+    useOrderStore();
+>>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
@@ -51,7 +60,6 @@ const BillSection = ({
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
-
 
   const handleOpenMoreOptions = () => {
     moreOptionsSheetRef.current?.snapToIndex(0);
@@ -165,6 +173,7 @@ const BillSection = ({
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={!activeOrder || activeOrder.items.length === 0}
+<<<<<<< HEAD
               className={`flex-1 py-3 rounded-xl ${!activeOrder || activeOrder.items.length === 0
                 ? "bg-gray-600"
                 : "bg-blue-600"
@@ -174,13 +183,27 @@ const BillSection = ({
                 ? "text-gray-400"
                 : "text-white "
                 }`}>
+=======
+              className={`flex-1 py-3 rounded-xl ${
+                !activeOrder || activeOrder.items.length === 0
+                  ? "bg-gray-300"
+                  : "bg-primary-400"
+              }`}
+            >
+              <Text
+                className={`text-center font-bold ${
+                  !activeOrder || activeOrder.items.length === 0
+                    ? "text-gray-500"
+                    : "text-white "
+                }`}
+              >
+>>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
-
 
       {/* More Options Bottom Sheet */}
       <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
@@ -197,7 +220,10 @@ const BillSection = ({
         onClose={handleCloseDiscounts}
       />
     </View>
+<<<<<<< HEAD
 
+=======
+>>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
   );
 };
 

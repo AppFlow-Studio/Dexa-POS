@@ -11,7 +11,7 @@ import {
   ImageSourcePropType,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 interface MenuItemProps {
@@ -52,7 +52,6 @@ const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource, onOrderClosedChe
 
     openFullscreen(item, activeOrderId);
   };
-
 
   return (
     <TouchableOpacity
