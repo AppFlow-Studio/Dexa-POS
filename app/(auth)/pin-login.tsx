@@ -1,15 +1,23 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Link, useRouter } from "expo-router";
-import { ArrowLeft, Clock } from "lucide-react-native";
-import React, { useState } from "react";
+import { Clock } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
-const MAX_PIN_LENGTH = 6;
+const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
+  const { isPinClockedIn, clockInWithPin, clockOutWithPin } = useTimeclockStore();
+  const canSubmit = useMemo(() => pin.length > 0, [pin]);
+
+  const [dialog, setDialog] = useState<{ visible: boolean; title: string; message: string; variant: "success" | "warning" | "error" }>({ visible: false, title: "", message: "", variant: "success" });
+  const showDialog = (title: string, message: string, variant: "success" | "warning" | "error") => setDialog({ visible: true, title, message, variant });
+  const hideDialog = () => setDialog((d) => ({ ...d, visible: false }));
 
   const handleKeyPress = (input: NumpadInput) => {
     if (typeof input === "number") {
@@ -31,50 +39,81 @@ const PinLoginScreen = () => {
   };
 
   const handleLogin = () => {
-    // TODO: Add real PIN validation logic here
     router.replace("/home");
+  };
+
+  const handleClockIn = () => {
+    if (!canSubmit) return;
+    const res = clockInWithPin(pin);
+    if (!res.ok && res.reason === "already_clocked_in") {
+      showDialog("Already Clocked In", "You are already clocked in.", "warning");
+      return;
+    }
+    if (!res.ok) {
+      showDialog("Clock In Failed", "Please enter a valid PIN.", "error");
+      return;
+    }
+    showDialog("Clocked In", "Your time has been recorded.", "success");
+    setPin("");
+  };
+
+  const handleClockOut = () => {
+    if (!canSubmit) return;
+    const res = clockOutWithPin(pin);
+    if (!res.ok && res.reason === "not_clocked_in") {
+      showDialog("Not Clocked In", "You are not currently clocked in.", "warning");
+      return;
+    }
+    if (!res.ok) {
+      showDialog("Clock Out Failed", "Please enter a valid PIN.", "error");
+      return;
+    }
+    showDialog("Clocked Out", "You have clocked out.", "success");
+    setPin("");
   };
 
   return (
     <View className="w-full m-auto">
-      <Text className="text-4xl font-medium text-accent-500 text-center mb-6">
-        Employee Login (PIN)
-      </Text>
+      <Text className="text-4xl font-medium text-white text-center mb-6">Get Started</Text>
 
-      <Text className="text-base font-semibold text-accent-500 mb-2">
-        Enter your pin
-      </Text>
-
+      <Text className="text-base font-semibold text-white mb-2">ENTER YOUR PASSCODE</Text>
       <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-      <PinNumpad onKeyPress={handleKeyPress} />
+      <View className="mt-4">
+        <PinNumpad onKeyPress={handleKeyPress} />
+      </View>
 
-      <Link href="/forgot-pin" asChild>
-        <TouchableOpacity className="self-end my-6">
-          <Text className="font-semibold text-primary-400">Forgot Pin</Text>
+      <View className="flex-row gap-4 mt-6">
+        <TouchableOpacity onPress={handleLogin} className="flex-1 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center">
+          <Text className="text-primary-300 text-base font-bold">SIGN IN</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleClockIn} className="flex-1 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center">
+          <Text className="text-orange-400 text-base font-bold">CLOCK IN</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleClockOut} className="flex-1 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center">
+          <Text className="text-green-400 text-base font-bold">CLOCK OUT</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Link href="/timeclock" asChild>
+        <TouchableOpacity className="self-center mt-6 flex-row items-center gap-2">
+          <Text className="font-semibold text-primary-400">Open Timeclock</Text>
+          <Clock className="text-white" size={18} />
         </TouchableOpacity>
       </Link>
 
-      <View className="flex-row gap-4">
-        <Link href="/timeclock" asChild>
-          <TouchableOpacity className="flex-1 p-4 bg-background-100 border border-background-500 rounded-xl items-center flex-row justify-center gap-2">
-            <Text className="text-accent-500 text-lg font-bold">Timeclock</Text>
-            <Clock className="text-accent-500" size={20} />
-          </TouchableOpacity>
-        </Link>
-        <TouchableOpacity
-          onPress={handleLogin}
-          className="flex-1 p-4 bg-primary-400 rounded-xl items-center flex-row justify-center gap-2"
-        >
-          <Text className="text-white text-lg font-bold">Login</Text>
-          <ArrowLeft
-            color="#FFFFFF"
-            size={20}
-            strokeWidth={3}
-            style={{ transform: [{ rotate: "180deg" }] }}
-          />
-        </TouchableOpacity>
-      </View>
+      <Dialog open={dialog.visible} onOpenChange={hideDialog}>
+        <DialogContent className="">
+          <View className="w-120 max-w-2xl rounded-2xl p-5" style={{ backgroundColor: "#2b2b2b", borderWidth: 1, borderColor: dialog.variant === "success" ? "#059669" : dialog.variant === "warning" ? "#F59E0B" : "#EF4444" }}>
+            <Text className={`text-xl font-semibold mb-2 ${dialog.variant === "success" ? "text-green-400" : dialog.variant === "warning" ? "text-yellow-400" : "text-red-400"}`}>{dialog.title}</Text>
+            <Text className="text-gray-200 mb-4">{dialog.message}</Text>
+            <TouchableOpacity onPress={hideDialog} className="self-end px-4 py-2 rounded-lg" style={{ backgroundColor: dialog.variant === "success" ? "#065F46" : dialog.variant === "warning" ? "#92400E" : "#7F1D1D" }}>
+              <Text className="text-white font-medium">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </DialogContent>
+      </Dialog>
+
     </View>
   );
 };

@@ -5,7 +5,7 @@ import { Image, View } from "react-native";
 
 export default function AuthLayout() {
   return (
-    <View className="flex-1 flex-row items-center justify-center bg-background-100 p-8">
+    <View className="flex-1 flex-row items-center justify-center bg-[#212121] p-8">
       {/* Left side with the image */}
       <View className="flex-1 h-full w-1/2">
         <Image

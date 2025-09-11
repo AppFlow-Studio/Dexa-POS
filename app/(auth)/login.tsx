@@ -13,33 +13,35 @@ const MerchantLoginScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-4xl font-semibold text-accent-500 text-center mb-8">
+      <Text className="text-4xl font-semibold text-white text-center mb-8">
         Merchant Login
       </Text>
 
       <View className="mb-4">
-        <Text className="text-lg font-medium text-accent-500 mb-2">Email</Text>
+        <Text className="text-lg font-medium text-white mb-2">Email</Text>
         <TextInput
-          className="w-full p-4 border border-neutral-200 rounded-xl text-lg"
+          className="w-full p-4 border text-white border-neutral-200 rounded-xl text-lg"
           placeholder="john@gmail.com"
+          placeholderTextColor="white"
           keyboardType="email-address"
           autoCapitalize="none"
         />
       </View>
 
       <View className="mb-4">
-        <Text className="text-lg font-medium text-accent-500 mb-2">
+        <Text className="text-lg font-medium text-white mb-2">
           Password
         </Text>
         <TextInput
-          className="w-full p-4 border border-neutral-200 rounded-xl text-lg"
+          className="w-full p-4 border text-white border-neutral-200 rounded-xl text-lg"
+          placeholderTextColor="white"
           placeholder="••••••••"
           secureTextEntry
         />
       </View>
 
       <TouchableOpacity className="self-end mb-6">
-        <Text className="font-semibold text-primary-400">Forgot Password</Text>
+        <Text className="font-semibold text-white">Forgot Password</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

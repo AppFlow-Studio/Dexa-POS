@@ -13,7 +13,23 @@ import ModifierScreen from "./ModifierScreen";
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
 }
+// Get image source for preview
+const getImageSource = (item: MenuItemType) => {
+  if (item.image && item.image.length > 200) {
+      return { uri: `data:image/jpeg;base64,${item.image}` };
+  }
 
+  if (item.image) {
+      // Try to get image from assets
+      try {
+          return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
+      } catch {
+          return undefined;
+      }
+  }
+
+  return undefined;
+};
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
   const { menuItems, menus, isCategoryAvailableNow } = useMenuStore();
@@ -85,9 +101,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             <MenuItem
               item={item}
               imageSource={
-                item.image
-                  ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-                  : undefined
+                getImageSource(item)
               }
               onOrderClosedCheck={onOrderClosedCheck}
             />
