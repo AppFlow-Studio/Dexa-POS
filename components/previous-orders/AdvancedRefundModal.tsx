@@ -1,8 +1,8 @@
-import { PaymentType, PreviousOrder } from "@/lib/types";
+import { CartItem, PaymentType, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Check, RotateCcw, X } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ScrollView,
   Text,
@@ -36,7 +36,35 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
 
   const { refundFullOrder, refundItems } = usePreviousOrdersStore();
 
+  useEffect(() => {
+    // When the modal opens or the order changes, reset the local state
+    if (isOpen && order) {
+      // Determine if a full refund is still possible
+      const canDoFull = (order.refundedAmount || 0) < 0.01;
+      setRefundType(canDoFull ? "full" : "partial");
+      setReason("");
+      setSelectedItems([]);
+      setPaymentMethod("Card");
+    }
+  }, [isOpen, order]);
+
   if (!order) return null;
+
+  const refundableItems = useMemo(() => {
+    return order.items.filter(
+      (item) => (item.refundedQuantity || 0) < item.quantity
+    );
+  }, [order.items]);
+
+  // 2. The Full Refund option should only be available if the order is not partially refunded.
+  const canDoFullRefund = (order.refundedAmount || 0) < 0.01;
+
+  // Reset refundType if full refund is not possible
+  useEffect(() => {
+    if (!canDoFullRefund && refundType === "full") {
+      setRefundType("partial");
+    }
+  }, [canDoFullRefund, refundType]);
 
   const handleFullRefund = () => {
     if (!reason.trim()) {
@@ -82,19 +110,23 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
     onClose();
   };
 
-  const toggleItemSelection = (itemId: string, maxQuantity: number) => {
+  const toggleItemSelection = (item: CartItem) => {
     const existingIndex = selectedItems.findIndex(
-      (item) => item.itemId === itemId
+      (item) => item.itemId === item.itemId
     );
 
     if (existingIndex >= 0) {
       // Remove item
-      setSelectedItems((prev) => prev.filter((item) => item.itemId !== itemId));
+      setSelectedItems((prev) =>
+        prev.filter((item) => item.itemId !== item.itemId)
+      );
     } else {
-      // Add item with full quantity
+      // If not selected, add it.
+      // The quantity should default to the REMAINING refundable quantity.
+      const maxRefundableQty = item.quantity - (item.refundedQuantity || 0);
       setSelectedItems((prev) => [
         ...prev,
-        { itemId, quantity: maxQuantity, reason: "" },
+        { itemId: item.id, quantity: maxRefundableQty, reason: "" },
       ]);
     }
   };
@@ -172,7 +204,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
           </View>
         </DialogHeader>
 
-        <ScrollView className="">
+        <ScrollView>
           {/* Refund Type Selection */}
           <View className="mb-6">
             <Text className="text-lg font-semibold text-gray-800 mb-3">
@@ -181,6 +213,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setRefundType("full")}
+                disabled={!canDoFullRefund}
                 className={`flex-1 py-3 px-4 rounded-lg border-2 ${
                   refundType === "full"
                     ? "border-blue-500 bg-blue-50"
@@ -273,13 +306,16 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
               <Text className="text-lg font-semibold text-gray-800 mb-3">
                 Select Items to Refund
               </Text>
-              <ScrollView className="max-h-80">
-                {order.items.map((item) => {
+              <View>
+                {refundableItems.map((item) => {
                   const isSelected = selectedItems.some(
                     (selected) => selected.itemId === item.id
                   );
                   const selectedQuantity = getSelectedItemQuantity(item.id);
                   const selectedReason = getSelectedItemReason(item.id);
+                  // Calculate the actual remaining quantity for this item
+                  const maxRefundableQty =
+                    item.quantity - (item.refundedQuantity || 0);
 
                   return (
                     <View
@@ -297,20 +333,19 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
 
                       <View className="flex-row items-center justify-between mb-2">
                         <Text className="text-gray-600">
-                          Quantity: {item.quantity}
+                          Quantity: {item.quantity} (Refunded:{" "}
+                          {item.refundedQuantity || 0})
                         </Text>
                         <TouchableOpacity
-                          onPress={() =>
-                            toggleItemSelection(item.id, item.quantity)
-                          }
+                          onPress={() => toggleItemSelection(item)}
                           className={`p-2 rounded-lg ${
-                            isSelected ? "bg-blue-500" : "bg-gray-200"
+                            isSelected ? "bg-gray-200" : "bg-blue-500"
                           }`}
                         >
                           {isSelected ? (
-                            <Check color="white" size={16} />
-                          ) : (
                             <X color="gray" size={16} />
+                          ) : (
+                            <Check color="white" size={16} />
                           )}
                         </TouchableOpacity>
                       </View>
@@ -323,6 +358,15 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                               value={selectedQuantity.toString()}
                               onChangeText={(text) => {
                                 const qty = parseInt(text) || 0;
+                                if (qty > item.quantity) {
+                                  toast.error(
+                                    "Quantity cannot be greater than item quantity",
+                                    {
+                                      duration: 3000,
+                                      position: ToastPosition.BOTTOM,
+                                    }
+                                  );
+                                }
                                 if (qty >= 0 && qty <= item.quantity) {
                                   updateItemQuantity(item.id, qty);
                                 }
@@ -331,7 +375,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                               className="flex-1 p-2 border border-gray-300 rounded text-center"
                             />
                             <Text className="text-gray-600">
-                              / {item.quantity}
+                              / {maxRefundableQty}
                             </Text>
                           </View>
 
@@ -348,7 +392,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                     </View>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           )}
 

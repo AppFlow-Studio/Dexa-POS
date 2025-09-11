@@ -174,26 +174,35 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
     refundItems: (
       orderId: string,
-      items: Array<{ itemId: string; quantity: number; reason: string }>,
+      itemsToRefund: Array<{
+        itemId: string;
+        quantity: number;
+        reason: string;
+      }>,
       refundedBy: string,
       paymentMethod: PaymentType
     ) => {
-      const order = get().getOrderById(orderId);
+      const order = get().previousOrders.find((o) => o.orderId === orderId);
       if (!order) {
+        console.error("Refund failed: Order not found");
         return;
       }
 
-      let totalRefunded = 0;
-      const refundItems: RefundItem[] = [];
+      let totalRefundedInThisTx = 0;
+      const refundItemsForRecord: RefundItem[] = [];
 
-      // Calculate refund amount and validate items
-      items.forEach(({ itemId, quantity, reason }) => {
+      // --- THIS IS THE CORRECTED LOGIC ---
+
+      // 1. Calculate the total refund amount for this transaction
+      // and prepare the items for the refund record.
+      itemsToRefund.forEach(({ itemId, quantity, reason }) => {
         const item = order.items.find((i) => i.id === itemId);
-        if (item && quantity > 0 && quantity <= item.quantity) {
-          const itemRefundAmount = item.price * quantity;
-          totalRefunded += itemRefundAmount;
-
-          refundItems.push({
+        // Ensure we are refunding a valid item and a valid quantity
+        const maxRefundable =
+          (item?.quantity || 0) - (item?.refundedQuantity || 0);
+        if (item && quantity > 0 && quantity <= maxRefundable) {
+          totalRefundedInThisTx += item.price * quantity;
+          refundItemsForRecord.push({
             itemId,
             quantity,
             reason,
@@ -203,36 +212,68 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         }
       });
 
-      if (refundItems.length === 0) {
+      if (refundItemsForRecord.length === 0) {
+        console.error("Refund failed: No valid items to refund.");
         return;
       }
 
-      const refundRecord: RefundRecord = {
+      // 2. Create the new refund record object
+      const newRefundRecord: RefundRecord = {
         id: `refund_${Date.now()}`,
         orderId,
         type: "partial",
-        items: refundItems,
-        totalRefunded,
-        reason: items.map((i) => i.reason).join(", "),
+        items: refundItemsForRecord,
+        totalRefunded: totalRefundedInThisTx,
+        reason: itemsToRefund
+          .map((i) => i.reason)
+          .filter(Boolean)
+          .join(", "),
         refundedAt: new Date().toISOString(),
         refundedBy,
         paymentMethod,
       };
 
-      // Update the order to reflect partial refund
-      set((state) => ({
-        refunds: [...state.refunds, refundRecord],
-        previousOrders: state.previousOrders.map((o) =>
-          o.orderId === orderId
-            ? {
-                ...o,
-                refundedAmount: (o.refundedAmount || 0) + totalRefunded,
-                paymentStatus:
-                  totalRefunded >= o.total ? "Refunded" : "Partially Refunded",
+      // 3. Update the state in a single `set` call
+      set((state) => {
+        const updatedPreviousOrders = state.previousOrders.map((o) => {
+          if (o.orderId === orderId) {
+            // Update the refunded quantities on the original order's items
+            const updatedItems = o.items.map((originalItem) => {
+              const refundInfo = itemsToRefund.find(
+                (ri) => ri.itemId === originalItem.id
+              );
+              if (refundInfo) {
+                return {
+                  ...originalItem,
+                  refundedQuantity:
+                    (originalItem.refundedQuantity || 0) + refundInfo.quantity,
+                };
               }
-            : o
-        ),
-      }));
+              return originalItem;
+            });
+
+            const newTotalRefundedAmount =
+              (o.refundedAmount || 0) + totalRefundedInThisTx;
+            const isFullyRefunded = newTotalRefundedAmount >= o.total - 0.001; // Epsilon for float safety
+
+            return {
+              ...o,
+              items: updatedItems,
+              refunded: true,
+              refundedAmount: newTotalRefundedAmount,
+              paymentStatus: isFullyRefunded
+                ? ("Refunded" as const)
+                : ("Partially Refunded" as const),
+            };
+          }
+          return o;
+        });
+
+        return {
+          previousOrders: updatedPreviousOrders,
+          refunds: [...state.refunds, newRefundRecord],
+        };
+      });
     },
 
     getRefundsForOrder: (orderId: string) => {

@@ -178,7 +178,7 @@ const sidesAddOns: AddOn[] = [
 const burgerModifiers: ModifierCategory[] = [
   {
     id: "size",
-    name: "Size",
+    name: "Burger Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -198,8 +198,8 @@ const burgerModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "cheese",
-    name: "Cheese",
+    id: "burger-cheese",
+    name: "Burgher Cheese",
     type: "optional",
     selectionType: "single",
     options: [
@@ -210,8 +210,8 @@ const burgerModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "toppings",
-    name: "Toppings",
+    id: "burger-toppings",
+    name: "Burger Toppings",
     type: "optional",
     selectionType: "multiple",
     maxSelections: 3,
@@ -284,8 +284,8 @@ const brunchAddOns: AddOn[] = [
 // --- Additional Modifier Categories for New Items ---
 const pizzaModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "pizza-size",
+    name: "Pizza Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -342,8 +342,8 @@ const saladModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "salad-protein",
+    name: "Salad Protein",
     type: "optional",
     selectionType: "single",
     options: [
@@ -356,8 +356,8 @@ const saladModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "extras",
-    name: "Extra Toppings",
+    id: "salad-toppings",
+    name: "Salad Toppings",
     type: "optional",
     selectionType: "multiple",
     maxSelections: 4,
@@ -374,8 +374,8 @@ const saladModifiers: ModifierCategory[] = [
 
 const sandwichModifiers: ModifierCategory[] = [
   {
-    id: "bread",
-    name: "Bread",
+    id: "sandwich-bread",
+    name: "Sandwich Bread",
     type: "required",
     selectionType: "single",
     options: [
@@ -387,8 +387,8 @@ const sandwichModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "sandwich-protein",
+    name: "Sandwich Protein",
     type: "required",
     selectionType: "single",
     options: [
@@ -443,8 +443,8 @@ const pastaModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "pasta-protein",
+    name: "Pasta Protein",
     type: "optional",
     selectionType: "single",
     options: [
@@ -470,8 +470,8 @@ const pastaModifiers: ModifierCategory[] = [
 
 const soupModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "soup-size",
+    name: "Soup Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -480,8 +480,8 @@ const soupModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "bread",
-    name: "Bread",
+    id: "soup-bread",
+    name: "Soup Bread",
     type: "optional",
     selectionType: "single",
     options: [
@@ -495,8 +495,8 @@ const soupModifiers: ModifierCategory[] = [
 
 const coffeeModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "coffee-size",
+    name: "Coffee Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -658,8 +658,8 @@ const tacoModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "taco-protein",
+    name: "Taco Protein",
     type: "required",
     selectionType: "single",
     options: [
@@ -671,8 +671,8 @@ const tacoModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "toppings",
-    name: "Toppings",
+    id: "taco-toppings",
+    name: "Taco Toppings",
     type: "optional",
     selectionType: "multiple",
     maxSelections: 4,
@@ -713,8 +713,8 @@ const ramenModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "toppings",
-    name: "Extra Toppings",
+    id: "ramen-toppings",
+    name: "Ramen Toppings",
     type: "optional",
     selectionType: "multiple",
     maxSelections: 3,
@@ -756,8 +756,8 @@ const sushiModifiers: ModifierCategory[] = [
 
 const iceCreamModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "ice-cream-size",
+    name: "Ice Cream Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -780,8 +780,8 @@ const iceCreamModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "toppings",
-    name: "Toppings",
+    id: "ice-cream-toppings",
+    name: "Ice Cream Toppings",
     type: "optional",
     selectionType: "multiple",
     maxSelections: 3,
@@ -844,6 +844,48 @@ const energyDrinkAddOns: AddOn[] = [
   { id: "energy3", name: "Vitamin Boost", price: 1.5 },
 ];
 
+// --- Exportable Array of All Modifier Groups ---
+export const ALL_MODIFIER_GROUPS: ModifierCategory[] = [
+  // Burger Modifiers
+  ...burgerModifiers,
+
+  // Pizza Modifiers
+  ...pizzaModifiers,
+
+  // Salad Modifiers
+  ...saladModifiers,
+
+  // Sandwich Modifiers
+  ...sandwichModifiers,
+
+  // Pasta Modifiers
+  ...pastaModifiers,
+
+  // Soup Modifiers
+  ...soupModifiers,
+
+  // Coffee Modifiers
+  ...coffeeModifiers,
+
+  // Steak Modifiers
+  ...steakModifiers,
+
+  // Seafood Modifiers
+  ...seafoodModifiers,
+
+  // Taco Modifiers
+  ...tacoModifiers,
+
+  // Ramen Modifiers
+  ...ramenModifiers,
+
+  // Sushi Modifiers
+  ...sushiModifiers,
+
+  // Ice Cream Modifiers
+  ...iceCreamModifiers,
+];
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
   // --- Main Course ---
   {
@@ -860,6 +902,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: burgerModifiers,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-red-50",
+    availability: true,
   },
   {
     id: "2",
@@ -875,6 +918,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: burgerModifiers,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "3",
@@ -887,6 +931,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     addOns: wrapAddOns,
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   {
     id: "4",
@@ -899,6 +944,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Main Course",
     addOns: pizzaAddOns,
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   // --- Appetizers ---
   {
@@ -912,6 +958,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Appetizers",
     addOns: saladAddOns,
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   // --- Sides ---
   {
@@ -924,6 +971,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Sides",
     addOns: sidesAddOns,
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "7",
@@ -935,6 +983,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Sides",
     addOns: sidesAddOns,
     cardBgColor: "bg-purple-100",
+    availability: true,
   },
   // --- Drinks ---
   {
@@ -947,6 +996,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Drinks",
     addOns: drinksAddOns,
     cardBgColor: "bg-gray-100",
+    availability: true,
   },
   {
     id: "9",
@@ -958,6 +1008,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Drinks",
     addOns: drinksAddOns,
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   // --- Desserts ---
   {
@@ -970,6 +1021,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Dessert",
     addOns: dessertAddOns,
     cardBgColor: "bg-red-100",
+    availability: true,
   },
   {
     id: "11",
@@ -981,6 +1033,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Dessert",
     addOns: dessertAddOns,
     cardBgColor: "bg-pink-100",
+    availability: true,
   },
   // --- Brunch ---
   {
@@ -994,6 +1047,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     availableDiscount: tenPercentOff,
     addOns: brunchAddOns,
     cardBgColor: "bg-indigo-100",
+    availability: true,
   },
   {
     id: "13",
@@ -1003,9 +1057,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     price: 10.5,
     image: "eggs_benedict.png",
     meal: ["Brunch"],
-    category: "Main Course",
+    category: ["Main Course", "Brunch"],
     addOns: brunchAddOns,
     cardBgColor: "bg-cyan-100",
+    availability: true,
   },
   // --- Additional Main Course Items ---
   {
@@ -1015,12 +1070,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
       "Loaded with pepperoni, Italian sausage, mushrooms, bell peppers, and mozzarella on our signature crust.",
     price: 16.99,
     meal: ["Lunch", "Dinner"],
-    category: "Main Course",
+    category: ["Main Course", "Specials"],
     sizes: standardSizes,
     addOns: pizzaAddOns,
     modifiers: pizzaModifiers,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-red-100",
+    availability: true,
   },
   {
     id: "15",
@@ -1029,11 +1085,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
       "Nutrient-packed quinoa with roasted vegetables, feta cheese, olives, and lemon-tahini dressing.",
     price: 11.99,
     meal: ["Lunch", "Dinner"],
-    category: "Main Course",
+    category: ["Main Course"],
     addOns: saladAddOns,
     modifiers: saladModifiers,
     allergens: ["Dairy"],
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   {
     id: "16",
@@ -1042,11 +1099,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
       "Triple-decker with turkey, bacon, lettuce, tomato, and mayo on toasted bread.",
     price: 9.99,
     meal: ["Lunch", "Dinner"],
-    category: "Main Course",
+    category: ["Main Course"],
     addOns: sandwichAddOns,
     modifiers: sandwichModifiers,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "17",
@@ -1055,11 +1113,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
       "Rich and creamy alfredo sauce over perfectly cooked pasta with parmesan cheese.",
     price: 13.99,
     meal: ["Lunch", "Dinner"],
-    category: "Main Course",
+    category: ["Main Course"],
     addOns: pastaAddOns,
     modifiers: pastaModifiers,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   // --- Appetizers ---
   {
@@ -1073,6 +1132,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Dairy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "19",
@@ -1085,6 +1145,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Dairy"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   // --- Soups (as Appetizers) ---
   {
@@ -1099,6 +1160,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: soupModifiers,
     allergens: ["Dairy"],
     cardBgColor: "bg-red-50",
+    availability: true,
   },
   {
     id: "21",
@@ -1112,6 +1174,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: soupModifiers,
     allergens: ["Gluten", "Eggs"],
     cardBgColor: "bg-yellow-50",
+    availability: true,
   },
   // --- Drinks ---
   {
@@ -1126,6 +1189,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: coffeeModifiers,
     allergens: [],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "23",
@@ -1138,6 +1202,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: smoothieAddOns,
     allergens: ["Dairy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "24",
@@ -1149,6 +1214,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: "Drinks",
     allergens: [],
     cardBgColor: "bg-orange-50",
+    availability: true,
   },
   // --- Breakfast Items (as Main Course) ---
   {
@@ -1162,6 +1228,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: breakfastAddOns,
     allergens: ["Gluten", "Dairy", "Eggs"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "26",
@@ -1174,6 +1241,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: breakfastAddOns,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   // --- Desserts ---
   {
@@ -1187,6 +1255,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: dessertAddOns,
     allergens: ["Dairy", "Eggs", "Gluten"],
     cardBgColor: "bg-purple-100",
+    availability: true,
   },
   {
     id: "28",
@@ -1199,6 +1268,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: dessertAddOns,
     allergens: ["Gluten", "Dairy", "Eggs"],
     cardBgColor: "bg-red-100",
+    availability: true,
   },
   // --- Additional Main Course Items (29-40) ---
   {
@@ -1213,6 +1283,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: steakModifiers,
     allergens: [],
     cardBgColor: "bg-purple-100",
+    availability: true,
   },
   {
     id: "30",
@@ -1226,6 +1297,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: seafoodModifiers,
     allergens: ["Fish"],
     cardBgColor: "bg-blue-100",
+    availability: true,
   },
   {
     id: "31",
@@ -1239,6 +1311,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: tacoModifiers,
     allergens: ["Fish", "Gluten"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "32",
@@ -1252,6 +1325,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: tacoModifiers,
     allergens: ["Gluten"],
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   {
     id: "33",
@@ -1265,6 +1339,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: ramenModifiers,
     allergens: ["Gluten", "Eggs", "Soy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "34",
@@ -1278,6 +1353,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: ramenModifiers,
     allergens: ["Gluten", "Soy"],
     cardBgColor: "bg-blue-100",
+    availability: true,
   },
   {
     id: "35",
@@ -1291,6 +1367,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: sushiModifiers,
     allergens: ["Fish", "Soy"],
     cardBgColor: "bg-green-50",
+    availability: true,
   },
   {
     id: "36",
@@ -1304,6 +1381,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: sushiModifiers,
     allergens: ["Fish", "Soy"],
     cardBgColor: "bg-red-50",
+    availability: true,
   },
   {
     id: "37",
@@ -1316,6 +1394,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: pastaAddOns,
     allergens: ["Soy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "38",
@@ -1328,6 +1407,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: pastaAddOns,
     allergens: ["Soy"],
     cardBgColor: "bg-green-200",
+    availability: true,
   },
   {
     id: "39",
@@ -1341,6 +1421,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: saladModifiers,
     allergens: ["Sesame"],
     cardBgColor: "bg-green-50",
+    availability: true,
   },
   {
     id: "40",
@@ -1354,6 +1435,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     modifiers: sandwichModifiers,
     allergens: ["Gluten"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   // --- Additional Appetizers (41-45) ---
   {
@@ -1367,6 +1449,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   {
     id: "42",
@@ -1379,6 +1462,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Dairy"],
     cardBgColor: "bg-green-100",
+    availability: true,
   },
   {
     id: "43",
@@ -1391,6 +1475,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "44",
@@ -1403,6 +1488,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Seafood", "Gluten"],
     cardBgColor: "bg-blue-100",
+    availability: true,
   },
   {
     id: "45",
@@ -1415,6 +1501,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Dairy", "Gluten"],
     cardBgColor: "bg-yellow-200",
+    availability: true,
   },
   // --- Additional Sides (46-47) ---
   {
@@ -1428,6 +1515,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: [],
     cardBgColor: "bg-orange-100",
+    availability: true,
   },
   {
     id: "47",
@@ -1440,6 +1528,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
+    availability: true,
   },
   // --- Additional Drinks (48-50) ---
   {
@@ -1453,6 +1542,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: teaAddOns,
     allergens: [],
     cardBgColor: "bg-green-50",
+    availability: true,
   },
   {
     id: "49",
@@ -1465,6 +1555,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: energyDrinkAddOns,
     allergens: [],
     cardBgColor: "bg-red-100",
+    availability: true,
   },
   {
     id: "50",
@@ -1477,6 +1568,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: teaAddOns,
     allergens: [],
     cardBgColor: "bg-yellow-200",
+    availability: true,
   },
 ];
 
@@ -1739,6 +1831,7 @@ export const PARTNER_LOGO_MAP = {
 const sampleOrderItems: CartItem[] = [
   {
     id: "burger_1",
+    itemId: "burger_1",
     menuItemId: "1",
     name: "Double Cheeseburger",
     quantity: 1,
@@ -1757,6 +1850,7 @@ const sampleOrderItems: CartItem[] = [
   },
   {
     id: "burger_2",
+    itemId: "burger_2",
     menuItemId: "1",
     name: "Double Cheeseburger",
     quantity: 1,
@@ -1769,6 +1863,7 @@ const sampleOrderItems: CartItem[] = [
   },
   {
     id: "coke_1",
+    itemId: "coke_1",
     menuItemId: "8",
     name: "Coca-Cola",
     quantity: 1,
@@ -1902,7 +1997,7 @@ export const MOCK_PREVIOUS_ORDERS: PreviousOrder[] = [
     customer: "Jane Smith",
     server: "Jessica",
     itemCount: 3,
-    type: "Take-Away",
+    type: "Take Away",
     total: 22.75,
     items: [],
   },

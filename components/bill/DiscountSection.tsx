@@ -1,7 +1,7 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Tag, X } from "lucide-react-native";
 import React from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 // Accept onOpenDiscounts prop
 interface DiscountSectionProps {
@@ -26,7 +26,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   };
 
   return (
-    <View className="px-4 bg-background-200">
+    <View className="px-4 bg-[#212121]">
       <TouchableOpacity
         onPress={onOpenDiscounts}
         className="flex-row items-center mb-2"

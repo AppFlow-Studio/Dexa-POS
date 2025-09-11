@@ -32,16 +32,14 @@ const UpdateTableScreen = () => {
     updateActiveOrderDetails,
     updateItemStatusInActiveOrder,
     syncOrderStatus,
-    closeActiveOrder
+    archiveOrder,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
   const table = tables.find((t) => t.id === tableId);
   // Find if an order is ALREADY assigned to this table (including closed orders)
   const existingOrderForTable = orders.find(
-    (o) =>
-      o.service_location_id === tableId &&
-      o.order_status !== "Voided" // Show all orders except voided ones
+    (o) => o.service_location_id === tableId && o.order_status !== "Voided" // Show all orders except voided ones
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -51,7 +49,10 @@ const UpdateTableScreen = () => {
   const isReopenedPaidNoNewItems = useMemo(() => {
     if (!activeOrder) return false;
     const totalQty = activeOrder.items.reduce((acc, i) => acc + i.quantity, 0);
-    const paidQty = activeOrder.items.reduce((acc, i) => acc + (i.paidQuantity || 0), 0);
+    const paidQty = activeOrder.items.reduce(
+      (acc, i) => acc + (i.paidQuantity || 0),
+      0
+    );
     // Previously paid order (Paid) that was reopened to Pending, and no new items added
     return activeOrder.paid_status !== "Paid" && paidQty === totalQty;
   }, [activeOrder]);
@@ -118,7 +119,7 @@ const UpdateTableScreen = () => {
     updateActiveOrderDetails({
       paid_status: "Pending",
       check_status: "Opened",
-      order_status: "Preparing" // Reopen the order status
+      order_status: "Preparing", // Reopen the order status
     });
 
     // Sync order status based on existing items
@@ -143,7 +144,10 @@ const UpdateTableScreen = () => {
     // 2) If reopened and fully covered (no new items) => simply close
     if (isReopenedPaidNoNewItems) {
       updateOrderStatus(activeOrder.id, "Closed");
-      toast.success("Check closed.", { duration: 2500, position: ToastPosition.BOTTOM });
+      toast.success("Check closed.", {
+        duration: 2500,
+        position: ToastPosition.BOTTOM,
+      });
       return;
     }
 
@@ -156,16 +160,33 @@ const UpdateTableScreen = () => {
     updateOrderStatus(activeOrder.id, "Voided");
     updateTableStatus(tableId as string, "Available");
     setVoidConfirmOpen(false);
-    toast.success("Check voided.", { duration: 2500, position: ToastPosition.BOTTOM });
+    toast.success("Check voided.", {
+      duration: 2500,
+      position: ToastPosition.BOTTOM,
+    });
     router.back();
   };
 
   const handleClearTable = () => {
-    if (!tableId || !activeOrderId) return;
-    // Move table to cleaning flow and close order
+    if (!tableId || !activeOrderId || !activeOrder) return;
+
+    // Check if all items are ready
+    const allItemsReady = activeOrder.items.every(
+      (item) => (item.item_status || "Preparing") === "Ready"
+    );
+
+    if (!allItemsReady) {
+      toast.error("Cannot clear table: Not all items are ready.", {
+        duration: 3000,
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
+    // Only proceed if all items are ready
     updateTableStatus(tableId as string, "Needs Cleaning");
-    closeActiveOrder()
-    router.back()
+    archiveOrder(activeOrderId);
+    router.back();
     toast.success("Table marked for cleaning.", {
       duration: 3000,
       position: ToastPosition.BOTTOM,
@@ -210,7 +231,7 @@ const UpdateTableScreen = () => {
           <Text className="text-base font-bold text-accent-500 mb-3">
             Items Status
           </Text>
-          <ScrollView className="max-h-56">
+          <ScrollView className="max-h-32">
             {activeOrder.items.map((item) => {
               const isReady = (item.item_status || "Preparing") === "Ready";
               return (
@@ -223,12 +244,14 @@ const UpdateTableScreen = () => {
                       {item.name} x{item.quantity}
                     </Text>
                     <View
-                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${isReady ? "bg-green-100" : "bg-yellow-100"
-                        }`}
+                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${
+                        isReady ? "bg-green-100" : "bg-yellow-100"
+                      }`}
                     >
                       <Text
-                        className={`text-[10px] font-semibold ${isReady ? "text-green-800" : "text-yellow-800"
-                          }`}
+                        className={`text-[10px] font-semibold ${
+                          isReady ? "text-green-800" : "text-yellow-800"
+                        }`}
                       >
                         {isReady ? "Ready" : "Preparing"}
                       </Text>
@@ -241,12 +264,14 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-200" : "bg-green-500"
-                      }`}
+                    className={`px-3 py-2 rounded-lg ${
+                      isReady ? "bg-yellow-200" : "bg-green-500"
+                    }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${isReady ? "text-yellow-900" : "text-white"
-                        }`}
+                      className={`text-xs font-bold ${
+                        isReady ? "text-yellow-900" : "text-white"
+                      }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
                     </Text>
@@ -270,20 +295,22 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                ? "bg-green-100"
-                : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-100"
-                  : "bg-red-100"
-                }`}
+              className={`px-2 py-1 rounded-full ${
+                activeOrder.paid_status === "Paid"
+                  ? "bg-green-100"
+                  : activeOrder.paid_status === "Pending"
+                    ? "bg-yellow-100"
+                    : "bg-red-100"
+              }`}
             >
               <Text
-                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                  ? "text-green-800"
-                  : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-800"
-                    : "text-red-800"
-                  }`}
+                className={`text-xs font-semibold ${
+                  activeOrder.paid_status === "Paid"
+                    ? "text-green-800"
+                    : activeOrder.paid_status === "Pending"
+                      ? "text-yellow-800"
+                      : "text-red-800"
+                }`}
               >
                 {activeOrder.paid_status}
               </Text>
@@ -373,7 +400,10 @@ const UpdateTableScreen = () => {
       </View>
 
       {/* Confirm: items not ready */}
-      <AlertDialog open={isNotReadyConfirmOpen} onOpenChange={setNotReadyConfirmOpen}>
+      <AlertDialog
+        open={isNotReadyConfirmOpen}
+        onOpenChange={setNotReadyConfirmOpen}
+      >
         <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
           <Text className="text-xl font-bold text-accent-500 mb-2">
             Items not ready
@@ -434,13 +464,17 @@ const UpdateTableScreen = () => {
       />
 
       {/* Order closed warning */}
-      <AlertDialog open={isOrderClosedWarningOpen} onOpenChange={setOrderClosedWarningOpen}>
+      <AlertDialog
+        open={isOrderClosedWarningOpen}
+        onOpenChange={setOrderClosedWarningOpen}
+      >
         <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
           <Text className="text-xl font-bold text-accent-500 mb-2">
             Order is Closed
           </Text>
           <Text className="text-accent-400 mb-6">
-            This order is currently closed. Please reopen the check to add items.
+            This order is currently closed. Please reopen the check to add
+            items.
           </Text>
           <View className="flex-row gap-2">
             <TouchableOpacity
@@ -457,4 +491,3 @@ const UpdateTableScreen = () => {
 };
 
 export default UpdateTableScreen;
-

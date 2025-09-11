@@ -34,6 +34,7 @@ export interface ModifierOption {
   name: string;
   price: number;
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
+  isDefault?: boolean; // For default selected options
 }
 
 export interface ModifierCategory {
@@ -54,13 +55,34 @@ export interface MenuItemType {
   cashPrice?: number;
   image?: string;
   meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
-  category: "Appetizers" | "Main Course" | "Sides" | "Drinks" | "Dessert";
+  category: string[]; // Changed to array to support multiple categories
   availableDiscount?: Discount;
   sizes?: ItemSize[];
   addOns?: AddOn[];
   modifiers?: ModifierCategory[];
   allergens?: string[];
   cardBgColor?: string;
+  availability?: boolean; // New field for availability status
+}
+
+export interface Menu {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  categories: string[]; // Array of category names
+  schedules?: Schedule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  days: string[];
+  isActive: boolean;
 }
 
 export type TableStatus =
@@ -103,6 +125,7 @@ export type DeliveryPartner =
   | "Food Panda";
 
 export interface CartItem {
+  itemId: string;
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
   name: string;
@@ -132,6 +155,7 @@ export interface CartItem {
   };
   availableDiscount?: Discount;
   appliedDiscount?: Discount | null;
+  refundedQuantity?: number;
 }
 
 export interface OnlineOrder {
@@ -157,7 +181,7 @@ export type PaymentStatus =
   | "In Progress"
   | "Refunded"
   | "Partially Refunded";
-export type OrderType = "Dine In" | "Take-Away" | "Delivery";
+export type OrderType = "Dine In" | "Take Away" | "Delivery";
 
 export interface PreviousOrder {
   serialNo: string;
@@ -302,7 +326,7 @@ export interface OrderProfile {
   check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
-  order_type?: "Dine In" | "Take-Away" | "Delivery";
+  order_type?: "Dine In" | "Take Away" | "Delivery";
 
   // Payment status for the order
   paid_status: "Paid" | "Pending" | "Unpaid";

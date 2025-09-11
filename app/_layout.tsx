@@ -1,11 +1,13 @@
 import "@/global.css";
 import { PortalHost } from "@rn-primitives/portal";
 
+import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import PaymentModal from "@/components/bill/PaymentModal";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import {
   DarkTheme,
@@ -38,6 +40,7 @@ export default function RootLayout() {
   const hasMounted = React.useRef(false);
   const { colorScheme, isDarkColorScheme } = useColorScheme();
   const [isColorSchemeLoaded, setIsColorSchemeLoaded] = React.useState(false);
+  const { isClockInWallOpen, hideClockInWall } = useTimeclockStore();
 
   useIsomorphicLayoutEffect(() => {
     if (hasMounted.current) {
@@ -60,12 +63,16 @@ export default function RootLayout() {
     <GestureHandlerRootView>
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
+          <StatusBar style={"dark"} />
           <Stack screenOptions={{ headerShown: false }} />
           <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />
           <ItemCustomizationDialog />
+          <ClockInWallModal
+            isOpen={isClockInWallOpen}
+            onClose={hideClockInWall}
+          />
           <Toasts
             defaultStyle={{
               view: {

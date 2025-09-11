@@ -14,7 +14,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
@@ -23,6 +29,7 @@ type SelectOption = { label: string; value: string };
 const ORDER_TYPE_OPTIONS: SelectOption[] = [
   { label: "Dine In", value: "Dine In" },
   { label: "Take Away", value: "Take Away" },
+  { label: "Delivery", value: "Delivery" },
 ];
 
 const OrderDetails: React.FC = () => {
@@ -53,9 +60,9 @@ const OrderDetails: React.FC = () => {
   const [orderTypeSelectKey, setOrderTypeSelectKey] = useState(Date.now());
 
   // Temporary storage for selected table (not yet assigned to order)
-  const [pendingTableSelection, setLocalPendingTableSelection] = useState<SelectOption | undefined>(
-    undefined
-  );
+  const [pendingTableSelection, setLocalPendingTableSelection] = useState<
+    SelectOption | undefined
+  >(undefined);
 
   // Open Item Modal State
   const [isOpenItemModalVisible, setIsOpenItemModalVisible] = useState(false);
@@ -79,7 +86,11 @@ const OrderDetails: React.FC = () => {
 
   useEffect(() => {
     // Initialize selected table from active order if it exists (only for already assigned tables)
-    if (activeOrder?.service_location_id && activeOrder.order_status === "Preparing" && !selectedTable) {
+    if (
+      activeOrder?.service_location_id &&
+      activeOrder.order_status === "Preparing" &&
+      !selectedTable
+    ) {
       const tableOption = availableTableOptions.find(
         (option) => option.value === activeOrder.service_location_id
       );
@@ -97,11 +108,18 @@ const OrderDetails: React.FC = () => {
         setSelectedTable(tableOption);
       }
     }
-  }, [activeOrder, availableTableOptions, selectedTable, pendingTableSelection]);
+  }, [
+    activeOrder,
+    availableTableOptions,
+    selectedTable,
+    pendingTableSelection,
+  ]);
 
   useEffect(() => {
     setSelectedOrderType(undefined);
     setOrderTypeSelectKey(Date.now());
+    setSelectedTable(undefined);
+    setTableSelectKey(Date.now());
   }, [activeOrderId]);
 
   // Initialize customer name from active order
@@ -132,7 +150,7 @@ const OrderDetails: React.FC = () => {
       // Only update order type, don't assign table yet
       if (activeOrderId) {
         updateActiveOrderDetails({
-          order_type: "Dine In"
+          order_type: "Dine In",
         });
       }
       toast.success(`Table ${option.label} selected`, {
@@ -270,7 +288,7 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className="pb-4 px-4 bg-background-200 overflow-hidden rounded-t-3xl">
+    <View className="pb-4 px-4 bg-[#212121] overflow-hidden ">
       {/* Header */}
       <View className="flex-row items-center justify-between my-2 w-full">
         <View className="flex-1">
@@ -279,7 +297,7 @@ const OrderDetails: React.FC = () => {
             // Edit Mode - Show customer name with edit icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-accent-400 bg-accent-50 w-full"
+              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-white bg-accent-50 w-full"
             >
               <View className="flex-row items-center flex-1">
                 <Text className="text-lg font-semibold text-accent-500 flex-1">
@@ -295,13 +313,13 @@ const OrderDetails: React.FC = () => {
             // Add Mode - Show add button with plus icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 w-full"
+              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-800 bg-[#303030] w-full"
             >
               <Plus
                 color="#9CA3AF"
                 size={20}
               />
-              <Text className="font-semibold text-gray-500">
+              <Text className="font-semibold text-white">
                 Add Customer Name
               </Text>
             </TouchableOpacity>
@@ -322,7 +340,7 @@ const OrderDetails: React.FC = () => {
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Select Table"
-                className="font-semibold text-accent-400"
+                className="font-semibold text-white"
               />
             </SelectTrigger>
             <SelectContent insets={contentInsets} className="max-h-64">
@@ -354,7 +372,7 @@ const OrderDetails: React.FC = () => {
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Order Type"
-                className="font-semibold text-accent-400"
+                className="font-semibold text-white"
               />
             </SelectTrigger>
             <SelectContent insets={contentInsets}>
@@ -364,6 +382,7 @@ const OrderDetails: React.FC = () => {
                     key={typeOption.value}
                     label={typeOption.label}
                     value={typeOption.value}
+                    className="text-start"
                   >
                     {typeOption.label}
                   </SelectItem>
@@ -379,7 +398,7 @@ const OrderDetails: React.FC = () => {
         className="mt-2 w-full items-center py-3 border border-background-400 rounded-lg"
         onPress={handleOpenItemPress}
       >
-        <Text className="font-bold text-accent-400">Add Custom Item</Text>
+        <Text className="font-bold text-white">Add Custom Item</Text>
       </TouchableOpacity>
 
       {/* Open Item Modal */}
@@ -402,7 +421,9 @@ const OrderDetails: React.FC = () => {
 
             {/* Item Name Input */}
             <View className="mb-4">
-              <Text className="text-accent-500 font-semibold mb-2">Item Name</Text>
+              <Text className="text-accent-500 font-semibold mb-2">
+                Item Name
+              </Text>
               <TextInput
                 className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
                 placeholder="Enter item name"
@@ -438,7 +459,7 @@ const OrderDetails: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAddOpenItem}
-                className="flex-1 py-3 bg-accent-400 rounded-lg"
+                className="flex-1 py-3 bg-white rounded-lg"
               >
                 <Text className="font-bold text-white text-center">
                   Add Item
@@ -492,7 +513,7 @@ const OrderDetails: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveCustomerName}
-                className="flex-1 py-3 bg-accent-400 rounded-lg"
+                className="flex-1 py-3 bg-white rounded-lg"
               >
                 <Text className="font-bold text-white text-center">
                   {customerName ? "Update" : "Add"}

@@ -26,9 +26,37 @@ const OrderLineItemsView = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <View className="bg-background-100 p-6 rounded-2xl">
-      <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
-        Items
-      </Text>
+      <View className="items-center mb-4">
+        <Text className="text-2xl font-bold text-accent-400">Items</Text>
+        {activeOrder && (
+          <View className="flex-row items-center gap-2 mt-2">
+            <View className="px-2.5 py-1 rounded-3xl bg-blue-100">
+              <Text className="text-xs font-bold text-blue-800">
+                {activeOrder.order_status}
+              </Text>
+            </View>
+            <View
+              className={`px-2.5 py-1 rounded-3xl ${activeOrder.paid_status === "Paid"
+                ? "bg-green-100"
+                : activeOrder.paid_status === "Pending"
+                  ? "bg-yellow-100"
+                  : "bg-red-100"
+                }`}
+            >
+              <Text
+                className={`text-xs font-bold ${activeOrder.paid_status === "Paid"
+                  ? "text-green-700"
+                  : activeOrder.paid_status === "Pending"
+                    ? "text-yellow-700"
+                    : "text-red-700"
+                  }`}
+              >
+                {activeOrder.paid_status}
+              </Text>
+            </View>
+          </View>
+        )}
+      </View>
       <ScrollView className="max-h-80" showsVerticalScrollIndicator={false}>
         {items.map((item) => (
           <BillItem

@@ -21,6 +21,29 @@ import SidebarAccordion from "./sidebar/SidebarAccordion";
 const EXPANDED_WIDTH = 288;
 const COLLAPSED_WIDTH = 80;
 
+const SidebarFooter = () => (
+  <View className="p-4 mt-auto border-t border-gray-100">
+    <View className="flex-row items-center">
+      <Image source={images.logo} className="h-8 w-8" resizeMode="contain" />
+      <Text className="ml-2 text-2xl font-bold text-gray-800">MTechPOS</Text>
+    </View>
+    <Text className="text-gray-600 mt-2">
+      The Dreamy taste & Magic of sweet moments in every bite from our bakery
+    </Text>
+    <View className="flex-row items-center justify-between mt-4 bg-gray-100 p-1 rounded-full">
+      <Text className="text-gray-500 font-semibold px-3 text-sm">
+        © 2025 MTechPOS
+      </Text>
+      <TouchableOpacity className="py-1 px-3 bg-white rounded-full">
+        <Text className="font-semibold text-gray-700 text-sm">Contacts</Text>
+      </TouchableOpacity>
+      <TouchableOpacity className="py-1 px-3 bg-white rounded-full">
+        <Text className="font-semibold text-gray-700 text-sm">Help</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
 const Sidebar: React.FC = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [openAccordions, setOpenAccordions] = useState<string[]>([]);
@@ -29,6 +52,7 @@ const Sidebar: React.FC = () => {
   const activePath = pathname;
 
   const scrollViewRef = useRef<ScrollView>(null);
+  const activeItemYRef = useRef<number | null>(null); // Store the y-position of the active item
 
   const animationProgress = useSharedValue(0);
 
@@ -36,10 +60,7 @@ const Sidebar: React.FC = () => {
     animationProgress.value = withTiming(isExpanded ? 1 : 0, { duration: 0 });
   }, [isExpanded]);
 
-  // --- THIS IS THE KEY: Animate translateX for a smooth slide ---
   const animatedPanelStyle = useAnimatedStyle(() => {
-    // When collapsed (progress=0), the panel is moved completely off-screen to the left.
-    // When expanded (progress=1), the panel slides to its final position at left: 0.
     const translateX = withTiming(isExpanded ? 0 : -EXPANDED_WIDTH, {
       duration: 250,
     });
@@ -50,22 +71,16 @@ const Sidebar: React.FC = () => {
 
   const animatedBackdropStyle = useAnimatedStyle(() => ({
     opacity: animationProgress.value,
-    // When collapsed, move it off-screen and disable pointer events
     zIndex: isExpanded ? 20 : -1,
   }));
 
   const handleActiveLayout = (yPosition: number) => {
-    // The `measure` method gives the position relative to the screen,
-    // so we can scroll directly to it.
-    // We add a small offset to not have it at the very top.
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ y: yPosition - 100, animated: true });
-    }
+    // Store the y-position, but don't scroll immediately
+    activeItemYRef.current = yPosition;
+    //console.log("Active item Y position stored:", yPosition);
   };
 
   useEffect(() => {
-    // When the sidebar is expanded, we need to find which accordions to open
-    // to reveal the active link.
     if (isExpanded) {
       const findPath = (items: typeof SIDEBAR_DATA, path: string): string[] => {
         for (const item of items) {
@@ -79,8 +94,27 @@ const Sidebar: React.FC = () => {
       };
       const openPath = findPath(SIDEBAR_DATA, activePath);
       setOpenAccordions(openPath);
+
+      // After setting openAccordions, wait for a tick for layout to update
+      // Then scroll to the active item if its position was captured.
+      const scrollTimer = setTimeout(() => {
+        if (scrollViewRef.current && activeItemYRef.current !== null) {
+          // Adjust for header height or any other offset if needed
+          const scrollOffset = activeItemYRef.current - 100; // Example offset
+          scrollViewRef.current.scrollTo({
+            y: scrollOffset > 0 ? scrollOffset : 0,
+            animated: true,
+          });
+          activeItemYRef.current = null; // Reset after scrolling
+        }
+      }, 300); // Give enough time for accordions to open and elements to render
+
+      return () => clearTimeout(scrollTimer);
+    } else {
+      // Reset active item Y when collapsed
+      activeItemYRef.current = null;
     }
-  }, [isExpanded, activePath]);
+  }, [isExpanded, activePath]); // Depend on isExpanded and activePath
 
   const handleToggleAccordion = (id: string) => {
     setOpenAccordions((prev) =>
@@ -94,7 +128,6 @@ const Sidebar: React.FC = () => {
 
   return (
     <>
-      {/* The Static, Always-Visible Icon Bar --- */}
       <View className="w-20 h-full bg-white p-2 border-r border-gray-200 items-center z-10">
         <TouchableOpacity
           onPress={() => setIsExpanded(true)}
@@ -102,25 +135,30 @@ const Sidebar: React.FC = () => {
         >
           <Menu color="#1C1C28" size={24} />
         </TouchableOpacity>
-        <View className="space-y-1 mt-4">
-          {SIDEBAR_DATA.map((item) => (
-            // This instance of the accordion is ALWAYS rendered in collapsed mode
-            <SidebarAccordion
-              key={item.id}
-              item={item}
-              isExpanded={false}
-              onExpand={handleExpand}
-              activePath={activePath}
-              openAccordions={openAccordions}
-              onToggle={handleToggleAccordion}
-              onActiveLayout={handleActiveLayout}
-            />
-          ))}
+        <View className="flex-1 justify-between">
+          <View className="space-y-1 mt-4">
+            {SIDEBAR_DATA.map((item) => (
+              <SidebarAccordion
+                key={item.id}
+                item={item}
+                isExpanded={false}
+                onExpand={handleExpand}
+                activePath={activePath}
+                openAccordions={openAccordions}
+                onToggle={handleToggleAccordion}
+                onActiveLayout={handleActiveLayout}
+              />
+            ))}
+          </View>
+          {/* <View className="w "> */}
+          <Image
+            source={images.logo}
+            className="h-8 w-8 mx-auto mb-4"
+            resizeMode="contain"
+          />
+          {/* </View> */}
         </View>
       </View>
-
-      {/*The Animated Overlay and Expanded Panel --- */}
-      {/* These float on top of the main content and the static icon bar */}
 
       <Animated.View
         style={animatedBackdropStyle}
@@ -137,6 +175,7 @@ const Sidebar: React.FC = () => {
         className="absolute top-0 left-0 h-full bg-white p-2 border-r border-gray-200 z-30"
       >
         <ScrollView
+          ref={scrollViewRef} // Assign ref here
           showsVerticalScrollIndicator={false}
           className="overflow-hidden"
         >
@@ -170,7 +209,6 @@ const Sidebar: React.FC = () => {
             style={{ width: EXPANDED_WIDTH - 16 }}
           >
             {SIDEBAR_DATA.map((item) => (
-              // This instance of the accordion is ALWAYS rendered in expanded mode
               <SidebarAccordion
                 key={item.id}
                 item={item}
@@ -185,6 +223,7 @@ const Sidebar: React.FC = () => {
             ))}
           </View>
         </ScrollView>
+        <SidebarFooter />
       </Animated.View>
     </>
   );

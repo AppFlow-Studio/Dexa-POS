@@ -78,6 +78,7 @@ const Header = () => {
   const [lastBreakSession, setLastBreakSession] = useState<any>(null);
 
   const showBackButton =
+    pathname == '/menu' ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||
@@ -136,7 +137,7 @@ const Header = () => {
               <ArrowLeft color="#1f2937" size={24} />
             </TouchableOpacity>
           )}
-          <Text className="text-2xl font-bold text-gray-800">{title}</Text>
+          <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -146,10 +147,10 @@ const Header = () => {
                 className="w-10 h-10 rounded-full"
               />
               <View className="ml-3">
-                <Text className="font-semibold">Jessica</Text>
-                <Text className="text-gray-500">New York</Text>
+                <Text className="font-semibold text-white">Jessica</Text>
+                <Text className="text-white">New York</Text>
               </View>
-              <ChevronDown color="#6b7280" size={20} className="ml-2" />
+              <ChevronDown color="white" size={20} className="ml-2" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">
