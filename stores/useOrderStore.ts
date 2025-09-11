@@ -694,15 +694,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-<<<<<<< HEAD
-              ...o,
-              paid_status: "Paid",
-              // For both Dine-In and Take-Away, once an order is fully paid,
-              // the check should be considered "Closed" to prevent adding new items
-              // without explicitly reopening it.
-              check_status: "Closed",
-            }
-=======
                 ...o,
                 paid_status: "Paid",
                 check_status: "Closed",
@@ -710,7 +701,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
                 total_tax: tax,
                 total_discount: activeOrderDiscount, // Save the discount amount
               }
->>>>>>> b5fd238b2b1e88bb3a9705539f07eda18ebd8652
             : o
         ),
       }));
