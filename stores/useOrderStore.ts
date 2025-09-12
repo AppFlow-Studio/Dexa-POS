@@ -737,8 +737,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
             : o
         ),
       }));
-
-      // IMPORTANT: REMOVED the call to addOrderToHistory from this function.
     },
 
     setPendingTableSelection: (tableId) => {
@@ -835,31 +833,32 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       const allItems = ordersToMerge.flatMap((o) => o.items);
       const oldOrderIds = ordersToMerge.map((o) => o.id);
+      const primaryTableId = tableIds[0];
 
-      const newMergedOrder = startNewOrder();
+      // Create a new order object with all necessary properties
+      const newMergedOrderData = {
+        id: `order_${Date.now()}`,
+        service_location_id: primaryTableId,
+        order_status: "Preparing" as const, // Start as preparing
+        order_type: "Dine In" as const,
+        check_status: "Opened" as const,
+        paid_status: "Unpaid" as const,
+        items: allItems,
+        opened_at: new Date().toISOString(),
+        customer_name: `Merged Table (${tableNames.join(", ")})`,
+      };
 
       set((state) => {
+        // Remove all old orders and add the new one
         const newOrdersList = state.orders.filter(
           (o) => !oldOrderIds.includes(o.id)
         );
-
-        const finalMergedOrder = {
-          ...newMergedOrder,
-          items: allItems,
-          service_location_id: tableIds[0], // Assign to the primary table
-          order_type: "Dine In" as const,
-          customer_name: `Merged Table (${tableNames.join(", ")})`,
-        };
-
-        newOrdersList.push(finalMergedOrder);
-
+        newOrdersList.push(newMergedOrderData);
         return { orders: newOrdersList };
       });
 
-      const finalMergedOrderId = newMergedOrder.id;
-      // The recalculateTotals function needs to be defined within your store as well
-      // Assuming it exists from previous steps.
-      recalculateTotals(finalMergedOrderId);
+      const finalMergedOrderId = newMergedOrderData.id;
+      // recalculateTotals(finalMergedOrderId);
 
       return finalMergedOrderId;
     },

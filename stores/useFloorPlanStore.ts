@@ -36,12 +36,42 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     }));
   },
   updateTableStatus: (tableId, newStatus) => {
-    set((state) => ({
-      tables: state.tables.map((t) =>
-        t.id === tableId ? { ...t, status: newStatus } : t
-      ),
-    }));
+    set((state) => {
+      const tableToUpdate = state.tables.find((t) => t.id === tableId);
+      if (!tableToUpdate) return state;
+
+      let groupIdsToUpdate: string[] = [tableId];
+
+      if (tableToUpdate.mergedWith || tableToUpdate.isPrimary) {
+        const primaryTable = tableToUpdate.isPrimary
+          ? tableToUpdate
+          : state.tables.find(
+              (t) => t.isPrimary && t.mergedWith?.includes(tableId)
+            );
+
+        if (primaryTable) {
+          groupIdsToUpdate = [
+            primaryTable.id,
+            ...(primaryTable.mergedWith || []),
+          ];
+        }
+      }
+
+      return {
+        tables: state.tables.map((t) => {
+          if (groupIdsToUpdate.includes(t.id)) {
+            // Clear order when table needs cleaning or becomes available
+            if (newStatus === "Available" || newStatus === "Needs Cleaning") {
+              return { ...t, status: newStatus, order: null };
+            }
+            return { ...t, status: newStatus };
+          }
+          return t;
+        }),
+      };
+    });
   },
+
   addTable: (tableData) => {
     const shape = TABLE_SHAPES[tableData.shapeId];
     if (!shape) return; // Safety check
@@ -91,9 +121,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     if (tableIds.length < 2) return null;
 
     const primaryTableId = tableIds[0];
-    const newName = tableIds
-      .map((id) => get().tables.find((t) => t.id === id)?.name)
-      .join("-");
+    // Find the original names before they get overwritten
+    const tableNames = tableIds.map(
+      (id) => get().tables.find((t) => t.id === id)?.name || id
+    );
+    const newName = tableNames.join("-");
     let mergedCapacity = 0;
 
     set((state) => ({
@@ -102,13 +134,17 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
           mergedCapacity += table.capacity;
           return {
             ...table,
+            name: newName, // Apply new name to ALL tables in the group ---
             isPrimary: table.id === primaryTableId,
             mergedWith: tableIds.filter((id) => id !== table.id),
             status: "In Use" as TableStatus,
-            // Link the new consolidated order to the primary table
             order:
               table.id === primaryTableId
-                ? { id: primaryOrderId, customerName: "Merged Party", total: 0 }
+                ? {
+                    id: primaryOrderId,
+                    customerName: `Group (${newName})`,
+                    total: 0,
+                  }
                 : null,
           };
         }
@@ -116,10 +152,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       }),
     }));
 
+    // This second loop is now only for updating capacity on the primary table
     set((state) => ({
       tables: state.tables.map((table) =>
         table.id === primaryTableId
-          ? { ...table, name: newName, capacity: mergedCapacity }
+          ? { ...table, capacity: mergedCapacity }
           : table
       ),
     }));
@@ -132,18 +169,27 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const table = get().tables.find((t) => t.id === tableId);
     if (!table || (!table.isPrimary && !table.mergedWith?.length)) return;
 
-    const groupIds = table.isPrimary
-      ? [table.id, ...table.mergedWith!]
-      : [
-          table.id,
-          ...get().tables.find((t) => t.id === table.mergedWith![0])!
-            .mergedWith!,
-        ];
+    let groupIds: string[] = [];
+
+    if (table.isPrimary) {
+      // If the selected table is the primary one, the group is easy to find.
+      groupIds = [table.id, ...(table.mergedWith || [])];
+    } else {
+      // If the selected table is NOT primary, find the primary table it's linked to.
+      // Its `mergedWith` array will contain the primary table's ID.
+      const primaryTableId = table.mergedWith![0];
+      const primaryTable = get().tables.find((t) => t.id === primaryTableId);
+      if (primaryTable) {
+        groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
+      }
+    }
+
+    if (groupIds.length === 0) return; // Safety check
 
     set((state) => ({
       tables: state.tables.map((t) => {
         if (groupIds.includes(t.id)) {
-          // Reset to original name and capacity (assuming name is like "T-10")
+          // Reset logic remains the same
           const originalName = `T-${t.id}`;
           const originalCapacity =
             MOCK_TABLES.find((mt) => mt.id === t.id)?.capacity || t.capacity;
@@ -154,11 +200,14 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
             status: "Available" as TableStatus,
             name: originalName,
             capacity: originalCapacity,
+            order: null,
           };
         }
         return t;
       }),
     }));
+
+    get().clearSelection(); // Clear selection after unmerging
   },
 
   clearSelection: () => set({ selectedTableIds: [] }),

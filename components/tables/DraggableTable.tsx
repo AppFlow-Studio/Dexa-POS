@@ -129,7 +129,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
+    (o) =>
+      o.service_location_id === table.id &&
+      o.order_status !== "Voided" &&
+      o.order_status !== "Closed" // Show all orders except voided ones
   );
 
   // Calculate the total for this specific order's cart

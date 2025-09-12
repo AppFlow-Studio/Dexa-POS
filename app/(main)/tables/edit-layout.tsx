@@ -61,7 +61,7 @@ const LayoutEditorScreen = () => {
     <View className="flex-1 bg-gray-100">
       {/* Header */}
       <View className="bg-white p-4 flex-row justify-between items-center">
-        <Text className="text-2xl font-bold">Edit Layout</Text>
+        <Text className="text-2xl font-bold"></Text>
         <View className="flex-row gap-2">
           {selectedTableIds.length >= 2 && (
             <TouchableOpacity
