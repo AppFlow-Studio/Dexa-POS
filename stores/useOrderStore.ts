@@ -58,6 +58,10 @@ interface OrderState {
 
   archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
   markAllItemsAsReady: (orderId: string) => void;
+  consolidateOrdersForTables: (
+    tableIds: string[],
+    tableNames: string[]
+  ) => string;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -822,6 +826,42 @@ export const useOrderStore = create<OrderState>((set, get) => {
         //if order type is take away then add it archive after ready
         get().archiveOrder(orderId);
       }
+    },
+    consolidateOrdersForTables: (tableIds, tableNames) => {
+      const { orders, startNewOrder } = get();
+      const ordersToMerge = orders.filter(
+        (o) => o.service_location_id && tableIds.includes(o.service_location_id)
+      );
+
+      const allItems = ordersToMerge.flatMap((o) => o.items);
+      const oldOrderIds = ordersToMerge.map((o) => o.id);
+
+      const newMergedOrder = startNewOrder();
+
+      set((state) => {
+        const newOrdersList = state.orders.filter(
+          (o) => !oldOrderIds.includes(o.id)
+        );
+
+        const finalMergedOrder = {
+          ...newMergedOrder,
+          items: allItems,
+          service_location_id: tableIds[0], // Assign to the primary table
+          order_type: "Dine In" as const,
+          customer_name: `Merged Table (${tableNames.join(", ")})`,
+        };
+
+        newOrdersList.push(finalMergedOrder);
+
+        return { orders: newOrdersList };
+      });
+
+      const finalMergedOrderId = newMergedOrder.id;
+      // The recalculateTotals function needs to be defined within your store as well
+      // Assuming it exists from previous steps.
+      recalculateTotals(finalMergedOrderId);
+
+      return finalMergedOrderId;
     },
   };
 });

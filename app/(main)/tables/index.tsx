@@ -9,6 +9,7 @@ import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -19,6 +20,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import Svg, { Line } from "react-native-svg";
 
 type TablePositions = {
   [key: string]: { x: number; y: number };
@@ -164,7 +166,9 @@ const TablesScreen = () => {
             </Text>
           </View>
           <FlatList
-            data={filteredTables.filter((table) => table.status !== "Not in Service")}
+            data={filteredTables.filter(
+              (table) => table.status !== "Not in Service"
+            )}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => <TableListItem table={item} />}
           />
@@ -232,6 +236,39 @@ const TablesScreen = () => {
                   style={canvasAnimatedStyle}
                   className="w-full h-full"
                 >
+                  <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                    {tables.map((table) => {
+                      if (table.isPrimary && table.mergedWith) {
+                        const primaryCenter = {
+                          x: table.x + 50,
+                          y: table.y + 50,
+                        }; // Approx center
+                        return table.mergedWith.map((mergedId) => {
+                          const mergedTable = tables.find(
+                            (t) => t.id === mergedId
+                          );
+                          if (!mergedTable) return null;
+                          const mergedCenter = {
+                            x: mergedTable.x + 50,
+                            y: mergedTable.y + 50,
+                          };
+                          return (
+                            <Line
+                              key={`${table.id}-${mergedId}`}
+                              x1={primaryCenter.x}
+                              y1={primaryCenter.y}
+                              x2={mergedCenter.x}
+                              y2={mergedCenter.y}
+                              stroke="#F59E0B" // Amber-500
+                              strokeWidth="4"
+                              strokeDasharray="8, 4"
+                            />
+                          );
+                        });
+                      }
+                      return null;
+                    })}
+                  </Svg>
                   {tables.map((table) => (
                     <DraggableTable
                       key={table.id}

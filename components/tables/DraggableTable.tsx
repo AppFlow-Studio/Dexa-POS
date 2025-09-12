@@ -103,26 +103,33 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     removeTable(table.id);
   };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    position: "absolute",
-    top: 0,
-    left: 0,
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { rotate: `${rotation.value}deg` },
-    ],
-    borderWidth: 2,
-    borderColor: isSelected && isEditMode ? "#3B82F6" : "transparent",
-    borderRadius: 18, // A generic border radius
-    padding: 4,
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    const isMerged = table.mergedWith && table.mergedWith.length > 0;
 
+    return {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value },
+        { rotate: `${rotation.value}deg` },
+      ],
+      borderWidth: 2,
+      // Show border if selected in edit mode, OR if it's a merged table
+      borderColor:
+        isSelected && isEditMode
+          ? "#3B82F6"
+          : isMerged
+            ? "#F59E0B"
+            : "transparent",
+      borderRadius: 18,
+      padding: 4,
+    };
+  });
 
   const activeOrderForThisTable = orders.find(
-    (o) =>
-      o.service_location_id === table.id &&
-      o.order_status !== "Voided" // Show all orders except voided ones
+    (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
   );
 
   // Calculate the total for this specific order's cart
@@ -152,7 +159,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           <View className="absolute inset-0 items-center justify-center">
             <Text className="text-white font-bold text-lg">{table.name}</Text>
             {table.type === "table" && (
-              <Text className="text-white font-bold text-lg">${orderTotal.toFixed(2)}</Text>
+              <Text className="text-white font-bold text-lg">
+                ${orderTotal.toFixed(2)}
+              </Text>
             )}
           </View>
         </TouchableOpacity>

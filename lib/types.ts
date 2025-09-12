@@ -115,6 +115,8 @@ export interface TableType {
   y: number;
   rotation: number;
   type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
+  isPrimary?: boolean; // Is this the primary table in a merged group?
+  mergedWith?: string[]; // Array of other table IDs it's merged with
 }
 
 export type OnlineOrderStatus =
