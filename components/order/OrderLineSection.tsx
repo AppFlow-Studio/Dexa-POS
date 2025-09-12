@@ -79,6 +79,8 @@ const OrderLineSection: React.FC = () => {
   };
 
   const handleCompleteOrder = (orderId: string) => {
+    // Sync order status based on item statuses
+    // updateOrderStatus(orderId, "Ready");
     markAllItemsAsReady(orderId);
   };
 

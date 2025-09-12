@@ -17,13 +17,32 @@ const OrderCard: React.FC<OrderCardProps> = ({
   const isReady = order.order_status === "Ready";
   const statusBg = isReady ? "bg-[#2BAE7433]" : "bg-[#DC9F1E33]";
   const statusText = isReady ? "text-[#2BAE74]" : "text-[#DC9F1E]";
+  const paidBg =
+    order.paid_status === "Paid"
+      ? "bg-green-100"
+      : order.paid_status === "Pending"
+        ? "bg-yellow-100"
+        : "bg-red-100";
+  const paidText =
+    order.paid_status === "Paid"
+      ? "text-green-700"
+      : order.paid_status === "Pending"
+        ? "text-yellow-700"
+        : "text-red-700";
 
   return (
     <View className="bg-white p-4 rounded-2xl border border-background-400 w-72 mr-4">
-      <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg}`}>
-        <Text className={`text-xs font-bold ${statusText}`}>
-          {order.order_status}
-        </Text>
+      <View className="flex-row items-center gap-2">
+        <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg}`}>
+          <Text className={`text-xs font-bold ${statusText}`}>
+            {order.order_status}
+          </Text>
+        </View>
+        <View className={`px-2.5 py-1 rounded-3xl self-start ${paidBg}`}>
+          <Text className={`text-xs font-bold ${paidText}`}>
+            {order.paid_status}
+          </Text>
+        </View>
       </View>
       <Text className="text-lg font-bold text-accent-500 mt-2">
         {order.customer_name || "Walk-In"} #{order.id.slice(-5)}

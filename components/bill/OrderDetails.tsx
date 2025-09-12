@@ -29,6 +29,7 @@ type SelectOption = { label: string; value: string };
 const ORDER_TYPE_OPTIONS: SelectOption[] = [
   { label: "Dine In", value: "Dine In" },
   { label: "Take Away", value: "Take Away" },
+  { label: "Delivery", value: "Delivery" },
 ];
 
 const OrderDetails: React.FC = () => {
@@ -292,7 +293,7 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className="pb-4 px-4 bg-background-200 overflow-hidden rounded-t-3xl">
+    <View className="pb-4 px-4 bg-[#212121] overflow-hidden ">
       {/* Header */}
       <View className="flex-row items-center justify-between my-2 w-full">
         <View className="flex-1">
@@ -301,7 +302,7 @@ const OrderDetails: React.FC = () => {
             // Edit Mode - Show customer name with edit icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-accent-400 bg-accent-50 w-full"
+              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-white bg-accent-50 w-full"
             >
               <View className="flex-row items-center flex-1">
                 <Text className="text-lg font-semibold text-accent-500 flex-1">
@@ -314,10 +315,13 @@ const OrderDetails: React.FC = () => {
             // Add Mode - Show add button with plus icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 w-full"
+              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-800 bg-[#303030] w-full"
             >
-              <Plus color="#9CA3AF" size={20} />
-              <Text className="font-semibold text-gray-500">
+              <Plus
+                color="#9CA3AF"
+                size={20}
+              />
+              <Text className="font-semibold text-white">
                 Add Customer Name
               </Text>
             </TouchableOpacity>
@@ -338,7 +342,7 @@ const OrderDetails: React.FC = () => {
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Select Table"
-                className="font-semibold text-accent-400"
+                className="font-semibold text-white"
               />
             </SelectTrigger>
             <SelectContent insets={contentInsets} className="max-h-64">
@@ -370,7 +374,7 @@ const OrderDetails: React.FC = () => {
             <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
               <SelectValue
                 placeholder="Order Type"
-                className="font-semibold text-accent-400"
+                className="font-semibold text-white"
               />
             </SelectTrigger>
             <SelectContent insets={contentInsets}>
@@ -380,6 +384,7 @@ const OrderDetails: React.FC = () => {
                     key={typeOption.value}
                     label={typeOption.label}
                     value={typeOption.value}
+                    className="text-start"
                   >
                     {typeOption.label}
                   </SelectItem>
@@ -395,14 +400,11 @@ const OrderDetails: React.FC = () => {
         className="mt-2 w-full items-center py-3 border border-background-400 rounded-lg"
         onPress={handleOpenItemPress}
       >
-        <Text className="font-bold text-accent-400">Add Custom Item</Text>
+        <Text className="font-bold text-white">Add Custom Item</Text>
       </TouchableOpacity>
 
       {/* Open Item Modal */}
-      <Dialog
-        open={isOpenItemModalVisible}
-        onOpenChange={setIsOpenItemModalVisible}
-      >
+      <Dialog open={isOpenItemModalVisible} onOpenChange={setIsOpenItemModalVisible}>
         <DialogContent className="p-0 rounded-[36px] max-w-2xl w-full bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-t-2xl">
@@ -459,7 +461,7 @@ const OrderDetails: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAddOpenItem}
-                className="flex-1 py-3 bg-accent-400 rounded-lg"
+                className="flex-1 py-3 bg-white rounded-lg"
               >
                 <Text className="font-bold text-white text-center">
                   Add Item
@@ -518,7 +520,7 @@ const OrderDetails: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveCustomerName}
-                className="flex-1 py-3 bg-accent-400 rounded-lg"
+                className="flex-1 py-3 bg-white rounded-lg"
               >
                 <Text className="font-bold text-white text-center">
                   {customerName ? "Update" : "Add"}

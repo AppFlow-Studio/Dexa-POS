@@ -62,6 +62,7 @@ interface OrderState {
     tableIds: string[],
     tableNames: string[]
   ) => string;
+  fireActiveOrderToKitchen: () => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -861,6 +862,51 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // recalculateTotals(finalMergedOrderId);
 
       return finalMergedOrderId;
+    },
+    fireActiveOrderToKitchen: () => {
+      const { activeOrderId, orders } = get();
+      if (!activeOrderId) return;
+      const currentOrder = orders.find((o) => o.id === activeOrderId);
+      if (!currentOrder) return;
+      if ((currentOrder.items?.length || 0) === 0) return;
+      // If already fired (not in Building), do nothing
+      if (currentOrder.order_status !== "Building") return;
+
+      const updatedOrders = orders.map((o) => {
+        if (o.id !== activeOrderId) return o;
+        const updatedItems = o.items.map((item) => ({
+          ...item,
+          item_status: "Preparing" as const,
+        }));
+        return {
+          ...o,
+          items: updatedItems,
+          order_status: "Preparing" as const,
+          check_status: "Opened" as const,
+          paid_status: o.paid_status === "Paid" ? "Paid" : "Unpaid",
+          order_type: o.order_type || ("Take Away" as const),
+        } as OrderProfile;
+      });
+
+      const newOrder: OrderProfile = {
+        id: `order_${Date.now()}`,
+        service_location_id: null,
+        order_status: "Building",
+        check_status: "Opened",
+        paid_status: "Unpaid",
+        items: [],
+        opened_at: new Date().toISOString(),
+      };
+
+      set({ orders: [...updatedOrders, newOrder], activeOrderId: newOrder.id });
+      // Totals for the new active (empty) order become zero
+      recalculateTotals(newOrder.id);
+      try {
+        toast.success("Order sent to kitchen", {
+          duration: 2500,
+          position: ToastPosition.BOTTOM,
+        });
+      } catch {}
     },
   };
 });

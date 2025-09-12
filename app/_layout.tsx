@@ -63,7 +63,7 @@ export default function RootLayout() {
     <GestureHandlerRootView>
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <StatusBar style={isDarkColorScheme ? "light" : "dark"} />
+          <StatusBar style={"dark"} />
           <Stack screenOptions={{ headerShown: false }} />
           <PortalHost />
           <SearchBottomSheet />

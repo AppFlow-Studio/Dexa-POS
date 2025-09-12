@@ -11,7 +11,7 @@ import { Text, View } from "react-native";
 
 const OrderProcessing = () => {
     const { orders, setActiveOrder, startNewOrder, updateOrderStatus, syncOrderStatus } = useOrderStore();
-    
+
     const [isAccordionOpen, setIsAccordionOpen] = useState(false);
     const [isItemsModalOpen, setItemsModalOpen] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -59,10 +59,13 @@ const OrderProcessing = () => {
     };
 
     return (
-        <View className="flex-1 flex-col">
+        <View className="flex-1 flex-col bg-[#212121]">
             {/* Content Section (Below Header) */}
             <View className="flex-1 flex-row">
-                <View className="flex-1 p-6 px-4 pt-0">
+                {/* Bill Section (White Area) */}
+                <BillSection />
+
+                <View className="flex-1 p-6 px-4 pt-0 bg-[#212121]">
                     <Accordion
                         type="single"
                         collapsible
@@ -71,10 +74,10 @@ const OrderProcessing = () => {
                         <AccordionItem value="orders">
                             <AccordionTrigger>
                                 <View className="flex-row items-center gap-x-2">
-                                    <Text className="text-2xl font-bold text-gray-800">Order Line</Text>
+                                    <Text className="text-2xl font-bold text-white">Order Line</Text>
                                     {
                                         filteredOrders?.length > 0 && (
-                                            <Badge className="ml-2 bg-primary-400 rounded-full justify-center items-center">
+                                            <Badge className="ml-2 bg-blue-600 rounded-full justify-center items-center">
                                                 <Text className="text-xs font-bold text-white">
                                                     {filteredOrders.length}
                                                 </Text>
@@ -106,9 +109,6 @@ const OrderProcessing = () => {
                     {/* --- Menu Section --- */}
                     <MenuSection />
                 </View>
-
-                {/* Bill Section (White Area) */}
-                <BillSection />
             </View>
 
             {/* Order Items Modal */}

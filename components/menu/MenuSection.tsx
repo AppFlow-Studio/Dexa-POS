@@ -1,7 +1,7 @@
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
-import { useItemStore } from "@/stores/useItemStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -13,15 +13,30 @@ import ModifierScreen from "./ModifierScreen";
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
 }
+// Get image source for preview
+const getImageSource = (item: MenuItemType) => {
+  if (item.image && item.image.length > 200) {
+    return { uri: `data:image/jpeg;base64,${item.image}` };
+  }
 
+  if (item.image) {
+    // Try to get image from assets
+    try {
+      return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP];
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+};
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
-  const [activeMeal, setActiveMeal] = useState("Dinner");
-  const [activeCategory, setActiveCategory] = useState("Main Course");
+  const { menuItems, menus, isCategoryAvailableNow } = useMenuStore();
+
+  const [activeMeal, setActiveMeal] = useState(menus[0].name);
+  const [activeCategory, setActiveCategory] = useState(menus[0].categories[0]);
   const { isOpen, mode, cartItem, close } = useModifierSidebarStore();
-
-  const { items } = useItemStore();
-
   // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
@@ -29,17 +44,13 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const { openSearch } = useSearchStore();
 
   useEffect(() => {
-    const filtered = items.filter((item) => {
-      // Only show items that are marked as available
-      if (!item.availability) {
-        return false;
-      }
-      const mealMatch = item.meal.includes(activeMeal as any);
-      const categoryMatch = item.category === activeCategory;
-      return mealMatch && categoryMatch;
+    const filtered = menuItems.filter((item) => {
+      const categoryMatch = item.category.includes(activeCategory);
+      const categoryAvailable = isCategoryAvailableNow(activeCategory);
+      return categoryMatch && categoryAvailable;
     });
     setFilteredMenuItems(filtered);
-  }, [activeMeal, activeCategory, items]);
+  }, [activeMeal, activeCategory, isCategoryAvailableNow]);
 
   // Show modifier screen when in fullscreen mode (both add and edit), otherwise show regular menu
   if (isOpen && mode === "fullscreen") {
@@ -48,17 +59,17 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   return (
     <>
-      <View className="mt-6 flex-1 border-r border-gray-300 pr-4">
+      <View className="mt-6 flex-1 border-gray-700 pr-4 bg-[#212121]">
         <View className="flex flex-row items-center justify-between pb-4">
-          <Text className="text-2xl font-bold text-gray-800 ">Menu</Text>
+          <Text className="text-2xl font-bold text-white">Menu</Text>
           {/* Right Section: Search Bar - Now positioned at the bottom */}
           <View className="w-[50%]">
             <TouchableOpacity
               onPress={openSearch}
-              className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 py-3 justify-start"
+              className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start"
             >
-              <Search color="#5D5D73" size={16} />
-              <Text className="text-gray-600 ml-4">Search</Text>
+              <Search color="#9CA3AF" size={16} />
+              <Text className="text-gray-300 ml-4">Search</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -80,7 +91,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           removeClippedSubviews={false}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center h-48">
-              <Text className="text-gray-500 text-lg">
+              <Text className="text-gray-400 text-lg">
                 No items match the current filters.
               </Text>
             </View>
@@ -88,11 +99,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           renderItem={({ item }) => (
             <MenuItem
               item={item}
-              imageSource={
-                item.image
-                  ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-                  : undefined
-              }
+              imageSource={getImageSource(item)}
               onOrderClosedCheck={onOrderClosedCheck}
             />
           )}

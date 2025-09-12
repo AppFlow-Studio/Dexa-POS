@@ -16,13 +16,13 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   onToggleExpand,
 }) => {
   return (
-    <View className="flex-1 bg-background-200 ">
+    <View className="flex-1 bg-[#212121]">
       <View className="my-4 px-4 h-full">
         <View className="flex flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-accent-500">Cart</Text>
-          <Text className="text-sm text-accent-500">{cart.length} Items</Text>
+          <Text className="text-xl font-bold text-white">Cart</Text>
+          <Text className="text-sm text-gray-300">{cart.length} Items</Text>
         </View>
-        <View className="flex-1 h-full w-full ">
+        <View className="flex-1 h-full w-full">
           <ScrollView
             showsVerticalScrollIndicator={true}
             className="flex-1 h-full my-2"
@@ -40,7 +40,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
               ))
             ) : (
               <View className="h-24 items-center justify-center">
-                <Text className="text-gray-500">Cart is empty.</Text>
+                <Text className="text-gray-400">Cart is empty.</Text>
               </View>
             )}
           </ScrollView>

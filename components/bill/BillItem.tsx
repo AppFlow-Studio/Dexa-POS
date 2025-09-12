@@ -75,7 +75,7 @@ const BillItem: React.FC<BillItemProps> = ({
   const hasModifiers = (item.customizations.modifiers && item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
   return (
-    <View className="mb-2 rounded-xl overflow-hidden bg-white border border-gray-200">
+    <View className="mb-2 rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
       {/* Delete Button - Positioned absolutely but behind the content */}
       {isEditable && (
         <View className="absolute top-0 right-0 h-16 justify-center items-end z-10">
@@ -89,7 +89,7 @@ const BillItem: React.FC<BillItemProps> = ({
       )}
 
       {/* Main Content - This will slide to reveal the delete button */}
-      <Animated.View style={animatedStyle} className="bg-white z-20">
+      <Animated.View style={animatedStyle} className="bg-[#303030] z-20">
         <TouchableOpacity onPress={handleItemPress} activeOpacity={0.9}>
           <View className="flex-row items-center p-2">
             {/* {imageSource ? (
@@ -106,7 +106,7 @@ const BillItem: React.FC<BillItemProps> = ({
 
             <View className="flex-1">
               <View className="flex-row items-center">
-                <Text className="font-semibold text-base text-accent-500">
+                <Text className="font-semibold text-base text-white">
                   {item.name}
                 </Text>
                 {item.isDraft && (
@@ -116,27 +116,29 @@ const BillItem: React.FC<BillItemProps> = ({
                 )}
               </View>
               <View className="flex-row items-center mt-1">
-                <Text className="text-sm text-accent-500">
+                <Text className="text-sm text-gray-300">
                   x {item.quantity}
                 </Text>
 
-                <TouchableOpacity
-                  className="flex-row items-center ml-3 px-2 py-0.5 bg-[#659AF033] rounded-3xl"
-                  onPress={handleNotesPress}
-                >
-                  <Text className="text-xs font-semibold text-primary-400 mr-1">
-                    {item.isDraft ? "Confirm" : "Edit"}
-                  </Text>
-                  {isExpanded ? (
-                    <ChevronUp color="#2563eb" size={10} />
-                  ) : (
-                    <ChevronDown color="#2563eb" size={10} />
-                  )}
-                </TouchableOpacity>
+                {
+                  !item.isDraft && <TouchableOpacity
+                    className="flex-row items-center ml-3 px-2 py-0.5 bg-blue-900/30 border border-blue-500 rounded-3xl"
+                    onPress={handleNotesPress}
+                  >
+                    <Text className="text-xs font-semibold text-blue-400 mr-1">
+                      Edit
+                    </Text>
 
+                    {isExpanded ? (
+                      <ChevronUp color="#60A5FA" size={10} />
+                    ) : (
+                      <ChevronDown color="#60A5FA" size={10} />
+                    )}
+                  </TouchableOpacity>
+                }
               </View>
             </View>
-            <Text className="font-semibold text-base text-accent-300">
+            <Text className="font-semibold text-base text-white">
               ${(item.price * item.quantity).toFixed(2)}
             </Text>
           </View>
@@ -147,27 +149,29 @@ const BillItem: React.FC<BillItemProps> = ({
           <Animated.View
             className={`overflow-hidden `}
           >
-            <View className="px-2 pb-2 bg-gray-50 border-t border-gray-100">
+            <View className="px-2 pb-2 bg-[#212121] border-t border-gray-600">
               {/* Modifiers */}
               {item.customizations.modifiers && item.customizations.modifiers.length > 0 && (
                 <View className="py-1">
                   {item.customizations.modifiers.map((modifier, index) => (
-                    <View key={index}>
+                    <View key={index} className="">
                       {modifier.options.length > 0 && (
-                        <View key={index} className="mb-2">
-                          <Text className="text-sm font-medium text-gray-600 mb-1">
+                        <View key={index} className="flex flex-row flex-wrap items-center mb-1">
+                          <Text className="text-sm font-medium text-gray-300 ">
                             {modifier.categoryName}:
                           </Text>
-                          {modifier.options.map((option, optionIndex) => (
-                            <View key={optionIndex} className="flex-row justify-between items-center ml-2">
-                              <Text className="text-sm text-gray-700">• {option.name}</Text>
-                              {option.price > 0 && (
-                                <Text className="text-sm font-medium text-green-600">
-                                  +${option.price.toFixed(2)}
-                                </Text>
-                              )}
-                            </View>
-                          ))}
+                          {modifier.options.map((option, optionIndex) => {
+                            return (
+                              <View key={optionIndex} className="flex-row justify-between items-center ml-1">
+                                <Text className="text-sm text-gray-200">{option.name}{optionIndex < modifier.options.length - 1 && " • "}</Text>
+                                {option.price > 0 && (
+                                  <Text className="text-sm font-medium ml-1 text-green-400">
+                                    +${option.price.toFixed(2)} {optionIndex < modifier.options.length - 1 && ","}
+                                  </Text>
+                                )}
+                              </View>
+                            );
+                          })}
                         </View>
                       )}
                     </View>
@@ -178,8 +182,8 @@ const BillItem: React.FC<BillItemProps> = ({
               {/* Notes */}
               {item.customizations.notes && (
                 <View className="py-1">
-                  <Text className="text-sm text-gray-600 mb-1">Notes:</Text>
-                  <Text className="text-sm text-gray-700 ml-2 italic">
+                  <Text className="text-sm text-gray-300 mb-1">Notes:</Text>
+                  <Text className="text-sm text-gray-200 ml-2 italic">
                     {item.customizations.notes}
                   </Text>
                 </View>
@@ -188,7 +192,7 @@ const BillItem: React.FC<BillItemProps> = ({
           </Animated.View>
         )}
       </Animated.View>
-      <View className="h-[1px] bg-gray-100 w-[90%] self-center mt-1" />
+      <View className="h-[1px] bg-gray-600 w-[90%] self-center mt-1" />
 
     </View>
   );

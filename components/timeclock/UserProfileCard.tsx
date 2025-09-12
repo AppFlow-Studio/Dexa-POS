@@ -84,18 +84,16 @@ const UserProfileCard: React.FC = () => {
                 onPress={startBreak}
                 // Disable the button if a break has been taken or the user is currently on break
                 disabled={status === "onBreak" || currentShift?.hasTakenBreak}
-                className={`py-2.5 border rounded-xl items-center ${
-                  status === "onBreak" || currentShift?.hasTakenBreak
+                className={`py-2.5 border rounded-xl items-center ${status === "onBreak" || currentShift?.hasTakenBreak
                     ? "bg-gray-100 border-gray-200"
                     : "border-gray-300"
-                }`}
+                  }`}
               >
                 <Text
-                  className={`font-bold ${
-                    status === "onBreak" || currentShift?.hasTakenBreak
+                  className={`font-bold ${status === "onBreak" || currentShift?.hasTakenBreak
                       ? "text-gray-400"
                       : "text-gray-700"
-                  }`}
+                    }`}
                 >
                   {currentShift?.hasTakenBreak
                     ? "Break Taken"
@@ -135,7 +133,7 @@ const UserProfileCard: React.FC = () => {
   };
 
   return (
-    <View className="w-80 p-6 bg-background-200 rounded-3xl justify-between">
+    <View className="w-80 p-6 bg-[#212121] rounded-3xl justify-between">
       <View className="mb-4">
         <Text className="text-gray-500 text-center">Current Time</Text>
         <Text className="text-3xl font-bold text-gray-800 text-center">

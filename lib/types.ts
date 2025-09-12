@@ -34,6 +34,7 @@ export interface ModifierOption {
   name: string;
   price: number;
   isAvailable?: boolean; // For items that are "86'd" (unavailable)
+  isDefault?: boolean; // For default selected options
 }
 
 export interface ModifierGroup {
@@ -47,6 +48,16 @@ export interface ModifierGroup {
   options: ModifierOption[];
 }
 
+export interface ModifierCategory {
+  id: string;
+  name: string;
+  type: "required" | "optional";
+  selectionType: "single" | "multiple";
+  maxSelections?: number; // For multiple selection with limits
+  description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
+  options: ModifierOption[];
+}
+
 export type PricingType = "fixed" | "at_sale";
 export type ItemStatus = "Active" | "Draft" | "Inactive" | "Out of Stock";
 
@@ -57,36 +68,41 @@ export interface MenuItemType {
   description?: string;
   image?: string;
   color?: string; // For the POS tile color
-  category:
-    | "Appetizers"
-    | "Main Course"
-    | "Sides"
-    | "Drinks"
-    | "Dessert"
-    | "Pastries"
-    | "Breads";
 
   // Pricing & Tax
   pricingType: PricingType;
   price: number;
   taxIds?: string[];
-  availableDiscount?: Discount;
 
   // Menu & Modifiers
   meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
-  modifierGroupIds?: string[];
+  category: string[]; // Changed to array to support multiple categories
+  availableDiscount?: Discount;
   sizes?: ItemSize[];
   addOns?: AddOn[];
   allergens?: string[];
-  availability: boolean; // Enable/disable on menu
+  cardBgColor?: string;
+  availability?: boolean; // New field for availability status
+}
 
-  // Inventory & Tracking
-  serialNo: string;
-  stock: number;
-  unit: "PCs" | "KGs" | "Liters";
-  status: ItemStatus;
-  lastUpdate: string;
-  parLevel?: number; // For low-stock alerts
+export interface Menu {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+  categories: string[]; // Array of category names
+  schedules?: Schedule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Schedule {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  days: string[];
+  isActive: boolean;
 }
 
 export type TableStatus =

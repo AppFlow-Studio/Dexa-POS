@@ -65,7 +65,7 @@ const StoreSelectScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-4xl font-semibold text-accent-500 text-center mb-8">
+      <Text className="text-4xl font-semibold text-white text-center mb-8">
         Select Store
       </Text>
 
