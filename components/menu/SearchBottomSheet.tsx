@@ -74,7 +74,6 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
               placeholderTextColor="#6b7280"
               autoFocus={true}
               focusable
-              
             />
           </View>
           <TouchableOpacity

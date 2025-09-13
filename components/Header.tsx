@@ -78,7 +78,7 @@ const Header = () => {
   const [lastBreakSession, setLastBreakSession] = useState<any>(null);
 
   const showBackButton =
-    pathname == '/menu' ||
+    pathname == "/menu" ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||
@@ -95,8 +95,7 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4) ||
-    (pathname.startsWith("/settings") &&
-      pathname.split("/").length === 4)
+    (pathname.startsWith("/settings") && pathname.split("/").length === 4);
   pathname === "/settings/store-operation/end-of-day/checks" ||
     pathname === "/settings/store-operation/end-of-day/drawers" ||
     pathname === "/settings/store-operation/end-of-day/employees" ||

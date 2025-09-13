@@ -9,6 +9,7 @@ import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -19,6 +20,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import Svg, { Line } from "react-native-svg";
 
 type TablePositions = {
   [key: string]: { x: number; y: number };
@@ -115,30 +117,39 @@ const TablesScreen = () => {
   const handleTablePress = (table: TableType) => {
     if (table.type !== "table") return;
 
+    let targetTable = table;
+    // Logic to find the primary table in a merged group ---
+    if (table.mergedWith && !table.isPrimary) {
+      const primaryTable = tables.find(
+        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+      );
+      if (primaryTable) {
+        targetTable = primaryTable;
+      }
+    }
+
     // Find if there's an open order for this table
     const activeOrder = orders.find(
       (o) =>
-        o.service_location_id === table.id &&
-        (o.order_status === "Preparing" || "Reday")
+        o.service_location_id === targetTable.id &&
+        (o.order_status === "Preparing" || o.order_status === "Ready")
     );
 
-    switch (table.status) {
+    switch (targetTable.status) {
       case "Available":
-        // If available, start a new order and navigate to its screen
-        router.push(`/tables/${table.id}`); // Navigate to the new dynamic order page
+        router.push(`/tables/${targetTable.id}`);
         break;
       case "In Use":
-        // If in use, find the active order and navigate to it
         if (activeOrder) {
-          router.push(`/tables/${table.id}`);
+          router.push(`/tables/${targetTable.id}`);
         } else {
-          // Data inconsistency, handle gracefully
-          alert(`Error: Table is "In Use" but no open order was found.`);
+          alert(
+            `Error: Table ${targetTable.name} is "In Use" but no open order was found.`
+          );
         }
         break;
       case "Needs Cleaning":
-        // If needs cleaning, navigate to the clean table screen
-        router.push(`/tables/clean-table/${table.id}`);
+        router.push(`/tables/clean-table/${targetTable.id}`);
         break;
     }
   };
@@ -164,7 +175,9 @@ const TablesScreen = () => {
             </Text>
           </View>
           <FlatList
-            data={filteredTables.filter((table) => table.status !== "Not in Service")}
+            data={filteredTables.filter(
+              (table) => table.status !== "Not in Service"
+            )}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => <TableListItem table={item} />}
           />
@@ -232,6 +245,39 @@ const TablesScreen = () => {
                   style={canvasAnimatedStyle}
                   className="w-full h-full"
                 >
+                  <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                    {tables.map((table) => {
+                      if (table.isPrimary && table.mergedWith) {
+                        const primaryCenter = {
+                          x: table.x + 50,
+                          y: table.y + 50,
+                        }; // Approx center
+                        return table.mergedWith.map((mergedId) => {
+                          const mergedTable = tables.find(
+                            (t) => t.id === mergedId
+                          );
+                          if (!mergedTable) return null;
+                          const mergedCenter = {
+                            x: mergedTable.x + 50,
+                            y: mergedTable.y + 50,
+                          };
+                          return (
+                            <Line
+                              key={`${table.id}-${mergedId}`}
+                              x1={primaryCenter.x}
+                              y1={primaryCenter.y}
+                              x2={mergedCenter.x}
+                              y2={mergedCenter.y}
+                              stroke="#F59E0B" // Amber-500
+                              strokeWidth="4"
+                              strokeDasharray="8, 4"
+                            />
+                          );
+                        });
+                      }
+                      return null;
+                    })}
+                  </Svg>
                   {tables.map((table) => (
                     <DraggableTable
                       key={table.id}

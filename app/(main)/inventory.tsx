@@ -28,23 +28,31 @@ const InventoryScreen = () => {
   // Transform MOCK_MENU_ITEMS into inventory format
   const inventoryItems = MOCK_MENU_ITEMS.map((item, index) => ({
     id: item.id,
-    serialNo: (index + 1).toString().padStart(3, '0'),
+    serialNo: (index + 1).toString().padStart(3, "0"),
     name: item.name,
-    image: item.image ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : null,
+    image: item.image
+      ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
+      : null,
     description: item.description || "No description available",
     stock: Math.floor(Math.random() * 500) + 50, // Random stock between 50-550
     unit: "PCs" as const,
-    lastUpdate: new Date().toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
+    lastUpdate: new Date().toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     }),
-    status: Math.random() > 0.8 ? "Out of Stock" as const : Math.random() > 0.9 ? "Draft" as const : "Active" as const,
+    status:
+      Math.random() > 0.8
+        ? ("Out of Stock" as const)
+        : Math.random() > 0.9
+          ? ("Draft" as const)
+          : ("Active" as const),
     category: item.category,
-    modifier: item.modifiers && item.modifiers.length > 0 ? "Customizable" : "None",
+    modifier:
+      item.modifiers && item.modifiers.length > 0 ? "Customizable" : "None",
     availability: Math.random() > 0.1, // 90% availability
   }));
 

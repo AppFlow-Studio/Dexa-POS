@@ -36,10 +36,25 @@ const UpdateTableScreen = () => {
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
-  const table = tables.find((t) => t.id === tableId);
+  const initialTable = tables.find((t) => t.id === tableId);
+  let primaryTableId = tableId;
+
+  if (initialTable && initialTable.mergedWith && !initialTable.isPrimary) {
+    const primary = tables.find(
+      (t) => t.isPrimary && t.mergedWith?.includes(initialTable.id)
+    );
+    if (primary) {
+      primaryTableId = primary.id;
+    }
+  }
+
+  const table = tables.find((t) => t.id === primaryTableId);
   // Find if an order is ALREADY assigned to this table (including closed orders)
   const existingOrderForTable = orders.find(
-    (o) => o.service_location_id === tableId && o.order_status !== "Voided" // Show all orders except voided ones
+    (o) =>
+      o.service_location_id === tableId &&
+      o.order_status !== "Voided" &&
+      o.order_status !== "Closed" // Show all orders except voided ones
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -70,14 +85,13 @@ const UpdateTableScreen = () => {
       // If we navigated to a table that's already in use, make its order active.
       setActiveOrder(existingOrderForTable.id);
     } else {
-      // If the table is AVAILABLE, create a NEW, unassigned order and make IT active.
+      // This should now only run for truly available tables
       const newUnassignedOrder = startNewOrder();
       setActiveOrder(newUnassignedOrder.id);
       updateActiveOrderDetails({ order_type: "Dine In" });
     }
-
     return () => setActiveOrder(null);
-  }, [tableId, existingOrderForTable, setActiveOrder, startNewOrder]);
+  }, [primaryTableId, existingOrderForTable, setActiveOrder, startNewOrder]);
 
   useEffect(() => {
     if (tableId) {

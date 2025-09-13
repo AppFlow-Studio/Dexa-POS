@@ -1,7 +1,13 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
-import { Building2, Database, Receipt, Settings, User } from "lucide-react-native";
-import React from 'react';
-import { Text, View } from 'react-native';
+import {
+  Building2,
+  Database,
+  Receipt,
+  Settings,
+  User,
+} from "lucide-react-native";
+import React from "react";
+import { Text, View } from "react-native";
 
 const Modifiers = () => {
   const basicSubsections = [
@@ -54,12 +60,16 @@ const Modifiers = () => {
 
         {/* Main Content */}
         <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
-          <Text className="text-xl font-bold text-gray-800">Item Modifiers</Text>
-          <Text className="text-gray-600 mt-2">Configure item customizations and modifiers.</Text>
+          <Text className="text-xl font-bold text-gray-800">
+            Item Modifiers
+          </Text>
+          <Text className="text-gray-600 mt-2">
+            Configure item customizations and modifiers.
+          </Text>
         </View>
       </View>
     </View>
-  )
-}
+  );
+};
 
-export default Modifiers
+export default Modifiers;

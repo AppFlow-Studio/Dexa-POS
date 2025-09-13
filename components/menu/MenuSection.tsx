@@ -16,16 +16,16 @@ interface MenuSectionProps {
 // Get image source for preview
 const getImageSource = (item: MenuItemType) => {
   if (item.image && item.image.length > 200) {
-      return { uri: `data:image/jpeg;base64,${item.image}` };
+    return { uri: `data:image/jpeg;base64,${item.image}` };
   }
 
   if (item.image) {
-      // Try to get image from assets
-      try {
-          return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-      } catch {
-          return undefined;
-      }
+    // Try to get image from assets
+    try {
+      return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP];
+    } catch {
+      return undefined;
+    }
   }
 
   return undefined;
@@ -42,7 +42,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     []
   );
   const { openSearch } = useSearchStore();
-
 
   useEffect(() => {
     const filtered = menuItems.filter((item) => {
@@ -100,15 +99,12 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           renderItem={({ item }) => (
             <MenuItem
               item={item}
-              imageSource={
-                getImageSource(item)
-              }
+              imageSource={getImageSource(item)}
               onOrderClosedCheck={onOrderClosedCheck}
             />
           )}
         />
       </View>
-
     </>
   );
 };

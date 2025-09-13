@@ -20,7 +20,11 @@ interface MenuItemProps {
   onOrderClosedCheck?: () => boolean;
 }
 
-const MenuItem: React.FC<MenuItemProps> = ({ item, imageSource, onOrderClosedCheck }) => {
+const MenuItem: React.FC<MenuItemProps> = ({
+  item,
+  imageSource,
+  onOrderClosedCheck,
+}) => {
   const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
   const { openFullscreen } = useModifierSidebarStore();
   const { openToAdd } = useCustomizationStore();

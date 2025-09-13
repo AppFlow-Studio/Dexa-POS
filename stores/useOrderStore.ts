@@ -57,6 +57,10 @@ interface OrderState {
 
   archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
   markAllItemsAsReady: (orderId: string) => void;
+  consolidateOrdersForTables: (
+    tableIds: string[],
+    tableNames: string[]
+  ) => string;
   fireActiveOrderToKitchen: () => void;
 }
 
@@ -704,8 +708,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
             : o
         ),
       }));
-
-      // IMPORTANT: REMOVED the call to addOrderToHistory from this function.
     },
 
     setPendingTableSelection: (tableId) => {
@@ -794,7 +796,43 @@ export const useOrderStore = create<OrderState>((set, get) => {
         get().archiveOrder(orderId);
       }
     },
+    consolidateOrdersForTables: (tableIds, tableNames) => {
+      const { orders, startNewOrder } = get();
+      const ordersToMerge = orders.filter(
+        (o) => o.service_location_id && tableIds.includes(o.service_location_id)
+      );
 
+      const allItems = ordersToMerge.flatMap((o) => o.items);
+      const oldOrderIds = ordersToMerge.map((o) => o.id);
+      const primaryTableId = tableIds[0];
+
+      // Create a new order object with all necessary properties
+      const newMergedOrderData = {
+        id: `order_${Date.now()}`,
+        service_location_id: primaryTableId,
+        order_status: "Preparing" as const, // Start as preparing
+        order_type: "Dine In" as const,
+        check_status: "Opened" as const,
+        paid_status: "Unpaid" as const,
+        items: allItems,
+        opened_at: new Date().toISOString(),
+        customer_name: `Merged Table (${tableNames.join(", ")})`,
+      };
+
+      set((state) => {
+        // Remove all old orders and add the new one
+        const newOrdersList = state.orders.filter(
+          (o) => !oldOrderIds.includes(o.id)
+        );
+        newOrdersList.push(newMergedOrderData);
+        return { orders: newOrdersList };
+      });
+
+      const finalMergedOrderId = newMergedOrderData.id;
+      // recalculateTotals(finalMergedOrderId);
+
+      return finalMergedOrderId;
+    },
     fireActiveOrderToKitchen: () => {
       const { activeOrderId, orders } = get();
       if (!activeOrderId) return;
@@ -834,8 +872,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // Totals for the new active (empty) order become zero
       recalculateTotals(newOrder.id);
       try {
-        toast.success("Order sent to kitchen", { duration: 2500, position: ToastPosition.BOTTOM });
-      } catch { }
+        toast.success("Order sent to kitchen", {
+          duration: 2500,
+          position: ToastPosition.BOTTOM,
+        });
+      } catch {}
     },
   };
 });

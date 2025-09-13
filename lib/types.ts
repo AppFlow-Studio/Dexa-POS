@@ -111,6 +111,8 @@ export interface TableType {
   y: number;
   rotation: number;
   type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
+  isPrimary?: boolean;
+  mergedWith?: string[];
 }
 
 export type OnlineOrderStatus =
@@ -125,7 +127,6 @@ export type DeliveryPartner =
   | "Food Panda";
 
 export interface CartItem {
-  itemId: string;
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
   name: string;
@@ -314,13 +315,13 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-  | "Open"
-  | "Closed"
-  | "Cancelled"
-  | "Preparing"
-  | "Ready"
-  | "Building"
-  | "Voided";
+    | "Open"
+    | "Closed"
+    | "Cancelled"
+    | "Preparing"
+    | "Ready"
+    | "Building"
+    | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
