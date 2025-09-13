@@ -111,6 +111,8 @@ export interface TableType {
   y: number;
   rotation: number;
   type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
+  isPrimary?: boolean;
+  mergedWith?: string[];
 }
 
 export type OnlineOrderStatus =
