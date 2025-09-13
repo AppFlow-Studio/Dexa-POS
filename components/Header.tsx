@@ -23,9 +23,6 @@ import {
 const generateTitleFromPath = (pathname: string): string => {
   if (pathname === "/" || pathname === "/home") return "Menu";
   if (pathname === "/order-processing") return "Back to Menu";
-  if (pathname === "/inventory/add-item") return "Add Item";
-  if (pathname.startsWith("/inventory/") && pathname !== "/inventory")
-    return "Edit Item";
 
   // Handle dynamic online order route
   if (
@@ -81,7 +78,7 @@ const Header = () => {
   const [lastBreakSession, setLastBreakSession] = useState<any>(null);
 
   const showBackButton =
-    pathname == '/menu' ||
+    pathname == "/menu" ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||
@@ -91,7 +88,6 @@ const Header = () => {
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname === "/settings" ||
-    pathname.startsWith("/inventory/") ||
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/previous-orders/") &&
