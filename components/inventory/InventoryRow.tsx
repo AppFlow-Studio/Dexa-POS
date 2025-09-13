@@ -1,13 +1,5 @@
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { MenuItemType } from "@/lib/types";
-import {
-  Eye,
-  EyeOff,
-  MoreHorizontal,
-  Package,
-  Pen,
-  Trash2,
-} from "lucide-react-native";
+import { InventoryItem } from "@/lib/types";
+import { Eye, MoreHorizontal, Package, Pen, Trash2 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -18,9 +10,9 @@ import {
 } from "../ui/dropdown-menu";
 
 interface InventoryRowProps {
-  item: MenuItemType;
+  item: InventoryItem;
   // Add handlers for actions
-  onToggleActive: () => void;
+  onViewDetails: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -34,19 +26,15 @@ const statusClasses: Record<string, string> = {
 
 const InventoryRow: React.FC<InventoryRowProps> = ({
   item,
-  onToggleActive,
+  onViewDetails,
   onEdit,
   onDelete,
 }) => {
   // Use useMemo to avoid re-creating the image source on every render
   const imageSource = useMemo(() => {
     // Assuming item.image is a string URL or a local require path
-    return item.image
-      ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-      : undefined;
+    return typeof item.image === "string" ? { uri: item.image } : item.image;
   }, [item.image]);
-
-  const isActive = item.status === "Active";
 
   return (
     <View className="flex-row items-center p-4 border-b border-gray-100">
@@ -93,13 +81,9 @@ const InventoryRow: React.FC<InventoryRowProps> = ({
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48">
-            <DropdownMenuItem onPress={onToggleActive}>
-              {isActive ? (
-                <EyeOff className="mr-2 h-4 w-4" color="#4b5563" />
-              ) : (
-                <Eye className="mr-2 h-4 w-4" color="#4b5563" />
-              )}
-              <Text>{isActive ? "Deactivate" : "Activate"}</Text>
+            <DropdownMenuItem onPress={onViewDetails}>
+              <Eye className="mr-2 h-4 w-4" color="#4b5563" />
+              <Text>View Details</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={onEdit}>
               <Pen className="mr-2 h-4 w-4" color="#4b5563" />

@@ -32,22 +32,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
-  const liveItem = useItemStore((state) =>
-    state.items.find((i) => i.id === item.id)
-  );
-  const isAvailable = liveItem
-    ? liveItem.availability &&
-      liveItem.stock > 0 &&
-      liveItem.status === "Active"
-    : false;
-
   // Menu items always add new items, not edit existing ones
 
   const handlePress = () => {
-    if (!isAvailable) {
-      return;
-    }
-
     if (clockStatus !== "clockedIn") {
       showClockInWall(); // Show the modal
       return; // Stop execution

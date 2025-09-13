@@ -1,6 +1,4 @@
 import { MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { CartItem } from "@/lib/types";
-import { useModifierGroupStore } from "@/stores/useModifierGroupStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
@@ -23,9 +21,10 @@ interface ModifierSelection {
 
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, close } = useModifierSidebarStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder } = useOrderStore();
-  const { modifierGroups } = useModifierGroupStore();
+  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem } =
+    useOrderStore();
 
+  // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
     useState<ModifierSelection>({});
@@ -37,19 +36,15 @@ const ModifierScreen = () => {
     mode === "edit" || (mode === "fullscreen" && cartItem)
       ? cartItem
       : menuItem;
+  const isFullscreen = mode === "fullscreen";
 
+  // Get the menu item for modifier access (either directly or from cart item)
   const menuItemForModifiers =
     (mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem
       ? MOCK_MENU_ITEMS.find((item) => item.id === cartItem.menuItemId)
       : menuItem;
 
-  const displayedModifierGroups = useMemo(() => {
-    if (!menuItemForModifiers?.modifierGroupIds) return [];
-    return modifierGroups.filter((group) =>
-      menuItemForModifiers.modifierGroupIds!.includes(group.id)
-    );
-  }, [menuItemForModifiers, modifierGroups]);
-
+  // Initialize form when screen opens
   useEffect(() => {
     if (isOpen && currentItem) {
       setQuantity(
@@ -63,149 +58,290 @@ const ModifierScreen = () => {
           : ""
       );
 
+      // Initialize modifier selections
       const initialSelections: ModifierSelection = {};
-      if (displayedModifierGroups) {
-        displayedModifierGroups.forEach((group) => {
-          initialSelections[group.id] = {};
-          const existingModifier = cartItem?.customizations.modifiers?.find(
-            (mod) => mod.categoryId === group.id
-          );
+      if (menuItemForModifiers?.modifiers) {
+        menuItemForModifiers.modifiers.forEach((category) => {
+          initialSelections[category.id] = {};
 
-          if (existingModifier) {
-            existingModifier.options.forEach((opt) => {
-              initialSelections[group.id][opt.id] = true;
-            });
-          } else if (
-            group.type === "required" &&
-            group.selectionType === "single"
+          if (
+            (mode === "edit" || (mode === "fullscreen" && cartItem)) &&
+            cartItem
           ) {
-            const firstAvailable = group.options.find(
-              (opt) => opt.isAvailable !== false
+            // For edit mode (both sidebar and fullscreen), restore the existing selections from the cart item
+            const existingModifier = cartItem.customizations.modifiers?.find(
+              (mod) => mod.categoryId === category.id
             );
-            if (firstAvailable) {
-              initialSelections[group.id][firstAvailable.id] = true;
+
+            if (existingModifier) {
+              // Mark the existing selections as true
+              existingModifier.options.forEach((selectedOption) => {
+                initialSelections[category.id][selectedOption.id] = true;
+              });
             }
+
+            // Initialize all other options as unselected
+            category.options.forEach((option) => {
+              if (!initialSelections[category.id][option.id]) {
+                initialSelections[category.id][option.id] = false;
+              }
+            });
+          } else {
+            // For add mode, set default selections for required categories
+            if (
+              category.type === "required" &&
+              category.selectionType === "single"
+            ) {
+              // For required single selection, select the first available option
+              const firstAvailableOption = category.options.find(
+                (option) => option.isAvailable !== false
+              );
+              if (firstAvailableOption) {
+                initialSelections[category.id][firstAvailableOption.id] = true;
+              }
+            }
+
+            // Initialize all other options as unselected
+            category.options.forEach((option) => {
+              if (!initialSelections[category.id][option.id]) {
+                initialSelections[category.id][option.id] = false;
+              }
+            });
           }
         });
 
-        if (displayedModifierGroups.length > 0) {
-          setActiveCategory(displayedModifierGroups[0].id);
+        // Set first category as active if available
+        if (menuItemForModifiers.modifiers.length > 0) {
+          setActiveCategory(menuItemForModifiers.modifiers[0].id);
         }
       }
       setModifierSelections(initialSelections);
 
+      // Add draft item to cart when opening for new items (not edit mode)
       if (mode !== "edit" && !cartItem) {
-        // This draft logic can be refined, but let's keep it for now
+        const draftItem = {
+          id: `draft_${currentItem.id}_${Date.now()}`,
+          menuItemId: currentItem.id,
+          name: currentItem.name,
+          quantity: 1,
+          originalPrice: currentItem.price,
+          price: currentItem.price,
+          image: currentItem.image,
+          isDraft: true,
+          customizations: {
+            modifiers: [],
+            notes: "",
+          },
+          availableDiscount: currentItem.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+        };
+        addItemToActiveOrder(draftItem);
       }
     }
-  }, [isOpen, currentItem, mode, cartItem, displayedModifierGroups]);
+  }, [isOpen, currentItem, mode, cartItem]);
 
+  // Update draft item in real-time as user makes changes
+  useEffect(() => {
+    if (isOpen && currentItem && mode !== "edit" && !cartItem) {
+      // Find the draft item we created
+      const { activeOrderId, orders, updateItemInActiveOrder } =
+        useOrderStore.getState();
+      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const draftItem = activeOrder?.items.find((item) =>
+        item.id.startsWith(`draft_${currentItem.id}_`)
+      );
+
+      if (draftItem) {
+        // Convert modifier selections to the format expected by the order system
+        const selectedModifiers = menuItemForModifiers?.modifiers
+          ? Object.entries(modifierSelections).map(
+              ([categoryId, selections]) => {
+                const category = menuItemForModifiers.modifiers?.find(
+                  (cat) => cat.id === categoryId
+                );
+                const selectedOptions = Object.entries(selections)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([optionId, _]) => {
+                    const option = category?.options.find(
+                      (opt) => opt.id === optionId
+                    );
+                    return {
+                      id: optionId,
+                      name: option?.name || "",
+                      price: option?.price || 0,
+                    };
+                  });
+
+                return {
+                  categoryId,
+                  categoryName: category?.name || "",
+                  options: selectedOptions,
+                };
+              }
+            )
+          : [];
+
+        // Calculate total price
+        let baseTotal = currentItem.price;
+        selectedModifiers.forEach((modifier) => {
+          modifier.options.forEach((option) => {
+            baseTotal += option.price;
+          });
+        });
+
+        // Update the draft item
+        const updatedDraftItem = {
+          ...draftItem,
+          quantity,
+          price: baseTotal / quantity,
+          customizations: {
+            modifiers: selectedModifiers,
+            notes,
+          },
+        };
+        updateItemInActiveOrder(updatedDraftItem);
+      }
+    }
+  }, [
+    quantity,
+    modifierSelections,
+    notes,
+    isOpen,
+    currentItem,
+    mode,
+    cartItem,
+  ]);
+
+  // Calculate total price
   const total = useMemo(() => {
     if (!currentItem) return 0;
+
     let baseTotal = currentItem.price;
 
-    Object.entries(modifierSelections).forEach(([groupId, selections]) => {
-      const group = displayedModifierGroups.find((g) => g.id === groupId);
-      if (group) {
-        Object.entries(selections).forEach(([optionId, isSelected]) => {
-          if (isSelected) {
-            const option = group.options.find((opt) => opt.id === optionId);
+    // Add modifier costs
+    Object.values(modifierSelections).forEach((categorySelections) => {
+      Object.entries(categorySelections).forEach(([optionId, isSelected]) => {
+        if (isSelected) {
+          // Find the option and add its price
+          menuItemForModifiers?.modifiers?.forEach((category) => {
+            const option = category.options.find((opt) => opt.id === optionId);
             if (option) {
               baseTotal += option.price;
             }
-          }
-        });
-      }
+          });
+        }
+      });
     });
 
     return baseTotal * quantity;
-  }, [quantity, modifierSelections, currentItem, displayedModifierGroups]);
+  }, [quantity, modifierSelections, currentItem]);
 
   const handleModifierToggle = useCallback(
-    (groupId: string, optionId: string) => {
+    (categoryId: string, optionId: string) => {
       if (isReadOnly) return;
 
       setModifierSelections((prev) => {
-        const group = displayedModifierGroups.find((g) => g.id === groupId);
-        if (!group) return prev;
+        const category = menuItemForModifiers?.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        if (!category) return prev;
 
-        const newSelections = JSON.parse(JSON.stringify(prev)); // Deep copy
-        if (!newSelections[groupId]) newSelections[groupId] = {};
+        const newSelections = { ...prev };
+        if (!newSelections[categoryId]) {
+          newSelections[categoryId] = {};
+        }
 
-        if (group.selectionType === "single") {
-          Object.keys(newSelections[groupId]).forEach((key) => {
-            newSelections[groupId][key] = false;
+        if (category.selectionType === "single") {
+          // For single selection, clear all others in this category
+          Object.keys(newSelections[categoryId]).forEach((key) => {
+            newSelections[categoryId][key] = false;
           });
-          newSelections[groupId][optionId] = true; // Always select for single choice
+          newSelections[categoryId][optionId] =
+            !newSelections[categoryId][optionId];
         } else {
-          // multiple
-          const currentSelectedCount = Object.values(
-            newSelections[groupId]
+          // For multiple selection, check limits
+          const currentSelected = Object.values(
+            newSelections[categoryId]
           ).filter(Boolean).length;
-          const isCurrentlySelected = newSelections[groupId][optionId];
+          const isCurrentlySelected = newSelections[categoryId][optionId];
 
           if (
             !isCurrentlySelected &&
-            group.maxSelections &&
-            currentSelectedCount >= group.maxSelections
+            category.maxSelections &&
+            currentSelected >= category.maxSelections
           ) {
-            toast.error(
-              `You can select a maximum of ${group.maxSelections} options.`,
-              { position: ToastPosition.BOTTOM }
-            );
-            return prev; // Do not update state
+            // Don't allow selection if max reached
+            return prev;
           }
-          newSelections[groupId][optionId] = !isCurrentlySelected;
+
+          newSelections[categoryId][optionId] = !isCurrentlySelected;
         }
+
         return newSelections;
       });
     },
-    [isReadOnly, displayedModifierGroups]
+    [isReadOnly, currentItem]
   );
 
   const handleSave = useCallback(() => {
     if (!currentItem) return;
 
-    // Validate required selections against the new group structure
-    for (const group of displayedModifierGroups) {
-      const selections = modifierSelections[group.id] || {};
-      const selectedCount = Object.values(selections).filter(Boolean).length;
-
-      if (selectedCount < group.minSelections) {
-        toast.error(
-          `Please select at least ${group.minSelections} option(s) for ${group.name}.`,
-          {
-            duration: 4000,
-            position: ToastPosition.BOTTOM,
+    // Validate required selections (only if modifiers exist)
+    if (
+      menuItemForModifiers?.modifiers &&
+      menuItemForModifiers.modifiers.length > 0
+    ) {
+      const hasRequiredSelections = menuItemForModifiers.modifiers.every(
+        (category) => {
+          if (category.type === "required") {
+            return Object.values(modifierSelections[category.id] || {}).some(
+              Boolean
+            );
           }
-        );
-        return; // Stop the save process
+          return true;
+        }
+      );
+
+      if (!hasRequiredSelections) {
+        toast.error("Please select all required options", {
+          duration: 4000,
+          position: ToastPosition.BOTTOM,
+        });
+        return;
       }
     }
 
-    // Convert modifier selections into the format for the cart item
-    const selectedModifiers = displayedModifierGroups
-      .map((group) => {
-        const selections = modifierSelections[group.id] || {};
-        const selectedOptions = group.options
-          .filter((option) => selections[option.id])
-          .map((option) => ({
-            id: option.id,
-            name: option.name,
-            price: option.price,
-          }));
+    // Convert modifier selections to the format expected by the order system
+    const selectedModifiers = menuItemForModifiers?.modifiers
+      ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
+          const category = menuItemForModifiers.modifiers?.find(
+            (cat) => cat.id === categoryId
+          );
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId, _]) => {
+              const option = category?.options.find(
+                (opt) => opt.id === optionId
+              );
+              return {
+                id: optionId,
+                name: option?.name || "",
+                price: option?.price || 0,
+              };
+            });
 
-        return {
-          categoryId: group.id,
-          categoryName: group.name,
-          options: selectedOptions,
-        };
-      })
-      .filter((group) => group.options.length > 0); // Only include groups with selections
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
+      : [];
 
     if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
-      // --- UPDATE EXISTING ITEM ---
-      const updatedItem: CartItem = {
+      // Update existing item (both sidebar edit and fullscreen edit)
+      const updatedItem = {
         ...cartItem,
         quantity,
         price: total / quantity,
@@ -216,33 +352,64 @@ const ModifierScreen = () => {
         },
       };
       updateItemInActiveOrder(updatedItem);
-      toast.success(`Updated ${currentItem.name}`, {
-        position: ToastPosition.BOTTOM,
-      });
-    } else {
-      // --- ADD NEW ITEM ---
-      const newItem: CartItem = {
-        id: `${currentItem.id}_${Date.now()}`,
-        menuItemId: currentItem.id,
-        name: currentItem.name,
+    } else if (cartItem && cartItem.isDraft) {
+      // Update draft item and confirm it
+      const updatedItem = {
+        ...cartItem,
         quantity,
-        originalPrice: currentItem.price,
         price: total / quantity,
-        image: currentItem.image,
+        isDraft: false, // Confirm the item
         customizations: {
+          ...cartItem.customizations,
           modifiers: selectedModifiers,
           notes,
         },
-        availableDiscount: currentItem.availableDiscount,
-        appliedDiscount: null,
-        paidQuantity: 0,
-        item_status: "Preparing",
       };
-      addItemToActiveOrder(newItem);
-      toast.success(`Added ${currentItem.name}`, {
-        position: ToastPosition.BOTTOM,
-      });
+      updateItemInActiveOrder(updatedItem);
+    } else {
+      // Update the existing draft item to confirmed
+      const {
+        activeOrderId,
+        orders,
+        addItemToActiveOrder,
+        removeItemFromActiveOrder,
+      } = useOrderStore.getState();
+      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const draftItem = activeOrder?.items.find((item) =>
+        item.id.startsWith(`draft_${currentItem.id}_`)
+      );
+
+      if (draftItem) {
+        // Remove the draft item first
+        removeItemFromActiveOrder(draftItem.id);
+
+        // Add the confirmed item with a new ID
+        const confirmedItem = {
+          ...draftItem,
+          id: `${currentItem.id}_${Date.now()}`, // New ID for confirmed item
+          quantity,
+          price: total / quantity,
+          isDraft: false, // Confirm the item
+          customizations: {
+            modifiers: selectedModifiers,
+            notes,
+          },
+        };
+        addItemToActiveOrder(confirmedItem);
+      }
     }
+
+    const message =
+      mode === "edit" || (mode === "fullscreen" && cartItem)
+        ? "Updated"
+        : cartItem && cartItem.isDraft
+          ? "Confirmed"
+          : "Added";
+
+    toast.success(`${message} ${currentItem.name} $${total.toFixed(2)}`, {
+      duration: 4000,
+      position: ToastPosition.BOTTOM,
+    });
 
     close();
   }, [
@@ -256,7 +423,7 @@ const ModifierScreen = () => {
     close,
     addItemToActiveOrder,
     updateItemInActiveOrder,
-    displayedModifierGroups,
+    menuItemForModifiers,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -283,7 +450,7 @@ const ModifierScreen = () => {
 
   if (!isOpen || !currentItem) return null;
 
-  const currentCategory = displayedModifierGroups.find(
+  const currentCategory = menuItemForModifiers?.modifiers?.find(
     (cat) => cat.id === activeCategory
   );
 
@@ -342,125 +509,134 @@ const ModifierScreen = () => {
         </View>
 
         {/* Modifier Groups */}
-        {displayedModifierGroups.length > 0 && (
-          <View className="p-6">
-            <Text className="text-xl font-bold text-gray-800 mb-4">
-              Modifier Options
-            </Text>
+        {menuItemForModifiers?.modifiers &&
+          menuItemForModifiers.modifiers.length > 0 && (
+            <View className="p-6">
+              <Text className="text-xl font-bold text-gray-800 mb-4">
+                Modifier Options
+              </Text>
 
-            {/* Modifier Category Cards */}
-            <View className="flex-row flex-wrap gap-3 mb-6">
-              {displayedModifierGroups.map((group) => {
-                const hasSelection = Object.values(
-                  modifierSelections[group.id] || {}
-                ).some(Boolean);
-                const isActive = activeCategory === group.id;
+              {/* Modifier Category Cards */}
+              <View className="flex-row flex-wrap gap-3 mb-6">
+                {menuItemForModifiers.modifiers.map((category) => {
+                  const hasSelection = Object.values(
+                    modifierSelections[category.id] || {}
+                  ).some(Boolean);
+                  const isActive = activeCategory === category.id;
 
-                return (
-                  <TouchableOpacity
-                    key={group.id}
-                    onPress={() => setActiveCategory(group.id)}
-                    className={`p-4 rounded-xl border-2 min-w-[140px] ${
-                      isActive
-                        ? "bg-gray-800 border-gray-800"
-                        : hasSelection
-                          ? "bg-green-50 border-green-200"
-                          : "bg-white border-gray-200"
-                    }`}
-                  >
-                    <View className="flex-row items-center justify-between mb-2">
-                      <Text
-                        className={`font-semibold text-sm ${isActive ? "text-white" : "text-gray-800"}`}
-                      >
-                        {group.name}
-                      </Text>
-                      {hasSelection && (
-                        <Check
-                          color={isActive ? "#FFFFFF" : "#10B981"}
-                          size={16}
-                        />
-                      )}
-                    </View>
-                    <Text
-                      className={`text-xs ${group.minSelections > 0 ? "text-red-500" : "text-gray-500"}`}
+                  return (
+                    <TouchableOpacity
+                      key={category.id}
+                      onPress={() => setActiveCategory(category.id)}
+                      className={`p-4 rounded-xl border-2 min-w-[140px] ${
+                        isActive
+                          ? "bg-gray-800 border-gray-800"
+                          : hasSelection
+                            ? "bg-green-50 border-green-200"
+                            : "bg-white border-gray-200"
+                      }`}
                     >
-                      {group.minSelections > 0 ? "Required" : "Optional"}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Active Category Options */}
-            {currentCategory && (
-              <View className="mb-6">
-                <View className="flex-row items-center justify-between mb-4">
-                  <Text className="text-lg font-semibold text-gray-800">
-                    {currentCategory.name}
-                  </Text>
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-sm text-red-500">
-                      {currentCategory.minSelections > 0
-                        ? "Required"
-                        : "Optional"}
-                    </Text>
-                    <Text className="text-sm text-gray-500">
-                      {currentCategory.maxSelections === 1
-                        ? "Single select"
-                        : "Multiple select"}
-                    </Text>
-                  </View>
-                </View>
-
-                <View className="flex-row flex-wrap gap-3">
-                  {currentCategory.options.map((option) => {
-                    const isSelected =
-                      modifierSelections[currentCategory.id]?.[option.id] ||
-                      false;
-                    const isUnavailable = option.isAvailable === false;
-
-                    return (
-                      <TouchableOpacity
-                        key={option.id}
-                        disabled={isReadOnly || isUnavailable}
-                        onPress={() =>
-                          handleModifierToggle(currentCategory.id, option.id)
-                        }
-                        className={`p-4 rounded-xl border-2 min-w-[120px] ${
-                          isSelected
-                            ? "bg-gray-800 border-gray-800"
-                            : isUnavailable
-                              ? "bg-gray-100 border-gray-200"
-                              : "bg-white border-gray-200"
-                        }`}
-                      >
+                      <View className="flex-row items-center justify-between mb-2">
                         <Text
-                          className={`font-medium text-center ${
-                            isSelected
-                              ? "text-white"
-                              : isUnavailable
-                                ? "text-gray-400"
-                                : "text-gray-800"
+                          className={`font-semibold text-sm ${
+                            isActive ? "text-white" : "text-gray-800"
                           }`}
                         >
-                          {option.name}
-                          {isUnavailable && " (86'd)"}
+                          {category.name}
                         </Text>
-                        {option.price > 0 && (
-                          <Text
-                            className={`text-sm text-center mt-1 ${isSelected ? "text-gray-300" : "text-blue-600"}`}
-                          >
-                            +${option.price.toFixed(2)}
-                          </Text>
+                        {hasSelection && (
+                          <Check
+                            color={isActive ? "#FFFFFF" : "#10B981"}
+                            size={16}
+                          />
                         )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                      </View>
+                      <Text
+                        className={`text-xs ${
+                          category.type === "required"
+                            ? "text-red-500"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {category.type === "required" ? "Required" : "Optional"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            )}
-          </View>
-        )}
+
+              {/* Active Category Options */}
+              {currentCategory && (
+                <View className="mb-6">
+                  <View className="flex-row items-center justify-between mb-4">
+                    <Text className="text-lg font-semibold text-gray-800">
+                      {currentCategory.name}
+                    </Text>
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-sm text-red-500">
+                        {currentCategory.type === "required"
+                          ? "Required"
+                          : "Optional"}
+                      </Text>
+                      <Text className="text-sm text-gray-500">
+                        {currentCategory.selectionType === "single"
+                          ? "Single select"
+                          : "Multiple select"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View className="flex-row flex-wrap gap-3">
+                    {currentCategory.options.map((option) => {
+                      const isSelected =
+                        modifierSelections[currentCategory.id]?.[option.id] ||
+                        false;
+                      const isUnavailable = option.isAvailable === false;
+
+                      return (
+                        <TouchableOpacity
+                          key={option.id}
+                          disabled={isReadOnly || isUnavailable}
+                          onPress={() =>
+                            handleModifierToggle(currentCategory.id, option.id)
+                          }
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
+                            isSelected
+                              ? "bg-gray-800 border-gray-800"
+                              : isUnavailable
+                                ? "bg-gray-100 border-gray-200"
+                                : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <Text
+                            className={`font-medium text-center ${
+                              isSelected
+                                ? "text-white"
+                                : isUnavailable
+                                  ? "text-gray-400"
+                                  : "text-gray-800"
+                            }`}
+                          >
+                            {option.name}
+                            {isUnavailable && " (86'd)"}
+                          </Text>
+                          {option.price > 0 && (
+                            <Text
+                              className={`text-sm text-center mt-1 ${
+                                isSelected ? "text-gray-300" : "text-blue-600"
+                              }`}
+                            >
+                              +${option.price.toFixed(2)}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
 
         {/* Quantity */}
         <View className="p-6 border-b border-gray-200">

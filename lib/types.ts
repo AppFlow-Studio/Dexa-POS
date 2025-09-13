@@ -37,17 +37,6 @@ export interface ModifierOption {
   isDefault?: boolean; // For default selected options
 }
 
-export interface ModifierGroup {
-  id: string;
-  name: string;
-  isEnabled: boolean;
-  minSelections: number;
-  maxSelections: number;
-  type?: "required" | "optional";
-  selectionType?: "single" | "multiple";
-  options: ModifierOption[];
-}
-
 export interface ModifierCategory {
   id: string;
   name: string;
@@ -58,28 +47,19 @@ export interface ModifierCategory {
   options: ModifierOption[];
 }
 
-export type PricingType = "fixed" | "at_sale";
-export type ItemStatus = "Active" | "Draft" | "Inactive" | "Out of Stock";
-
 export interface MenuItemType {
-  // Core Item Details
   id: string;
   name: string;
   description?: string;
-  image?: string;
-  color?: string; // For the POS tile color
-
-  // Pricing & Tax
-  pricingType: PricingType;
   price: number;
-  taxIds?: string[];
-
-  // Menu & Modifiers
+  cashPrice?: number;
+  image?: string;
   meal: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
   category: string[]; // Changed to array to support multiple categories
   availableDiscount?: Discount;
   sizes?: ItemSize[];
   addOns?: AddOn[];
+  modifiers?: ModifierCategory[];
   allergens?: string[];
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
@@ -131,8 +111,6 @@ export interface TableType {
   y: number;
   rotation: number;
   type: "table" | "static-object"; // 'static-object' for things like cashier, walls, plants etc.
-  isPrimary?: boolean; // Is this the primary table in a merged group?
-  mergedWith?: string[]; // Array of other table IDs it's merged with
 }
 
 export type OnlineOrderStatus =
@@ -220,6 +198,28 @@ export interface PreviousOrder {
   refunded?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
+}
+
+export type InventoryItemStatus =
+  | "Active"
+  | "Draft"
+  | "Inactive"
+  | "Out of Stock";
+
+export interface InventoryItem {
+  id: string; // e.g., '#2020E11'
+  serialNo: string;
+  name: string;
+  image?: string; // Filename from assets
+  description: string;
+  stock: number;
+  unit: "PCs" | "KGs" | "Liters";
+  lastUpdate: string; // e.g., '02/03/2025 10:30 AM'
+  status: InventoryItemStatus;
+  // Additional details for the forms
+  category: string;
+  modifier: string;
+  availability: boolean;
 }
 
 export interface UserProfile {

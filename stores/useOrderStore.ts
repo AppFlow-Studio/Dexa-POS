@@ -1,7 +1,6 @@
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
-import { useItemStore } from "./useItemStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 
 const TAX_RATE = 0.05;
@@ -305,10 +304,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       const activeOrder = orders.find((o) => o.id === activeOrderId);
       if (!activeOrder) return;
-      const { items: allItems, decreaseStock } = useItemStore.getState();
 
       // Find an existing item in the cart that is an exact match
-      const existingItemInCart = activeOrder.items.find(
+      const existingItemIndex = activeOrder.items.findIndex(
         (cartItem) =>
           cartItem.menuItemId === newItem.menuItemId &&
           areCustomizationsEqual(
@@ -317,36 +315,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
           )
       );
 
-      const inventoryItem = allItems.find((i) => i.id === newItem.menuItemId);
-
-      const currentQuantityInCart = existingItemInCart
-        ? existingItemInCart.quantity
-        : 0;
-      const requestedTotalQuantity = currentQuantityInCart + newItem.quantity;
-
-      if (inventoryItem && inventoryItem.stock < requestedTotalQuantity) {
-        toast.error(
-          `Not enough stock for ${inventoryItem.name}. Only ${inventoryItem.stock} available.`,
-          {
-            position: ToastPosition.BOTTOM,
-            duration: 4000,
-          }
-        );
-        return;
-      }
-
-      decreaseStock(newItem.menuItemId, newItem.quantity);
-
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id === activeOrderId) {
             let updatedCart: CartItem[];
 
-            if (existingItemInCart) {
+            if (existingItemIndex > -1) {
               // --- Item Merge Logic ---
               // If a match is found, update the quantity of the existing item
-              updatedCart = o.items.map((item) => {
-                if (item.id === existingItemInCart.id) {
+              updatedCart = o.items.map((item, index) => {
+                if (index === existingItemIndex) {
                   return {
                     ...item,
                     quantity: item.quantity + newItem.quantity,
@@ -490,14 +468,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
     removeItemFromActiveOrder: (itemId) => {
       const { activeOrderId } = get();
       if (!activeOrderId) return;
-
-      const { increaseStock } = useItemStore.getState();
-      const order = get().orders.find((o) => o.id === activeOrderId);
-      const itemToRemove = order?.items.find((i) => i.id === itemId);
-
-      if (itemToRemove) {
-        increaseStock(itemToRemove.menuItemId, itemToRemove.quantity);
-      }
 
       set((state) => ({
         orders: state.orders.map((o) =>

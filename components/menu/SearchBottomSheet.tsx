@@ -1,5 +1,6 @@
+import { MOCK_MENU_ITEMS } from "@/lib/mockData";
+import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
-import { useItemStore } from "@/stores/useItemStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -16,25 +17,21 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["70%", "75%"], []);
   const [searchText, setSearchText] = useState("");
+  const [searchResults, setSearchResults] =
+    useState<MenuItemType[]>(MOCK_MENU_ITEMS);
 
   const { closeSearch, setSearchSheetRef } = useSearchStore();
-  const { items } = useItemStore();
 
-  const searchResults = useMemo(() => {
+  useEffect(() => {
     if (searchText.trim() === "") {
-      // Show all available items when the search is empty
-      return items.filter(
-        (item) => item.availability && item.status === "Active"
-      );
-    }
-    // Filter based on search text
-    return items.filter(
-      (item) =>
-        item.availability &&
-        item.status === "Active" &&
+      setSearchResults(MOCK_MENU_ITEMS);
+    } else {
+      const results = MOCK_MENU_ITEMS.filter((item) =>
         item.name.toLowerCase().includes(searchText.toLowerCase())
-    );
-  }, [searchText, items]);
+      );
+      setSearchResults(results);
+    }
+  }, [searchText]);
 
   useEffect(() => {
     //@ts-ignore
