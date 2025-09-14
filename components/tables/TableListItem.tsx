@@ -40,13 +40,13 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-3">
           <StatusIndicator status={status} />
-          <Text className="text-base font-semibold text-gray-700">
+          <Text className="text-base font-semibold text-white">
             {table.name}
           </Text>
         </View>
         {/* Display the total only if an active order exists for this table */}
         {status === "In Use" && activeOrderForThisTable && (
-          <Text className="text-base font-bold text-gray-800">
+          <Text className="text-base font-bold text-white">
             ${orderTotal.toFixed(2)}
           </Text>
         )}

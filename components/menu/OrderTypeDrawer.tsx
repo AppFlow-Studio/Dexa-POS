@@ -3,7 +3,6 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import TableLayoutView from "../tables/TableLayoutView";
@@ -157,7 +156,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
 
     if (!isVisible) return null;
-    console.log(activeOrder);
     return (
         <View className="absolute inset-0 z-50">
             {/* Backdrop */}
@@ -168,15 +166,22 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             />
 
             {/* Drawer */}
-            <View className="absolute left-0 top-0 bottom-0 w-[65%] bg-[#303030] shadow-2xl">
+            <View className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl">
                 {/* Header */}
                 <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
                     <Text className="text-lg font-semibold text-white">Order Type</Text>
-                    <TouchableOpacity
+                    {/* <TouchableOpacity
                         onPress={onClose}
                         className="p-2 rounded-full bg-gray-100"
                     >
                         <X size={20} color="#6B7280" />
+                    </TouchableOpacity> */}
+                    {/* Footer */}
+                    <TouchableOpacity
+                        onPress={onClose}
+                        className="w-1/4 py-3 bg-green-600 rounded-lg items-center"
+                    >
+                        <Text className="text-white font-semibold">Done</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -362,16 +367,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     )}
                 </View>
 
-
-                {/* Footer */}
-                <View className="p-4 border-t border-gray-200">
-                    <TouchableOpacity
-                        onPress={onClose}
-                        className="w-full py-3 bg-green-600 rounded-lg items-center"
-                    >
-                        <Text className="text-white font-semibold">Done</Text>
-                    </TouchableOpacity>
-                </View>
             </View>
         </View>
     );

@@ -58,10 +58,10 @@ const LayoutEditorScreen = () => {
     (selectedTable?.isPrimary || selectedTable?.mergedWith?.length);
 
   return (
-    <View className="flex-1 bg-gray-100">
+    <View className="flex-1 bg-[#212121]">
       {/* Header */}
-      <View className="bg-white p-4 flex-row justify-between items-center">
-        <Text className="text-2xl font-bold"></Text>
+      <View className="bg-[#303030] p-4 flex-row justify-between items-center">
+        <Text className="text-2xl font-bold text-white"></Text>
         <View className="flex-row gap-2">
           {selectedTableIds.length >= 2 && (
             <TouchableOpacity
@@ -90,7 +90,7 @@ const LayoutEditorScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="py-3 px-5 rounded-lg flex-row items-center bg-gray-700"
+            className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"
           >
             <Text className="font-bold text-white">Save & Exit</Text>
           </TouchableOpacity>
@@ -145,7 +145,7 @@ const LayoutEditorScreen = () => {
       <AddTableModal
         isOpen={isAddModalOpen}
         onClose={() => setAddModalOpen(false)}
-        onAdd={() => {}}
+        onAdd={() => { }}
       />
     </View>
   );

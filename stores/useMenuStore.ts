@@ -1,5 +1,5 @@
 import { ALL_MODIFIER_GROUPS, MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { Menu, MenuItemType, ModifierCategory, Schedule } from "@/lib/types";
+import { CustomPricing, Menu, MenuItemType, ModifierCategory, Schedule } from "@/lib/types";
 import { create } from "zustand";
 
 export interface Category {
@@ -55,10 +55,13 @@ interface MenuState {
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
 
-  // INVENTORY ACTIONS
-  decreaseStock: (itemId: string, quantity: number) => void;
-  increaseStock: (itemId: string, quantity: number) => void;
-  getLowStockItems: () => MenuItemType[];
+  // Custom Pricing Operations
+  addCustomPricing: (itemId: string, customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">) => void;
+  updateCustomPricing: (itemId: string, pricingId: string, updates: Partial<CustomPricing>) => void;
+  deleteCustomPricing: (itemId: string, pricingId: string) => void;
+  toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
+  getItemPriceForCategory: (itemId: string, categoryId: string) => number;
+
 }
 
 // Helper function to generate unique IDs
@@ -436,15 +439,24 @@ export const useMenuStore = create<MenuState>((set, get) => {
       if (!cat.schedules || cat.schedules.length === 0) return true;
       return isNowInAnySchedule(cat.schedules, at);
     },
-    decreaseStock: (itemId, quantity) => {
+
+    // Custom Pricing Operations
+    addCustomPricing: (itemId, customPricing) => {
+      const now = new Date().toISOString();
+      const newPricing: CustomPricing = {
+        ...customPricing,
+        id: `pricing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
           if (item.id === itemId) {
-            const newStock = Math.max(0, item.stock - quantity);
+            const existingPricing = item.customPricing || [];
             return {
               ...item,
-              stock: newStock,
-              status: newStock === 0 ? "Out of Stock" : item.status,
+              customPricing: [...existingPricing, newPricing],
             };
           }
           return item;
@@ -452,18 +464,22 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    increaseStock: (itemId, quantity) => {
+    updateCustomPricing: (itemId, pricingId, updates) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
-          if (item.id === itemId) {
-            const newStock = item.stock + quantity;
+          if (item.id === itemId && item.customPricing) {
             return {
               ...item,
-              stock: newStock,
-              status:
-                item.status === "Out of Stock" && newStock > 0
-                  ? "Active"
-                  : item.status,
+              customPricing: item.customPricing.map((pricing) => {
+                if (pricing.id === pricingId) {
+                  return {
+                    ...pricing,
+                    ...updates,
+                    updatedAt: new Date().toISOString(),
+                  };
+                }
+                return pricing;
+              }),
             };
           }
           return item;
@@ -471,10 +487,61 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    getLowStockItems: () => {
-      return get().menuItems.filter(
-        (item) => item.parLevel && item.stock < item.parLevel
-      );
+    deleteCustomPricing: (itemId, pricingId) => {
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => {
+          if (item.id === itemId && item.customPricing) {
+            return {
+              ...item,
+              customPricing: item.customPricing.filter(
+                (pricing) => pricing.id !== pricingId
+              ),
+            };
+          }
+          return item;
+        }),
+      }));
+    },
+
+    toggleCustomPricingActive: (itemId, pricingId) => {
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => {
+          if (item.id === itemId && item.customPricing) {
+            return {
+              ...item,
+              customPricing: item.customPricing.map((pricing) => {
+                if (pricing.id === pricingId) {
+                  return {
+                    ...pricing,
+                    isActive: !pricing.isActive,
+                    updatedAt: new Date().toISOString(),
+                  };
+                }
+                return pricing;
+              }),
+            };
+          }
+          return item;
+        }),
+      }));
+    },
+
+    getItemPriceForCategory: (itemId, categoryId) => {
+      const item = get().menuItems.find((item) => item.id === itemId);
+      if (!item) return 0;
+
+      // Check for custom pricing for this category
+      if (item.customPricing) {
+        const customPricing = item.customPricing.find(
+          (pricing) => pricing.categoryId === categoryId && pricing.isActive
+        );
+        if (customPricing) {
+          return customPricing.price;
+        }
+      }
+
+      // Return default price if no custom pricing found
+      return item.price;
     },
   };
 });

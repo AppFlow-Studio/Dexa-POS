@@ -176,7 +176,7 @@ const sidesAddOns: AddOn[] = [
 // --- Detailed Modifiers for Burgers ---
 const burgerModifiers: ModifierCategory[] = [
   {
-    id: "size",
+    id: "burger_size",
     name: "Burger Size",
     type: "required",
     selectionType: "single",
@@ -186,7 +186,7 @@ const burgerModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "patty",
+    id: "burger_patty",
     name: "Patty",
     type: "required",
     selectionType: "single",
@@ -283,8 +283,8 @@ const brunchAddOns: AddOn[] = [
 // --- Additional Modifier Categories for New Items ---
 const pizzaModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "pizza_size",
+    name: "Pizza Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -294,7 +294,7 @@ const pizzaModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "crust",
+    id: "pizza_crust",
     name: "Crust",
     type: "required",
     selectionType: "single",
@@ -341,8 +341,8 @@ const saladModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "salad_protein",
+    name: "Salad Protein",
     type: "optional",
     selectionType: "single",
     options: [
@@ -386,8 +386,8 @@ const sandwichModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "sandwich_protein",
+    name: "Sandwich Protein",
     type: "required",
     selectionType: "single",
     options: [
@@ -399,7 +399,7 @@ const sandwichModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "cheese",
+    id: "sandwich_cheese",
     name: "Cheese",
     type: "optional",
     selectionType: "single",
@@ -442,8 +442,8 @@ const pastaModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "protein",
-    name: "Protein",
+    id: "pasta_protein",
+    name: "Pasta Protein",
     type: "optional",
     selectionType: "single",
     options: [
@@ -469,8 +469,8 @@ const pastaModifiers: ModifierCategory[] = [
 
 const soupModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "soup_size",
+    name: "Soup Size",
     type: "required",
     selectionType: "single",
     options: [
@@ -479,7 +479,7 @@ const soupModifiers: ModifierCategory[] = [
     ],
   },
   {
-    id: "bread",
+    id: "soup_bread",
     name: "Bread",
     type: "optional",
     selectionType: "single",
@@ -494,8 +494,8 @@ const soupModifiers: ModifierCategory[] = [
 
 const coffeeModifiers: ModifierCategory[] = [
   {
-    id: "size",
-    name: "Size",
+    id: "coffee_size",
+    name: "Coffee Size",
     type: "required",
     selectionType: "single",
     options: [

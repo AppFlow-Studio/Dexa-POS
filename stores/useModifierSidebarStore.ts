@@ -6,10 +6,11 @@ interface ModifierSidebarState {
     mode: "add" | "edit" | "view" | "fullscreen";
     menuItem: MenuItemType | null;
     cartItem: CartItem | null;
-    openToAdd: (item: MenuItemType, orderId: string | null) => void;
+    categoryId: string | null;
+    openToAdd: (item: MenuItemType, orderId: string | null, categoryId?: string) => void;
     openToEdit: (item: CartItem, orderId: string | null) => void;
     openToView: (item: CartItem, orderId: string | null) => void;
-    openFullscreen: (item: MenuItemType, orderId: string | null) => void;
+    openFullscreen: (item: MenuItemType, orderId: string | null, categoryId?: string) => void;
     openFullscreenEdit: (item: CartItem, orderId: string | null) => void;
     close: () => void;
 }
@@ -19,13 +20,15 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     mode: "add",
     menuItem: null,
     cartItem: null,
+    categoryId: null,
 
-    openToAdd: (item: MenuItemType, orderId: string | null) => {
+    openToAdd: (item: MenuItemType, orderId: string | null, categoryId?: string) => {
         set({
             isOpen: true,
             mode: "add",
             menuItem: item,
             cartItem: null,
+            categoryId: categoryId || null,
         });
     },
 
@@ -47,12 +50,13 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         });
     },
 
-    openFullscreen: (item: MenuItemType, orderId: string | null) => {
+    openFullscreen: (item: MenuItemType, orderId: string | null, categoryId?: string) => {
         set({
             isOpen: true,
             mode: "fullscreen",
             menuItem: item,
             cartItem: null,
+            categoryId: categoryId || null,
         });
     },
 

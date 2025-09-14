@@ -218,8 +218,8 @@ const UpdateTableScreen = () => {
   };
   if (!table) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-2xl font-bold text-red-500">
+      <View className="flex-1 items-center justify-center bg-[#212121]">
+        <Text className="text-2xl font-bold text-red-400">
           Table not found!
         </Text>
       </View>
@@ -227,7 +227,7 @@ const UpdateTableScreen = () => {
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-[#212121]">
       {/* --- Customer Info Section (Top) --- */}
       <View className="px-2 mt-2">
         <OrderInfoHeader />
@@ -242,8 +242,8 @@ const UpdateTableScreen = () => {
 
       {/* Per-item status tracker */}
       {activeOrder && activeOrder.items?.length > 0 && (
-        <View className="bg-white border-t border-gray-200 p-4">
-          <Text className="text-base font-bold text-accent-500 mb-3">
+        <View className="bg-[#303030] border-t border-gray-700 p-4">
+          <Text className="text-base font-bold text-blue-400 mb-3">
             Items Status
           </Text>
           <ScrollView className="max-h-32">
@@ -255,15 +255,15 @@ const UpdateTableScreen = () => {
                   className="flex-row justify-between items-center py-2 border-b border-gray-100"
                 >
                   <View className="flex-1 pr-2">
-                    <Text className="font-semibold text-accent-500">
+                    <Text className="font-semibold text-white">
                       {item.name} x{item.quantity}
                     </Text>
                     <View
-                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${isReady ? "bg-green-100" : "bg-yellow-100"
+                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"
                         }`}
                     >
                       <Text
-                        className={`text-[10px] font-semibold ${isReady ? "text-green-800" : "text-yellow-800"
+                        className={`text-[10px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"
                           }`}
                       >
                         {isReady ? "Ready" : "Preparing"}
@@ -277,11 +277,11 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-200" : "bg-green-500"
+                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-500" : "bg-green-500"
                       }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${isReady ? "text-yellow-900" : "text-white"
+                      className={`text-xs font-bold ${isReady ? "text-yellow-100" : "text-white"
                         }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
@@ -295,10 +295,10 @@ const UpdateTableScreen = () => {
       )}
 
       {/* --- Fixed Footer (Not Scrollable) --- */}
-      <View className="bg-white border-t border-gray-200 p-4 flex-row justify-between items-center">
+      <View className="bg-[#303030] border-t border-gray-700 p-4 flex-row justify-between items-center">
         <View className="flex-row items-center gap-2">
           <AlertCircle color="#f97316" size={20} />
-          <Text className="font-semibold text-gray-600">
+          <Text className="font-semibold text-white">
             Table No. {table?.name}, Table Size - Medium, {table?.capacity}
           </Text>
         </View>
@@ -307,18 +307,18 @@ const UpdateTableScreen = () => {
           <View className="flex-row items-center gap-2">
             <View
               className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                ? "bg-green-100"
+                ? "bg-green-600"
                 : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-100"
-                  : "bg-red-100"
+                  ? "bg-yellow-600"
+                  : "bg-red-600"
                 }`}
             >
               <Text
                 className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                  ? "text-green-800"
+                  ? "text-green-100"
                   : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-800"
-                    : "text-red-800"
+                    ? "text-yellow-100"
+                    : "text-red-100"
                   }`}
               >
                 {activeOrder.paid_status}
@@ -330,10 +330,10 @@ const UpdateTableScreen = () => {
               </Text>
             </View> */}
             <View
-              className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-100" : "bg-gray-100"}`}
+              className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-600" : "bg-gray-600"}`}
             >
               <Text
-                className={`text-xs font-semibold ${activeOrder.check_status === "Opened" ? "text-purple-800" : "text-gray-800"}`}
+                className={`text-xs font-semibold ${activeOrder.check_status === "Opened" ? "text-purple-100" : "text-gray-100"}`}
               >
                 {activeOrder.check_status}
               </Text>
@@ -353,15 +353,15 @@ const UpdateTableScreen = () => {
               <>
                 <TouchableOpacity
                   onPress={handleReopenCheck}
-                  className="px-8 py-3 rounded-lg bg-primary-400"
+                  className="px-8 py-3 rounded-lg bg-blue-500"
                 >
                   <Text className="font-bold text-white">Reopen Check</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleClearTable}
-                  className="px-8 py-3 rounded-lg border border-red-300 bg-red-50"
+                  className="px-8 py-3 rounded-lg border border-red-500 bg-red-600"
                 >
-                  <Text className="font-bold text-red-700">Clear Table</Text>
+                  <Text className="font-bold text-red-100">Clear Table</Text>
                 </TouchableOpacity>
               </>
             ) : activeOrder?.paid_status === "Paid" ? (
@@ -369,15 +369,15 @@ const UpdateTableScreen = () => {
               <>
                 <TouchableOpacity
                   onPress={handleCloseCheck}
-                  className="px-8 py-3 rounded-lg bg-primary-400"
+                  className="px-8 py-3 rounded-lg bg-blue-500"
                 >
                   <Text className="font-bold text-white">Close Check</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleClearTable}
-                  className="px-8 py-3 rounded-lg border border-red-300 bg-red-50"
+                  className="px-8 py-3 rounded-lg border border-red-500 bg-red-600"
                 >
-                  <Text className="font-bold text-red-700">Clear Table</Text>
+                  <Text className="font-bold text-red-100">Clear Table</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -392,27 +392,27 @@ const UpdateTableScreen = () => {
                     });
                   }}
                   disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building"}
-                  className={`px-8 py-3 rounded-lg ${(!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building") ? "bg-gray-400" : "bg-orange-500"}`}
+                  className={`px-8 py-3 rounded-lg ${(!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building") ? "bg-gray-600" : "bg-orange-500"}`}
                 >
                   <Text className="font-bold text-white">Send to Kitchen</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handlePay}
-                  className="px-8 py-3 rounded-lg bg-primary-400"
+                  className="px-8 py-3 rounded-lg bg-blue-500"
                 >
                   <Text className="font-bold text-white">Pay</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleCloseCheck}
-                  className="px-8 py-3 rounded-lg border border-gray-300"
+                  className="px-8 py-3 rounded-lg border border-gray-600 bg-[#303030]"
                 >
-                  <Text className="font-bold text-gray-700">Close Check</Text>
+                  <Text className="font-bold text-white">Close Check</Text>
                 </TouchableOpacity>
               </>
             )
           ) : (
             <TouchableOpacity
-              className="px-8 py-3 rounded-lg bg-primary-400"
+              className="px-8 py-3 rounded-lg bg-blue-500"
               onPress={handleAssignToTable}
             >
               <Text className="font-bold text-white">Take Order</Text>
@@ -426,26 +426,26 @@ const UpdateTableScreen = () => {
         open={isNotReadyConfirmOpen}
         onOpenChange={setNotReadyConfirmOpen}
       >
-        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
-          <Text className="text-xl font-bold text-accent-500 mb-2">
+        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-[#303030]">
+          <Text className="text-xl font-bold text-white mb-2">
             Items not ready
           </Text>
-          <Text className="text-accent-400 mb-6">
+          <Text className="text-gray-400 mb-6">
             Not all items are marked as ready. Proceed to payment?
           </Text>
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => setNotReadyConfirmOpen(false)}
-              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+              className="flex-1 py-3 border border-gray-600 rounded-lg items-center bg-[#212121]"
             >
-              <Text className="font-bold text-gray-700">Cancel</Text>
+              <Text className="font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
                 setNotReadyConfirmOpen(false);
                 setPaymentSelectOpen(true);
               }}
-              className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+              className="flex-1 py-3 bg-blue-500 rounded-lg items-center"
             >
               <Text className="font-bold text-white">Continue</Text>
             </TouchableOpacity>
@@ -455,19 +455,19 @@ const UpdateTableScreen = () => {
 
       {/* Confirm: void unpaid check */}
       <AlertDialog open={isVoidConfirmOpen} onOpenChange={setVoidConfirmOpen}>
-        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
-          <Text className="text-xl font-bold text-accent-500 mb-2">
+        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-[#303030]">
+          <Text className="text-xl font-bold text-white mb-2">
             Void check?
           </Text>
-          <Text className="text-accent-400 mb-6">
+          <Text className="text-gray-400 mb-6">
             No payment has been made. Do you want to void this check?
           </Text>
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => setVoidConfirmOpen(false)}
-              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+              className="flex-1 py-3 border border-gray-600 rounded-lg items-center bg-[#212121]"
             >
-              <Text className="font-bold text-gray-700">Cancel</Text>
+              <Text className="font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={confirmVoid}
@@ -490,18 +490,18 @@ const UpdateTableScreen = () => {
         open={isOrderClosedWarningOpen}
         onOpenChange={setOrderClosedWarningOpen}
       >
-        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-white">
-          <Text className="text-xl font-bold text-accent-500 mb-2">
+        <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-[#303030]">
+          <Text className="text-xl font-bold text-white mb-2">
             Order is Closed
           </Text>
-          <Text className="text-accent-400 mb-6">
+          <Text className="text-gray-400 mb-6">
             This order is currently closed. Please reopen the check to add
             items.
           </Text>
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => setOrderClosedWarningOpen(false)}
-              className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+              className="flex-1 py-3 bg-blue-500 rounded-lg items-center"
             >
               <Text className="font-bold text-white">OK</Text>
             </TouchableOpacity>

@@ -50,9 +50,7 @@ const TableBillSection = ({
 
     return (
         <>
-            <View className="max-w-96 bg-background-100 border-gray-200 flex-1">
-                <Image source={images.topBar} className="w-full h-12" resizeMode="cover" />
-
+            <View className="max-w-96 bg-[#303030] flex-1">
                 {showOrderDetails && <OrderDetails />}
                 <TableBillSectionContent cart={cart} />
                 <DiscountSection onOpenDiscounts={handleOpenDiscounts} />

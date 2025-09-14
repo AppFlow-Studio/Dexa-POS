@@ -393,9 +393,9 @@ const OrderDetails: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveCustomerName}
-                className="flex-1 py-3 bg-white rounded-lg"
+                className="flex-1 py-3 bg-white rounded-lg  border border-blue-400"
               >
-                <Text className="font-bold text-white text-center">
+                <Text className="font-bold text-gray-800 text-center">
                   {customerName ? "Update" : "Add"}
                 </Text>
               </TouchableOpacity>

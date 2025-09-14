@@ -63,6 +63,17 @@ export interface MenuItemType {
   allergens?: string[];
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
+  customPricing?: CustomPricing[]; // New field for custom pricing
+}
+
+export interface CustomPricing {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  price: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Menu {

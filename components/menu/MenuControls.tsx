@@ -75,7 +75,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
         {/* Category Pills Container */}
         <View className="flex-1 p-1 rounded-xl flex-row items-center gap-1">
-          <ScrollView horizontal className=" p-1 rounded-lg w-fit bg-background-200 " >
+          <ScrollView horizontal className=" p-1 rounded-lg w-fit bg-[#303030] " >
             {categories?.map((tab, index) => {
               const available = isCategoryAvailableNow(tab);
               const dotColor = available ? '#10B981' : '#EF4444';
@@ -88,31 +88,16 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                   >
                     {/* Availability dot */}
                     <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
-                    <Text className={"font-semibold text-base text-accent-400"}>
+                    <Text className={`font-semibold text-base ${activeCategory === tab ? "text-accent-400" : "text-accent-100"}`}>
                       {tab}
                     </Text>
                   </TouchableOpacity>
-                  <View className={`${index !== categories.length - 1 ? "border-r border-gray-400 h-[50%] mx-1" : ""}`} />
+                  <View className={`${index !== categories.length - 1 ? "border-r border-gray-400 h-[50%] mx-2" : ""}`} />
                 </View>
               );
             })}
           </ScrollView>
         </View>
-
-        <Select  >
-          <SelectTrigger className="w-fit bg-background-200" >
-            <SelectValue placeholder="Select a Menu" />
-          </SelectTrigger>
-          <SelectContent insets={contentInsets} className="w-[45%] mt-4">
-            <SelectGroup>
-              {visibleMenus?.map((menu) => (
-                <SelectItem key={menu.id} label={menu.name} value={menu.id} onPress={() => onMealChange(menu.name)}>
-                  {menu.name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
 
 
       </View>

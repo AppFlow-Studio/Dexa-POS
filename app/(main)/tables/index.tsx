@@ -34,8 +34,8 @@ const ReusableSelect = ({
   options: string[];
   placeholder: string;
 }) => (
-  <TouchableOpacity className="flex-row items-center justify-between p-3 bg-white border border-gray-200 rounded-lg min-w-[150px]">
-    <Text className="font-semibold text-gray-600">{placeholder}</Text>
+  <TouchableOpacity className="flex-row items-center justify-between p-3 bg-[#303030] border border-gray-600 rounded-lg min-w-[150px]">
+    <Text className="font-semibold text-white">{placeholder}</Text>
     {/* Icon would go here */}
   </TouchableOpacity>
 );
@@ -155,22 +155,23 @@ const TablesScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 px-8 py-1">
-      <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 mb-4">
-        <Search color="#6b7280" size={16} />
+    <View className="flex-1 bg-[#212121] px-8 py-1">
+      <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 mb-4">
+        <Search color="#9CA3AF" size={16} />
         <TextInput
           placeholder="Search Customer"
+          placeholderTextColor="#9CA3AF"
           value={searchCustomerText}
           onChangeText={setSearchCustomerText}
-          className="ml-2 text-base flex-1"
+          className="ml-2 text-base flex-1 text-white"
         />
       </View>
 
-      <View className="flex-1 flex-row bg-white rounded-lg border border-background-400">
+      <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* --- Left Panel: Tables List --- */}
-        <View className="w-96 bg-white border-r border-gray-200">
-          <View className="p-4 border-b border-gray-100">
-            <Text className="text-2xl font-bold text-gray-800">
+        <View className="w-96 bg-[#212121] border-r border-gray-700">
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-2xl font-bold text-white">
               Tables List
             </Text>
           </View>
@@ -187,13 +188,14 @@ const TablesScreen = () => {
         <View className="flex-1 p-6">
           {/* Toolbar */}
           <View className="flex-row items-end gap-2 w-full justify-end mb-4">
-            <View className="flex-row items-center bg-white border border-background-400 rounded-lg px-4 flex-1 max-w-xs">
-              <Search color="#6b7280" size={16} />
+            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 flex-1 max-w-xs">
+              <Search color="#9CA3AF" size={16} />
               <TextInput
                 placeholder="Search table name..."
+                placeholderTextColor="#9CA3AF"
                 value={searchText}
                 onChangeText={setSearchText}
-                className="ml-2 text-base flex-1"
+                className="ml-2 text-base flex-1 text-white"
               />
             </View>
             <ReusableSelect
@@ -206,32 +208,32 @@ const TablesScreen = () => {
             />
             <TouchableOpacity
               onPress={() => router.push("/tables/edit-layout")}
-              className="py-3 px-5 rounded-lg bg-primary-400 "
+              className="py-3 px-5 rounded-lg bg-blue-500 "
             >
               <Text className="font-bold text-white">Edit Layout</Text>
             </TouchableOpacity>
           </View>
 
-          <View className="bg-white border border-gray-200 rounded-xl flex-1 ">
+          <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 ">
             {/* Legend */}
             <View className="flex-row items-center gap-4 my-4 ml-4">
               <View className="flex-row items-center gap-1">
                 <View className="w-3 h-3 rounded-full bg-green-500" />
-                <Text className="font-semibold text-gray-600">Available</Text>
+                <Text className="font-semibold text-white">Available</Text>
               </View>
               <View className="flex-row items-center gap-1">
                 <View className="w-3 h-3 rounded-full bg-blue-500" />
-                <Text className="font-semibold text-gray-600">In Use</Text>
+                <Text className="font-semibold text-white">In Use</Text>
               </View>
               <View className="flex-row items-center gap-1">
                 <View className="w-3 h-3 rounded-full bg-red-500" />
-                <Text className="font-semibold text-gray-600">
+                <Text className="font-semibold text-white">
                   Needs Cleaning
                 </Text>
               </View>
               <View className="flex-row items-center gap-1">
                 <View className="w-3 h-3 rounded-full bg-gray-400" />
-                <Text className="font-semibold text-gray-600">
+                <Text className="font-semibold text-white">
                   Available Soon
                 </Text>
               </View>
@@ -284,7 +286,7 @@ const TablesScreen = () => {
                       table={table}
                       isEditMode={false} // Never edit mode here
                       isSelected={false} // Never selected here
-                      onSelect={() => {}} // Does nothing here
+                      onSelect={() => { }} // Does nothing here
                       canvasScale={scale}
                       onPress={() => handleTablePress(table)}
                     />

@@ -18,12 +18,16 @@ interface MenuItemProps {
   item: MenuItemType;
   imageSource?: ImageSourcePropType;
   onOrderClosedCheck?: () => boolean;
+  categoryId?: string;
+  getItemPriceForCategory?: (itemId: string, categoryId: string) => number;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
   item,
   imageSource,
   onOrderClosedCheck,
+  categoryId,
+  getItemPriceForCategory,
 }) => {
   const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
   const { openFullscreen } = useModifierSidebarStore();
@@ -54,7 +58,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
       return; // Stop execution
     }
 
-    openFullscreen(item, activeOrderId);
+    openFullscreen(item, activeOrderId, categoryId);
   };
 
   return (
@@ -73,7 +77,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Utensils color="#9ca3af" size={32} />
           </View>
         )}
-        <View className="h-[1px]  bg-blue-400 self-center w-[90%]"/>
+        <View className="h-[1px]  bg-blue-400 self-center w-[90%]" />
         <View className="w-full px-3 pb-3">
           <View className="flex-row items-center justify-between">
             <Text className="text-base font-bold text-white mt-3 flex-1">
@@ -84,14 +88,33 @@ const MenuItem: React.FC<MenuItemProps> = ({
             )}
           </View>
           <View className="flex-row items-baseline mt-1">
-            <Text className="text-base font-semibold text-white">
-              ${item.price.toFixed(2)}
-            </Text>
-            {item.cashPrice && (
-              <Text className="text-xs text-gray-300 ml-2">
-                Cash Price: ${item.cashPrice.toFixed(2)}
-              </Text>
-            )}
+            {(() => {
+              // Get the correct price for this category
+              const displayPrice = categoryId && getItemPriceForCategory
+                ? getItemPriceForCategory(item.id, categoryId)
+                : item.price;
+
+              const hasCustomPricing = categoryId && getItemPriceForCategory &&
+                getItemPriceForCategory(item.id, categoryId) !== item.price;
+
+              return (
+                <>
+                  <Text className={`text-base font-semibold ${hasCustomPricing ? 'text-yellow-400' : 'text-white'}`}>
+                    ${displayPrice.toFixed(2)}
+                  </Text>
+                  {hasCustomPricing && (
+                    <Text className="text-xs text-gray-500 ml-2 line-through">
+                      ${item.price.toFixed(2)}
+                    </Text>
+                  )}
+                  {item.cashPrice && (
+                    <Text className="text-xs text-gray-300 ml-2">
+                      Cash Price: ${item.cashPrice.toFixed(2)}
+                    </Text>
+                  )}
+                </>
+              );
+            })()}
           </View>
         </View>
       </View>
