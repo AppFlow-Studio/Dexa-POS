@@ -544,9 +544,9 @@ const MenuPage: React.FC = () => {
                                 </View>
 
                                 <View className="flex-row items-center gap-2">
-                                    <TouchableOpacity className="p-2 bg-[#212121] rounded border border-gray-600">
+                                    <Link href={`/menu/edit-modifier?id=${modifierGroup.id}`} asChild className="p-2 bg-[#212121] rounded border border-gray-600">
                                         <Settings size={16} color="#9CA3AF" />
-                                    </TouchableOpacity>
+                                    </Link>
                                 </View>
                             </View>
 

@@ -39,7 +39,34 @@ const PinLoginScreen = () => {
   };
 
   const handleLogin = () => {
-    router.replace("/home");
+    if (!canSubmit) {
+      showDialog("Invalid PIN", "Please enter a valid PIN to sign in.", "error");
+      return;
+    }
+
+    // Check if user is already clocked in
+    if (isPinClockedIn(pin)) {
+      // User is already clocked in, just sign in
+      showDialog("Signed In", "Welcome back! You are already clocked in.", "success");
+      setTimeout(() => {
+        router.replace("/home");
+      }, 1500);
+      return;
+    }
+
+    // Clock in the user automatically
+    const clockInResult = clockInWithPin(pin);
+    if (!clockInResult.ok) {
+      showDialog("Sign In Failed", "Please enter a valid PIN.", "error");
+      return;
+    }
+
+    // Successfully clocked in and signed in
+    showDialog("Signed In", "Welcome! You have been automatically clocked in.", "success");
+    setPin("");
+    setTimeout(() => {
+      router.replace("/home");
+    }, 1500);
   };
 
   const handleClockIn = () => {

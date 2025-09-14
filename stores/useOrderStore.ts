@@ -291,6 +291,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         customer_name: "",
         check_status: "Opened",
         paid_status: "Unpaid",
+        order_type: "Take Away",
         items: [],
         opened_at: new Date().toISOString(),
       };
@@ -402,11 +403,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === updatedItem.id ? updatedItem : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === updatedItem.id ? updatedItem : i
+              ),
+            }
             : o
         ),
       }));
@@ -487,11 +488,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === itemId ? { ...i, isDraft: false } : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === itemId ? { ...i, isDraft: false } : i
+              ),
+            }
             : o
         ),
       }));
@@ -568,7 +569,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === orderId
-            ? { ...o, service_location_id: tableId, order_type: "Dine In" }
+            ? { ...o, service_location_id: tableId }
             : o
         ),
       }));
@@ -604,11 +605,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-              ...o,
-              service_location_id: tableId,
-              order_type: "Dine In" as const,
-              order_status: "Preparing" as const,
-            }
+            ...o,
+            service_location_id: tableId,
+            order_type: "Dine In" as const,
+            order_status: "Preparing" as const,
+          }
           : o
       );
 
@@ -698,13 +699,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-                ...o,
-                paid_status: "Paid",
-                check_status: "Closed",
-                total_amount: total, // Save the correct final total
-                total_tax: tax,
-                total_discount: activeOrderDiscount, // Save the discount amount
-              }
+              ...o,
+              paid_status: "Paid",
+              check_status: "Closed",
+              total_amount: total, // Save the correct final total
+              total_tax: tax,
+              total_discount: activeOrderDiscount, // Save the discount amount
+            }
             : o
         ),
       }));
@@ -854,7 +855,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           order_status: "Preparing" as const,
           check_status: "Opened" as const,
           paid_status: o.paid_status === "Paid" ? "Paid" : "Unpaid",
-          order_type: o.order_type || ("Take Away" as const),
+          order_type: o.order_type,
         } as OrderProfile;
       });
 
@@ -876,7 +877,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch {}
+      } catch { }
     },
   };
 });

@@ -315,13 +315,13 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Building"
-    | "Voided";
+  | "Open"
+  | "Closed"
+  | "Cancelled"
+  | "Preparing"
+  | "Ready"
+  | "Building"
+  | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
@@ -346,6 +346,8 @@ export interface OrderProfile {
 
   // Additional optional details
   customer_name?: string;
+  customer_phone?: string;
+  delivery_address?: string;
   server_name?: string;
   checkDiscount?: Discount | null;
   paymentMethod?: PaymentType; // Example usage

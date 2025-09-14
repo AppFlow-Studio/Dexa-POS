@@ -1,4 +1,6 @@
 import { CartItem } from "@/lib/types";
+import { useDineInStore } from "@/stores/useDineInStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Send } from "lucide-react-native";
@@ -43,7 +45,10 @@ const BillSection = ({
     activeOrderTotal,
     startNewOrder,
     fireActiveOrderToKitchen,
+    assignOrderToTable,
   } = useOrderStore();
+  const { selectedTable, clearSelectedTable } = useDineInStore();
+  const { updateTableStatus } = useFloorPlanStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
@@ -137,6 +142,12 @@ const BillSection = ({
             style={{ elevation: 2 }}
             disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building"}
             onPress={() => {
+              // If this is a dine-in order with a selected table, assign it first
+              if (activeOrder?.order_type === "Dine In" && selectedTable) {
+                assignOrderToTable(activeOrderId, selectedTable.id);
+                updateTableStatus(selectedTable.id, "In Use");
+                clearSelectedTable(); // Clear the selected table after assignment
+              }
               fireActiveOrderToKitchen();
             }}
             activeOpacity={0.85}

@@ -1,3 +1,4 @@
+import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -21,6 +22,7 @@ const ReceiptRow = ({
 const PaymentSuccessView = () => {
   const { close, paymentMethod, activeTableId } = usePaymentStore();
   const { updateTableStatus } = useFloorPlanStore();
+  const { clearSelectedTable } = useDineInStore();
   const {
     activeOrderId,
     orders,
@@ -54,8 +56,6 @@ const PaymentSuccessView = () => {
       activeOrderId,
       updateOrderStatus,
       markOrderAsPaid,
-      assignActiveOrderToTable,
-      setPendingTableSelection,
       startNewOrder,
       setActiveOrder,
     } = useOrderStore.getState(); // Get the current active order ID
@@ -65,28 +65,27 @@ const PaymentSuccessView = () => {
       markOrderAsPaid(activeOrderId);
     }
 
-    if (activeTableId) {
-      // For dine-in orders, assign the pending table selection to the order
-      assignActiveOrderToTable(activeTableId);
+    // For dine-in orders, the table is already assigned, just update status
+    if (activeOrder?.order_type === "Dine In" && activeTableId) {
       updateTableStatus(activeTableId, "In Use");
-      // Clear the pending table selection
-      setPendingTableSelection(null);
-      // Close the payment modal
-      close();
-    } else {
-      if (activeOrderId) {
-        updateOrderStatus(activeOrderId, "Preparing");
-      }
-      // If it was a global/walk-in order, close the modal and start a new order
-      close();
-
-      // Start a new order for the next customer
-      setTimeout(() => {
-        const newOrder = startNewOrder();
-        setActiveOrder(newOrder.id);
-      }, 100); // Small delay to ensure the modal closes first
     }
-  };
+
+    if (activeOrderId) {
+      updateOrderStatus(activeOrderId, "Preparing");
+    }
+
+    // Clear the selected table for dine-in orders
+    clearSelectedTable();
+
+    // Close the payment modal
+    close();
+
+    // Start a new order for the next customer
+    setTimeout(() => {
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+    }, 100); // Small delay to ensure the modal closes first
+  }
 
   // Create a simplified summary for the receipt using the correct `items`
   const receiptSummary = items.reduce(

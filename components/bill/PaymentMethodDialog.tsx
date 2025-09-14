@@ -1,3 +1,5 @@
+import { useDineInStore } from "@/stores/useDineInStore";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
@@ -21,7 +23,9 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
     const activeOrder = useOrderStore((state) =>
         state.orders.find((o) => o.id === state.activeOrderId)
     );
-    const pendingTableSelection = useOrderStore((state) => state.pendingTableSelection);
+    const { selectedTable, clearSelectedTable } = useDineInStore();
+    const { assignOrderToTable } = useOrderStore();
+    const { updateTableStatus } = useFloorPlanStore();
 
     const paymentMethods = [
         {
@@ -46,12 +50,8 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
     };
 
     const handleProceedToPayment = () => {
-        // For dine-in orders, use the pending table selection
-        const tableIdForOrder = activeOrder?.order_type === "Dine In"
-            ? pendingTableSelection
-            : activeOrder?.service_location_id;
-
-        if (activeOrder?.order_type === "Dine In" && !tableIdForOrder) {
+        // For dine-in orders, check if table is selected
+        if (activeOrder?.order_type === "Dine In" && !selectedTable) {
             toast.error("Please select a table", {
                 duration: 4000,
                 position: ToastPosition.BOTTOM,
@@ -59,15 +59,15 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
             return;
         }
 
-        // For dine-in orders, we need to check if the order is paid before assigning to table
-        if (activeOrder?.order_type === "Dine In" && activeOrder.paid_status !== "Paid") {
-            // Open payment modal with the pending table selection
-            openPaymentModal(selectedMethod, tableIdForOrder);
-            onClose();
-            return;
+        // If this is a dine-in order with a selected table, assign it first
+        if (activeOrder?.order_type === "Dine In" && selectedTable && activeOrder.id) {
+            assignOrderToTable(activeOrder.id, selectedTable.id);
+            updateTableStatus(selectedTable.id, "In Use");
+            clearSelectedTable(); // Clear the selected table after assignment
         }
 
-        // For non-dine-in orders or already paid dine-in orders, proceed normally
+        // Open payment modal with the table ID
+        const tableIdForOrder = activeOrder?.order_type === "Dine In" ? selectedTable?.id : activeOrder?.service_location_id;
         openPaymentModal(selectedMethod, tableIdForOrder);
         onClose();
     };

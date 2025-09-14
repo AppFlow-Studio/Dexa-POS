@@ -1,6 +1,16 @@
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '@/components/ui/select';
 import { useMenuStore } from "@/stores/useMenuStore";
+import type { TriggerRef } from '@rn-primitives/select';
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const MEAL_TABS = ["Lunch", "Dinner", "Brunch", "Specials"];
 const CATEGORY_TABS = [
@@ -28,12 +38,25 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   const { menus, isMenuAvailableNow, isCategoryAvailableNow } = useMenuStore();
   const visibleMenus = menus.filter((m) => m.isActive && isMenuAvailableNow(m.id));
   const categories = visibleMenus.find((menu) => menu.name == activeMeal)?.categories
+  const ref = React.useRef<TriggerRef>(null);
+  const insets = useSafeAreaInsets();
+  const contentInsets = {
+    top: insets.top,
+    bottom: Platform.select({ ios: insets.bottom, android: insets.bottom + 24 }),
+    left: 12,
+    right: 12,
+  };
+
+  // Workaround for rn-primitives/select not opening on mobile
+  // function onTouchStart() {
+  //   ref.current?.open();
+  // }
   return (
     <View className="flex-row justify-between items-start gap-4">
       {/* Left Section: All Tabs */}
-      <View className="bg-[#303030] border border-background-200 p-2 rounded-2xl flex-shrink">
+      <View className="bg-[#303030] w-full p-2 rounded-2xl flex-shrink flex flex-row items-center justify-between">
         {/* Meal Tabs */}
-        <View className="flex-row mx-auto">
+        {/* <View className="flex-row mx-auto">
           {visibleMenus?.map((tab) => (
             <TouchableOpacity
               key={tab.id}
@@ -48,28 +71,50 @@ const MenuControls: React.FC<MenuControlsProps> = ({
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </View> */}
 
         {/* Category Pills Container */}
-        <View className="bg-background-200  border p-1 rounded-xl flex-row items-center gap-1">
-          {categories?.map((tab) => {
-            const available = isCategoryAvailableNow(tab);
-            const dotColor = available ? '#10B981' : '#EF4444';
-            return (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => onCategoryChange(tab)}
-                className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${activeCategory === tab ? "border border-accent-300 bg-accent-100" : "border border-transparent"}`}
-              >
-                {/* Availability dot */}
-                <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
-                <Text className={"font-semibold text-base text-accent-400"}>
-                  {tab}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View className="flex-1 p-1 rounded-xl flex-row items-center gap-1">
+          <ScrollView horizontal className=" p-1 rounded-lg w-fit bg-background-200 " >
+            {categories?.map((tab, index) => {
+              const available = isCategoryAvailableNow(tab);
+              const dotColor = available ? '#10B981' : '#EF4444';
+              return (
+                <View key={tab} className='w-fit flex-row items-center' >
+                  <TouchableOpacity
+                   
+                    onPress={() => onCategoryChange(tab)}
+                    className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${activeCategory === tab ? "border border-accent-300 bg-accent-100" : "border border-transparent"}`}
+                  >
+                    {/* Availability dot */}
+                    <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
+                    <Text className={"font-semibold text-base text-accent-400"}>
+                      {tab}
+                    </Text>
+                  </TouchableOpacity>
+                  <View className={`${index !== categories.length - 1 ? "border-r border-gray-400 h-[50%] mx-1" : ""}`} />
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
+
+        <Select  >
+          <SelectTrigger className="w-fit bg-background-200" >
+            <SelectValue placeholder="Select a Menu" />
+          </SelectTrigger>
+          <SelectContent insets={contentInsets} className="w-[45%] mt-4">
+            <SelectGroup>
+              {visibleMenus?.map((menu) => (
+                <SelectItem key={menu.id} label={menu.name} value={menu.id} onPress={() => onMealChange(menu.name)}>
+                  {menu.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+
+
       </View>
 
     </View>

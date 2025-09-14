@@ -33,6 +33,7 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
+    fireActiveOrderToKitchen,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
@@ -258,14 +259,12 @@ const UpdateTableScreen = () => {
                       {item.name} x{item.quantity}
                     </Text>
                     <View
-                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${
-                        isReady ? "bg-green-100" : "bg-yellow-100"
-                      }`}
+                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${isReady ? "bg-green-100" : "bg-yellow-100"
+                        }`}
                     >
                       <Text
-                        className={`text-[10px] font-semibold ${
-                          isReady ? "text-green-800" : "text-yellow-800"
-                        }`}
+                        className={`text-[10px] font-semibold ${isReady ? "text-green-800" : "text-yellow-800"
+                          }`}
                       >
                         {isReady ? "Ready" : "Preparing"}
                       </Text>
@@ -278,14 +277,12 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${
-                      isReady ? "bg-yellow-200" : "bg-green-500"
-                    }`}
+                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-200" : "bg-green-500"
+                      }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${
-                        isReady ? "text-yellow-900" : "text-white"
-                      }`}
+                      className={`text-xs font-bold ${isReady ? "text-yellow-900" : "text-white"
+                        }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
                     </Text>
@@ -309,22 +306,20 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-2 py-1 rounded-full ${
-                activeOrder.paid_status === "Paid"
-                  ? "bg-green-100"
-                  : activeOrder.paid_status === "Pending"
-                    ? "bg-yellow-100"
-                    : "bg-red-100"
-              }`}
+              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
+                ? "bg-green-100"
+                : activeOrder.paid_status === "Pending"
+                  ? "bg-yellow-100"
+                  : "bg-red-100"
+                }`}
             >
               <Text
-                className={`text-xs font-semibold ${
-                  activeOrder.paid_status === "Paid"
-                    ? "text-green-800"
-                    : activeOrder.paid_status === "Pending"
-                      ? "text-yellow-800"
-                      : "text-red-800"
-                }`}
+                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
+                  ? "text-green-800"
+                  : activeOrder.paid_status === "Pending"
+                    ? "text-yellow-800"
+                    : "text-red-800"
+                  }`}
               >
                 {activeOrder.paid_status}
               </Text>
@@ -386,8 +381,21 @@ const UpdateTableScreen = () => {
                 </TouchableOpacity>
               </>
             ) : (
-              // Unpaid: show Pay and Close (which may void)
+              // Unpaid: show Send to Kitchen, Pay, and Close (which may void)
               <>
+                <TouchableOpacity
+                  onPress={() => {
+                    fireActiveOrderToKitchen();
+                    toast.success("Order sent to kitchen", {
+                      duration: 3000,
+                      position: ToastPosition.BOTTOM,
+                    });
+                  }}
+                  disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building"}
+                  className={`px-8 py-3 rounded-lg ${(!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building") ? "bg-gray-400" : "bg-orange-500"}`}
+                >
+                  <Text className="font-bold text-white">Send to Kitchen</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handlePay}
                   className="px-8 py-3 rounded-lg bg-primary-400"

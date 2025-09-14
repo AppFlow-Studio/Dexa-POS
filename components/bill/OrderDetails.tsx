@@ -1,18 +1,10 @@
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Edit3, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Dialog,
@@ -21,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Label } from "../ui/label";
 
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
@@ -44,21 +37,16 @@ const OrderDetails: React.FC = () => {
     addItemToActiveOrder,
     setPendingTableSelection,
   } = useOrderStore();
+  const { openDrawer } = useOrderTypeDrawerStore();
 
   // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const currentOrderType = activeOrder?.order_type || "Take Away";
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
     undefined
   );
-
-  const [selectedOrderType, setSelectedOrderType] = useState<
-    SelectOption | undefined
-  >();
-  const [tableSelectKey, setTableSelectKey] = useState(Date.now());
-  const [orderTypeSelectKey, setOrderTypeSelectKey] = useState(Date.now());
-
   // Temporary storage for selected table (not yet assigned to order)
   const [pendingTableSelection, setLocalPendingTableSelection] = useState<
     SelectOption | undefined
@@ -117,10 +105,7 @@ const OrderDetails: React.FC = () => {
   ]);
 
   useEffect(() => {
-    setSelectedOrderType(undefined);
-    setOrderTypeSelectKey(Date.now());
     setSelectedTable(undefined);
-    setTableSelectKey(Date.now());
   }, [activeOrderId]);
 
   // Initialize customer name from active order
@@ -132,67 +117,6 @@ const OrderDetails: React.FC = () => {
     }
   }, [activeOrderId, activeOrder?.customer_name]);
 
-  const handleTableSelect = (option: SelectOption | undefined) => {
-    if (!option) return;
-
-    if (selectedOrderType?.value === "Take Away") {
-      toast.error("Order type is take away can't assign table", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
-      setTableSelectKey(Date.now());
-      return;
-    }
-
-    // For dine-in orders, just store the table selection temporarily (not yet assigned)
-    if (selectedOrderType?.value === "Dine In") {
-      setLocalPendingTableSelection(option);
-      setPendingTableSelection(option.value);
-      // Only update order type, don't assign table yet
-      if (activeOrderId) {
-        updateActiveOrderDetails({
-          order_type: "Dine In",
-        });
-      }
-      toast.success(`Table ${option.label} selected`, {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-
-    // For non-dine-in orders, proceed with normal assignment
-    const tableId = option.value;
-    assignOrderToTable(activeOrderId!, tableId);
-    updateTableStatus(tableId, "In Use");
-
-    // 2. After successfully assigning, change the key of the Select component
-    // This will force it to re-mount and reset to its initial placeholder state.
-    setTableSelectKey(Date.now());
-
-    toast.success(`Order assigned to ${option.label}`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
-    });
-  };
-
-  const handleOrderTypeSelect = (option: SelectOption | undefined) => {
-    if (!option || !activeOrderId) return;
-
-    updateActiveOrderDetails({ order_type: option.value as any });
-    setSelectedOrderType(option);
-  };
-
-  const handleOpenItemPress = () => {
-    if (!activeOrder?.order_type) {
-      toast.error("Please select an Order Type", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-    setIsOpenItemModalVisible(true);
-  };
 
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
@@ -295,8 +219,10 @@ const OrderDetails: React.FC = () => {
   return (
     <View className="pb-4 px-4 bg-[#212121] overflow-hidden ">
       {/* Header */}
-      <View className="flex-row items-center justify-between my-2 w-full">
-        <View className="flex-1">
+      <View className="flex-row flex items-center justify-center my-2 w-full gap-x-4">
+
+        <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
+          <Label className="text-white font-semibold text-lg">Customer Name</Label>
           {/* Customer Name Button */}
           {customerName && customerName !== "Walk-In Customer" ? (
             // Edit Mode - Show customer name with edit icon
@@ -305,7 +231,7 @@ const OrderDetails: React.FC = () => {
               className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-white bg-accent-50 w-full"
             >
               <View className="flex-row items-center flex-1">
-                <Text className="text-lg font-semibold text-accent-500 flex-1">
+                <Text className="text-lg font-semibold text-white flex-1">
                   {customerName}
                 </Text>
               </View>
@@ -326,82 +252,29 @@ const OrderDetails: React.FC = () => {
               </Text>
             </TouchableOpacity>
           )}
-
-          {/* Order Number */}
-          <Text className="text-sm text-accent-500 mt-2 text-center">
-            Order Number #{activeOrderId?.slice(-5) || "00000"}
-          </Text>
         </View>
-      </View>
-
-      {/* Selectors */}
-      <View className="flex-row gap-2">
-        {/* --- Select Table Dropdown --- */}
-        <View className="flex-1">
-          <Select key={tableSelectKey} value={selectedTable}>
-            <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
-              <SelectValue
-                placeholder="Select Table"
-                className="font-semibold text-white"
-              />
-            </SelectTrigger>
-            <SelectContent insets={contentInsets} className="max-h-64">
-              <ScrollView>
-                <SelectGroup>
-                  {availableTableOptions.map((tableOption) => (
-                    <SelectItem
-                      key={tableOption.value}
-                      label={tableOption.label}
-                      value={tableOption.value}
-                      onPress={() => handleTableSelect(tableOption)}
-                    >
-                      {tableOption.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </ScrollView>
-            </SelectContent>
-          </Select>
-        </View>
-
-        {/* --- Order Type Dropdown --- */}
-        <View className="flex-1">
-          <Select
-            key={orderTypeSelectKey}
-            value={selectedOrderType}
-            onValueChange={handleOrderTypeSelect}
+        <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
+          <Label className="text-white font-semibold text-lg">Order Type</Label>
+          {/* --- Order Type Button --- */}
+          <TouchableOpacity
+            className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg bg-[#303030]"
+            onPress={openDrawer}
           >
-            <SelectTrigger className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg">
-              <SelectValue
-                placeholder="Order Type"
-                className="font-semibold text-white"
-              />
-            </SelectTrigger>
-            <SelectContent insets={contentInsets}>
-              <SelectGroup>
-                {ORDER_TYPE_OPTIONS.map((typeOption) => (
-                  <SelectItem
-                    key={typeOption.value}
-                    label={typeOption.label}
-                    value={typeOption.value}
-                    className="text-start"
-                  >
-                    {typeOption.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+            <Text className="font-semibold text-white">
+              {currentOrderType}
+            </Text>
+            <Text className="text-gray-400">▼</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Open Item Button */}
+      {/* Open Item Button
       <TouchableOpacity
         className="mt-2 w-full items-center py-3 border border-background-400 rounded-lg"
         onPress={handleOpenItemPress}
       >
         <Text className="font-bold text-white">Add Custom Item</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* Open Item Modal */}
       <Dialog open={isOpenItemModalVisible} onOpenChange={setIsOpenItemModalVisible}>
