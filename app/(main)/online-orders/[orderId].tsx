@@ -10,13 +10,13 @@ const DetailRow = ({ children }: { children: React.ReactNode }) => (
 
 const DetailItem = ({ label, value, isTag = false, tagColor = "" }: any) => (
   <View className="flex-1">
-    <Text className="text-sm text-gray-500 mb-1">{label}</Text>
+    <Text className="text-sm text-gray-300 mb-1">{label}</Text>
     {isTag ? (
       <View className={`px-2 py-1 self-start rounded-md ${tagColor}`}>
         <Text className={`font-semibold capitalize ${tagColor}`}>{value}</Text>
       </View>
     ) : (
-      <Text className="text-base font-semibold text-gray-800">{value}</Text>
+      <Text className="text-base font-semibold text-white">{value}</Text>
     )}
   </View>
 );
@@ -35,22 +35,22 @@ const OnlineOrderDetailsScreen = () => {
   }
 
   return (
-    <View className="flex-1 bg-white">
-      <ScrollView className="flex-1 bg-white p-6">
-        <Text className="text-4xl font-extrabold text-gray-800 text-center">
+    <View className="flex-1 bg-[#212121]">
+      <ScrollView className="flex-1 bg-[#212121] p-6">
+        <Text className="text-4xl font-extrabold text-white text-center">
           {order.id}
         </Text>
         <View className="flex-row justify-between items-center mx-6">
-          <Text className="text-xl font-bold text-gray-800 mb-4">
+          <Text className="text-xl font-bold text-white mb-4">
             Basic Info
           </Text>
-          <Text className="text-base text-gray-500">{order.timestamp}</Text>
+          <Text className="text-base text-gray-300">{order.timestamp}</Text>
         </View>
 
         {/* --- Cards with Info --- */}
         <View className="gap-y-6">
           {/* Basic Info */}
-          <View className="bg-white p-6 rounded-2xl border border-gray-200">
+          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
             <View className="gap-y-4">
               <DetailRow>
                 <DetailItem
@@ -71,7 +71,7 @@ const OnlineOrderDetailsScreen = () => {
                   label="Membership Status"
                   value="Yes"
                   isTag
-                  tagColor="bg-green-100 text-green-800"
+                  tagColor="bg-green-500/20 text-green-400"
                 />
                 <DetailItem label="Membership Expiry Date" value="Lifetime" />
               </DetailRow>
@@ -79,7 +79,7 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Order Info */}
-          <View className="bg-white p-6 rounded-2xl border border-gray-200">
+          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
             <View className="gap-y-4">
               <DetailRow>
                 <DetailItem label="Order Placed at" value={order.timestamp} />
@@ -97,13 +97,13 @@ const OnlineOrderDetailsScreen = () => {
                   label="Payment Status"
                   value={order.paymentStatus}
                   isTag
-                  tagColor="bg-green-100 text-green-800"
+                  tagColor="bg-green-500/20 text-green-400"
                 />
                 <DetailItem
                   label="Delivery Status"
                   value="Delivered"
                   isTag
-                  tagColor="bg-blue-100 text-blue-800"
+                  tagColor="bg-blue-500/20 text-blue-400"
                 />
               </DetailRow>
               <DetailRow>
@@ -114,8 +114,8 @@ const OnlineOrderDetailsScreen = () => {
           </View>
 
           {/* Items List */}
-          <View className="bg-white p-6 rounded-2xl border border-gray-200">
-            <Text className="text-xl font-bold text-gray-800 mb-4">
+          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+            <Text className="text-xl font-bold text-white mb-4">
               Items ({order.itemCount})
             </Text>
             <View className="gap-y-3">
@@ -131,11 +131,11 @@ const OnlineOrderDetailsScreen = () => {
       </ScrollView>
 
       {/* Footer */}
-      <View className="p-4 bg-white/80 backdrop-blur-sm border-t border-gray-200 flex-row justify-end gap-2">
-        <TouchableOpacity className="py-3 px-8 border border-gray-300 flex-1 rounded-lg items-center">
-          <Text className="font-bold text-gray-700">Reject</Text>
+      <View className="p-4 bg-[#303030]/80 backdrop-blur-sm border-t border-gray-600 flex-row justify-end gap-2">
+        <TouchableOpacity className="py-3 px-8 border border-gray-500 flex-1 rounded-lg items-center">
+          <Text className="font-bold text-gray-300">Reject</Text>
         </TouchableOpacity>
-        <TouchableOpacity className="py-3 px-8 bg-primary-400 flex-1 rounded-xl items-center">
+        <TouchableOpacity className="py-3 px-8 bg-blue-500 flex-1 rounded-xl items-center">
           <Text className="font-bold text-white">Accept</Text>
         </TouchableOpacity>
       </View>

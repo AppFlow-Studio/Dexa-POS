@@ -43,8 +43,8 @@ const StoreInfo = () => {
   ];
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
-      <View className="flex-row gap-6 h-full w-full h-full w-full">
+    <View className="flex-1 bg-[#212121] p-6">
+      <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="Basic Settings"
@@ -53,9 +53,9 @@ const StoreInfo = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
-          <Text className="text-xl font-bold text-gray-800">Store Information</Text>
-          <Text className="text-gray-600 mt-2">Configure your business details and store information.</Text>
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+          <Text className="text-xl font-bold text-white">Store Information</Text>
+          <Text className="text-gray-300 mt-2">Configure your business details and store information.</Text>
         </View>
       </View>
     </View>

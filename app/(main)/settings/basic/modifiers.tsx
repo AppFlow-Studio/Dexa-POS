@@ -49,7 +49,7 @@ const Modifiers = () => {
   ];
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -59,11 +59,11 @@ const Modifiers = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
-          <Text className="text-xl font-bold text-gray-800">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+          <Text className="text-xl font-bold text-white">
             Item Modifiers
           </Text>
-          <Text className="text-gray-600 mt-2">
+          <Text className="text-gray-300 mt-2">
             Configure item customizations and modifiers.
           </Text>
         </View>

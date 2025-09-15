@@ -6,10 +6,10 @@ import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 const partnerColors: { [key: string]: string } = {
-  "Door Dash": "bg-red-100",
-  "Uber-Eats": "bg-green-100",
-  grubhub: "bg-orange-100",
-  "Food Panda": "bg-pink-100",
+  "Door Dash": "bg-red-500/20",
+  "Uber-Eats": "bg-green-500/20",
+  grubhub: "bg-orange-500/20",
+  "Food Panda": "bg-pink-500/20",
 };
 
 const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
@@ -25,15 +25,15 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => rejectOrder(order.id)}
-              className="flex-1 py-2.5 border border-gray-300 rounded-xl items-center"
+              className="flex-1 py-2.5 border border-gray-500 rounded-xl items-center"
             >
-              <Text className="font-bold text-gray-700">Reject</Text>
+              <Text className="font-bold text-gray-300">Reject</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() =>
                 updateOrderStatus(order.id, "Confirmed/In-Process")
               }
-              className="flex-1 py-2.5 bg-primary-400 rounded-xl items-center"
+              className="flex-1 py-2.5 bg-blue-500 rounded-xl items-center"
             >
               <Text className="font-bold text-white">Accept</Text>
             </TouchableOpacity>
@@ -43,7 +43,7 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
         return (
           <TouchableOpacity
             onPress={() => updateOrderStatus(order.id, "Ready to Dispatch")}
-            className="w-full py-2.5 bg-primary-400 rounded-xl items-center"
+            className="w-full py-2.5 bg-blue-500 rounded-xl items-center"
           >
             <Text className="font-bold text-white">Mark as Ready</Text>
           </TouchableOpacity>
@@ -52,7 +52,7 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
         return (
           <TouchableOpacity
             onPress={() => updateOrderStatus(order.id, "Dispatched")}
-            className="w-full py-2.5 bg-primary-400 rounded-xl items-center"
+            className="w-full py-2.5 bg-blue-500 rounded-xl items-center"
           >
             <Text className="font-bold text-white">Dispatch</Text>
           </TouchableOpacity>
@@ -61,9 +61,9 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
         return (
           <TouchableOpacity
             onPress={() => archiveOrder(order.id)}
-            className="py-2.5 bg-green-100 rounded-xl items-center"
+            className="py-2.5 bg-green-500/20 rounded-xl items-center"
           >
-            <Text className="font-bold text-green-800">Archive</Text>
+            <Text className="font-bold text-green-400">Archive</Text>
           </TouchableOpacity>
         );
       default:
@@ -72,18 +72,18 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
   };
   return (
     <Link href={`/online-orders/${order.id.replace("#", "")}` as Href}>
-      <View className="bg-white p-4 rounded-2xl border border-background-400 w-full">
+      <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600 w-full">
         {/* Header */}
         <View className="flex-row justify-between items-center">
           <View>
-            <Text className="text-sm text-gray-500">
+            <Text className="text-sm text-gray-300">
               Items: {order.itemCount}
             </Text>
-            <Text className="font-bold text-primary-400 mt-1">
+            <Text className="font-bold text-blue-400 mt-1">
               View Order Details
             </Text>
           </View>
-          <Text className="text-sm text-gray-500">{order.timestamp}</Text>
+          <Text className="text-sm text-gray-300">{order.timestamp}</Text>
         </View>
         {/* Body */}
         <View className="flex-row items-center my-4">
@@ -97,14 +97,14 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
             />
           </View>
           <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-gray-800">
+            <Text className="text-base font-bold text-white">
               {order.id}
             </Text>
-            <Text className="text-base text-gray-600">
+            <Text className="text-base text-gray-300">
               {order.customerName}
             </Text>
           </View>
-          <Text className="text-2xl font-bold text-gray-800">
+          <Text className="text-2xl font-bold text-white">
             ${order.total}
           </Text>
         </View>

@@ -52,7 +52,7 @@ const SyncStatusScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -62,28 +62,29 @@ const SyncStatusScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main Content */}
           <View className="flex-1 gap-y-6">
             {/* Last Updated Card */}
-            <View className="bg-white p-6 rounded-2xl border border-gray-200 flex-row justify-between items-center">
-              <Text className="text-xl font-bold text-gray-800">Last Updated</Text>
-              <Text className="text-lg font-semibold text-gray-600">
+            <View className="bg-[#212121] p-6 rounded-2xl border border-gray-600 flex-row justify-between items-center">
+              <Text className="text-xl font-bold text-white">Last Updated</Text>
+              <Text className="text-lg font-semibold text-gray-300">
                 2 minutes ago
               </Text>
             </View>
 
             {/* Offline Mode Card */}
-            <View className="flex-1 bg-white p-6 rounded-2xl border border-gray-200">
-              <Text className="text-xl font-bold text-gray-800">Offline Mode</Text>
+            <View className="flex-1 bg-[#212121] p-6 rounded-2xl border border-gray-600">
+              <Text className="text-xl font-bold text-white">Offline Mode</Text>
 
               {/* Toolbar */}
               <View className="flex-row items-center justify-between my-4">
-                <View className="flex-row items-center bg-gray-100 rounded-lg px-3 w-[300px]">
-                  <Search color="#6b7280" size={16} />
+                <View className="flex-row items-center bg-[#303030] rounded-lg px-3 w-[300px] border border-gray-600">
+                  <Search color="#9CA3AF" size={16} />
                   <TextInput
                     placeholder="Search Order"
-                    className="ml-2 text-base flex-1"
+                    placeholderTextColor="#9CA3AF"
+                    className="ml-2 text-base flex-1 text-white"
                   />
                 </View>
                 <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
@@ -92,11 +93,11 @@ const SyncStatusScreen = () => {
               {/* Table */}
               <View className="flex-1 rounded-xl">
                 {/* Table Header */}
-                <View className="flex-row p-4 bg-background-100 rounded-t-xl border-b border-background-400">
+                <View className="flex-row p-4 bg-[#303030] rounded-t-xl border-b border-gray-600">
                   {TABLE_HEADERS.map((header) => (
                     <Text
                       key={header}
-                      className="w-1/6 font-bold text-sm text-gray-500"
+                      className="w-1/6 font-bold text-sm text-gray-300"
                     >
                       {header}
                     </Text>
@@ -112,14 +113,14 @@ const SyncStatusScreen = () => {
 
               {/* Footer for the card */}
               <View className="flex-row justify-between items-center mt-4">
-                <TouchableOpacity className="py-3 px-5 bg-primary-400 rounded-lg">
+                <TouchableOpacity className="py-3 px-5 bg-blue-500 rounded-lg">
                   <Text className="font-bold text-white">Sync Now</Text>
                 </TouchableOpacity>
                 <View className="flex-row items-center gap-2">
-                  <TouchableOpacity className="p-2 border border-gray-300 rounded-full">
-                    <ChevronLeft color="#4b5563" size={20} />
+                  <TouchableOpacity className="p-2 border border-gray-500 rounded-full">
+                    <ChevronLeft color="#9CA3AF" size={20} />
                   </TouchableOpacity>
-                  <TouchableOpacity className="p-2 border border-gray-300 rounded-full bg-primary-400">
+                  <TouchableOpacity className="p-2 border border-gray-500 rounded-full bg-blue-500">
                     <ChevronRight color="white" size={20} />
                   </TouchableOpacity>
                 </View>

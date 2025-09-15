@@ -47,10 +47,10 @@ const TrackOrderSection = () => {
   return (
     <View className="mt-6">
       <View className="flex-row justify-between items-center">
-        <Text className="text-2xl font-bold text-gray-800">Track Order</Text>
+        <Text className="text-2xl font-bold text-white">Track Order</Text>
         <View className="flex-row items-center gap-2">
           <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-2 w-64">
-            <Search color="#6b7280" size={16} />
+            <Search color="white" size={16} />
             <TextInput
               placeholder="Search Order"
               value={searchText}
@@ -60,7 +60,7 @@ const TrackOrderSection = () => {
           </View>
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 border border-gray-300 rounded-full"
+            className="p-2 border border-white rounded-full"
           >
             <ChevronLeft color="#4b5563" size={20} />
           </TouchableOpacity>
@@ -83,7 +83,7 @@ const TrackOrderSection = () => {
         renderItem={({ item }) => <TrackOrderCard order={item} />}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center">
-            <Text className="text-gray-500">No matching orders found.</Text>
+            <Text className="text-white">No matching orders found.</Text>
           </View>
         }
       />

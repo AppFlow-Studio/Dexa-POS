@@ -41,7 +41,7 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
   };
 
   return (
-    <View className="flex-row items-center p-4 bg-background-300 border border-background-400 rounded-2xl">
+    <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
       <Switch
         value={rule.isEnabled}
         onValueChange={(value) => onUpdate({ ...rule, isEnabled: value })}
@@ -57,8 +57,8 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
             option && onUpdate({ ...rule, category: option.value })
           }
         >
-          <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-            <SelectValue placeholder="Select Category" className="text-base" />
+          <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+            <SelectValue placeholder="Select Category" className="text-base text-white" />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
             <SelectGroup>
@@ -80,8 +80,8 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
             option && onUpdate({ ...rule, printerId: option.value })
           }
         >
-          <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-            <SelectValue placeholder="Select Printer" className="text-base" />
+          <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+            <SelectValue placeholder="Select Printer" className="text-base text-white" />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
             <SelectGroup>
@@ -97,9 +97,9 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
 
       <TouchableOpacity
         onPress={() => onDelete(rule.id)}
-        className="p-3 ml-4 border border-background-400 rounded-full"
+        className="p-3 ml-4 border border-gray-600 rounded-full"
       >
-        <Trash2 color="#4b5563" size={20} />
+        <Trash2 color="#9CA3AF" size={20} />
       </TouchableOpacity>
     </View>
   );
@@ -188,7 +188,7 @@ const PrinterRulesScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -198,7 +198,7 @@ const PrinterRulesScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           <View className="flex-1">
             <FlatList
               data={rules}
@@ -214,16 +214,16 @@ const PrinterRulesScreen = () => {
             />
           </View>
 
-          <View className="mt-6 pt-6 border-t border-gray-200">
+          <View className="mt-6 pt-6 border-t border-gray-600">
             <View className="flex-row items-center mb-2">
-              <Plus color="#4b5563" size={16} />
-              <Text className="font-bold text-gray-700 ml-2">+ Add New</Text>
+              <Plus color="#9CA3AF" size={16} />
+              <Text className="font-bold text-white ml-2">+ Add New</Text>
             </View>
-            <View className="flex-row items-center p-4 border border-background-400 rounded-2xl">
+            <View className="flex-row items-center p-4 border border-gray-600 rounded-2xl">
               <View className="flex-1 mx-4">
                 <Select value={newRuleCategory} onValueChange={setNewRuleCategory}>
-                  <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-                    <SelectValue placeholder="Category" className="text-base" />
+                  <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+                    <SelectValue placeholder="Category" className="text-base text-white" />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
                     <SelectGroup>
@@ -242,8 +242,8 @@ const PrinterRulesScreen = () => {
               </View>
               <View className="flex-1">
                 <Select value={newRulePrinter} onValueChange={setNewRulePrinter}>
-                  <SelectTrigger className="w-full p-3 bg-white rounded-lg flex-row justify-between items-center">
-                    <SelectValue placeholder="Printer" className="text-base" />
+                  <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+                    <SelectValue placeholder="Printer" className="text-base text-white" />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
                     <SelectGroup>
@@ -258,15 +258,15 @@ const PrinterRulesScreen = () => {
               </View>
               <TouchableOpacity
                 onPress={handleAddRule}
-                className="py-2 px-4 ml-4 border border-gray-300 rounded-xl"
+                className="py-2 px-4 ml-4 border border-gray-500 rounded-xl"
               >
-                <Text className="font-bold text-gray-700">Add</Text>
+                <Text className="font-bold text-gray-300">Add</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View className="flex-row justify-start mt-6 pt-4 border-t border-gray-200">
-            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+          <View className="flex-row justify-start mt-6 pt-4 border-t border-gray-600">
+            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
               <Text className="font-bold text-white">Save Changes</Text>
             </TouchableOpacity>
           </View>

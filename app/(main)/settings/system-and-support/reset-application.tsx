@@ -40,7 +40,7 @@ const ResetApplicationScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -50,15 +50,15 @@ const ResetApplicationScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main Content Card */}
           <View className="p-6">
             <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={() => setModalType("clearCache")}
-                className="py-2 px-6 border border-gray-300 rounded-lg"
+                className="py-2 px-6 border border-gray-500 rounded-lg"
               >
-                <Text className="font-bold text-gray-700">Clear Cache</Text>
+                <Text className="font-bold text-gray-300">Clear Cache</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setModalType("resetApp")}

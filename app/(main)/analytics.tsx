@@ -24,16 +24,16 @@ const DashboardCard: React.FC<{
   className?: string;
 }> = ({ title, children, className = "" }) => (
   <View
-    className={`bg-white p-6 rounded-2xl border border-gray-200 ${className}`}
+    className={`bg-[#303030] p-6 rounded-2xl border border-gray-600 ${className}`}
   >
-    <Text className="text-xl font-bold text-gray-800">{title}</Text>
+    <Text className="text-xl font-bold text-white">{title}</Text>
     <View className="mt-4">{children}</View>
   </View>
 );
 
 const AnalyticsScreen = () => {
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-[#212121]">
       <ScrollView contentContainerClassName="p-6 pt-0">
         {/* Top Stat Cards */}
         <View className="flex-row gap-4 mt-4">
@@ -93,9 +93,9 @@ const AnalyticsScreen = () => {
                       className="w-2.5 h-2.5 rounded-full mr-2"
                       style={{ backgroundColor: item.color }}
                     />
-                    <Text className="text-gray-600">{item.label}</Text>
+                    <Text className="text-gray-300">{item.label}</Text>
                   </View>
-                  <Text className="font-semibold text-gray-800">
+                  <Text className="font-semibold text-white">
                     {item.value}%
                   </Text>
                 </View>
@@ -118,7 +118,7 @@ const AnalyticsScreen = () => {
 
               {/* 👇 The fix is applied here. This container now fills the parent and centers the text. */}
               <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
-                <Text className="text-5xl font-bold text-gray-800">57%</Text>
+                <Text className="text-5xl font-bold text-white">57%</Text>
               </View>
             </View>
 
@@ -134,9 +134,9 @@ const AnalyticsScreen = () => {
                       className="w-2.5 h-2.5 rounded-full mr-2"
                       style={{ backgroundColor: item.color }}
                     />
-                    <Text className="text-gray-600">{item.label}</Text>
+                    <Text className="text-gray-300">{item.label}</Text>
                   </View>
-                  <Text className="font-semibold text-gray-800">
+                  <Text className="font-semibold text-white">
                     {item.value.toFixed(2)}%
                   </Text>
                 </View>

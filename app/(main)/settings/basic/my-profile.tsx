@@ -65,7 +65,7 @@ const MyProfileScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-gray-50 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -75,17 +75,17 @@ const MyProfileScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white p-6 rounded-2xl border border-gray-200">
+        <View className="flex-1 bg-[#303030] p-6 rounded-2xl border border-gray-600">
           {/* Tab Bar */}
-          <View className="bg-gray-100 p-2 rounded-2xl w-full flex-row self-start">
+          <View className="bg-gray-700 p-2 rounded-2xl w-full flex-row self-start">
             {TABS.map((tab) => (
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
-                className={`py-2 px-6 rounded-lg flex-1 ${activeTab === tab ? "bg-white" : ""}`}
+                className={`py-2 px-6 rounded-lg flex-1 ${activeTab === tab ? "bg-[#212121]" : ""}`}
               >
                 <Text
-                  className={`font-semibold text-center ${activeTab === tab ? "text-primary-400" : "text-gray-500"}`}
+                  className={`font-semibold text-center ${activeTab === tab ? "text-blue-400" : "text-gray-300"}`}
                 >
                   {tab}
                 </Text>
@@ -103,19 +103,19 @@ const MyProfileScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-end pt-4 border-t border-gray-200 w-full">
+          <View className="flex-row justify-end pt-4 border-t border-gray-600 w-full">
             {activeTab === "Profile Info" ? (
               <>
-                <TouchableOpacity className="px-6 py-3 border border-gray-300 rounded-lg mr-2">
-                  <Text className="font-bold text-gray-700">Close</Text>
+                <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg mr-2">
+                  <Text className="font-bold text-gray-300">Close</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+                <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
                   <Text className="font-bold text-white">Edit</Text>
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity className="px-6 py-3 border border-gray-300 rounded-lg">
-                <Text className="font-bold text-gray-700">Close</Text>
+              <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">
+                <Text className="font-bold text-gray-300">Close</Text>
               </TouchableOpacity>
             )}
           </View>

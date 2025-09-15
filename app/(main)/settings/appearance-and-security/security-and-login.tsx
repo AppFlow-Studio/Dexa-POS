@@ -43,17 +43,17 @@ const SecurityAndLoginScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-1 gap-y-6">
-        <View className="bg-white p-6 rounded-2xl border border-gray-200">
+        <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
           <SettingsHeader
             title="End Screen Lock"
             value={isScreenLockEnabled}
             onValueChange={setScreenLockEnabled}
           />
           {isScreenLockEnabled && (
-            <View className="mt-4 bg-background-300 p-4 rounded-lg flex-row items-center gap-4">
-              <Text className="font-semibold text-gray-700 mb-2">
+            <View className="mt-4 bg-[#212121] p-4 rounded-lg flex-row items-center gap-4">
+              <Text className="font-semibold text-white mb-2">
                 Lock After
               </Text>
               {/* 3. Use the correct Select implementation */}
@@ -62,10 +62,10 @@ const SecurityAndLoginScreen = () => {
                 onValueChange={(option) => option && setLockAfter(option)}
                 className="flex-1"
               >
-                <SelectTrigger className="flex-grow p-3 bg-white rounded-lg flex-row items-center">
+                <SelectTrigger className="flex-grow p-3 bg-[#303030] rounded-lg flex-row items-center border-gray-600">
                   <SelectValue
                     placeholder="Select time..."
-                    className="text-base text-gray-800"
+                    className="text-base text-white"
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
@@ -87,27 +87,27 @@ const SecurityAndLoginScreen = () => {
         </View>
 
         {/* ... Switch User Card is unchanged ... */}
-        <View className="bg-white p-6 rounded-2xl border border-gray-200">
+        <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
           <SettingsHeader
             title="Switch User"
             value={isSwitchUserEnabled}
             onValueChange={setSwitchUserEnabled}
           />
           {isSwitchUserEnabled && (
-            <View className="mt-4 flex-row justify-between items-center p-4 bg-background-300 rounded-lg">
+            <View className="mt-4 flex-row justify-between items-center p-4 bg-[#212121] rounded-lg">
               <View className="flex-row items-center">
                 <Image
                   source={require("@/assets/images/tom_hardy.jpg")}
                   className="w-10 h-10 rounded-full"
                 />
-                <Text className="font-bold text-gray-800 ml-3">Jessica</Text>
+                <Text className="font-bold text-white ml-3">Jessica</Text>
               </View>
               <TouchableOpacity
                 onPress={() => setSwitchModalOpen(true)}
-                className="flex-row items-center gap-2 py-2 px-4 border border-gray-300 rounded-lg"
+                className="flex-row items-center gap-2 py-2 px-4 border border-gray-500 rounded-lg"
               >
-                <LogOut color="#4b5563" size={16} />
-                <Text className="font-bold text-gray-700">Switch Account</Text>
+                <LogOut color="#9CA3AF" size={16} />
+                <Text className="font-bold text-gray-300">Switch Account</Text>
               </TouchableOpacity>
             </View>
           )}

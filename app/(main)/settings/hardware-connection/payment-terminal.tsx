@@ -8,7 +8,7 @@ import React, { useState } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
 
 const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
-  <View className="flex-row items-center p-4 bg-white border border-gray-200 rounded-2xl">
+  <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
     <Switch
       value={terminal.isEnabled}
       onValueChange={() => onToggle(terminal.id)}
@@ -16,35 +16,35 @@ const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
       thumbColor={"#ffffff"}
     />
     <View className="ml-4 flex-row gap-4">
-      <Text className="font-bold text-lg text-gray-800">{terminal.name}</Text>
+      <Text className="font-bold text-lg text-white">{terminal.name}</Text>
       <View
-        className={`flex-row items-center mt-1 rounded-full px-2 ${terminal.status === "Connected" ? "bg-[#2BAE7433]" : "bg-background-300"}`}
+        className={`flex-row items-center mt-1 rounded-full px-2 ${terminal.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"}`}
       >
         <View
           className={`w-2 h-2 rounded-full mr-2 ${terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
         />
         <Text
-          className={`font-semibold text-sm ${terminal.status === "Connected" ? "text-green-700" : "text-gray-500"}`}
+          className={`font-semibold text-sm ${terminal.status === "Connected" ? "text-green-400" : "text-gray-300"}`}
         >
           {terminal.status}
         </Text>
       </View>
     </View>
     <View className="ml-auto flex-row items-center gap-2">
-      <Text className="font-semibold text-gray-600">
+      <Text className="font-semibold text-gray-300">
         Battery Level: {terminal.batteryLevel}%
       </Text>
       <TouchableOpacity
         onPress={onEdit}
-        className="py-2 px-4 border border-gray-300 rounded-xl"
+        className="py-2 px-4 border border-gray-500 rounded-xl"
       >
-        <Text className="font-bold text-gray-700">Edit Terminal</Text>
+        <Text className="font-bold text-gray-300">Edit Terminal</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onRemove}
-        className="p-3 border border-gray-300 rounded-full"
+        className="p-3 border border-gray-500 rounded-full"
       >
-        <Trash2 color="#4b5563" size={20} />
+        <Trash2 color="#9CA3AF" size={20} />
       </TouchableOpacity>
     </View>
   </View>
@@ -100,7 +100,7 @@ const PaymentTerminalScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -110,7 +110,7 @@ const PaymentTerminalScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           <View className="flex-1 gap-y-4">
             {terminals.map((terminal) => (
               <TerminalRow
@@ -125,16 +125,16 @@ const PaymentTerminalScreen = () => {
             ))}
           </View>
 
-          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
+          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-600">
             <TouchableOpacity
               onPress={() => setConnectModalOpen(true)}
-              className="px-6 py-3 border border-gray-300 rounded-lg"
+              className="px-6 py-3 border border-gray-500 rounded-lg"
             >
-              <Text className="font-bold text-gray-700">
+              <Text className="font-bold text-gray-300">
                 Connect a New Terminal
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
               <Text className="font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>

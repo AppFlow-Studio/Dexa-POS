@@ -48,7 +48,7 @@ const CustomerDisplayScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -58,12 +58,12 @@ const CustomerDisplayScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main content area */}
           <View className="flex-1 gap-y-6">
             {/* Enable/Disable Card */}
-            <View className="bg-white flex-row justify-between items-center p-6 rounded-2xl border border-gray-200">
-              <Text className="text-xl font-bold text-gray-800">
+            <View className="bg-[#212121] flex-row justify-between items-center p-6 rounded-2xl border border-gray-600">
+              <Text className="text-xl font-bold text-white">
                 Enable customer display
               </Text>
               <Switch
@@ -108,13 +108,13 @@ const CustomerDisplayScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-200">
-            <TouchableOpacity className="px-6 py-3 border border-gray-300 rounded-lg">
-              <Text className="font-bold text-gray-700">
+          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-600">
+            <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">
+              <Text className="font-bold text-gray-300">
                 Connect a New Terminal
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
               <Text className="font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>

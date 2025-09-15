@@ -16,7 +16,7 @@ const PrinterRow: React.FC<PrinterRowProps> = ({
   onEdit,
 }) => {
   return (
-    <View className="flex-row items-center p-4 bg-white border border-gray-200 rounded-2xl">
+    <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
       <Switch
         value={printer.isEnabled}
         onValueChange={() => onToggle(printer.id)}
@@ -24,35 +24,35 @@ const PrinterRow: React.FC<PrinterRowProps> = ({
         thumbColor={"#ffffff"}
       />
       <View className="ml-4 flex-row gap-4">
-        <Text className="font-bold text-lg text-gray-800">{printer.name}</Text>
+        <Text className="font-bold text-lg text-white">{printer.name}</Text>
         <View
-          className={`flex-row items-center mt-1 rounded-full px-2 ${printer.status === "Connected" ? "bg-[#2BAE7433]" : "bg-background-300"}`}
+          className={`flex-row items-center mt-1 rounded-full px-2 ${printer.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"}`}
         >
           <View
             className={`w-2 h-2 rounded-full mr-2 ${printer.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
           />
           <Text
-            className={`font-semibold text-sm ${printer.status === "Connected" ? "text-green-700" : "text-gray-500"}`}
+            className={`font-semibold text-sm ${printer.status === "Connected" ? "text-green-400" : "text-gray-300"}`}
           >
             {printer.status}
           </Text>
         </View>
       </View>
       <View className="ml-auto flex-row items-center gap-2">
-        <TouchableOpacity className="py-2 px-4 border border-gray-300 rounded-lg">
-          <Text className="font-bold text-gray-700">Test Print</Text>
+        <TouchableOpacity className="py-2 px-4 border border-gray-500 rounded-lg">
+          <Text className="font-bold text-gray-300">Test Print</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onEdit}
-          className="py-2 px-4 border border-gray-300 rounded-lg"
+          className="py-2 px-4 border border-gray-500 rounded-lg"
         >
-          <Text className="font-bold text-gray-700">Edit Printer</Text>
+          <Text className="font-bold text-gray-300">Edit Printer</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onRemove}
-          className="p-3 border border-gray-300 rounded-full"
+          className="p-3 border border-gray-500 rounded-full"
         >
-          <Trash2 color="#4b5563" size={20} />
+          <Trash2 color="#9CA3AF" size={20} />
         </TouchableOpacity>
       </View>
     </View>

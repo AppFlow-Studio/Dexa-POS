@@ -46,7 +46,7 @@ const ReceiptAndTippingRulesScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -56,36 +56,39 @@ const ReceiptAndTippingRulesScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main Content Area */}
           <View className="flex-1 gap-y-6">
             {/* Tipping Settings */}
-            <View className="bg-white p-6 pt-3 rounded-2xl border border-gray-200">
+            <View className="bg-[#212121] p-6 pt-3 rounded-2xl border border-gray-600">
               <SettingsHeader
                 title="Enable Tipping"
                 value={isTippingEnabled}
                 onValueChange={setTippingEnabled}
               />
-              <View className="bg-background-300 p-4 rounded-2xl border border-gray-200">
+              <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
                 {isTippingEnabled && (
                   <View className="flex-row gap-4">
                     <TextInput
                       value={tip1}
                       onChangeText={setTip1}
-                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg font-semibold text-white border border-gray-600"
                       keyboardType="numeric"
+                      placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip2}
                       onChangeText={setTip2}
-                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg font-semibold text-white border border-gray-600"
                       keyboardType="numeric"
+                      placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip3}
                       onChangeText={setTip3}
-                      className="flex-1 p-3 bg-white rounded-lg font-semibold text-gray-700"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg font-semibold text-white border border-gray-600"
                       keyboardType="numeric"
+                      placeholderTextColor="#9CA3AF"
                     />
                   </View>
                 )}
@@ -115,8 +118,8 @@ const ReceiptAndTippingRulesScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start pt-4 border-t border-gray-200">
-            <TouchableOpacity className="px-8 py-3 bg-primary-400 rounded-lg">
+          <View className="flex-row justify-start pt-4 border-t border-gray-600">
+            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
               <Text className="font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>

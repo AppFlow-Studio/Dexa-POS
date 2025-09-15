@@ -12,16 +12,16 @@ const HardwareStatusRow = ({
   device: string;
   isConnected: boolean;
 }) => (
-  <View className="flex-row justify-between items-center bg-white p-4 rounded-2xl border border-gray-200">
-    <Text className="text-lg text-gray-800">{device}</Text>
+  <View className="flex-row justify-between items-center bg-[#212121] p-4 rounded-2xl border border-gray-600">
+    <Text className="text-lg text-white">{device}</Text>
     <View
-      className={`flex-row items-center px-2 py-1 rounded-3xl ${isConnected ? "bg-green-100" : "bg-gray-200"}`}
+      className={`flex-row items-center px-2 py-1 rounded-3xl ${isConnected ? "bg-green-500/20" : "bg-gray-600"}`}
     >
       <View
         className={`w-2 h-2 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-gray-400"}`}
       />
       <Text
-        className={`font-semibold text-sm ${isConnected ? "text-green-800" : "text-gray-600"}`}
+        className={`font-semibold text-sm ${isConnected ? "text-green-400" : "text-gray-300"}`}
       >
         {isConnected ? "Connected" : "Disconnected"}
       </Text>
@@ -62,7 +62,7 @@ const DeviceAndSupportScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-background-300 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -72,7 +72,7 @@ const DeviceAndSupportScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-white rounded-2xl border border-gray-200 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           <ScrollView showsVerticalScrollIndicator={false}>
             <View className="flex-1 gap-y-6">
               {/* Device Information Section */}

@@ -41,21 +41,21 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     return (
         <TouchableOpacity
             onPress={onPress}
-            className="w-full h-full rounded-2xl border border-gray-200 p-4 bg-white"
+            className="w-full h-full rounded-2xl border border-gray-600 p-4 bg-[#303030]"
         >
             <View className="justify-center h-full w-full flex">
                 <View className="flex-row justify-center items-center w-full h-full relative">
                     <View className="w-full h-full flex items-center justify-center">
                         <View className="mb-3">{icon}</View>
-                        <Text className="text-lg font-bold text-gray-800 mb-1 text-center">{title}</Text>
-                        <Text className="text-sm text-gray-500 text-center">{subtitle}</Text>
+                        <Text className="text-lg font-bold text-white mb-1 text-center">{title}</Text>
+                        <Text className="text-sm text-gray-300 text-center">{subtitle}</Text>
                     </View>
                     {isLocked && (
                         <TouchableOpacity
                             onPress={onLockPress}
-                            className="p-2 bg-gray-100 rounded-lg absolute top-0 right-0"
+                            className="p-2 bg-gray-600 rounded-lg absolute top-0 right-0"
                         >
-                            <Lock color="#6b7280" size={16} />
+                            <Lock color="#9CA3AF" size={16} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -247,7 +247,7 @@ const SettingsScreen: React.FC = () => {
     ];
 
     return (
-        <View className="w-full h-full flex-1 bg-gray-50">
+        <View className="w-full h-full flex-1 bg-[#212121]">
             <View className="flex-1 p-6 w-full h-full">
                 {/* Main Categories */}
                 <View className="mb-8 h-full w-full justify-center items-center flex">
@@ -360,14 +360,14 @@ const SettingsScreen: React.FC = () => {
 
             {/* Manager PIN Dialog */}
             <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-                <DialogContent className="w-fit h-fit bg-white">
+                <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600">
                     <DialogHeader>
-                        <DialogTitle className="text-center text-lg font-semibold">
+                        <DialogTitle className="text-center text-lg font-semibold text-white">
                             Manager Access Required
                         </DialogTitle>
                     </DialogHeader>
                     <View className="py-4">
-                        <Text className="text-center text-gray-600 mb-6">
+                        <Text className="text-center text-gray-300 mb-6">
                             Enter your manager PIN to access this feature
                         </Text>
                         <PinDisplay pinLength={currentPin.length} maxLength={4} />
@@ -394,7 +394,7 @@ const SettingsScreen: React.FC = () => {
                         <TouchableOpacity onPress={() => {
                             setPinDialogOpen(false)
                             handlePinSubmit()
-                        }} className="p-3 bg-primary-400 rounded-full w-[80%] self-center mt-6">
+                        }} className="p-3 bg-blue-500 rounded-full w-[80%] self-center mt-6">
                             <Text className="text-center text-white">Enter</Text>
                         </TouchableOpacity>
                     </View>

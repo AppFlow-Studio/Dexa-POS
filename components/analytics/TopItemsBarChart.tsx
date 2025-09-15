@@ -61,7 +61,7 @@ const TopItemsBarChart = () => {
   const font = useFont(inter as any, 12);
 
   return (
-    <View className="bg-white p-4 rounded-lg shadow">
+    <View className="bg-[#303030] p-4 rounded-lg shadow border border-background-400">
       {/* Chart container */}
       <View className="h-[250px]">
         <CartesianChart
@@ -72,7 +72,7 @@ const TopItemsBarChart = () => {
           domainPadding={{ top: 20, bottom: 20 }}
           xAxis={{
             font,
-            labelColor: "#6b7280",
+            labelColor: "white",
             lineColor: "#e5e7eb",
             lineWidth: 1,
           }}
@@ -80,7 +80,7 @@ const TopItemsBarChart = () => {
             {
               font,
               tickCount: processedData.length,
-              labelColor: "#374151",
+              labelColor: "white",
               formatYLabel: (value) => processedData[value]?.name || "",
               lineColor: "transparent",
             },
@@ -106,7 +106,7 @@ const TopItemsBarChart = () => {
         </CartesianChart>
       </View>
       {/* Axis Title */}
-      <Text className="text-center text-sm text-gray-600 mt-2">
+      <Text className="text-center text-sm text-white mt-2">
         Quantity Sold
       </Text>
     </View>

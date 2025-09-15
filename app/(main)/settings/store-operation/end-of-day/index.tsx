@@ -27,23 +27,23 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const SummaryRow = ({ label, value }: { label: string; value: string }) => (
   <View className="flex-row justify-between items-center py-1.5">
-    <Text className="text-base text-gray-600">{label}</Text>
-    <Text className="text-base font-semibold text-gray-800">{value}</Text>
+    <Text className="text-base text-gray-300">{label}</Text>
+    <Text className="text-base font-semibold text-white">{value}</Text>
   </View>
 );
 
 const StatusRow = ({ icon, title, description, action, actionText }: any) => (
-  <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
-    <View className="p-2 bg-gray-100 rounded-full">{icon}</View>
+  <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
+    <View className="p-2 bg-gray-600 rounded-full">{icon}</View>
     <View className="flex-1 mx-4">
-      <Text className="font-bold text-gray-800">{title}</Text>
+      <Text className="font-bold text-white">{title}</Text>
       {description && (
-        <Text className="text-sm text-gray-500">{description}</Text>
+        <Text className="text-sm text-gray-300">{description}</Text>
       )}
     </View>
     <TouchableOpacity
       onPress={action}
-      className="py-2 px-4 rounded-lg bg-primary-400"
+      className="py-2 px-4 rounded-lg bg-blue-500"
     >
       <Text className="font-bold text-white text-sm">{actionText}</Text>
     </TouchableOpacity>
@@ -57,8 +57,8 @@ const SummaryCard = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <View className="bg-white p-6 rounded-2xl border border-gray-200">
-    <Text className="text-xl font-bold text-gray-800">{title}</Text>
+  <View className="bg-[#212121] p-6 rounded-2xl border border-gray-600">
+    <Text className="text-xl font-bold text-white">{title}</Text>
     <View className="mt-4">{children}</View>
   </View>
 );
@@ -117,7 +117,7 @@ const EndOfDayReportScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-100 p-6">
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row gap-6 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
@@ -130,23 +130,23 @@ const EndOfDayReportScreen = () => {
         <View className="flex-1 flex-row justify-between">
           {/* Left Column: Report Details */}
           <View className="w-[40%]">
-            <View className="bg-white p-1 rounded-xl flex-row self-start border border-gray-200 mb-6">
+            <View className="bg-[#303030] p-1 rounded-xl flex-row self-start border border-gray-600 mb-6">
               <TouchableOpacity
                 onPress={() => setActiveTab("statement")}
-                className={`py-2 px-4 rounded-lg ${activeTab === "statement" ? "bg-primary-100" : ""}`}
+                className={`py-2 px-4 rounded-lg ${activeTab === "statement" ? "bg-[#212121]" : ""}`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "statement" ? "text-primary-400" : "text-gray-500"}`}
+                  className={`font-semibold ${activeTab === "statement" ? "text-blue-400" : "text-gray-300"}`}
                 >
                   Statement
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("chart")}
-                className={`py-2 px-4 rounded-lg ${activeTab === "chart" ? "bg-primary-100" : ""}`}
+                className={`py-2 px-4 rounded-lg ${activeTab === "chart" ? "bg-[#212121]" : ""}`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "chart" ? "text-primary-400" : "text-gray-500"}`}
+                  className={`font-semibold ${activeTab === "chart" ? "text-blue-400" : "text-gray-300"}`}
                 >
                   Chart
                 </Text>
@@ -165,10 +165,10 @@ const EndOfDayReportScreen = () => {
                         label="Tax"
                         value={`$${summary.tax.toFixed(2)}`}
                       />
-                      <View className="border-t border-dashed my-2" />
+                      <View className="border-t border-gray-600 my-2" />
                       <View className="flex-row justify-between items-center">
-                        <Text className="font-bold text-lg">Total Sales</Text>
-                        <Text className="font-bold text-lg">
+                        <Text className="font-bold text-lg text-white">Total Sales</Text>
+                        <Text className="font-bold text-lg text-white">
                           ${summary.totalSales.toFixed(2)}
                         </Text>
                       </View>
@@ -182,11 +182,11 @@ const EndOfDayReportScreen = () => {
                   {activeTab === "statement" ? (
                     <>
                       <View className="flex-row justify-between mb-2">
-                        <Text className="font-bold text-gray-500">
+                        <Text className="font-bold text-gray-300">
                           Revenue Centers
                         </Text>
-                        <Text className="font-bold text-gray-500">Qty</Text>
-                        <Text className="font-bold text-gray-500">Net Sales</Text>
+                        <Text className="font-bold text-gray-300">Qty</Text>
+                        <Text className="font-bold text-gray-300">Net Sales</Text>
                       </View>
                       <SummaryRow
                         label="Dinning Room"
@@ -209,12 +209,12 @@ const EndOfDayReportScreen = () => {
                         label="Total"
                         value={`$${summary.totalPayments.toFixed(2)}`}
                       />
-                      <View className="border-t border-dashed my-2" />
+                      <View className="border-t border-gray-600 my-2" />
                       <View className="flex-row justify-between items-center">
-                        <Text className="font-bold text-lg">
+                        <Text className="font-bold text-lg text-white">
                           Total Payments - Total Sales =
                         </Text>
-                        <Text className="font-bold text-lg">
+                        <Text className="font-bold text-lg text-white">
                           -$
                           {(summary.totalSales - summary.totalPayments).toFixed(
                             2
@@ -237,12 +237,12 @@ const EndOfDayReportScreen = () => {
                       <Text className="text-sm text-gray-400">
                         ( Total Tips and fees Tipped out: $0.00 )
                       </Text>
-                      <View className="border-t border-dashed my-2" />
+                      <View className="border-t border-gray-600 my-2" />
                       <View className="flex-row justify-between items-center">
-                        <Text className="font-bold text-lg">
+                        <Text className="font-bold text-lg text-white">
                           Total Payments - Total Sales
                         </Text>
-                        <Text className="font-bold text-lg">
+                        <Text className="font-bold text-lg text-white">
                           -$
                           {(summary.totalSales - summary.totalPayments).toFixed(
                             2
@@ -284,39 +284,39 @@ const EndOfDayReportScreen = () => {
           </View>
 
           {/* Right Column: Actions & Status */}
-          <View className="w-[58%] gap-y-4 bg-background-300 p-6 rounded-2xl border border-gray-200">
+          <View className="w-[58%] gap-y-4 bg-[#303030] p-6 rounded-2xl border border-gray-600">
             <TouchableOpacity className="flex-row items-center justify-end">
-              <View className="flex-row items-center bg-white border border-gray-200 rounded-lg">
+              <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg">
                 <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
               </View>
             </TouchableOpacity>
             <View className="flex-row gap-2 ">
-              <TouchableOpacity className="flex-1 py-3 border border-gray-300 rounded-lg items-center">
+              <TouchableOpacity className="flex-1 py-3 border border-gray-500 rounded-lg items-center">
                 <Link
                   href="/(main)/settings/store-operation/end-of-day/sales-summary"
-                  className="font-bold text-gray-700"
+                  className="font-bold text-gray-300"
                 >
                   Run Sales Summary
                 </Link>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setModalOpen(true)}
-                className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+                className="flex-1 py-3 border border-gray-500 rounded-lg items-center"
               >
-                <Text className="font-bold text-gray-700">
+                <Text className="font-bold text-gray-300">
                   Close Credit Card Batch
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+            <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
               <View className="p-2 rounded-full">
-                <CheckSquare color="#4b5563" size={24} />
+                <CheckSquare color="#9CA3AF" size={24} />
               </View>
               <View className="flex-1 mx-4">
-                <Text className="font-bold text-gray-800">All Checks Closed</Text>
+                <Text className="font-bold text-white">All Checks Closed</Text>
 
-                <Text className="text-sm text-gray-500">
+                <Text className="text-sm text-gray-300">
                   Make sure non-cash tips are added. Non-cash tips cannot be
                   adjusted after 24 hours
                 </Text>
@@ -329,18 +329,18 @@ const EndOfDayReportScreen = () => {
                 }
                 className="py-2 px-4"
               >
-                <Text className="font-bold text-primary-400 text-sm">
+                <Text className="font-bold text-blue-400 text-sm">
                   View Checks
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+            <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
               <View className="p-2 rounded-full">
-                <HardDrive color="#4b5563" size={24} />
+                <HardDrive color="#9CA3AF" size={24} />
               </View>
               <View className="flex-1 mx-4">
-                <Text className="font-bold text-gray-800">
+                <Text className="font-bold text-white">
                   All drawers are closed
                 </Text>
               </View>
@@ -352,27 +352,27 @@ const EndOfDayReportScreen = () => {
                 }
                 className="py-2 px-4"
               >
-                <Text className="font-bold text-primary-400 text-sm">
+                <Text className="font-bold text-blue-400 text-sm">
                   View Drawers
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+            <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
               <View className="p-2 rounded-full">
-                <Users color="#4b5563" size={24} />
+                <Users color="#9CA3AF" size={24} />
               </View>
               <View className="flex-1 mx-4">
-                <Text className="font-bold text-gray-800">
+                <Text className="font-bold text-white">
                   1 Employee Clocked in
                 </Text>
 
-                <Text className="text-sm text-gray-500">
+                <Text className="text-sm text-gray-300">
                   2 Employees clocked out
                 </Text>
               </View>
-              <TouchableOpacity className="py-2 px-4 border border-background-500 rounded-xl mr-2">
-                <Text className="text-accent-500 text-sm font-medium">
+              <TouchableOpacity className="py-2 px-4 border border-gray-500 rounded-xl mr-2">
+                <Text className="text-gray-300 text-sm font-medium">
                   Clock out all
                 </Text>
               </TouchableOpacity>
@@ -382,7 +382,7 @@ const EndOfDayReportScreen = () => {
                     "/(main)/settings/store-operation/end-of-day/employees" as Href
                   )
                 }
-                className="py-2 px-4 bg-primary-400 rounded-xl"
+                className="py-2 px-4 bg-blue-500 rounded-xl"
               >
                 <Text className="font-bold text-white text-sm">
                   View Employees
@@ -390,12 +390,12 @@ const EndOfDayReportScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+            <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
               <View className="p-2 rounded-full">
-                <Banknote color="#4b5563" size={24} />
+                <Banknote color="#9CA3AF" size={24} />
               </View>
               <View className="flex-1 mx-4">
-                <Text className="font-bold text-gray-800">0 Deposits</Text>
+                <Text className="font-bold text-white">0 Deposits</Text>
               </View>
 
               <TouchableOpacity
@@ -404,7 +404,7 @@ const EndOfDayReportScreen = () => {
                     "/(main)/settings/store-operation/end-of-day/add-cash-to-register" as Href
                   )
                 }
-                className="py-2 px-4 bg-primary-400 rounded-xl"
+                className="py-2 px-4 bg-blue-500 rounded-xl"
               >
                 <Text className="font-bold text-white text-sm">
                   Create Deposit
@@ -412,28 +412,28 @@ const EndOfDayReportScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row items-center p-4 bg-white rounded-2xl border border-gray-200">
+            <View className="flex-row items-center p-4 bg-[#212121] rounded-2xl border border-gray-600">
               <View className="p-2 rounded-full">
-                <CreditCard color="#4b5563" size={24} />
+                <CreditCard color="#9CA3AF" size={24} />
               </View>
               <View className="flex-1 mx-4">
-                <Text className="font-bold text-gray-800">
+                <Text className="font-bold text-white">
                   All payments captured
                 </Text>
               </View>
             </View>
 
-            <View className="mt-auto pt-4 gap-y-2 border-t border-gray-200">
+            <View className="mt-auto pt-4 gap-y-2 border-t border-gray-600">
               <View className="flex-row gap-2">
-                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-500 rounded-lg items-center">
                   <Printer className="h-2 w-2" />
-                  <Text className="font-bold text-gray-700">Print Receipt</Text>
+                  <Text className="font-bold text-gray-300">Print Receipt</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-300 rounded-lg items-center">
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 border border-gray-500 rounded-lg items-center">
                   <Recycle className="h-2 w-2" />
-                  <Text className="font-bold text-gray-700">Auto-resolve</Text>
+                  <Text className="font-bold text-gray-300">Auto-resolve</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 bg-primary-400 rounded-lg items-center">
+                <TouchableOpacity className="flex-row justify-center flex-1 gap-2 py-3 bg-blue-500 rounded-lg items-center">
                   <Check className="h-2 w-2 text-white" />
                   <Text className="font-bold text-white">End Day</Text>
                 </TouchableOpacity>

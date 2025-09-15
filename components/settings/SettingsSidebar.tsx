@@ -35,8 +35,8 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     };
 
     return (
-        <View className="w-80 bg-white rounded-2xl border border-gray-200 p-4 h-fit">
-            <Text className="text-lg font-bold text-gray-800 mb-4">{title}</Text>
+        <View className="w-80 bg-[#303030] rounded-2xl border border-gray-600 p-4 h-fit">
+            <Text className="text-lg font-bold text-white mb-4">{title}</Text>
             <View className="gap-y-2">
                 {subsections.map((subsection) => {
                     const isActive = currentRoute.includes(subsection.id);
@@ -45,8 +45,8 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                             key={subsection.id}
                             onPress={() => handleNavigation(subsection.route, subsection.isLocked)}
                             className={`p-3 rounded-xl border ${isActive
-                                ? "bg-primary-50 border-primary-200"
-                                : "bg-gray-50 border-gray-200"
+                                ? "bg-blue-500/20 border-blue-400"
+                                : "bg-gray-700 border-gray-600"
                                 }`}
                         >
                             <View className="flex-row items-center">
@@ -55,13 +55,13 @@ const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                                 </View>
                                 <View className="flex-1">
                                     <Text
-                                        className={`font-semibold ${isActive ? "text-primary-600" : "text-gray-800"
+                                        className={`font-semibold ${isActive ? "text-blue-400" : "text-white"
                                             }`}
                                     >
                                         {subsection.title}
                                     </Text>
                                     <Text
-                                        className={`text-sm ${isActive ? "text-primary-500" : "text-gray-500"
+                                        className={`text-sm ${isActive ? "text-blue-300" : "text-gray-300"
                                             }`}
                                     >
                                         {subsection.subtitle}
