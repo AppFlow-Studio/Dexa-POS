@@ -1,11 +1,3 @@
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
 import { useMenuStore } from "@/stores/useMenuStore";
 import type { TriggerRef } from '@rn-primitives/select';
 import React from "react";
@@ -35,9 +27,10 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   activeCategory,
   onCategoryChange,
 }) => {
-  const { menus, isMenuAvailableNow, isCategoryAvailableNow } = useMenuStore();
+  const { menus, categories: storeCategories, isMenuAvailableNow, isCategoryAvailableNow, isCategoryActiveForMenu } = useMenuStore();
   const visibleMenus = menus.filter((m) => m.isActive && isMenuAvailableNow(m.id));
-  const categories = visibleMenus.find((menu) => menu.name == activeMeal)?.categories
+  const currentMenu = visibleMenus.find((menu) => menu.name === activeMeal);
+  const categories = currentMenu?.categories;
   const ref = React.useRef<TriggerRef>(null);
   const insets = useSafeAreaInsets();
   const contentInsets = {
@@ -77,18 +70,32 @@ const MenuControls: React.FC<MenuControlsProps> = ({
         <View className="flex-1 p-1 rounded-xl flex-row items-center gap-1">
           <ScrollView horizontal className=" p-1 rounded-lg w-fit bg-[#303030] " >
             {categories?.map((tab, index) => {
-              const available = isCategoryAvailableNow(tab);
+              const baseAvailable = isCategoryAvailableNow(tab);
+              const catObj = storeCategories.find((c) => c.name === tab);
+              const menuActive = currentMenu && catObj ? isCategoryActiveForMenu(currentMenu.id, catObj.id) : false;
+              const available = baseAvailable && !!menuActive;
               const dotColor = available ? '#10B981' : '#EF4444';
+              const isDisabled = !available;
+
               return (
                 <View key={tab} className='w-fit flex-row items-center' >
                   <TouchableOpacity
-                   
-                    onPress={() => onCategoryChange(tab)}
-                    className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${activeCategory === tab ? "border border-accent-300 bg-accent-100" : "border border-transparent"}`}
+                    onPress={() => !isDisabled && onCategoryChange(tab)}
+                    className={`py-2 px-4 rounded-full flex-row items-center gap-2 ${activeCategory === tab
+                      ? "border border-accent-300 bg-accent-100"
+                      : isDisabled
+                        ? "border border-gray-600 bg-gray-700 opacity-60"
+                        : "border border-transparent"
+                      }`}
                   >
                     {/* Availability dot */}
                     <View className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: dotColor }} />
-                    <Text className={`font-semibold text-base ${activeCategory === tab ? "text-accent-400" : "text-accent-100"}`}>
+                    <Text className={`font-semibold text-base ${activeCategory === tab
+                      ? "text-accent-400"
+                      : isDisabled
+                        ? "text-gray-400"
+                        : "text-accent-100"
+                      }`}>
                       {tab}
                     </Text>
                   </TouchableOpacity>

@@ -18,6 +18,10 @@ interface MenuState {
   menus: Menu[];
   modifierGroups: ModifierCategory[];
 
+  // Per-menu overrides for category availability (does not remove the category)
+  // map: menuId -> (categoryId -> isActive)
+  menuCategoryOverrides: Record<string, Record<string, boolean>>;
+
   // CRUD Operations for Items
   addMenuItem: (item: Omit<MenuItemType, "id">) => void;
   updateMenuItem: (id: string, updates: Partial<MenuItemType>) => void;
@@ -29,6 +33,10 @@ interface MenuState {
   updateCategory: (id: string, updates: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
   toggleCategoryActive: (id: string) => void;
+  // Toggle category visibility within a specific menu (adds/removes the category from that menu)
+  toggleMenuCategoryActive: (menuId: string, categoryId: string) => void;
+  // Query helpers
+  isCategoryActiveForMenu: (menuId: string, categoryId: string) => boolean;
   reorderCategories: (categories: Category[]) => void;
 
   // Category-Item relationship management
@@ -133,6 +141,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     categories: initialCategories,
     menus: initialMenus,
     modifierGroups: initialModifierGroups,
+    menuCategoryOverrides: {},
     // // CRUD Operations
     addMenuItem: (itemData) => {
       const newItem: MenuItemType = {
@@ -218,6 +227,47 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
 
       console.log("Category active status toggled:", id);
+    },
+
+    // Toggle category availability only for a specific menu without removing the category
+    toggleMenuCategoryActive: (menuId, categoryId) => {
+      const state = get();
+      const category = state.categories.find((c) => c.id === categoryId);
+      if (!category) {
+        console.warn("toggleMenuCategoryActive: category not found", { menuId, categoryId });
+        return;
+      }
+
+      const currentOverrides = state.menuCategoryOverrides[menuId] || {};
+      const currentValue = currentOverrides[categoryId];
+      const nextValue = currentValue === undefined ? false : !currentValue; // default to false (off) when first toggled
+
+      set((current) => ({
+        menuCategoryOverrides: {
+          ...current.menuCategoryOverrides,
+          [menuId]: {
+            ...(current.menuCategoryOverrides[menuId] || {}),
+            [categoryId]: nextValue,
+          },
+        },
+      }));
+
+      console.log("Menu-specific category availability toggled:", { menuId, categoryId, value: nextValue });
+    },
+
+    isCategoryActiveForMenu: (menuId, categoryId) => {
+      const state = get();
+      // global category must be active
+      const category = state.categories.find((c) => c.id === categoryId);
+      if (!category || !category.isActive) return false;
+
+      // if category isn't part of the menu, treat as inactive for that menu
+      const menu = state.menus.find((m) => m.id === menuId);
+      if (!menu || !menu.categories.includes(category.name)) return false;
+
+      const override = state.menuCategoryOverrides[menuId]?.[categoryId];
+      // undefined means no override -> active; false means explicitly off
+      return override !== false;
     },
 
     reorderCategories: (newCategories) => {

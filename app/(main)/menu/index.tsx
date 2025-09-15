@@ -74,7 +74,8 @@ interface DraggableMenuProps {
     index: number;
     onReorder: (fromIndex: number, toIndex: number) => void;
     onReorderCategories: (menuId: string, fromIndex: number, toIndex: number) => void;
-    onToggleActive: (menuId: string) => void;
+    onToggleMenuActive: (menuId: string) => void;
+    onToggleCategoryActive: (menuId: string, categoryId: string) => void;
     onSchedule: () => void;
     onEdit: () => void;
 }
@@ -84,7 +85,8 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
     index,
     onReorder,
     onReorderCategories,
-    onToggleActive,
+    onToggleMenuActive,
+    onToggleCategoryActive,
     onSchedule,
     onEdit,
 }) => {
@@ -135,7 +137,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
     return (
         <GestureDetector gesture={panGesture}>
             <Animated.View style={animatedStyle} className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-4">
-                <View className="flex-row items-center justify-between mb-4">
+                <View className="flex-row items-center justify-between mb-2">
                     <View className="flex-row items-center gap-3">
                         <GripVertical size={20} color="#9CA3AF" />
                         <Text className="text-3xl font-semibold text-white">
@@ -157,7 +159,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            onPress={() => onToggleActive(menu.id)}
+                            onPress={() => onToggleMenuActive(menu.id)}
                             className="p-2 bg-[#212121] rounded border border-gray-600"
                         >
                             {menu.isActive ? <Eye size={24} color="#10B981" /> : <EyeOff size={24} color="#EF4444" />}
@@ -171,7 +173,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
 
                 {/* Categories within menu */}
                 <View className="ml-6">
-                    <Text className="text-sm font-medium text-gray-300 mb-2">
+                    <Text className="text-2xl font-medium text-gray-300 mb-2">
                         Categories ({menu.categories.length})
                     </Text>
                     <View className="gap-2">
@@ -182,7 +184,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
                                 menuId={menu.id}
                                 index={categoryIndex}
                                 onReorder={(fromIndex, toIndex) => onReorderCategories(menu.id, fromIndex, toIndex)}
-                                onToggleActive={onToggleActive}
+                                onToggleActive={onToggleCategoryActive}
                             />
                         ))}
                     </View>
@@ -198,7 +200,7 @@ interface DraggableMenuCategoryProps {
     menuId: string;
     index: number;
     onReorder: (fromIndex: number, toIndex: number) => void;
-    onToggleActive: (categoryId: string) => void;
+    onToggleActive: (menuId: string, categoryId: string) => void;
 }
 
 const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
@@ -254,10 +256,10 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
 
     return (
         <GestureDetector gesture={panGesture}>
-            <Animated.View style={animatedStyle} className="flex-row items-center justify-between bg-[#212121] p-3 rounded border border-gray-700">
+            <Animated.View style={animatedStyle} className="flex-row items-center justify-between bg-[#212121] p-6 rounded border border-gray-700">
                 <View className="flex-row items-center gap-2">
                     <GripVertical size={16} color="#6B7280" />
-                    <Text className="text-gray-200">{category.name}</Text>
+                    <Text className="text-gray-200 text-xl">{category.name}</Text>
                     <View className={`px-2 py-1 rounded-full ${category.isActive ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}>
                         <Text className={`text-xs ${category.isActive ? "text-green-400" : "text-red-400"}`}>
                             {category.isActive ? "Available Now" : "Unavailable"}
@@ -267,10 +269,10 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
 
                 <View className="flex-row items-center gap-1">
                     <TouchableOpacity
-                        onPress={() => onToggleActive(category.id)}
+                        onPress={() => onToggleActive(menuId, category.id)}
                         className="p-1"
                     >
-                        {category.isActive ? <Eye size={14} color="#10B981" /> : <EyeOff size={14} color="#EF4444" />}
+                        {category.isActive ? <Eye size={20} color="#10B981" /> : <EyeOff size={20} color="#EF4444" />}
                     </TouchableOpacity>
                 </View>
             </Animated.View>
@@ -279,7 +281,7 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
 };
 
 const MenuPage: React.FC = () => {
-    const { menuItems, categories: storeCategories, menus: storeMenus, modifierGroups: storeModifierGroups, deleteMenuItem, toggleItemAvailability, getItemsInCategory, getMenuItems, toggleMenuActive, toggleCategoryActive, isMenuAvailableNow, isCategoryAvailableNow, updateMenu, getItemPriceForCategory } = useMenuStore();
+    const { menuItems, categories: storeCategories, menus: storeMenus, modifierGroups: storeModifierGroups, deleteMenuItem, toggleItemAvailability, getItemsInCategory, getMenuItems, toggleMenuActive, toggleCategoryActive, toggleMenuCategoryActive, isMenuAvailableNow, isCategoryAvailableNow, isCategoryActiveForMenu, updateMenu, getItemPriceForCategory } = useMenuStore();
     const { activeTab, searchQuery } = useMenuLayout();
 
     const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
@@ -297,7 +299,7 @@ const MenuPage: React.FC = () => {
             return {
                 id: category?.id || `cat_${categoryName}`,
                 name: categoryName,
-                isActive: (category?.isActive ?? true) && isCategoryAvailableNow(categoryName),
+                isActive: !!(category?.id && isCategoryActiveForMenu(storeMenu.id, category.id)),
                 items: getItemsInCategory(categoryName),
                 schedules: [],
                 order: category?.order || 1
@@ -414,8 +416,8 @@ const MenuPage: React.FC = () => {
         toggleMenuActive(menuId);
     };
 
-    const handleToggleCategoryActive = (categoryId: string) => {
-        toggleCategoryActive(categoryId);
+    const handleToggleCategoryActiveForMenu = (menuId: string, categoryId: string) => {
+        toggleMenuCategoryActive(menuId, categoryId);
     };
 
     const handleReorderMenus = (fromIndex: number, toIndex: number) => {
@@ -458,7 +460,8 @@ const MenuPage: React.FC = () => {
                             index={index}
                             onReorder={handleReorderMenus}
                             onReorderCategories={handleReorderMenuCategories}
-                            onToggleActive={handleToggleMenuActive}
+                            onToggleMenuActive={handleToggleMenuActive}
+                            onToggleCategoryActive={handleToggleCategoryActiveForMenu}
                             onSchedule={() => {
                                 // Find the original menu from storeMenus to avoid type issues
                                 const originalMenu = storeMenus.find(m => m.id === menu.id);
@@ -637,21 +640,21 @@ const MenuPage: React.FC = () => {
                             <View className="flex-row items-center justify-between mb-4">
                                 <View className="flex-row items-center gap-3">
                                     {/* <GripVertical size={20} color="#9CA3AF" /> */}
-                                    <Text className="text-lg font-semibold text-white">
+                                    <Text className="text-2xl font-semibold text-white">
                                         {modifierGroup.name}
                                     </Text>
-                                    <View className={`px-2 py-1 rounded-full ${modifierGroup.type === "required" ? "bg-red-900/30 border border-red-500" : "bg-blue-900/30 border border-blue-500"}`}>
-                                        <Text className={`text-xs font-medium ${modifierGroup.type === "required" ? "text-red-400" : "text-blue-400"}`}>
+                                    <View className={`px-3 py-2 rounded-full ${modifierGroup.type === "required" ? "bg-red-900/30 border border-red-500" : "bg-blue-900/30 border border-blue-500"}`}>
+                                        <Text className={`text-sm font-medium ${modifierGroup.type === "required" ? "text-red-400" : "text-blue-400"}`}>
                                             {modifierGroup.type === "required" ? "Required" : "Optional"}
                                         </Text>
                                     </View>
-                                    <View className="bg-gray-600/30 border border-gray-500 px-2 py-1 rounded-full">
-                                        <Text className="text-xs text-gray-300">
+                                    <View className="bg-gray-600/30 border border-gray-500 px-3 py-2 rounded-full">
+                                        <Text className="text-sm text-gray-300">
                                             {modifierGroup.selectionType === "single" ? "Single" : "Multiple"}
                                         </Text>
                                     </View>
-                                    <View className={`px-2 py-1 rounded-full ${modifierGroup.source === "store" ? "bg-green-900/30 border border-green-500" : "bg-yellow-900/30 border border-yellow-500"}`}>
-                                        <Text className={`text-xs ${modifierGroup.source === "store" ? "text-green-400" : "text-yellow-400"}`}>
+                                    <View className={`px-3 py-2 rounded-full ${modifierGroup.source === "store" ? "bg-green-900/30 border border-green-500" : "bg-yellow-900/30 border border-yellow-500"}`}>
+                                        <Text className={`text-sm ${modifierGroup.source === "store" ? "text-green-400" : "text-yellow-400"}`}>
                                             {modifierGroup.source === "store" ? "Custom" : "Built-in"}
                                         </Text>
                                     </View>

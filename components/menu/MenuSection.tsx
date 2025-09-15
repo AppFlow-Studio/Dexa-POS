@@ -10,7 +10,7 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Link } from "expo-router";
 import { ChevronDown, Logs, PackagePlus, Search, Sofa, Table } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadingTransition, ReduceMotion } from "react-native-reanimated";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
@@ -161,11 +161,12 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   <ChevronDown color="#9CA3AF" size={16} />
                 </Button>
               </DialogTrigger>
-              <DialogContent className="min-w-2xl w-2xl bg-[#212121] border-gray-700">
+              <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
                 <DialogHeader>
                   <DialogTitle className="text-white text-center">Select Menu</DialogTitle>
                 </DialogHeader>
-                <View className="gap-3 mt-4 w-full">
+                <ScrollView className="gap-3 mt-4 w-full" contentContainerStyle={{ gap: 16 }}>
+
                   {menus.map((menu) => (
                     <TouchableOpacity
                       key={menu.id}
@@ -201,7 +202,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                       </View>
                     </TouchableOpacity>
                   ))}
-                </View>
+                  <View className="h-[1px] bg-gray-700 w-[90%] self-center" />
+                </ScrollView>
               </DialogContent>
             </Dialog>
           </View>
