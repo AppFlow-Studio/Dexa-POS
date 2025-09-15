@@ -144,7 +144,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
         menuItems: [...state.menuItems, newItem],
       }));
 
-      console.log("Menu item added:", newItem);
+      // console.log("Menu item added:", newItem);
     },
 
     updateMenuItem: (id, updates) => {
@@ -154,7 +154,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
         ),
       }));
 
-      console.log("Menu item updated:", id, updates);
+      // console.log("Menu item updated:", id, updates);
     },
 
     deleteMenuItem: (id) => {
@@ -581,7 +581,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
       // Return default price if no custom pricing found
       return item.price;
     },
-    
+
     getLowStockItems: () => {
       return get().menuItems.filter(
         (item) => item.parLevel && item.stock < item.parLevel

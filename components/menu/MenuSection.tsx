@@ -109,7 +109,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 onPress={() => setActiveTab("Menu")}
                 className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Menu" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
               >
-                <Table color="#9CA3AF" size={20} />
+                <Table color="#9CA3AF" size={24} />
               </TouchableOpacity>
             </View>
             {/* Search Bar */}
@@ -118,7 +118,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 onPress={openSearch}
                 className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
               >
-                <Search color="#9CA3AF" size={20} />
+                <Search color="#9CA3AF" size={24} />
                 {/* <Text className="text-gray-300 ml-4">Search</Text> */}
               </TouchableOpacity>
             </View>
@@ -128,7 +128,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 onPress={() => setActiveTab("Open Item")}
                 className={`flex-row items-center bg-[#303030]  rounded-lg px-4 py-3 justify-start ${activeTab == "Open Item" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
               >
-                <PackagePlus color="#9CA3AF" size={20} />
+                <PackagePlus color="#9CA3AF" size={24} />
               </TouchableOpacity>
             </View>
 
@@ -137,7 +137,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 // onPress={openSearch}
                 className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
               >
-                <Sofa color="#9CA3AF" size={20} />
+                <Sofa color="#9CA3AF" size={24} />
               </Link>
             </View>
 
@@ -146,7 +146,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 onPress={() => setActiveTab("Orders")}
                 className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
               >
-                <Logs color="#9CA3AF" size={20} />
+                <Logs color="#9CA3AF" size={24} />
                 <Text className="text-gray-300 ml-4">Orders</Text>
               </TouchableOpacity>
             </View>

@@ -1,3 +1,4 @@
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { CustomPricing, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router } from "expo-router";
@@ -22,11 +23,7 @@ const getImageSource = (image: string | undefined) => {
 
     if (image) {
         // Try to get image from assets
-        try {
-            return { uri: `@/assets/images/${image}` };
-        } catch {
-            return undefined;
-        }
+        return `${image}`
     }
 
     return undefined;
@@ -265,10 +262,10 @@ const AddCategoryScreen: React.FC = () => {
                                     >
                                         <View className="flex-row items-center gap-4">
                                             {/* Item Image */}
-                                            <View className="w-16 h-16 rounded-lg border border-gray-600 overflow-hidden">
+                                            <View className="h-24 aspect-square rounded-lg border border-gray-600 overflow-hidden">
                                                 {getImageSource(item.image) ? (
                                                     <Image
-                                                        source={getImageSource(item.image)}
+                                                        source={typeof getImageSource(item.image) === "string" ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP] : getImageSource(item.image)}
                                                         className="w-full h-full object-cover"
                                                     />
                                                 ) : (
@@ -285,7 +282,7 @@ const AddCategoryScreen: React.FC = () => {
                                                 </Text>
                                                 {item.description && (
                                                     <Text className="text-gray-400 text-sm mt-1">
-                                                        {item.description}
+                                                        {item.description.length > 45 ? item.description.substring(0, 45) + "..." : item.description}
                                                     </Text>
                                                 )}
 

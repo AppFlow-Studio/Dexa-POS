@@ -234,10 +234,10 @@ const UpdateTableScreen = () => {
       </View>
 
       <View className="flex-1 flex-row ">
+        <TableBillSection showOrderDetails={false} />
         <View className="flex-1 p-6 px-4 pt-0">
           <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
         </View>
-        <TableBillSection showOrderDetails={false} />
       </View>
 
       {/* Per-item status tracker */}

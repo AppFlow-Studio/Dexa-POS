@@ -541,15 +541,15 @@ const MenuPage: React.FC = () => {
 
                                                     return (
                                                         <View key={item.id} className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2">
-                                                            <View className="flex-row items-center gap-2 flex-1">
+                                                            <View className="flex-row items-center gap-2 ">
                                                                 <Text className="text-white text-sm">{item.name}</Text>
                                                                 {hasCustomPricing && (
-                                                                    <View className="bg-yellow-900/30 border border-yellow-500 px-1 py-0.5 rounded">
+                                                                    <View className="rounded">
                                                                         <Text className="text-yellow-400 text-xs">Custom</Text>
                                                                     </View>
                                                                 )}
                                                             </View>
-                                                            <View className="flex-row items-center gap-2">
+                                                            <View className="flex-row items-center gap-2 ml-2">
                                                                 <Text className={`text-sm ${hasCustomPricing ? 'text-yellow-400' : 'text-gray-300'}`}>
                                                                     ${categoryPrice.toFixed(2)}
                                                                 </Text>
@@ -636,7 +636,7 @@ const MenuPage: React.FC = () => {
                         <View key={modifierGroup.id} className="bg-[#303030] rounded-lg border border-gray-700 p-4">
                             <View className="flex-row items-center justify-between mb-4">
                                 <View className="flex-row items-center gap-3">
-                                    <GripVertical size={20} color="#9CA3AF" />
+                                    {/* <GripVertical size={20} color="#9CA3AF" /> */}
                                     <Text className="text-lg font-semibold text-white">
                                         {modifierGroup.name}
                                     </Text>
@@ -659,7 +659,7 @@ const MenuPage: React.FC = () => {
 
                                 <View className="flex-row items-center gap-2">
                                     <Link href={`/menu/edit-modifier?id=${modifierGroup.id}`} asChild className="p-2 bg-[#212121] rounded border border-gray-600">
-                                        <Settings size={16} color="#9CA3AF" />
+                                        <Settings size={28} color="#9CA3AF" />
                                     </Link>
                                 </View>
                             </View>
@@ -877,7 +877,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
     onToggleAvailability,
 }) => {
     return (
-        <View className="bg-[#303030] max-h-44 rounded-lg border border-gray-700 p-4">
+        <View className="bg-[#303030] max-h-56 rounded-lg border border-gray-700 p-4">
             <View className="flex-row items-start gap-4">
                 <View className="h-full aspect-square rounded-lg border">
                     {getImageSource(item.image) ? (
@@ -911,7 +911,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                     </View>
 
                     {item.description && (
-                        <Text className="text-gray-300 text-sm mb-2">
+                        <Text className="text-gray-300 text-sm mb-2 flex-1">
                             {item.description.length > 45 ? item.description.substring(0, 45) + "..." : item.description}
                         </Text>
                     )}
@@ -964,14 +964,14 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                         onPress={() => onEdit(item)}
                         className="p-2 bg-blue-900/30 border border-blue-500 rounded"
                     >
-                        <Edit size={16} color="#60A5FA" />
+                        <Edit size={22} color="#60A5FA" />
                     </TouchableOpacity>
 
                     <TouchableOpacity
                         onPress={() => onDelete(item.id)}
                         className="p-2 bg-red-900/30 border border-red-500 rounded"
                     >
-                        <Trash2 size={16} color="#F87171" />
+                        <Trash2 size={22} color="#F87171" />
                     </TouchableOpacity>
                 </View>
             </View>

@@ -204,12 +204,12 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                                     }}
                                     className="flex-row items-center p-3 rounded-lg hover:bg-gray-50"
                                 >
-                                    <View className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 items-center justify-center">
+                                    <View className="w-10 h-10 rounded-full border-2 border-gray-300 mr-3 items-center justify-center">
                                         {currentOrderType === orderType.value && (
-                                            <View className="w-3 h-3 rounded-full bg-blue-600" />
+                                            <View className="w-7 h-7 rounded-full bg-blue-600" />
                                         )}
                                     </View>
-                                    <Text className="text-white font-medium">{orderType.label}</Text>
+                                    <Text className="text-white font-medium text-xl">{orderType.label}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -219,14 +219,14 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     {/* Customer Info Section for Delivery/Take Away */}
                     {(currentOrderType === "Delivery" || currentOrderType === "Take Away") && (
                         <View className="mt-4">
-                            <Text className="text-white font-semibold text-lg mb-4">
+                            <Text className="text-white font-semibold text-xl mb-4">
                                 Customer Information
                             </Text>
 
                             {/* Existing Customer Indicator */}
                             {isExistingCustomer && (
                                 <View className="mb-3 p-2 bg-green-600/20 border border-green-600 rounded-lg">
-                                    <Text className="text-green-400 text-sm font-medium">
+                                    <Text className="text-green-400 text-md font-medium">
                                         ✓ Existing Customer Found
                                     </Text>
                                 </View>
@@ -238,7 +238,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                                     Customer Name
                                 </Text>
                                 <TextInput
-                                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white"
+                                    className="bg-[#212121] border border-gray-600 rounded-lg h-12 px-3 py-2 text-white"
                                     placeholder="Enter customer name"
                                     placeholderTextColor="#9CA3AF"
                                     value={customerName}
@@ -253,7 +253,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                                 </Text>
                                 <View className="relative">
                                     <TextInput
-                                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white"
+                                        className="bg-[#212121] border border-gray-600 rounded-lg h-12 px-3 py-2 text-white"
                                         placeholder="(555) 123-4567"
                                         placeholderTextColor="#9CA3AF"
                                         value={phoneNumber}
@@ -289,7 +289,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                                         Delivery Address
                                     </Text>
                                     <TextInput
-                                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white"
+                                        className="bg-[#212121] border border-gray-600 rounded-lg h-12 px-3 py-2 text-white"
                                         placeholder="Enter delivery address"
                                         placeholderTextColor="#9CA3AF"
                                         value={address}

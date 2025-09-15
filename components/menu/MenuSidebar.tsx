@@ -80,6 +80,9 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
     const handleTabPress = (tab: SidebarTab) => {
         // If onTabChange is provided, use it (for main menu page)
         if (onTabChange) {
+            if(pathname.includes('/menu/') && pathname.split('/').length > 2){
+                router.push(`/menu`);
+            }
             onTabChange(tab);
             return;
         }

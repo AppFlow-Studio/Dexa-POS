@@ -2,6 +2,7 @@ import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { toast } from "@backpackapp-io/react-native-toast";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import {
@@ -110,6 +111,7 @@ const AddMenuItemScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
+    toast.error(Object.keys(newErrors).join(", "));
     return Object.keys(newErrors).length === 0;
   };
 
