@@ -54,7 +54,10 @@ interface MenuState {
   setCategorySchedules: (id: string, schedules: Schedule[]) => void;
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
-
+  // INVENTORY ACTIONS
+  decreaseStock: (itemId: string, quantity: number) => void;
+  increaseStock: (itemId: string, quantity: number) => void;
+  getLowStockItems: () => MenuItemType[];
   // Custom Pricing Operations
   addCustomPricing: (itemId: string, customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">) => void;
   updateCustomPricing: (itemId: string, pricingId: string, updates: Partial<CustomPricing>) => void;
@@ -457,6 +460,23 @@ export const useMenuStore = create<MenuState>((set, get) => {
             return {
               ...item,
               customPricing: [...existingPricing, newPricing],
+
+            };
+          }
+          return item;
+        }),
+      }));
+    },
+
+    decreaseStock: (itemId, quantity) => {
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => {
+          if (item.id === itemId) {
+            const newStock = Math.max(0, item.stock - quantity);
+            return {
+              ...item,
+              stock: newStock,
+              status: newStock === 0 ? "Out of Stock" : item.status,
             };
           }
           return item;
@@ -480,6 +500,25 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 }
                 return pricing;
               }),
+            };
+          }
+          return item;
+        }),
+      }));
+    },
+
+    increaseStock: (itemId, quantity) => {
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => {
+          if (item.id === itemId) {
+            const newStock = item.stock + quantity;
+            return {
+              ...item,
+              stock: newStock,
+              status:
+                item.status === "Out of Stock" && newStock > 0
+                  ? "Active"
+                  : item.status,
             };
           }
           return item;
@@ -539,9 +578,14 @@ export const useMenuStore = create<MenuState>((set, get) => {
           return customPricing.price;
         }
       }
-
       // Return default price if no custom pricing found
       return item.price;
+    },
+    
+    getLowStockItems: () => {
+      return get().menuItems.filter(
+        (item) => item.parLevel && item.stock < item.parLevel
+      );
     },
   };
 });
