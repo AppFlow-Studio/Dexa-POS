@@ -90,7 +90,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         {/* Results List */}
         <BottomSheetFlatList
           data={searchResults}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item,index) => index.toString()}
           renderItem={({ item }) => <SearchResultItem item={item} />}
           className="px-6"
           ListEmptyComponent={

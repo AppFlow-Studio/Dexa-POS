@@ -2358,43 +2358,6 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     ],
   },
   {
-    id: "17",
-    name: "Creamy Alfredo Pasta",
-    description:
-      "Rich and creamy alfredo sauce over perfectly cooked pasta with parmesan cheese.",
-    price: 13.99,
-    meal: ["Lunch", "Dinner"],
-    category: ["Main Course"],
-    addOns: pastaAddOns,
-    modifiers: pastaModifiers,
-    allergens: ["Gluten", "Dairy"],
-    cardBgColor: "bg-orange-100",
-    availability: true,
-    recipe: [
-      { inventoryItemId: "inv_31", quantity: 0.5 }, // Pasta
-      { inventoryItemId: "inv_32", quantity: 0.2 }, // Alfredo Sauce
-      { inventoryItemId: "inv_17", quantity: 0.1 }, // Parmesan Cheese
-    ],
-  },
-  {
-    id: "18",
-    name: "Buffalo Wings",
-    description:
-      "Crispy chicken wings tossed in our signature buffalo sauce, served with celery and blue cheese.",
-    price: 8.99,
-    meal: ["Lunch", "Dinner"],
-    category: ["Appetizers"],
-    addOns: sidesAddOns,
-    allergens: ["Dairy"],
-    cardBgColor: "bg-orange-100",
-    availability: true,
-    recipe: [
-      { inventoryItemId: "inv_33", quantity: 0.8 }, // Chicken Wings
-      { inventoryItemId: "inv_34", quantity: 0.1 }, // Buffalo Sauce
-      { inventoryItemId: "inv_35", quantity: 0.05 }, // Blue Cheese
-    ],
-  },
-  {
     id: "19",
     name: "Loaded Nachos",
     description:

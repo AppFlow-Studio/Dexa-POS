@@ -1,3 +1,4 @@
+import InventoryItemFormModal from "@/components/inventory/InventoryItemFormModal";
 import {
   Select,
   SelectContent,
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const CreatePurchaseOrderScreen = () => {
   const router = useRouter();
   const { vendors, inventoryItems, createPurchaseOrder } = useInventoryStore();
+  const [addItemModalOpen, setAddItemModalOpen] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
@@ -139,7 +141,7 @@ const CreatePurchaseOrderScreen = () => {
           />
           <TouchableOpacity
             onPress={() => {
-              /* TODO: Open Add Item Modal */
+              setAddItemModalOpen(true);
             }}
             className="mt-4 py-2 border border-dashed border-gray-500 rounded-lg items-center"
           >
@@ -147,6 +149,12 @@ const CreatePurchaseOrderScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
+      <InventoryItemFormModal
+        isOpen={addItemModalOpen}
+        onClose={() => setAddItemModalOpen(false)}
+        onSave={() => {}}
+        vendors={vendors}
+      />
     </View>
   );
 };

@@ -152,7 +152,7 @@ const PreviousOrdersSection = () => {
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
     // Get all orders (including completed ones)
-    const allOrders = orders.filter((o) => o.order_status !== "Voided");
+    const allOrders = orders.filter((o) => o.order_status !== "Voided" && o.items.length > 0);
 
     const totalOrder = allOrders.length;
 
@@ -161,7 +161,7 @@ const PreviousOrdersSection = () => {
         if (activeTab === "All") {
             return allOrders;
         }
-        return allOrders.filter((o) => o.order_type === activeTab);
+        return allOrders.filter((o) => o.order_type === activeTab && o.items.length > 0 );
     }, [allOrders, activeTab]);
 
     // Function passed to OrderTabs to update the state
