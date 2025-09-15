@@ -1,5 +1,72 @@
 import { ComponentType } from "react";
 
+// --- INVENTORY TYPES ---
+export type InventoryUnit =
+  | "pcs"
+  | "g"
+  | "kg"
+  | "oz"
+  | "lbs"
+  | "ml"
+  | "l"
+  | "bottle"
+  | "bag"
+  | "lb"
+  | "head"
+  | "can"
+  | "container"
+  | "bunch"
+  | "box"
+  | "jar"
+  | "qt"
+  | "gal"
+  | "loaf"
+  | "pint"
+  | "pkg";
+
+export interface Vendor {
+  id: string;
+  name: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+}
+
+export interface InventoryItem {
+  id: string;
+  name: string;
+  category: string;
+  stockQuantity: number;
+  unit: InventoryUnit;
+  reorderThreshold: number;
+  cost: number; // Cost per unit
+  vendorId: string | null;
+}
+
+export interface POLineItem {
+  inventoryItemId: string;
+  quantity: number;
+  cost: number; // Cost at the time of order
+}
+
+export interface PurchaseOrder {
+  id: string;
+  poNumber: string; // e.g., "PO-0001"
+  vendorId: string;
+  status: "Draft" | "Sent" | "Received" | "Cancelled";
+  items: POLineItem[];
+  createdAt: string;
+  receivedAt?: string;
+}
+// --- END INVENTORY TYPES ---
+
+// --- RECIPE TYPE ---
+export interface RecipeItem {
+  inventoryItemId: string;
+  quantity: number;
+}
+// --- END RECIPE TYPE ---
+
 export interface Order {
   id: string;
   customerName: string;
@@ -62,7 +129,8 @@ export interface MenuItemType {
   modifiers?: ModifierCategory[];
   allergens?: string[];
   cardBgColor?: string;
-  availability?: boolean; // New field for availability status
+  availability?: boolean;
+  recipe?: RecipeItem[];
 }
 
 export interface Menu {
@@ -207,22 +275,6 @@ export type InventoryItemStatus =
   | "Draft"
   | "Inactive"
   | "Out of Stock";
-
-export interface InventoryItem {
-  id: string; // e.g., '#2020E11'
-  serialNo: string;
-  name: string;
-  image?: string; // Filename from assets
-  description: string;
-  stock: number;
-  unit: "PCs" | "KGs" | "Liters";
-  lastUpdate: string; // e.g., '02/03/2025 10:30 AM'
-  status: InventoryItemStatus;
-  // Additional details for the forms
-  category: string;
-  modifier: string;
-  availability: boolean;
-}
 
 export interface UserProfile {
   id: string;

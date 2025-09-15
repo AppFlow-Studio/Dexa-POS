@@ -9,6 +9,7 @@ import {
   Discount,
   DrawerSummary,
   EmployeeShift,
+  InventoryItem,
   ItemSize,
   MenuItemType,
   ModifierCategory,
@@ -24,6 +25,7 @@ import {
   TableType,
   TrackedOrder,
   UserProfile,
+  Vendor,
 } from "./types";
 
 export const MOCK_ORDERS: Order[] = [
@@ -885,8 +887,1162 @@ export const ALL_MODIFIER_GROUPS: ModifierCategory[] = [
   ...iceCreamModifiers,
 ];
 
+export const MOCK_VENDORS: Vendor[] = [
+  {
+    id: "vendor_1",
+    name: "Sysco Foods",
+    contactPerson: "John Smith",
+    email: "john.smith@sysco.com",
+    phone: "123-456-7890",
+  },
+  {
+    id: "vendor_2",
+    name: "Restaurant Depot",
+    contactPerson: "Jane Doe",
+    email: "jane.doe@restaurantdepot.com",
+    phone: "098-765-4321",
+  },
+  {
+    id: "vendor_3",
+    name: "Local Produce Market",
+    contactPerson: "Mike Johnson",
+    email: "mike@localproduce.com",
+    phone: "555-123-4567",
+  },
+  {
+    id: "vendor_4",
+    name: "Ocean Seafood Co.",
+    contactPerson: "Sarah Wilson",
+    email: "sarah@oceanseafood.com",
+    phone: "555-987-6543",
+  },
+];
+
+export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
+  {
+    id: "inv_1",
+    name: "Beef Patty",
+    category: "Meat",
+    stockQuantity: 150,
+    unit: "pcs",
+    reorderThreshold: 50,
+    cost: 1.25,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_2",
+    name: "Burger Bun",
+    category: "Bakery",
+    stockQuantity: 200,
+    unit: "pcs",
+    reorderThreshold: 75,
+    cost: 0.3,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_3",
+    name: "Cheddar Cheese Slice",
+    category: "Dairy",
+    stockQuantity: 500,
+    unit: "pcs",
+    reorderThreshold: 100,
+    cost: 0.15,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_4",
+    name: "Bacon Strip",
+    category: "Meat",
+    stockQuantity: 300,
+    unit: "pcs",
+    reorderThreshold: 100,
+    cost: 0.35,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_5",
+    name: "BBQ Sauce",
+    category: "Condiments",
+    stockQuantity: 20,
+    unit: "bottle",
+    reorderThreshold: 5,
+    cost: 2.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_6",
+    name: "Tortilla Wrap",
+    category: "Bakery",
+    stockQuantity: 150,
+    unit: "pcs",
+    reorderThreshold: 50,
+    cost: 0.25,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_7",
+    name: "Hummus",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "container",
+    reorderThreshold: 5,
+    cost: 3.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_8",
+    name: "Fresh Vegetables Mix",
+    category: "Produce",
+    stockQuantity: 50,
+    unit: "lb",
+    reorderThreshold: 20,
+    cost: 1.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_9",
+    name: "Pizza Dough",
+    category: "Bakery",
+    stockQuantity: 100,
+    unit: "pcs",
+    reorderThreshold: 30,
+    cost: 1.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_10",
+    name: "Tomato Sauce",
+    category: "Condiments",
+    stockQuantity: 25,
+    unit: "can",
+    reorderThreshold: 10,
+    cost: 2.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_11",
+    name: "Mozzarella Cheese",
+    category: "Dairy",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 4.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_12",
+    name: "Fresh Basil",
+    category: "Produce",
+    stockQuantity: 10,
+    unit: "bunch",
+    reorderThreshold: 4,
+    cost: 1.0,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_13",
+    name: "Romaine Lettuce",
+    category: "Produce",
+    stockQuantity: 30,
+    unit: "head",
+    reorderThreshold: 10,
+    cost: 1.2,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_14",
+    name: "Chicken Breast",
+    category: "Meat",
+    stockQuantity: 80,
+    unit: "lb",
+    reorderThreshold: 25,
+    cost: 3.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_15",
+    name: "Caesar Dressing",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "bottle",
+    reorderThreshold: 5,
+    cost: 2.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_16",
+    name: "Croutons",
+    category: "Bakery",
+    stockQuantity: 20,
+    unit: "bag",
+    reorderThreshold: 8,
+    cost: 1.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_17",
+    name: "Parmesan Cheese",
+    category: "Dairy",
+    stockQuantity: 15,
+    unit: "lb",
+    reorderThreshold: 5,
+    cost: 5.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_18",
+    name: "Potatoes",
+    category: "Produce",
+    stockQuantity: 100,
+    unit: "lb",
+    reorderThreshold: 30,
+    cost: 0.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_19",
+    name: "Onions",
+    category: "Produce",
+    stockQuantity: 50,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 0.4,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_20",
+    name: "Coca-Cola Syrup",
+    category: "Beverages",
+    stockQuantity: 10,
+    unit: "box",
+    reorderThreshold: 3,
+    cost: 15.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_21",
+    name: "Sprite Syrup",
+    category: "Beverages",
+    stockQuantity: 10,
+    unit: "box",
+    reorderThreshold: 3,
+    cost: 15.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_22",
+    name: "Chocolate Cake Mix",
+    category: "Bakery",
+    stockQuantity: 20,
+    unit: "box",
+    reorderThreshold: 8,
+    cost: 2.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_23",
+    name: "Cheesecake Base",
+    category: "Dairy",
+    stockQuantity: 15,
+    unit: "pcs",
+    reorderThreshold: 5,
+    cost: 3.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_24",
+    name: "Pancake Mix",
+    category: "Bakery",
+    stockQuantity: 25,
+    unit: "box",
+    reorderThreshold: 10,
+    cost: 2.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_25",
+    name: "Maple Syrup",
+    category: "Condiments",
+    stockQuantity: 12,
+    unit: "bottle",
+    reorderThreshold: 4,
+    cost: 4.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_26",
+    name: "Eggs",
+    category: "Dairy",
+    stockQuantity: 240,
+    unit: "pcs",
+    reorderThreshold: 60,
+    cost: 0.15,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_27",
+    name: "Canadian Bacon",
+    category: "Meat",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 4.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_28",
+    name: "English Muffin",
+    category: "Bakery",
+    stockQuantity: 100,
+    unit: "pcs",
+    reorderThreshold: 30,
+    cost: 0.4,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_29",
+    name: "Hollandaise Sauce",
+    category: "Condiments",
+    stockQuantity: 8,
+    unit: "jar",
+    reorderThreshold: 3,
+    cost: 3.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_30",
+    name: "Pepperoni",
+    category: "Meat",
+    stockQuantity: 45,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 3.8,
+    vendorId: "vendor_1",
+  },
+
+  {
+    id: "inv_31",
+    name: "Pasta",
+    category: "Dry Goods",
+    stockQuantity: 50,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 1.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_32",
+    name: "Alfredo Sauce",
+    category: "Condiments",
+    stockQuantity: 25,
+    unit: "jar",
+    reorderThreshold: 8,
+    cost: 2.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_33",
+    name: "Chicken Wings",
+    category: "Meat",
+    stockQuantity: 80,
+    unit: "lb",
+    reorderThreshold: 25,
+    cost: 2.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_34",
+    name: "Buffalo Sauce",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "bottle",
+    reorderThreshold: 5,
+    cost: 2.2,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_35",
+    name: "Blue Cheese",
+    category: "Dairy",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 7,
+    cost: 4.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_36",
+    name: "Tortilla Chips",
+    category: "Snacks",
+    stockQuantity: 30,
+    unit: "bag",
+    reorderThreshold: 10,
+    cost: 1.8,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_37",
+    name: "Jalapeños",
+    category: "Produce",
+    stockQuantity: 15,
+    unit: "lb",
+    reorderThreshold: 5,
+    cost: 1.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_38",
+    name: "Sour Cream",
+    category: "Dairy",
+    stockQuantity: 20,
+    unit: "container",
+    reorderThreshold: 7,
+    cost: 1.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_39",
+    name: "Guacamole",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "container",
+    reorderThreshold: 5,
+    cost: 3.2,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_40",
+    name: "Tomato Soup Base",
+    category: "Canned Goods",
+    stockQuantity: 20,
+    unit: "can",
+    reorderThreshold: 8,
+    cost: 1.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_41",
+    name: "Chicken Broth",
+    category: "Canned Goods",
+    stockQuantity: 25,
+    unit: "qt",
+    reorderThreshold: 10,
+    cost: 1.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_42",
+    name: "Egg Noodles",
+    category: "Dry Goods",
+    stockQuantity: 30,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 1.4,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_43",
+    name: "Coffee Beans",
+    category: "Beverages",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 5.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_44",
+    name: "Water",
+    category: "Beverages",
+    stockQuantity: 100,
+    unit: "gal",
+    reorderThreshold: 30,
+    cost: 0.1,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_45",
+    name: "Mango",
+    category: "Produce",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 1.8,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_46",
+    name: "Pineapple",
+    category: "Produce",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 8,
+    cost: 1.6,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_47",
+    name: "Banana",
+    category: "Produce",
+    stockQuantity: 35,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 0.6,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_48",
+    name: "Coconut Milk",
+    category: "Dairy",
+    stockQuantity: 18,
+    unit: "can",
+    reorderThreshold: 7,
+    cost: 1.4,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_49",
+    name: "Oranges",
+    category: "Produce",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 0.8,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_50",
+    name: "Waffle Mix",
+    category: "Bakery",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 1.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_51",
+    name: "Butter",
+    category: "Dairy",
+    stockQuantity: 30,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 2.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_52",
+    name: "Artisan Bread",
+    category: "Bakery",
+    stockQuantity: 40,
+    unit: "loaf",
+    reorderThreshold: 15,
+    cost: 2.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_53",
+    name: "Avocado",
+    category: "Produce",
+    stockQuantity: 30,
+    unit: "pcs",
+    reorderThreshold: 12,
+    cost: 0.8,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_54",
+    name: "Cherry Tomatoes",
+    category: "Produce",
+    stockQuantity: 20,
+    unit: "pint",
+    reorderThreshold: 8,
+    cost: 1.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_55",
+    name: "Feta Cheese",
+    category: "Dairy",
+    stockQuantity: 18,
+    unit: "lb",
+    reorderThreshold: 7,
+    cost: 3.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_56",
+    name: "Balsamic Glaze",
+    category: "Condiments",
+    stockQuantity: 12,
+    unit: "bottle",
+    reorderThreshold: 5,
+    cost: 2.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_57",
+    name: "Ladyfingers",
+    category: "Bakery",
+    stockQuantity: 15,
+    unit: "pkg",
+    reorderThreshold: 6,
+    cost: 2.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_58",
+    name: "Mascarpone Cheese",
+    category: "Dairy",
+    stockQuantity: 12,
+    unit: "lb",
+    reorderThreshold: 5,
+    cost: 4.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_59",
+    name: "Cocoa Powder",
+    category: "Bakery",
+    stockQuantity: 10,
+    unit: "lb",
+    reorderThreshold: 4,
+    cost: 3.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_60",
+    name: "Cookie Dough",
+    category: "Bakery",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 8,
+    cost: 2.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_61",
+    name: "Chocolate Chips",
+    category: "Bakery",
+    stockQuantity: 15,
+    unit: "lb",
+    reorderThreshold: 6,
+    cost: 2.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_62",
+    name: "Ribeye Steak",
+    category: "Meat",
+    stockQuantity: 45,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 8.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_63",
+    name: "Steak Seasoning",
+    category: "Spices",
+    stockQuantity: 8,
+    unit: "jar",
+    reorderThreshold: 3,
+    cost: 2.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_64",
+    name: "Herb Butter",
+    category: "Dairy",
+    stockQuantity: 12,
+    unit: "lb",
+    reorderThreshold: 5,
+    cost: 3.2,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_65",
+    name: "Salmon Fillet",
+    category: "Seafood",
+    stockQuantity: 35,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 7.0,
+    vendorId: "vendor_4",
+  },
+  {
+    id: "inv_66",
+    name: "Lemon",
+    category: "Produce",
+    stockQuantity: 40,
+    unit: "pcs",
+    reorderThreshold: 15,
+    cost: 0.3,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_67",
+    name: "Fresh Herbs",
+    category: "Produce",
+    stockQuantity: 10,
+    unit: "bunch",
+    reorderThreshold: 4,
+    cost: 1.0,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_68",
+    name: "White Fish Fillet",
+    category: "Seafood",
+    stockQuantity: 30,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 5.5,
+    vendorId: "vendor_4",
+  },
+  {
+    id: "inv_69",
+    name: "Taco Shells",
+    category: "Bakery",
+    stockQuantity: 200,
+    unit: "pcs",
+    reorderThreshold: 60,
+    cost: 0.15,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_70",
+    name: "Cabbage Slaw",
+    category: "Produce",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 1.2,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_71",
+    name: "Chipotle Aioli",
+    category: "Condiments",
+    stockQuantity: 12,
+    unit: "jar",
+    reorderThreshold: 5,
+    cost: 2.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_72",
+    name: "Pico de Gallo",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "container",
+    reorderThreshold: 6,
+    cost: 2.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_73",
+    name: "Avocado Crema",
+    category: "Condiments",
+    stockQuantity: 12,
+    unit: "container",
+    reorderThreshold: 5,
+    cost: 2.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_74",
+    name: "Ramen Noodles",
+    category: "Dry Goods",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 1.6,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_75",
+    name: "Pork Broth",
+    category: "Canned Goods",
+    stockQuantity: 20,
+    unit: "qt",
+    reorderThreshold: 8,
+    cost: 1.8,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_76",
+    name: "Chashu Pork",
+    category: "Meat",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 4.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_77",
+    name: "Green Onions",
+    category: "Produce",
+    stockQuantity: 15,
+    unit: "bunch",
+    reorderThreshold: 6,
+    cost: 0.8,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_78",
+    name: "Miso Broth",
+    category: "Canned Goods",
+    stockQuantity: 18,
+    unit: "qt",
+    reorderThreshold: 7,
+    cost: 1.7,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_79",
+    name: "Tofu",
+    category: "Produce",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 8,
+    cost: 1.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_80",
+    name: "Corn",
+    category: "Canned Goods",
+    stockQuantity: 15,
+    unit: "can",
+    reorderThreshold: 6,
+    cost: 0.9,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_81",
+    name: "Bamboo Shoots",
+    category: "Canned Goods",
+    stockQuantity: 12,
+    unit: "can",
+    reorderThreshold: 5,
+    cost: 1.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_82",
+    name: "Sushi Rice",
+    category: "Dry Goods",
+    stockQuantity: 50,
+    unit: "lb",
+    reorderThreshold: 20,
+    cost: 1.4,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_83",
+    name: "Nori Sheets",
+    category: "Dry Goods",
+    stockQuantity: 100,
+    unit: "pcs",
+    reorderThreshold: 30,
+    cost: 0.1,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_84",
+    name: "Imitation Crab",
+    category: "Seafood",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 3.5,
+    vendorId: "vendor_4",
+  },
+  {
+    id: "inv_85",
+    name: "Cucumber",
+    category: "Produce",
+    stockQuantity: 30,
+    unit: "pcs",
+    reorderThreshold: 12,
+    cost: 0.4,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_86",
+    name: "Tuna",
+    category: "Seafood",
+    stockQuantity: 35,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 6.0,
+    vendorId: "vendor_4",
+  },
+  {
+    id: "inv_87",
+    name: "Spicy Mayo",
+    category: "Condiments",
+    stockQuantity: 10,
+    unit: "jar",
+    reorderThreshold: 4,
+    cost: 2.2,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_88",
+    name: "Steamed Rice",
+    category: "Dry Goods",
+    stockQuantity: 100,
+    unit: "lb",
+    reorderThreshold: 30,
+    cost: 0.8,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_89",
+    name: "Teriyaki Sauce",
+    category: "Condiments",
+    stockQuantity: 15,
+    unit: "bottle",
+    reorderThreshold: 6,
+    cost: 2.3,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_90",
+    name: "Beef Strips",
+    category: "Meat",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 5.5,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_91",
+    name: "Stir Fry Sauce",
+    category: "Condiments",
+    stockQuantity: 12,
+    unit: "bottle",
+    reorderThreshold: 5,
+    cost: 2.4,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_92",
+    name: "Quinoa",
+    category: "Dry Goods",
+    stockQuantity: 30,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 2.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_93",
+    name: "Chickpeas",
+    category: "Canned Goods",
+    stockQuantity: 20,
+    unit: "can",
+    reorderThreshold: 8,
+    cost: 0.9,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_94",
+    name: "Tahini Dressing",
+    category: "Condiments",
+    stockQuantity: 10,
+    unit: "jar",
+    reorderThreshold: 4,
+    cost: 2.6,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_95",
+    name: "Pulled Pork",
+    category: "Meat",
+    stockQuantity: 35,
+    unit: "lb",
+    reorderThreshold: 12,
+    cost: 4.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_96",
+    name: "Brioche Bun",
+    category: "Bakery",
+    stockQuantity: 120,
+    unit: "pcs",
+    reorderThreshold: 40,
+    cost: 0.4,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_97",
+    name: "Coleslaw",
+    category: "Produce",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 8,
+    cost: 1.5,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_98",
+    name: "Mozzarella Sticks",
+    category: "Frozen",
+    stockQuantity: 200,
+    unit: "pcs",
+    reorderThreshold: 60,
+    cost: 0.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_99",
+    name: "Marinara Sauce",
+    category: "Condiments",
+    stockQuantity: 18,
+    unit: "jar",
+    reorderThreshold: 7,
+    cost: 1.8,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_100",
+    name: "Spinach Artichoke Dip",
+    category: "Frozen",
+    stockQuantity: 15,
+    unit: "container",
+    reorderThreshold: 6,
+    cost: 3.0,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_101",
+    name: "Flour Tortilla",
+    category: "Bakery",
+    stockQuantity: 150,
+    unit: "pcs",
+    reorderThreshold: 50,
+    cost: 0.15,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_102",
+    name: "Calamari Rings",
+    category: "Frozen",
+    stockQuantity: 25,
+    unit: "lb",
+    reorderThreshold: 10,
+    cost: 4.5,
+    vendorId: "vendor_4",
+  },
+  {
+    id: "inv_103",
+    name: "Lemon Aioli",
+    category: "Condiments",
+    stockQuantity: 10,
+    unit: "jar",
+    reorderThreshold: 4,
+    cost: 2.3,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_104",
+    name: "Button Mushrooms",
+    category: "Produce",
+    stockQuantity: 20,
+    unit: "lb",
+    reorderThreshold: 8,
+    cost: 2.0,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_105",
+    name: "Herbed Cream Cheese",
+    category: "Dairy",
+    stockQuantity: 15,
+    unit: "lb",
+    reorderThreshold: 6,
+    cost: 3.2,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_106",
+    name: "Breadcrumbs",
+    category: "Bakery",
+    stockQuantity: 12,
+    unit: "lb",
+    reorderThreshold: 5,
+    cost: 1.2,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_107",
+    name: "Sweet Potatoes",
+    category: "Produce",
+    stockQuantity: 35,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 0.7,
+    vendorId: "vendor_3",
+  },
+  {
+    id: "inv_108",
+    name: "Macaroni",
+    category: "Dry Goods",
+    stockQuantity: 40,
+    unit: "lb",
+    reorderThreshold: 15,
+    cost: 1.1,
+    vendorId: "vendor_1",
+  },
+  {
+    id: "inv_109",
+    name: "Cheese Sauce",
+    category: "Dairy",
+    stockQuantity: 15,
+    unit: "jar",
+    reorderThreshold: 6,
+    cost: 2.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_110",
+    name: "Green Tea Leaves",
+    category: "Beverages",
+    stockQuantity: 8,
+    unit: "lb",
+    reorderThreshold: 3,
+    cost: 4.0,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_111",
+    name: "Energy Drink Syrup",
+    category: "Beverages",
+    stockQuantity: 10,
+    unit: "bottle",
+    reorderThreshold: 4,
+    cost: 3.5,
+    vendorId: "vendor_2",
+  },
+  {
+    id: "inv_112",
+    name: "Black Tea Leaves",
+    category: "Beverages",
+    stockQuantity: 10,
+    unit: "lb",
+    reorderThreshold: 4,
+    cost: 3.0,
+    vendorId: "vendor_2",
+  },
+];
+
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
-  // --- Main Course ---
   {
     id: "1",
     name: "Classic Burger",
@@ -902,6 +2058,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-red-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_1", quantity: 1 },
+      { inventoryItemId: "inv_2", quantity: 2 },
+      { inventoryItemId: "inv_3", quantity: 1 },
+      { inventoryItemId: "inv_8", quantity: 0.1 },
+    ],
   },
   {
     id: "2",
@@ -918,6 +2080,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_1", quantity: 1 },
+      { inventoryItemId: "inv_2", quantity: 2 },
+      { inventoryItemId: "inv_3", quantity: 1 },
+      { inventoryItemId: "inv_4", quantity: 2 },
+      { inventoryItemId: "inv_5", quantity: 0.05 },
+    ],
   },
   {
     id: "3",
@@ -931,6 +2100,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: wrapAddOns,
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_6", quantity: 1 },
+      { inventoryItemId: "inv_7", quantity: 0.1 },
+      { inventoryItemId: "inv_8", quantity: 0.2 },
+    ],
   },
   {
     id: "4",
@@ -944,8 +2118,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: pizzaAddOns,
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_9", quantity: 1 },
+      { inventoryItemId: "inv_10", quantity: 0.2 },
+      { inventoryItemId: "inv_11", quantity: 0.3 },
+      { inventoryItemId: "inv_12", quantity: 0.05 },
+    ],
   },
-  // --- Appetizers ---
   {
     id: "5",
     name: "Chicken Caesar Salad",
@@ -958,8 +2137,14 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: saladAddOns,
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_13", quantity: 0.5 },
+      { inventoryItemId: "inv_14", quantity: 0.3 },
+      { inventoryItemId: "inv_15", quantity: 0.1 },
+      { inventoryItemId: "inv_16", quantity: 0.1 },
+      { inventoryItemId: "inv_17", quantity: 0.05 },
+    ],
   },
-  // --- Sides ---
   {
     id: "6",
     name: "French Fries",
@@ -971,6 +2156,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [{ inventoryItemId: "inv_18", quantity: 0.4 }],
   },
   {
     id: "7",
@@ -983,8 +2169,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: sidesAddOns,
     cardBgColor: "bg-purple-100",
     availability: true,
+    recipe: [{ inventoryItemId: "inv_19", quantity: 0.3 }],
   },
-  // --- Drinks ---
   {
     id: "8",
     name: "Coca-Cola",
@@ -996,6 +2182,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: drinksAddOns,
     cardBgColor: "bg-gray-100",
     availability: true,
+    recipe: [{ inventoryItemId: "inv_20", quantity: 0.05 }],
   },
   {
     id: "9",
@@ -1008,8 +2195,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: drinksAddOns,
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [{ inventoryItemId: "inv_21", quantity: 0.05 }],
   },
-  // --- Desserts ---
   {
     id: "10",
     name: "Chocolate Lava Cake",
@@ -1017,10 +2204,14 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     price: 6.99,
     image: "chocolate_cake.png",
     meal: ["Dinner"],
-    category: ["Drinks"],
+    category: ["Dessert"],
     addOns: dessertAddOns,
     cardBgColor: "bg-red-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_22", quantity: 0.2 },
+      { inventoryItemId: "inv_26", quantity: 2 },
+    ],
   },
   {
     id: "11",
@@ -1029,12 +2220,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     price: 7.25,
     image: "cheesecake.png",
     meal: ["Dinner"],
-    category: ["Drinks"],
+    category: ["Dessert"],
     addOns: dessertAddOns,
     cardBgColor: "bg-pink-100",
     availability: true,
+    recipe: [{ inventoryItemId: "inv_23", quantity: 1 }],
   },
-  // --- Brunch ---
   {
     id: "12",
     name: "Fluffy Pancakes",
@@ -1047,6 +2238,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: brunchAddOns,
     cardBgColor: "bg-indigo-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_24", quantity: 0.3 },
+      { inventoryItemId: "inv_25", quantity: 0.05 },
+    ],
   },
   {
     id: "13",
@@ -1060,8 +2255,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: brunchAddOns,
     cardBgColor: "bg-cyan-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_26", quantity: 2 },
+      { inventoryItemId: "inv_27", quantity: 0.2 },
+      { inventoryItemId: "inv_28", quantity: 1 },
+      { inventoryItemId: "inv_29", quantity: 0.1 },
+    ],
   },
-  // --- Additional Main Course Items ---
   {
     id: "14",
     name: "Pepperoni Supreme Pizza",
@@ -1076,6 +2276,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-red-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_9", quantity: 1 },
+      { inventoryItemId: "inv_10", quantity: 0.2 },
+      { inventoryItemId: "inv_11", quantity: 0.4 },
+      { inventoryItemId: "inv_30", quantity: 0.2 },
+      { inventoryItemId: "inv_8", quantity: 0.1 },
+    ],
   },
   {
     id: "15",
@@ -1090,6 +2297,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_8", quantity: 0.3 },
+      { inventoryItemId: "inv_11", quantity: 0.1 },
+      { inventoryItemId: "inv_7", quantity: 0.1 },
+    ],
   },
   {
     id: "16",
@@ -1104,6 +2316,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_2", quantity: 3 },
+      { inventoryItemId: "inv_14", quantity: 0.3 },
+      { inventoryItemId: "inv_4", quantity: 2 },
+      { inventoryItemId: "inv_8", quantity: 0.1 },
+    ],
   },
   {
     id: "17",
@@ -1118,8 +2336,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_11", quantity: 0.3 },
+      { inventoryItemId: "inv_17", quantity: 0.1 },
+    ],
   },
-  // --- Appetizers ---
   {
     id: "18",
     name: "Buffalo Wings",
@@ -1132,6 +2353,47 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_14", quantity: 0.5 },
+      { inventoryItemId: "inv_5", quantity: 0.1 },
+    ],
+  },
+  {
+    id: "17",
+    name: "Creamy Alfredo Pasta",
+    description:
+      "Rich and creamy alfredo sauce over perfectly cooked pasta with parmesan cheese.",
+    price: 13.99,
+    meal: ["Lunch", "Dinner"],
+    category: ["Main Course"],
+    addOns: pastaAddOns,
+    modifiers: pastaModifiers,
+    allergens: ["Gluten", "Dairy"],
+    cardBgColor: "bg-orange-100",
+    availability: true,
+    recipe: [
+      { inventoryItemId: "inv_31", quantity: 0.5 }, // Pasta
+      { inventoryItemId: "inv_32", quantity: 0.2 }, // Alfredo Sauce
+      { inventoryItemId: "inv_17", quantity: 0.1 }, // Parmesan Cheese
+    ],
+  },
+  {
+    id: "18",
+    name: "Buffalo Wings",
+    description:
+      "Crispy chicken wings tossed in our signature buffalo sauce, served with celery and blue cheese.",
+    price: 8.99,
+    meal: ["Lunch", "Dinner"],
+    category: ["Appetizers"],
+    addOns: sidesAddOns,
+    allergens: ["Dairy"],
+    cardBgColor: "bg-orange-100",
+    availability: true,
+    recipe: [
+      { inventoryItemId: "inv_33", quantity: 0.8 }, // Chicken Wings
+      { inventoryItemId: "inv_34", quantity: 0.1 }, // Buffalo Sauce
+      { inventoryItemId: "inv_35", quantity: 0.05 }, // Blue Cheese
+    ],
   },
   {
     id: "19",
@@ -1145,8 +2407,14 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_36", quantity: 0.3 }, // Tortilla Chips
+      { inventoryItemId: "inv_11", quantity: 0.2 }, // Mozzarella Cheese
+      { inventoryItemId: "inv_37", quantity: 0.1 }, // Jalapeños
+      { inventoryItemId: "inv_38", quantity: 0.1 }, // Sour Cream
+      { inventoryItemId: "inv_39", quantity: 0.1 }, // Guacamole
+    ],
   },
-  // --- Soups (as Appetizers) ---
   {
     id: "20",
     name: "Tomato Basil Soup",
@@ -1160,6 +2428,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-red-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_40", quantity: 0.4 }, // Tomato Soup Base
+      { inventoryItemId: "inv_12", quantity: 0.05 }, // Fresh Basil
+      { inventoryItemId: "inv_11", quantity: 0.1 }, // Mozzarella Cheese
+    ],
   },
   {
     id: "21",
@@ -1174,8 +2447,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Eggs"],
     cardBgColor: "bg-yellow-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_41", quantity: 0.3 }, // Chicken Broth
+      { inventoryItemId: "inv_14", quantity: 0.2 }, // Chicken Breast
+      { inventoryItemId: "inv_42", quantity: 0.2 }, // Egg Noodles
+      { inventoryItemId: "inv_8", quantity: 0.1 }, // Fresh Vegetables
+    ],
   },
-  // --- Drinks ---
   {
     id: "22",
     name: "Fresh Brewed Coffee",
@@ -1189,6 +2467,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_43", quantity: 0.05 }, // Coffee Beans
+      { inventoryItemId: "inv_44", quantity: 0.3 }, // Water
+    ],
   },
   {
     id: "23",
@@ -1202,6 +2484,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_45", quantity: 0.2 }, // Mango
+      { inventoryItemId: "inv_46", quantity: 0.2 }, // Pineapple
+      { inventoryItemId: "inv_47", quantity: 0.1 }, // Banana
+      { inventoryItemId: "inv_48", quantity: 0.3 }, // Coconut Milk
+    ],
   },
   {
     id: "24",
@@ -1214,8 +2502,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-orange-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_49", quantity: 0.5 }, // Oranges
+    ],
   },
-  // --- Breakfast Items (as Main Course) ---
   {
     id: "25",
     name: "Belgian Waffles",
@@ -1228,6 +2518,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy", "Eggs"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_50", quantity: 0.3 }, // Waffle Mix
+      { inventoryItemId: "inv_26", quantity: 1 }, // Eggs
+      { inventoryItemId: "inv_51", quantity: 0.1 }, // Butter
+      { inventoryItemId: "inv_25", quantity: 0.1 }, // Maple Syrup
+    ],
   },
   {
     id: "26",
@@ -1241,8 +2537,14 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_52", quantity: 0.5 }, // Artisan Bread
+      { inventoryItemId: "inv_53", quantity: 0.3 }, // Avocado
+      { inventoryItemId: "inv_54", quantity: 0.1 }, // Cherry Tomatoes
+      { inventoryItemId: "inv_55", quantity: 0.1 }, // Feta Cheese
+      { inventoryItemId: "inv_56", quantity: 0.05 }, // Balsamic Glaze
+    ],
   },
-  // --- Desserts ---
   {
     id: "27",
     name: "Tiramisu",
@@ -1255,6 +2557,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy", "Eggs", "Gluten"],
     cardBgColor: "bg-purple-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_57", quantity: 0.2 }, // Ladyfingers
+      { inventoryItemId: "inv_58", quantity: 0.3 }, // Mascarpone Cheese
+      { inventoryItemId: "inv_43", quantity: 0.1 }, // Coffee
+      { inventoryItemId: "inv_59", quantity: 0.1 }, // Cocoa Powder
+    ],
   },
   {
     id: "28",
@@ -1268,8 +2576,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy", "Eggs"],
     cardBgColor: "bg-red-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_60", quantity: 0.2 }, // Cookie Dough
+      { inventoryItemId: "inv_61", quantity: 0.1 }, // Chocolate Chips
+    ],
   },
-  // --- Additional Main Course Items (29-40) ---
   {
     id: "29",
     name: "Grilled Ribeye Steak",
@@ -1283,6 +2594,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-purple-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_62", quantity: 0.8 }, // Ribeye Steak
+      { inventoryItemId: "inv_63", quantity: 0.1 }, // Steak Seasoning
+      { inventoryItemId: "inv_64", quantity: 0.1 }, // Herb Butter
+    ],
   },
   {
     id: "30",
@@ -1297,6 +2613,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Fish"],
     cardBgColor: "bg-blue-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_65", quantity: 0.6 }, // Salmon Fillet
+      { inventoryItemId: "inv_66", quantity: 0.1 }, // Lemon
+      { inventoryItemId: "inv_67", quantity: 0.05 }, // Herbs
+      { inventoryItemId: "inv_8", quantity: 0.2 }, // Seasonal Vegetables
+    ],
   },
   {
     id: "31",
@@ -1311,6 +2633,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Fish", "Gluten"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_68", quantity: 0.4 }, // White Fish Fillet
+      { inventoryItemId: "inv_69", quantity: 3 }, // Taco Shells
+      { inventoryItemId: "inv_70", quantity: 0.2 }, // Cabbage Slaw
+      { inventoryItemId: "inv_71", quantity: 0.1 }, // Chipotle Aioli
+    ],
   },
   {
     id: "32",
@@ -1325,6 +2653,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten"],
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_14", quantity: 0.4 }, // Chicken Breast
+      { inventoryItemId: "inv_69", quantity: 3 }, // Taco Shells
+      { inventoryItemId: "inv_72", quantity: 0.2 }, // Pico de Gallo
+      { inventoryItemId: "inv_73", quantity: 0.1 }, // Avocado Crema
+    ],
   },
   {
     id: "33",
@@ -1339,6 +2673,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Eggs", "Soy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_74", quantity: 0.5 }, // Ramen Noodles
+      { inventoryItemId: "inv_75", quantity: 0.4 }, // Pork Broth
+      { inventoryItemId: "inv_76", quantity: 0.2 }, // Chashu Pork
+      { inventoryItemId: "inv_26", quantity: 1 }, // Soft-Boiled Egg
+      { inventoryItemId: "inv_77", quantity: 0.1 }, // Green Onions
+    ],
   },
   {
     id: "34",
@@ -1353,6 +2694,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Soy"],
     cardBgColor: "bg-blue-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_74", quantity: 0.5 }, // Ramen Noodles
+      { inventoryItemId: "inv_78", quantity: 0.4 }, // Miso Broth
+      { inventoryItemId: "inv_79", quantity: 0.2 }, // Tofu
+      { inventoryItemId: "inv_80", quantity: 0.1 }, // Corn
+      { inventoryItemId: "inv_81", quantity: 0.1 }, // Bamboo Shoots
+    ],
   },
   {
     id: "35",
@@ -1367,6 +2715,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Fish", "Soy"],
     cardBgColor: "bg-green-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_82", quantity: 0.3 }, // Sushi Rice
+      { inventoryItemId: "inv_83", quantity: 0.1 }, // Nori Sheets
+      { inventoryItemId: "inv_84", quantity: 0.1 }, // Imitation Crab
+      { inventoryItemId: "inv_53", quantity: 0.1 }, // Avocado
+      { inventoryItemId: "inv_85", quantity: 0.05 }, // Cucumber
+    ],
   },
   {
     id: "36",
@@ -1381,6 +2736,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Fish", "Soy"],
     cardBgColor: "bg-red-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_82", quantity: 0.3 }, // Sushi Rice
+      { inventoryItemId: "inv_83", quantity: 0.1 }, // Nori Sheets
+      { inventoryItemId: "inv_86", quantity: 0.2 }, // Tuna
+      { inventoryItemId: "inv_87", quantity: 0.05 }, // Spicy Mayo
+    ],
   },
   {
     id: "37",
@@ -1394,6 +2755,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Soy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_14", quantity: 0.4 }, // Chicken Breast
+      { inventoryItemId: "inv_88", quantity: 0.5 }, // Steamed Rice
+      { inventoryItemId: "inv_89", quantity: 0.1 }, // Teriyaki Sauce
+      { inventoryItemId: "inv_8", quantity: 0.2 }, // Vegetables
+    ],
   },
   {
     id: "38",
@@ -1407,6 +2774,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Soy"],
     cardBgColor: "bg-green-200",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_90", quantity: 0.4 }, // Beef Strips
+      { inventoryItemId: "inv_88", quantity: 0.5 }, // Steamed Rice
+      { inventoryItemId: "inv_91", quantity: 0.1 }, // Stir Fry Sauce
+      { inventoryItemId: "inv_8", quantity: 0.3 }, // Mixed Vegetables
+    ],
   },
   {
     id: "39",
@@ -1421,6 +2794,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Sesame"],
     cardBgColor: "bg-green-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_92", quantity: 0.4 }, // Quinoa
+      { inventoryItemId: "inv_8", quantity: 0.3 }, // Roasted Vegetables
+      { inventoryItemId: "inv_93", quantity: 0.2 }, // Chickpeas
+      { inventoryItemId: "inv_94", quantity: 0.1 }, // Tahini Dressing
+    ],
   },
   {
     id: "40",
@@ -1435,8 +2814,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_95", quantity: 0.4 }, // Pulled Pork
+      { inventoryItemId: "inv_96", quantity: 1 }, // Brioche Bun
+      { inventoryItemId: "inv_5", quantity: 0.1 }, // BBQ Sauce
+      { inventoryItemId: "inv_97", quantity: 0.1 }, // Coleslaw
+    ],
   },
-  // --- Additional Appetizers (41-45) ---
   {
     id: "41",
     name: "Mozzarella Sticks",
@@ -1448,6 +2832,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_98", quantity: 0.3 }, // Mozzarella Sticks
+      { inventoryItemId: "inv_99", quantity: 0.1 }, // Marinara Sauce
+    ],
   },
   {
     id: "42",
@@ -1460,6 +2848,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy"],
     cardBgColor: "bg-green-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_100", quantity: 0.3 }, // Spinach Artichoke Dip
+      { inventoryItemId: "inv_36", quantity: 0.2 }, // Tortilla Chips
+    ],
   },
   {
     id: "43",
@@ -1473,6 +2865,13 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_101", quantity: 1 }, // Flour Tortilla
+      { inventoryItemId: "inv_14", quantity: 0.2 }, // Chicken Breast
+      { inventoryItemId: "inv_11", quantity: 0.2 }, // Mozzarella Cheese
+      { inventoryItemId: "inv_37", quantity: 0.1 }, // Bell Peppers
+      { inventoryItemId: "inv_38", quantity: 0.1 }, // Sour Cream
+    ],
   },
   {
     id: "44",
@@ -1486,6 +2885,11 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Seafood", "Gluten"],
     cardBgColor: "bg-blue-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_102", quantity: 0.4 }, // Calamari Rings
+      { inventoryItemId: "inv_99", quantity: 0.1 }, // Marinara Sauce
+      { inventoryItemId: "inv_103", quantity: 0.1 }, // Lemon Aioli
+    ],
   },
   {
     id: "45",
@@ -1499,8 +2903,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Dairy", "Gluten"],
     cardBgColor: "bg-yellow-200",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_104", quantity: 0.3 }, // Button Mushrooms
+      { inventoryItemId: "inv_105", quantity: 0.2 }, // Herbed Cream Cheese
+      { inventoryItemId: "inv_106", quantity: 0.1 }, // Breadcrumbs
+    ],
   },
-  // --- Additional Sides (46-47) ---
   {
     id: "46",
     name: "Sweet Potato Fries",
@@ -1512,6 +2920,9 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-orange-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_107", quantity: 0.4 }, // Sweet Potatoes
+    ],
   },
   {
     id: "47",
@@ -1525,8 +2936,12 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-yellow-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_108", quantity: 0.3 }, // Macaroni
+      { inventoryItemId: "inv_109", quantity: 0.2 }, // Cheese Sauce
+      { inventoryItemId: "inv_106", quantity: 0.1 }, // Breadcrumbs
+    ],
   },
-  // --- Additional Drinks (48-50) ---
   {
     id: "48",
     name: "Green Tea",
@@ -1539,6 +2954,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-green-50",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_110", quantity: 0.05 }, // Green Tea Leaves
+      { inventoryItemId: "inv_44", quantity: 0.3 }, // Water
+    ],
   },
   {
     id: "49",
@@ -1552,6 +2971,9 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-red-100",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_111", quantity: 0.3 }, // Energy Drink Syrup
+    ],
   },
   {
     id: "50",
@@ -1564,6 +2986,10 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: [],
     cardBgColor: "bg-yellow-200",
     availability: true,
+    recipe: [
+      { inventoryItemId: "inv_112", quantity: 0.05 }, // Black Tea Leaves
+      { inventoryItemId: "inv_66", quantity: 0.05 }, // Lemon
+    ],
   },
 ];
 

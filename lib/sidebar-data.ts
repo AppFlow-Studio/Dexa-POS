@@ -6,7 +6,6 @@ import {
   LucideIcon,
   Settings,
   ShoppingBag,
-  Users,
   UtensilsCrossed,
   Warehouse,
 } from "lucide-react-native";

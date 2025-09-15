@@ -1,6 +1,7 @@
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
+import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 
 const TAX_RATE = 0.05;
@@ -721,6 +722,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
     archiveOrder: (orderId: string) => {
       const { orders } = get();
       const order = orders.find((o) => o.id === orderId);
+
+      // Trigger stock deduction before archiving ---
+      if (order && order.items.length > 0) {
+        useInventoryStore.getState().decrementStockFromSale(order.items);
+      }
 
       let tableId: string | null = null;
 

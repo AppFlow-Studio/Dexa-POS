@@ -24,6 +24,11 @@ const generateTitleFromPath = (pathname: string): string => {
   if (pathname === "/" || pathname === "/home") return "Menu";
   if (pathname === "/order-processing") return "Back to Menu";
 
+  if (pathname.startsWith("/inventory/vendors")) return "Vendors";
+  if (pathname.startsWith("/inventory/purchase-orders"))
+    return "Purchase Orders";
+  if (pathname.startsWith("/inventory")) return "Inventory";
+
   // Handle dynamic online order route
   if (
     pathname.startsWith("/online-orders/") &&
@@ -124,13 +129,23 @@ const Header = () => {
     setLastBreakSession(null);
   };
 
+  const handleBackPress = () => {
+    // If we are anywhere inside the inventory section, always go back to the main menu.
+    if (pathname.startsWith("/inventory")) {
+      router.push("/home");
+    } else {
+      // Otherwise, use the default back behavior.
+      router.back();
+    }
+  };
+
   return (
     <>
       <View className="flex-row justify-between items-center">
         <View className="flex-row items-center">
           {showBackButton && (
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleBackPress}
               className="p-2 mr-4 bg-gray-100 rounded-lg"
             >
               <ArrowLeft color="#1f2937" size={24} />
