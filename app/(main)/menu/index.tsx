@@ -138,7 +138,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
                 <View className="flex-row items-center justify-between mb-4">
                     <View className="flex-row items-center gap-3">
                         <GripVertical size={20} color="#9CA3AF" />
-                        <Text className="text-2xl font-semibold text-white">
+                        <Text className="text-3xl font-semibold text-white">
                             {menu.name}
                         </Text>
                         <View className={`px-2 py-1 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}>
@@ -503,7 +503,7 @@ const MenuPage: React.FC = () => {
                                     >
                                         {isExpanded ? <ChevronUp size={18} color="#9CA3AF" /> : <ChevronDown size={18} color="#9CA3AF" />}
                                         {/* <GripVertical size={24} color="#9CA3AF" /> */}
-                                        <Text className="font-medium text-white text-2xl">{categoryName}</Text>
+                                        <Text className="font-medium text-white text-3xl">{categoryName}</Text>
                                         <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
                                             <Text className="text-xs text-blue-400">{categoryItems.length} items</Text>
                                         </View>
@@ -895,7 +895,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                 <View className="flex-1">
                     <View className="flex-row items-center gap-2 mb-2">
                         {/* <GripVertical size={16} color="#6B7280" /> */}
-                        <Text className="text-lg font-semibold text-white">
+                        <Text className="text-xl font-semibold text-white">
                             {item.name}
                         </Text>
                         <TouchableOpacity
@@ -903,9 +903,9 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
                             className="p-1"
                         >
                             {item.availability !== false ? (
-                                <Eye size={16} color="#10B981" />
+                                <Eye size={22} color="#10B981" />
                             ) : (
-                                <EyeOff size={16} color="#EF4444" />
+                                <EyeOff size={22} color="#EF4444" />
                             )}
                         </TouchableOpacity>
                     </View>

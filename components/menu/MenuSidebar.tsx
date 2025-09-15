@@ -7,6 +7,7 @@ import {
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Button } from "@/components/ui/button";
 
 // Sidebar Tab Types
 type SidebarTab = "menus" | "categories" | "items" | "modifiers" | "schedules";
@@ -138,8 +139,8 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
             </View>
 
             {/* Sidebar Tabs */}
-            <View className="flex-1">
-                <TouchableOpacity
+            <View className="flex-1 flex flex-col gap-y-2">
+                <Button
                     className={`p-4 border-b border-gray-700 ${activeTab === "menus" ? "bg-blue-600/20 border-blue-500" : ""}`}
                     onPress={() => handleTabPress("menus")}
                 >
@@ -149,9 +150,9 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
                         </Text>
                         <ChevronRight size={16} color="#9CA3AF" />
                     </View>
-                </TouchableOpacity>
+                </Button>
 
-                <TouchableOpacity
+                <Button
                     className={`p-4 border-b border-gray-700 ${activeTab === "categories" ? "bg-blue-600/20 border-blue-500" : ""}`}
                     onPress={() => handleTabPress("categories")}
                 >
@@ -161,9 +162,9 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
                         </Text>
                         <ChevronRight size={16} color="#9CA3AF" />
                     </View>
-                </TouchableOpacity>
+                </Button>
 
-                <TouchableOpacity
+                <Button
                     className={`p-4 border-b border-gray-700 ${activeTab === "items" ? "bg-blue-600/20 border-blue-500" : ""}`}
                     onPress={() => handleTabPress("items")}
                 >
@@ -173,9 +174,9 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
                         </Text>
                         <ChevronRight size={16} color="#9CA3AF" />
                     </View>
-                </TouchableOpacity>
+                </Button>
 
-                <TouchableOpacity
+                <Button
                     className={`p-4 border-b border-gray-700 ${activeTab === "modifiers" ? "bg-blue-600/20 border-blue-500" : ""}`}
                     onPress={() => handleTabPress("modifiers")}
                 >
@@ -185,9 +186,9 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
                         </Text>
                         <ChevronRight size={16} color="#9CA3AF" />
                     </View>
-                </TouchableOpacity>
+                </Button>
 
-                <TouchableOpacity
+                <Button
                     className={`p-4 border-b border-gray-700 ${activeTab === "schedules" ? "bg-blue-600/20 border-blue-500" : ""}`}
                     onPress={() => handleTabPress("schedules")}
                 >
@@ -197,7 +198,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
                         </Text>
                         <ChevronRight size={16} color="#9CA3AF" />
                     </View>
-                </TouchableOpacity>
+                </Button>
             </View>
         </View>
     );
