@@ -46,8 +46,8 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
         <Text className="text-xl text-accent-100">${voucher.toFixed(2)}</Text>
       </View>
       <View className="border-t border-dashed border-gray-300 pt-2 flex-row justify-between items-center">
-        <Text className="text-xl font-bold text-accent-500">Total</Text>
-        <Text className="text-xl font-bold text-accent-500">
+        <Text className="text-xl font-bold text-white">Total</Text>
+        <Text className="text-xl font-bold text-white">
           ${activeOrderTotal.toFixed(2)}
         </Text>
       </View>

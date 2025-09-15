@@ -75,7 +75,7 @@ const BillItem: React.FC<BillItemProps> = ({
   const hasModifiers = (item.customizations.modifiers && item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
   return (
-    <View className="mb-2 rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
+    <View className="rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
       {/* Delete Button - Positioned absolutely but behind the content */}
       {isEditable && (
         <View className="absolute top-0 right-0 h-16 justify-center items-end z-10">

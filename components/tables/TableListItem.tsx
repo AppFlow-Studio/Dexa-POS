@@ -53,7 +53,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
       </View>
       {/* Display the order details from the active order */}
       {status === "In Use" && activeOrderForThisTable && (
-        <Text className="text-sm text-gray-500 ml-6 mt-1">
+        <Text className="text-sm text-white ml-6 mt-1">
           Order {activeOrderForThisTable.id.slice(-5)}
           {activeOrderForThisTable.customer_name || ""}
           {activeOrderForThisTable.order_status === "Closed" && (

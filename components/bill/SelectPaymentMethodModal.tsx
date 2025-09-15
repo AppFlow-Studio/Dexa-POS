@@ -48,8 +48,8 @@ const SelectPaymentMethodModal: React.FC<SelectPaymentMethodModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[550px] p-6 rounded-2xl bg-white">
-        <DialogTitle className="text-2xl font-bold text-center mb-6">
+      <DialogContent className="w-[550px] p-6 rounded-2xl bg-[#212121]">
+        <DialogTitle className="text-2xl font-bold text-white text-center mb-6">
           Select Payment Method
         </DialogTitle>
 
@@ -69,7 +69,7 @@ const SelectPaymentMethodModal: React.FC<SelectPaymentMethodModalProps> = ({
             onPress={onClose}
             className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
           >
-            <Text className="font-bold text-gray-700">Close</Text>
+            <Text className="font-bold text-gray-200">Close</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleProceed}

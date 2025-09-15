@@ -3,13 +3,14 @@ import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
+import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
@@ -146,6 +147,61 @@ const UpdateTableScreen = () => {
     });
   };
 
+  // --- Coursing ---
+  const coursing = useCoursingStore();
+  const prevItemIdsRef = useRef<string[]>([]);
+
+  // Initialize coursing for this order and auto-assign new items
+  useEffect(() => {
+    if (!activeOrder) return;
+    coursing.initializeForOrder(activeOrder.id);
+    const currentIds = activeOrder.items.map((i) => i.id);
+    const prevIds = prevItemIdsRef.current;
+    const newIds = currentIds.filter((id) => !prevIds.includes(id));
+    if (newIds.length > 0) {
+      const state = coursing.getForOrder(activeOrder.id);
+      const useCourse = state?.currentCourse ?? 1;
+      newIds.forEach((id) => coursing.setItemCourse(activeOrder.id, id, useCourse));
+    }
+    prevItemIdsRef.current = currentIds;
+  }, [activeOrder?.items]);
+
+  const setItemCourse = (itemId: string, course: number) => {
+    if (!activeOrder) return;
+    coursing.setItemCourse(activeOrder.id, itemId, Math.max(1, course));
+  };
+
+  const finalizeCurrentCourse = () => {
+    if (!activeOrder) return;
+    const nextCourse = coursing.finalizeCurrentCourse(
+      activeOrder.id,
+      activeOrder.items.map((i) => i.id)
+    );
+    toast.success(`Course ${nextCourse - 1} created. New items will be Course ${nextCourse}.`, { duration: 2500, position: ToastPosition.BOTTOM });
+  };
+
+  const handleSendCourseToKitchen = (course: number) => {
+    if (!activeOrder) return;
+    const state = coursing.getForOrder(activeOrder.id);
+    const itemsInCourse = activeOrder.items.filter((i) => (state?.itemCourseMap?.[i.id] ?? 1) === course);
+    if (itemsInCourse.length === 0) {
+      toast.error(`No items in course ${course} to send.`, { duration: 2500, position: ToastPosition.BOTTOM });
+      return;
+    }
+    itemsInCourse.forEach((i) => {
+      // Mark items as Preparing to simulate sending to kitchen for this course
+      if ((i.item_status || "Preparing") !== "Preparing") {
+        updateItemStatusInActiveOrder(i.id, "Preparing");
+      }
+    });
+    coursing.markCourseSent(activeOrder.id, course);
+    // Update table status like Take Order
+    if (tableId && table?.status !== "In Use") {
+      handleAssignToTable();
+    }
+    toast.success(`Sent course ${course} to kitchen.`, { duration: 2500, position: ToastPosition.BOTTOM });
+  };
+
   // Close/ Void check behavior
   const handleCloseCheck = () => {
     if (!activeOrder) return;
@@ -234,8 +290,37 @@ const UpdateTableScreen = () => {
       </View>
 
       <View className="flex-1 flex-row ">
-        <TableBillSection showOrderDetails={false} />
+        <TableBillSection
+          showOrderDetails={false}
+          itemCourseMap={coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap}
+          sentCourses={coursing.getForOrder(activeOrder?.id || "")?.sentCourses}
+          currentCourse={coursing.getForOrder(activeOrder?.id || "")?.currentCourse}
+          onSelectCourse={(course: number) => activeOrder && coursing.setCurrentCourse(activeOrder.id, course)}
+        />
         <View className="flex-1 p-6 px-4 pt-0">
+          {/* Coursing Toolbar */}
+          <View className="bg-[#303030] border border-gray-700 rounded-2xl p-3 mb-3 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <Text className="text-base font-semibold text-white">Current Course</Text>
+              <View className="flex-row items-center gap-2 bg-[#212121] border border-gray-700 rounded-lg px-2 py-1">
+                <Text className="text-white font-bold">{coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1}</Text>
+              </View>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity
+                onPress={finalizeCurrentCourse}
+                className="px-4 py-2 rounded-lg bg-[#4B5563]"
+              >
+                <Text className="font-bold text-white">New Course</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleSendCourseToKitchen(coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1)}
+                className="px-4 py-2 rounded-lg bg-blue-500"
+              >
+                <Text className="font-bold text-white">Send Course {coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
         </View>
       </View>
@@ -246,9 +331,11 @@ const UpdateTableScreen = () => {
           <Text className="text-base font-bold text-blue-400 mb-3">
             Items Status
           </Text>
-          <ScrollView className="max-h-32">
+          <ScrollView className="max-h-32 w-full " contentContainerStyle={{ columnGap: 16 }} horizontal={true}>
             {activeOrder.items.map((item) => {
               const isReady = (item.item_status || "Preparing") === "Ready";
+              const state = coursing.getForOrder(activeOrder?.id || "");
+              const course = (state?.itemCourseMap?.[item.id] ?? state?.currentCourse ?? 1);
               return (
                 <View
                   key={item.id}
@@ -258,16 +345,16 @@ const UpdateTableScreen = () => {
                     <Text className="font-semibold text-white">
                       {item.name} x{item.quantity}
                     </Text>
-                    <View
-                      className={`mt-1 self-start px-2 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"
-                        }`}
-                    >
-                      <Text
-                        className={`text-[10px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"
-                          }`}
-                      >
-                        {isReady ? "Ready" : "Preparing"}
-                      </Text>
+                    <View className="flex-row items-center gap-2 mt-1">
+                      <View className={`px-2 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"}`}>
+                        <Text className={`text-[10px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"}`}>
+                          {isReady ? "Ready" : "Preparing"}
+                        </Text>
+                      </View>
+                      <View className="flex-row items-center gap-1 bg-[#212121] border border-gray-700 rounded-full px-2 py-0.5">
+                        <Text className="text-[10px] font-semibold text-gray-300">Course</Text>
+                        <Text className="text-[10px] font-bold text-white">{course}</Text>
+                      </View>
                     </View>
                   </View>
                   <TouchableOpacity

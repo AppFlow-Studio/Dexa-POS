@@ -33,7 +33,7 @@ const ItemsReviewView = () => {
       <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
         Items
       </Text>
-      <ScrollView>
+      <ScrollView contentContainerClassName="gap-y-1">
         {items.map((item) => (
           <BillItem
             key={item.id}
