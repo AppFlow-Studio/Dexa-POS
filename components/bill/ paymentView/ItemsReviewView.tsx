@@ -45,7 +45,7 @@ const ItemsReviewView = () => {
       </ScrollView>
       <View className="border-t border-gray-200 pt-4 mt-4">
         {/* Totals Summary */}
-        <View className="flex-row justify-between items-center mb-2">
+        <View className="flex-row justify-bmetween items-center mb-2">
           <Text className="text-base text-gray-600">Subtotal</Text>
           <Text className="text-base text-gray-800">
             ${activeOrderSubtotal.toFixed(2)}

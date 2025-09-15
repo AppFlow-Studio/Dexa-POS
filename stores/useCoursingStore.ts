@@ -21,6 +21,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
 
     initializeForOrder: (orderId) => {
         const state = get();
+        // If already initialized, bail to preserve existing mapping across navigation/pay flows
         if (state.byOrderId[orderId]) return;
         set((prev) => ({
             byOrderId: {

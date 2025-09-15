@@ -157,11 +157,21 @@ const UpdateTableScreen = () => {
     coursing.initializeForOrder(activeOrder.id);
     const currentIds = activeOrder.items.map((i) => i.id);
     const prevIds = prevItemIdsRef.current;
+    // On initial mount, don't auto-assign existing items. Preserve stored mapping.
+    if (prevIds.length === 0) {
+      prevItemIdsRef.current = currentIds;
+      return;
+    }
     const newIds = currentIds.filter((id) => !prevIds.includes(id));
     if (newIds.length > 0) {
       const state = coursing.getForOrder(activeOrder.id);
       const useCourse = state?.currentCourse ?? 1;
-      newIds.forEach((id) => coursing.setItemCourse(activeOrder.id, id, useCourse));
+      // Only assign a course to truly unmapped items
+      newIds.forEach((id) => {
+        if (state?.itemCourseMap?.[id] === undefined) {
+          coursing.setItemCourse(activeOrder.id, id, useCourse);
+        }
+      });
     }
     prevItemIdsRef.current = currentIds;
   }, [activeOrder?.items]);
