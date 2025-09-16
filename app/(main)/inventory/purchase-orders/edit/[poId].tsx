@@ -9,20 +9,32 @@ import {
 } from "@/components/ui/select";
 import { POLineItem, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const CreatePurchaseOrderScreen = () => {
+const EditPurchaseOrderScreen = () => {
   const router = useRouter();
-  const { vendors, inventoryItems, createPurchaseOrder } = useInventoryStore();
+  const { poId } = useLocalSearchParams();
+  const { vendors, inventoryItems, purchaseOrders, updatePurchaseOrder } =
+    useInventoryStore();
+
+  const poToEdit = purchaseOrders.find((p) => p.id === poId);
+
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [isItemModalOpen, setItemModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (poToEdit) {
+      setSelectedVendorId(poToEdit.vendorId);
+      setLineItems(poToEdit.items);
+    }
+  }, [poToEdit]);
 
   const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
 
@@ -30,12 +42,7 @@ const CreatePurchaseOrderScreen = () => {
     const item = inventoryItems.find(
       (i) => i.id === ingredient.inventoryItemId
     );
-    if (!item) return;
-
-    if (lineItems.some((li) => li.inventoryItemId === item.id)) {
-      alert("This item is already in the purchase order.");
-      return;
-    }
+    if (!item || lineItems.some((li) => li.inventoryItemId === item.id)) return;
 
     const newLineItem: POLineItem = {
       inventoryItemId: item.id,
@@ -52,13 +59,9 @@ const CreatePurchaseOrderScreen = () => {
   };
 
   const handleSave = () => {
-    if (!selectedVendorId || lineItems.length === 0) {
-      alert("Please select a vendor and add at least one item.");
-      return;
-    }
-    createPurchaseOrder({
+    if (!selectedVendorId || lineItems.length === 0 || !poId) return;
+    updatePurchaseOrder(poId as string, {
       vendorId: selectedVendorId,
-      status: "Draft",
       items: lineItems,
     });
     router.back();
@@ -72,20 +75,37 @@ const CreatePurchaseOrderScreen = () => {
     right: 12,
   };
 
+  if (!poToEdit)
+    return (
+      <View>
+        <Text className="text-white">Purchase Order not found.</Text>
+      </View>
+    );
+  if (poToEdit.status !== "Draft")
+    return (
+      <View>
+        <Text className="text-white text-lg">
+          This Purchase Order has been sent or received and can no longer be
+          edited.
+        </Text>
+      </View>
+    );
+
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-6">
         <Text className="text-2xl font-bold text-white">
-          Create Purchase Order
+          Edit Purchase Order {poToEdit.poNumber}
         </Text>
         <TouchableOpacity
           onPress={handleSave}
           className="py-3 px-5 bg-blue-600 rounded-lg"
         >
-          <Text className="font-bold text-white">Save Purchase Order</Text>
+          <Text className="font-bold text-white">Save Changes</Text>
         </TouchableOpacity>
       </View>
 
+      {/* The rest of the JSX is identical to the create screen */}
       <View className="bg-[#303030] border border-gray-700 rounded-xl p-6">
         <Text className="text-gray-300 font-medium mb-2">Vendor</Text>
         <Select
@@ -159,4 +179,4 @@ const CreatePurchaseOrderScreen = () => {
   );
 };
 
-export default CreatePurchaseOrderScreen;
+export default EditPurchaseOrderScreen;

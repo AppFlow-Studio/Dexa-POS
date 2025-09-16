@@ -1,4 +1,5 @@
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -27,8 +28,13 @@ const PurchaseOrderDetailScreen = () => {
   const isReceived = po.status === "Received";
 
   const handleReceive = () => {
-    if (isReceived) return;
-    receivePurchaseOrder(po.id);
+    if (isReceived || !poId) return;
+    receivePurchaseOrder(poId as string);
+
+    toast.success(`Stock received for PO #${po.poNumber}`, {
+      duration: 3000,
+      position: ToastPosition.BOTTOM,
+    });
     router.back();
   };
 

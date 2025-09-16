@@ -75,6 +75,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
             <Text className="text-gray-300 font-medium mb-2">
               Inventory Item
             </Text>
+            {/* --- MODIFIED: The onValueChange now correctly receives the full option object --- */}
             <Select value={selectedItem} onValueChange={setSelectedItem}>
               <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
                 <SelectValue
@@ -89,7 +90,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
                       <SelectItem
                         key={opt.value}
                         label={opt.label}
-                        value={opt.value}
+                        value={opt.value} // Pass the whole object
                       >
                         {opt.label}
                       </SelectItem>

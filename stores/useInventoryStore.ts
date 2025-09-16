@@ -10,6 +10,10 @@ interface InventoryState {
   purchaseOrders: PurchaseOrder[];
 
   // --- ACTIONS ---
+  addVendor: (vendorData: Omit<Vendor, "id">) => void;
+  updateVendor: (vendorId: string, updates: Omit<Vendor, "id">) => void;
+  deleteVendor: (vendorId: string) => void;
+
   addInventoryItem: (itemData: Omit<InventoryItem, "id">) => void;
   updateInventoryItem: (
     itemId: string,
@@ -20,6 +24,11 @@ interface InventoryState {
   createPurchaseOrder: (
     po: Omit<PurchaseOrder, "id" | "poNumber" | "createdAt">
   ) => void;
+  updatePurchaseOrder: (
+    poId: string,
+    updates: Partial<Omit<PurchaseOrder, "id">>
+  ) => void;
+  deletePurchaseOrder: (poId: string) => void;
   receivePurchaseOrder: (poId: string) => void;
   // --- NEW ACTIONS ---
   decrementStockFromSale: (soldItems: CartItem[]) => void;
@@ -31,6 +40,29 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
   inventoryItems: MOCK_INVENTORY_ITEMS,
   vendors: MOCK_VENDORS,
   purchaseOrders: [],
+  addVendor: (vendorData) => {
+    const newVendor: Vendor = {
+      ...vendorData,
+      id: `vendor_${Date.now()}`,
+    };
+    set((state) => ({ vendors: [newVendor, ...state.vendors] }));
+  },
+  updateVendor: (vendorId, updates) => {
+    set((state) => ({
+      vendors: state.vendors.map((v) =>
+        v.id === vendorId ? { ...v, ...updates } : v
+      ),
+    }));
+  },
+  deleteVendor: (vendorId) => {
+    set((state) => ({
+      vendors: state.vendors.filter((v) => v.id !== vendorId),
+      // Also clear this vendor from any items that were assigned to it
+      inventoryItems: state.inventoryItems.map((item) =>
+        item.vendorId === vendorId ? { ...item, vendorId: null } : item
+      ),
+    }));
+  },
 
   addInventoryItem: (itemData) => {
     const newItem: InventoryItem = {
@@ -48,6 +80,27 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
     set((state) => ({ purchaseOrders: [newPO, ...state.purchaseOrders] }));
+  },
+  updatePurchaseOrder: (poId, updates) => {
+    set((state) => ({
+      purchaseOrders: state.purchaseOrders.map((po) => {
+        if (po.id === poId && po.status === "Draft") {
+          return { ...po, ...updates };
+        }
+        return po;
+      }),
+    }));
+  },
+
+  deletePurchaseOrder: (poId) => {
+    const po = get().purchaseOrders.find((p) => p.id === poId);
+    if (po?.status !== "Draft") {
+      console.warn("Cannot delete a PO that is not in Draft status.");
+      return;
+    }
+    set((state) => ({
+      purchaseOrders: state.purchaseOrders.filter((p) => p.id !== poId),
+    }));
   },
 
   updateInventoryItem: (itemId, updates) => {
@@ -89,7 +142,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     }));
   },
 
-  // --- NEW: Real-time stock deduction logic ---
+  // Real-time stock deduction logic ---
   decrementStockFromSale: (soldItems) => {
     const { menuItems } = useMenuStore.getState();
     const currentInventory = get().inventoryItems;
@@ -122,7 +175,7 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     set({ inventoryItems: updatedInventory });
   },
 
-  // --- NEW: Selector for low stock items ---
+  // --- Selector for low stock items ---
   getLowStockItems: () => {
     return get().inventoryItems.filter(
       (item) => item.stockQuantity <= item.reorderThreshold

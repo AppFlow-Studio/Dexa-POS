@@ -1,11 +1,22 @@
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PurchaseOrder } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useRouter } from "expo-router";
-import { Plus } from "lucide-react-native";
-import React from "react";
+import { Edit, MoreHorizontal, Plus, Trash2 } from "lucide-react-native";
+import React, { useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
-const PurchaseOrderRow: React.FC<{ item: PurchaseOrder }> = ({ item }) => {
+const PurchaseOrderRow: React.FC<{
+  item: PurchaseOrder;
+  onEdit: () => void;
+  onDelete: () => void;
+}> = ({ item, onEdit, onDelete }) => {
   const router = useRouter();
   const vendors = useInventoryStore((state) => state.vendors);
   const vendor = vendors.find((v) => v.id === item.vendorId);
@@ -26,13 +37,10 @@ const PurchaseOrderRow: React.FC<{ item: PurchaseOrder }> = ({ item }) => {
   };
 
   return (
-    <TouchableOpacity
-      onPress={() => router.push(`/inventory/purchase-orders/${item.id}`)}
-      className="flex-row items-center p-4 border-b border-gray-700"
-    >
-      <Text className="w-1/6 font-semibold text-white">{item.poNumber}</Text>
-      <Text className="w-1/6 text-gray-300">{vendor?.name || "Unknown"}</Text>
-      <View className="w-1/6">
+    <View className="flex-row items-center p-4 border-b border-gray-700">
+      <Text className="w-[15%] font-semibold text-white">{item.poNumber}</Text>
+      <Text className="w-[20%] text-gray-300">{vendor?.name || "Unknown"}</Text>
+      <View className="w-[15%]">
         <View
           className={`px-3 py-1 rounded-full self-start ${statusColors[item.status]}`}
         >
@@ -41,20 +49,66 @@ const PurchaseOrderRow: React.FC<{ item: PurchaseOrder }> = ({ item }) => {
           </Text>
         </View>
       </View>
-      <Text className="w-1/6 text-gray-300">
+      <Text className="w-[15%] text-gray-300">
         {new Date(item.createdAt).toLocaleDateString()}
       </Text>
-      <Text className="w-1/6 text-gray-300">{totalItems}</Text>
-      <Text className="w-1/6 font-semibold text-white">
+      <Text className="w-[10%] text-gray-300">{totalItems}</Text>
+      <Text className="w-[15%] font-semibold text-white">
         ${totalCost.toFixed(2)}
       </Text>
-    </TouchableOpacity>
+      <View className="w-[10%] items-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TouchableOpacity className="p-2">
+              <MoreHorizontal color="#9CA3AF" />
+            </TouchableOpacity>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
+            <DropdownMenuItem
+              onPress={() =>
+                router.push(`/inventory/purchase-orders/${item.id}`)
+              }
+            >
+              <Text className="text-white">View Details</Text>
+            </DropdownMenuItem>
+            {item.status === "Draft" && (
+              <>
+                <DropdownMenuItem onPress={onEdit}>
+                  <Edit className="mr-2 h-4 w-4" color="#9CA3AF" />
+                  <Text className="text-white">Edit PO</Text>
+                </DropdownMenuItem>
+                <DropdownMenuItem onPress={onDelete}>
+                  <Trash2
+                    className="mr-2 h-4 w-4 text-red-400"
+                    color="#F87171"
+                  />
+                  <Text className="text-red-400">Delete PO</Text>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </View>
+    </View>
   );
 };
 
 const PurchaseOrdersScreen = () => {
-  const purchaseOrders = useInventoryStore((state) => state.purchaseOrders);
+  const { purchaseOrders, deletePurchaseOrder } = useInventoryStore();
   const router = useRouter();
+
+  const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
+
+  const handleOpenDeleteConfirm = (po: PurchaseOrder) => {
+    setPoToDelete(po);
+  };
+
+  const handleConfirmDelete = () => {
+    if (poToDelete) {
+      deletePurchaseOrder(poToDelete.id);
+    }
+    setPoToDelete(null);
+  };
 
   const TABLE_HEADERS = [
     "PO Number",
@@ -63,6 +117,7 @@ const PurchaseOrdersScreen = () => {
     "Date Created",
     "Total Items",
     "Total Cost",
+    "",
   ];
 
   return (
@@ -83,7 +138,21 @@ const PurchaseOrdersScreen = () => {
           {TABLE_HEADERS.map((header) => (
             <Text
               key={header}
-              className="w-1/6 font-bold text-sm text-gray-400"
+              className={`font-bold text-sm text-gray-400 ${
+                header === "PO Number"
+                  ? "w-[15%]"
+                  : header === "Vendor"
+                    ? "w-[20%]"
+                    : header === "Status"
+                      ? "w-[15%]"
+                      : header === "Date Created"
+                        ? "w-[15%]"
+                        : header === "Total Items"
+                          ? "w-[10%]"
+                          : header === "Total Cost"
+                            ? "w-[15%]"
+                            : "w-[10%]"
+              }`}
             >
               {header}
             </Text>
@@ -92,7 +161,15 @@ const PurchaseOrdersScreen = () => {
         <FlatList
           data={purchaseOrders}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <PurchaseOrderRow item={item} />}
+          renderItem={({ item }) => (
+            <PurchaseOrderRow
+              item={item}
+              onEdit={() =>
+                router.push(`/inventory/purchase-orders/edit/${item.id}`)
+              }
+              onDelete={() => handleOpenDeleteConfirm(item)}
+            />
+          )}
           ListEmptyComponent={
             <View className="p-8 items-center">
               <Text className="text-gray-400">
@@ -102,6 +179,15 @@ const PurchaseOrdersScreen = () => {
           }
         />
       </View>
+      <ConfirmationModal
+        isOpen={!!poToDelete}
+        onClose={() => setPoToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Purchase Order"
+        description={`Are you sure you want to delete PO "${poToDelete?.poNumber}"? This action cannot be undone.`}
+        confirmText="Delete"
+        variant="destructive"
+      />
     </View>
   );
 };

@@ -9,6 +9,7 @@ import {
   Discount,
   DrawerSummary,
   EmployeeShift,
+  InventoryItem,
   ItemSize,
   MenuItemType,
   ModifierCategory,
