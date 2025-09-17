@@ -133,7 +133,7 @@ const Header = () => {
 
   const handleBackPress = () => {
     // If we are anywhere inside the inventory section, always go back to the main menu.
-    if (pathname.startsWith("/inventory")) {
+    if (pathname.startsWith("/inventory") && !pathname.includes("/purchase-orders/")) {
       router.push("/home");
     } else {
       // Otherwise, use the default back behavior.

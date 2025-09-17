@@ -62,10 +62,10 @@ interface MenuState {
   setCategorySchedules: (id: string, schedules: Schedule[]) => void;
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
-  // INVENTORY ACTIONS
-  decreaseStock: (itemId: string, quantity: number) => void;
-  increaseStock: (itemId: string, quantity: number) => void;
-  getLowStockItems: () => MenuItemType[];
+  // MENU STOCK (optional per-menu-item)
+  decreaseMenuItemStock: (itemId: string, quantity: number) => void;
+  increaseMenuItemStock: (itemId: string, quantity: number) => void;
+  getLowStockMenuItems: () => MenuItemType[];
   // Custom Pricing Operations
   addCustomPricing: (itemId: string, customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">) => void;
   updateCustomPricing: (itemId: string, pricingId: string, updates: Partial<CustomPricing>) => void;
@@ -518,16 +518,16 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    decreaseStock: (itemId, quantity) => {
+    decreaseMenuItemStock: (itemId, quantity) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
-          if (item.id === itemId) {
-            const newStock = Math.max(0, item.stock - quantity);
+          if (item.id === itemId && typeof item.stockQuantity === "number") {
+            const newStock = Math.max(0, item.stockQuantity - quantity);
             return {
               ...item,
-              stock: newStock,
-              status: newStock === 0 ? "Out of Stock" : item.status,
-            };
+              stockQuantity: newStock,
+              availability: newStock === 0 ? false : item.availability,
+            } as typeof item;
           }
           return item;
         }),
@@ -557,19 +557,16 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    increaseStock: (itemId, quantity) => {
+    increaseMenuItemStock: (itemId, quantity) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
-          if (item.id === itemId) {
-            const newStock = item.stock + quantity;
+          if (item.id === itemId && typeof item.stockQuantity === "number") {
+            const newStock = item.stockQuantity + quantity;
             return {
               ...item,
-              stock: newStock,
-              status:
-                item.status === "Out of Stock" && newStock > 0
-                  ? "Active"
-                  : item.status,
-            };
+              stockQuantity: newStock,
+              availability: newStock > 0 ? true : item.availability,
+            } as typeof item;
           }
           return item;
         }),
@@ -632,9 +629,12 @@ export const useMenuStore = create<MenuState>((set, get) => {
       return item.price;
     },
 
-    getLowStockItems: () => {
+    getLowStockMenuItems: () => {
       return get().menuItems.filter(
-        (item) => item.parLevel && item.stock < item.parLevel
+        (item) =>
+          typeof item.reorderThreshold === "number" &&
+          typeof item.stockQuantity === "number" &&
+          item.stockQuantity <= item.reorderThreshold
       );
     },
   };

@@ -11,19 +11,22 @@ import { POLineItem, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useRouter } from "expo-router";
 import { Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import POVendorsSheet from "./_compoenets/POVendorsSheet";
+import BottomSheet from "@gorhom/bottom-sheet";
+import { Button } from "@/components/ui/button";
 
 const CreatePurchaseOrderScreen = () => {
   const router = useRouter();
-  const { vendors, inventoryItems, createPurchaseOrder } = useInventoryStore();
+  const { vendors, inventoryItems, createPurchaseOrder, submitPurchaseOrder, purchaseOrders } = useInventoryStore();
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const [isItemModalOpen, setItemModalOpen] = useState(false);
-
+  const vendorsSheetRef = useRef<BottomSheet>(null);
   const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
 
   const handleAddLineItem = (ingredient: RecipeItem) => {
@@ -64,6 +67,17 @@ const CreatePurchaseOrderScreen = () => {
     router.back();
   };
 
+  const handleSubmit = () => {
+    if (!selectedVendorId || lineItems.length === 0) {
+      alert("Please select a vendor and add at least one item.");
+      return;
+    }
+    // First create as Draft, then immediately submit to Pending Delivery
+    const tempId = `po_${Date.now()}`; // predict id not ideal, so instead we update latest created
+    createPurchaseOrder({ vendorId: selectedVendorId, status: "Pending Delivery", items: lineItems });
+    router.back();
+  };
+
   const insets = useSafeAreaInsets();
   const contentInsets = {
     top: insets.top,
@@ -72,44 +86,41 @@ const CreatePurchaseOrderScreen = () => {
     right: 12,
   };
 
+  const handleUseTemplate = (poId: string) => {
+    const po = purchaseOrders.find((p) => p.id === poId);
+    if (!po) return;
+    setLineItems(po.items);
+    setSelectedVendorId(po.vendorId);
+    vendorsSheetRef.current?.close();
+  };
+
+  const selectVendor = (vendorId: string) => {
+    setSelectedVendorId(vendorId);
+    vendorsSheetRef.current?.close();
+  };
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-3xl font-bold text-white">
-          Create Purchase Order
-        </Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          className="py-4 px-6 bg-blue-600 rounded-lg"
-        >
-          <Text className="text-2xl font-bold text-white">
-            Save Purchase Order
-          </Text>
-        </TouchableOpacity>
+        <Text className="text-3xl font-bold text-white">Create Purchase Order</Text>
+        <View className="flex-row gap-3">
+          <TouchableOpacity onPress={handleSave} className="py-4 px-6 bg-gray-600 rounded-lg">
+            <Text className="text-2xl font-bold text-white">Save as Draft</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSubmit} className="py-4 px-6 bg-blue-600 rounded-lg">
+            <Text className="text-2xl font-bold text-white">Submit</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View className="bg-[#303030] border border-gray-700 rounded-xl p-6">
         <Text className="text-xl font-medium text-gray-300 mb-2">Vendor</Text>
-        <Select
-          value={vendorOptions.find((v) => v.value === selectedVendorId)}
-          onValueChange={(opt) => setSelectedVendorId(opt?.value)}
-        >
-          <SelectTrigger className="w-full p-6 bg-[#212121] border border-gray-600 rounded-lg">
-            <SelectValue
-              className="text-2xl text-white"
-              placeholder="Select a vendor..."
-            />
-          </SelectTrigger>
-          <SelectContent insets={contentInsets}>
-            <SelectGroup>
-              {vendorOptions.map((opt) => (
-                <SelectItem key={opt.value} label={opt.label} value={opt.value}>
-                  <Text className="text-2xl">{opt.label}</Text>
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
+       <TouchableOpacity  className="h-fit border border-gray-600 border-dashed rounded-lg p-4" onPress={() => vendorsSheetRef.current?.expand()}>
+        <Text className="text-2xl text-white">
+          {selectedVendorId
+            ? vendorOptions.find((v) => v.value === selectedVendorId)?.label
+            : "Select a vendor..."}
+        </Text>
+       </TouchableOpacity>
 
         <View className="mt-6">
           <Text className="text-2xl font-semibold text-white mb-2">Items</Text>
@@ -161,6 +172,7 @@ const CreatePurchaseOrderScreen = () => {
         onClose={() => setItemModalOpen(false)}
         onAddIngredient={handleAddLineItem}
       />
+      <POVendorsSheet ref={vendorsSheetRef} onUseTemplate={handleUseTemplate} onSelectVendor={selectVendor} />
     </View>
   );
 };

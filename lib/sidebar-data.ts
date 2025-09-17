@@ -22,7 +22,7 @@ export interface SidebarNavigationItem {
 }
 
 export const SIDEBAR_DATA: SidebarNavigationItem[] = [
-  { id: "home", label: "Home", icon: Home, href: "/home" as Href },
+  { id: "home", label: "Home", icon: Home, href: "/" as Href },
   {
     id: "tables",
     label: "Tables",

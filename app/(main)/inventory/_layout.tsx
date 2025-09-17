@@ -23,7 +23,7 @@ export default function InventoryLayout() {
         </Text>
         <View className="flex-row items-center bg-[#303030] border border-gray-700 p-2 rounded-xl">
           {INVENTORY_TABS.map((tab) => {
-            const isActive = pathname === tab.path;
+            const isActive = tab.path.split('/')[2] === pathname.split('/')[2] ;
             return (
               <TouchableOpacity
                 key={tab.name}

@@ -147,13 +147,12 @@ const OpenItemAdder = () => {
     );
   };
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <Text className="text-3xl font-bold text-white mb-3">Add Open Item</Text>
+    <View className="flex-1 bg-[#212121]">
 
       {/* Item Name Input */}
       <View className="mb-6">
         <Text className="text-2xl font-semibold text-white mb-3">
-          Item Name
+          Open Item Name
         </Text>
         <TextInput
           className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
@@ -166,7 +165,7 @@ const OpenItemAdder = () => {
 
       {/* Price Display */}
       <View className="mb-6">
-        <Text className="text-2xl font-semibold text-white mb-3">Price</Text>
+        <Text className="text-2xl font-semibold text-white mb-3">Open Item Price</Text>
         <View className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-5 items-center">
           <Text className="text-4xl font-bold text-white">${priceDisplay}</Text>
         </View>

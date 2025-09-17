@@ -26,18 +26,20 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
   const [contactPerson, setContactPerson] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-
+  const [desc, setDesc] = useState("");
   useEffect(() => {
     if (isOpen && initialData) {
       setName(initialData.name);
       setContactPerson(initialData.contactPerson);
       setEmail(initialData.email);
       setPhone(initialData.phone);
+      setDesc(initialData.description || "");
     } else {
       setName("");
       setContactPerson("");
       setEmail("");
       setPhone("");
+      setDesc("");
     }
   }, [initialData, isOpen]);
 
@@ -46,7 +48,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
       alert("Please fill in at least the vendor name and contact person.");
       return;
     }
-    onSave({ name, contactPerson, email, phone }, initialData?.id);
+    onSave({ name, contactPerson, email, phone, description: desc }, initialData?.id);
     onClose();
   };
 
@@ -98,6 +100,16 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+            />
+          </View>
+          <View>
+            <Text className="text-xl text-gray-300 font-medium mb-2">
+              Description
+            </Text>
+            <TextInput
+              value={desc}
+              onChangeText={setDesc}
               className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
             />
           </View>
