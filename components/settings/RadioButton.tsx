@@ -15,19 +15,17 @@ const RadioButton: React.FC<RadioButtonProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-row justify-between items-center p-4 border rounded-lg ${isSelected ? "border-primary-400 bg-blue-50" : "border-gray-200"}`}
+      className={`flex-row justify-between items-center p-6 border rounded-lg ${isSelected ? "border-blue-500 bg-blue-50" : "bg-[#303030] border-gray-600"}`}
     >
       <Text
-        className={`font-semibold ${isSelected ? "text-primary-400" : "text-gray-700"}`}
+        className={`font-bold text-2xl ${isSelected ? "text-blue-400" : "text-gray-300"}`}
       >
         {label}
       </Text>
       <View
-        className={`w-5 h-5 rounded-full border-2 items-center justify-center ${isSelected ? "border-[#30A25D]" : "border-gray-300"}`}
+        className={`w-7 h-7 rounded-full border-2 items-center justify-center ${isSelected ? "border-green-500" : "border-gray-500"}`}
       >
-        {isSelected && (
-          <View className="w-2.5 h-2.5 bg-[#30A25D] rounded-full" />
-        )}
+        {isSelected && <View className="w-3 h-3 bg-green-500 rounded-full" />}
       </View>
     </TouchableOpacity>
   );

@@ -4,6 +4,7 @@ import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import { CreditCard, Monitor, Printer, Receipt } from "lucide-react-native";
 import React, { useState } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 
 // Define the types for our state
 type IdleScreenOption = "logo" | "slideshow";
@@ -60,54 +61,55 @@ const CustomerDisplayScreen = () => {
         {/* Main Content */}
         <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main content area */}
-          <View className="flex-1 gap-y-6">
-            {/* Enable/Disable Card */}
-            <View className="bg-[#212121] flex-row justify-between items-center p-6 rounded-2xl border border-gray-600">
-              <Text className="text-3xl font-bold text-white">
-                Enable customer display
-              </Text>
-              <Switch
-                value={isEnabled}
-                onValueChange={setIsEnabled}
-                trackColor={{ false: "#DCDCDC", true: "#31A961" }}
-                thumbColor={"#ffffff"}
-                style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
-              />
+          <ScrollView>
+            <View className="flex-1 gap-y-6">
+              {/* Enable/Disable Card */}
+              <View className="bg-[#212121] flex-row justify-between items-center p-6 rounded-2xl border border-gray-600">
+                <Text className="text-3xl font-bold text-white">
+                  Enable customer display
+                </Text>
+                <Switch
+                  value={isEnabled}
+                  onValueChange={setIsEnabled}
+                  trackColor={{ false: "#DCDCDC", true: "#31A961" }}
+                  thumbColor={"#ffffff"}
+                  style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
+                />
+              </View>
+
+              {/* Idle Screen Options */}
+              <SettingsCard title="Select what to show when the screen is idle">
+                <View className="gap-y-4">
+                  <RadioButton
+                    label="Show Store Logo"
+                    isSelected={idleOption === "logo"}
+                    onPress={() => setIdleOption("logo")}
+                  />
+                  <RadioButton
+                    label="Show Image Slideshow"
+                    isSelected={idleOption === "slideshow"}
+                    onPress={() => setIdleOption("slideshow")}
+                  />
+                </View>
+              </SettingsCard>
+
+              {/* Transaction Screen Options */}
+              <SettingsCard title="Select what to show during a transaction">
+                <View className="gap-y-4">
+                  <RadioButton
+                    label="Show Item List"
+                    isSelected={transactionOption === "itemList"}
+                    onPress={() => setTransactionOption("itemList")}
+                  />
+                  <RadioButton
+                    label="Show Tip & Signature Screen"
+                    isSelected={transactionOption === "tipAndSign"}
+                    onPress={() => setTransactionOption("tipAndSign")}
+                  />
+                </View>
+              </SettingsCard>
             </View>
-
-            {/* Idle Screen Options */}
-            <SettingsCard title="Select what to show when the screen is idle">
-              <View className="gap-y-4">
-                <RadioButton
-                  label="Show Store Logo"
-                  isSelected={idleOption === "logo"}
-                  onPress={() => setIdleOption("logo")}
-                />
-                <RadioButton
-                  label="Show Image Slideshow"
-                  isSelected={idleOption === "slideshow"}
-                  onPress={() => setIdleOption("slideshow")}
-                />
-              </View>
-            </SettingsCard>
-
-            {/* Transaction Screen Options */}
-            <SettingsCard title="Select what to show during a transaction">
-              <View className="gap-y-4">
-                <RadioButton
-                  label="Show Item List"
-                  isSelected={transactionOption === "itemList"}
-                  onPress={() => setTransactionOption("itemList")}
-                />
-                <RadioButton
-                  label="Show Tip & Signature Screen"
-                  isSelected={transactionOption === "tipAndSign"}
-                  onPress={() => setTransactionOption("tipAndSign")}
-                />
-              </View>
-            </SettingsCard>
-          </View>
-
+          </ScrollView>
           {/* Footer */}
           <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
             <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">

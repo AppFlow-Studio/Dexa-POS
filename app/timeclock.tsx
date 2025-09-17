@@ -63,14 +63,15 @@ const TimeclockScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-100 p-6">
+    // Apply dark mode styling to the entire container
+    <View className="flex-1 bg-[#212121] p-6">
       <View className="flex-row items-center my-4">
         <TouchableOpacity
-          className="p-2 flex-row items-center gap-3"
+          className="p-3 flex-row items-center gap-3"
           onPress={() => router.back()}
         >
-          <ArrowLeft size={24} />
-          <Text className="text-3xl font-semibold text-accent-500">
+          <ArrowLeft size={24} color="#FFFFFF" />
+          <Text className="text-3xl font-semibold text-white">
             Clock In/Out
           </Text>
         </TouchableOpacity>
@@ -80,13 +81,13 @@ const TimeclockScreen = () => {
         <UserProfileCard />
 
         <View className="flex-1">
-          <View className="flex-1 border border-gray-200 rounded-xl">
+          <View className="flex-1 border border-gray-700 rounded-xl">
             {/* Table Header */}
-            <View className="flex-row p-6 bg-gray-50 rounded-t-xl border-b border-gray-200">
+            <View className="flex-row p-6 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
               {TABLE_HEADERS.map((header) => (
                 <Text
                   key={header}
-                  className="flex-1 font-bold text-xl text-gray-500"
+                  className="flex-1 font-bold text-xl text-gray-100"
                 >
                   {header}
                 </Text>
@@ -97,26 +98,26 @@ const TimeclockScreen = () => {
               data={shiftHistory}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <View className="flex-row p-6 border-b border-gray-100">
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                <View className="flex-row p-6 border-b border-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.date}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.role}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.clockIn}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.breakInitiated}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.breakEnded}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.clockOut}
                   </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-700">
+                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
                     {item.duration}
                   </Text>
                 </View>

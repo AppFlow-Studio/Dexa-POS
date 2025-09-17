@@ -8,8 +8,8 @@ const SettingsCard = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <View className="bg-white p-6 rounded-2xl border border-gray-200">
-    <Text className="text-xl font-bold text-gray-800 mb-4">{title}</Text>
+  <View className="bg-[#303030] p-6 rounded-2xl border border-gray-700">
+    <Text className="text-3xl font-bold text-white mb-4">{title}</Text>
     {children}
   </View>
 );

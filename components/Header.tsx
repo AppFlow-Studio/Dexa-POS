@@ -102,8 +102,8 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4) ||
-    (pathname.startsWith("/settings") && pathname.split("/").length === 4);
-  pathname === "/settings/store-operation/end-of-day/checks" ||
+    (pathname.startsWith("/settings") && pathname.split("/").length === 4) ||
+    pathname === "/settings/store-operation/end-of-day/checks" ||
     pathname === "/settings/store-operation/end-of-day/drawers" ||
     pathname === "/settings/store-operation/end-of-day/employees" ||
     pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||

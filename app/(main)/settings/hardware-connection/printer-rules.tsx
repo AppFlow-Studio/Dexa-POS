@@ -68,7 +68,7 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
           <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
             <SelectValue
               placeholder="Select Category"
-              className="text-2xl text-white"
+              className="text-2xl text-white h-8"
             />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
@@ -94,7 +94,7 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
           <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
             <SelectValue
               placeholder="Select Printer"
-              className="text-2xl text-white"
+              className="text-2xl text-white h-8"
             />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
@@ -244,7 +244,7 @@ const PrinterRulesScreen = () => {
                   <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
                     <SelectValue
                       placeholder="Category"
-                      className="text-2xl text-white"
+                      className="text-2xl text-white h-8"
                     />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
@@ -270,7 +270,7 @@ const PrinterRulesScreen = () => {
                   <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
                     <SelectValue
                       placeholder="Printer"
-                      className="text-2xl text-white"
+                      className="text-2xl text-white h-8"
                     />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
@@ -290,7 +290,7 @@ const PrinterRulesScreen = () => {
               </View>
               <TouchableOpacity
                 onPress={handleAddRule}
-                className="py-3 px-6 ml-4 border border-gray-500 rounded-xl"
+                className="py-2 px-6 ml-4 border border-gray-500 rounded-xl"
               >
                 <Text className="text-2xl font-bold text-gray-300">Add</Text>
               </TouchableOpacity>

@@ -46,9 +46,9 @@ const UserProfileCard: React.FC = () => {
       case "clockedIn":
       case "onBreak":
         return (
-          <View className="w-full mt-4 p-6 border border-gray-200 rounded-lg">
+          <View className="w-full mt-4 p-6 border border-gray-700 rounded-lg">
             <View className="flex-row justify-between items-center">
-              <Text className="text-2xl font-bold text-gray-700">
+              <Text className="text-2xl font-bold text-white">
                 Shift Status
               </Text>
               <View className="px-3 py-2 bg-[#D5EFE3] rounded-md">
@@ -59,19 +59,18 @@ const UserProfileCard: React.FC = () => {
             </View>
             <View className="mt-3 space-y-2">
               <View className="flex-row items-center">
-                <Timer className="text-gray-600" size={20} />
-                <Text className="text-xl ml-2 text-neutral-600">
+                <Timer className="text-gray-300" size={20} />
+                <Text className="text-xl ml-2 text-gray-300">
                   Duration :
                   <Text className="text-accent-600 font-medium text-2xl">
-                    {" "}
                     {shiftDuration}
                   </Text>
                 </Text>
               </View>
               <View className="flex-row items-center">
-                <Clock className="text-gray-600" size={20} />
+                <Clock className="text-gray-300" size={20} />
                 <Text className="text-xl ml-2 text-neutral-600">
-                  Clock in at :{" "}
+                  Clock in at :
                   <Text className="text-accent-600 font-medium text-2xl">
                     {currentShift?.clockInTime?.toLocaleTimeString([], {
                       hour: "2-digit",
@@ -88,7 +87,7 @@ const UserProfileCard: React.FC = () => {
                 disabled={status === "onBreak" || currentShift?.hasTakenBreak}
                 className={`py-3 border rounded-xl items-center ${
                   status === "onBreak" || currentShift?.hasTakenBreak
-                    ? "bg-gray-100 border-gray-200"
+                    ? "bg-gray-700 border-gray-600"
                     : "border-gray-300"
                 }`}
               >
@@ -96,7 +95,7 @@ const UserProfileCard: React.FC = () => {
                   className={`font-bold text-2xl ${
                     status === "onBreak" || currentShift?.hasTakenBreak
                       ? "text-gray-400"
-                      : "text-gray-700"
+                      : "text-white"
                   }`}
                 >
                   {currentShift?.hasTakenBreak
@@ -116,13 +115,13 @@ const UserProfileCard: React.FC = () => {
       case "clockedOut":
       default:
         return (
-          <View className="w-full mt-4 p-6 items-center bg-white rounded-lg">
+          <View className="w-full mt-4 p-6 items-center bg-[#303030] rounded-lg border border-gray-700">
             <View className="flex-row justify-between items-center w-full mb-4">
-              <Text className="text-2xl font-bold text-accent-600">
+              <Text className="text-2xl font-bold text-white">
                 Shift Status
               </Text>
-              <View className="px-3 py-2 rounded-md bg-background-300">
-                <Text className="font-bold text-xl text-background-600">
+              <View className="px-3 py-2 rounded-md bg-gray-700">
+                <Text className="font-bold text-xl text-gray-200">
                   • Not Clocked In
                 </Text>
               </View>
@@ -139,10 +138,13 @@ const UserProfileCard: React.FC = () => {
   };
 
   return (
-    <View className="w-96 p-6 bg-[#212121] rounded-3xl justify-between">
+    <View className="w-80 p-6 bg-[#212121] rounded-3xl justify-between">
       <View className="mb-4">
-        <Text className="text-xl text-gray-500 text-center">Current Time</Text>
-        <Text className="text-5xl font-bold text-gray-800 text-center">
+        <Text className="text-xl text-gray-300 text-center">Current Time</Text>{" "}
+        {/* Changed color */}
+        <Text className="text-5xl font-bold text-white text-center">
+          {" "}
+          {/* Changed color */}
           {currentTime.toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -155,10 +157,14 @@ const UserProfileCard: React.FC = () => {
             source={require("@/assets/images/tom_hardy.jpg")}
             className="w-32 h-32 rounded-2xl"
           />
-          <Text className="text-3xl font-bold text-gray-800 mt-4">
+          <Text className="text-3xl font-bold text-white mt-4">
+            {" "}
+            {/* Changed color */}
             {MOCK_USER_PROFILE.fullName}
           </Text>
-          <Text className="text-xl text-gray-500">
+          <Text className="text-xl text-gray-300">
+            {" "}
+            {/* Changed color */}
             {MOCK_USER_PROFILE.employeeId}
           </Text>
         </View>

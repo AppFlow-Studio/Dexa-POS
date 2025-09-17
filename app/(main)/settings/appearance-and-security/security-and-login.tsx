@@ -56,7 +56,6 @@ const SecurityAndLoginScreen = () => {
               <Text className="text-2xl font-semibold text-white mb-2">
                 Lock After
               </Text>
-              {/* 3. Use the correct Select implementation */}
               <Select
                 value={lockAfter}
                 onValueChange={(option) => option && setLockAfter(option)}
@@ -65,7 +64,7 @@ const SecurityAndLoginScreen = () => {
                 <SelectTrigger className="flex-grow p-4 bg-[#303030] rounded-lg flex-row items-center border-gray-600">
                   <SelectValue
                     placeholder="Select time..."
-                    className="text-2xl text-white"
+                    className="text-2xl text-white h-8"
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
@@ -76,7 +75,7 @@ const SecurityAndLoginScreen = () => {
                         label={opt.label}
                         value={opt.value}
                       >
-                        <Text className="text-2xl">{opt.label}</Text>
+                        <Text className="text-2xl text-white">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -86,6 +85,7 @@ const SecurityAndLoginScreen = () => {
           )}
         </View>
 
+        {/* Switch User Card */}
         <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
           <SettingsHeader
             title="Switch User"
@@ -116,7 +116,6 @@ const SecurityAndLoginScreen = () => {
           )}
         </View>
       </View>
-
       <SwitchAccountModal
         isOpen={isSwitchModalOpen}
         onClose={() => setSwitchModalOpen(false)}
