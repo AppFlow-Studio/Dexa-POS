@@ -117,7 +117,6 @@ const OrderDetails: React.FC = () => {
     }
   }, [activeOrderId, activeOrder?.customer_name]);
 
-
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
       toast.error("Please enter an item name", {
@@ -164,7 +163,7 @@ const OrderDetails: React.FC = () => {
 
     addItemToActiveOrder(newOpenItem);
 
-    toast.success(`${openItemName} $${price.toFixed(2)} added`, {
+    toast.success(`${openItemName} ${price.toFixed(2)} added`, {
       duration: 4000,
       position: ToastPosition.BOTTOM,
     });
@@ -217,36 +216,34 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className="pb-4 px-4 bg-[#212121] overflow-hidden ">
+    <View className="pb-4 px-6 bg-[#212121] overflow-hidden ">
       {/* Header */}
       <View className="flex-row flex items-center justify-center my-2 w-full gap-x-4">
-
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-lg">Customer Name</Label>
+          <Label className="text-white font-semibold text-2xl">
+            Customer Name
+          </Label>
           {/* Customer Name Button */}
           {customerName && customerName !== "Walk-In Customer" ? (
             // Edit Mode - Show customer name with edit icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-between py-3 px-4 rounded-lg border border-white bg-accent-50 w-full"
+              className="flex-row items-center justify-between py-4 px-6 rounded-lg border border-white bg-accent-50 w-full"
             >
               <View className="flex-row items-center flex-1">
-                <Text className="text-lg font-semibold text-white flex-1">
+                <Text className="text-2xl font-semibold text-white flex-1">
                   {customerName}
                 </Text>
               </View>
-              <Edit3 color="#3B82F6" size={18} />
+              <Edit3 color="#3B82F6" size={24} />
             </TouchableOpacity>
           ) : (
             // Add Mode - Show add button with plus icon
             <TouchableOpacity
               onPress={handleAddCustomerName}
-              className="flex-row items-center justify-center py-3 px-4 gap-x-2 rounded-lg border-2 border-dashed border-gray-800 bg-[#303030] w-full"
+              className="flex-row items-center justify-center py-4 px-6 gap-x-2 rounded-lg border-2 border-dashed border-gray-800 bg-[#303030] w-full"
             >
-              <Plus
-                color="#9CA3AF"
-                size={20}
-              />
+              <Plus color="#9CA3AF" size={20} />
               <Text className="font-semibold text-white">
                 Add Customer Name
               </Text>
@@ -254,13 +251,15 @@ const OrderDetails: React.FC = () => {
           )}
         </View>
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-lg">Order Type</Label>
+          <Label className="text-white font-semibold text-2xl">
+            Order Type
+          </Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row justify-between items-center p-3 border border-background-400 rounded-lg bg-[#303030]"
+            className="w-full flex-row justify-between items-center p-4 border border-background-400 rounded-lg bg-[#303030]"
             onPress={openDrawer}
           >
-            <Text className="font-semibold text-white">
+            <Text className="text-xl font-semibold text-white">
               {currentOrderType}
             </Text>
             <Text className="text-gray-400">▼</Text>
@@ -268,20 +267,15 @@ const OrderDetails: React.FC = () => {
         </View>
       </View>
 
-      {/* Open Item Button
-      <TouchableOpacity
-        className="mt-2 w-full items-center py-3 border border-background-400 rounded-lg"
-        onPress={handleOpenItemPress}
-      >
-        <Text className="font-bold text-white">Add Custom Item</Text>
-      </TouchableOpacity> */}
-
       {/* Open Item Modal */}
-      <Dialog open={isOpenItemModalVisible} onOpenChange={setIsOpenItemModalVisible}>
+      <Dialog
+        open={isOpenItemModalVisible}
+        onOpenChange={setIsOpenItemModalVisible}
+      >
         <DialogContent className="p-0 rounded-[36px] max-w-2xl w-full bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-t-2xl">
-            <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
+            <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
               Add Custom Item
             </DialogTitle>
           </View>
@@ -289,18 +283,18 @@ const OrderDetails: React.FC = () => {
           {/* White Content */}
           <View className="rounded-[36px] p-6 bg-background-100">
             <DialogHeader>
-              <Text className="text-accent-500 text-center mb-4">
+              <Text className="text-accent-500 text-2xl text-center mb-4">
                 Enter the details for your custom item
               </Text>
             </DialogHeader>
 
             {/* Item Name Input */}
             <View className="mb-4">
-              <Text className="text-accent-500 font-semibold mb-2">
+              <Text className="text-accent-500 text-xl font-semibold mb-2">
                 Item Name
               </Text>
               <TextInput
-                className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
+                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
                 placeholder="Enter item name"
                 placeholderTextColor="#9CA3AF"
                 value={openItemName}
@@ -311,9 +305,11 @@ const OrderDetails: React.FC = () => {
 
             {/* Item Price Input */}
             <View className="mb-6">
-              <Text className="text-accent-500 font-semibold mb-2">Price</Text>
+              <Text className="text-accent-500 text-xl font-semibold mb-2">
+                Price
+              </Text>
               <TextInput
-                className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
+                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
                 placeholder="0.00"
                 placeholderTextColor="#9CA3AF"
                 value={openItemPrice}
@@ -323,20 +319,20 @@ const OrderDetails: React.FC = () => {
             </View>
 
             {/* Footer with Buttons */}
-            <DialogFooter className="flex-row gap-3">
+            <DialogFooter className="flex-row gap-4">
               <TouchableOpacity
                 onPress={handleCancelOpenItem}
-                className="flex-1 py-3 border border-gray-300 rounded-lg"
+                className="flex-1 py-4 border border-gray-300 rounded-lg"
               >
-                <Text className="font-bold text-gray-700 text-center">
+                <Text className="font-bold text-2xl text-gray-700 text-center">
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleAddOpenItem}
-                className="flex-1 py-3 bg-white rounded-lg"
+                className="flex-1 py-4 bg-white rounded-lg"
               >
-                <Text className="font-bold text-white text-center">
+                <Text className="font-bold text-2xl text-white text-center">
                   Add Item
                 </Text>
               </TouchableOpacity>
@@ -353,7 +349,7 @@ const OrderDetails: React.FC = () => {
         <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
           {/* Dark Header */}
           <View className="p-6 rounded-lg ">
-            <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
+            <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
               {customerName ? "Edit Customer Name" : "Add Customer Name"}
             </DialogTitle>
           </View>
@@ -361,18 +357,18 @@ const OrderDetails: React.FC = () => {
           {/* White Content */}
           <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
             <DialogHeader>
-              <Text className="text-accent-500 text-center mb-4">
+              <Text className="text-accent-500 text-2xl text-center mb-4">
                 Enter the customer's name for this order
               </Text>
             </DialogHeader>
 
             {/* Customer Name Input */}
             <View className="mb-6">
-              <Text className="text-accent-500 font-semibold mb-2">
+              <Text className="text-accent-500 text-xl font-semibold mb-2">
                 Customer Name
               </Text>
               <TextInput
-                className="w-full p-3 border border-background-400 rounded-lg text-accent-500"
+                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
                 placeholder="Enter customer name"
                 placeholderTextColor="#9CA3AF"
                 value={tempCustomerName}
@@ -382,20 +378,20 @@ const OrderDetails: React.FC = () => {
             </View>
 
             {/* Footer with Buttons */}
-            <DialogFooter className="flex-row gap-3">
+            <DialogFooter className="flex-row gap-4">
               <TouchableOpacity
                 onPress={handleCancelCustomerName}
-                className="flex-1 py-3 border border-gray-300 rounded-lg"
+                className="flex-1 py-4 border border-gray-300 rounded-lg"
               >
-                <Text className="font-bold text-gray-700 text-center">
+                <Text className="font-bold text-2xl text-gray-700 text-center">
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveCustomerName}
-                className="flex-1 py-3 bg-white rounded-lg  border border-blue-400"
+                className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
               >
-                <Text className="font-bold text-gray-800 text-center">
+                <Text className="font-bold text-2xl text-gray-800 text-center">
                   {customerName ? "Update" : "Add"}
                 </Text>
               </TouchableOpacity>

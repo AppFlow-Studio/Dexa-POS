@@ -94,7 +94,7 @@ const TotalVoidsCard = () => {
   };
 
   return (
-    <View className="bg-white">
+    <View className="bg-white p-6 rounded-2xl border border-gray-200">
       <View className="flex-row items-center">
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>

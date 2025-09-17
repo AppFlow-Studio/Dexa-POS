@@ -47,28 +47,28 @@ const TrackOrderSection = () => {
   return (
     <View className="mt-6">
       <View className="flex-row justify-between items-center">
-        <Text className="text-2xl font-bold text-white">Track Order</Text>
-        <View className="flex-row items-center gap-2">
-          <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-2 w-64">
-            <Search color="white" size={16} />
+        <Text className="text-3xl font-bold text-white">Track Order</Text>
+        <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 w-72">
+            <Search color="white" size={24} />
             <TextInput
               placeholder="Search Order"
               value={searchText}
               onChangeText={setSearchText}
-              className="ml-2 text-base flex-1"
+              className="ml-3 text-2xl flex-1"
             />
           </View>
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 border border-white rounded-full"
+            className="p-3 border border-white rounded-full"
           >
-            <ChevronLeft color="#4b5563" size={20} />
+            <ChevronLeft color="#4b5563" size={24} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}
-            className="p-2 bg-primary-400 rounded-full"
+            className="p-3 bg-primary-400 rounded-full"
           >
-            <ChevronRight color="white" size={20} />
+            <ChevronRight color="white" size={24} />
           </TouchableOpacity>
         </View>
       </View>
@@ -83,7 +83,9 @@ const TrackOrderSection = () => {
         renderItem={({ item }) => <TrackOrderCard order={item} />}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center">
-            <Text className="text-white">No matching orders found.</Text>
+            <Text className="text-2xl text-white">
+              No matching orders found.
+            </Text>
           </View>
         }
       />

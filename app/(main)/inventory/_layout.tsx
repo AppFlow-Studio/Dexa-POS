@@ -17,21 +17,21 @@ export default function InventoryLayout() {
   return (
     <View className="flex-1 bg-[#212121] p-6">
       {/* Header with Navigation Tabs */}
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">
+      <View className="flex-row justify-between items-center mb-6">
+        <Text className="text-3xl font-bold text-white">
           Inventory Management
         </Text>
-        <View className="flex-row items-center bg-[#303030] border border-gray-700 p-1 rounded-xl">
+        <View className="flex-row items-center bg-[#303030] border border-gray-700 p-2 rounded-xl">
           {INVENTORY_TABS.map((tab) => {
             const isActive = pathname === tab.path;
             return (
               <TouchableOpacity
                 key={tab.name}
                 onPress={() => router.push(tab.path as any)}
-                className={`py-2 px-5 rounded-lg ${isActive ? "bg-blue-600" : ""}`}
+                className={`py-3 px-6 rounded-lg ${isActive ? "bg-blue-600" : ""}`}
               >
                 <Text
-                  className={`font-semibold text-base ${isActive ? "text-white" : "text-gray-300"}`}
+                  className={`font-semibold text-xl ${isActive ? "text-white" : "text-gray-300"}`}
                 >
                   {tab.name}
                 </Text>

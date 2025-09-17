@@ -26,7 +26,7 @@ const DashboardCard: React.FC<{
   <View
     className={`bg-[#303030] p-6 rounded-2xl border border-gray-600 ${className}`}
   >
-    <Text className="text-xl font-bold text-white">{title}</Text>
+    <Text className="text-3xl font-bold text-white">{title}</Text>
     <View className="mt-4">{children}</View>
   </View>
 );
@@ -36,39 +36,39 @@ const AnalyticsScreen = () => {
     <View className="flex-1 bg-[#212121]">
       <ScrollView contentContainerClassName="p-6 pt-0">
         {/* Top Stat Cards */}
-        <View className="flex-row gap-4 mt-4">
+        <View className="flex-row gap-6 mt-4">
           <StatCard
             title="Total Earning Today"
             value="$9856"
             change="+2.4%"
             changeType="increase"
-            icon={<DollarSign color="#3b82f6" />}
+            icon={<DollarSign color="#3b82f6" size={24} />}
           />
           <StatCard
             title="Items Sold"
             value="546"
             change="+1.8%"
             changeType="increase"
-            icon={<ShoppingBasket color="#3b82f6" />}
+            icon={<ShoppingBasket color="#3b82f6" size={24} />}
           />
           <StatCard
             title="Total Discount"
             value="$75.86"
             change="3.8% of revenue"
             changeType="increase"
-            icon={<Tag color="#3b82f6" />}
+            icon={<Tag color="#3b82f6" size={24} />}
           />
           <StatCard
             title="Top Item"
             value="Deluxe Crispyburger"
             change="+1.8% than yesterday"
             changeType="increase"
-            icon={<Trophy color="#3b82f6" />}
+            icon={<Trophy color="#3b82f6" size={24} />}
           />
         </View>
 
         {/* Main Charts Row */}
-        <View className="flex-row gap-4 mt-4">
+        <View className="flex-row gap-6 mt-6">
           {/* Sales Chart */}
           <DashboardCard title="Today vs Yesterday Sales" className="flex-[2]">
             <SalesLineChart />
@@ -90,12 +90,12 @@ const AnalyticsScreen = () => {
                 >
                   <View className="flex-row items-center">
                     <View
-                      className="w-2.5 h-2.5 rounded-full mr-2"
+                      className="w-3 h-3 rounded-full mr-2"
                       style={{ backgroundColor: item.color }}
                     />
-                    <Text className="text-gray-300">{item.label}</Text>
+                    <Text className="text-xl text-gray-300">{item.label}</Text>
                   </View>
-                  <Text className="font-semibold text-white">
+                  <Text className="text-xl font-semibold text-white">
                     {item.value}%
                   </Text>
                 </View>
@@ -105,7 +105,7 @@ const AnalyticsScreen = () => {
         </View>
 
         {/* Bottom Charts Row */}
-        <View className="flex-row gap-4 mt-4">
+        <View className="flex-row gap-6 mt-6">
           {/* Check Status Chart */}
           <DashboardCard title="Check Status Overview" className="flex-2">
             {/* This parent View is left alone, so the chart renders correctly */}
@@ -118,7 +118,7 @@ const AnalyticsScreen = () => {
 
               {/* 👇 The fix is applied here. This container now fills the parent and centers the text. */}
               <View className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
-                <Text className="text-5xl font-bold text-white">57%</Text>
+                <Text className="text-6xl font-bold text-white">57%</Text>
               </View>
             </View>
 
@@ -131,12 +131,12 @@ const AnalyticsScreen = () => {
                 >
                   <View className="flex-row items-center">
                     <View
-                      className="w-2.5 h-2.5 rounded-full mr-2"
+                      className="w-3 h-3 rounded-full mr-2"
                       style={{ backgroundColor: item.color }}
                     />
-                    <Text className="text-gray-300">{item.label}</Text>
+                    <Text className="text-xl text-gray-300">{item.label}</Text>
                   </View>
-                  <Text className="font-semibold text-white">
+                  <Text className="text-xl font-semibold text-white">
                     {item.value.toFixed(2)}%
                   </Text>
                 </View>

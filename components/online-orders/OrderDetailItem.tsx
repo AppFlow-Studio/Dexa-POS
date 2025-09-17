@@ -9,44 +9,46 @@ const OrderDetailItem: React.FC<{ item: CartItem }> = ({ item }) => {
     : undefined;
 
   return (
-    <View className="flex-row items-start p-4 border border-gray-600 rounded-xl bg-[#212121]">
+    <View className="flex-row items-start p-6 border border-gray-600 rounded-xl bg-[#212121]">
       {/* Image and Name */}
       <View className="flex-row items-center w-1/4">
-        <Image source={imageSource} className="w-12 h-12 rounded-lg" />
-        <View className="ml-3">
-          <Text className="font-bold text-white">{item.name}</Text>
-          <Text className="text-sm text-gray-300">
+        <Image source={imageSource} className="w-16 h-16 rounded-lg" />
+        <View className="ml-4">
+          <Text className="text-2xl font-bold text-white">{item.name}</Text>
+          <Text className="text-xl text-gray-300 mt-1">
             Size: {item.customizations.size?.name || "Regular"}
           </Text>
         </View>
       </View>
       {/* Price */}
       <View className="w-[12.5%]">
-        <Text className="font-semibold text-gray-300">
+        <Text className="text-2xl font-semibold text-gray-300">
           ${item.originalPrice.toFixed(2)}
         </Text>
       </View>
       {/* Qty */}
       <View className="w-[12.5%]">
-        <Text className="font-semibold text-gray-300">x{item.quantity}</Text>
+        <Text className="text-2xl font-semibold text-gray-300">
+          x{item.quantity}
+        </Text>
       </View>
       {/* Modifiers */}
       <View className="w-1/4">
         <Text className="font-semibold text-gray-300">
           {item.customizations.addOns
-            ?.map((a) => `${a.name} + $${a.price.toFixed(2)}`)
+            ?.map((a) => `${a.name} + ${a.price.toFixed(2)}`)
             .join(", ") || "None"}
         </Text>
       </View>
       {/* Notes */}
       <View className="w-1/4">
-        <Text className="text-gray-400">
+        <Text className="text-xl text-gray-400">
           {item.customizations.notes || "No notes"}
         </Text>
       </View>
       {/* Total */}
       <View className="w-[12.5%] items-end">
-        <Text className="font-bold text-white">
+        <Text className="text-2xl font-bold text-white">
           ${(item.price * item.quantity).toFixed(2)}
         </Text>
       </View>

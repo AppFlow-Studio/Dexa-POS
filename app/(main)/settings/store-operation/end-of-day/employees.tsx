@@ -40,17 +40,19 @@ const EmployeeRow = ({
       ? "bg-green-100 text-green-800"
       : "bg-red-100 text-red-800";
   return (
-    <View className="flex-row items-center p-4 border-b border-background-400">
-      <Text className="w-[15%] font-semibold text-gray-800">
+    <View className="flex-row items-center p-6 border-b border-background-400">
+      <Text className="w-[15%] text-2xl font-semibold text-gray-800">
         {employee.name}
       </Text>
-      <Text className="w-[12%] text-gray-600">{employee.jobTitle}</Text>
+      <Text className="w-[12%] text-2xl text-gray-600">
+        {employee.jobTitle}
+      </Text>
       <View className="w-[12%]">
         <View
-          className={`px-2 py-1 rounded-full self-start ${statusClass(employee.clockInStatus)}`}
+          className={`px-3 py-2 rounded-full self-start ${statusClass(employee.clockInStatus)}`}
         >
           <Text
-            className={`font-bold text-xs ${statusClass(employee.clockInStatus)}`}
+            className={`font-bold text-xl ${statusClass(employee.clockInStatus)}`}
           >
             {employee.clockInStatus}
           </Text>
@@ -59,38 +61,44 @@ const EmployeeRow = ({
       <View className="w-[12%]">
         {employee.clockOutStatus !== "N/A" && (
           <View
-            className={`px-2 py-1 rounded-full self-start ${statusClass(employee.clockOutStatus)}`}
+            className={`px-3 py-2 rounded-full self-start ${statusClass(employee.clockOutStatus)}`}
           >
             <Text
-              className={`font-bold text-xs ${statusClass(employee.clockOutStatus)}`}
+              className={`font-bold text-xl ${statusClass(employee.clockOutStatus)}`}
             >
               {employee.clockOutStatus}
             </Text>
           </View>
         )}
       </View>
-      <Text className="w-[12%] text-gray-600">{employee.clockInTime}</Text>
-      <Text className="w-[12%] text-gray-600">{employee.clockOutTime}</Text>
-      <Text className="w-[15%] text-gray-600">{employee.totalHours}</Text>
+      <Text className="w-[12%] text-2xl text-gray-600">
+        {employee.clockInTime}
+      </Text>
+      <Text className="w-[12%] text-2xl text-gray-600">
+        {employee.clockOutTime}
+      </Text>
+      <Text className="w-[15%] text-2xl text-gray-600">
+        {employee.totalHours}
+      </Text>
       <View className="w-[10%] items-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="p-2">
-              <MoreHorizontal color="#6b7280" />
+              <MoreHorizontal size={24} color="#6b7280" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48">
             <DropdownMenuItem onPress={() => onAction("view")}>
-              <User className="mr-2 h-4 w-4" />
-              <Text>View Profile</Text>
+              <User className="mr-2 h-6 w-6" />
+              <Text className="text-2xl">View Profile</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => onAction("clockout")}>
-              <Power className="mr-2 h-4 w-4" />
-              <Text>Clockout</Text>
+              <Power className="mr-2 h-6 w-6" />
+              <Text className="text-2xl">Clockout</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => onAction("delete")}>
-              <Trash2 className="mr-2 h-4 w-4 text-red-500" />
-              <Text className="text-red-500">Delete</Text>
+              <Trash2 className="mr-2 h-6 w-6 text-red-500" />
+              <Text className="text-2xl text-red-500">Delete</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -129,18 +137,18 @@ const ViewEmployeesScreen = () => {
   return (
     <View className="flex-1 bg-white p-6">
       <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 py-0 w-[300px]">
-          <Search color="#6b7280" size={20} />
+        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-4 w-[400px]">
+          <Search color="#6b7280" size={24} />
           <TextInput
             placeholder="Search by Check Number or Payee"
-            className="ml-2 text-base flex-1"
+            className="ml-3 text-2xl flex-1"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       <View className="flex-1">
-        <View className="flex-row p-4 bg-gray-50 rounded-t-xl border-b border-background-400">
+        <View className="flex-row p-6 bg-gray-50 rounded-t-xl border-b border-background-400">
           {[
             "Employees Name",
             "Job Title",
@@ -153,7 +161,7 @@ const ViewEmployeesScreen = () => {
           ].map((h) => (
             <Text
               key={h}
-              className={`font-bold text-sm text-gray-500 ${h.includes("Name") ? "w-[15%]" : h.includes("Total") ? "w-[15%]" : h === "" ? "w-[10%]" : "w-[12%]"}`}
+              className={`font-bold text-xl text-gray-500 ${h.includes("Name") ? "w-[15%]" : h.includes("Total") ? "w-[15%]" : h === "" ? "w-[10%]" : "w-[12%]"}`}
             >
               {h}
             </Text>
@@ -172,11 +180,11 @@ const ViewEmployeesScreen = () => {
       </View>
 
       <View className="flex-row justify-end items-center mt-4 gap-2">
-        <TouchableOpacity className="p-2 rounded-full">
-          <ChevronLeft />
+        <TouchableOpacity className="p-3 rounded-full">
+          <ChevronLeft size={24} />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
-          <ChevronRight color="white" />
+        <TouchableOpacity className="p-3 rounded-full bg-primary-400">
+          <ChevronRight color="white" size={24} />
         </TouchableOpacity>
       </View>
 

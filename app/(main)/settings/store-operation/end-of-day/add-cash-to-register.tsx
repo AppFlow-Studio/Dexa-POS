@@ -76,41 +76,41 @@ const AddCashToRegisterScreen = () => {
 
         {/* Deposit Details Form */}
         <View className="bg-white p-6 mt-6 rounded-2xl border border-gray-200">
-          <Text className="text-xl font-bold text-gray-800 mb-6">
+          <Text className="text-3xl font-bold text-gray-800 mb-6">
             Deposit Details
           </Text>
           <View className="gap-y-4">
             <View>
-              <Text className="font-semibold text-gray-700 mb-2">
+              <Text className="text-2xl font-semibold text-gray-700 mb-2">
                 Deposit Date
               </Text>
-              <TouchableOpacity className="flex-row justify-between items-center p-4  rounded-lg border border-gray-200">
-                <Text className="text-lg">{depositDate}</Text>
-                <Calendar color="#6b7280" size={20} />
+              <TouchableOpacity className="flex-row justify-between items-center p-6 bg-gray-100 rounded-lg border border-gray-200">
+                <Text className="text-2xl">{depositDate}</Text>
+                <Calendar color="#6b7280" size={24} />
               </TouchableOpacity>
             </View>
             <View>
-              <Text className="font-semibold text-gray-700 mb-2">
+              <Text className="text-2xl font-semibold text-gray-700 mb-2">
                 Deposit Slip Number
               </Text>
               <TextInput
                 value={slipNumber}
                 onChangeText={setSlipNumber}
-                className="px-4 rounded-lg border border-gray-200 text-lg"
+                className="p-6 bg-gray-100 rounded-lg border border-gray-200 text-2xl"
               />
             </View>
             <View>
-              <Text className="font-semibold text-gray-700 mb-2">
+              <Text className="text-2xl font-semibold text-gray-700 mb-2">
                 Select Register
               </Text>
               <Select
                 value={selectedRegister}
                 onValueChange={setSelectedRegister}
               >
-                <SelectTrigger className="w-full px-4 rounded-lg flex-row justify-between items-center border border-gray-200">
+                <SelectTrigger className="w-full p-6 bg-gray-100 rounded-lg flex-row justify-between items-center border border-gray-200">
                   <SelectValue
                     placeholder="Select"
-                    className=" text-gray-800"
+                    className="text-2xl text-gray-800"
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
@@ -121,7 +121,7 @@ const AddCashToRegisterScreen = () => {
                         label={opt.label}
                         value={opt.value}
                       >
-                        {opt.label}
+                        <Text className="text-2xl">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -129,7 +129,7 @@ const AddCashToRegisterScreen = () => {
               </Select>
             </View>
             <View>
-              <Text className="font-semibold text-gray-700 mb-2">
+              <Text className="text-2xl font-semibold text-gray-700 mb-2">
                 Reason/Notes
               </Text>
               <TextInput
@@ -137,25 +137,25 @@ const AddCashToRegisterScreen = () => {
                 onChangeText={setNotes}
                 multiline
                 placeholder="Write a note..."
-                className="px-4 rounded-lg border border-gray-200 text-lg h-24"
+                className="p-6 bg-gray-100 rounded-lg border border-gray-200 text-2xl h-32"
               />
             </View>
           </View>
           {/* Footer */}
-          <View className="flex-row gap-2 pt-4 mt-6 border-t border-gray-200">
+          <View className="flex-row gap-3 pt-4 mt-6 border-t border-gray-200">
             <TouchableOpacity
               onPress={() => router.back()}
-              className="flex-1 px-8 py-3 rounded-lg border border-gray-300 bg-white"
+              className="flex-1 px-8 py-4 rounded-lg border border-gray-300 bg-white"
             >
-              <Text className="font-bold text-gray-700 text-center">
+              <Text className="text-2xl font-bold text-gray-700 text-center">
                 Cancel
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setConfirmModalOpen(true)}
-              className="flex-1 px-8 py-3 rounded-lg bg-primary-400"
+              className="flex-1 px-8 py-4 rounded-lg bg-primary-400"
             >
-              <Text className="font-bold text-white text-center">
+              <Text className="text-2xl font-bold text-white text-center">
                 Add Cash to Register
               </Text>
             </TouchableOpacity>

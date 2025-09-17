@@ -24,28 +24,28 @@ const PrinterSettingsScreen = () => {
       title: "Printers",
       subtitle: "Receipt & Kitchen",
       route: "/settings/hardware-connection/printer",
-      icon: <Printer color="#3b82f6" size={20} />,
+      icon: <Printer color="#3b82f6" size={24} />,
     },
     {
       id: "printer-rules",
       title: "Printer Rules",
       subtitle: "Print Configuration",
       route: "/settings/hardware-connection/printer-rules",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
     {
       id: "customer-display",
       title: "Customer Display",
       subtitle: "Order Display",
       route: "/settings/hardware-connection/customer-display",
-      icon: <Monitor color="#3b82f6" size={20} />,
+      icon: <Monitor color="#3b82f6" size={24} />,
     },
     {
       id: "payment-terminal",
       title: "Payment Terminal",
       subtitle: "Card Processing",
       route: "/settings/hardware-connection/payment-terminal",
-      icon: <CreditCard color="#3b82f6" size={20} />,
+      icon: <CreditCard color="#3b82f6" size={24} />,
     },
   ];
 
@@ -104,15 +104,19 @@ const PrinterSettingsScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-600">
+          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
             <TouchableOpacity
               onPress={() => setAddModalOpen(true)}
               className="px-6 py-3 border border-gray-500 rounded-lg"
             >
-              <Text className="font-bold text-gray-300">Add New Printer</Text>
+              <Text className="text-2xl font-bold text-gray-300">
+                Add New Printer
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="font-bold text-white">Save Changes</Text>
+              <Text className="text-2xl font-bold text-white">
+                Save Changes
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -122,7 +126,7 @@ const PrinterSettingsScreen = () => {
       <AddNewPrinterModal
         isOpen={isAddModalOpen}
         onClose={() => setAddModalOpen(false)}
-        onAdd={() => { }}
+        onAdd={() => {}}
       />
       <EditPrinterModal
         isOpen={isEditModalOpen}

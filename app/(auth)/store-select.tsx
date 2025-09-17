@@ -44,10 +44,10 @@ const mockStores = [
 const StoreSelectItem = ({ store, isSelected, onPress }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`p-4 border rounded-xl mb-3 ${isSelected ? "border-primary-400 bg-primary-100" : "border-background-400 bg-white"}`}
+    className={`p-6 border rounded-xl mb-3 ${isSelected ? "border-primary-400 bg-primary-100" : "border-background-400 bg-white"}`}
   >
-    <Text className="text-base font-medium text-accent-500">{store.name}</Text>
-    <Text className="text-xs text-accent-500 mt-1">
+    <Text className="text-2xl font-medium text-accent-500">{store.name}</Text>
+    <Text className="text-xl text-accent-500 mt-1">
       {store.number}, {store.street}
     </Text>
   </TouchableOpacity>
@@ -65,7 +65,7 @@ const StoreSelectScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-4xl font-semibold text-white text-center mb-8">
+      <Text className="text-5xl font-semibold text-white text-center mb-8">
         Select Store
       </Text>
 
@@ -82,9 +82,9 @@ const StoreSelectScreen = () => {
 
       <TouchableOpacity
         onPress={handleLogin}
-        className="w-full p-4 bg-primary-400 rounded-xl items-center"
+        className="w-full p-6 bg-primary-400 rounded-xl items-center"
       >
-        <Text className="text-white text-lg font-bold">Login</Text>
+        <Text className="text-white text-2xl font-bold">Login</Text>
       </TouchableOpacity>
     </View>
   );

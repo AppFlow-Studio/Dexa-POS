@@ -30,18 +30,18 @@ const ResetPinScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-3xl font-bold text-gray-800 text-center mb-8">
+      <Text className="text-4xl font-bold text-gray-800 text-center mb-8">
         Reset Pin
       </Text>
 
       <View className="mb-4">
-        <Text className="text-base font-semibold text-gray-600 mb-2">
+        <Text className="text-xl font-semibold text-gray-600 mb-2">
           Enter new pin
         </Text>
         <TextInput
           value={newPin}
           onChangeText={setNewPin}
-          className="w-full p-4 bg-white border border-gray-200 rounded-lg text-lg"
+          className="w-full p-6 bg-white border border-gray-200 rounded-lg text-2xl"
           placeholder="••••"
           keyboardType="number-pad"
           secureTextEntry
@@ -50,13 +50,13 @@ const ResetPinScreen = () => {
       </View>
 
       <View className="mb-6">
-        <Text className="text-base font-semibold text-gray-600 mb-2">
+        <Text className="text-xl font-semibold text-gray-600 mb-2">
           Confirm new pin
         </Text>
         <TextInput
           value={confirmPin}
           onChangeText={setConfirmPin}
-          className="w-full p-4 bg-white border border-gray-200 rounded-lg text-lg"
+          className="w-full p-6 bg-white border border-gray-200 rounded-lg text-2xl"
           placeholder="••••"
           keyboardType="number-pad"
           secureTextEntry
@@ -66,9 +66,9 @@ const ResetPinScreen = () => {
 
       <TouchableOpacity
         onPress={handleReset}
-        className="w-full p-4 bg-primary-400 rounded-lg items-center"
+        className="w-full p-6 bg-primary-400 rounded-lg items-center"
       >
-        <Text className="text-white text-lg font-bold">Reset</Text>
+        <Text className="text-white text-2xl font-bold">Reset</Text>
       </TouchableOpacity>
     </View>
   );

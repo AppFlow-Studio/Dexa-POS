@@ -3,7 +3,13 @@ import ProfileCard from "@/components/profile/ProfileCard";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
-import { Building2, Database, Receipt, Settings, User } from "lucide-react-native";
+import {
+  Building2,
+  Database,
+  Receipt,
+  Settings,
+  User,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -19,35 +25,35 @@ const MyProfileScreen = () => {
       title: "Store Info",
       subtitle: "Business Details",
       route: "/settings/basic/store-info",
-      icon: <Building2 color="#3b82f6" size={20} />,
+      icon: <Building2 color="#3b82f6" size={24} />,
     },
     {
       id: "my-profile",
       title: "My Profile",
       subtitle: "Personal Settings",
       route: "/settings/basic/my-profile",
-      icon: <User color="#3b82f6" size={20} />,
+      icon: <User color="#3b82f6" size={24} />,
     },
     {
       id: "category",
       title: "Categories",
       subtitle: "Menu Categories",
       route: "/settings/basic/category",
-      icon: <Database color="#3b82f6" size={20} />,
+      icon: <Database color="#3b82f6" size={24} />,
     },
     {
       id: "modifiers",
       title: "Modifiers",
       subtitle: "Item Customizations",
       route: "/settings/basic/modifiers",
-      icon: <Settings color="#3b82f6" size={20} />,
+      icon: <Settings color="#3b82f6" size={24} />,
     },
     {
       id: "taxes",
       title: "Taxes",
       subtitle: "Tax Configuration",
       route: "/settings/basic/taxes",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
   ];
 
@@ -82,10 +88,10 @@ const MyProfileScreen = () => {
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
-                className={`py-2 px-6 rounded-lg flex-1 ${activeTab === tab ? "bg-[#212121]" : ""}`}
+                className={`py-3 px-6 rounded-lg flex-1 ${activeTab === tab ? "bg-[#212121]" : ""}`}
               >
                 <Text
-                  className={`font-semibold text-center ${activeTab === tab ? "text-blue-400" : "text-gray-300"}`}
+                  className={`text-2xl font-semibold text-center ${activeTab === tab ? "text-blue-400" : "text-gray-300"}`}
                 >
                   {tab}
                 </Text>
@@ -107,15 +113,17 @@ const MyProfileScreen = () => {
             {activeTab === "Profile Info" ? (
               <>
                 <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg mr-2">
-                  <Text className="font-bold text-gray-300">Close</Text>
+                  <Text className="text-2xl font-bold text-gray-300">
+                    Close
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-                  <Text className="font-bold text-white">Edit</Text>
+                  <Text className="text-2xl font-bold text-white">Edit</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">
-                <Text className="font-bold text-gray-300">Close</Text>
+                <Text className="text-2xl font-bold text-gray-300">Close</Text>
               </TouchableOpacity>
             )}
           </View>

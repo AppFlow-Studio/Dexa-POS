@@ -22,28 +22,28 @@ const CustomerDisplayScreen = () => {
       title: "Printers",
       subtitle: "Receipt & Kitchen",
       route: "/settings/hardware-connection/printer",
-      icon: <Printer color="#3b82f6" size={20} />,
+      icon: <Printer color="#3b82f6" size={24} />,
     },
     {
       id: "printer-rules",
       title: "Printer Rules",
       subtitle: "Print Configuration",
       route: "/settings/hardware-connection/printer-rules",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
     {
       id: "customer-display",
       title: "Customer Display",
       subtitle: "Order Display",
       route: "/settings/hardware-connection/customer-display",
-      icon: <Monitor color="#3b82f6" size={20} />,
+      icon: <Monitor color="#3b82f6" size={24} />,
     },
     {
       id: "payment-terminal",
       title: "Payment Terminal",
       subtitle: "Card Processing",
       route: "/settings/hardware-connection/payment-terminal",
-      icon: <CreditCard color="#3b82f6" size={20} />,
+      icon: <CreditCard color="#3b82f6" size={24} />,
     },
   ];
 
@@ -63,7 +63,7 @@ const CustomerDisplayScreen = () => {
           <View className="flex-1 gap-y-6">
             {/* Enable/Disable Card */}
             <View className="bg-[#212121] flex-row justify-between items-center p-6 rounded-2xl border border-gray-600">
-              <Text className="text-xl font-bold text-white">
+              <Text className="text-3xl font-bold text-white">
                 Enable customer display
               </Text>
               <Switch
@@ -71,12 +71,13 @@ const CustomerDisplayScreen = () => {
                 onValueChange={setIsEnabled}
                 trackColor={{ false: "#DCDCDC", true: "#31A961" }}
                 thumbColor={"#ffffff"}
+                style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
               />
             </View>
 
             {/* Idle Screen Options */}
             <SettingsCard title="Select what to show when the screen is idle">
-              <View className="gap-y-3">
+              <View className="gap-y-4">
                 <RadioButton
                   label="Show Store Logo"
                   isSelected={idleOption === "logo"}
@@ -92,7 +93,7 @@ const CustomerDisplayScreen = () => {
 
             {/* Transaction Screen Options */}
             <SettingsCard title="Select what to show during a transaction">
-              <View className="gap-y-3">
+              <View className="gap-y-4">
                 <RadioButton
                   label="Show Item List"
                   isSelected={transactionOption === "itemList"}
@@ -108,14 +109,14 @@ const CustomerDisplayScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-600">
+          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
             <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">
-              <Text className="font-bold text-gray-300">
+              <Text className="text-2xl font-bold text-gray-300">
                 Connect a New Terminal
               </Text>
             </TouchableOpacity>
             <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="font-bold text-white">Save</Text>
+              <Text className="text-2xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

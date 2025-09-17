@@ -13,9 +13,9 @@ const ReceiptRow = ({
   label: string;
   value: string | number;
 }) => (
-  <View className="flex-row justify-between items-center py-2 border-b border-dashed border-gray-200">
-    <Text className="text-base text-gray-500">{label}</Text>
-    <Text className="text-base font-semibold text-gray-800">{value}</Text>
+  <View className="flex-row justify-between items-center py-3 border-b border-dashed border-gray-200">
+    <Text className="text-2xl text-gray-500">{label}</Text>
+    <Text className="text-2xl font-semibold text-gray-800">{value}</Text>
   </View>
 );
 
@@ -85,7 +85,7 @@ const PaymentSuccessView = () => {
       const newOrder = startNewOrder();
       setActiveOrder(newOrder.id);
     }, 100); // Small delay to ensure the modal closes first
-  }
+  };
 
   // Create a simplified summary for the receipt using the correct `items`
   const receiptSummary = items.reduce(
@@ -112,19 +112,19 @@ const PaymentSuccessView = () => {
     <View className="rounded-[36px] overflow-hidden bg-[#2BAE74]">
       {/* Green Success Header */}
       <View className="p-6 rounded-t-[36px] items-center">
-        <View className="w-20 h-20 bg-white/20 rounded-full items-center justify-center">
-          <View className="w-16 h-16 bg-white rounded-full items-center justify-center">
-            <ShoppingBag color="#22c55e" size={32} />
+        <View className="w-24 h-24 bg-white/20 rounded-full items-center justify-center">
+          <View className="w-20 h-20 bg-white rounded-full items-center justify-center">
+            <ShoppingBag color="#22c55e" size={48} />
           </View>
         </View>
-        <Text className="text-3xl font-bold text-white mt-4">
+        <Text className="text-4xl font-bold text-white mt-4">
           Payment Successful
         </Text>
       </View>
 
       {/* White Content */}
       <View className="p-6 rounded-[36px] bg-background-100">
-        <ScrollView className="max-h-80" showsVerticalScrollIndicator={false}>
+        <ScrollView className="max-h-96" showsVerticalScrollIndicator={false}>
           {/* Transaction Details */}
           <ReceiptRow label="No. Transaction" value="PZ05329283" />
           <ReceiptRow label="Table" value="T-12, T-05, T-14" />
@@ -141,7 +141,7 @@ const PaymentSuccessView = () => {
               <ReceiptRow
                 key={item.name}
                 label={item.name}
-                value={`$${item.totalPrice.toFixed(2)}`}
+                value={`${item.totalPrice.toFixed(2)}`}
               />
             ))}
           </View>
@@ -150,22 +150,22 @@ const PaymentSuccessView = () => {
           <View className="mt-4">
             <ReceiptRow
               label="Subtotal"
-              value={`$${activeOrderSubtotal.toFixed(2)}`}
+              value={`${activeOrderSubtotal.toFixed(2)}`}
             />
             {activeOrderDiscount > 0 && (
               <ReceiptRow
                 label="Discount"
-                value={`-$${activeOrderDiscount.toFixed(2)}`}
+                value={`-${activeOrderDiscount.toFixed(2)}`}
               />
             )}
-            <ReceiptRow label="Tax" value={`$${activeOrderTax.toFixed(2)}`} />
-            <ReceiptRow label="Voucher" value={`$${(0.0).toFixed(2)}`} />
+            <ReceiptRow label="Tax" value={`${activeOrderTax.toFixed(2)}`} />
+            <ReceiptRow label="Voucher" value={`${(0.0).toFixed(2)}`} />
           </View>
 
           {/* Total */}
           <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300 mt-4">
-            <Text className="text-xl font-bold text-accent-500">Total</Text>
-            <Text className="text-xl font-bold text-accent-500">
+            <Text className="text-3xl font-bold text-accent-500">Total</Text>
+            <Text className="text-3xl font-bold text-accent-500">
               ${activeOrderTotal.toFixed(2)}
             </Text>
           </View>
@@ -173,21 +173,25 @@ const PaymentSuccessView = () => {
 
         {/* Action Buttons */}
         <View className="border-t border-gray-200 pt-4 mt-6">
-          <View className="flex-row gap-3 mb-3">
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
-              <FileText color="#4b5563" size={20} />
-              <Text className="font-bold text-gray-700">View Order</Text>
+          <View className="flex-row gap-4 mb-3">
+            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-4 border border-gray-300 rounded-lg">
+              <FileText color="#4b5563" size={24} />
+              <Text className="text-2xl font-bold text-gray-700">
+                View Order
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-300 rounded-lg">
-              <Printer color="#4b5563" size={20} />
-              <Text className="font-bold text-gray-700">Print Receipt</Text>
+            <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-4 border border-gray-300 rounded-lg">
+              <Printer color="#4b5563" size={24} />
+              <Text className="text-2xl font-bold text-gray-700">
+                Print Receipt
+              </Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             onPress={handleDone}
-            className="w-full py-3 bg-primary-400 rounded-lg items-center"
+            className="w-full py-4 bg-primary-400 rounded-lg items-center"
           >
-            <Text className="font-bold text-white text-base">Done</Text>
+            <Text className="font-bold text-white text-2xl">Done</Text>
           </TouchableOpacity>
         </View>
       </View>

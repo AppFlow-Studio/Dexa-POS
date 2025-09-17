@@ -37,30 +37,34 @@ const PurchaseOrderRow: React.FC<{
   };
 
   return (
-    <View className="flex-row items-center p-4 border-b border-gray-700">
-      <Text className="w-[15%] font-semibold text-white">{item.poNumber}</Text>
-      <Text className="w-[20%] text-gray-300">{vendor?.name || "Unknown"}</Text>
+    <View className="flex-row items-center p-6 border-b border-gray-700">
+      <Text className="w-[15%] text-2xl font-semibold text-white">
+        {item.poNumber}
+      </Text>
+      <Text className="w-[20%] text-2xl text-gray-300">
+        {vendor?.name || "Unknown"}
+      </Text>
       <View className="w-[15%]">
         <View
-          className={`px-3 py-1 rounded-full self-start ${statusColors[item.status]}`}
+          className={`px-4 py-2 rounded-full self-start ${statusColors[item.status]}`}
         >
-          <Text className={`font-bold text-xs ${statusColors[item.status]}`}>
+          <Text className={`font-bold text-xl ${statusColors[item.status]}`}>
             {item.status}
           </Text>
         </View>
       </View>
-      <Text className="w-[15%] text-gray-300">
+      <Text className="w-[15%] text-2xl text-gray-300">
         {new Date(item.createdAt).toLocaleDateString()}
       </Text>
-      <Text className="w-[10%] text-gray-300">{totalItems}</Text>
-      <Text className="w-[15%] font-semibold text-white">
+      <Text className="w-[10%] text-2xl text-gray-300">{totalItems}</Text>
+      <Text className="w-[15%] text-2xl font-semibold text-white">
         ${totalCost.toFixed(2)}
       </Text>
       <View className="w-[10%] items-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="p-2">
-              <MoreHorizontal color="#9CA3AF" />
+              <MoreHorizontal size={24} color="#9CA3AF" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
@@ -69,20 +73,20 @@ const PurchaseOrderRow: React.FC<{
                 router.push(`/inventory/purchase-orders/${item.id}`)
               }
             >
-              <Text className="text-white">View Details</Text>
+              <Text className="text-xl text-white">View Details</Text>
             </DropdownMenuItem>
             {item.status === "Draft" && (
               <>
                 <DropdownMenuItem onPress={onEdit}>
-                  <Edit className="mr-2 h-4 w-4" color="#9CA3AF" />
-                  <Text className="text-white">Edit PO</Text>
+                  <Edit className="mr-2 h-6 w-6" color="#9CA3AF" />
+                  <Text className="text-xl text-white">Edit PO</Text>
                 </DropdownMenuItem>
                 <DropdownMenuItem onPress={onDelete}>
                   <Trash2
-                    className="mr-2 h-4 w-4 text-red-400"
+                    className="mr-2 h-6 w-6 text-red-400"
                     color="#F87171"
                   />
-                  <Text className="text-red-400">Delete PO</Text>
+                  <Text className="text-xl text-red-400">Delete PO</Text>
                 </DropdownMenuItem>
               </>
             )}
@@ -123,22 +127,22 @@ const PurchaseOrdersScreen = () => {
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">Purchase Orders</Text>
+        <Text className="text-3xl font-bold text-white">Purchase Orders</Text>
         <TouchableOpacity
           onPress={() => router.push("/inventory/purchase-orders/create")}
-          className="py-3 px-5 bg-blue-600 rounded-lg flex-row items-center"
+          className="py-4 px-6 bg-blue-600 rounded-lg flex-row items-center"
         >
-          <Plus color="white" size={18} className="mr-2" />
-          <Text className="font-bold text-white">Create PO</Text>
+          <Plus color="white" size={24} className="mr-2" />
+          <Text className="text-2xl font-bold text-white">Create PO</Text>
         </TouchableOpacity>
       </View>
 
       <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-        <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+        <View className="flex-row p-6 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
           {TABLE_HEADERS.map((header) => (
             <Text
               key={header}
-              className={`font-bold text-sm text-gray-400 ${
+              className={`font-bold text-xl text-gray-400 ${
                 header === "PO Number"
                   ? "w-[15%]"
                   : header === "Vendor"
@@ -172,7 +176,7 @@ const PurchaseOrdersScreen = () => {
           )}
           ListEmptyComponent={
             <View className="p-8 items-center">
-              <Text className="text-gray-400">
+              <Text className="text-xl text-gray-400">
                 No purchase orders created yet.
               </Text>
             </View>

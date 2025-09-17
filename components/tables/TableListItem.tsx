@@ -11,7 +11,7 @@ const StatusIndicator = ({ status }: { status: TableType["status"] }) => {
       : status === "In Use"
         ? "bg-blue-500"
         : "bg-red-500"; // Needs Cleaning
-  return <View className={`w-2.5 h-2.5 rounded-full ${color}`} />;
+  return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
 
 const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
@@ -21,9 +21,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
   // Find the single order that is associated with THIS table.
   // This is the core logic that connects the table to its live data.
   const activeOrderForThisTable = orders.find(
-    (o) =>
-      o.service_location_id === table.id &&
-      o.order_status !== "Voided" // Show all orders except voided ones
+    (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
   );
 
   // Calculate the total for this specific order's cart
@@ -36,24 +34,24 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
   // The table's status from the floor plan store is the source of truth for its state
   const status = table.status;
   return (
-    <View className="p-4 border-b border-gray-100">
+    <View className="p-6 border-b border-gray-100">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-3">
           <StatusIndicator status={status} />
-          <Text className="text-base font-semibold text-white">
+          <Text className="text-2xl font-semibold text-white">
             {table.name}
           </Text>
         </View>
         {/* Display the total only if an active order exists for this table */}
         {status === "In Use" && activeOrderForThisTable && (
-          <Text className="text-base font-bold text-white">
+          <Text className="text-2xl font-bold text-white">
             ${orderTotal.toFixed(2)}
           </Text>
         )}
       </View>
       {/* Display the order details from the active order */}
       {status === "In Use" && activeOrderForThisTable && (
-        <Text className="text-sm text-white ml-6 mt-1">
+        <Text className="text-xl text-white ml-8 mt-1">
           Order {activeOrderForThisTable.id.slice(-5)}
           {activeOrderForThisTable.customer_name || ""}
           {activeOrderForThisTable.order_status === "Closed" && (

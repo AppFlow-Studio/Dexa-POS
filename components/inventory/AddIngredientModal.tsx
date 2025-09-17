@@ -68,18 +68,20 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-white">Add Ingredient</DialogTitle>
+          <DialogTitle className="text-3xl text-white">
+            Add Ingredient
+          </DialogTitle>
         </DialogHeader>
         <View className="py-4 gap-y-4">
           <View>
-            <Text className="text-gray-300 font-medium mb-2">
+            <Text className="text-2xl text-gray-300 font-medium mb-2">
               Inventory Item
             </Text>
             {/* --- MODIFIED: The onValueChange now correctly receives the full option object --- */}
             <Select value={selectedItem} onValueChange={setSelectedItem}>
-              <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
+              <SelectTrigger className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg">
                 <SelectValue
-                  className="text-white"
+                  className="text-2xl text-white"
                   placeholder="Select an item..."
                 />
               </SelectTrigger>
@@ -92,7 +94,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
                         label={opt.label}
                         value={opt.value} // Pass the whole object
                       >
-                        {opt.label}
+                        <Text className="text-2xl">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -101,27 +103,33 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
             </Select>
           </View>
           <View>
-            <Text className="text-gray-300 font-medium mb-2">Quantity</Text>
+            <Text className="text-2xl text-gray-300 font-medium mb-2">
+              Quantity
+            </Text>
             <TextInput
               value={quantity}
               onChangeText={setQuantity}
               keyboardType="numeric"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
             />
           </View>
         </View>
-        <DialogFooter className="flex-row gap-2">
+        <DialogFooter className="flex-row gap-3">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center font-bold text-gray-300">Cancel</Text>
+            <Text className="text-center text-2xl font-bold text-gray-300">
+              Cancel
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAdd}
-            className="flex-1 py-3 bg-blue-600 rounded-lg"
+            className="flex-1 py-4 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center font-bold text-white">Add</Text>
+            <Text className="text-center text-2xl font-bold text-white">
+              Add
+            </Text>
           </TouchableOpacity>
         </DialogFooter>
       </DialogContent>

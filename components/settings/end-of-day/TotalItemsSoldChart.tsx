@@ -101,7 +101,7 @@ const TotalItemsSoldChart = () => {
 
   return (
     <View>
-      <View className="h-[200px] w-[200px] m-auto">
+      <View className="h-[300px] w-[200px] m-auto">
         <Canvas style={{ flex: 1 }}>
           {segments.map((segment, index) => (
             <AnimatedSlice

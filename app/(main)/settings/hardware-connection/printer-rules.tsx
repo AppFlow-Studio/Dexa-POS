@@ -14,7 +14,14 @@ import {
   MOCK_PRINTER_RULES,
 } from "@/lib/mockData";
 import { PrinterRule } from "@/lib/types";
-import { CreditCard, Monitor, Plus, Printer, Receipt, Trash2 } from "lucide-react-native";
+import {
+  CreditCard,
+  Monitor,
+  Plus,
+  Printer,
+  Receipt,
+  Trash2,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { FlatList, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -41,12 +48,13 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
   };
 
   return (
-    <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
+    <View className="flex-row items-center p-6 bg-[#212121] border border-gray-600 rounded-2xl">
       <Switch
         value={rule.isEnabled}
         onValueChange={(value) => onUpdate({ ...rule, isEnabled: value })}
         trackColor={{ false: "#DCDCDC", true: "#31A961" }}
         thumbColor={"#ffffff"}
+        style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
       />
 
       <View className="flex-1 mx-4">
@@ -57,14 +65,17 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
             option && onUpdate({ ...rule, category: option.value })
           }
         >
-          <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
-            <SelectValue placeholder="Select Category" className="text-base text-white" />
+          <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+            <SelectValue
+              placeholder="Select Category"
+              className="text-2xl text-white"
+            />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
             <SelectGroup>
               {MOCK_CATEGORIES.map((cat) => (
                 <SelectItem key={cat.value} label={cat.label} value={cat.value}>
-                  {cat.label}
+                  <Text className="text-2xl">{cat.label}</Text>
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -80,14 +91,17 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
             option && onUpdate({ ...rule, printerId: option.value })
           }
         >
-          <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
-            <SelectValue placeholder="Select Printer" className="text-base text-white" />
+          <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+            <SelectValue
+              placeholder="Select Printer"
+              className="text-2xl text-white"
+            />
           </SelectTrigger>
           <SelectContent insets={contentInsets}>
             <SelectGroup>
               {printerOptions.map((p) => (
                 <SelectItem key={p.value} label={p.label} value={p.value}>
-                  {p.label}
+                  <Text className="text-2xl">{p.label}</Text>
                 </SelectItem>
               ))}
             </SelectGroup>
@@ -97,9 +111,9 @@ const RuleRow: React.FC<RuleRowProps> = ({ rule, onUpdate, onDelete }) => {
 
       <TouchableOpacity
         onPress={() => onDelete(rule.id)}
-        className="p-3 ml-4 border border-gray-600 rounded-full"
+        className="p-4 ml-4 border border-gray-600 rounded-full"
       >
-        <Trash2 color="#9CA3AF" size={20} />
+        <Trash2 color="#9CA3AF" size={24} />
       </TouchableOpacity>
     </View>
   );
@@ -122,28 +136,28 @@ const PrinterRulesScreen = () => {
       title: "Printers",
       subtitle: "Receipt & Kitchen",
       route: "/settings/hardware-connection/printer",
-      icon: <Printer color="#3b82f6" size={20} />,
+      icon: <Printer color="#3b82f6" size={24} />,
     },
     {
       id: "printer-rules",
       title: "Printer Rules",
       subtitle: "Print Configuration",
       route: "/settings/hardware-connection/printer-rules",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
     {
       id: "customer-display",
       title: "Customer Display",
       subtitle: "Order Display",
       route: "/settings/hardware-connection/customer-display",
-      icon: <Monitor color="#3b82f6" size={20} />,
+      icon: <Monitor color="#3b82f6" size={24} />,
     },
     {
       id: "payment-terminal",
       title: "Payment Terminal",
       subtitle: "Card Processing",
       route: "/settings/hardware-connection/payment-terminal",
-      icon: <CreditCard color="#3b82f6" size={20} />,
+      icon: <CreditCard color="#3b82f6" size={24} />,
     },
   ];
 
@@ -216,14 +230,22 @@ const PrinterRulesScreen = () => {
 
           <View className="mt-6 pt-6 border-t border-gray-600">
             <View className="flex-row items-center mb-2">
-              <Plus color="#9CA3AF" size={16} />
-              <Text className="font-bold text-white ml-2">+ Add New</Text>
+              <Plus color="#9CA3AF" size={24} />
+              <Text className="font-bold text-2xl text-white ml-2">
+                Add New
+              </Text>
             </View>
-            <View className="flex-row items-center p-4 border border-gray-600 rounded-2xl">
+            <View className="flex-row items-center p-6 border border-gray-600 rounded-2xl">
               <View className="flex-1 mx-4">
-                <Select value={newRuleCategory} onValueChange={setNewRuleCategory}>
-                  <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
-                    <SelectValue placeholder="Category" className="text-base text-white" />
+                <Select
+                  value={newRuleCategory}
+                  onValueChange={setNewRuleCategory}
+                >
+                  <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+                    <SelectValue
+                      placeholder="Category"
+                      className="text-2xl text-white"
+                    />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
                     <SelectGroup>
@@ -233,7 +255,7 @@ const PrinterRulesScreen = () => {
                           label={cat.label}
                           value={cat.value}
                         >
-                          {cat.label}
+                          <Text className="text-2xl">{cat.label}</Text>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -241,15 +263,25 @@ const PrinterRulesScreen = () => {
                 </Select>
               </View>
               <View className="flex-1">
-                <Select value={newRulePrinter} onValueChange={setNewRulePrinter}>
-                  <SelectTrigger className="w-full p-3 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
-                    <SelectValue placeholder="Printer" className="text-base text-white" />
+                <Select
+                  value={newRulePrinter}
+                  onValueChange={setNewRulePrinter}
+                >
+                  <SelectTrigger className="w-full p-4 bg-[#303030] rounded-lg flex-row justify-between items-center border-gray-600">
+                    <SelectValue
+                      placeholder="Printer"
+                      className="text-2xl text-white"
+                    />
                   </SelectTrigger>
                   <SelectContent insets={contentInsets}>
                     <SelectGroup>
                       {printerOptions.map((p) => (
-                        <SelectItem key={p.value} label={p.label} value={p.value}>
-                          {p.label}
+                        <SelectItem
+                          key={p.value}
+                          label={p.label}
+                          value={p.value}
+                        >
+                          <Text className="text-2xl">{p.label}</Text>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -258,16 +290,18 @@ const PrinterRulesScreen = () => {
               </View>
               <TouchableOpacity
                 onPress={handleAddRule}
-                className="py-2 px-4 ml-4 border border-gray-500 rounded-xl"
+                className="py-3 px-6 ml-4 border border-gray-500 rounded-xl"
               >
-                <Text className="font-bold text-gray-300">Add</Text>
+                <Text className="text-2xl font-bold text-gray-300">Add</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           <View className="flex-row justify-start mt-6 pt-4 border-t border-gray-600">
-            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="font-bold text-white">Save Changes</Text>
+            <TouchableOpacity className="px-8 py-4 bg-blue-500 rounded-lg">
+              <Text className="text-2xl font-bold text-white">
+                Save Changes
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

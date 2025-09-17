@@ -16,14 +16,14 @@ const ResetApplicationScreen = () => {
       title: "Device & Support",
       subtitle: "System Information",
       route: "/settings/system-and-support/device-and-support",
-      icon: <Smartphone color="#3b82f6" size={20} />,
+      icon: <Smartphone color="#3b82f6" size={24} />,
     },
     {
       id: "reset-application",
       title: "Reset Application",
       subtitle: "Factory Reset",
       route: "/settings/system-and-support/reset-application",
-      icon: <Wrench color="#3b82f6" size={20} />,
+      icon: <Wrench color="#3b82f6" size={24} />,
       isLocked: true,
     },
   ];
@@ -53,18 +53,22 @@ const ResetApplicationScreen = () => {
         <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
           {/* Main Content Card */}
           <View className="p-6">
-            <View className="flex-row gap-2">
+            <View className="flex-row gap-4">
               <TouchableOpacity
                 onPress={() => setModalType("clearCache")}
-                className="py-2 px-6 border border-gray-500 rounded-lg"
+                className="py-3 px-6 border border-gray-500 rounded-lg"
               >
-                <Text className="font-bold text-gray-300">Clear Cache</Text>
+                <Text className="text-2xl font-bold text-gray-300">
+                  Clear Cache
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setModalType("resetApp")}
-                className="py-2 px-6 bg-red-500 rounded-lg"
+                className="py-3 px-6 bg-red-500 rounded-lg"
               >
-                <Text className="font-bold text-white">Reset Application</Text>
+                <Text className="text-2xl font-bold text-white">
+                  Reset Application
+                </Text>
               </TouchableOpacity>
             </View>
 

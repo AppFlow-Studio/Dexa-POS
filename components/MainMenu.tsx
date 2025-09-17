@@ -38,7 +38,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`w-full h-full rounded-2xl border border-gray-700 p-4 ${
+      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
         isHighlighted ? "bg-blue-50" : "bg-[#303030]"
       }`}
       style={{ minHeight: 140 }}
@@ -47,19 +47,19 @@ const MenuCard: React.FC<MenuCardProps> = ({
         <View className="flex-row justify-center items-center w-full h-full relative">
           <View className=" w-full h-full flex items-center justify-center">
             <View className="mb-3">{icon}</View>
-            <Text className="text-lg font-bold text-white mb-1 text-center">
+            <Text className="text-3xl font-bold text-white mb-1 text-center">
               {title}
             </Text>
-            <Text className="text-sm text-gray-200 text-center">
+            <Text className="text-xl text-gray-200 text-center">
               {subtitle}
             </Text>
           </View>
           {isLocked && (
             <TouchableOpacity
               onPress={onLockPress}
-              className="p-2 bg-gray-800 rounded-lg absolute top-0 right-0"
+              className="p-3 bg-gray-800 rounded-lg absolute top-0 right-0"
             >
-              <Lock color="white" size={16} />
+              <Lock color="white" size={24} />
             </TouchableOpacity>
           )}
         </View>
@@ -96,7 +96,7 @@ const MainMenu: React.FC = () => {
   const menuItems = [
     {
       id: "home",
-      icon: <Home color="#3b82f6" size={32} />,
+      icon: <Home color="#3b82f6" size={48} />,
       title: "Sales",
       subtitle: "Process Orders",
       route: "/order-processing",
@@ -104,7 +104,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "tables",
-      icon: <Table color="#3b82f6" size={32} />,
+      icon: <Table color="#3b82f6" size={48} />,
       title: "Tables",
       subtitle: "Manage Seating",
       route: "/tables",
@@ -112,7 +112,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "previous-orders",
-      icon: <History color="#3b82f6" size={32} />,
+      icon: <History color="#3b82f6" size={48} />,
       title: "Previous Orders",
       subtitle: "Order History",
       route: "/previous-orders",
@@ -120,7 +120,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "online-orders",
-      icon: <ShoppingBag color="#3b82f6" size={32} />,
+      icon: <ShoppingBag color="#3b82f6" size={48} />,
       title: "Online Orders",
       subtitle: "Web & app Orders",
       route: "/online-orders",
@@ -128,7 +128,7 @@ const MainMenu: React.FC = () => {
     },
     // {
     //     id: "customers",
-    //     icon: <Users color="#3b82f6" size={32} />,
+    //     icon: <Users color="#3b82f6" size={48} />,
     //     title: "Customers",
     //     subtitle: "Customer Database",
     //     route: "/customers-list",
@@ -136,7 +136,7 @@ const MainMenu: React.FC = () => {
     // },
     {
       id: "menu-management",
-      icon: <UtensilsCrossed color="#3b82f6" size={32} />,
+      icon: <UtensilsCrossed color="#3b82f6" size={48} />,
       title: "Menu Management",
       subtitle: "Edit Menu Items",
       route: "/menu",
@@ -145,7 +145,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "inventory",
-      icon: <Package color="#3b82f6" size={32} />,
+      icon: <Package color="#3b82f6" size={48} />,
       title: "Inventory",
       subtitle: "Stock Management",
       route: "/inventory",
@@ -154,7 +154,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "analytics",
-      icon: <BarChart3 color="#3b82f6" size={32} />,
+      icon: <BarChart3 color="#3b82f6" size={48} />,
       title: "Analytics",
       subtitle: "Sales Reports",
       route: "/analytics",
@@ -163,7 +163,7 @@ const MainMenu: React.FC = () => {
     },
     {
       id: "settings",
-      icon: <Settings color="#3b82f6" size={32} />,
+      icon: <Settings color="#3b82f6" size={48} />,
       title: "Settings",
       subtitle: "System Config",
       route: "/settings",
@@ -176,7 +176,7 @@ const MainMenu: React.FC = () => {
     <View className="w-full h-full flex-1">
       <View className="flex-1 p-6 w-full h-full items-center justify-center">
         <View className="flex-1 w-full h-full items-center justify-center">
-          <View className="flex-row flex-wrap gap-2 w-full h-full items-center justify-center">
+          <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
             {menuItems.map((item, index) => (
               <View
                 key={item.id}
@@ -208,12 +208,12 @@ const MainMenu: React.FC = () => {
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="w-fit h-fit bg-white">
           <DialogHeader>
-            <DialogTitle className="text-center text-lg font-semibold">
+            <DialogTitle className="text-center text-3xl font-semibold">
               Manager Access Required
             </DialogTitle>
           </DialogHeader>
           <View className="py-4">
-            <Text className="text-center text-gray-600 mb-6">
+            <Text className="text-center text-2xl text-gray-600 mb-6">
               Enter your manager PIN to access this feature
             </Text>
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
@@ -242,9 +242,9 @@ const MainMenu: React.FC = () => {
                 setPinDialogOpen(false);
                 handlePinSubmit();
               }}
-              className="p-3 bg-primary-400 rounded-full w-[80%] self-center mt-6"
+              className="p-4 bg-primary-400 rounded-full w-[80%] self-center mt-6"
             >
-              <Text className="text-center text-white">Enter</Text>
+              <Text className="text-center text-2xl text-white">Enter</Text>
             </TouchableOpacity>
           </View>
         </DialogContent>

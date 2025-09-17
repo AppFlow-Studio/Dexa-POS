@@ -129,10 +129,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const activeOrderForThisTable = orders.find(
-    (o) =>
-      o.service_location_id === table.id &&
-      o.order_status !== "Voided" &&
-      o.order_status !== "Closed" // Show all orders except voided ones
+    (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
   );
 
   // Calculate the total for this specific order's cart
@@ -170,17 +167,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         </TouchableOpacity>
 
         {isSelected && isEditMode && (
-          <View className="absolute -top-12 left-1/2 flex-row bg-white p-1.5 rounded-full z-50">
+          <View className="absolute -top-16 left-1/2 flex-row bg-white p-2 rounded-full z-50">
             <GestureDetector gesture={rotateGesture}>
               <View className="p-2 bg-gray-100 rounded-full cursor-grab">
-                <RotateCcw color="black" size={18} />
+                <RotateCcw color="black" size={24} />
               </View>
             </GestureDetector>
             <TouchableOpacity
               onPress={handleDelete}
               className="p-2 ml-1 bg-black/10 rounded-full"
             >
-              <Trash2 color="red" size={18} />
+              <Trash2 color="red" size={24} />
             </TouchableOpacity>
           </View>
         )}

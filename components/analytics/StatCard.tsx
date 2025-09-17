@@ -21,14 +21,14 @@ const StatCard: React.FC<StatCardProps> = ({
     changeType === "increase" ? "text-green-500" : "text-red-500";
 
   return (
-    <View className="flex-1 bg-[#303030] p-4 rounded-2xl border border-gray-200">
+    <View className="flex-1 bg-[#303030] p-6 rounded-2xl border border-gray-200">
       <View className="flex-row justify-between items-start">
-        <Text className="text-base font-semibold text-white">{title}</Text>
+        <Text className="text-xl font-semibold text-white">{title}</Text>
         <View className="p-2 bg-blue-50 rounded-lg">{icon}</View>
       </View>
-      <Text className="text-3xl font-bold text-white mt-2">{value}</Text>
+      <Text className="text-4xl font-bold text-white mt-2">{value}</Text>
       <View className="flex-row items-center mt-1">
-        <ArrowUp className={changeColor}  size={16} />
+        <ArrowUp className={changeColor} size={16} />
         <Text className={`ml-1 font-semibold ${changeColor}`}>{change}</Text>
         <Text className="text-white"> than yesterday</Text>
       </View>

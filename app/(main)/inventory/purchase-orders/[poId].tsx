@@ -16,7 +16,7 @@ const PurchaseOrderDetailScreen = () => {
   if (!po) {
     return (
       <View>
-        <Text className="text-white">Purchase Order not found.</Text>
+        <Text className="text-2xl text-white">Purchase Order not found.</Text>
       </View>
     );
   }
@@ -41,15 +41,15 @@ const PurchaseOrderDetailScreen = () => {
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-2xl font-bold text-white">
+        <Text className="text-3xl font-bold text-white">
           PO Details: {po.poNumber}
         </Text>
         <TouchableOpacity
           onPress={handleReceive}
           disabled={isReceived}
-          className={`py-3 px-5 rounded-lg ${isReceived ? "bg-gray-500" : "bg-green-600"}`}
+          className={`py-4 px-6 rounded-lg ${isReceived ? "bg-gray-500" : "bg-green-600"}`}
         >
-          <Text className="font-bold text-white">
+          <Text className="text-2xl font-bold text-white">
             {isReceived ? "Stock Received" : "Receive Stock"}
           </Text>
         </TouchableOpacity>
@@ -58,26 +58,26 @@ const PurchaseOrderDetailScreen = () => {
       <View className="bg-[#303030] border border-gray-700 rounded-xl p-6">
         <View className="flex-row justify-between mb-4">
           <View>
-            <Text className="text-gray-400">Vendor</Text>
-            <Text className="text-white text-lg font-semibold">
+            <Text className="text-xl text-gray-400">Vendor</Text>
+            <Text className="text-2xl font-semibold text-white">
               {vendor?.name || "Unknown"}
             </Text>
           </View>
           <View>
-            <Text className="text-gray-400">Status</Text>
-            <Text className="text-white text-lg font-semibold">
+            <Text className="text-xl text-gray-400">Status</Text>
+            <Text className="text-2xl font-semibold text-white">
               {po.status}
             </Text>
           </View>
           <View>
-            <Text className="text-gray-400">Total Cost</Text>
-            <Text className="text-white text-lg font-semibold">
+            <Text className="text-xl text-gray-400">Total Cost</Text>
+            <Text className="text-2xl font-semibold text-white">
               ${totalCost.toFixed(2)}
             </Text>
           </View>
         </View>
 
-        <Text className="text-lg font-semibold text-white mt-4 mb-2">
+        <Text className="text-2xl font-semibold text-white mt-4 mb-2">
           Items
         </Text>
         <FlatList
@@ -88,12 +88,14 @@ const PurchaseOrderDetailScreen = () => {
               (i) => i.id === item.inventoryItemId
             );
             return (
-              <View className="flex-row justify-between p-3 border-b border-gray-600">
-                <Text className="text-white flex-1">{invItem?.name}</Text>
-                <Text className="text-gray-300 w-32">
+              <View className="flex-row justify-between p-4 border-b border-gray-600">
+                <Text className="text-2xl text-white flex-1">
+                  {invItem?.name}
+                </Text>
+                <Text className="text-xl text-gray-300 w-40">
                   {item.quantity} {invItem?.unit}
                 </Text>
-                <Text className="text-gray-300 w-32">
+                <Text className="text-xl text-gray-300 w-40">
                   ${(item.cost * item.quantity).toFixed(2)}
                 </Text>
               </View>

@@ -87,7 +87,7 @@ const SalesTaxesSummaryCard = () => {
   }, []);
 
   return (
-    <View className="bg-white ">
+    <View>
       <View className="flex-row items-center">
         {/* Chart Container */}
         <View className="w-48 h-24 relative">
@@ -116,8 +116,8 @@ const SalesTaxesSummaryCard = () => {
 
           {/* Center Label */}
           <View className="absolute top-10 left-0 right-0 bottom-0 flex items-center justify-start pt-2">
-            <Text className="text-sm text-gray-500">Total Sales</Text>
-            <Text className="text-2xl font-bold text-gray-800">
+            <Text className="text-sm text-gray-300">Total Sales</Text>
+            <Text className="text-2xl font-bold text-white">
               ${totalValue.toFixed(2)}
             </Text>
           </View>

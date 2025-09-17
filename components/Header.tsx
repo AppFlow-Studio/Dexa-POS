@@ -93,10 +93,8 @@ const Header = () => {
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname === "/settings" ||
-    (pathname.startsWith("/menu/") &&
-      pathname.split("/").length > 2) ||
-    (pathname.startsWith("/inventory/") &&
-      pathname.split("/").length > 2) ||
+    (pathname.startsWith("/menu/") && pathname.split("/").length > 2) ||
+    (pathname.startsWith("/inventory/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/previous-orders/") &&
@@ -150,51 +148,53 @@ const Header = () => {
           {showBackButton && (
             <TouchableOpacity
               onPress={handleBackPress}
-              className="p-2 mr-4 bg-gray-100 rounded-lg"
+              className="p-3 mr-4 bg-gray-100 rounded-lg"
             >
               <ArrowLeft color="#1f2937" size={24} />
             </TouchableOpacity>
           )}
-          <Text className="text-2xl font-bold text-white">{title}</Text>
+          <Text className="text-3xl font-bold text-white">{title}</Text>
         </View>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center cursor-pointer">
               <Image
                 source={require("@/assets/images/tom_hardy.jpg")}
-                className="w-10 h-10 rounded-full"
+                className="w-12 h-12 rounded-full"
               />
               <View className="ml-3">
-                <Text className="font-semibold text-white">Jessica</Text>
-                <Text className="text-white">New York</Text>
+                <Text className="text-2xl font-semibold text-white">
+                  Jessica
+                </Text>
+                <Text className="text-xl text-white">New York</Text>
               </View>
-              <ChevronDown color="white" size={20} className="ml-2" />
+              <ChevronDown color="white" size={24} className="ml-2" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56">
             <DropdownMenuItem
               onPress={() => router.push("/settings/basic/my-profile")}
             >
-              <User className="mr-2 h-4 w-4" />
-              <Text>My Profile</Text>
+              <User className="mr-2 h-6 w-6" />
+              <Text className="text-2xl">My Profile</Text>
             </DropdownMenuItem>
             <DropdownMenuItem
               onPress={handleStartBreak}
               disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
             >
-              <Coffee className="mr-2 h-4 w-4" />
-              <Text>
+              <Coffee className="mr-2 h-6 w-6" />
+              <Text className="text-2xl">
                 {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
-              <LogOut className="mr-2 h-4 w-4" />
-              <Text>Switch Account</Text>
+              <LogOut className="mr-2 h-6 w-6" />
+              <Text className="text-2xl">Switch Account</Text>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onPress={() => alert("Logging out...")}>
-              <LogOut className="mr-2 h-4 w-4 text-red-500" />
-              <Text className="text-red-500">Logout</Text>
+              <LogOut className="mr-2 h-6 w-6 text-red-500" />
+              <Text className="text-2xl text-red-500">Logout</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -13,14 +13,14 @@ const MerchantLoginScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-4xl font-semibold text-white text-center mb-8">
+      <Text className="text-4xl font-semibold text-white text-center mb-10">
         Merchant Login
       </Text>
 
-      <View className="mb-4">
-        <Text className="text-lg font-medium text-white mb-2">Email</Text>
+      <View className="mb-6">
+        <Text className="text-2xl font-medium text-white mb-2">Email</Text>
         <TextInput
-          className="w-full p-4 border text-white border-neutral-200 rounded-xl text-lg"
+          className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
           placeholder="john@gmail.com"
           placeholderTextColor="white"
           keyboardType="email-address"
@@ -28,27 +28,27 @@ const MerchantLoginScreen = () => {
         />
       </View>
 
-      <View className="mb-4">
-        <Text className="text-lg font-medium text-white mb-2">
-          Password
-        </Text>
+      <View className="mb-6">
+        <Text className="text-2xl font-medium text-white mb-2">Password</Text>
         <TextInput
-          className="w-full p-4 border text-white border-neutral-200 rounded-xl text-lg"
+          className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
           placeholderTextColor="white"
           placeholder="••••••••"
           secureTextEntry
         />
       </View>
 
-      <TouchableOpacity className="self-end mb-6">
-        <Text className="font-semibold text-white">Forgot Password</Text>
+      <TouchableOpacity className="self-end mb-8">
+        <Text className="text-xl font-semibold text-white">
+          Forgot Password
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         onPress={handleLogin}
-        className="w-full p-4 bg-primary-400 rounded-xl items-center"
+        className="w-full p-6 bg-primary-400 rounded-xl items-center"
       >
-        <Text className="text-white text-lg font-bold">Login</Text>
+        <Text className="text-white text-2xl font-bold">Login</Text>
       </TouchableOpacity>
     </View>
   );

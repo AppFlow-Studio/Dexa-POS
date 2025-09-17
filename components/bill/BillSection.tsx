@@ -41,7 +41,9 @@ const BillSection = ({
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
 }) => {
-  const { activeOrderId, orders,
+  const {
+    activeOrderId,
+    orders,
     activeOrderTotal,
     startNewOrder,
     fireActiveOrderToKitchen,
@@ -77,70 +79,41 @@ const BillSection = ({
     setDiscountOverlayVisible(false);
   };
 
-  if (!activeOrderId) return (
-    <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
-      <Text className="text-lg font-semibold text-white mb-4">
-        No Active Order
-      </Text>
-      <TouchableOpacity
-        className="px-6 py-3 bg-blue-600 rounded-full shadow-md active:opacity-80"
-        onPress={() => {
-          // Start a new order using the store
-          startNewOrder();
-        }}
-      >
-        <Text className="text-white text-base font-bold tracking-wide">
-          Start New Order
+  if (!activeOrderId)
+    return (
+      <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
+        <Text className="text-2xl font-semibold text-white mb-4">
+          No Active Order
         </Text>
-      </TouchableOpacity>
-    </View>
-  );
+        <TouchableOpacity
+          className="px-6 py-3 bg-blue-600 rounded-full shadow-md active:opacity-80"
+          onPress={() => {
+            // Start a new order using the store
+            startNewOrder();
+          }}
+        >
+          <Text className="text-white text-2xl font-bold tracking-wide">
+            Start New Order
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
 
   return (
-
-    <View
-      className="w-1/3 bg-[#303030]"
-    >
-      {/* <Image source={images.topBar} className="w-full h-12" resizeMode="cover" /> */}
-      {/* Paid / Status badges */}
-      {/* {activeOrder && (
-          <View className="px-4 py-2 flex-row gap-2 items-center">
-            <View
-              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                ? "bg-green-100"
-                : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-100"
-                  : "bg-red-100"
-                }`}
-            >
-              <Text
-                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                  ? "text-green-800"
-                  : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-800"
-                    : "text-red-800"
-                  }`}
-              >
-                {activeOrder.paid_status}
-              </Text>
-            </View>
-
-            <View className="px-2 py-1 rounded-full bg-blue-100">
-              <Text className="text-xs font-semibold text-blue-800">
-                {activeOrder.order_status}
-              </Text>
-            </View>
-          </View>
-        )} */}
+    <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
-      <View className="flex flex-row justify-between items-center bg-[#212121] pb-2">
+      <View className="flex flex-row justify-between items-center bg-[#212121] p-4">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-4 py-2 bg-[#212121] border border-gray-600 rounded-lg ${(!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building") ? "opacity-50" : ""}`}
+            className={`flex-row items-center gap-2 px-6 py-3 bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
             style={{ elevation: 2 }}
-            disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building"}
+            disabled={
+              !activeOrder ||
+              activeOrder.items.length === 0 ||
+              activeOrder.order_status !== "Building"
+            }
             onPress={() => {
               // If this is a dine-in order with a selected table, assign it first
               if (activeOrder?.order_type === "Dine In" && selectedTable) {
@@ -152,38 +125,46 @@ const BillSection = ({
             }}
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-base">Send to Kitchen ({activeOrder?.items.length})</Text>
+            <Text className="text-white font-bold text-xl">
+              Send to Kitchen ({activeOrder?.items.length})
+            </Text>
             {/* Paper plane icon (Lucide) */}
-            <Send color="#9CA3AF" />
+            <Send size={24} color="#9CA3AF" />
           </TouchableOpacity>
         )}
       </View>
       <View className="h-[1px] w-[90%] self-center bg-gray-600 " />
       {/* More and Pay Buttons */}
       {showPlaymentActions && (
-        <View className="p-4 bg-[#212121]">
-          <View className="flex-row gap-3">
+        <View className="p-6 bg-[#212121]">
+          <View className="flex-row gap-4">
             {/* More Button */}
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="flex-1 py-3 bg-[#303030] rounded-xl border border-gray-600"
+              className="flex-1 py-4 bg-[#303030] rounded-xl border border-gray-600"
             >
-              <Text className="text-center font-bold text-white">More</Text>
+              <Text className="text-center text-2xl font-bold text-white">
+                More
+              </Text>
             </TouchableOpacity>
 
             {/* Pay Button */}
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={!activeOrder || activeOrder.items.length === 0}
-              className={`flex-1 py-3 rounded-xl ${!activeOrder || activeOrder.items.length === 0
-                ? "bg-gray-600"
-                : "bg-blue-600"
-                }`}
+              className={`flex-1 py-4 rounded-xl ${
+                !activeOrder || activeOrder.items.length === 0
+                  ? "bg-gray-600"
+                  : "bg-blue-600"
+              }`}
             >
-              <Text className={`text-center font-bold ${!activeOrder || activeOrder.items.length === 0
-                ? "text-gray-400"
-                : "text-white "
-                }`}>
+              <Text
+                className={`text-center text-2xl font-bold ${
+                  !activeOrder || activeOrder.items.length === 0
+                    ? "text-gray-400"
+                    : "text-white "
+                }`}
+              >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>
             </TouchableOpacity>

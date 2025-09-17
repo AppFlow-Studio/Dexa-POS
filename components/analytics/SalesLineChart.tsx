@@ -50,15 +50,15 @@ function Tooltip({
   font: any;
   boldFont: any;
 }) {
-  const TOOLTIP_WIDTH = 100;
-  const TOOLTIP_HEIGHT = 65;
+  const TOOLTIP_WIDTH = 120;
+  const TOOLTIP_HEIGHT = 80;
   const tooltipX = useDerivedValue(() => x.value - TOOLTIP_WIDTH / 2);
   const tooltipY = useDerivedValue(() => y.value - TOOLTIP_HEIGHT - 15);
   const formattedToday = useDerivedValue(
-    () => `$${Math.round(activeValueToday.value)}`
+    () => `${Math.round(activeValueToday.value)}`
   );
   const formattedYesterday = useDerivedValue(
-    () => `$${Math.round(activeValueYesterday.value)}`
+    () => `${Math.round(activeValueYesterday.value)}`
   );
   const trianglePath = useDerivedValue(() => {
     const p = Skia.Path.Make();
@@ -127,8 +127,8 @@ function Tooltip({
 }
 
 const SalesLineChart = () => {
-  const font = useFont(inter as any, 12);
-  const boldFont = useFont(interBold as any, 14);
+  const font = useFont(inter as any, 14);
+  const boldFont = useFont(interBold as any, 16);
 
   const { state, isActive } = useChartPressState({
     x: 0,
@@ -152,17 +152,17 @@ const SalesLineChart = () => {
       <View className="flex-row justify-end mt-2 mb-3 ">
         <View className="flex-row items-center ml-5">
           <View
-            className="w-2.5 h-2.5 rounded-full mr-2"
+            className="w-3 h-3 rounded-full mr-2"
             style={{ backgroundColor: COLORS.today }}
           />
-          <Text className="text-sm text-gray-500">Today</Text>
+          <Text className="text-xl text-gray-500">Today</Text>
         </View>
         <View className="flex-row items-center ml-5">
           <View
-            className="w-2.5 h-2.5 rounded-full mr-2"
+            className="w-3 h-3 rounded-full mr-2"
             style={{ backgroundColor: COLORS.yesterday }}
           />
-          <Text className="text-sm text-gray-500">Yesterday</Text>
+          <Text className="text-xl text-gray-500">Yesterday</Text>
         </View>
       </View>
       <View className="h-[300px] overflow-hidden">
@@ -172,7 +172,7 @@ const SalesLineChart = () => {
             xKey="hour"
             yKeys={["today", "yesterday"]}
             domainPadding={{ top: 30, bottom: 20 }}
-            xAxis={{
+            axisOptions={{
               font,
               labelColor: COLORS.text,
               // 👇 Renamed from labelFormatter to formatXLabel
@@ -184,7 +184,7 @@ const SalesLineChart = () => {
                 font,
                 labelColor: COLORS.text,
                 // 👇 Renamed from labelFormatter to formatYLabel
-                formatYLabel: (v) => `$${v}`,
+                formatYLabel: (v) => `${v}`,
                 lineColor: COLORS.grid,
                 lineWidth: 1,
                 linePathEffect: <DashPathEffect intervals={[4, 8]} />,

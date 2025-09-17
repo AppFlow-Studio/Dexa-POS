@@ -64,51 +64,56 @@ const MenuItem: React.FC<MenuItemProps> = ({
   return (
     <TouchableOpacity
       onPress={handlePress}
-      className="w-[23%] rounded-[20px] mb-3 bg-[#303030] border border-gray-600"
+      className="w-[23%] rounded-[20px] mb-4 bg-[#303030] border border-gray-600"
     >
-      <View className="flex-col items-center gap-2 overflow-hidden rounded-lg">
+      <View className="flex-col items-center gap-3 overflow-hidden rounded-lg">
         {imageSource ? (
           <Image
             source={imageSource}
-            className="w-full h-40 object-cover rounded-lg "
+            className="w-full h-48 object-cover rounded-lg "
           />
         ) : (
-          <View className="w-full h-40 rounded-xl  items-center justify-center ">
-            <Utensils color="#9ca3af" size={32} />
+          <View className="w-full h-48 rounded-xl  items-center justify-center ">
+            <Utensils color="#9ca3af" size={48} />
           </View>
         )}
-        <View className="h-[1px]  bg-blue-400 self-center w-[90%]" />
-        <View className="w-full px-3 pb-3">
+        <View className="h-[1px] bg-blue-400 self-center w-[90%]" />
+        <View className="w-full px-4 pb-4">
           <View className="flex-row items-center justify-between">
-            <Text className="text-base font-bold text-white mt-3 flex-1">
+            <Text className="text-2xl font-bold text-white mt-3 flex-1">
               {item.name}
             </Text>
             {item.modifiers && item.modifiers.length > 0 && (
-              <Settings color="#60A5FA" size={16} className="ml-2" />
+              <Settings color="#60A5FA" size={24} className="ml-2" />
             )}
           </View>
           <View className="flex-row items-baseline mt-1">
             {(() => {
               // Get the correct price for this category
-              const displayPrice = categoryId && getItemPriceForCategory
-                ? getItemPriceForCategory(item.id, categoryId)
-                : item.price;
+              const displayPrice =
+                categoryId && getItemPriceForCategory
+                  ? getItemPriceForCategory(item.id, categoryId)
+                  : item.price;
 
-              const hasCustomPricing = categoryId && getItemPriceForCategory &&
+              const hasCustomPricing =
+                categoryId &&
+                getItemPriceForCategory &&
                 getItemPriceForCategory(item.id, categoryId) !== item.price;
 
               return (
                 <>
-                  <Text className={`text-base font-semibold ${hasCustomPricing ? 'text-yellow-400' : 'text-white'}`}>
+                  <Text
+                    className={`text-2xl font-semibold ${hasCustomPricing ? "text-yellow-400" : "text-white"}`}
+                  >
                     ${displayPrice.toFixed(2)}
                   </Text>
                   {hasCustomPricing && (
-                    <Text className="text-xs text-gray-500 ml-2 line-through">
+                    <Text className="text-xl text-gray-500 ml-2 line-through">
                       ${item.price.toFixed(2)}
                     </Text>
                   )}
                   {item.cashPrice && (
-                    <Text className="text-xs text-gray-300 ml-2">
+                    <Text className="text-xl text-gray-300 ml-2">
                       Cash Price: ${item.cashPrice.toFixed(2)}
                     </Text>
                   )}
@@ -118,17 +123,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </View>
         </View>
       </View>
-
-      {/* Action buttons
-      <TouchableOpacity
-        onPress={handlePress}
-        className="w-full mt-4 py-3 rounded-xl items-center justify-center bg-primary-100"
-      >
-        <View className="flex-row items-center">
-          <Plus color="#3D72C2" size={16} strokeWidth={3} />
-          <Text className="text-primary-500 font-bold ml-1.5">Add to Cart</Text>
-        </View>
-      </TouchableOpacity> */}
     </TouchableOpacity>
   );
 };
