@@ -1,5 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
@@ -8,10 +14,26 @@ import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Link } from "expo-router";
-import { ChevronDown, Logs, PackagePlus, Search, Sofa, Table } from "lucide-react-native";
+import {
+  ChevronDown,
+  Logs,
+  PackagePlus,
+  Search,
+  Sofa,
+  Table,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import Animated, { FadingTransition, ReduceMotion } from "react-native-reanimated";
+import {
+  FlatList,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Animated, {
+  FadingTransition,
+  ReduceMotion,
+} from "react-native-reanimated";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 import ModifierScreen from "./ModifierScreen";
@@ -40,9 +62,16 @@ const getImageSource = (item: MenuItemType) => {
 };
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
-  const { menuItems, menus, isCategoryAvailableNow, categories, getItemPriceForCategory } = useMenuStore();
+  const {
+    menuItems,
+    menus,
+    isCategoryAvailableNow,
+    categories,
+    getItemPriceForCategory,
+  } = useMenuStore();
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
-  const { isOpen: isOrderTypeDrawerOpen, closeDrawer } = useOrderTypeDrawerStore();
+  const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
+    useOrderTypeDrawerStore();
   const [activeTab, setActiveTab] = useState("Menu");
   const [activeMeal, setActiveMeal] = useState(menus[0].name);
   const [activeCategory, setActiveCategory] = useState(menus[0].categories[0]);
@@ -67,7 +96,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const handleMenuSelect = (menuName: string) => {
     setActiveMeal(menuName);
-    setActiveCategory(menus.find((menu) => menu.name === menuName)?.categories[0] || '');
+    setActiveCategory(
+      menus.find((menu) => menu.name === menuName)?.categories[0] || ""
+    );
     setIsMenuDialogOpen(false);
   };
   useEffect(() => {
@@ -98,16 +129,19 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-2"
             >
               <Text className="text-white font-medium mr-2">Order Type:</Text>
-              <Text className="text-blue-400 font-semibold">{typeof currentOrderType === 'string' ? currentOrderType : (currentOrderType as any)?.label || 'Take Away'}</Text>
+              <Text className="text-blue-400 font-semibold">
+                {typeof currentOrderType === "string"
+                  ? currentOrderType
+                  : (currentOrderType as any)?.label || "Take Away"}
+              </Text>
             </TouchableOpacity>
           </View>
           {/* Right Section: Search Bar - Now positioned at the bottom */}
           <View className="flex-1 flex-row justify-end items-center gap-x-2">
-
             <View className="w-fit">
               <TouchableOpacity
                 onPress={() => setActiveTab("Menu")}
-                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Menu" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
+                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Menu" ? "border-2 border-blue-400" : "border border-gray-600"}`}
               >
                 <Table color="#9CA3AF" size={24} />
               </TouchableOpacity>
@@ -126,14 +160,15 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             <View className="w-fit">
               <TouchableOpacity
                 onPress={() => setActiveTab("Open Item")}
-                className={`flex-row items-center bg-[#303030]  rounded-lg px-4 py-3 justify-start ${activeTab == "Open Item" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
+                className={`flex-row items-center bg-[#303030]  rounded-lg px-4 py-3 justify-start ${activeTab == "Open Item" ? "border-2 border-blue-400" : "border border-gray-600"}`}
               >
                 <PackagePlus color="#9CA3AF" size={24} />
               </TouchableOpacity>
             </View>
 
             <View className="w-fit">
-              <Link href="/tables"
+              <Link
+                href="/tables"
                 // onPress={openSearch}
                 className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
               >
@@ -144,7 +179,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             <View className="w-fit">
               <TouchableOpacity
                 onPress={() => setActiveTab("Orders")}
-                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? 'border-2 border-blue-400' : 'border border-gray-600'}`}
+                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
               >
                 <Logs color="#9CA3AF" size={24} />
                 <Text className="text-gray-300 ml-4">Orders</Text>
@@ -163,38 +198,57 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               </DialogTrigger>
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
                 <DialogHeader>
-                  <DialogTitle className="text-white text-center">Select Menu</DialogTitle>
+                  <DialogTitle className="text-white text-center">
+                    Select Menu
+                  </DialogTitle>
                 </DialogHeader>
-                <ScrollView className="gap-3 mt-4 w-full" contentContainerStyle={{ gap: 16 }}>
-
+                <ScrollView
+                  className="gap-3 mt-4 w-full"
+                  contentContainerStyle={{ gap: 16 }}
+                >
                   {menus.map((menu) => (
                     <TouchableOpacity
                       key={menu.id}
                       onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${activeMeal === menu.name
-                        ? 'bg-blue-600 border-blue-400'
-                        : 'bg-[#303030] border-gray-600'
-                        }`}
+                      className={`p-4 rounded-lg border ${
+                        activeMeal === menu.name
+                          ? "bg-blue-600 border-blue-400"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
-                      <Text className={`font-semibold text-lg ${activeMeal === menu.name ? 'text-white' : 'text-white'
-                        }`}>
+                      <Text
+                        className={`font-semibold text-lg ${
+                          activeMeal === menu.name ? "text-white" : "text-white"
+                        }`}
+                      >
                         {menu.name}
                       </Text>
-                      <Text className={`text-sm mt-1 ${activeMeal === menu.name ? 'text-blue-100' : 'text-gray-400'
-                        }`}>
+                      <Text
+                        className={`text-sm mt-1 ${
+                          activeMeal === menu.name
+                            ? "text-blue-100"
+                            : "text-gray-400"
+                        }`}
+                      >
                         {menu.description}
                       </Text>
                       <View className="flex-row flex-wrap gap-1 mt-2">
                         {menu.categories.map((category, index) => (
                           <View
                             key={index}
-                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
-                              ? 'bg-blue-500'
-                              : 'bg-gray-600'
-                              }`}
+                            className={`px-2 py-1 rounded-full ${
+                              activeMeal === menu.name
+                                ? "bg-blue-500"
+                                : "bg-gray-600"
+                            }`}
                           >
-                            <Text className={`text-xs ${activeMeal === menu.name ? 'text-white' : 'text-gray-300'
-                              }`}>
+                            <Text
+                              className={`text-xs ${
+                                activeMeal === menu.name
+                                  ? "text-white"
+                                  : "text-gray-300"
+                              }`}
+                            >
                               {category}
                             </Text>
                           </View>
@@ -209,21 +263,32 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        {activeTab === "Menu" && <MenuControls
-          activeMeal={activeMeal}
-          onMealChange={(value) => { setActiveMeal(value); setActiveCategory(menus.find((menu) => menu.name === value)?.categories[0] || '') }}
-          activeCategory={activeCategory}
-          onCategoryChange={setActiveCategory}
-        />}
+        {activeTab === "Menu" && (
+          <MenuControls
+            activeMeal={activeMeal}
+            onMealChange={(value) => {
+              setActiveMeal(value);
+              setActiveCategory(
+                menus.find((menu) => menu.name === value)?.categories[0] || ""
+              );
+            }}
+            activeCategory={activeCategory}
+            onCategoryChange={setActiveCategory}
+          />
+        )}
 
-        {activeTab === "Menu" ?
-          <Animated.View key={"Menu"} >
+        {activeTab === "Menu" ? (
+          <Animated.View key={"Menu"}>
             <FlatList
               data={filteredMenuItems}
               keyExtractor={(item) => item.id}
               numColumns={4}
               className="mt-4 flex"
-              contentContainerStyle={{ marginLeft: 'auto', width: '99%', alignSelf: 'center' }}
+              contentContainerStyle={{
+                marginLeft: "auto",
+                width: "99%",
+                alignSelf: "center",
+              }}
               showsVerticalScrollIndicator={false}
               columnWrapperStyle={{ gap: 16 }}
               removeClippedSubviews={false}
@@ -236,7 +301,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               }
               renderItem={({ item }) => {
                 // Find the current category ID
-                const currentCategory = categories.find(cat => cat.name === activeCategory);
+                const currentCategory = categories.find(
+                  (cat) => cat.name === activeCategory
+                );
                 const categoryId = currentCategory?.id;
 
                 return (
@@ -251,20 +318,28 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               }}
             />
           </Animated.View>
-          : activeTab === "Open Item" ?
-            <Animated.View key={"Open Item"} className={"flex-1"} layout={FadingTransition.reduceMotion(ReduceMotion.Never).duration(1000)
+        ) : activeTab === "Open Item" ? (
+          <Animated.View
+            key={"Open Item"}
+            className={"flex-1"}
+            layout={FadingTransition.reduceMotion(ReduceMotion.Never)
+              .duration(1000)
               .delay(500)
-              .reduceMotion(ReduceMotion.Never)} >
-              <OpenItemAdder />
-            </Animated.View> : activeTab === "Orders" ?
-              <Animated.View key={"Orders"} layout={FadingTransition.duration(1000)
-                .delay(500)
-                .reduceMotion(ReduceMotion.Never)}
-                className="flex-1"
-              >
-                <PreviousOrdersSection />
-              </Animated.View> : null
-        }
+              .reduceMotion(ReduceMotion.Never)}
+          >
+            <OpenItemAdder />
+          </Animated.View>
+        ) : activeTab === "Orders" ? (
+          <Animated.View
+            key={"Orders"}
+            layout={FadingTransition.duration(1000)
+              .delay(500)
+              .reduceMotion(ReduceMotion.Never)}
+            className="flex-1"
+          >
+            <PreviousOrdersSection />
+          </Animated.View>
+        ) : null}
       </View>
 
       {/* Order Type Drawer */}

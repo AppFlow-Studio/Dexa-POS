@@ -63,14 +63,14 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
     >
       <BottomSheetView className=" bg-white rounded-t-3xl overflow-hidden">
         {/* Header */}
-        <View className="flex-row items-center border-b border-background-400 bg-background-300 rounded-2xl px-4">
+        <View className="flex-row items-center border-b border-background-400 bg-background-300 rounded-2xl px-6">
           <View className="flex-row items-center">
-            <Search color="#6b7280" size={18} />
+            <Search color="#6b7280" size={24} />
             <BottomSheetTextInput
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search Item"
-              className="flex-1 py-3 ml-3 text-lg text-gray-900"
+              className="flex-1 py-4 ml-3 text-2xl text-gray-900"
               placeholderTextColor="#6b7280"
               autoFocus={true}
               focusable
@@ -80,8 +80,8 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
             onPress={closeSearch}
             className="flex-row items-center ml-4 p-2"
           >
-            <X color="#4b5563" size={20} />
-            <Text className="ml-1.5 text-base font-semibold text-gray-600">
+            <X color="#4b5563" size={24} />
+            <Text className="ml-1.5 text-xl font-semibold text-gray-600">
               Cancel
             </Text>
           </TouchableOpacity>
@@ -90,12 +90,12 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         {/* Results List */}
         <BottomSheetFlatList
           data={searchResults}
-          keyExtractor={(item,index) => index.toString()}
+          keyExtractor={(item, index) => index.toString()}
           renderItem={({ item }) => <SearchResultItem item={item} />}
           className="px-6"
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center h-48">
-              <Text className="text-gray-500 text-lg">
+              <Text className="text-2xl text-gray-500">
                 No items found for "{searchText}"
               </Text>
             </View>

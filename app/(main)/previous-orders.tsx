@@ -89,14 +89,14 @@ const PreviousOrdersScreen = () => {
   };
 
   return (
-    <View className="flex-1 p-6 bg-white">
+    <View className="flex-1 p-6 bg-[#212121]">
       {/* Toolbar */}
       <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-3 w-[300px]">
-          <Search color="#6b7280" size={16} />
+        <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 w-[400px]">
+          <Search color="#6b7280" size={24} />
           <TextInput
             placeholder="Search Order"
-            className="ml-2 text-base flex-1"
+            className="ml-3 text-2xl flex-1"
             value={searchText}
             onChangeText={setSearchText}
           />
@@ -107,7 +107,7 @@ const PreviousOrdersScreen = () => {
       {/* Table */}
       <View className="flex-1">
         {/* Table Header */}
-        <View className="flex-row p-4 rounded-t-xl border-b border-background-200">
+        <View className="flex-row p-6 rounded-t-xl border-b border-background-200">
           {TABLE_HEADERS.map((header, index) => {
             const widths: Record<number, string> = {
               0: "w-[8%]",
@@ -125,7 +125,7 @@ const PreviousOrdersScreen = () => {
             return (
               <Text
                 key={header}
-                className={`font-bold text-sm text-gray-500 ${widths[index]}`}
+                className={`font-bold text-xl text-gray-500 ${widths[index]}`}
               >
                 {header}
               </Text>

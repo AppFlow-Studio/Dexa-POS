@@ -3,48 +3,55 @@ import ConnectTerminalModal from "@/components/settings/terminal/ConnectTerminal
 import EditTerminalModal from "@/components/settings/terminal/EditTerminalModal ";
 import { MOCK_TERMINALS } from "@/lib/mockData";
 import { PaymentTerminal } from "@/lib/types";
-import { CreditCard, Monitor, Printer, Receipt, Trash2 } from "lucide-react-native";
+import {
+  CreditCard,
+  Monitor,
+  Printer,
+  Receipt,
+  Trash2,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
 
 const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
-  <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
+  <View className="flex-row items-center p-6 bg-[#212121] border border-gray-600 rounded-2xl">
     <Switch
       value={terminal.isEnabled}
       onValueChange={() => onToggle(terminal.id)}
       trackColor={{ false: "#DCDCDC", true: "#31A961" }}
       thumbColor={"#ffffff"}
+      style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
     />
     <View className="ml-4 flex-row gap-4">
-      <Text className="font-bold text-lg text-white">{terminal.name}</Text>
+      <Text className="font-bold text-2xl text-white">{terminal.name}</Text>
       <View
-        className={`flex-row items-center mt-1 rounded-full px-2 ${terminal.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"}`}
+        className={`flex-row items-center mt-1 rounded-full px-3 py-1 ${terminal.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"}`}
       >
         <View
-          className={`w-2 h-2 rounded-full mr-2 ${terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
+          className={`w-3 h-3 rounded-full mr-2 ${terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
         />
         <Text
-          className={`font-semibold text-sm ${terminal.status === "Connected" ? "text-green-400" : "text-gray-300"}`}
+          className={`font-semibold text-xl ${terminal.status === "Connected" ? "text-green-400" : "text-gray-300"}`}
         >
           {terminal.status}
         </Text>
       </View>
     </View>
-    <View className="ml-auto flex-row items-center gap-2">
-      <Text className="font-semibold text-gray-300">
+    <View className="ml-auto flex-row items-center gap-3">
+      <Text className="text-xl font-semibold text-gray-300">
         Battery Level: {terminal.batteryLevel}%
       </Text>
       <TouchableOpacity
         onPress={onEdit}
-        className="py-2 px-4 border border-gray-500 rounded-xl"
+        className="py-3 px-6 border border-gray-500 rounded-xl"
       >
-        <Text className="font-bold text-gray-300">Edit Terminal</Text>
+        <Text className="text-xl font-bold text-gray-300">Edit Terminal</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onRemove}
-        className="p-3 border border-gray-500 rounded-full"
+        className="p-4 border border-gray-500 rounded-full"
       >
-        <Trash2 color="#9CA3AF" size={20} />
+        <Trash2 color="#9CA3AF" size={24} />
       </TouchableOpacity>
     </View>
   </View>
@@ -63,28 +70,28 @@ const PaymentTerminalScreen = () => {
       title: "Printers",
       subtitle: "Receipt & Kitchen",
       route: "/settings/hardware-connection/printer",
-      icon: <Printer color="#3b82f6" size={20} />,
+      icon: <Printer color="#3b82f6" size={24} />,
     },
     {
       id: "printer-rules",
       title: "Printer Rules",
       subtitle: "Print Configuration",
       route: "/settings/hardware-connection/printer-rules",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
     {
       id: "customer-display",
       title: "Customer Display",
       subtitle: "Order Display",
       route: "/settings/hardware-connection/customer-display",
-      icon: <Monitor color="#3b82f6" size={20} />,
+      icon: <Monitor color="#3b82f6" size={24} />,
     },
     {
       id: "payment-terminal",
       title: "Payment Terminal",
       subtitle: "Card Processing",
       route: "/settings/hardware-connection/payment-terminal",
-      icon: <CreditCard color="#3b82f6" size={20} />,
+      icon: <CreditCard color="#3b82f6" size={24} />,
     },
   ];
 
@@ -125,17 +132,17 @@ const PaymentTerminalScreen = () => {
             ))}
           </View>
 
-          <View className="flex-row justify-start gap-2 pt-4 border-t border-gray-600">
+          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
             <TouchableOpacity
               onPress={() => setConnectModalOpen(true)}
               className="px-6 py-3 border border-gray-500 rounded-lg"
             >
-              <Text className="font-bold text-gray-300">
+              <Text className="text-2xl font-bold text-gray-300">
                 Connect a New Terminal
               </Text>
             </TouchableOpacity>
             <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="font-bold text-white">Save</Text>
+              <Text className="text-2xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

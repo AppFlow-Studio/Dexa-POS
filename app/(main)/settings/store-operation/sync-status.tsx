@@ -2,7 +2,14 @@ import DatePicker from "@/components/date-picker";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import OfflineOrderRow from "@/components/settings/sync-status/OfflineOrderRow";
 import { MOCK_OFFLINE_ORDERS } from "@/lib/mockData";
-import { ChevronLeft, ChevronRight, Receipt, RefreshCcw, Search, Store } from "lucide-react-native";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Receipt,
+  RefreshCcw,
+  Search,
+  Store,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import {
   FlatList,
@@ -30,7 +37,7 @@ const SyncStatusScreen = () => {
       title: "End of Day",
       subtitle: "Daily Operations",
       route: "/settings/store-operation/end-of-day",
-      icon: <Store color="#3b82f6" size={20} />,
+      icon: <Store color="#3b82f6" size={24} />,
       isLocked: true,
     },
     {
@@ -38,7 +45,7 @@ const SyncStatusScreen = () => {
       title: "Receipt Rules",
       subtitle: "Receipt Configuration",
       route: "/settings/store-operation/receipt-rules",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
       isLocked: true,
     },
     {
@@ -46,7 +53,7 @@ const SyncStatusScreen = () => {
       title: "Sync Status",
       subtitle: "Data Synchronization",
       route: "/settings/store-operation/sync-status",
-      icon: <RefreshCcw color="#3b82f6" size={20} />,
+      icon: <RefreshCcw color="#3b82f6" size={24} />,
       isLocked: true,
     },
   ];
@@ -67,37 +74,44 @@ const SyncStatusScreen = () => {
           <View className="flex-1 gap-y-6">
             {/* Last Updated Card */}
             <View className="bg-[#212121] p-6 rounded-2xl border border-gray-600 flex-row justify-between items-center">
-              <Text className="text-xl font-bold text-white">Last Updated</Text>
-              <Text className="text-lg font-semibold text-gray-300">
+              <Text className="text-3xl font-bold text-white">
+                Last Updated
+              </Text>
+              <Text className="text-2xl font-semibold text-gray-300">
                 2 minutes ago
               </Text>
             </View>
 
             {/* Offline Mode Card */}
             <View className="flex-1 bg-[#212121] p-6 rounded-2xl border border-gray-600">
-              <Text className="text-xl font-bold text-white">Offline Mode</Text>
+              <Text className="text-3xl font-bold text-white">
+                Offline Mode
+              </Text>
 
               {/* Toolbar */}
               <View className="flex-row items-center justify-between my-4">
-                <View className="flex-row items-center bg-[#303030] rounded-lg px-3 w-[300px] border border-gray-600">
-                  <Search color="#9CA3AF" size={16} />
+                <View className="flex-row items-center bg-[#303030] rounded-lg px-4 w-[400px] border border-gray-600">
+                  <Search color="#9CA3AF" size={24} />
                   <TextInput
                     placeholder="Search Order"
                     placeholderTextColor="#9CA3AF"
-                    className="ml-2 text-base flex-1 text-white"
+                    className="ml-3 text-2xl flex-1 text-white"
                   />
                 </View>
-                <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+                <DatePicker
+                  date={selectedDate}
+                  onDateChange={setSelectedDate}
+                />
               </View>
 
               {/* Table */}
               <View className="flex-1 rounded-xl">
                 {/* Table Header */}
-                <View className="flex-row p-4 bg-[#303030] rounded-t-xl border-b border-gray-600">
+                <View className="flex-row p-6 bg-[#303030] rounded-t-xl border-b border-gray-600">
                   {TABLE_HEADERS.map((header) => (
                     <Text
                       key={header}
-                      className="w-1/6 font-bold text-sm text-gray-300"
+                      className="w-1/6 font-bold text-xl text-gray-300"
                     >
                       {header}
                     </Text>
@@ -113,15 +127,17 @@ const SyncStatusScreen = () => {
 
               {/* Footer for the card */}
               <View className="flex-row justify-between items-center mt-4">
-                <TouchableOpacity className="py-3 px-5 bg-blue-500 rounded-lg">
-                  <Text className="font-bold text-white">Sync Now</Text>
+                <TouchableOpacity className="py-4 px-6 bg-blue-500 rounded-lg">
+                  <Text className="text-2xl font-bold text-white">
+                    Sync Now
+                  </Text>
                 </TouchableOpacity>
                 <View className="flex-row items-center gap-2">
-                  <TouchableOpacity className="p-2 border border-gray-500 rounded-full">
-                    <ChevronLeft color="#9CA3AF" size={20} />
+                  <TouchableOpacity className="p-3 border border-gray-500 rounded-full">
+                    <ChevronLeft color="#9CA3AF" size={24} />
                   </TouchableOpacity>
-                  <TouchableOpacity className="p-2 border border-gray-500 rounded-full bg-blue-500">
-                    <ChevronRight color="white" size={20} />
+                  <TouchableOpacity className="p-3 border border-gray-500 rounded-full bg-blue-500">
+                    <ChevronRight color="white" size={24} />
                   </TouchableOpacity>
                 </View>
               </View>

@@ -97,12 +97,12 @@ const OrderProcessing = () => {
             <AccordionItem value="orders">
               <AccordionTrigger>
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-2xl font-bold text-white">
+                  <Text className="text-3xl font-bold text-white">
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-full justify-center items-center">
-                      <Text className="text-xs font-bold text-white">
+                    <Badge className="ml-2 bg-blue-600 rounded-full justify-center items-center p-2">
+                      <Text className="text-xl font-bold text-white">
                         {filteredOrders.length}
                       </Text>
                     </Badge>
@@ -117,7 +117,7 @@ const OrderProcessing = () => {
 
           {/* Show order badges when accordion is closed */}
           {!isAccordionOpen && filteredOrders.length > 0 && (
-            <View className="mt-4 flex-row flex-wrap gap-2">
+            <View className="mt-4 flex-row flex-wrap gap-3">
               {filteredOrders.map((order) => (
                 <OrderBadge
                   key={order.id}

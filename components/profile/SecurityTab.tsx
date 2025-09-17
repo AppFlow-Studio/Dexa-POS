@@ -14,16 +14,16 @@ const SecurityDetailRow = ({
   actionText: string;
   onActionPress: () => void;
 }) => (
-  <View className="flex-row items-center justify-between py-4 border-b border-gray-100">
+  <View className="flex-row items-center justify-between py-4 border-b border-gray-700">
     <View>
-      <Text className="text-sm text-gray-500 mb-1">{label}</Text>
-      <Text className="text-base font-semibold text-gray-800">{value}</Text>
+      <Text className="text-xl text-gray-300 mb-1">{label}</Text>
+      <Text className="text-2xl font-semibold text-white">{value}</Text>
     </View>
     <TouchableOpacity
       onPress={onActionPress}
-      className="py-2 px-4 border border-gray-300 rounded-lg"
+      className="py-3 px-6 border border-gray-600 rounded-lg bg-[#212121]"
     >
-      <Text className="font-bold text-gray-700">{actionText}</Text>
+      <Text className="font-bold text-xl text-gray-300">{actionText}</Text>
     </TouchableOpacity>
   </View>
 );
@@ -37,7 +37,7 @@ const SecurityTab = () => {
   const handleChangePassword = () => alert("Change Password Clicked");
 
   return (
-    <View className="space-y-4">
+    <View className="space-y-6">
       <SecurityDetailRow
         label="Full Name" // Note: The design shows "Full Name", but it's likely meant to be "Email"
         value={user.email}

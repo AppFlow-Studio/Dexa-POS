@@ -16,35 +16,35 @@ const Modifiers = () => {
       title: "Store Info",
       subtitle: "Business Details",
       route: "/settings/basic/store-info",
-      icon: <Building2 color="#3b82f6" size={20} />,
+      icon: <Building2 color="#3b82f6" size={24} />,
     },
     {
       id: "my-profile",
       title: "My Profile",
       subtitle: "Personal Settings",
       route: "/settings/basic/my-profile",
-      icon: <User color="#3b82f6" size={20} />,
+      icon: <User color="#3b82f6" size={24} />,
     },
     {
       id: "category",
       title: "Categories",
       subtitle: "Menu Categories",
       route: "/settings/basic/category",
-      icon: <Database color="#3b82f6" size={20} />,
+      icon: <Database color="#3b82f6" size={24} />,
     },
     {
       id: "modifiers",
       title: "Modifiers",
       subtitle: "Item Customizations",
       route: "/settings/basic/modifiers",
-      icon: <Settings color="#3b82f6" size={20} />,
+      icon: <Settings color="#3b82f6" size={24} />,
     },
     {
       id: "taxes",
       title: "Taxes",
       subtitle: "Tax Configuration",
       route: "/settings/basic/taxes",
-      icon: <Receipt color="#3b82f6" size={20} />,
+      icon: <Receipt color="#3b82f6" size={24} />,
     },
   ];
 
@@ -60,10 +60,8 @@ const Modifiers = () => {
 
         {/* Main Content */}
         <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
-          <Text className="text-xl font-bold text-white">
-            Item Modifiers
-          </Text>
-          <Text className="text-gray-300 mt-2">
+          <Text className="text-3xl font-bold text-white">Item Modifiers</Text>
+          <Text className="text-xl text-gray-300 mt-2">
             Configure item customizations and modifiers.
           </Text>
         </View>

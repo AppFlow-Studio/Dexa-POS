@@ -25,7 +25,7 @@ const CleanTableScreen = () => {
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center bg-[#212121]">
-        <Text className="text-white">Table not found.</Text>
+        <Text className="text-2xl text-white">Table not found.</Text>
       </View>
     );
   }
@@ -37,18 +37,18 @@ const CleanTableScreen = () => {
         <View className="w-full max-w-4xl">
           {/* Title */}
           <View className="items-center text-center">
-            <Text className="text-2xl font-bold text-white">
+            <Text className="text-3xl font-bold text-white">
               Please Clean Table
             </Text>
-            <Text className="text-lg text-gray-400 mt-1">
+            <Text className="text-2xl text-gray-400 mt-1">
               Cleaning is required to make this table available
             </Text>
           </View>
 
           {/* Info Banner */}
-          <View className="flex-row items-center p-4 bg-[#303030] rounded-lg my-6">
-            <Info color="#f97316" size={20} />
-            <Text className="ml-3 font-semibold text-white">
+          <View className="flex-row items-center p-6 bg-[#303030] rounded-lg my-6">
+            <Info color="#f97316" size={24} />
+            <Text className="ml-3 font-semibold text-2xl text-white">
               Table No. {table.name}, Table Size - Medium, {table.capacity}
             </Text>
           </View>
@@ -57,15 +57,15 @@ const CleanTableScreen = () => {
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={() => router.back()}
-              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-[#303030]"
+              className="flex-1 py-6 border border-gray-600 rounded-lg items-center bg-[#303030]"
             >
-              <Text className="text-lg font-bold text-white">Cancel</Text>
+              <Text className="text-2xl font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCleanTable}
-              className="flex-1 py-4 bg-blue-500 rounded-lg items-center"
+              className="flex-1 py-6 bg-blue-500 rounded-lg items-center"
             >
-              <Text className="text-lg font-bold text-white">Clean Table</Text>
+              <Text className="text-2xl font-bold text-white">Clean Table</Text>
             </TouchableOpacity>
           </View>
         </View>

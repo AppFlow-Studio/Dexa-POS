@@ -30,10 +30,10 @@ const ItemsReviewView = () => {
 
   return (
     <View className=" bg-background-100 p-6 rounded-2xl">
-      <Text className="text-2xl font-bold text-center mb-4 text-accent-400">
+      <Text className="text-3xl font-bold text-center mb-4 text-accent-400">
         Items
       </Text>
-      <ScrollView contentContainerClassName="gap-y-1">
+      <ScrollView contentContainerClassName="gap-y-2">
         {items.map((item) => (
           <BillItem
             key={item.id}
@@ -45,74 +45,76 @@ const ItemsReviewView = () => {
       </ScrollView>
       <View className="border-t border-gray-200 pt-4 mt-4">
         {/* Totals Summary */}
-        <View className="flex-row justify-bmetween items-center mb-2">
-          <Text className="text-base text-gray-600">Subtotal</Text>
-          <Text className="text-base text-gray-800">
+        <View className="flex-row justify-between items-center mb-2">
+          <Text className="text-2xl text-gray-600">Subtotal</Text>
+          <Text className="text-2xl text-gray-800">
             ${activeOrderSubtotal.toFixed(2)}
           </Text>
         </View>
         {activeOrderDiscount > 0 && (
           <View className="flex-row justify-between">
-            <Text className="text-green-600">Discount</Text>
-            <Text className="text-green-600">
+            <Text className="text-2xl text-green-600">Discount</Text>
+            <Text className="text-2xl text-green-600">
               -${activeOrderDiscount.toFixed(2)}
             </Text>
           </View>
         )}
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-base text-gray-600">Tax</Text>
-          <Text className="text-base text-gray-800">
+          <Text className="text-2xl text-gray-600">Tax</Text>
+          <Text className="text-2xl text-gray-800">
             ${activeOrderTax.toFixed(2)}
           </Text>
         </View>
         <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300">
-          <Text className="text-lg font-bold text-gray-900">Total</Text>
-          <Text className="text-lg font-bold text-gray-900">
+          <Text className="text-3xl font-bold text-gray-900">Total</Text>
+          <Text className="text-3xl font-bold text-gray-900">
             ${activeOrderTotal.toFixed(2)}
           </Text>
         </View>
         {/* Outstanding section (to be charged now) */}
-        <View className="mt-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
-          <Text className="text-sm font-semibold text-yellow-800 mb-2">
+        <View className="mt-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
+          <Text className="text-xl font-semibold text-yellow-800 mb-2">
             Outstanding Amount
           </Text>
 
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-sm text-yellow-700">Subtotal</Text>
-            <Text className="text-sm font-medium text-yellow-800">
+            <Text className="text-xl text-yellow-700">Subtotal</Text>
+            <Text className="text-xl font-medium text-yellow-800">
               ${activeOrderOutstandingSubtotal.toFixed(2)}
             </Text>
           </View>
           {activeOrderDiscount > 0 && (
             <View className="flex-row justify-between items-center mb-1">
-              <Text className="text-sm text-yellow-700">Discount</Text>
-              <Text className="text-sm font-medium text-yellow-800">
+              <Text className="text-xl text-yellow-700">Discount</Text>
+              <Text className="text-xl font-medium text-yellow-800">
                 - ${activeOrderDiscount.toFixed(2)}
               </Text>
             </View>
           )}
 
           <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-sm text-yellow-700">Tax</Text>
-            <Text className="text-sm font-medium text-yellow-800">
+            <Text className="text-xl text-yellow-700">Tax</Text>
+            <Text className="text-xl font-medium text-yellow-800">
               ${activeOrderOutstandingTax.toFixed(2)}
             </Text>
           </View>
           <View className="flex-row justify-between items-center pt-2 border-t border-yellow-200">
-            <Text className="text-base font-bold text-yellow-800">Total</Text>
-            <Text className="text-base font-bold text-yellow-800">
+            <Text className="text-2xl font-bold text-yellow-800">Total</Text>
+            <Text className="text-2xl font-bold text-yellow-800">
               ${activeOrderOutstandingTotal.toFixed(2)}
             </Text>
           </View>
         </View>
 
         {/* Action Buttons */}
-        <View className="flex-row gap-3 mt-6">
+        <View className="flex-row gap-4 mt-6">
           <TouchableOpacity
             onPress={close}
-            className="flex-1 py-3 border border-gray-300 rounded-lg"
+            className="flex-1 py-4 border border-gray-300 rounded-lg"
           >
-            <Text className="font-bold text-gray-700 text-center">Cancel</Text>
+            <Text className="text-2xl font-bold text-gray-700 text-center">
+              Cancel
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -128,9 +130,11 @@ const ItemsReviewView = () => {
                 setView("cash");
               }
             }}
-            className="flex-1 py-3 bg-accent-400 rounded-lg"
+            className="flex-1 py-4 bg-accent-400 rounded-lg"
           >
-            <Text className="font-bold text-white text-center">Continue</Text>
+            <Text className="text-2xl font-bold text-white text-center">
+              Continue
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

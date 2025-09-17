@@ -14,7 +14,7 @@ const SettingsHeader: React.FC<SettingsHeaderProps> = ({
 }) => {
   return (
     <View className="flex-row justify-between items-center">
-      <Text className="text-xl font-bold text-gray-800">{title}</Text>
+      <Text className="text-xl font-bold text-white">{title}</Text>
       <Switch
         value={value}
         onValueChange={onValueChange}

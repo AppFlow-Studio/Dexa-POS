@@ -49,24 +49,24 @@ const OnlineOrdersScreen = () => {
   return (
     <View className="flex-1 px-6 bg-[#212121]">
       {/* Toolbar */}
-      <View className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-3 py-0 w-full">
-        <Search color="#9CA3AF" size={16} />
+      <View className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-full">
+        <Search color="#9CA3AF" size={24} />
         <TextInput
           placeholder="Search Order No."
           placeholderTextColor="#9CA3AF"
-          className="ml-2 text-base flex-1 text-white"
+          className="ml-3 text-2xl flex-1 text-white"
         />
       </View>
       <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl">
+        <View className="flex-row items-center bg-[#303030] border border-gray-600 p-2 rounded-xl">
           {PARTNERS.map((partner) => (
             <TouchableOpacity
               key={partner}
               onPress={() => setActivePartner(partner)}
-              className={`py-2 px-4 rounded-lg ${activePartner === partner ? "bg-[#212121]" : ""}`}
+              className={`py-3 px-6 rounded-lg ${activePartner === partner ? "bg-[#212121]" : ""}`}
             >
               <Text
-                className={`font-semibold ${activePartner === partner ? "text-blue-400" : "text-gray-300"}`}
+                className={`text-xl font-semibold ${activePartner === partner ? "text-blue-400" : "text-gray-300"}`}
               >
                 {partner}
               </Text>

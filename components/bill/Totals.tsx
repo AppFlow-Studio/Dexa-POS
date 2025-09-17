@@ -20,7 +20,7 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
   const voucher = 0.0; // This can remain as a static value for now
 
   return (
-    <View className="px-4 py-2 bg-[#212121]">
+    <View className="px-6 py-3 bg-[#212121]">
       <View className="flex-row justify-between items-center mb-2 mt-2">
         <Text className="text-xl text-accent-100">Subtotal</Text>
         <Text className="text-xl text-accent-100">

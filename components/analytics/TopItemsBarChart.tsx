@@ -58,7 +58,7 @@ const AnimatedBar = ({
 };
 
 const TopItemsBarChart = () => {
-  const font = useFont(inter as any, 12);
+  const font = useFont(inter as any, 14);
 
   return (
     <View className="bg-[#303030] p-4 rounded-lg shadow border border-background-400">
@@ -70,7 +70,7 @@ const TopItemsBarChart = () => {
           yKeys={["category"]}
           domain={{ x: [0, 50] }} // Set the X-axis domain explicitly
           domainPadding={{ top: 20, bottom: 20 }}
-          xAxis={{
+          axisOptions={{
             font,
             labelColor: "white",
             lineColor: "#e5e7eb",
@@ -106,9 +106,7 @@ const TopItemsBarChart = () => {
         </CartesianChart>
       </View>
       {/* Axis Title */}
-      <Text className="text-center text-sm text-white mt-2">
-        Quantity Sold
-      </Text>
+      <Text className="text-center text-xl text-white mt-2">Quantity Sold</Text>
     </View>
   );
 };

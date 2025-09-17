@@ -131,6 +131,7 @@ export interface MenuItemType {
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
   customPricing?: CustomPricing[]; // New field for custom pricing
+  recipe?: RecipeItem[];
 }
 
 export interface CustomPricing {

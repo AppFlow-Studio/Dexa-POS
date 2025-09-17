@@ -60,39 +60,39 @@ const LayoutEditorScreen = () => {
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
-      <View className="bg-[#303030] p-4 flex-row justify-between items-center">
-        <Text className="text-2xl font-bold text-white"></Text>
-        <View className="flex-row gap-2">
+      <View className="bg-[#303030] p-6 flex-row justify-between items-center">
+        <Text className="text-3xl font-bold text-white"></Text>
+        <View className="flex-row gap-3">
           {selectedTableIds.length >= 2 && (
             <TouchableOpacity
               onPress={handleMerge}
-              className="py-3 px-5 rounded-lg flex-row items-center bg-green-500"
+              className="py-4 px-6 rounded-lg flex-row items-center bg-green-500"
             >
-              <LinkIcon size={16} color="white" className="mr-2" />
-              <Text className="font-bold text-white">Merge</Text>
+              <LinkIcon size={24} color="white" className="mr-2" />
+              <Text className="text-2xl font-bold text-white">Merge</Text>
             </TouchableOpacity>
           )}
           {canUnmerge && (
             <TouchableOpacity
               onPress={handleUnmerge}
-              className="py-3 px-5 rounded-lg flex-row items-center bg-yellow-500"
+              className="py-4 px-6 rounded-lg flex-row items-center bg-yellow-500"
             >
-              <X size={16} color="white" className="mr-2" />
-              <Text className="font-bold text-white">Unmerge</Text>
+              <X size={24} color="white" className="mr-2" />
+              <Text className="text-2xl font-bold text-white">Unmerge</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={() => setAddModalOpen(true)}
-            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500 text-white"
+            className="py-4 px-6 rounded-lg flex-row items-center bg-blue-500 text-white"
           >
-            <Plus size={16} color="white" />
-            <Text className="font-bold text-white">Add Table</Text>
+            <Plus size={24} color="white" />
+            <Text className="text-2xl font-bold text-white">Add Table</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"
+            className="py-4 px-6 rounded-lg flex-row items-center bg-gray-600"
           >
-            <Text className="font-bold text-white">Save & Exit</Text>
+            <Text className="text-2xl font-bold text-white">Save & Exit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -145,7 +145,7 @@ const LayoutEditorScreen = () => {
       <AddTableModal
         isOpen={isAddModalOpen}
         onClose={() => setAddModalOpen(false)}
-        onAdd={() => { }}
+        onAdd={() => {}}
       />
     </View>
   );

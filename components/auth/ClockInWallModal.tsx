@@ -26,25 +26,27 @@ const ClockInWallModal: React.FC<ClockInWallModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-md p-6 rounded-2xl bg-white">
-        <DialogTitle className="text-2xl font-bold text-center text-red-600">
+      <DialogContent className="max-w-lg p-6 rounded-2xl bg-white">
+        <DialogTitle className="text-3xl font-bold text-center text-red-600">
           Action Required
         </DialogTitle>
-        <DialogDescription className="text-center text-gray-600 text-lg my-4">
+        <DialogDescription className="text-center text-2xl text-gray-600 my-4">
           You must be clocked in to perform this action.
         </DialogDescription>
-        <View className="flex-row gap-2 mt-4">
+        <View className="flex-row gap-4 mt-4">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+            className="flex-1 py-4 border border-gray-300 rounded-lg items-center"
           >
-            <Text className="font-bold text-gray-700">Cancel</Text>
+            <Text className="text-2xl font-bold text-gray-700">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleGoToClockIn}
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+            className="flex-1 py-4 bg-primary-400 rounded-lg items-center"
           >
-            <Text className="font-bold text-white">Go to Clock In</Text>
+            <Text className="text-2xl font-bold text-white">
+              Go to Clock In
+            </Text>
           </TouchableOpacity>
         </View>
       </DialogContent>

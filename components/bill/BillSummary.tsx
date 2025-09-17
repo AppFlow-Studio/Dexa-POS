@@ -23,10 +23,10 @@ const BillSummary: React.FC<BillSummaryProps> = ({
 }) => {
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="my-4 px-4 h-full">
+      <View className="my-4 px-6 h-full">
         <View className="flex flex-row items-center justify-between">
-          <Text className="text-xl font-bold text-white">Cart</Text>
-          <Text className="text-sm text-gray-300">{cart.length} Items</Text>
+          <Text className="text-3xl font-bold text-white">Cart</Text>
+          <Text className="text-xl text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">
           <ScrollView
@@ -51,16 +51,27 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                   <View>
                     {courses.map((course) => {
                       const isSent = !!sentCourses?.[course];
-                      const isActive = currentCourse !== undefined && course === currentCourse;
+                      const isActive =
+                        currentCourse !== undefined && course === currentCourse;
                       return (
                         <View key={`course-${course}`} className="mb-3">
-                          <View className={`self-start px-2 py-1 rounded-full mb-2 ${isSent ? "bg-green-900/30 border border-green-500" : isActive ? "bg-blue-900/30 border border-blue-500" : "bg-[#303030] border border-gray-700"}`}>
-                            <Text className={`text-xs font-semibold ${isSent ? "text-green-400" : isActive ? "text-blue-400" : "text-gray-300"}`}>Course {course}{isSent ? " • Sent" : ""}</Text>
+                          <View
+                            className={`self-start px-3 py-2 rounded-full mb-2 ${isSent ? "bg-green-900/30 border border-green-500" : isActive ? "bg-blue-900/30 border border-blue-500" : "bg-[#303030] border border-gray-700"}`}
+                          >
+                            <Text
+                              className={`text-xl font-semibold ${isSent ? "text-green-400" : isActive ? "text-blue-400" : "text-gray-300"}`}
+                            >
+                              Course {course}
+                              {isSent ? " • Sent" : ""}
+                            </Text>
                           </View>
                           {grouped[course].map((item, index) => {
                             const highlight = isActive;
                             return (
-                              <View key={`${item.id}-${index}`} className={`rounded-xl mb-2 ${highlight ? "border border-blue-500" : ""}`}>
+                              <View
+                                key={`${item.id}-${index}`}
+                                className={`rounded-xl mb-2 ${highlight ? "border border-blue-500" : ""}`}
+                              >
                                 <BillItem
                                   item={item}
                                   isEditable={true}
@@ -78,7 +89,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
               })()
             ) : (
               <View className="h-24 items-center justify-center">
-                <Text className="text-gray-400">Cart is empty.</Text>
+                <Text className="text-2xl text-gray-400">Cart is empty.</Text>
               </View>
             )}
           </ScrollView>

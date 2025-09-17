@@ -7,40 +7,40 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
   const itemsToShow = order.items.slice(0, 4); // Show a maximum of 4 items
 
   return (
-    <View className="w-72 p-4 bg-[#303030] border border-gray-200 rounded-2xl mr-4">
+    <View className="w-96 p-6 bg-[#303030] border border-gray-200 rounded-2xl mr-4">
       {/* Header */}
       <View className="flex-row justify-between items-start">
         <View>
-          <Text className="text-xl font-bold text-white">
+          <Text className="text-3xl font-bold text-white">
             {order.customerName}
           </Text>
-          <Text className="text-sm text-white mt-1">
+          <Text className="text-xl text-white mt-1">
             {order.type} • Table {order.table}
           </Text>
         </View>
         <View className="flex-col items-end gap-1">
-          <View className="px-2 py-1 bg-gray-100 rounded-md">
-            <Text className="font-semibold text-xs text-white">
+          <View className="px-3 py-2 bg-gray-700 rounded-md">
+            <Text className="font-semibold text-xl text-white">
               {order.status}
             </Text>
           </View>
-          <Text className="text-sm text-white">{order.timestamp}</Text>
+          <Text className="text-xl text-white">{order.timestamp}</Text>
         </View>
       </View>
 
       {/* Dashed Separator */}
-      <View className="border-b border-dashed border-white my-3" />
+      <View className="border-b border-dashed border-white my-4" />
 
       {/* Item List */}
-      <View className="space-y-1 flex-1">
+      <View className="space-y-2 flex-1">
         {itemsToShow.map((item, index) => (
-          <Text key={index} className="text-white">
+          <Text key={index} className="text-2xl text-white">
             {item.quantity}x {item.name}
           </Text>
         ))}
         {order.items.length > 4 && (
           <TouchableOpacity>
-            <Text className="font-semibold text-primary-400">
+            <Text className="text-xl font-semibold text-primary-400">
               See More Items
             </Text>
           </TouchableOpacity>
@@ -48,12 +48,12 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-between items-center mt-3 border-t border-gray-200 pt-3">
-        <TouchableOpacity className="flex-row items-center gap-1 bg-blue-50 py-1 px-2 rounded-md">
-          <Text className="font-bold text-xs text-blue-600">Notes</Text>
-          <Pencil size={12} color="white" />
+      <View className="flex-row justify-between items-center mt-4 border-t border-gray-200 pt-4">
+        <TouchableOpacity className="flex-row items-center gap-2 bg-blue-50 py-2 px-3 rounded-md">
+          <Text className="font-bold text-2xl text-blue-600">Notes</Text>
+          <Pencil size={24} className="text-gray-500" />
         </TouchableOpacity>
-        <Text className="text-sm font-semibold text-white">
+        <Text className="text-xl font-semibold text-white">
           Total Order: {order.totalItems} Items
         </Text>
       </View>

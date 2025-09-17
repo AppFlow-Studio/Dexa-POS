@@ -1,4 +1,4 @@
-import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes"; // Import our new shape data
+import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
@@ -65,24 +65,26 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[550px] bg-white p-6 rounded-2xl">
+      <DialogContent className="w-[500px] p-6 rounded-2xl bg-[#303030] border-gray-700">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold">
+          <DialogTitle className="text-3xl text-white">
             Add New Table
           </DialogTitle>
         </DialogHeader>
         <View className="gap-y-4 py-4">
           <View>
-            <Text className="font-semibold text-gray-600 mb-2">Table Name</Text>
+            <Text className="text-2xl text-gray-300 font-medium mb-2">
+              Table Name
+            </Text>
             <TextInput
               value={name}
               onChangeText={setName}
               placeholder="e.g., T-24 or Patio 1"
-              className="p-3 bg-gray-100 rounded-lg text-base border border-gray-200"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
             />
           </View>
           <View>
-            <Text className="font-semibold text-gray-600 mb-2">
+            <Text className="text-2xl text-gray-300 font-medium mb-2">
               Select Shape
             </Text>
             <ScrollView
@@ -100,11 +102,11 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
                         onPress={() =>
                           setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
                         }
-                        className={`p-4 border-2 rounded-lg items-center ${isSelected ? "border-primary-400 bg-blue-50" : "border-gray-200 bg-white"}`}
+                        className={`p-6 border-2 rounded-xl items-center ${isSelected ? "border-primary-400 bg-blue-50" : "border-gray-200 bg-white"}`}
                       >
                         <ShapeComponent color="#4b5563" />
                         <Text
-                          className={`mt-2 font-semibold ${isSelected ? "text-primary-400" : "text-gray-600"}`}
+                          className={`mt-2 font-semibold text-xl ${isSelected ? "text-primary-400" : "text-gray-600"}`}
                         >
                           {label}
                         </Text>
@@ -118,9 +120,9 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
         </View>
         <TouchableOpacity
           onPress={handleAddPress}
-          className="bg-primary-400 py-3 rounded-lg items-center"
+          className="bg-primary-400 py-4 rounded-lg items-center"
         >
-          <Text className="text-white font-bold">Add Table</Text>
+          <Text className="text-white text-2xl font-bold">Add Table</Text>
         </TouchableOpacity>
       </DialogContent>
     </Dialog>

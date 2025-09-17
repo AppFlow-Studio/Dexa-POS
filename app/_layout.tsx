@@ -83,7 +83,7 @@ export default function RootLayout() {
               text: {
                 color: "#1f2937",
                 fontWeight: "bold",
-                fontSize: 16,
+                fontSize: 24,
               },
               indicator: {
                 backgroundColor: "#659AF0",

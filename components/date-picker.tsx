@@ -17,10 +17,10 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TouchableOpacity className="flex-row items-center p-3 gap-2 mr-20">
-          <Text className="font-semibold text-gray-600">Date:</Text>
-          <CalendarIcon color="#6b7280" size={20} />
-          <Text className="font-semibold text-gray-600">
+        <TouchableOpacity className="flex-row items-center p-4 gap-3 mr-20">
+          <Text className="text-2xl font-semibold text-gray-300">Date:</Text>
+          <CalendarIcon color="#9CA3AF" size={24} />
+          <Text className="text-2xl font-semibold text-gray-300">
             {date.toLocaleDateString("en-US", {
               month: "2-digit",
               day: "2-digit",
@@ -29,26 +29,29 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
           </Text>
         </TouchableOpacity>
       </PopoverTrigger>
-      <PopoverContent className="p-0 left-8">
+      <PopoverContent className="p-0 left-8 w-96">
         <Calendar
           onDayPress={handleDayPress}
           markedDates={{
             [date.toISOString().split("T")[0]]: {
               selected: true,
-              selectedColor: "#ef4444",
+              selectedColor: "#60A5FA",
             },
           }}
           theme={{
-            backgroundColor: "#ffffff",
-            calendarBackground: "#ffffff",
-            textSectionTitleColor: "#6b7280",
-            selectedDayBackgroundColor: "#ef4444",
+            backgroundColor: "#212121",
+            calendarBackground: "#212121",
+            textSectionTitleColor: "#9CA3AF",
+            selectedDayBackgroundColor: "#60A5FA",
             selectedDayTextColor: "#ffffff",
-            todayTextColor: "#ef4444",
-            dayTextColor: "#1f2937",
-            arrowColor: "#3b82f6",
-            monthTextColor: "#1f2937",
+            todayTextColor: "#60A5FA",
+            dayTextColor: "#FFFFFF",
+            arrowColor: "#60A5FA",
+            monthTextColor: "#FFFFFF",
             textMonthFontWeight: "bold",
+            textDayFontSize: 20,
+            textMonthFontSize: 24,
+            textDayHeaderFontSize: 18,
           }}
         />
       </PopoverContent>
