@@ -159,6 +159,8 @@ export interface MenuItemType {
   // Optional stock tracking directly on menu items (for items not built from recipes)
   stockQuantity?: number;
   reorderThreshold?: number;
+  // Stock tracking mode: "in_stock", "out_of_stock", or "quantity"
+  stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
 }
 
 export interface CustomPricing {

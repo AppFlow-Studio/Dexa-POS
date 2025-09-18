@@ -2058,6 +2058,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-red-50",
     availability: true,
+    stockTrackingMode: "in_stock",
     recipe: [
       { inventoryItemId: "inv_1", quantity: 1 },
       { inventoryItemId: "inv_2", quantity: 2 },
@@ -2080,6 +2081,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     allergens: ["Gluten", "Dairy"],
     cardBgColor: "bg-orange-100",
     availability: true,
+    stockTrackingMode: "in_stock",
     recipe: [
       { inventoryItemId: "inv_1", quantity: 1 },
       { inventoryItemId: "inv_2", quantity: 2 },
@@ -2100,6 +2102,9 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: wrapAddOns,
     cardBgColor: "bg-green-100",
     availability: true,
+    stockTrackingMode: "quantity",
+    stockQuantity: 25,
+    reorderThreshold: 5,
     recipe: [
       { inventoryItemId: "inv_6", quantity: 1 },
       { inventoryItemId: "inv_7", quantity: 0.1 },
@@ -2118,6 +2123,7 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     addOns: pizzaAddOns,
     cardBgColor: "bg-yellow-100",
     availability: true,
+    stockTrackingMode: "in_stock",
     recipe: [
       { inventoryItemId: "inv_9", quantity: 1 },
       { inventoryItemId: "inv_10", quantity: 0.2 },
@@ -2136,7 +2142,8 @@ export const MOCK_MENU_ITEMS: MenuItemType[] = [
     category: ["Appetizers"],
     addOns: saladAddOns,
     cardBgColor: "bg-green-100",
-    availability: true,
+    availability: false,
+    stockTrackingMode: "out_of_stock",
     recipe: [
       { inventoryItemId: "inv_13", quantity: 0.5 },
       { inventoryItemId: "inv_14", quantity: 0.3 },

@@ -12,6 +12,7 @@ import {
     Minus,
     Plus,
     Save,
+    Search,
     X
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -40,7 +41,7 @@ interface InventoryTransaction {
 const MenuItemScreen = () => {
     const { itemId } = useLocalSearchParams();
     const router = useRouter();
-    const { menuItems, updateMenuItem } = useMenuStore();
+    const { menuItems, updateMenuItem, getMenuItemStockTrackingMode, setMenuItemStockTrackingMode } = useMenuStore();
     const { vendors, inventoryItems } = useInventoryStore();
 
     const [item, setItem] = useState<MenuItemType | null>(null);
@@ -51,9 +52,11 @@ const MenuItemScreen = () => {
 
     // Bottom sheet refs
     const historySheetRef = React.useRef<BottomSheet>(null);
+    const inventorySelectionSheetRef = React.useRef<BottomSheet>(null);
     const snapPoints = useMemo(() => ["90%"], []);
+    const inventorySnapPoints = useMemo(() => ["70%"], []);
 
-    // Edit form state
+    // Edit form state (temporary state for editing)
     const [editForm, setEditForm] = useState({
         name: "",
         sku: "",
@@ -62,8 +65,13 @@ const MenuItemScreen = () => {
         unitOfMeasure: "",
         stockQuantity: "",
         reorderThreshold: "",
-        price: ""
+        price: "",
+        stockTrackingMode: ""
     });
+
+    // Recipe editing form state (temporary state for editing)
+    const [editRecipeForm, setEditRecipeForm] = useState<{ inventoryItemId: string; quantity: string }[]>([]);
+    const [editStockTrackingMode, setEditStockTrackingMode] = useState<"in_stock" | "out_of_stock" | "quantity">("in_stock");
 
     // Log usage form state
     const [logUsageForm, setLogUsageForm] = useState({
@@ -73,8 +81,11 @@ const MenuItemScreen = () => {
     });
 
     // Recipe editing state
-    const [recipeForm, setRecipeForm] = useState<{ inventoryItemId: string; quantity: string }[]>([]);
-    const [stockTrackingMode, setStockTrackingMode] = useState<"in_stock" | "out_of_stock" | "quantity">("quantity");
+    const [editingRecipeItemIndex, setEditingRecipeItemIndex] = useState<number | null>(null);
+
+    // Inventory selection state
+    const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+    const [filteredInventoryItems, setFilteredInventoryItems] = useState(inventoryItems);
 
     useEffect(() => {
         if (itemId) {
@@ -89,33 +100,41 @@ const MenuItemScreen = () => {
                     unitOfMeasure: "",
                     stockQuantity: foundItem.stockQuantity?.toString() || "",
                     reorderThreshold: foundItem.reorderThreshold?.toString() || "",
-                    price: foundItem.price.toString()
+                    price: foundItem.price.toString(),
+                    stockTrackingMode: foundItem.stockTrackingMode || "in-stock"
                 });
 
-                // Initialize recipe form
+                // Initialize edit recipe form
                 if (foundItem.recipe && foundItem.recipe.length > 0) {
-                    setRecipeForm(foundItem.recipe.map(recipeItem => ({
+                    setEditRecipeForm(foundItem.recipe.map(recipeItem => ({
                         inventoryItemId: recipeItem.inventoryItemId,
                         quantity: recipeItem.quantity.toString()
                     })));
                 } else {
-                    setRecipeForm([]);
+                    setEditRecipeForm([]);
                 }
 
-                // Initialize stock tracking mode based on current stock settings
-                if (foundItem.stockQuantity !== undefined && foundItem.stockQuantity > 0) {
-                    setStockTrackingMode("quantity");
-                } else if (foundItem.availability === true) {
-                    setStockTrackingMode("in_stock");
-                } else {
-                    setStockTrackingMode("out_of_stock");
-                }
+                // Initialize edit stock tracking mode using store function
+                const currentMode = getMenuItemStockTrackingMode(foundItem.id);
+                setEditStockTrackingMode(currentMode);
 
                 generateMockHistory(foundItem.id);
             }
         }
 
     }, []);
+
+    // Filter inventory items based on search query
+    useEffect(() => {
+        if (inventorySearchQuery.trim() === "") {
+            setFilteredInventoryItems(inventoryItems);
+        } else {
+            const filtered = inventoryItems.filter(item =>
+                item.name.toLowerCase().includes(inventorySearchQuery.toLowerCase())
+            );
+            setFilteredInventoryItems(filtered);
+        }
+    }, [inventorySearchQuery, inventoryItems]);
 
     const generateMockHistory = (id: string) => {
         const mockHistory: InventoryTransaction[] = [
@@ -159,31 +178,26 @@ const MenuItemScreen = () => {
     const handleSave = () => {
         if (!item) return;
 
-        // Update stock tracking based on mode
-        let updatedItem = {
+        // Update basic item properties
+        const updatedItem = {
             ...item,
             name: editForm.name,
             category: editForm.category ? editForm.category.split(",").map(c => c.trim()) : [],
             price: parseFloat(editForm.price)
         };
 
-        if (stockTrackingMode === "in_stock") {
-            updatedItem.availability = true;
-            updatedItem.stockQuantity = undefined;
-            updatedItem.reorderThreshold = undefined;
-        } else if (stockTrackingMode === "out_of_stock") {
-            updatedItem.availability = false;
-            updatedItem.stockQuantity = undefined;
-            updatedItem.reorderThreshold = undefined;
-        } else if (stockTrackingMode === "quantity") {
-            updatedItem.availability = undefined;
-            updatedItem.stockQuantity = editForm.stockQuantity ? parseInt(editForm.stockQuantity) : undefined;
-            updatedItem.reorderThreshold = editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : undefined;
-        }
+        // Update stock tracking mode using store function
+        const stockQuantity = editStockTrackingMode === "quantity" ?
+            (editForm.stockQuantity ? parseInt(editForm.stockQuantity) : undefined) : undefined;
+        const reorderThreshold = editStockTrackingMode === "quantity" ?
+            (editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : undefined) : undefined;
+
+
+        setMenuItemStockTrackingMode(item.id, editStockTrackingMode, stockQuantity, reorderThreshold);
 
         // Save recipe if it exists
-        if (recipeForm.length > 0) {
-            const recipe = recipeForm
+        if (editRecipeForm.length > 0) {
+            const recipe = editRecipeForm
                 .filter(recipeItem => recipeItem.inventoryItemId && recipeItem.quantity)
                 .map(recipeItem => ({
                     inventoryItemId: recipeItem.inventoryItemId,
@@ -193,7 +207,13 @@ const MenuItemScreen = () => {
         }
 
         updateMenuItem(item.id, updatedItem);
-        setItem(updatedItem);
+
+        // Refresh the item state to reflect changes
+        const refreshedItem = menuItems.find(m => m.id === item.id);
+        if (refreshedItem) {
+            setItem(refreshedItem);
+        }
+
         setIsEditing(false);
     };
 
@@ -256,6 +276,18 @@ const MenuItemScreen = () => {
         []
     );
 
+    const renderInventoryBackdrop = useMemo(
+        () => (props: any) => (
+            <BottomSheetBackdrop
+                {...props}
+                appearsOnIndex={0}
+                disappearsOnIndex={-1}
+                opacity={0.7}
+            />
+        ),
+        []
+    );
+
     // Recipe helper functions
     const getInventoryItemName = (inventoryItemId: string) => {
         const inventoryItem = inventoryItems.find(item => item.id === inventoryItemId);
@@ -267,49 +299,118 @@ const MenuItemScreen = () => {
         return inventoryItem ? inventoryItem.unit : "units";
     };
 
-    const addRecipeItem = () => {
-        setRecipeForm(prev => [...prev, { inventoryItemId: "", quantity: "" }]);
+    const openInventorySelection = () => {
+        setInventorySearchQuery("");
+        inventorySelectionSheetRef.current?.expand();
+    };
+
+    const selectInventoryItem = (inventoryItemId: string) => {
+        // If we're editing an existing recipe item, replace it
+        if (editingRecipeItemIndex !== null) {
+            setEditRecipeForm(prev => prev.map((item, index) =>
+                index === editingRecipeItemIndex
+                    ? { inventoryItemId, quantity: item.quantity } // Keep existing quantity
+                    : item
+            ));
+            setEditingRecipeItemIndex(null);
+            inventorySelectionSheetRef.current?.close();
+            return;
+        }
+
+        // Check if item is already in recipe (for new items)
+        const existingIndex = editRecipeForm.findIndex(item => item.inventoryItemId === inventoryItemId);
+        if (existingIndex >= 0) {
+            // Item already exists, just close the sheet
+            inventorySelectionSheetRef.current?.close();
+            return;
+        }
+
+        // Add new item to recipe
+        setEditRecipeForm(prev => [...prev, { inventoryItemId, quantity: "1" }]);
+        inventorySelectionSheetRef.current?.close();
     };
 
     const removeRecipeItem = (index: number) => {
-        setRecipeForm(prev => prev.filter((_, i) => i !== index));
+        setEditRecipeForm(prev => prev.filter((_, i) => i !== index));
     };
 
-    const updateRecipeItem = (index: number, field: "inventoryItemId" | "quantity", value: string) => {
-        setRecipeForm(prev => prev.map((item, i) =>
-            i === index ? { ...item, [field]: value } : item
+    const updateRecipeItemQuantity = (index: number, quantity: string) => {
+        setEditRecipeForm(prev => prev.map((item, i) =>
+            i === index ? { ...item, quantity } : item
         ));
+    };
+
+    const handleCancel = () => {
+        if (!item) return;
+
+        // Reset edit form to original item values
+        setEditForm({
+            name: item.name,
+            sku: "",
+            category: Array.isArray(item.category) ? item.category.join(", ") : item.category || "",
+            defaultVendor: "",
+            unitOfMeasure: "",
+            stockQuantity: item.stockQuantity?.toString() || "",
+            reorderThreshold: item.reorderThreshold?.toString() || "",
+            price: item.price.toString(),
+            stockTrackingMode: item.stockTrackingMode || "in_stock"
+        });
+
+        // Reset stock tracking mode to original value
+        const currentMode = getMenuItemStockTrackingMode(item.id);
+        setEditStockTrackingMode(currentMode);
+
+        setIsEditing(false);
+    };
+
+    const handleCancelRecipe = () => {
+        if (!item) return;
+
+        // Reset recipe form to original item values
+        if (item.recipe && item.recipe.length > 0) {
+            setEditRecipeForm(item.recipe.map(recipeItem => ({
+                inventoryItemId: recipeItem.inventoryItemId,
+                quantity: recipeItem.quantity.toString()
+            })));
+        } else {
+            setEditRecipeForm([]);
+        }
+
+        // Reset stock tracking mode to original value
+        const currentMode = getMenuItemStockTrackingMode(item.id);
+        setEditStockTrackingMode(currentMode);
+
+        setIsEditingRecipe(false);
     };
 
     const handleSaveRecipe = () => {
         if (!item) return;
 
-        const recipe = recipeForm
+        const recipe = editRecipeForm
             .filter(recipeItem => recipeItem.inventoryItemId && recipeItem.quantity)
             .map(recipeItem => ({
                 inventoryItemId: recipeItem.inventoryItemId,
                 quantity: parseFloat(recipeItem.quantity) || 0
             }));
 
-        // Update stock tracking based on mode
-        let updatedItem = { ...item };
+        // Update stock tracking mode using store function
+        const stockQuantity = editStockTrackingMode === "quantity" ?
+            (editForm.stockQuantity ? parseInt(editForm.stockQuantity) : undefined) : undefined;
+        const reorderThreshold = editStockTrackingMode === "quantity" ?
+            (editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : undefined) : undefined;
 
-        if (stockTrackingMode === "in_stock") {
-            updatedItem.availability = true;
-            updatedItem.stockQuantity = undefined;
-            updatedItem.reorderThreshold = undefined;
-        } else if (stockTrackingMode === "out_of_stock") {
-            updatedItem.availability = false;
-            updatedItem.stockQuantity = undefined;
-            updatedItem.reorderThreshold = undefined;
-        } else if (stockTrackingMode === "quantity") {
-            updatedItem.availability = undefined;
-            // Keep existing stockQuantity and reorderThreshold from editForm
+        setMenuItemStockTrackingMode(item.id, editStockTrackingMode, stockQuantity, reorderThreshold);
+
+        // Update recipe
+        const updatedItem = { ...item, recipe };
+        updateMenuItem(item.id, updatedItem);
+
+        // Refresh the item state to reflect changes
+        const refreshedItem = menuItems.find(m => m.id === item.id);
+        if (refreshedItem) {
+            setItem(refreshedItem);
         }
 
-        updatedItem.recipe = recipe;
-        updateMenuItem(item.id, updatedItem);
-        setItem(updatedItem);
         setIsEditingRecipe(false);
     };
 
@@ -329,7 +430,7 @@ const MenuItemScreen = () => {
                     <ArrowLeft color="#9CA3AF" size={24} />
                     <Text className="text-white text-xl ml-2">Back</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
+                {/* <TouchableOpacity
                     onPress={() => setIsEditing(!isEditing)}
                     className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
                 >
@@ -344,7 +445,7 @@ const MenuItemScreen = () => {
                             <Text className="text-white ml-2">Edit</Text>
                         </>
                     )}
-                </TouchableOpacity>
+                </TouchableOpacity> */}
             </View>
 
             <ScrollView className="flex-1 p-4">
@@ -413,54 +514,175 @@ const MenuItemScreen = () => {
 
                 {/* Item Details Form */}
                 <View className="bg-[#303030] rounded-xl p-6">
-                    <Text className="text-xl font-bold text-white mb-4">Item Details</Text>
-
-                    <View className="mb-4">
-                        <Text className="text-gray-300 mb-2">Item Name</Text>
-                        <TextInput
-                            value={editForm.name}
-                            onChangeText={(text) => setEditForm(prev => ({ ...prev, name: text }))}
-                            editable={isEditing}
-                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                            placeholder="Enter item name"
-                            placeholderTextColor="#9CA3AF"
-                        />
+                    <View className="flex-row items-center justify-between ">
+                        <Text className="text-xl font-bold text-white mb-4">Item Details</Text>
+                        {/* Item Details Edit/Save/Cancel Buttons */}
+                        <View className="flex-row justify-between items-center mt-6">
+                            {!isEditing ? (
+                                <TouchableOpacity
+                                    onPress={() => setIsEditing(true)}
+                                    className="bg-blue-600 p-6 rounded-lg flex-row items-center"
+                                >
+                                    <Edit color="white" size={20} />
+                                    <Text className="text-white ml-2 font-semibold">Edit Item Details</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <View className="flex-row gap-3 ">
+                                    <TouchableOpacity
+                                        onPress={handleSave}
+                                        className="w-fit bg-green-600 p-6 rounded-lg flex-row items-center justify-center"
+                                    >
+                                        <Save color="white" size={20} />
+                                        <Text className="text-white ml-2 font-semibold">Save Changes</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={handleCancel}
+                                        className="w-fit bg-gray-600 p-6 rounded-lg flex-row items-center justify-center"
+                                    >
+                                        <X color="white" size={20} />
+                                        <Text className="text-white ml-2 font-semibold">Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
                     </View>
 
-                    <View className="mb-4">
-                        <Text className="text-gray-300 mb-2">SKU / Barcode</Text>
-                        <TextInput
-                            value={editForm.sku}
-                            onChangeText={(text) => setEditForm(prev => ({ ...prev, sku: text }))}
-                            editable={isEditing}
-                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                            placeholder="Enter SKU or barcode"
-                            placeholderTextColor="#9CA3AF"
-                        />
+                    {/* Stock Tracking Options */}
+                    <View className="mb-6">
+                        <Text className="text-gray-300 mb-3">Stock Tracking</Text>
+                        <View className="flex-row gap-4">
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => {
+                                    setEditStockTrackingMode("in_stock");
+                                    setEditForm(prev => ({ ...prev, stockTrackingMode: "in_stock" }));
+                                }}
+                                className={`flex-1 p-6 rounded-lg border-2 ${editStockTrackingMode === "in_stock"
+                                    ? "border-blue-500 bg-blue-500/20"
+                                    : "border-gray-600 bg-gray-800"
+                                    }`}
+                            >
+                                <View className="flex-row items-center justify-center">
+                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${editStockTrackingMode === "in_stock"
+                                        ? "border-blue-500 bg-blue-500"
+                                        : "border-gray-400"
+                                        }`}>
+                                        {editStockTrackingMode === "in_stock" && (
+                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
+                                        )}
+                                    </View>
+                                    <Text className={`font-semibold ${editStockTrackingMode === "in_stock" ? "text-blue-400" : "text-gray-300"
+                                        }`}>
+                                        In Stock
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => {
+                                    setEditStockTrackingMode("out_of_stock");
+                                    setEditForm(prev => ({ ...prev, stockTrackingMode: "out_of_stock" }));
+                                }}
+                                className={`flex-1 p-6 rounded-lg border-2 ${editStockTrackingMode === "out_of_stock"
+                                    ? "border-blue-500 bg-blue-500/20"
+                                    : "border-gray-600 bg-gray-800"
+                                    }`}
+                            >
+                                <View className="flex-row items-center justify-center">
+                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${editStockTrackingMode === "out_of_stock"
+                                        ? "border-blue-500 bg-blue-500"
+                                        : "border-gray-400"
+                                        }`}>
+                                        {editStockTrackingMode === "out_of_stock" && (
+                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
+                                        )}
+                                    </View>
+                                    <Text className={`font-semibold ${editStockTrackingMode === "out_of_stock" ? "text-blue-400" : "text-gray-300"
+                                        }`}>
+                                        Out of Stock
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => {
+                                    setEditStockTrackingMode("quantity");
+                                    setEditForm(prev => ({ ...prev, stockTrackingMode: "quantity" }));
+                                }}
+                                className={`flex-1 p-6 rounded-lg border-2 ${editStockTrackingMode === "quantity"
+                                    ? "border-blue-500 bg-blue-500/20"
+                                    : "border-gray-600 bg-gray-800"
+                                    }`}
+                            >
+                                <View className="flex-row items-center justify-center">
+                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${editStockTrackingMode === "quantity"
+                                        ? "border-blue-500 bg-blue-500"
+                                        : "border-gray-400"
+                                        }`}>
+                                        {editStockTrackingMode === "quantity" && (
+                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
+                                        )}
+                                    </View>
+                                    <Text className={`font-semibold ${editStockTrackingMode === "quantity" ? "text-blue-400" : "text-gray-300"
+                                        }`}>
+                                        Quantity
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                    <View className="flex flex-row gap-4">
+                        <View className="mb-4 flex-1">
+                            <Text className="text-gray-300 mb-2">Item Name</Text>
+                            <TextInput
+                                value={editForm.name}
+                                onChangeText={(text) => setEditForm(prev => ({ ...prev, name: text }))}
+                                editable={isEditing}
+                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                placeholder="Enter item name"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                        </View>
+
+                        <View className="mb-4 flex-1">
+                            <Text className="text-gray-300 mb-2">SKU / Barcode</Text>
+                            <TextInput
+                                value={editForm.sku}
+                                onChangeText={(text) => setEditForm(prev => ({ ...prev, sku: text }))}
+                                editable={isEditing}
+                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                placeholder="Enter SKU or barcode"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                        </View>
                     </View>
 
-                    <View className="mb-4">
-                        <Text className="text-gray-300 mb-2">Category</Text>
-                        <TextInput
-                            value={editForm.category}
-                            onChangeText={(text) => setEditForm(prev => ({ ...prev, category: text }))}
-                            editable={isEditing}
-                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                            placeholder="Enter categories (comma separated)"
-                            placeholderTextColor="#9CA3AF"
-                        />
-                    </View>
+                    <View className="flex flex-row gap-4">
+                        <View className="mb-4 flex-1">
+                            <Text className="text-gray-300 mb-2">Category</Text>
+                            <TextInput
+                                value={editForm.category}
+                                onChangeText={(text) => setEditForm(prev => ({ ...prev, category: text }))}
+                                editable={isEditing}
+                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                placeholder="Enter categories (comma separated)"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                        </View>
 
-                    <View className="mb-4">
-                        <Text className="text-gray-300 mb-2">Default Vendor</Text>
-                        <TextInput
-                            value={editForm.defaultVendor}
-                            onChangeText={(text) => setEditForm(prev => ({ ...prev, defaultVendor: text }))}
-                            editable={isEditing}
-                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                            placeholder="Select default vendor"
-                            placeholderTextColor="#9CA3AF"
-                        />
+                        <View className="mb-4 flex-1">
+                            <Text className="text-gray-300 mb-2">Default Vendor</Text>
+                            <TextInput
+                                value={editForm.defaultVendor}
+                                onChangeText={(text) => setEditForm(prev => ({ ...prev, defaultVendor: text }))}
+                                editable={isEditing}
+                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                placeholder="Select default vendor"
+                                placeholderTextColor="#9CA3AF"
+                            />
+                        </View>
                     </View>
 
                     <View className="mb-4">
@@ -475,32 +697,83 @@ const MenuItemScreen = () => {
                         />
                     </View>
 
-                    <View className="flex-row gap-4">
-                        <View className="flex-1 mb-4">
-                            <Text className="text-gray-300 mb-2">Stock Quantity</Text>
-                            <TextInput
-                                value={editForm.stockQuantity}
-                                onChangeText={(text) => setEditForm(prev => ({ ...prev, stockQuantity: text }))}
-                                editable={isEditing}
-                                keyboardType="numeric"
-                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                                placeholder="0"
-                                placeholderTextColor="#9CA3AF"
-                            />
-                        </View>
+                    <View className="flex w-full flex-1 flex-row gap-4">
+                        {editStockTrackingMode === "quantity" ? (
+                            <View className="mb-4 flex flex-row gap-x-4">
+                                <View className="w-1/3">
+                                    <Text className="text-gray-300 mb-1">Set Quantity Amount</Text>
+                                    <View className="flex-row items-center">
+                                        <TextInput
+                                            className={`flex-1 rounded-lg px-3 py-2 ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                            keyboardType="numeric"
+                                            value={editForm.stockQuantity}
+                                            onChangeText={(text) => {
+                                                // Only allow numbers
+                                                const numeric = text.replace(/[^0-9.]/g, "");
+                                                setEditForm(prev => ({ ...prev, stockQuantity: numeric }));
+                                            }}
+                                            placeholder="Enter quantity"
+                                            placeholderTextColor="#888"
+                                            editable={isEditing}
+                                        />
+                                    </View>
+                                </View>
+                                <View className="w-1/3">
+                                    <Text className="text-gray-300 mb-1">Reorder Threshold</Text>
+                                    <TextInput
+                                        className={`flex-1 rounded-lg px-3 py-2 ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                        keyboardType="numeric"
+                                        value={editForm.reorderThreshold}
+                                        onChangeText={(text) => {
+                                            const numeric = text.replace(/[^0-9.]/g, "");
+                                            setEditForm(prev => ({ ...prev, reorderThreshold: numeric }));
+                                        }}
+                                        editable={isEditing}
+                                        placeholder="Enter threshold"
+                                        placeholderTextColor="#888"
+                                    />
+                                </View>
+                            </View>) :
+                            (<View className="flex-row gap-4 w-full">
+                                <View className="flex-1 mb-4">
+                                    <Text className="text-gray-300 mb-2">Stock Quantity</Text>
+                                    {editStockTrackingMode === "in_stock" ? (
+                                        <View className="p-3 rounded-lg bg-green-600/20 border border-green-500">
+                                            <Text className="text-green-400 font-semibold text-center">In Stock</Text>
+                                        </View>
+                                    ) : (
+                                        <TextInput
+                                            value={editForm.stockQuantity}
+                                            onChangeText={(text) => setEditForm(prev => ({ ...prev, stockQuantity: text }))}
+                                            editable={isEditing}
+                                            keyboardType="numeric"
+                                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                            placeholder="0"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    )}
+                                </View>
 
-                        <View className="flex-1 mb-4">
-                            <Text className="text-gray-300 mb-2">Reorder Threshold</Text>
-                            <TextInput
-                                value={editForm.reorderThreshold}
-                                onChangeText={(text) => setEditForm(prev => ({ ...prev, reorderThreshold: text }))}
-                                editable={isEditing}
-                                keyboardType="numeric"
-                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                                placeholder="0"
-                                placeholderTextColor="#9CA3AF"
-                            />
-                        </View>
+                                <View className="flex-1 mb-4">
+                                    <Text className="text-gray-300 mb-2">Reorder Threshold</Text>
+                                    {editStockTrackingMode === "in_stock" ? (
+                                        <View className="p-3 rounded-lg bg-green-600/20 border border-green-500">
+                                            <Text className="text-green-400 font-semibold text-center">In Stock</Text>
+                                        </View>
+                                    ) : (
+                                        <TextInput
+                                            value={editForm.reorderThreshold}
+                                            onChangeText={(text) => setEditForm(prev => ({ ...prev, reorderThreshold: text }))}
+                                            editable={isEditing}
+                                            keyboardType="numeric"
+                                            className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                            placeholder="0"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    )}
+                                </View>
+                            </View>)
+                        }
                     </View>
 
                     <View className="mb-4">
@@ -516,195 +789,144 @@ const MenuItemScreen = () => {
                         />
                     </View>
 
-                    {isEditing && (
-                        <View className="flex-row gap-3 mt-4">
-                            <TouchableOpacity
-                                onPress={handleSave}
-                                className="flex-1 bg-green-600 py-3 px-4 rounded-lg flex-row items-center justify-center"
-                            >
-                                <Save color="white" size={20} />
-                                <Text className="text-white ml-2 font-semibold">Save Changes</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                onPress={() => setIsEditing(false)}
-                                className="flex-1 bg-gray-600 py-3 px-4 rounded-lg flex-row items-center justify-center"
-                            >
-                                <X color="white" size={20} />
-                                <Text className="text-white ml-2 font-semibold">Cancel</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
                 </View>
 
                 {/* Recipe Section */}
                 <View className="bg-[#303030] rounded-xl p-6 mt-4">
-                    <View className="flex-row items-center justify-between mb-4">
-                        <Text className="text-xl font-bold text-white">Recipe & Stock Tracking</Text>
-                        {!isEditingRecipe && (
-                            <TouchableOpacity
-                                onPress={() => setIsEditingRecipe(true)}
-                                className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
-                            >
-                                <Edit color="white" size={16} />
-                                <Text className="text-white ml-2 font-semibold">Edit</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-
-                    {/* Stock Tracking Options */}
-                    <View className="mb-6">
-                        <Text className="text-gray-300 mb-3">Stock Tracking</Text>
-                        <View className="flex-row gap-4">
-                            <TouchableOpacity
-                                onPress={() => setStockTrackingMode("in_stock")}
-                                className={`flex-1 py-3 px-4 rounded-lg border-2 ${stockTrackingMode === "in_stock"
-                                        ? "border-blue-500 bg-blue-500/20"
-                                        : "border-gray-600 bg-gray-800"
-                                    }`}
-                            >
-                                <View className="flex-row items-center justify-center">
-                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${stockTrackingMode === "in_stock"
-                                            ? "border-blue-500 bg-blue-500"
-                                            : "border-gray-400"
-                                        }`}>
-                                        {stockTrackingMode === "in_stock" && (
-                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
-                                        )}
-                                    </View>
-                                    <Text className={`font-semibold ${stockTrackingMode === "in_stock" ? "text-blue-400" : "text-gray-300"
-                                        }`}>
-                                        In Stock
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                onPress={() => setStockTrackingMode("out_of_stock")}
-                                className={`flex-1 py-3 px-4 rounded-lg border-2 ${stockTrackingMode === "out_of_stock"
-                                        ? "border-blue-500 bg-blue-500/20"
-                                        : "border-gray-600 bg-gray-800"
-                                    }`}
-                            >
-                                <View className="flex-row items-center justify-center">
-                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${stockTrackingMode === "out_of_stock"
-                                            ? "border-blue-500 bg-blue-500"
-                                            : "border-gray-400"
-                                        }`}>
-                                        {stockTrackingMode === "out_of_stock" && (
-                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
-                                        )}
-                                    </View>
-                                    <Text className={`font-semibold ${stockTrackingMode === "out_of_stock" ? "text-blue-400" : "text-gray-300"
-                                        }`}>
-                                        Out of Stock
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                onPress={() => setStockTrackingMode("quantity")}
-                                className={`flex-1 py-3 px-4 rounded-lg border-2 ${stockTrackingMode === "quantity"
-                                        ? "border-blue-500 bg-blue-500/20"
-                                        : "border-gray-600 bg-gray-800"
-                                    }`}
-                            >
-                                <View className="flex-row items-center justify-center">
-                                    <View className={`w-4 h-4 rounded-full border-2 mr-2 ${stockTrackingMode === "quantity"
-                                            ? "border-blue-500 bg-blue-500"
-                                            : "border-gray-400"
-                                        }`}>
-                                        {stockTrackingMode === "quantity" && (
-                                            <View className="w-2 h-2 bg-white rounded-full m-0.5" />
-                                        )}
-                                    </View>
-                                    <Text className={`font-semibold ${stockTrackingMode === "quantity" ? "text-blue-400" : "text-gray-300"
-                                        }`}>
-                                        Quantity
-                                    </Text>
-                                </View>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
 
                     {/* Recipe Items */}
                     <View>
                         <View className="flex-row items-center justify-between mb-4">
-                            <Text className="text-gray-300">Recipe Items</Text>
-                            {isEditingRecipe && (
+                            <Text className="text-xl font-bold text-white">Recipe & Stock Tracking</Text>
+                            {!isEditingRecipe ? (
                                 <TouchableOpacity
-                                    onPress={addRecipeItem}
-                                    className="bg-green-600 px-3 py-2 rounded-lg flex-row items-center"
+                                    onPress={() => setIsEditingRecipe(true)}
+                                    className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
                                 >
-                                    <Plus color="white" size={16} />
-                                    <Text className="text-white ml-1 font-semibold">Add Item</Text>
+                                    <Edit color="white" size={20} />
+                                    <Text className="text-white ml-2 font-semibold">Edit Recipe</Text>
                                 </TouchableOpacity>
+                            ) : (
+                                <View className="flex-row gap-3">
+                                    <TouchableOpacity
+                                        onPress={handleSaveRecipe}
+                                        className="bg-green-600 px-4 py-2 rounded-lg flex-row items-center"
+                                    >
+                                        <Save color="white" size={20} />
+                                        <Text className="text-white ml-2 font-semibold">Save Recipe</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={handleCancelRecipe}
+                                        className="bg-gray-600 px-4 py-2 rounded-lg flex-row items-center"
+                                    >
+                                        <X color="white" size={20} />
+                                        <Text className="text-white ml-2 font-semibold">Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
                             )}
                         </View>
+                        <View className="mb-4 flex-row items-center justify-between">
+                            <Text className="text-gray-300">Recipe Items</Text>
 
-                        {recipeForm.length === 0 ? (
+                            {/* {!isEditingRecipe ? (<TouchableOpacity
+                                onPress={() => setIsEditingRecipe(true)}
+                                className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
+                            >
+                                <Plus color="white" size={16} />
+                                <Text className="text-white ml-2 font-semibold">Edit Recipe</Text>
+                            </TouchableOpacity>) :
+
+                                <View className="flex-row gap-3">
+                                    <TouchableOpacity
+                                        onPress={handleSaveRecipe}
+                                        className="bg-green-600 px-4 py-2 rounded-lg flex-row items-center"
+                                    >
+                                        <SaveAll color="white" size={16} />
+                                        <Text className="text-white ml-2 font-semibold">Save</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => setIsEditingRecipe(false)}
+                                        className="bg-red-600 px-4 py-2 rounded-lg flex-row items-center"
+                                    >
+                                        <X color="white" size={16} />
+                                        <Text className="text-white ml-2 font-semibold">Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                            } */}
+                        </View>
+
+                        {editRecipeForm.length === 0 ? (
                             <View className="bg-gray-800 rounded-lg p-6 items-center">
                                 <Text className="text-gray-400 text-center mb-2">No recipe items defined</Text>
-                                <Text className="text-gray-500 text-sm text-center">
+                                <Text className="text-gray-500 text-sm text-center mb-4">
                                     Add inventory items to create a recipe for this menu item
                                 </Text>
+                                {isEditingRecipe && (
+                                    <TouchableOpacity
+                                        onPress={openInventorySelection}
+                                        className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
+                                    >
+                                        <Plus color="white" size={16} />
+                                        <Text className="text-white ml-2 font-semibold">Add Recipe Item</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         ) : (
-                            <View className="space-y-3">
-                                {recipeForm.map((recipeItem, index) => (
+                            <View className="gap-y-3">
+                                {editRecipeForm.map((recipeItem, index) => (
                                     <View key={index} className="bg-gray-800 rounded-lg p-4">
                                         <View className="flex-row items-center gap-3">
-                                            <View className="flex-1">
-                                                {isEditingRecipe ? (
-                                                    <View className="mb-3">
-                                                        <Text className="text-gray-300 text-sm mb-1">Inventory Item</Text>
-                                                        <View className="bg-[#212121] border border-gray-600 rounded-lg">
-                                                            <ScrollView className="max-h-32">
-                                                                {inventoryItems.map((inventoryItem) => (
-                                                                    <TouchableOpacity
-                                                                        key={inventoryItem.id}
-                                                                        onPress={() => updateRecipeItem(index, "inventoryItemId", inventoryItem.id)}
-                                                                        className={`p-3 border-b border-gray-700 ${recipeItem.inventoryItemId === inventoryItem.id
-                                                                                ? "bg-blue-600"
-                                                                                : "bg-transparent"
-                                                                            }`}
-                                                                    >
-                                                                        <Text className={`${recipeItem.inventoryItemId === inventoryItem.id
-                                                                                ? "text-white font-semibold"
-                                                                                : "text-gray-300"
-                                                                            }`}>
-                                                                            {inventoryItem.name}
-                                                                        </Text>
-                                                                    </TouchableOpacity>
-                                                                ))}
-                                                            </ScrollView>
-                                                        </View>
-                                                    </View>
-                                                ) : (
-                                                    <Text className="text-white font-semibold">
+                                            <TouchableOpacity
+                                                className="flex-1"
+                                                onPress={() => {
+                                                    if (isEditingRecipe) {
+                                                        setEditingRecipeItemIndex(index);
+                                                        openInventorySelection();
+                                                    }
+                                                }}
+                                                disabled={!isEditingRecipe}
+                                            >
+                                                <View className={`${isEditingRecipe ? 'opacity-100' : 'opacity-75'}`}>
+                                                    <Text className={`font-semibold ${isEditingRecipe ? 'text-white' : 'text-gray-300'}`}>
                                                         {getInventoryItemName(recipeItem.inventoryItemId)}
                                                     </Text>
-                                                )}
-                                            </View>
-
-                                            <View className="w-20">
-                                                {isEditingRecipe ? (
-                                                    <TextInput
-                                                        value={recipeItem.quantity}
-                                                        onChangeText={(text) => updateRecipeItem(index, "quantity", text)}
-                                                        keyboardType="numeric"
-                                                        className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center"
-                                                        placeholder="0"
-                                                        placeholderTextColor="#9CA3AF"
-                                                    />
-                                                ) : (
-                                                    <Text className="text-gray-300 text-center">
-                                                        {recipeItem.quantity}
+                                                    <Text className={`text-sm ${isEditingRecipe ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        {getInventoryItemUnit(recipeItem.inventoryItemId)}
                                                     </Text>
+                                                    {isEditingRecipe && (
+                                                        <Text className="text-blue-400 text-xs mt-1">
+                                                            Tap to change item
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                            </TouchableOpacity>
+
+                                            <View className="w-24">
+                                                {isEditingRecipe ? (
+                                                    <View>
+                                                        <TextInput
+                                                            value={recipeItem.quantity}
+                                                            onChangeText={(text) => updateRecipeItemQuantity(index, text)}
+                                                            keyboardType="numeric"
+                                                            className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center"
+                                                            placeholder="0"
+                                                            placeholderTextColor="#9CA3AF"
+                                                        />
+                                                        <Text className="text-gray-400 text-xs text-center mt-1">
+                                                            Quantity
+                                                        </Text>
+                                                    </View>
+                                                ) : (
+                                                    <View>
+                                                        <Text className="text-gray-300 text-center font-semibold">
+                                                            {recipeItem.quantity}
+                                                        </Text>
+                                                        <Text className="text-gray-400 text-xs text-center mt-1">
+                                                            Quantity
+                                                        </Text>
+                                                    </View>
                                                 )}
-                                                <Text className="text-gray-400 text-xs text-center mt-1">
-                                                    {recipeItem.inventoryItemId ? getInventoryItemUnit(recipeItem.inventoryItemId) : "units"}
-                                                </Text>
                                             </View>
 
                                             {isEditingRecipe && (
@@ -718,31 +940,21 @@ const MenuItemScreen = () => {
                                         </View>
                                     </View>
                                 ))}
-                            </View>
-                        )}
 
-                        {isEditingRecipe && (
-                            <View className="flex-row gap-3 mt-6">
-                                <TouchableOpacity
-                                    onPress={handleSaveRecipe}
-                                    className="flex-1 bg-green-600 py-3 px-4 rounded-lg flex-row items-center justify-center"
-                                >
-                                    <Save color="white" size={20} />
-                                    <Text className="text-white ml-2 font-semibold">Save Recipe</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    onPress={() => setIsEditingRecipe(false)}
-                                    className="flex-1 bg-gray-600 py-3 px-4 rounded-lg flex-row items-center justify-center"
-                                >
-                                    <X color="white" size={20} />
-                                    <Text className="text-white ml-2 font-semibold">Cancel</Text>
-                                </TouchableOpacity>
+                                {isEditingRecipe && (
+                                    <TouchableOpacity
+                                        onPress={openInventorySelection}
+                                        className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-4 items-center"
+                                    >
+                                        <Plus color="#9CA3AF" size={24} />
+                                        <Text className="text-gray-400 mt-2 font-semibold">Add Recipe Item</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
                     </View>
                 </View>
-            </ScrollView>
+            </ScrollView >
 
             {/* Log Usage Modal */}
             <Modal
@@ -817,25 +1029,25 @@ const MenuItemScreen = () => {
                         <View className="flex-row gap-3">
                             <TouchableOpacity
                                 onPress={() => setIsLogUsageModalOpen(false)}
-                                className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
+                                className="flex-1 p-6 bg-gray-600 rounded-lg"
                             >
                                 <Text className="text-white text-lg font-semibold text-center">Cancel</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={handleLogUsage}
-                                className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
+                                className="flex-1 p-6 bg-blue-600 rounded-lg"
                             >
                                 <Text className="text-white text-lg font-semibold text-center">Log Usage</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
-            </Modal>
+            </Modal >
 
             {/* Inventory History Bottom Sheet */}
             <BottomSheet
                 ref={historySheetRef}
-                index={-1}
+                index={- 1}
                 snapPoints={snapPoints}
                 enablePanDownToClose={true}
                 backgroundStyle={{ backgroundColor: "#303030" }}
@@ -895,6 +1107,115 @@ const MenuItemScreen = () => {
                                     )}
                                 </View>
                             )}
+                            contentContainerStyle={{ paddingBottom: 20 }}
+                        />
+                    )}
+                </View>
+            </BottomSheet>
+
+            {/* Inventory Selection Bottom Sheet */}
+            <BottomSheet
+                ref={inventorySelectionSheetRef}
+                index={-1}
+                snapPoints={inventorySnapPoints}
+                enablePanDownToClose={true}
+                backgroundStyle={{ backgroundColor: "#303030" }}
+                handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+                backdropComponent={renderInventoryBackdrop}
+            >
+                <View className="flex-1">
+                    <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
+                        <View className="flex-1">
+                            <Text className="text-xl font-bold text-white">
+                                {editingRecipeItemIndex !== null ? "Replace Inventory Item" : "Select Inventory Item"}
+                            </Text>
+                            {editingRecipeItemIndex !== null && (
+                                <Text className="text-blue-400 text-sm mt-1">
+                                    Choose a new item to replace the current one
+                                </Text>
+                            )}
+                        </View>
+                        <TouchableOpacity onPress={() => {
+                            setEditingRecipeItemIndex(null);
+                            inventorySelectionSheetRef.current?.close();
+                        }}>
+                            <X color="#9CA3AF" size={24} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Search Bar */}
+                    <View className="p-4 border-b border-gray-700">
+                        <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
+                            <Search color="#9CA3AF" size={20} />
+                            <TextInput
+                                value={inventorySearchQuery}
+                                onChangeText={setInventorySearchQuery}
+                                placeholder="Search inventory items..."
+                                placeholderTextColor="#9CA3AF"
+                                className="flex-1 text-white ml-3"
+                            />
+                        </View>
+                    </View>
+
+                    {/* Inventory Items List */}
+                    {filteredInventoryItems.length === 0 ? (
+                        <View className="flex-1 justify-center items-center p-8">
+                            <Text className="text-gray-400 text-lg text-center">
+                                {inventorySearchQuery ? "No items found" : "No inventory items available"}
+                            </Text>
+                        </View>
+                    ) : (
+                        <BottomSheetFlatList
+                            data={filteredInventoryItems}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item: inventoryItem }) => {
+                                const isAlreadyInRecipe = editRecipeForm.some(recipeItem => recipeItem.inventoryItemId === inventoryItem.id);
+                                const isCurrentlyEditing = editingRecipeItemIndex !== null &&
+                                    editRecipeForm[editingRecipeItemIndex]?.inventoryItemId === inventoryItem.id;
+
+                                return (
+                                    <TouchableOpacity
+                                        onPress={() => selectInventoryItem(inventoryItem.id)}
+                                        disabled={isAlreadyInRecipe && !isCurrentlyEditing}
+                                        className={`p-4 border-b border-gray-700 ${isCurrentlyEditing
+                                            ? "bg-blue-900 border-blue-600"
+                                            : isAlreadyInRecipe
+                                                ? "bg-gray-800 opacity-50"
+                                                : "bg-transparent"
+                                            }`}
+                                    >
+                                        <View className="flex-row items-center justify-between">
+                                            <View className="flex-1">
+                                                <Text className={`font-semibold ${isCurrentlyEditing
+                                                    ? "text-blue-300"
+                                                    : isAlreadyInRecipe
+                                                        ? "text-gray-500"
+                                                        : "text-white"
+                                                    }`}>
+                                                    {inventoryItem.name}
+                                                </Text>
+                                                <Text className={`text-sm ${isCurrentlyEditing
+                                                    ? "text-blue-400"
+                                                    : isAlreadyInRecipe
+                                                        ? "text-gray-600"
+                                                        : "text-gray-400"
+                                                    }`}>
+                                                    {inventoryItem.stockQuantity} {inventoryItem.unit} • ${inventoryItem.cost.toFixed(2)}
+                                                </Text>
+                                            </View>
+                                            {isCurrentlyEditing ? (
+                                                <View className="bg-blue-600 px-2 py-1 rounded">
+                                                    <Text className="text-white text-xs">Currently Selected</Text>
+                                                </View>
+                                            ) : isAlreadyInRecipe ? (
+                                                <View className="bg-gray-600 px-2 py-1 rounded">
+                                                    <Text className="text-gray-300 text-xs">Added</Text>
+                                                </View>
+                                            ) : null}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            }}
                             contentContainerStyle={{ paddingBottom: 20 }}
                         />
                     )}

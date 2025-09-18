@@ -853,14 +853,14 @@ const InventoryScreen = () => {
         </BottomSheet>
 
         {/* Inventory Search Bottom Sheet */}
-        <BottomSheet 
-        ref={invSearchSheetRef}
-        index={-1}
-        snapPoints={snapPoints}
-        enablePanDownToClose={true}
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-        backdropComponent={renderBackdrop}
+        <BottomSheet
+          ref={invSearchSheetRef}
+          index={-1}
+          snapPoints={snapPoints}
+          enablePanDownToClose={true}
+          backgroundStyle={{ backgroundColor: "#303030" }}
+          handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+          backdropComponent={renderBackdrop}
         >
           <View className="px-4 pb-2 flex-1 h-full">
             <TextInput

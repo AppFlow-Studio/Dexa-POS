@@ -121,6 +121,42 @@ const MenuItem: React.FC<MenuItemProps> = ({
               );
             })()}
           </View>
+
+          {/* Stock Status Display */}
+          <View className="mt-2">
+            {(() => {
+              // Determine stock status based on item properties
+              if (item.stockQuantity !== undefined && item.stockQuantity > 0) {
+                return (
+                  <View className="flex-row items-center">
+                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
+                    <Text className="text-green-400 text-sm font-medium">
+                      {item.stockQuantity} in stock
+                    </Text>
+                  </View>
+                );
+              } else if (item.availability === false) {
+                return (
+                  <View className="flex-row items-center">
+                    <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
+                    <Text className="text-red-400 text-sm font-medium">
+                      Out of Stock
+                    </Text>
+                  </View>
+                );
+              } else {
+                // Default to "In Stock" for items without specific stock tracking
+                return (
+                  <View className="flex-row items-center">
+                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
+                    <Text className="text-green-400 text-sm font-medium">
+                      In Stock
+                    </Text>
+                  </View>
+                );
+              }
+            })()}
+          </View>
         </View>
       </View>
     </TouchableOpacity>

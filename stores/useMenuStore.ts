@@ -66,6 +66,9 @@ interface MenuState {
   decreaseMenuItemStock: (itemId: string, quantity: number) => void;
   increaseMenuItemStock: (itemId: string, quantity: number) => void;
   getLowStockMenuItems: () => MenuItemType[];
+  // Stock tracking mode helpers
+  getMenuItemStockTrackingMode: (itemId: string) => "in_stock" | "out_of_stock" | "quantity";
+  setMenuItemStockTrackingMode: (itemId: string, mode: "in_stock" | "out_of_stock" | "quantity", stockQuantity?: number, reorderThreshold?: number) => void;
   // Custom Pricing Operations
   addCustomPricing: (itemId: string, customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">) => void;
   updateCustomPricing: (itemId: string, pricingId: string, updates: Partial<CustomPricing>) => void;
@@ -147,6 +150,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
       const newItem: MenuItemType = {
         ...itemData,
         id: generateId(),
+        // Default to "in_stock" mode (availability: true) unless explicitly set
+        availability: itemData.availability !== undefined ? itemData.availability : true,
+        // Default stock tracking mode to "in_stock" unless explicitly set
+        stockTrackingMode: itemData.stockTrackingMode || "in_stock",
       };
 
       set((state) => ({
@@ -521,13 +528,20 @@ export const useMenuStore = create<MenuState>((set, get) => {
     decreaseMenuItemStock: (itemId, quantity) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
-          if (item.id === itemId && typeof item.stockQuantity === "number") {
-            const newStock = Math.max(0, item.stockQuantity - quantity);
-            return {
-              ...item,
-              stockQuantity: newStock,
-              availability: newStock === 0 ? false : item.availability,
-            } as typeof item;
+          if (item.id === itemId) {
+            // Only decrease stock if item is in "quantity" tracking mode
+            if (typeof item.stockQuantity === "number") {
+              const newStock = Math.max(0, item.stockQuantity - quantity);
+              return {
+                ...item,
+                stockQuantity: newStock,
+                // If stock reaches 0, set availability to false
+                availability: newStock === 0 ? false : item.availability,
+              } as typeof item;
+            }
+            // For "in_stock" mode, just return the item unchanged
+            // For "out_of_stock" mode, item remains out of stock
+            return item;
           }
           return item;
         }),
@@ -560,13 +574,20 @@ export const useMenuStore = create<MenuState>((set, get) => {
     increaseMenuItemStock: (itemId, quantity) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
-          if (item.id === itemId && typeof item.stockQuantity === "number") {
-            const newStock = item.stockQuantity + quantity;
-            return {
-              ...item,
-              stockQuantity: newStock,
-              availability: newStock > 0 ? true : item.availability,
-            } as typeof item;
+          if (item.id === itemId) {
+            // Only increase stock if item is in "quantity" tracking mode
+            if (typeof item.stockQuantity === "number") {
+              const newStock = item.stockQuantity + quantity;
+              return {
+                ...item,
+                stockQuantity: newStock,
+                // If stock becomes > 0, set availability to true
+                availability: newStock > 0 ? true : item.availability,
+              } as typeof item;
+            }
+            // For "in_stock" mode, just return the item unchanged
+            // For "out_of_stock" mode, item remains out of stock
+            return item;
           }
           return item;
         }),
@@ -636,6 +657,56 @@ export const useMenuStore = create<MenuState>((set, get) => {
           typeof item.stockQuantity === "number" &&
           item.stockQuantity <= item.reorderThreshold
       );
+    },
+
+    // Stock tracking mode helpers
+    getMenuItemStockTrackingMode: (itemId: string) => {
+      const item = get().menuItems.find(item => item.id === itemId);
+      if (!item) return "in_stock"; // Default fallback
+
+      // Return stored stockTrackingMode if it exists
+      if (item.stockTrackingMode) {
+        return item.stockTrackingMode;
+      }
+
+      // Fallback: Determine mode based on item properties for backward compatibility
+      if (typeof item.stockQuantity === "number" && item.stockQuantity > 0) {
+        return "quantity";
+      } else if (item.availability === false) {
+        return "out_of_stock";
+      } else {
+        return "in_stock";
+      }
+    },
+
+    setMenuItemStockTrackingMode: (itemId: string, mode: "in_stock" | "out_of_stock" | "quantity", stockQuantity?: number, reorderThreshold?: number) => {
+      set((state) => ({
+        menuItems: state.menuItems.map((item) => {
+          if (item.id === itemId) {
+            let updatedItem = { ...item };
+
+            // Store the stock tracking mode
+            updatedItem.stockTrackingMode = mode;
+
+            if (mode === "in_stock") {
+              updatedItem.availability = true;
+              updatedItem.stockQuantity = undefined;
+              updatedItem.reorderThreshold = undefined;
+            } else if (mode === "out_of_stock") {
+              updatedItem.availability = false;
+              updatedItem.stockQuantity = undefined;
+              updatedItem.reorderThreshold = undefined;
+            } else if (mode === "quantity") {
+              updatedItem.availability = undefined;
+              updatedItem.stockQuantity = stockQuantity;
+              updatedItem.reorderThreshold = reorderThreshold;
+            }
+
+            return updatedItem;
+          }
+          return item;
+        }),
+      }));
     },
   };
 });

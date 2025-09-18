@@ -135,7 +135,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   return (
     <View className="w-96 border-r border-gray-700 h-full bg-[#303030]">
       {/* Header */}
-      <View className="p-6 border-b border-gray-700 flex-row items-center justify-between">
+      <View className="p-6  flex-row items-center justify-between">
         <Text className="text-3xl font-bold text-white">Menu Management</Text>
         <TouchableOpacity
           onPress={handleAddPress}
@@ -146,7 +146,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
       </View>
 
       {/* Search */}
-      <View className="p-6 border-b border-gray-700">
+      {/* <View className="p-6 border-b border-gray-700">
         <View className="flex-row items-center bg-[#212121] rounded-lg px-4 py-3">
           <Search size={24} color="#9CA3AF" />
           <TextInput
@@ -157,12 +157,12 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
             onChangeText={handleSearchChange}
           />
         </View>
-      </View>
+      </View> */}
 
       {/* Sidebar Tabs */}
-      <View className="flex-1 flex flex-col gap-y-2">
+      <View className="flex-1 flex flex-col gap-y-4">
         <Button
-          className={`p-6 border-b border-gray-700 ${activeTab === "menus" ? "bg-blue-600/20 border-blue-500" : ""}`}
+          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "menus" ? "bg-blue-600/20 border-blue-500" : ""}`}
           onPress={() => handleTabPress("menus")}
         >
           <View className="flex-row items-center justify-between">
@@ -176,12 +176,12 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
         </Button>
 
         <Button
-          className={`p-6 border-b border-gray-700 ${activeTab === "categories" ? "bg-blue-600/20 border-blue-500" : ""}`}
+          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "categories" ? "bg-blue-600/20 border-blue-500" : ""}`}
           onPress={() => handleTabPress("categories")}
         >
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between overflow-visible p-2 h-fit w-fit">
             <Text
-              className={`text-2xl font-medium ${activeTab === "categories" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-2xl h-fit w-fit overflow-visible font-medium ${activeTab === "categories" ? "text-blue-400" : "text-gray-300"}`}
             >
               Categories ({categories.length})
             </Text>
@@ -190,12 +190,12 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
         </Button>
 
         <Button
-          className={`p-6 border-b border-gray-700 ${activeTab === "items" ? "bg-blue-600/20 border-blue-500" : ""}`}
+          className={`p-6  border-b border-gray-700 ${activeTab === "items" ? "bg-blue-600/20 border-blue-500" : ""}`}
           onPress={() => handleTabPress("items")}
         >
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between overflow-visible p-2 h-fit w-fit">
             <Text
-              className={`text-2xl font-medium ${activeTab === "items" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-2xl h-fit w-fit overflow-visible font-medium  ${activeTab === "items" ? "text-blue-400" : "text-gray-300"}`}
             >
               Items ({menuItems.length})
             </Text>
@@ -204,12 +204,12 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
         </Button>
 
         <Button
-          className={`p-6 border-b border-gray-700 ${activeTab === "modifiers" ? "bg-blue-600/20 border-blue-500" : ""}`}
+          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "modifiers" ? "bg-blue-600/20 border-blue-500" : ""}`}
           onPress={() => handleTabPress("modifiers")}
         >
           <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl font-medium ${activeTab === "modifiers" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-2xl h-fit w-fit overflow-visible font-medium ${activeTab === "modifiers" ? "text-blue-400" : "text-gray-300"}`}
             >
               Modifiers ({modifierGroups.length})
             </Text>
@@ -218,7 +218,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
         </Button>
 
         <Button
-          className={`p-6 border-b border-gray-700 ${activeTab === "schedules" ? "bg-blue-600/20 border-blue-500" : ""}`}
+          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "schedules" ? "bg-blue-600/20 border-blue-500" : ""}`}
           onPress={() => handleTabPress("schedules")}
         >
           <View className="flex-row items-center justify-between">
