@@ -3,7 +3,7 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import TableLayoutView from "../tables/TableLayoutView";
 
@@ -28,7 +28,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     incrementOrderCount,
     searchCustomersByPhone,
   } = useCustomerStore();
-  const { tables, updateTableStatus } = useFloorPlanStore();
+  const { layouts, updateTableStatus } = useFloorPlanStore();
+
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
   const activeOrder = useOrderStore((state) =>
@@ -47,6 +48,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
+
+  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
 
   // Check for existing customer when phone number changes
   useEffect(() => {
@@ -365,7 +368,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
               <View className="flex-1 border border-gray-600 rounded-lg">
                 <TableLayoutView
-                  tables={tables}
+                  tables={allTables}
                   isSelectionMode={true}
                   selectedTableId={selectedTable?.id}
                   onTableSelect={handleTableSelect}
@@ -374,8 +377,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                 />
               </View>
 
-              {tables.filter((table) => table.status === "Available").length ===
-                0 && (
+              {allTables.filter((table) => table.status === "Available")
+                .length === 0 && (
                 <View className="p-4 bg-red-600/20 border border-red-600 rounded-lg">
                   <Text className="text-2xl text-red-400 font-medium">
                     No available tables

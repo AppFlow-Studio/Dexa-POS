@@ -3,7 +3,6 @@ import { Tag, X } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
-// Accept onOpenDiscounts prop
 interface DiscountSectionProps {
   onOpenDiscounts: () => void;
 }
@@ -11,12 +10,9 @@ interface DiscountSectionProps {
 const DiscountSection: React.FC<DiscountSectionProps> = ({
   onOpenDiscounts,
 }) => {
-  // Get discount state and remove action from the store
   const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
 
-  // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  // Get the check-level discount from that specific order
   const appliedDiscount = activeOrder?.checkDiscount;
 
   const handleRemoveDiscount = () => {
@@ -26,30 +22,39 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   };
 
   return (
-    <View className="px-4 bg-[#212121]">
-      <TouchableOpacity
-        onPress={onOpenDiscounts}
-        className="flex-row items-center mb-2"
-      >
-        <View className="bg-background-100 border border-background-200 rounded-xl flex-row py-1 px-3 flex items-center">
-          <View className="p-2 rounded-md mr-2">
-            <Tag color="#5D5D73" size={20} />
+    <View className=" bg-[#212121]">
+      {appliedDiscount ? (
+        // If a discount IS applied, show the discount label and a remove button
+        <View
+          className="flex-row items-center justify-between p-2 py-1 pl-4 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
+          style={{ elevation: 2, height: 50 }}
+        >
+          <View className="flex-row items-center">
+            <Text className="text-lg font-bold text-blue-400">
+              {appliedDiscount.label}
+            </Text>
           </View>
-          <Text className="font-bold text-xl text-accent-300">Discounts</Text>
-        </View>
-      </TouchableOpacity>
-      {appliedDiscount && (
-        <View className="flex-row items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-xl">
-          <Text className="text-2xl font-bold text-blue-600">
-            {appliedDiscount.label}
-          </Text>
           <TouchableOpacity
             onPress={handleRemoveDiscount}
-            className="p-2 bg-blue-100 rounded-full"
+            className="p-2 bg-blue-600/30 rounded-full"
           >
-            <X color="#2563eb" size={24} />
+            <X color="#60A5FA" size={24} />
           </TouchableOpacity>
         </View>
+      ) : (
+        // If NO discount is applied, show the button to open the discount overlay
+        <TouchableOpacity
+          onPress={onOpenDiscounts}
+          className="flex-row items-center"
+          style={{ elevation: 2, height: 50 }}
+        >
+          <View className="bg-[#303030] border border-gray-600 rounded-xl flex-row py-1 px-3 items-center">
+            <View className="p-2 rounded-md mr-2">
+              <Tag color="#9CA3AF" size={24} />
+            </View>
+            <Text className="font-bold text-lg text-gray-300">Discounts</Text>
+          </View>
+        </TouchableOpacity>
       )}
     </View>
   );

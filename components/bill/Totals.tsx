@@ -7,8 +7,6 @@ interface TotalsProps {
   cart: CartItem[];
 }
 
-const TAX_RATE = 0.05;
-
 const Totals: React.FC<TotalsProps> = ({ cart }) => {
   const {
     activeOrderSubtotal,
@@ -17,37 +15,45 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
     activeOrderDiscount,
   } = useOrderStore();
 
-  const voucher = 0.0; // This can remain as a static value for now
+  const voucher = 0.0;
 
   return (
     <View className="px-6 py-3 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-2 mt-2">
-        <Text className="text-xl text-accent-100">Subtotal</Text>
-        <Text className="text-xl text-accent-100">
-          ${activeOrderSubtotal.toFixed(2)}
-        </Text>
-      </View>
-      {activeOrderDiscount > 0 && (
-        <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-xl text-green-600">Discount</Text>
-          <Text className="text-xl text-green-600">
-            -${activeOrderDiscount.toFixed(2)}
+      <View className="space-y-2">
+        <View className="flex-row justify-between items-center">
+          <Text className="text-xl text-gray-300">Subtotal</Text>
+          <Text className="text-xl font-medium text-white">
+            ${activeOrderSubtotal.toFixed(2)}
           </Text>
         </View>
-      )}
-      <View className="flex-row justify-between items-center mb-2">
-        <Text className="text-xl text-accent-100">Tax</Text>
-        <Text className="text-xl text-accent-100">
-          ${activeOrderTax.toFixed(2)}
-        </Text>
+
+        {activeOrderDiscount > 0 && (
+          <View className="flex-row justify-between items-center">
+            <Text className="text-xl text-green-400">Discount</Text>
+            <Text className="text-xl font-medium text-green-400">
+              -${activeOrderDiscount.toFixed(2)}
+            </Text>
+          </View>
+        )}
+
+        <View className="flex-row justify-between items-center">
+          <Text className="text-xl text-gray-300">Tax</Text>
+          <Text className="text-xl font-medium text-white">
+            ${activeOrderTax.toFixed(2)}
+          </Text>
+        </View>
+
+        <View className="flex-row justify-between items-center">
+          <Text className="text-xl text-gray-300">Voucher</Text>
+          <Text className="text-xl font-medium text-white">
+            ${voucher.toFixed(2)}
+          </Text>
+        </View>
       </View>
-      <View className="flex-row justify-between items-center mb-2">
-        <Text className="text-xl text-accent-100">Voucher</Text>
-        <Text className="text-xl text-accent-100">${voucher.toFixed(2)}</Text>
-      </View>
-      <View className="border-t border-dashed border-gray-300 pt-2 flex-row justify-between items-center">
-        <Text className="text-xl font-bold text-white">Total</Text>
-        <Text className="text-xl font-bold text-white">
+
+      <View className="border-t border-dashed border-gray-600 mt-3 pt-3 flex-row justify-between items-center">
+        <Text className="text-2xl font-bold text-white">Total</Text>
+        <Text className="text-2xl font-bold text-white">
           ${activeOrderTotal.toFixed(2)}
         </Text>
       </View>

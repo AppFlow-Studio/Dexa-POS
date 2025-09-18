@@ -15,7 +15,6 @@ import PaymentMethodDialog from "./PaymentMethodDialog";
 import Totals from "./Totals";
 
 const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
-  // State for managing expanded item
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const handleToggleExpand = (itemId: string) => {
@@ -88,7 +87,6 @@ const BillSection = ({
         <TouchableOpacity
           className="px-6 py-3 bg-blue-600 rounded-full shadow-md active:opacity-80"
           onPress={() => {
-            // Start a new order using the store
             startNewOrder();
           }}
         >
@@ -103,42 +101,41 @@ const BillSection = ({
     <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
-      <View className="flex flex-row justify-between items-center bg-[#212121] p-4">
+
+      <View className="flex flex-row bg-[#212121] p-4 justify-between">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-6 py-3 bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
-            style={{ elevation: 2 }}
+            className={`flex-row items-center gap-2 px-6 py-2 bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
+            style={{ elevation: 2, height: 50 }} // Set fixed height to match discount button
             disabled={
               !activeOrder ||
               activeOrder.items.length === 0 ||
               activeOrder.order_status !== "Building"
             }
             onPress={() => {
-              // If this is a dine-in order with a selected table, assign it first
               if (activeOrder?.order_type === "Dine In" && selectedTable) {
                 assignOrderToTable(activeOrderId, selectedTable.id);
                 updateTableStatus(selectedTable.id, "In Use");
-                clearSelectedTable(); // Clear the selected table after assignment
+                clearSelectedTable();
               }
               fireActiveOrderToKitchen();
             }}
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-xl">
+            <Text className="text-white font-bold text-lg">
               Send to Kitchen ({activeOrder?.items.length})
             </Text>
-            {/* Paper plane icon (Lucide) */}
             <Send size={24} color="#9CA3AF" />
           </TouchableOpacity>
         )}
       </View>
+
       <View className="h-[1px] w-[90%] self-center bg-gray-600 " />
-      {/* More and Pay Buttons */}
+
       {showPlaymentActions && (
-        <View className="p-6 bg-[#212121]">
+        <View className="py-6 px-4 bg-[#212121]">
           <View className="flex-row gap-4">
-            {/* More Button */}
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
               className="flex-1 py-4 bg-[#303030] rounded-xl border border-gray-600"
@@ -147,14 +144,12 @@ const BillSection = ({
                 More
               </Text>
             </TouchableOpacity>
-
-            {/* Pay Button */}
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={!activeOrder || activeOrder.items.length === 0}
               className={`flex-1 py-4 rounded-xl ${
                 !activeOrder || activeOrder.items.length === 0
-                  ? "bg-gray-600"
+                  ? "bg-gray-500"
                   : "bg-blue-600"
               }`}
             >
@@ -162,7 +157,7 @@ const BillSection = ({
                 className={`text-center text-2xl font-bold ${
                   !activeOrder || activeOrder.items.length === 0
                     ? "text-gray-400"
-                    : "text-white "
+                    : "text-white"
                 }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
@@ -172,16 +167,11 @@ const BillSection = ({
         </View>
       )}
 
-      {/* More Options Bottom Sheet */}
       <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
-
-      {/* Payment Method Dialog */}
       <PaymentMethodDialog
         isVisible={isPaymentDialogVisible}
         onClose={handleClosePaymentDialog}
       />
-
-      {/* Discount Overlay */}
       <DiscountOverlay
         isVisible={isDiscountOverlayVisible}
         onClose={handleCloseDiscounts}
