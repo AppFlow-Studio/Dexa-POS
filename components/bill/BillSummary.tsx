@@ -1,9 +1,8 @@
-import { CartItem } from "@/lib/types"; // Use your global CartItem type
-import React from "react";
+import { CartItem } from "@/lib/types";
+import React, { useEffect, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
 import BillItem from "./BillItem";
 
-// 1. The component now accepts a `cart` array as a prop
 interface BillSummaryProps {
   cart: CartItem[];
   expandedItemId?: string | null;
@@ -21,6 +20,19 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   itemCourseMap,
   sentCourses,
 }) => {
+  // 1. Create a ref for the ScrollView
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // 2. useEffect to scroll to bottom when cart items change
+  useEffect(() => {
+    if (cart.length > 0) {
+      // Use setTimeout to ensure the layout has updated before scrolling
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [cart.length]);
+
   return (
     <View className="flex-1 bg-[#212121]">
       <View className="my-4 px-6 h-full">
@@ -29,14 +41,15 @@ const BillSummary: React.FC<BillSummaryProps> = ({
           <Text className="text-xl text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">
+          {/* 3. Assign the ref to the ScrollView */}
           <ScrollView
+            ref={scrollViewRef}
             showsVerticalScrollIndicator={true}
             className="flex-1 h-full my-2"
             nestedScrollEnabled={true}
           >
             {cart.length > 0 ? (
               (() => {
-                // Group items by course number
                 const grouped: Record<number, CartItem[]> = {};
                 cart.forEach((item) => {
                   const course = itemCourseMap?.[item.id] ?? 1;
@@ -88,20 +101,13 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                 );
               })()
             ) : (
-              <View className="h-24 items-center justify-center">
+              <View className="h-full items-center justify-center">
                 <Text className="text-2xl text-gray-400">Cart is empty.</Text>
               </View>
             )}
           </ScrollView>
         </View>
       </View>
-      {/* <View className="absolute bottom-0 left-0 right-0 ">
-        <Image
-          source={images.paperEffect}
-          className="w-full"
-          resizeMode="cover"
-        />
-      </View> */}
     </View>
   );
 };
