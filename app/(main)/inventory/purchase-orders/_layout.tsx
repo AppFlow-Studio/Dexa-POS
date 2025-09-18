@@ -1,13 +1,12 @@
 import { Slot, useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
-import { Text, TouchableOpacity, View } from "react-native";
+import { View } from "react-native";
 
 export default function PurchaseOrderLayout() {
   const router = useRouter();
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="flex-row items-center p-6 border-b border-gray-700 bg-[#303030]">
+      {/* <View className="flex-row items-center p-6 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
@@ -18,9 +17,8 @@ export default function PurchaseOrderLayout() {
           </Text>
         </TouchableOpacity>
       </View>
-      <View className="flex-1 p-6">
-        <Slot />
-      </View>
+     */}
+      <Slot />
     </View>
   );
 }

@@ -46,13 +46,20 @@ const BillSection = ({
     activeOrderTotal,
     startNewOrder,
     fireActiveOrderToKitchen,
+    sendNewItemsToKitchen,
     assignOrderToTable,
+    setActiveOrder,
   } = useOrderStore();
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { updateTableStatus } = useFloorPlanStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
+
+  // Count new items that haven't been sent to kitchen yet
+  const newItemsCount = cart.filter(item =>
+    item.kitchen_status === "new" || !item.kitchen_status
+  ).length;
 
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
@@ -119,7 +126,9 @@ const BillSection = ({
                 updateTableStatus(selectedTable.id, "In Use");
                 clearSelectedTable();
               }
-              fireActiveOrderToKitchen();
+              sendNewItemsToKitchen();
+              const newOrder = startNewOrder();
+              setActiveOrder(newOrder.id);
             }}
             activeOpacity={0.85}
           >

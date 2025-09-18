@@ -28,7 +28,7 @@ const SIDEBAR_WIDTH = screenWidth * 0.4; // 60% of screen width
 
 const ModifierSidebar = () => {
     const { isOpen, mode, menuItem, cartItem, close } = useModifierSidebarStore();
-    const { addItemToActiveOrder, updateItemInActiveOrder } = useOrderStore();
+    const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } = useOrderStore();
 
     // Animation values
     const slideAnimation = useState(new Animated.Value(-SIDEBAR_WIDTH))[0];
@@ -228,7 +228,10 @@ const ModifierSidebar = () => {
         } else {
             // Add new item
             const newItem = {
-                id: `${currentItem.id}_${Date.now()}`,
+                id: generateCartItemId(currentItem.id, {
+                    modifiers: selectedModifiers,
+                    notes,
+                }),
                 menuItemId: currentItem.id,
                 name: currentItem.name,
                 quantity,

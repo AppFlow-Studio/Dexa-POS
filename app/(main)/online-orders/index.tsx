@@ -2,14 +2,14 @@ import DatePicker from "@/components/date-picker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
 import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
-import { Search } from "lucide-react-native";
+import { Link } from "expo-router";
+import { Search, Table } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 const PARTNERS = ["All", "Door Dash", "grubhub", "Uber-Eats", "Food Panda"];
@@ -49,15 +49,26 @@ const OnlineOrdersScreen = () => {
   return (
     <View className="flex-1 px-6 bg-[#212121]">
       {/* Toolbar */}
-      <View className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-full">
-        <Search color="#9CA3AF" size={24} />
-        <TextInput
-          placeholder="Search Order No."
-          placeholderTextColor="#9CA3AF"
-          className="ml-3 text-2xl flex-1 text-white"
-        />
-      </View>
+
       <View className="flex-row items-center justify-between my-4">
+        <View className="flex-row items-center justify-end gap-x-4">
+          <View className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-fit">
+            <Search color="#9CA3AF" size={24} />
+            {/* <TextInput
+            placeholder="Search Order No."
+            placeholderTextColor="#9CA3AF"
+            className="ml-3 text-2xl flex-1 text-white"
+          /> */}
+
+          </View>
+          <Link href='/order-processing' asChild>
+            <TouchableOpacity
+              className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-fit"
+            >
+              <Table color="#9CA3AF" size={24} />
+            </TouchableOpacity>
+          </Link>
+        </View>
         <View className="flex-row items-center bg-[#303030] border border-gray-600 p-2 rounded-xl">
           {PARTNERS.map((partner) => (
             <TouchableOpacity
@@ -73,6 +84,7 @@ const OnlineOrdersScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
+
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 

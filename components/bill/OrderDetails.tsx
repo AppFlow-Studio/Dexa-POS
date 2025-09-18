@@ -19,11 +19,11 @@ import { Label } from "../ui/label";
 type SelectOption = { label: string; value: string };
 
 // Static options for the Order Type dropdown
-const ORDER_TYPE_OPTIONS: SelectOption[] = [
-  { label: "Dine In", value: "Dine In" },
-  { label: "Take Away", value: "Take Away" },
-  { label: "Delivery", value: "Delivery" },
-];
+// const ORDER_TYPE_OPTIONS: SelectOption[] = [
+//   { label: "Dine In", value: "Dine In" },
+//   { label: "Take Away", value: "Take Away" },
+//   { label: "Delivery", value: "Delivery" },
+// ];
 
 const OrderDetails: React.FC = () => {
   const { layouts } = useFloorPlanStore();
@@ -271,81 +271,7 @@ const OrderDetails: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Open Item Modal */}
-      <Dialog
-        open={isOpenItemModalVisible}
-        onOpenChange={setIsOpenItemModalVisible}
-      >
-        <DialogContent className="p-0 rounded-[36px] max-w-2xl w-full bg-[#11111A] border-none">
-          {/* Dark Header */}
-          <View className="p-6 rounded-t-2xl">
-            <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
-              Add Custom Item
-            </DialogTitle>
-          </View>
-
-          {/* White Content */}
-          <View className="rounded-[36px] p-6 bg-background-100">
-            <DialogHeader>
-              <Text className="text-accent-500 text-2xl text-center mb-4">
-                Enter the details for your custom item
-              </Text>
-            </DialogHeader>
-
-            {/* Item Name Input */}
-            <View className="mb-4">
-              <Text className="text-accent-500 text-xl font-semibold mb-2">
-                Item Name
-              </Text>
-              <TextInput
-                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
-                placeholder="Enter item name"
-                placeholderTextColor="#9CA3AF"
-                value={openItemName}
-                onChangeText={setOpenItemName}
-                autoFocus
-              />
-            </View>
-
-            {/* Item Price Input */}
-            <View className="mb-6">
-              <Text className="text-accent-500 text-xl font-semibold mb-2">
-                Price
-              </Text>
-              <TextInput
-                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
-                placeholder="0.00"
-                placeholderTextColor="#9CA3AF"
-                value={openItemPrice}
-                onChangeText={setOpenItemPrice}
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            {/* Footer with Buttons */}
-            <DialogFooter className="flex-row gap-4">
-              <TouchableOpacity
-                onPress={handleCancelOpenItem}
-                className="flex-1 py-4 border border-gray-300 rounded-lg"
-              >
-                <Text className="font-bold text-2xl text-gray-700 text-center">
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleAddOpenItem}
-                className="flex-1 py-4 bg-white rounded-lg"
-              >
-                <Text className="font-bold text-2xl text-white text-center">
-                  Add Item
-                </Text>
-              </TouchableOpacity>
-            </DialogFooter>
-          </View>
-        </DialogContent>
-      </Dialog>
-
+      
       {/* Customer Name Modal */}
       <Dialog
         open={isCustomerNameModalVisible}

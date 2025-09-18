@@ -30,6 +30,7 @@ export interface Vendor {
   contactPerson: string;
   email: string;
   phone: string;
+  description?: string;
 }
 
 export interface InventoryItem {
@@ -53,10 +54,33 @@ export interface PurchaseOrder {
   id: string;
   poNumber: string; // e.g., "PO-0001"
   vendorId: string;
-  status: "Draft" | "Sent" | "Received" | "Cancelled";
+  // Deferred payment lifecycle
+  // Draft: not submitted yet
+  // Pending Delivery: submitted and waiting for goods
+  // Awaiting Payment: goods received and logged; payment will be made on next delivery
+  // Paid: invoice fully paid and logged
+  // Cancelled: order cancelled
+  status: "Draft" | "Pending Delivery" | "Awaiting Payment" | "Paid" | "Cancelled";
   items: POLineItem[];
+  // Immutable snapshot of what was originally requested at creation time
+  originalItems?: POLineItem[];
+  // What was actually received (set at delivery logging time)
+  receivedItems?: POLineItem[];
   createdAt: string;
-  receivedAt?: string;
+  // When delivery was logged
+  deliveryLoggedAt?: string;
+  // Optional photos (URIs) uploaded when receiving goods
+  deliveryPhotos?: string[];
+  // Notes entered when logging delivery (e.g., missing/damaged)
+  discrepancyNotes?: string;
+  // Payment logging info when marking as Paid
+  payment?: {
+    method: "Card" | "Cash";
+    amount: number;
+    paidAt: string;
+    cardLast4?: string;
+    paidToEmployee?: string; // Employee name at vendor who received payment
+  };
 }
 // --- END INVENTORY TYPES ---
 
@@ -132,6 +156,11 @@ export interface MenuItemType {
   availability?: boolean; // New field for availability status
   customPricing?: CustomPricing[]; // New field for custom pricing
   recipe?: RecipeItem[];
+  // Optional stock tracking directly on menu items (for items not built from recipes)
+  stockQuantity?: number;
+  reorderThreshold?: number;
+  // Stock tracking mode: "in_stock", "out_of_stock", or "quantity"
+  stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
 }
 
 export interface CustomPricing {
@@ -222,6 +251,8 @@ export interface CartItem {
   paidQuantity?: number;
   // Per-item preparation status tracking for table workflow
   item_status?: "Preparing" | "Ready";
+  // Kitchen send status - tracks whether item has been sent to kitchen
+  kitchen_status?: "new" | "sent" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;
@@ -386,13 +417,13 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Building"
-    | "Voided";
+  | "Open"
+  | "Closed"
+  | "Cancelled"
+  | "Preparing"
+  | "Ready"
+  | "Building"
+  | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";

@@ -16,6 +16,8 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Link } from "expo-router";
 import {
   ChevronDown,
+  Computer,
+  Globe,
   Logs,
   PackagePlus,
   Search,
@@ -86,18 +88,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
-
-  // Use useEffect to safely set initial state once menus are loaded
-  useEffect(() => {
-    if (menus && menus.length > 0 && !activeMeal) {
-      const initialMenu = menus[0];
-      setActiveMeal(initialMenu.name);
-      if (initialMenu.categories && initialMenu.categories.length > 0) {
-        setActiveCategory(initialMenu.categories[0]);
-      }
-    }
-  }, [menus, activeMeal]);
-
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
       updateActiveOrderDetails({ order_type: orderType as any });
@@ -154,7 +144,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   return (
     <>
-      <View className="mt-6 flex-1 bg-[#212121]">
+      <Animated.View className="mt-6 flex-1 bg-[#212121]">
         <View className="flex flex-row items-center justify-between pb-4 px-4">
           <View className="flex-row items-center gap-4">
             <Text className="text-2xl font-bold text-white">Menu</Text>
@@ -222,6 +212,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 <Text className="text-gray-300 ml-4">Orders</Text>
               </TouchableOpacity>
             </View>
+            <Link href="/online-orders" asChild>
+              <TouchableOpacity
+                onPress={() => setActiveTab("Orders")}
+                className={`flex-row items-center w-fit bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+              >
+                <Globe color="#9CA3AF" size={24} />
+              </TouchableOpacity>
+            </Link>
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
@@ -249,25 +247,22 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                     <TouchableOpacity
                       key={menu.id}
                       onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${
-                        activeMeal === menu.name
-                          ? "bg-blue-600 border-blue-400"
-                          : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`p-4 rounded-lg border ${activeMeal === menu.name
+                        ? "bg-blue-600 border-blue-400"
+                        : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <Text
-                        className={`font-semibold text-lg ${
-                          activeMeal === menu.name ? "text-white" : "text-white"
-                        }`}
+                        className={`font-semibold text-lg ${activeMeal === menu.name ? "text-white" : "text-white"
+                          }`}
                       >
                         {menu.name}
                       </Text>
                       <Text
-                        className={`text-sm mt-1 ${
-                          activeMeal === menu.name
-                            ? "text-blue-100"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-sm mt-1 ${activeMeal === menu.name
+                          ? "text-blue-100"
+                          : "text-gray-400"
+                          }`}
                       >
                         {menu.description}
                       </Text>
@@ -275,18 +270,16 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                         {menu.categories.map((category, index) => (
                           <View
                             key={index}
-                            className={`px-2 py-1 rounded-full ${
-                              activeMeal === menu.name
-                                ? "bg-blue-500"
-                                : "bg-gray-600"
-                            }`}
+                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
+                              ? "bg-blue-500"
+                              : "bg-gray-600"
+                              }`}
                           >
                             <Text
-                              className={`text-xs ${
-                                activeMeal === menu.name
-                                  ? "text-white"
-                                  : "text-gray-300"
-                              }`}
+                              className={`text-xs ${activeMeal === menu.name
+                                ? "text-white"
+                                : "text-gray-300"
+                                }`}
                             >
                               {category}
                             </Text>
@@ -301,14 +294,58 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        <View className="flex-1 px-4">
-          {activeTab === "Menu" && (
-            <MenuControls
-              activeMeal={activeMeal}
-              onMealChange={(value) => {
-                setActiveMeal(value);
-                setActiveCategory(
-                  menus.find((menu) => menu.name === value)?.categories[0] || ""
+        {activeTab === "Menu" && (
+          <MenuControls
+            activeMeal={activeMeal}
+            onMealChange={(value) => {
+              setActiveMeal(value);
+              setActiveCategory(
+                menus.find((menu) => menu.name === value)?.categories[0] || ""
+              );
+            }}
+            activeCategory={activeCategory}
+            onCategoryChange={setActiveCategory}
+          />
+        )}
+
+        {activeTab === "Menu" ? (
+          <Animated.View key={"Menu"}>
+            <FlatList
+              data={filteredMenuItems}
+              keyExtractor={(item) => item.id}
+              numColumns={4}
+              className="mt-4 flex"
+              contentContainerStyle={{
+                marginLeft: "auto",
+                width: "99%",
+                paddingBottom: 150,
+                alignSelf: "center",
+              }}
+              showsVerticalScrollIndicator={false}
+              columnWrapperStyle={{ gap: 16 }}
+              removeClippedSubviews={false}
+              ListEmptyComponent={
+                <View className="flex-1 items-center justify-center h-48">
+                  <Text className="text-gray-400 text-lg">
+                    No items match the current filters.
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => {
+                // Find the current category ID
+                const currentCategory = categories.find(
+                  (cat) => cat.name === activeCategory
+                );
+                const categoryId = currentCategory?.id;
+
+                return (
+                  <MenuItem
+                    item={item}
+                    imageSource={getImageSource(item)}
+                    onOrderClosedCheck={onOrderClosedCheck}
+                    categoryId={categoryId}
+                    getItemPriceForCategory={getItemPriceForCategory}
+                  />
                 );
               }}
               activeCategory={activeCategory}
@@ -316,66 +353,67 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             />
           )}
 
-          {activeTab === "Menu" ? (
-            <Animated.View key={"Menu"}>
-              <FlatList
-                data={dataWithSpacers}
-                keyExtractor={(item) => item.id}
-                numColumns={numColumns}
-                className="mt-4 mb-20"
-                showsVerticalScrollIndicator={false}
-                columnWrapperStyle={{
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                }}
-                ListEmptyComponent={
-                  <View className="flex-1 items-center justify-center h-48">
-                    <Text className="text-gray-400 text-lg">
-                      No items match the current filters.
-                    </Text>
-                  </View>
-                }
-                renderItem={({ item }) => {
-                  if (item.name === "spacer") {
-                    return <View className="w-[23%]" />;
+            {activeTab === "Menu" ? (
+              <Animated.View key={"Menu"}>
+                <FlatList
+                  data={dataWithSpacers}
+                  keyExtractor={(item) => item.id}
+                  numColumns={numColumns}
+                  className="mt-4 mb-20"
+                  showsVerticalScrollIndicator={false}
+                  columnWrapperStyle={{
+                    justifyContent: "space-between",
+                    marginBottom: 16,
+                  }}
+                  ListEmptyComponent={
+                    <View className="flex-1 items-center justify-center h-48">
+                      <Text className="text-gray-400 text-lg">
+                        No items match the current filters.
+                      </Text>
+                    </View>
                   }
+                  renderItem={({ item }) => {
+                    if (item.name === "spacer") {
+                      return <View className="w-[23%]" />;
+                    }
 
-                  const currentCategory = categories.find(
-                    (cat) => cat.name === activeCategory
-                  );
-                  const categoryId = currentCategory?.id;
-                  return (
-                    <MenuItem
-                      item={item}
-                      imageSource={getImageSource(item)}
-                      onOrderClosedCheck={onOrderClosedCheck}
-                      categoryId={categoryId}
-                      getItemPriceForCategory={getItemPriceForCategory}
-                    />
-                  );
-                }}
-              />
-            </Animated.View>
-          ) : activeTab === "Open Item" ? (
-            <Animated.View
-              key={"Open Item"}
-              className={"flex-1"}
-              layout={FadingTransition.reduceMotion(ReduceMotion.Never)
-                .duration(1000)
-                .delay(500)}
-            >
-              <OpenItemAdder />
-            </Animated.View>
-          ) : activeTab === "Orders" ? (
-            <Animated.View
-              key={"Orders"}
-              layout={FadingTransition.duration(1000).delay(500)}
-              className="flex-1"
-            >
-              <PreviousOrdersSection />
-            </Animated.View>
-          ) : null}
-        </View>
+                    const currentCategory = categories.find(
+                      (cat) => cat.name === activeCategory
+                    );
+                    const categoryId = currentCategory?.id;
+                    return (
+                      <MenuItem
+                        item={item}
+                        imageSource={getImageSource(item)}
+                        onOrderClosedCheck={onOrderClosedCheck}
+                        categoryId={categoryId}
+                        getItemPriceForCategory={getItemPriceForCategory}
+                      />
+                    );
+                  }}
+                />
+              </Animated.View>
+            ) : activeTab === "Open Item" ? (
+              <Animated.View
+                key={"Open Item"}
+                className={"flex-1"}
+                layout={FadingTransition.reduceMotion(ReduceMotion.Never)
+                  .duration(1000)
+                  .delay(500)}
+              >
+                <OpenItemAdder />
+              </Animated.View>
+            ) : activeTab === "Orders" ? (
+              <Animated.View
+                key={"Orders"}
+                layout={FadingTransition.duration(1000).delay(500)}
+                className="flex-1"
+              >
+                <PreviousOrdersSection />
+              </Animated.View>
+            ) : null}
+          </Animated.View>
+        )}
       </View>
 
       <OrderTypeDrawer

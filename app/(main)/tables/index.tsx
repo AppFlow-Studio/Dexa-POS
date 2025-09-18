@@ -147,18 +147,7 @@ const TablesScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] px-8 py-1">
-      <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-2 mb-4">
-        <Search color="#9CA3AF" size={24} />
-        <TextInput
-          placeholder="Search Customer"
-          placeholderTextColor="#9CA3AF"
-          value={searchCustomerText}
-          onChangeText={setSearchCustomerText}
-          className="ml-3 text-2xl flex-1 text-white"
-        />
-      </View>
-
+    <View className="flex-1 bg-[#212121] px-2 py-1">
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* --- Left Panel: Tables List --- */}
         <View className="w-96 bg-[#212121] border-r border-gray-700">

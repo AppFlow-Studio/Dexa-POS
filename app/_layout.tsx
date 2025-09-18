@@ -64,7 +64,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
           <StatusBar style={"dark"} />
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false }} initialRouteName="(main)" />{/* Remove after testing */}
           <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />

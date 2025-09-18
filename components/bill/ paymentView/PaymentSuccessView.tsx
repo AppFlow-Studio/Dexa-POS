@@ -89,23 +89,17 @@ const PaymentSuccessView = () => {
     });
   };
 
-  const receiptSummary = items.reduce(
-    (acc, item) => {
-      const existing = acc.find((i) => i.name === item.name);
-      if (existing) {
-        existing.quantity += item.quantity;
-        existing.totalPrice += item.price * item.quantity;
-      } else {
-        acc.push({
-          name: item.name,
-          quantity: item.quantity,
-          totalPrice: item.price * item.quantity,
-        });
-      }
-      return acc;
-    },
-    [] as { name: string; quantity: number; totalPrice: number }[]
-  );
+  // Create a simplified summary for the receipt using the correct `items`
+  // Don't group items by name - preserve each unique item with its modifiers
+  const receiptSummary = items.map(item => ({
+    name: item.name,
+    quantity: item.quantity,
+    totalPrice: item.price * item.quantity,
+    // Include modifier info in the name for clarity
+    displayName: (item.customizations.modifiers && item.customizations.modifiers.length > 0) || item.customizations.notes
+      ? `${item.name}${item.customizations.notes ? ` (${item.customizations.notes})` : ''}${(item.customizations.modifiers && item.customizations.modifiers.length > 0) ? ` [${item.customizations.modifiers.map(m => m.categoryName).join(', ')}]` : ''}`
+      : item.name
+  }));
 
   const totalItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
@@ -142,11 +136,11 @@ const PaymentSuccessView = () => {
               label="Total Items"
               value={`${totalItemsCount} Items`}
             />
-            {receiptSummary.map((item) => (
+            {receiptSummary.map((item, index) => (
               <ReceiptRow
-                key={item.name}
-                label={`${item.name} (x${item.quantity})`}
-                value={`$${item.totalPrice.toFixed(2)}`}
+                key={`${item.name}_${index}`}
+                label={item.displayName}
+                value={`${item.totalPrice.toFixed(2)}`}
               />
             ))}
           </View>

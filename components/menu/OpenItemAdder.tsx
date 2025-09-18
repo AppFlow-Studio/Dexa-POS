@@ -12,46 +12,68 @@ const OpenItemAdder = () => {
   const [priceDisplay, setPriceDisplay] = useState("0.00");
 
   const handlePriceInput = (value: string) => {
+    // Clear all
     if (value === "clear") {
       setPriceDisplay("0.00");
       setOpenItemPrice("0.00");
       return;
     }
 
+    // Backspace behavior
     if (value === "backspace") {
-      if (priceDisplay.length > 1) {
-        const newDisplay = priceDisplay.slice(0, -1);
-        if (newDisplay === "0" || newDisplay === "") {
-          setPriceDisplay("0.00");
-          setOpenItemPrice("0.00");
-        } else {
-          setPriceDisplay(newDisplay);
-          setOpenItemPrice(newDisplay);
-        }
+      let current = priceDisplay;
+      if (current === "0.00") return;
+      if (current.length <= 1) {
+        setPriceDisplay("0.00");
+        setOpenItemPrice("0.00");
+        return;
       }
-      return;
-    }
-
-    // Handle decimal point
-    if (value === ".") {
-      if (!priceDisplay.includes(".")) {
-        const newDisplay = priceDisplay + ".";
+      const newDisplay = current.slice(0, -1);
+      if (newDisplay === "" || newDisplay === "0" || newDisplay === "-") {
+        setPriceDisplay("0.00");
+        setOpenItemPrice("0.00");
+      } else {
         setPriceDisplay(newDisplay);
         setOpenItemPrice(newDisplay);
       }
       return;
     }
 
-    // Handle number input
-    if (priceDisplay === "0.00" || priceDisplay === "0") {
-      const newDisplay = value + ".00";
-      setPriceDisplay(newDisplay);
-      setOpenItemPrice(newDisplay);
-    } else {
-      const newDisplay = priceDisplay + value;
-      setPriceDisplay(newDisplay);
-      setOpenItemPrice(newDisplay);
+    // Decimal point
+    if (value === ".") {
+      if (!priceDisplay.includes(".")) {
+        const base = priceDisplay === "0.00" ? "0" : priceDisplay;
+        const newDisplay = base + ".";
+        setPriceDisplay(newDisplay);
+        setOpenItemPrice(newDisplay);
+      }
+      return;
     }
+
+    // Number input 0-9
+    const isDigit = /^[0-9]$/.test(value);
+    if (!isDigit) return;
+
+    // If starting state, replace with the digit
+    if (priceDisplay === "0.00" || priceDisplay === "0") {
+      const newDisplay = value === "0" ? "0" : value;
+      setPriceDisplay(newDisplay);
+      setOpenItemPrice(newDisplay);
+      return;
+    }
+
+    // Enforce max 2 decimals when a dot exists
+    if (priceDisplay.includes(".")) {
+      const [whole, decimals = ""] = priceDisplay.split(".");
+      if (decimals.length >= 2) {
+        // Already at 2 decimals; do not append more
+        return;
+      }
+    }
+
+    const newDisplay = priceDisplay + value;
+    setPriceDisplay(newDisplay);
+    setOpenItemPrice(newDisplay);
   };
 
   const handleAddOpenItem = () => {
@@ -121,16 +143,14 @@ const OpenItemAdder = () => {
               <TouchableOpacity
                 key={button}
                 onPress={() => handlePriceInput(button)}
-                className={`flex-1 h-20 rounded-lg items-center justify-center ${
-                  button === "backspace"
-                    ? "bg-red-600"
-                    : "bg-[#303030] border border-gray-600"
-                }`}
+                className={`flex-1 h-20 rounded-lg items-center justify-center ${button === "backspace"
+                  ? "bg-red-600"
+                  : "bg-[#303030] border border-gray-600"
+                  }`}
               >
                 <Text
-                  className={`text-3xl font-bold ${
-                    button === "backspace" ? "text-white" : "text-white"
-                  }`}
+                  className={`text-3xl font-bold ${button === "backspace" ? "text-white" : "text-white"
+                    }`}
                 >
                   {button === "backspace" ? "⌫" : button}
                 </Text>
@@ -154,7 +174,7 @@ const OpenItemAdder = () => {
       {/* Item Name Input */}
       <View className="mb-6">
         <Text className="text-2xl font-semibold text-white mb-3">
-          Item Name
+          Open Item Name
         </Text>
         <TextInput
           className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
@@ -167,7 +187,7 @@ const OpenItemAdder = () => {
 
       {/* Price Display */}
       <View className="mb-6">
-        <Text className="text-2xl font-semibold text-white mb-3">Price</Text>
+        <Text className="text-2xl font-semibold text-white mb-3">Open Item Price</Text>
         <View className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-5 items-center">
           <Text className="text-4xl font-bold text-white">${priceDisplay}</Text>
         </View>

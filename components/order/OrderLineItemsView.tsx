@@ -8,14 +8,19 @@ interface OrderLineItemsViewProps {
   onClose: () => void;
   orderId: string | null;
 }
+const OrderLineItemsView = ({ onClose, orderId }: { onClose: () => void, orderId: string | null }) => {
+  // Get all data directly from the order store
+  const {
+    activeOrderId,
+    orders,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderDiscount,
+    activeOrderTotal,
+    markAllItemsAsReady
+  } = useOrderStore();
 
-const TAX_RATE = 0.05; // Assuming a constant tax rate
-
-const OrderLineItemsView: React.FC<OrderLineItemsViewProps> = ({
-  onClose,
-  orderId,
-}) => {
-  const { orders } = useOrderStore();
+  const TAX_RATE = 0.05; // Assuming a constant tax rate
 
   // Find the specific order to view using the passed orderId, not the global activeOrderId
   const orderToView = orders.find((o) => o.id === orderId);
@@ -67,22 +72,20 @@ const OrderLineItemsView: React.FC<OrderLineItemsViewProps> = ({
             </Text>
           </View>
           <View
-            className={`px-3 py-1 rounded-full border ${
-              orderToView.paid_status === "Paid"
-                ? "bg-green-900/30 border-green-500"
-                : orderToView.paid_status === "Pending"
-                  ? "bg-yellow-500/20 border-yellow-500"
-                  : "bg-red-900/30 border-red-500"
-            }`}
+            className={`px-3 py-1 rounded-full border ${orderToView.paid_status === "Paid"
+              ? "bg-green-900/30 border-green-500"
+              : orderToView.paid_status === "Pending"
+                ? "bg-yellow-500/20 border-yellow-500"
+                : "bg-red-900/30 border-red-500"
+              }`}
           >
             <Text
-              className={`text-xl font-bold ${
-                orderToView.paid_status === "Paid"
-                  ? "text-green-400"
-                  : orderToView.paid_status === "Pending"
-                    ? "text-yellow-400"
-                    : "text-red-400"
-              }`}
+              className={`text-xl font-bold ${orderToView.paid_status === "Paid"
+                ? "text-green-400"
+                : orderToView.paid_status === "Pending"
+                  ? "text-yellow-400"
+                  : "text-red-400"
+                }`}
             >
               {orderToView.paid_status}
             </Text>

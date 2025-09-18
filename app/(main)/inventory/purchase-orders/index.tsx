@@ -29,11 +29,12 @@ const PurchaseOrderRow: React.FC<{
     0
   );
 
-  const statusColors = {
-    Draft: "bg-gray-700 text-gray-200",
-    Sent: "bg-blue-600 text-white",
-    Received: "bg-green-600 text-white",
-    Cancelled: "bg-red-600 text-white",
+  const statusStyles: Record<string, { bg: string; text: string; label: string }> = {
+    "Draft": { bg: "bg-gray-700", text: "text-gray-200", label: "Draft" },
+    "Pending Delivery": { bg: "bg-yellow-600", text: "text-yellow-100", label: "Pending Delivery" },
+    "Awaiting Payment": { bg: "bg-blue-600", text: "text-blue-100", label: "Awaiting Payment" },
+    "Paid": { bg: "bg-green-600", text: "text-green-100", label: "Paid" },
+    "Cancelled": { bg: "bg-red-600", text: "text-red-100", label: "Cancelled" },
   };
 
   return (
@@ -45,13 +46,14 @@ const PurchaseOrderRow: React.FC<{
         {vendor?.name || "Unknown"}
       </Text>
       <View className="w-[15%]">
-        <View
-          className={`px-4 py-2 rounded-full self-start ${statusColors[item.status]}`}
-        >
-          <Text className={`font-bold text-xl ${statusColors[item.status]}`}>
-            {item.status}
-          </Text>
-        </View>
+        {(() => {
+          const sty = statusStyles[item.status] || statusStyles["Draft"];
+          return (
+            <View className={`px-4 py-2 rounded-full self-start ${sty.bg}`}>
+              <Text className={`font-bold text-xl ${sty.text}`}>{sty.label}</Text>
+            </View>
+          );
+        })()}
       </View>
       <Text className="w-[15%] text-2xl text-gray-300">
         {new Date(item.createdAt).toLocaleDateString()}
@@ -142,21 +144,20 @@ const PurchaseOrdersScreen = () => {
           {TABLE_HEADERS.map((header) => (
             <Text
               key={header}
-              className={`font-bold text-xl text-gray-400 ${
-                header === "PO Number"
-                  ? "w-[15%]"
-                  : header === "Vendor"
-                    ? "w-[20%]"
-                    : header === "Status"
+              className={`font-bold text-xl text-gray-400 ${header === "PO Number"
+                ? "w-[15%]"
+                : header === "Vendor"
+                  ? "w-[20%]"
+                  : header === "Status"
+                    ? "w-[15%]"
+                    : header === "Date Created"
                       ? "w-[15%]"
-                      : header === "Date Created"
-                        ? "w-[15%]"
-                        : header === "Total Items"
-                          ? "w-[10%]"
-                          : header === "Total Cost"
-                            ? "w-[15%]"
-                            : "w-[10%]"
-              }`}
+                      : header === "Total Items"
+                        ? "w-[10%]"
+                        : header === "Total Cost"
+                          ? "w-[15%]"
+                          : "w-[10%]"
+                }`}
             >
               {header}
             </Text>

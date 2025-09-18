@@ -46,23 +46,16 @@ const SplitPaymentView = () => {
   };
 
   const billSummary = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        const existing = acc.find((i) => i.name === item.name);
-        if (existing) {
-          existing.quantity += item.quantity;
-          existing.totalPrice += item.price * item.quantity;
-        } else {
-          acc.push({
-            name: item.name,
-            quantity: item.quantity,
-            totalPrice: item.price * item.quantity,
-          });
-        }
-        return acc;
-      },
-      [] as { name: string; quantity: number; totalPrice: number }[]
-    );
+    // Don't group items by name - preserve each unique item with its modifiers
+    return items.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      totalPrice: item.price * item.quantity,
+      // Include modifier info in the name for clarity
+      displayName: (item.customizations.modifiers && item.customizations.modifiers.length > 0) || item.customizations.notes
+        ? `${item.name}${item.customizations.notes ? ` (${item.customizations.notes})` : ''}${(item.customizations.modifiers && item.customizations.modifiers.length > 0) ? ` [${item.customizations.modifiers.map(m => m.categoryName).join(', ')}]` : ''}`
+        : item.name
+    }));
   }, [items]);
 
   const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
@@ -154,11 +147,11 @@ const SplitPaymentView = () => {
       prev.map((split) =>
         split.id === sourceSplitId
           ? {
-              ...split,
-              items: split.items.filter(
-                (item) => item.id !== itemToUnassign.id
-              ),
-            }
+            ...split,
+            items: split.items.filter(
+              (item) => item.id !== itemToUnassign.id
+            ),
+          }
           : split
       )
     );
@@ -197,9 +190,9 @@ const SplitPaymentView = () => {
       currentSplits.map((split) =>
         split.id === splitId
           ? {
-              ...split,
-              amount: parseFloat(sanitizedText),
-            }
+            ...split,
+            amount: parseFloat(sanitizedText),
+          }
           : split
       )
     );

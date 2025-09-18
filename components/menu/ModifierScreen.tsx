@@ -1,4 +1,3 @@
-import { MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -7,6 +6,7 @@ import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
+  Modal,
   ScrollView,
   Text,
   TextInput,
@@ -23,24 +23,44 @@ interface ModifierSelection {
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, categoryId, close } =
     useModifierSidebarStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem } =
+  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem, generateCartItemId } =
     useOrderStore();
-  const { getItemPriceForCategory } = useMenuStore();
-
+  const { getItemPriceForCategory, menuItems } = useMenuStore();
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
     useState<ModifierSelection>({});
   const [notes, setNotes] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [isQuantityModalOpen, setIsQuantityModalOpen] = useState(false);
+  const [quantityInput, setQuantityInput] = useState("");
 
   const isReadOnly = mode === "view";
+
+  const handleQuantityPress = () => {
+    if (isReadOnly) return;
+    setQuantityInput(quantity.toString());
+    setIsQuantityModalOpen(true);
+  };
+
+  const handleQuantitySubmit = () => {
+    const newQuantity = parseInt(quantityInput, 10);
+    if (newQuantity && newQuantity > 0) {
+      setQuantity(newQuantity);
+    }
+    setIsQuantityModalOpen(false);
+  };
+
+  const handleQuantityCancel = () => {
+    setIsQuantityModalOpen(false);
+    setQuantityInput("");
+  };
+
   const currentItem =
     mode === "edit" || (mode === "fullscreen" && cartItem)
       ? cartItem
       : menuItem;
   const isFullscreen = mode === "fullscreen";
-
   // Get the correct price for the current item based on category
   const getCurrentItemPrice = useCallback(
     (item: any) => {
@@ -48,7 +68,7 @@ const ModifierScreen = () => {
 
       // If we have a categoryId and the item has custom pricing, use it
       if (categoryId && getItemPriceForCategory) {
-        return getItemPriceForCategory(item.id, categoryId);
+        return getItemPriceForCategory(item?.id.split('_')[0] || '', categoryId);
       }
 
       // Otherwise use the default price
@@ -60,7 +80,7 @@ const ModifierScreen = () => {
   // Get the menu item for modifier access (either directly or from cart item)
   const menuItemForModifiers =
     (mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem
-      ? MOCK_MENU_ITEMS.find((item) => item.id === cartItem.menuItemId)
+      ? menuItems?.find((item) => item.id === cartItem.menuItemId)
       : menuItem;
 
   // Initialize form when screen opens
@@ -140,7 +160,7 @@ const ModifierScreen = () => {
       if (mode !== "edit" && !cartItem) {
         const itemPrice = getCurrentItemPrice(currentItem);
         const draftItem = {
-          id: `draft_${currentItem.id}_${Date.now()}`,
+          id: generateCartItemId(currentItem.id, { modifiers: [], notes: "" }, true),
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
@@ -176,30 +196,30 @@ const ModifierScreen = () => {
         // Convert modifier selections to the format expected by the order system
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-              ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
-                const selectedOptions = Object.entries(selections)
-                  .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
-                    return {
-                      id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
-                    };
-                  });
+            ([categoryId, selections]) => {
+              const category = menuItemForModifiers.modifiers?.find(
+                (cat) => cat.id === categoryId
+              );
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId, _]) => {
+                  const option = category?.options.find(
+                    (opt) => opt.id === optionId
+                  );
+                  return {
+                    id: optionId,
+                    name: option?.name || "",
+                    price: option?.price || 0,
+                  };
+                });
 
-                return {
-                  categoryId,
-                  categoryName: category?.name || "",
-                  options: selectedOptions,
-                };
-              }
-            )
+              return {
+                categoryId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            }
+          )
           : [];
 
         // Calculate total price
@@ -210,11 +230,11 @@ const ModifierScreen = () => {
           });
         });
 
-        // Update the draft item
+        // Update the draft item; price is per-unit. baseTotal already reflects per-unit cost
         const updatedDraftItem = {
           ...draftItem,
           quantity,
-          price: baseTotal / quantity,
+          price: baseTotal,
           customizations: {
             modifiers: selectedModifiers,
             notes,
@@ -335,28 +355,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-          const category = menuItemForModifiers.modifiers?.find(
-            (cat) => cat.id === categoryId
-          );
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId, _]) => {
-              const option = category?.options.find(
-                (opt) => opt.id === optionId
-              );
-              return {
-                id: optionId,
-                name: option?.name || "",
-                price: option?.price || 0,
-              };
-            });
+        const category = menuItemForModifiers.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        const selectedOptions = Object.entries(selections)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([optionId, _]) => {
+            const option = category?.options.find(
+              (opt) => opt.id === optionId
+            );
+            return {
+              id: optionId,
+              name: option?.name || "",
+              price: option?.price || 0,
+            };
+          });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
+        return {
+          categoryId,
+          categoryName: category?.name || "",
+          options: selectedOptions,
+        };
+      })
       : [];
 
     if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
@@ -364,7 +384,8 @@ const ModifierScreen = () => {
       const updatedItem = {
         ...cartItem,
         quantity,
-        price: total / quantity,
+        // price is per-unit
+        price: total / Math.max(1, quantity),
         customizations: {
           ...cartItem.customizations,
           modifiers: selectedModifiers,
@@ -377,7 +398,8 @@ const ModifierScreen = () => {
       const updatedItem = {
         ...cartItem,
         quantity,
-        price: total / quantity,
+        // price is per-unit
+        price: total / Math.max(1, quantity),
         isDraft: false, // Confirm the item
         customizations: {
           ...cartItem.customizations,
@@ -399,6 +421,7 @@ const ModifierScreen = () => {
         item.id.startsWith(`draft_${currentItem.id}_`)
       );
 
+
       if (draftItem) {
         // Remove the draft item first
         removeItemFromActiveOrder(draftItem.id);
@@ -406,9 +429,13 @@ const ModifierScreen = () => {
         // Add the confirmed item with a new ID
         const confirmedItem = {
           ...draftItem,
-          id: `${currentItem.id}_${Date.now()}`, // New ID for confirmed item
+          id: generateCartItemId(currentItem.id, {
+            modifiers: selectedModifiers,
+            notes,
+          }), // New ID for confirmed item
           quantity,
-          price: total / quantity,
+          // price is per-unit
+          price: total / Math.max(1, quantity),
           isDraft: false, // Confirm the item
           customizations: {
             modifiers: selectedModifiers,
@@ -493,14 +520,15 @@ const ModifierScreen = () => {
         <View className="flex-row items-center gap-4">
           <TouchableOpacity
             onPress={handleCancel}
-            className="p-3 rounded-full bg-[#303030]"
+            className="p-3 rounded-full bg-red-600"
           >
-            <X color="#9CA3AF" size={24} />
+            <X color="white" size={24} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="p-3 rounded-full bg-green-500"
+            className="p-3 rounded-full gap-x-2 flex-row items-center justify-center bg-green-500"
           >
+            <Text className="text-white text-xl font-semibold">Done</Text>
             <Check color="#FFFFFF" size={24} />
           </TouchableOpacity>
         </View>
@@ -548,19 +576,17 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-4 rounded-xl border-2 min-w-[160px] ${
-                        isActive
-                          ? "bg-blue-600 border-blue-400"
-                          : hasSelection
-                            ? "bg-green-600 border-green-400"
-                            : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`p-4 rounded-xl border-2 min-w-[160px] ${isActive
+                        ? "bg-blue-600 border-blue-400"
+                        : hasSelection
+                          ? "bg-green-600 border-green-400"
+                          : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center justify-between mb-2">
                         <Text
-                          className={`font-semibold text-xl ${
-                            isActive ? "text-white" : "text-white"
-                          }`}
+                          className={`font-semibold text-xl ${isActive ? "text-white" : "text-white"
+                            }`}
                         >
                           {category.name}
                         </Text>
@@ -572,11 +598,10 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-lg ${
-                          category.type === "required"
-                            ? "text-red-400"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-lg ${category.type === "required"
+                          ? "text-red-400"
+                          : "text-gray-400"
+                          }`}
                       >
                         {category.type === "required" ? "Required" : "Optional"}
                       </Text>
@@ -620,31 +645,28 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-6 rounded-xl border-2 min-w-[140px] ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-400"
-                              : isUnavailable
-                                ? "bg-[#1a1a1a] border-gray-700"
-                                : "bg-[#303030] border-gray-600"
-                          }`}
+                          className={`p-6 rounded-xl border-2 min-w-[140px] ${isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : isUnavailable
+                              ? "bg-[#1a1a1a] border-gray-700"
+                              : "bg-[#303030] border-gray-600"
+                            }`}
                         >
                           <Text
-                            className={`text-2xl font-medium text-center ${
-                              isSelected
-                                ? "text-white"
-                                : isUnavailable
-                                  ? "text-gray-500"
-                                  : "text-white"
-                            }`}
+                            className={`text-2xl font-medium text-center ${isSelected
+                              ? "text-white"
+                              : isUnavailable
+                                ? "text-gray-500"
+                                : "text-white"
+                              }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-xl text-center mt-1 ${
-                                isSelected ? "text-blue-200" : "text-blue-400"
-                              }`}
+                              className={`text-xl text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+                                }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>
@@ -671,9 +693,15 @@ const ModifierScreen = () => {
             >
               <Minus color="#9CA3AF" size={24} />
             </TouchableOpacity>
-            <Text className="text-4xl font-bold text-white mx-16 w-16 text-center">
-              {quantity}
-            </Text>
+            <TouchableOpacity
+              disabled={isReadOnly}
+              onPress={handleQuantityPress}
+              className="mx-16 w-16"
+            >
+              <Text className="text-4xl border rounded-lg p-2 border-gray-600 font-bold text-white text-center">
+                {quantity}
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
               onPress={() => setQuantity((q) => q + 1)}
@@ -734,6 +762,49 @@ const ModifierScreen = () => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Quantity Input Modal */}
+      <Modal
+        visible={isQuantityModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleQuantityCancel}
+      >
+        <View className="flex-1 bg-black/50 justify-center items-center">
+          <View className="bg-[#303030] rounded-xl p-6 w-80 border border-gray-600">
+            <Text className="text-2xl font-semibold text-white mb-4 text-center">
+              Enter Quantity
+            </Text>
+            <TextInput
+              value={quantityInput}
+              onChangeText={setQuantityInput}
+              placeholder="Quantity"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="numeric"
+              autoFocus
+              className="p-4 border border-gray-600 rounded-lg bg-[#212121] text-2xl text-white text-center mb-6"
+            />
+            <View className="flex-row gap-4">
+              <TouchableOpacity
+                onPress={handleQuantityCancel}
+                className="flex-1 py-4 px-6 bg-gray-600 rounded-lg"
+              >
+                <Text className="text-xl font-semibold text-white text-center">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleQuantitySubmit}
+                className="flex-1 py-4 px-6 bg-blue-500 rounded-lg"
+              >
+                <Text className="text-xl font-semibold text-white text-center">
+                  Set
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
