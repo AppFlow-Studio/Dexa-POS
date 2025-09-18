@@ -1,5 +1,5 @@
 import { OrderProfile } from "@/lib/types";
-import { CheckCircle, Eye } from "lucide-react-native";
+import { CheckCircle, CreditCard, Eye } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Button } from "../ui/button";
@@ -8,15 +8,17 @@ interface OrderBadgeProps {
   order: OrderProfile;
   onMarkReady: () => void;
   onViewItems: () => void;
+  onRetrieve: () => void;
 }
 
 const OrderBadge: React.FC<OrderBadgeProps> = ({
   order,
   onMarkReady,
   onViewItems,
+  onRetrieve,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
-
+  
   const getStatusColor = (status: string, paidStatus: string) => {
     if (status === "Preparing") {
       if (paidStatus === "Paid") {
@@ -84,10 +86,10 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
       {showTooltip && (
         <View className="absolute top-16 left-0 bg-white rounded-xl shadow-lg border border-gray-200 gap-y-3 pb-6 z-50 w-[440px]">
           <View className="flex-col justify-start items-center w-full px-6 pt-4 gap-y-3">
-            <View className="w-full flex flex-row justify-start items-center">
-              <Text className="text-3xl font-bold text-accent-500 mr-4">
+            <View className="w-full flex flex-row justify-center items-center">
+              {order.customer_name && <Text className="text-3xl font-bold text-accent-500 mr-4">
                 {order.customer_name}
-              </Text>
+              </Text>}
               <View className="flex-row gap-2">
                 {/* Order ID Badge */}
                 <View className="px-3 py-1 rounded-full bg-gray-100 border border-gray-300">
@@ -103,44 +105,40 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
                 </View>
                 {/* Paid Status Badge */}
                 <View
-                  className={`px-3 py-1 rounded-full border ${
-                    order.paid_status === "Paid"
+                  className={`px-3 py-1 rounded-full border ${order.paid_status === "Paid"
                       ? "bg-green-100 border-green-200"
                       : order.paid_status === "Pending"
                         ? "bg-yellow-100 border-yellow-200"
                         : "bg-red-100 border-red-200"
-                  }`}
+                    }`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${
-                      order.paid_status === "Paid"
+                    className={`text-xl font-semibold ${order.paid_status === "Paid"
                         ? "text-green-700"
                         : order.paid_status === "Pending"
                           ? "text-yellow-700"
                           : "text-red-700"
-                    }`}
+                      }`}
                   >
                     {order.paid_status}
                   </Text>
                 </View>
                 {/* Order Status Badge */}
                 <View
-                  className={`px-3 py-1 rounded-full border ${
-                    order.order_status === "Ready"
+                  className={`px-3 py-1 rounded-full border ${order.order_status === "Ready"
                       ? "bg-green-50 border-green-200"
                       : order.order_status === "Preparing"
                         ? "bg-yellow-50 border-yellow-200"
                         : "bg-gray-100 border-gray-200"
-                  }`}
+                    }`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${
-                      order.order_status === "Ready"
+                    className={`text-xl font-semibold ${order.order_status === "Ready"
                         ? "text-green-700"
                         : order.order_status === "Preparing"
                           ? "text-yellow-700"
                           : "text-gray-700"
-                    }`}
+                      }`}
                   >
                     {order.order_status}
                   </Text>
@@ -165,7 +163,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </View>
           </View>
           {/* Mark Ready Button */}
-          <Button
+         {order.order_status === "Preparing" && <Button
             variant="outline"
             onPress={() => {
               onMarkReady();
@@ -177,7 +175,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             <Text className="ml-2 font-medium text-gray-800 text-xl">
               Mark as Done
             </Text>
-          </Button>
+          </Button>}
 
           {/* View Items Button */}
           <Button
@@ -193,6 +191,24 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
               View Items
             </Text>
           </Button>
+
+          {
+            order.paid_status !== "Paid" && (
+              <Button
+                variant="outline"
+                onPress={() => {
+                  setShowTooltip(false);
+                  onRetrieve();
+                }}
+                className="flex-row items-center flex px-4 py-3 w-[95%] self-center justify-center bg-blue-200 "
+              >
+                <CreditCard color="blue" size={24} />
+                <Text className="ml-2 font-medium text-blue-700 text-xl">
+                    Retrieve to Pay
+                </Text>
+              </Button>
+            )
+          }
         </View>
       )}
 

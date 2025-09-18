@@ -46,12 +46,12 @@ const InventoryCatalogRow: React.FC<{
         <Text className="w-[18%] text-2xl font-semibold text-white">
           {item.name}
         </Text>
-        <Text className="w-[15%] text-2xl text-gray-300">{item.category}</Text>
-        <View className="w-[12%]">
+        {/* <Text className="w-[15%] text-2xl text-gray-300">{item.category}</Text> */}
+        <View className="w-[25%]">
           <Text
             className={`text-2xl font-semibold ${isLowStock ? "text-red-400" : "text-white"}`}
           >
-            {item.stockQuantity} {item.unit}
+            {item?.stockQuantity?.toFixed(2)} {item.unit}
           </Text>
         </View>
         <Text className="w-[12%] text-2xl text-gray-300">
@@ -242,7 +242,6 @@ const InventoryScreen = () => {
 
   const TABLE_HEADERS_INVENTORY = [
     "Name",
-    "Category",
     "In Stock",
     "Threshold",
     "Cost",
@@ -427,11 +426,13 @@ const InventoryScreen = () => {
                     ? "w-[18%]"
                     : header === "Vendor"
                       ? "w-fit"
-                      : header === "In Stock" || header === "Threshold"
-                        ? "w-[12%]"
-                        : header === "Category" || header === "Cost"
-                          ? "w-[15%]"
-                          : "w-[5%]"
+                      : header === "In Stock"
+                        ? "w-[25%]"
+                        : header === "Threshold"
+                          ? "w-[12%]"
+                          : header === "Category" || header === "Cost"
+                            ? "w-[15%]"
+                            : "w-[5%]"
                   : header === "Select"
                     ? "w-[6%]"
                     : header === "Name"
@@ -490,7 +491,7 @@ const InventoryScreen = () => {
           ) : (
             <FlatList
               data={menuItems}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.name}
               renderItem={({ item }) => {
                 const categories = Array.isArray(item.category)
                   ? item.category

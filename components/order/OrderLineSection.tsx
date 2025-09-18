@@ -19,16 +19,17 @@ const OrderLineSection: React.FC = () => {
 
   const totalOrder = orders.filter(
     (o) =>
-      (o.order_status === "Preparing" || o.order_status === "Ready") ||
-      o.paid_status === "Paid"
+      (o.order_status === "Preparing" || o.order_status === "Ready") &&
+      o.items.some(item => item.kitchen_status === "sent" || item.kitchen_status === "ready")
   ).length;
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
-    // Only show orders that were sent to kitchen (Preparing/Ready) or are fully paid
+    // Only show orders that have items sent to kitchen
     const visibleOrders = orders.filter(
       (o) =>
-        (o.order_status === "Preparing" || o.order_status === "Ready" || o.paid_status === "Paid") &&
+        (o.order_status === "Preparing" || o.order_status === "Ready") &&
+        o.items.some(item => item.kitchen_status === "sent" || item.kitchen_status === "ready") &&
         o.items.length > 0
     );
 

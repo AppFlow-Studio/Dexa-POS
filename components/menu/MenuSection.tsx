@@ -291,6 +291,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               contentContainerStyle={{
                 marginLeft: "auto",
                 width: "99%",
+                paddingBottom: 150,
                 alignSelf: "center",
               }}
               showsVerticalScrollIndicator={false}

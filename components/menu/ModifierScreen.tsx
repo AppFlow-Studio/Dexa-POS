@@ -1,4 +1,3 @@
-import { MOCK_MENU_ITEMS } from "@/lib/mockData";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -7,6 +6,7 @@ import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
+  Modal,
   ScrollView,
   Text,
   TextInput,
@@ -32,8 +32,29 @@ const ModifierScreen = () => {
     useState<ModifierSelection>({});
   const [notes, setNotes] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [isQuantityModalOpen, setIsQuantityModalOpen] = useState(false);
+  const [quantityInput, setQuantityInput] = useState("");
 
   const isReadOnly = mode === "view";
+
+  const handleQuantityPress = () => {
+    if (isReadOnly) return;
+    setQuantityInput(quantity.toString());
+    setIsQuantityModalOpen(true);
+  };
+
+  const handleQuantitySubmit = () => {
+    const newQuantity = parseInt(quantityInput, 10);
+    if (newQuantity && newQuantity > 0) {
+      setQuantity(newQuantity);
+    }
+    setIsQuantityModalOpen(false);
+  };
+
+  const handleQuantityCancel = () => {
+    setIsQuantityModalOpen(false);
+    setQuantityInput("");
+  };
 
   const currentItem =
     mode === "edit" || (mode === "fullscreen" && cartItem)
@@ -399,7 +420,7 @@ const ModifierScreen = () => {
       const draftItem = activeOrder?.items.find((item) =>
         item.id.startsWith(`draft_${currentItem.id}_`)
       );
-      
+
 
       if (draftItem) {
         // Remove the draft item first
@@ -669,9 +690,15 @@ const ModifierScreen = () => {
             >
               <Minus color="#9CA3AF" size={24} />
             </TouchableOpacity>
-            <Text className="text-4xl font-bold text-white mx-16 w-16 text-center">
-              {quantity}
-            </Text>
+            <TouchableOpacity
+              disabled={isReadOnly}
+              onPress={handleQuantityPress}
+              className="mx-16 w-16"
+            >
+              <Text className="text-4xl border rounded-lg p-2 border-gray-600 font-bold text-white text-center">
+                {quantity}
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
               onPress={() => setQuantity((q) => q + 1)}
@@ -732,6 +759,49 @@ const ModifierScreen = () => {
           </View>
         </View>
       </ScrollView>
+
+      {/* Quantity Input Modal */}
+      <Modal
+        visible={isQuantityModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={handleQuantityCancel}
+      >
+        <View className="flex-1 bg-black/50 justify-center items-center">
+          <View className="bg-[#303030] rounded-xl p-6 w-80 border border-gray-600">
+            <Text className="text-2xl font-semibold text-white mb-4 text-center">
+              Enter Quantity
+            </Text>
+            <TextInput
+              value={quantityInput}
+              onChangeText={setQuantityInput}
+              placeholder="Quantity"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="numeric"
+              autoFocus
+              className="p-4 border border-gray-600 rounded-lg bg-[#212121] text-2xl text-white text-center mb-6"
+            />
+            <View className="flex-row gap-4">
+              <TouchableOpacity
+                onPress={handleQuantityCancel}
+                className="flex-1 py-4 px-6 bg-gray-600 rounded-lg"
+              >
+                <Text className="text-xl font-semibold text-white text-center">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleQuantitySubmit}
+                className="flex-1 py-4 px-6 bg-blue-500 rounded-lg"
+              >
+                <Text className="text-xl font-semibold text-white text-center">
+                  Set
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

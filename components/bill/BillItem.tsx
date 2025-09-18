@@ -113,6 +113,31 @@ const BillItem: React.FC<BillItemProps> = ({
                       </Text>
                     </View>
                   )}
+                  {/* Kitchen Status Badge */}
+                  {item.kitchen_status && (
+                    <View className={`ml-2 px-3 py-1 rounded-full ${item.kitchen_status === "new"
+                      ? "bg-green-900/30 border border-green-500"
+                      : item.kitchen_status === "sent"
+                        ? "bg-blue-900/30 border border-blue-500"
+                        : item.kitchen_status === "ready"
+                          ? "bg-orange-900/30 border border-orange-500"
+                          : "bg-gray-900/30 border border-gray-500"
+                      }`}>
+                      <Text className={`text-lg font-medium ${item.kitchen_status === "new"
+                        ? "text-green-400"
+                        : item.kitchen_status === "sent"
+                          ? "text-blue-400"
+                          : item.kitchen_status === "ready"
+                            ? "text-orange-400"
+                            : "text-gray-400"
+                        }`}>
+                        {item.kitchen_status === "new" ? "New" :
+                          item.kitchen_status === "sent" ? "Sent" :
+                            item.kitchen_status === "ready" ? "Ready" :
+                              item.kitchen_status}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View className="flex-row items-center mt-1">
                   <Text className="text-xl text-gray-300">x {item.quantity}</Text>

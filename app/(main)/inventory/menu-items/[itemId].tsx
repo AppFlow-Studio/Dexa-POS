@@ -179,6 +179,9 @@ const MenuItemScreen = () => {
         if (!item) return;
 
         // Update basic item properties
+        const roundedStockQuantity = editForm.stockQuantity !== ""
+            ? Number(parseFloat(editForm.stockQuantity).toFixed(2))
+            : item.stockQuantity;
         const updatedItem = {
             ...item,
             name: editForm.name,
@@ -188,7 +191,7 @@ const MenuItemScreen = () => {
 
         // Update stock tracking mode using store function
         const stockQuantity = editStockTrackingMode === "quantity" ?
-            (editForm.stockQuantity ? parseInt(editForm.stockQuantity) : undefined) : undefined;
+            (editForm.stockQuantity ? Number(parseFloat(editForm.stockQuantity).toFixed(2)) : undefined) : undefined;
         const reorderThreshold = editStockTrackingMode === "quantity" ?
             (editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : undefined) : undefined;
 
@@ -220,8 +223,8 @@ const MenuItemScreen = () => {
     const handleLogUsage = () => {
         if (!item || !logUsageForm.quantityUsed || !logUsageForm.reason) return;
 
-        const quantityChange = -parseInt(logUsageForm.quantityUsed);
-        const newQuantity = (item.stockQuantity || 0) + quantityChange;
+        const quantityChange = -parseFloat(logUsageForm.quantityUsed);
+        const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
 
         const newTransaction: InventoryTransaction = {
             id: Date.now().toString(),

@@ -47,6 +47,7 @@ const BillSection = ({
     activeOrderTotal,
     startNewOrder,
     fireActiveOrderToKitchen,
+    sendNewItemsToKitchen,
     assignOrderToTable,
     setActiveOrder,
   } = useOrderStore();
@@ -55,6 +56,11 @@ const BillSection = ({
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
+
+  // Count new items that haven't been sent to kitchen yet
+  const newItemsCount = cart.filter(item =>
+    item.kitchen_status === "new" || !item.kitchen_status
+  ).length;
 
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
@@ -108,13 +114,9 @@ const BillSection = ({
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-6 py-3 bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
+            className={`flex-row items-center gap-2 px-6 py-3 bg-[#212121] border border-gray-600 rounded-lg ${newItemsCount === 0 ? "opacity-50" : ""}`}
             style={{ elevation: 2 }}
-            disabled={
-              !activeOrder ||
-              activeOrder.items.length === 0 ||
-              activeOrder.order_status !== "Building"
-            }
+            disabled={newItemsCount === 0}
             onPress={() => {
               // If this is a dine-in order with a selected table, assign it first
               if (activeOrder?.order_type === "Dine In" && selectedTable) {
@@ -122,14 +124,17 @@ const BillSection = ({
                 updateTableStatus(selectedTable.id, "In Use");
                 clearSelectedTable(); // Clear the selected table after assignment
               }
-              fireActiveOrderToKitchen();
+              sendNewItemsToKitchen();
               const newOrder = startNewOrder();
               setActiveOrder(newOrder.id);
             }}
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-xl">
-              Send to Kitchen ({activeOrder?.items.length})
+              {newItemsCount > 0
+                ? `Send ${newItemsCount} Item${newItemsCount > 1 ? 's' : ''} to Kitchen`
+                : "No New Items to Send"
+              }
             </Text>
             {/* Paper plane icon (Lucide) */}
             <Send size={24} color="#9CA3AF" />
@@ -156,14 +161,14 @@ const BillSection = ({
               onPress={handlePayClick}
               disabled={!activeOrder || activeOrder.items.length === 0}
               className={`flex-1 py-4 rounded-xl ${!activeOrder || activeOrder.items.length === 0
-                  ? "bg-gray-600"
-                  : "bg-blue-600"
+                ? "bg-gray-600"
+                : "bg-blue-600"
                 }`}
             >
               <Text
                 className={`text-center text-2xl font-bold ${!activeOrder || activeOrder.items.length === 0
-                    ? "text-gray-400"
-                    : "text-white "
+                  ? "text-gray-400"
+                  : "text-white "
                   }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}

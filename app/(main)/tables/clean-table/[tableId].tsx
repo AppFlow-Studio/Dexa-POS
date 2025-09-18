@@ -1,19 +1,24 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
 
-  // Get the specific table's data from the store
-  const table = useFloorPlanStore((state) =>
-    state.tables.find((t) => t.id === tableId)
-  );
+  const { layouts, updateTableStatus } = useFloorPlanStore();
 
-  const { updateTableStatus } = useFloorPlanStore();
+  // Find the table by searching through all tables in all layouts
+  const table = useMemo(() => {
+    if (!tableId) return null;
+    for (const layout of layouts) {
+      const foundTable = layout.tables.find((t) => t.id === tableId);
+      if (foundTable) return foundTable;
+    }
+    return null;
+  }, [layouts, tableId]);
 
   const handleCleanTable = () => {
     if (tableId) {

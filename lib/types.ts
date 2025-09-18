@@ -225,6 +225,12 @@ export interface TableType {
   mergedWith?: string[];
 }
 
+export interface Layout {
+  id: string;
+  name: string;
+  tables: TableType[];
+}
+
 export type OnlineOrderStatus =
   | "New Orders"
   | "Confirmed/In-Process"
@@ -245,6 +251,8 @@ export interface CartItem {
   paidQuantity?: number;
   // Per-item preparation status tracking for table workflow
   item_status?: "Preparing" | "Ready";
+  // Kitchen send status - tracks whether item has been sent to kitchen
+  kitchen_status?: "new" | "sent" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;
@@ -439,6 +447,7 @@ export interface OrderProfile {
   total_discount?: number;
 
   // Additional optional details
+  guest_count?: number;
   customer_name?: string;
   customer_phone?: string;
   delivery_address?: string;

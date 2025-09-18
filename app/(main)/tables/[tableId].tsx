@@ -22,7 +22,7 @@ const UpdateTableScreen = () => {
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false);
 
-  const { tables, updateTableStatus } = useFloorPlanStore();
+  const { layouts, updateTableStatus } = useFloorPlanStore();
   const {
     orders,
     activeOrderId,
@@ -38,11 +38,13 @@ const UpdateTableScreen = () => {
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
-  const initialTable = tables.find((t) => t.id === tableId);
+  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+
+  const initialTable = allTables.find((t) => t.id === tableId);
   let primaryTableId = tableId;
 
   if (initialTable && initialTable.mergedWith && !initialTable.isPrimary) {
-    const primary = tables.find(
+    const primary = allTables.find(
       (t) => t.isPrimary && t.mergedWith?.includes(initialTable.id)
     );
     if (primary) {
@@ -50,7 +52,8 @@ const UpdateTableScreen = () => {
     }
   }
 
-  const table = tables.find((t) => t.id === primaryTableId);
+  const table = allTables.find((t) => t.id === primaryTableId);
+
   // Find if an order is ALREADY assigned to this table (including closed orders)
   const existingOrderForTable = orders.find(
     (o) =>
@@ -86,11 +89,6 @@ const UpdateTableScreen = () => {
     if (existingOrderForTable) {
       // If we navigated to a table that's already in use, make its order active.
       setActiveOrder(existingOrderForTable.id);
-    } else {
-      // This should now only run for truly available tables
-      const newUnassignedOrder = startNewOrder();
-      setActiveOrder(newUnassignedOrder.id);
-      updateActiveOrderDetails({ order_type: "Dine In" });
     }
     return () => setActiveOrder(null);
   }, [primaryTableId, existingOrderForTable, setActiveOrder, startNewOrder]);
@@ -187,15 +185,23 @@ const UpdateTableScreen = () => {
       activeOrder.id,
       activeOrder.items.map((i) => i.id)
     );
-    toast.success(`Course ${nextCourse - 1} created. New items will be Course ${nextCourse}.`, { duration: 2500, position: ToastPosition.BOTTOM });
+    toast.success(
+      `Course ${nextCourse - 1} created. New items will be Course ${nextCourse}.`,
+      { duration: 2500, position: ToastPosition.BOTTOM }
+    );
   };
 
   const handleSendCourseToKitchen = (course: number) => {
     if (!activeOrder) return;
     const state = coursing.getForOrder(activeOrder.id);
-    const itemsInCourse = activeOrder.items.filter((i) => (state?.itemCourseMap?.[i.id] ?? 1) === course);
+    const itemsInCourse = activeOrder.items.filter(
+      (i) => (state?.itemCourseMap?.[i.id] ?? 1) === course
+    );
     if (itemsInCourse.length === 0) {
-      toast.error(`No items in course ${course} to send.`, { duration: 2500, position: ToastPosition.BOTTOM });
+      toast.error(`No items in course ${course} to send.`, {
+        duration: 2500,
+        position: ToastPosition.BOTTOM,
+      });
       return;
     }
     itemsInCourse.forEach((i) => {
@@ -209,7 +215,10 @@ const UpdateTableScreen = () => {
     if (tableId && table?.status !== "In Use") {
       handleAssignToTable();
     }
-    toast.success(`Sent course ${course} to kitchen.`, { duration: 2500, position: ToastPosition.BOTTOM });
+    toast.success(`Sent course ${course} to kitchen.`, {
+      duration: 2500,
+      position: ToastPosition.BOTTOM,
+    });
   };
 
   // Close/ Void check behavior
@@ -302,18 +311,29 @@ const UpdateTableScreen = () => {
       <View className="flex-1 flex-row ">
         <TableBillSection
           showOrderDetails={false}
-          itemCourseMap={coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap}
+          itemCourseMap={
+            coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap
+          }
           sentCourses={coursing.getForOrder(activeOrder?.id || "")?.sentCourses}
-          currentCourse={coursing.getForOrder(activeOrder?.id || "")?.currentCourse}
-          onSelectCourse={(course: number) => activeOrder && coursing.setCurrentCourse(activeOrder.id, course)}
+          currentCourse={
+            coursing.getForOrder(activeOrder?.id || "")?.currentCourse
+          }
+          onSelectCourse={(course: number) =>
+            activeOrder && coursing.setCurrentCourse(activeOrder.id, course)
+          }
         />
         <View className="flex-1 p-6 px-4 pt-0">
           {/* Coursing Toolbar */}
           <View className="bg-[#303030] border border-gray-700 rounded-2xl p-3 mb-3 flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
-              <Text className="text-base font-semibold text-white">Current Course</Text>
+              <Text className="text-base font-semibold text-white">
+                Current Course
+              </Text>
               <View className="flex-row items-center gap-2 bg-[#212121] border border-gray-700 rounded-lg px-2 py-1">
-                <Text className="text-white font-bold">{coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1}</Text>
+                <Text className="text-white font-bold">
+                  {coursing.getForOrder(activeOrder?.id || "")?.currentCourse ??
+                    1}
+                </Text>
               </View>
             </View>
             <View className="flex-row items-center gap-2">
@@ -324,10 +344,19 @@ const UpdateTableScreen = () => {
                 <Text className="font-bold text-white">New Course</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => handleSendCourseToKitchen(coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1)}
+                onPress={() =>
+                  handleSendCourseToKitchen(
+                    coursing.getForOrder(activeOrder?.id || "")
+                      ?.currentCourse ?? 1
+                  )
+                }
                 className="px-4 py-2 rounded-lg bg-blue-500"
               >
-                <Text className="font-bold text-white">Send Course {coursing.getForOrder(activeOrder?.id || "")?.currentCourse ?? 1}</Text>
+                <Text className="font-bold text-white">
+                  Send Course{" "}
+                  {coursing.getForOrder(activeOrder?.id || "")?.currentCourse ??
+                    1}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -341,11 +370,16 @@ const UpdateTableScreen = () => {
           <Text className="text-base font-bold text-blue-400 mb-3">
             Items Status
           </Text>
-          <ScrollView className="max-h-32 w-full " contentContainerStyle={{ columnGap: 16 }} horizontal={true}>
+          <ScrollView
+            className="max-h-32 w-full "
+            contentContainerStyle={{ columnGap: 16 }}
+            horizontal={true}
+          >
             {activeOrder.items.map((item) => {
               const isReady = (item.item_status || "Preparing") === "Ready";
               const state = coursing.getForOrder(activeOrder?.id || "");
-              const course = (state?.itemCourseMap?.[item.id] ?? state?.currentCourse ?? 1);
+              const course =
+                state?.itemCourseMap?.[item.id] ?? state?.currentCourse ?? 1;
               return (
                 <View
                   key={item.id}
@@ -356,14 +390,22 @@ const UpdateTableScreen = () => {
                       {item.name} x{item.quantity}
                     </Text>
                     <View className="flex-row items-center gap-2 mt-1">
-                      <View className={`px-2 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"}`}>
-                        <Text className={`text-[10px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"}`}>
+                      <View
+                        className={`px-2 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"}`}
+                      >
+                        <Text
+                          className={`text-[10px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"}`}
+                        >
                           {isReady ? "Ready" : "Preparing"}
                         </Text>
                       </View>
                       <View className="flex-row items-center gap-1 bg-[#212121] border border-gray-700 rounded-full px-2 py-0.5">
-                        <Text className="text-[10px] font-semibold text-gray-300">Course</Text>
-                        <Text className="text-[10px] font-bold text-white">{course}</Text>
+                        <Text className="text-[10px] font-semibold text-gray-300">
+                          Course
+                        </Text>
+                        <Text className="text-[10px] font-bold text-white">
+                          {course}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -374,12 +416,14 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-500" : "bg-green-500"
-                      }`}
+                    className={`px-3 py-2 rounded-lg ${
+                      isReady ? "bg-yellow-500" : "bg-green-500"
+                    }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${isReady ? "text-yellow-100" : "text-white"
-                        }`}
+                      className={`text-xs font-bold ${
+                        isReady ? "text-yellow-100" : "text-white"
+                      }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
                     </Text>
@@ -403,20 +447,22 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                ? "bg-green-600"
-                : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-600"
-                  : "bg-red-600"
-                }`}
+              className={`px-2 py-1 rounded-full ${
+                activeOrder.paid_status === "Paid"
+                  ? "bg-green-600"
+                  : activeOrder.paid_status === "Pending"
+                    ? "bg-yellow-600"
+                    : "bg-red-600"
+              }`}
             >
               <Text
-                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                  ? "text-green-100"
-                  : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-100"
-                    : "text-red-100"
-                  }`}
+                className={`text-xs font-semibold ${
+                  activeOrder.paid_status === "Paid"
+                    ? "text-green-100"
+                    : activeOrder.paid_status === "Pending"
+                      ? "text-yellow-100"
+                      : "text-red-100"
+                }`}
               >
                 {activeOrder.paid_status}
               </Text>
@@ -488,8 +534,12 @@ const UpdateTableScreen = () => {
                       position: ToastPosition.BOTTOM,
                     });
                   }}
-                  disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building"}
-                  className={`px-8 py-3 rounded-lg ${(!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building") ? "bg-gray-600" : "bg-orange-500"}`}
+                  disabled={
+                    !activeOrder ||
+                    activeOrder.items.length === 0 ||
+                    activeOrder.order_status !== "Building"
+                  }
+                  className={`px-8 py-3 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "bg-gray-600" : "bg-orange-500"}`}
                 >
                   <Text className="font-bold text-white">Send to Kitchen</Text>
                 </TouchableOpacity>
@@ -553,9 +603,7 @@ const UpdateTableScreen = () => {
       {/* Confirm: void unpaid check */}
       <AlertDialog open={isVoidConfirmOpen} onOpenChange={setVoidConfirmOpen}>
         <AlertDialogContent className="w-[500px] p-6 rounded-2xl bg-[#303030]">
-          <Text className="text-xl font-bold text-white mb-2">
-            Void check?
-          </Text>
+          <Text className="text-xl font-bold text-white mb-2">Void check?</Text>
           <Text className="text-gray-400 mb-6">
             No payment has been made. Do you want to void this check?
           </Text>

@@ -43,6 +43,7 @@ const IngredientItemScreen = () => {
 
     const [item, setItem] = useState<InventoryItem | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [editStockTrackingMode, setEditStockTrackingMode] = useState<"in_stock" | "out_of_stock" | "quantity">("in_stock");
     const [isLogUsageModalOpen, setIsLogUsageModalOpen] = useState(false);
     const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false);
     const [inventoryHistory, setInventoryHistory] = useState<InventoryTransaction[]>([]);
@@ -92,6 +93,7 @@ const IngredientItemScreen = () => {
                     reorderThreshold: foundItem.reorderThreshold?.toString() || "",
                     cost: foundItem.cost?.toString() || ""
                 });
+                setEditStockTrackingMode((foundItem as any).stockTrackingMode || "in_stock");
                 generateMockHistory(foundItem.id);
             }
         }
@@ -150,14 +152,27 @@ const IngredientItemScreen = () => {
     const handleSave = () => {
         if (!item) return;
 
+        const roundedStockQuantity = editForm.stockQuantity !== ""
+            ? Number(parseFloat(editForm.stockQuantity).toFixed(2))
+            : item.stockQuantity;
+        // Only persist quantity fields when mode is quantity
+        const quantityFields = editStockTrackingMode === "quantity"
+            ? {
+                stockQuantity: roundedStockQuantity,
+                reorderThreshold: editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : item.reorderThreshold,
+            }
+            : {
+                stockQuantity: undefined,
+                reorderThreshold: undefined,
+            };
         const updatedItem = {
             ...item,
             name: editForm.name,
             category: editForm.category,
             vendorId: editForm.defaultVendor || null,
             unit: editForm.unitOfMeasure as any,
-            stockQuantity: editForm.stockQuantity ? parseInt(editForm.stockQuantity) : item.stockQuantity,
-            reorderThreshold: editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : item.reorderThreshold,
+            ...(quantityFields as any),
+            stockTrackingMode: editStockTrackingMode,
             cost: editForm.cost ? parseFloat(editForm.cost) : item.cost
         };
 
@@ -168,9 +183,10 @@ const IngredientItemScreen = () => {
 
     const handleLogUsage = () => {
         if (!item || !logUsageForm.quantityUsed || !logUsageForm.reason) return;
+        if (editStockTrackingMode !== "quantity") return; // Only applicable when tracking by quantity
 
-        const quantityChange = -parseInt(logUsageForm.quantityUsed);
-        const newQuantity = (item.stockQuantity || 0) + quantityChange;
+        const quantityChange = -parseFloat(logUsageForm.quantityUsed);
+        const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
 
         const newTransaction: InventoryTransaction = {
             id: Date.now().toString(),
@@ -196,9 +212,10 @@ const IngredientItemScreen = () => {
 
     const handleAddStock = () => {
         if (!item || !addStockForm.quantityAdded || !addStockForm.reason) return;
+        if (editStockTrackingMode !== "quantity") return; // Only applicable when tracking by quantity
 
-        const quantityChange = parseInt(addStockForm.quantityAdded);
-        const newQuantity = (item.stockQuantity || 0) + quantityChange;
+        const quantityChange = parseFloat(addStockForm.quantityAdded);
+        const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
 
         const newTransaction: InventoryTransaction = {
             id: Date.now().toString(),
@@ -313,17 +330,25 @@ const IngredientItemScreen = () => {
 
                     <View className="flex-row justify-between mb-2">
                         <Text className="text-gray-300">Current Stock:</Text>
-                        <Text className="text-white font-semibold">
-                            {item.stockQuantity || 0} {item.unit}
-                        </Text>
+                        {((item as any).stockTrackingMode || editStockTrackingMode) === "quantity" ? (
+                            <Text className="text-white font-semibold">
+                                {(item.stockQuantity ?? 0)} {item.unit}
+                            </Text>
+                        ) : ((item as any).stockTrackingMode || editStockTrackingMode) === "in_stock" ? (
+                            <Text className="text-green-400 font-semibold">In Stock</Text>
+                        ) : (
+                            <Text className="text-red-400 font-semibold">Out of Stock</Text>
+                        )}
                     </View>
 
-                    <View className="flex-row justify-between mb-2">
-                        <Text className="text-gray-300">Reorder Threshold:</Text>
-                        <Text className="text-white font-semibold">
-                            {item.reorderThreshold || "Not set"}
-                        </Text>
-                    </View>
+                    {(((item as any).stockTrackingMode || editStockTrackingMode) === "quantity") && (
+                        <View className="flex-row justify-between mb-2">
+                            <Text className="text-gray-300">Reorder Threshold:</Text>
+                            <Text className="text-white font-semibold">
+                                {item.reorderThreshold || "Not set"}
+                            </Text>
+                        </View>
+                    )}
 
                     <View className="flex-row justify-between mb-2">
                         <Text className="text-gray-300">Cost per Unit:</Text>
@@ -378,6 +403,34 @@ const IngredientItemScreen = () => {
                 {/* Item Details Form */}
                 <View className="bg-[#303030] rounded-xl p-6">
                     <Text className="text-xl font-bold text-white mb-4">Item Details</Text>
+
+                    {/* Stock Tracking Options */}
+                    <View className="mb-6">
+                        <Text className="text-gray-300 mb-3">Stock Tracking</Text>
+                        <View className="flex-row gap-4">
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => setEditStockTrackingMode("in_stock")}
+                                className={`flex-1 p-4 rounded-lg border-2 ${editStockTrackingMode === "in_stock" ? "border-blue-500 bg-blue-500/20" : "border-gray-600 bg-gray-800"}`}
+                            >
+                                <Text className={`text-center font-semibold ${editStockTrackingMode === "in_stock" ? "text-blue-400" : "text-gray-300"}`}>In Stock</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => setEditStockTrackingMode("out_of_stock")}
+                                className={`flex-1 p-4 rounded-lg border-2 ${editStockTrackingMode === "out_of_stock" ? "border-blue-500 bg-blue-500/20" : "border-gray-600 bg-gray-800"}`}
+                            >
+                                <Text className={`text-center font-semibold ${editStockTrackingMode === "out_of_stock" ? "text-blue-400" : "text-gray-300"}`}>Out of Stock</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                disabled={!isEditing}
+                                onPress={() => setEditStockTrackingMode("quantity")}
+                                className={`flex-1 p-4 rounded-lg border-2 ${editStockTrackingMode === "quantity" ? "border-blue-500 bg-blue-500/20" : "border-gray-600 bg-gray-800"}`}
+                            >
+                                <Text className={`text-center font-semibold ${editStockTrackingMode === "quantity" ? "text-blue-400" : "text-gray-300"}`}>Quantity</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
 
                     <View className="mb-4">
                         <Text className="text-gray-300 mb-2">Item Name</Text>
@@ -439,33 +492,41 @@ const IngredientItemScreen = () => {
                         />
                     </View>
 
-                    <View className="flex-row gap-4">
-                        <View className="flex-1 mb-4">
-                            <Text className="text-gray-300 mb-2">Stock Quantity</Text>
-                            <TextInput
-                                value={editForm.stockQuantity}
-                                onChangeText={(text) => setEditForm(prev => ({ ...prev, stockQuantity: text }))}
-                                editable={isEditing}
-                                keyboardType="numeric"
-                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                                placeholder="0"
-                                placeholderTextColor="#9CA3AF"
-                            />
-                        </View>
+                    {editStockTrackingMode === "quantity" ? (
+                        <View className="flex-row gap-4">
+                            <View className="flex-1 mb-4">
+                                <Text className="text-gray-300 mb-2">Stock Quantity</Text>
+                                <TextInput
+                                    value={editForm.stockQuantity}
+                                    onChangeText={(text) => {
+                                        const numeric = text.replace(/[^0-9.]/g, "");
+                                        setEditForm(prev => ({ ...prev, stockQuantity: numeric }));
+                                    }}
+                                    editable={isEditing}
+                                    keyboardType="numeric"
+                                    className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                    placeholder="0"
+                                    placeholderTextColor="#9CA3AF"
+                                />
+                            </View>
 
-                        <View className="flex-1 mb-4">
-                            <Text className="text-gray-300 mb-2">Reorder Threshold</Text>
-                            <TextInput
-                                value={editForm.reorderThreshold}
-                                onChangeText={(text) => setEditForm(prev => ({ ...prev, reorderThreshold: text }))}
-                                editable={isEditing}
-                                keyboardType="numeric"
-                                className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
-                                placeholder="0"
-                                placeholderTextColor="#9CA3AF"
-                            />
+                            <View className="flex-1 mb-4">
+                                <Text className="text-gray-300 mb-2">Reorder Threshold</Text>
+                                <TextInput
+                                    value={editForm.reorderThreshold}
+                                    onChangeText={(text) => {
+                                        const numeric = text.replace(/[^0-9.]/g, "");
+                                        setEditForm(prev => ({ ...prev, reorderThreshold: numeric }));
+                                    }}
+                                    editable={isEditing}
+                                    keyboardType="numeric"
+                                    className={`p-3 rounded-lg ${isEditing ? "bg-[#212121] border border-gray-600 text-white" : "bg-gray-800 text-gray-400"}`}
+                                    placeholder="0"
+                                    placeholderTextColor="#9CA3AF"
+                                />
+                            </View>
                         </View>
-                    </View>
+                    ) : null}
 
                     <View className="mb-4">
                         <Text className="text-gray-300 mb-2">Cost per Unit</Text>

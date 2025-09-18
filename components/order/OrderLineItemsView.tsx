@@ -12,6 +12,7 @@ const OrderLineItemsView = ({ onClose }: { onClose: () => void }) => {
     activeOrderTax,
     activeOrderDiscount,
     activeOrderTotal,
+    markAllItemsAsReady
   } = useOrderStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);

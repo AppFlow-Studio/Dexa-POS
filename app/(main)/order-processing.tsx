@@ -65,9 +65,9 @@ const OrderProcessing = () => {
     const kitchenOrders = orders.filter(
       (o) =>
         // Condition 1: Must be in Preparing state
-        o.order_status === "Preparing" &&
+       ( o.order_status === "Preparing" &&
         // Condition 2: Must have one or more items
-        o.items.length > 0
+        o.items.length > 0) || o.paid_status === "Unpaid" && o.order_status !== "Building"
     );
 
     return kitchenOrders;
@@ -82,13 +82,17 @@ const OrderProcessing = () => {
     // First, mark the order as ready
     markAllItemsAsReady(order.id);
 
-    // Then, check if it's a Take Away order and archive it
-    if (order.order_type === "Take Away") {
-      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
-      setTimeout(() => {
-        archiveOrder(order.id);
-      }, 500); // 0.5 second delay
-    }
+    // // Then, check if it's a Take Away order and archive it
+    // if (order.order_type === "Take Away") {
+    //   // A small delay can improve UX, ensuring the user sees the status change before it disappears.
+    //   setTimeout(() => {
+    //     archiveOrder(order.id);
+    //   }, 500); // 0.5 second delay
+    // }
+  };
+
+  const handleRetrieve = (orderId: string) => {
+    setActiveOrder(orderId);
   };
 
   return (
@@ -136,6 +140,7 @@ const OrderProcessing = () => {
                   order={order}
                   onMarkReady={() => handleMarkReady(order)}
                   onViewItems={() => handleViewItems(order.id)}
+                  onRetrieve={() => handleRetrieve(order.id)}
                 />
               ))}
             </View>

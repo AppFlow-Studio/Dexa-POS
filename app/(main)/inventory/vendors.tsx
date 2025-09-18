@@ -1,6 +1,5 @@
 import VendorFormModal from "@/components/inventory/VendorFormModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +8,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Vendor } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { Link } from "expo-router";
+import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import { Link, useRouter } from "expo-router";
 import {
   Edit,
   MoreHorizontal,
@@ -17,13 +17,8 @@ import {
   Search,
   Trash2,
 } from "lucide-react-native";
-import React, { useState } from "react";
-import {
-  FlatList,
-  Text,
-  TouchableOpacity,
-  View
-} from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const VendorRow: React.FC<{
   item: Vendor;
@@ -31,7 +26,7 @@ const VendorRow: React.FC<{
   onDelete: () => void;
 }> = ({ item, onEdit, onDelete }) => {
   return (
-   <Link href={`/inventory/vendors/${item.id}`} asChild>
+    <Link href={`/inventory/vendors/${item.id}`} asChild>
       <TouchableOpacity className="flex-row w-full flex items-center p-6 border-b border-gray-700">
         <Text className="w-[20%] text-2xl font-semibold text-white">
           {item.name}
@@ -61,17 +56,33 @@ const VendorRow: React.FC<{
           </DropdownMenu>
         </View>
       </TouchableOpacity>
-   </Link>
+    </Link>
   );
 };
 
 const VendorScreen = () => {
   const { vendors, addVendor, updateVendor, deleteVendor } =
     useInventoryStore();
+  const router = useRouter();
 
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const sheetRef = useRef<BottomSheet>(null);
+  const snapPoints = useMemo(() => ["70%"], []);
+
+  const filteredVendors = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return vendors;
+    return vendors.filter((v) =>
+      [v.name, v.contactPerson, v.email, v.phone]
+        .filter(Boolean)
+        .some((f) => String(f).toLowerCase().includes(q))
+    );
+  }, [searchQuery, vendors]);
 
   const handleOpenAddModal = () => {
     setSelectedVendor(null);
@@ -125,14 +136,15 @@ const VendorScreen = () => {
             </Text>
           ))}
           <View className="flex-row items-center flex-1 justify-end gap-x-6">
-            <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4 ">
+            <TouchableOpacity
+              onPress={() => {
+                setIsSearchOpen(true);
+                setTimeout(() => sheetRef.current?.expand(), 0);
+              }}
+              className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4"
+            >
               <Search color="#9CA3AF" size={20} />
-              {/* <TextInput
-                placeholder="Search by item name..."
-                placeholderTextColor="#9CA3AF"
-                className="ml-3 text-2xl text-white flex-1"
-              /> */}
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={handleOpenAddModal}
               className="py-4 px-6 w-1/3 bg-blue-600 rounded-lg flex-row items-center justify-center"
@@ -171,6 +183,56 @@ const VendorScreen = () => {
         confirmText="Delete"
         variant="destructive"
       />
+
+      {/* Search Bottom Sheet */}
+      <BottomSheet
+        ref={sheetRef}
+        index={-1}
+        snapPoints={snapPoints}
+        enablePanDownToClose
+        backgroundStyle={{ backgroundColor: "#303030" }}
+        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+        )}
+      >
+        <View className="p-4 border-b border-gray-700">
+          <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2 border border-gray-600">
+            <Search color="#9CA3AF" size={20} />
+            <TextInput
+              autoFocus
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search vendors..."
+              placeholderTextColor="#9CA3AF"
+              className="flex-1 text-white ml-3 text-xl"
+            />
+          </View>
+        </View>
+        <BottomSheetFlatList
+          data={filteredVendors}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => {
+                sheetRef.current?.close();
+                setIsSearchOpen(false);
+                router.push(`/inventory/vendors/${item.id}`);
+              }}
+              className="p-4 border-b border-gray-700"
+            >
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1">
+                  <Text className="text-white text-xl font-semibold">{item.name}</Text>
+                  <Text className="text-gray-400 text-sm">{item.contactPerson} • {item.phone}</Text>
+                  <Text className="text-gray-500 text-sm">{item.email}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={{ paddingBottom: 20 }}
+        />
+      </BottomSheet>
     </View>
   );
 };
