@@ -23,7 +23,7 @@ interface ModifierSelection {
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, categoryId, close } =
     useModifierSidebarStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem } =
+  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem, generateCartItemId } =
     useOrderStore();
   const { getItemPriceForCategory, menuItems } = useMenuStore();
   // Internal state for the form
@@ -160,7 +160,7 @@ const ModifierScreen = () => {
       if (mode !== "edit" && !cartItem) {
         const itemPrice = getCurrentItemPrice(currentItem);
         const draftItem = {
-          id: `draft_${currentItem.id}_${Date.now()}`,
+          id: generateCartItemId(currentItem.id, { modifiers: [], notes: "" }, true),
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
@@ -429,7 +429,10 @@ const ModifierScreen = () => {
         // Add the confirmed item with a new ID
         const confirmedItem = {
           ...draftItem,
-          id: `${currentItem.id}_${Date.now()}`, // New ID for confirmed item
+          id: generateCartItemId(currentItem.id, {
+            modifiers: selectedModifiers,
+            notes,
+          }), // New ID for confirmed item
           quantity,
           // price is per-unit
           price: total / Math.max(1, quantity),

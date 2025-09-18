@@ -68,6 +68,7 @@ interface OrderState {
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => void;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
+  generateCartItemId: (menuItemId: string, customizations: CartItem["customizations"], isDraft?: boolean) => string;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -242,6 +243,57 @@ export const useOrderStore = create<OrderState>((set, get) => {
     }
   };
 
+  // --- Helper function to generate a unique composite key for cart items ---
+  const generateItemCompositeKey = (
+    menuItemId: string,
+    customizations: CartItem["customizations"]
+  ): string => {
+    const keyParts: string[] = [menuItemId];
+
+    // Add size information
+    if (customizations.size?.id) {
+      keyParts.push(`size:${customizations.size.id}`);
+    }
+
+    // Add notes
+    if (customizations.notes) {
+      keyParts.push(`notes:${customizations.notes.trim()}`);
+    }
+
+    // Add add-ons (sorted for consistency)
+    if (customizations.addOns && customizations.addOns.length > 0) {
+      const addOnIds = customizations.addOns.map(a => a.id).sort();
+      keyParts.push(`addons:${addOnIds.join(',')}`);
+    }
+
+    // Add modifiers (sorted for consistency)
+    if (customizations.modifiers && customizations.modifiers.length > 0) {
+      const modifierKeys = customizations.modifiers
+        .map(mod => `${mod.categoryId}:${mod.options.map(opt => opt.id).sort().join(',')}`)
+        .sort();
+      keyParts.push(`modifiers:${modifierKeys.join('|')}`);
+    }
+
+    return keyParts.join('|');
+  };
+
+  // --- Helper function to generate a unique CartItem ID ---
+  const generateCartItemId = (
+    menuItemId: string,
+    customizations: CartItem["customizations"],
+    isDraft: boolean = false
+  ): string => {
+    const compositeKey = generateItemCompositeKey(menuItemId, customizations);
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substr(2, 9);
+
+    if (isDraft) {
+      return `draft_${compositeKey}_${timestamp}`;
+    }
+
+    return `${compositeKey}_${timestamp}_${randomSuffix}`;
+  };
+
   // --- Helper function to check for deep equality of customizations ---
   const areCustomizationsEqual = (
     custA: CartItem["customizations"],
@@ -264,7 +316,29 @@ export const useOrderStore = create<OrderState>((set, get) => {
     ) {
       return false;
     }
-    // 4. If all checks pass, they are equal
+    // 4. Check if modifiers are the same
+    const modifiersA = custA.modifiers?.map(mod => ({
+      categoryId: mod.categoryId,
+      options: mod.options.map(opt => opt.id).sort()
+    })).sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
+    const modifiersB = custB.modifiers?.map(mod => ({
+      categoryId: mod.categoryId,
+      options: mod.options.map(opt => opt.id).sort()
+    })).sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
+
+    if (modifiersA.length !== modifiersB.length) {
+      return false;
+    }
+
+    for (let i = 0; i < modifiersA.length; i++) {
+      if (modifiersA[i].categoryId !== modifiersB[i].categoryId ||
+        modifiersA[i].options.length !== modifiersB[i].options.length ||
+        !modifiersA[i].options.every((opt, idx) => opt === modifiersB[i].options[idx])) {
+        return false;
+      }
+    }
+
+    // 5. If all checks pass, they are equal
     return true;
   };
 
@@ -313,15 +387,14 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const activeOrder = orders.find((o) => o.id === activeOrderId);
       if (!activeOrder) return;
 
-      // Find an existing item in the cart that is an exact match
-      const existingItemIndex = activeOrder.items.findIndex(
-        (cartItem) =>
-          cartItem.menuItemId === newItem.menuItemId &&
-          areCustomizationsEqual(
-            cartItem.customizations,
-            newItem.customizations
-          )
-      );
+      // Generate composite key for the new item
+      const newItemKey = generateItemCompositeKey(newItem.menuItemId, newItem.customizations);
+
+      // Find an existing item in the cart that has the exact same composite key
+      const existingItemIndex = activeOrder.items.findIndex((cartItem) => {
+        const existingItemKey = generateItemCompositeKey(cartItem.menuItemId, cartItem.customizations);
+        return existingItemKey === newItemKey;
+      });
 
       set((state) => ({
         orders: state.orders.map((o) => {
@@ -948,6 +1021,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
             : order
         ),
       }));
+    },
+    generateCartItemId: (menuItemId, customizations, isDraft = false) => {
+      return generateCartItemId(menuItemId, customizations, isDraft);
     },
   };
 });

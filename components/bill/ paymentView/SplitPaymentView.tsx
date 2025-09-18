@@ -51,23 +51,16 @@ const SplitPaymentView = () => {
   };
 
   const billSummary = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        const existing = acc.find((i) => i.name === item.name);
-        if (existing) {
-          existing.quantity += item.quantity;
-          existing.totalPrice += item.price * item.quantity;
-        } else {
-          acc.push({
-            name: item.name,
-            quantity: item.quantity,
-            totalPrice: item.price * item.quantity,
-          });
-        }
-        return acc;
-      },
-      [] as { name: string; quantity: number; totalPrice: number }[]
-    );
+    // Don't group items by name - preserve each unique item with its modifiers
+    return items.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      totalPrice: item.price * item.quantity,
+      // Include modifier info in the name for clarity
+      displayName: (item.customizations.modifiers && item.customizations.modifiers.length > 0) || item.customizations.notes
+        ? `${item.name}${item.customizations.notes ? ` (${item.customizations.notes})` : ''}${(item.customizations.modifiers && item.customizations.modifiers.length > 0) ? ` [${item.customizations.modifiers.map(m => m.categoryName).join(', ')}]` : ''}`
+        : item.name
+    }));
   }, [items]);
 
   const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
@@ -159,11 +152,11 @@ const SplitPaymentView = () => {
       prev.map((split) =>
         split.id === sourceSplitId
           ? {
-              ...split,
-              items: split.items.filter(
-                (item) => item.id !== itemToUnassign.id
-              ),
-            }
+            ...split,
+            items: split.items.filter(
+              (item) => item.id !== itemToUnassign.id
+            ),
+          }
           : split
       )
     );
@@ -202,9 +195,9 @@ const SplitPaymentView = () => {
       currentSplits.map((split) =>
         split.id === splitId
           ? {
-              ...split,
-              amount: parseFloat(sanitizedText),
-            }
+            ...split,
+            amount: parseFloat(sanitizedText),
+          }
           : split
       )
     );
@@ -256,16 +249,14 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={num}
                     onPress={() => setNumberOfPeople(num)}
-                    className={`w-12 h-12 rounded-lg border items-center justify-center ${
-                      isSelected
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`w-12 h-12 rounded-lg border items-center justify-center ${isSelected
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`text-2xl font-semibold ${
-                        isSelected ? "text-white" : "text-gray-600"
-                      }`}
+                      className={`text-2xl font-semibold ${isSelected ? "text-white" : "text-gray-600"
+                        }`}
                     >
                       {num}
                     </Text>
@@ -435,10 +426,10 @@ const SplitPaymentView = () => {
           showsVerticalScrollIndicator={false}
         >
           {/* Bill Preview */}
-          {billSummary.map((item) => (
-            <View key={item.name} className="flex-row justify-between mb-1">
+          {billSummary.map((item, index) => (
+            <View key={`${item.name}_${index}`} className="flex-row justify-between mb-1">
               <Text className="text-2xl font-semibold text-accent-500">
-                {item.name}
+                {item.displayName}
               </Text>
               <Text className="text-2xl text-accent-500">
                 ${item.totalPrice.toFixed(2)}
@@ -490,16 +481,14 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt as SplitOption)}
-                    className={`py-3 px-6 rounded-lg border ${
-                      isSelected
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-3 px-6 rounded-lg border ${isSelected
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`text-xl font-semibold ${
-                        isSelected ? "text-white" : "text-gray-600"
-                      }`}
+                      className={`text-xl font-semibold ${isSelected ? "text-white" : "text-gray-600"
+                        }`}
                     >
                       {opt}
                     </Text>
@@ -521,36 +510,32 @@ const SplitPaymentView = () => {
                 <View className="flex-row gap-3 items-center">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-3 px-6 rounded-lg border ${
-                      split.paymentType === "Card"
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-3 px-6 rounded-lg border ${split.paymentType === "Card"
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`text-xl font-semibold ${
-                        split.paymentType === "Card"
-                          ? "text-white"
-                          : "text-gray-600"
-                      }`}
+                      className={`text-xl font-semibold ${split.paymentType === "Card"
+                        ? "text-white"
+                        : "text-gray-600"
+                        }`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-3 px-6 rounded-lg border ${
-                      split.paymentType === "Cash"
-                        ? "border-primary-400 bg-primary-400"
-                        : "border-gray-300"
-                    }`}
+                    className={`py-3 px-6 rounded-lg border ${split.paymentType === "Cash"
+                      ? "border-primary-400 bg-primary-400"
+                      : "border-gray-300"
+                      }`}
                   >
                     <Text
-                      className={`text-xl font-semibold ${
-                        split.paymentType === "Cash"
-                          ? "text-white"
-                          : "text-gray-600"
-                      }`}
+                      className={`text-xl font-semibold ${split.paymentType === "Cash"
+                        ? "text-white"
+                        : "text-gray-600"
+                        }`}
                     >
                       Cash
                     </Text>

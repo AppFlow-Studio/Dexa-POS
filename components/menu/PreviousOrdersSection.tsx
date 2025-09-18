@@ -164,7 +164,7 @@ const RetrieveButton = ({ orderId }: { orderId: string }) => {
 };
 
 const PreviousOrdersSection = () => {
-    const { orders, activeOrderId, addItemToActiveOrder } = useOrderStore();
+    const { orders, activeOrderId, addItemToActiveOrder, generateCartItemId } = useOrderStore();
     const [activeTab, setActiveTab] = useState("All");
     const [isItemsModalOpen, setItemsModalOpen] = useState(false);
     const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -224,7 +224,7 @@ const PreviousOrdersSection = () => {
             // Create a new item with a unique ID for the current order
             const newItem = {
                 ...item,
-                id: `${item.menuItemId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: generateCartItemId(item.menuItemId, item.customizations),
                 isDraft: false,
             };
             addItemToActiveOrder(newItem);

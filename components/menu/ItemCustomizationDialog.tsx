@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
   const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder } = useOrderStore();
+  const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } = useOrderStore();
 
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
@@ -73,7 +73,7 @@ const ItemCustomizationDialog: React.FC = () => {
     } else {
       // If in add mode, create a brand new CartItem
       const newItem: CartItem = {
-        id: `${menuItem.id}_${Date.now()}`,
+        id: generateCartItemId(menuItem.id, { size: selectedSize, addOns: selectedAddOns, notes }),
         menuItemId: menuItem.id,
         name: menuItem.name,
         quantity,
