@@ -26,7 +26,8 @@ const ORDER_TYPE_OPTIONS: SelectOption[] = [
 ];
 
 const OrderDetails: React.FC = () => {
-  const { tables, updateTableStatus } = useFloorPlanStore();
+  const { layouts } = useFloorPlanStore();
+
   const {
     activeOrderId,
     orders,
@@ -63,15 +64,19 @@ const OrderDetails: React.FC = () => {
     useState(false);
   const [tempCustomerName, setTempCustomerName] = useState("");
 
+  const allTables = useMemo(
+    () => layouts.flatMap((layout) => layout.tables),
+    [layouts]
+  );
+
   const availableTableOptions = useMemo(() => {
-    // Show the currently assigned table PLUS all available tables
-    return tables
+    return allTables
       .filter(
         (t) =>
           t.status === "Available" || t.id === activeOrder?.service_location_id
       )
       .map((t) => ({ label: t.name, value: t.id }));
-  }, [tables, activeOrder]);
+  }, [allTables, activeOrder]);
 
   useEffect(() => {
     // Initialize selected table from active order if it exists (only for already assigned tables)

@@ -16,7 +16,7 @@ import Animated, {
 
 interface DraggableTableProps {
   table: TableType;
-
+  layoutId: string; // Added to know which layout this table belongs to
   isEditMode: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -33,20 +33,19 @@ const STATUS_COLORS: Record<TableType["status"], string> = {
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
+  layoutId, // Now receiving the layoutId
   isEditMode,
   isSelected,
   onSelect,
   canvasScale,
   onPress,
 }) => {
-  // Get the actions directly from the store
   const { updateTablePosition, updateTableRotation, removeTable } =
     useFloorPlanStore();
   const { orders } = useOrderStore();
 
   const router = useRouter();
 
-  // --- Animation and Gesture state
   const translateX = useSharedValue(table.x);
   const translateY = useSharedValue(table.y);
   const rotation = useSharedValue(table.rotation);
@@ -71,7 +70,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         dragContext.value.y + event.translationY / canvasScale.value;
     })
     .onEnd(() => {
-      runOnJS(updateTablePosition)(table.id, {
+      // FIX: Pass layoutId as the first argument
+      runOnJS(updateTablePosition)(layoutId, table.id, {
         x: translateX.value,
         y: translateY.value,
       });
@@ -80,32 +80,27 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const rotateGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
-      // Store the starting rotation when the drag begins
       rotateContext.value = rotation.value;
     })
     .onUpdate((event) => {
-      // Calculate the angle from the center of the component to the touch point
-      // Note: The (50, 40) values are half the component's rough size. A more robust
-      // solution would be to measure the component with onLayout.
       const angle = Math.atan2(event.translationY, event.translationX);
       const angleInDegrees = angle * (180 / Math.PI);
       rotation.value = rotateContext.value + angleInDegrees;
     })
     .onEnd(() => {
-      // Snap to the nearest 45-degree angle for clean layouts
       const snappedRotation = Math.round(rotation.value / 45) * 45;
       rotation.value = withSpring(snappedRotation);
-      runOnJS(updateTableRotation)(table.id, snappedRotation);
+      // FIX: Pass layoutId as the first argument
+      runOnJS(updateTableRotation)(layoutId, table.id, snappedRotation);
     });
 
   const handleDelete = () => {
-    // Call the store action directly
-    removeTable(table.id);
+    // FIX: Pass layoutId as the first argument
+    removeTable(layoutId, table.id);
   };
 
   const animatedStyle = useAnimatedStyle(() => {
     const isMerged = table.mergedWith && table.mergedWith.length > 0;
-
     return {
       position: "absolute",
       top: 0,
@@ -116,7 +111,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         { rotate: `${rotation.value}deg` },
       ],
       borderWidth: 2,
-      // Show border if selected in edit mode, OR if it's a merged table
       borderColor:
         isSelected && isEditMode
           ? "#3B82F6"
@@ -129,10 +123,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
+    (o) => o.service_location_id === table.id && o.order_status !== "Voided"
   );
 
-  // Calculate the total for this specific order's cart
   const orderTotal =
     activeOrderForThisTable?.items.reduce(
       (acc, item) => acc + item.price * item.quantity,

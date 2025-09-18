@@ -34,7 +34,9 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
     keyof typeof TABLE_SHAPES
   >(SHAPE_OPTIONS[0].id as keyof typeof TABLE_SHAPES);
 
-  const tables = useFloorPlanStore((state) => state.tables);
+  const { layouts, activeLayoutId } = useFloorPlanStore();
+  const activeLayout = layouts.find((layout) => layout.id === activeLayoutId);
+  const tablesInCurrentLayout = activeLayout?.tables || [];
 
   const handleAddPress = () => {
     if (!name || !selectedShapeId) {
@@ -44,20 +46,20 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
       });
       return;
     }
-    const nameExists = tables.some(
+
+    const nameExists = tablesInCurrentLayout.some(
       (table) => table.name.trim().toLowerCase() === name.trim().toLowerCase()
     );
 
     if (nameExists) {
-      toast.error(`A table named "${name}" already exists`, {
+      toast.error(`A table named "${name}" already exists in this room.`, {
         duration: 4000,
         position: ToastPosition.BOTTOM,
       });
-      return; // Stop the function
+      return;
     }
 
     onAdd({ name, shapeId: selectedShapeId });
-    // Reset form for next time
     setName("");
     setSelectedShapeId(SHAPE_OPTIONS[0].id as keyof typeof TABLE_SHAPES);
     onClose();
@@ -80,6 +82,7 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
               value={name}
               onChangeText={setName}
               placeholder="e.g., T-24 or Patio 1"
+              placeholderTextColor="#9CA3AF"
               className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
             />
           </View>

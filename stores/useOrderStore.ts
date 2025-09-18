@@ -26,7 +26,10 @@ interface OrderState {
 
   // --- ACTIONS ---
   setActiveOrder: (orderId: string | null) => void;
-  startNewOrder: (tableId?: string) => OrderProfile;
+  startNewOrder: (details?: {
+    tableId?: string;
+    guestCount?: number;
+  }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
   removeItemFromActiveOrder: (itemId: string) => void;
@@ -63,6 +66,7 @@ interface OrderState {
     tableNames: string[]
   ) => string;
   fireActiveOrderToKitchen: () => void;
+  transferOrderToTable: (orderId: string, newTableId: string) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -284,17 +288,18 @@ export const useOrderStore = create<OrderState>((set, get) => {
       recalculateTotals(orderId);
     },
 
-    startNewOrder: () => {
+    startNewOrder: (details) => {
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
-        service_location_id: null,
+        service_location_id: details?.tableId || null,
         order_status: "Building",
         customer_name: "",
         check_status: "Opened",
         paid_status: "Unpaid",
-        order_type: "Take Away",
+        order_type: details?.tableId ? "Dine In" : "Take Away",
         items: [],
         opened_at: new Date().toISOString(),
+        guest_count: details?.guestCount || 1,
       };
       set((state) => ({ orders: [...state.orders, newOrder] }));
       return newOrder;
@@ -404,11 +409,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === updatedItem.id ? updatedItem : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === updatedItem.id ? updatedItem : i
+                ),
+              }
             : o
         ),
       }));
@@ -489,11 +494,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === itemId ? { ...i, isDraft: false } : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === itemId ? { ...i, isDraft: false } : i
+                ),
+              }
             : o
         ),
       }));
@@ -569,9 +574,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
     assignOrderToTable: (orderId, tableId) => {
       set((state) => ({
         orders: state.orders.map((o) =>
-          o.id === orderId
-            ? { ...o, service_location_id: tableId }
-            : o
+          o.id === orderId ? { ...o, service_location_id: tableId } : o
         ),
       }));
     },
@@ -606,11 +609,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-            ...o,
-            service_location_id: tableId,
-            order_type: "Dine In" as const,
-            order_status: "Preparing" as const,
-          }
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+              order_status: "Preparing" as const,
+            }
           : o
       );
 
@@ -700,13 +703,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-              ...o,
-              paid_status: "Paid",
-              check_status: "Closed",
-              total_amount: total, // Save the correct final total
-              total_tax: tax,
-              total_discount: activeOrderDiscount, // Save the discount amount
-            }
+                ...o,
+                paid_status: "Paid",
+                check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
+              }
             : o
         ),
       }));
@@ -883,7 +886,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch { }
+      } catch {}
+    },
+    transferOrderToTable: (orderId, newTableId) => {
+      set((state) => ({
+        orders: state.orders.map((order) =>
+          order.id === orderId
+            ? { ...order, service_location_id: newTableId }
+            : order
+        ),
+      }));
     },
   };
 });

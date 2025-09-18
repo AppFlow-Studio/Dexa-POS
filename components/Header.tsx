@@ -40,6 +40,8 @@ const generateTitleFromPath = (pathname: string): string => {
     pathname.split("/").length > 2
   ) {
     return "Previous Order Details";
+  } else if (pathname.startsWith("/tables/floor-plan")) {
+    return "Floor Plan";
   } else if (
     pathname.startsWith("/tables/edit-layout") &&
     pathname.split("/").length === 3
@@ -93,6 +95,7 @@ const Header = () => {
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname === "/settings" ||
+    pathname === "/settings/floor-plan" ||
     (pathname.startsWith("/menu/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/inventory/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/online-orders/") &&
