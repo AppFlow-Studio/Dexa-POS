@@ -7,10 +7,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function MainLayout() {
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
       style={{ flex: 1 }}
     >
-      // SafeAreaView handles the top notch and bottom system bar
       <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
         <StatusBar style={"light"} />
 

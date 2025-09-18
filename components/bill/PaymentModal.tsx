@@ -29,7 +29,7 @@ const PaymentModal: React.FC = () => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="bg-transparent border-none shadow-none w-[550px]">
+      <DialogContent className="bg-transparent border-none shadow-none">
         {renderContent()}
       </DialogContent>
     </Dialog>

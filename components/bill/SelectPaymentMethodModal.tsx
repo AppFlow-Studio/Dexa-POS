@@ -15,11 +15,11 @@ const paymentMethods = [
 const PaymentMethodButton = ({ method, isSelected, onPress }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`flex-1 items-center py-4 rounded-xl border-2 ${isSelected ? "border-primary-400 bg-primary-100" : "border-gray-200 bg-white"}`}
+    className={`flex-1 items-center py-6 rounded-2xl border-2 ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600 bg-[#303030]"}`}
   >
-    <method.icon color={isSelected ? "#3b82f6" : "#4b5563"} size={32} />
+    <method.icon color={isSelected ? "#60A5FA" : "#9CA3AF"} size={32} />
     <Text
-      className={`font-bold mt-2 ${isSelected ? "text-primary-400" : "text-gray-700"}`}
+      className={`font-bold mt-2 text-2xl ${isSelected ? "text-blue-400" : "text-gray-300"}`}
     >
       {method.name}
     </Text>
@@ -41,19 +41,18 @@ const SelectPaymentMethodModal: React.FC<SelectPaymentMethodModalProps> = ({
   const handleProceed = () => {
     onClose();
     setTimeout(() => {
-      // Pass the `activeTableId` along when opening the main payment modal
       openPaymentFlow(activeMethod, activeTableId);
     }, 150);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[550px] p-6 rounded-2xl bg-[#212121]">
-        <DialogTitle className="text-2xl font-bold text-white text-center mb-6">
+      <DialogContent className="w-[600px] p-8 rounded-2xl bg-[#212121] border-gray-700">
+        <DialogTitle className="text-3xl font-bold text-white text-center mb-6">
           Select Payment Method
         </DialogTitle>
 
-        <View className="flex-row gap-4">
+        <View className="flex-row gap-6">
           {paymentMethods.map((method) => (
             <PaymentMethodButton
               key={method.name}
@@ -64,18 +63,18 @@ const SelectPaymentMethodModal: React.FC<SelectPaymentMethodModalProps> = ({
           ))}
         </View>
 
-        <View className="flex-row gap-2 mt-8">
+        <View className="flex-row gap-4 mt-8">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
+            className="flex-1 py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
           >
-            <Text className="font-bold text-gray-200">Close</Text>
+            <Text className="font-bold text-2xl text-white">Close</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleProceed}
-            className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
+            className="flex-1 py-4 bg-blue-600 rounded-xl items-center"
           >
-            <Text className="font-bold text-white">Proceed</Text>
+            <Text className="font-bold text-2xl text-white">Proceed</Text>
           </TouchableOpacity>
         </View>
       </DialogContent>

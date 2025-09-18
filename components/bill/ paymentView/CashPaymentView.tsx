@@ -4,31 +4,23 @@ import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const CashPaymentView = () => {
-  // Get totals from the cart store
   const {
     activeOrderDiscount,
     activeOrderOutstandingSubtotal,
     activeOrderOutstandingTax,
     activeOrderOutstandingTotal,
   } = useOrderStore();
-
   const { close, setView } = usePaymentStore();
 
-  // State to manage the amount tendered by the customer
   const [amountTendered, setAmountTendered] = useState("");
-  // State to track the currently selected quick-select button
   const [selectedAmountId, setSelectedAmountId] = useState<
     number | "exact" | null
-  >("exact");
+  >(null);
 
-  // Calculate change due. Ensure it's not negative.
   const changeDue =
     parseFloat(amountTendered || "0") - activeOrderOutstandingTotal;
-
-  // Suggested amounts for quick selection
   const suggestedAmounts = [5, 10, 15, 20, 25, 30, 35, 40, 50, 100];
 
-  // Handler for the quick-select buttons
   const handleSelectAmount = (amount: number) => {
     setAmountTendered(amount.toFixed(2));
     setSelectedAmountId(amount);
@@ -40,54 +32,27 @@ const CashPaymentView = () => {
   };
 
   return (
-    <View className="rounded-[36px] overflow-hidden bg-[#11111A]">
+    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[600px]">
       {/* Dark Header */}
-      <View className="p-6 rounded-t-[36px]">
-        <Text className="text-3xl text-[#F1F1F1] font-bold">Cash Payment</Text>
-        <Text className="text-2xl text-[#F1F1F1] mt-1">Purchase in cash</Text>
+      <View className="p-8">
+        <Text className="text-3xl text-white font-bold text-center">
+          Cash Payment
+        </Text>
       </View>
 
-      {/* White Content */}
-      <View className="p-6 rounded-[36px] bg-background-100">
-        {/* Totals Summary */}
-        <View className="space-y-3 mb-4">
-          <View className="flex-row justify-between">
-            <Text className="text-2xl text-accent-500">Subtotal</Text>
-            <Text className="text-2xl text-accent-500">
-              ${activeOrderOutstandingSubtotal.toFixed(2)}
-            </Text>
-          </View>
-          {activeOrderDiscount > 0 && (
-            <View className="flex-row justify-between">
-              <Text className="text-2xl text-green-600">Discount</Text>
-              <Text className="text-2xl text-green-600">
-                -${activeOrderDiscount.toFixed(2)}
-              </Text>
-            </View>
-          )}
-          <View className="flex-row justify-between">
-            <Text className="text-2xl text-accent-500">Tax</Text>
-            <Text className="text-2xl text-accent-500">
-              ${activeOrderOutstandingTax.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-2xl text-accent-500">Voucher</Text>
-            <Text className="text-xl text-gray-400">${(0.0).toFixed(2)}</Text>
-          </View>
-        </View>
-
+      {/* Dark Content */}
+      <View className="p-8 bg-[#303030] rounded-b-2xl">
         {/* Total */}
-        <View className="flex-row justify-between pt-4 border-dashed border-gray-300 mb-6">
-          <Text className="text-3xl font-bold text-accent-500">Total</Text>
-          <Text className="text-3xl font-bold text-accent-500">
+        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-6">
+          <Text className="text-3xl font-bold text-white">Total</Text>
+          <Text className="text-3xl font-bold text-white">
             ${activeOrderOutstandingTotal.toFixed(2)}
           </Text>
         </View>
 
         {/* Amount Selection */}
-        <View className="mt-6">
-          <Text className="text-2xl font-semibold text-accent-500 mb-3">
+        <View>
+          <Text className="text-2xl font-semibold text-gray-300 mb-3">
             Select Amount
           </Text>
           <View className="flex-row flex-wrap gap-3">
@@ -97,16 +62,10 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={amount}
                   onPress={() => handleSelectAmount(amount)}
-                  className={`py-3 px-6 rounded-lg border ${
-                    isSelected
-                      ? "border-primary-400 bg-primary-100"
-                      : "border-gray-300"
-                  }`}
+                  className={`py-3 px-6 rounded-lg border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${
-                      isSelected ? "text-primary-400" : "text-gray-600"
-                    }`}
+                    className={`text-xl font-semibold ${isSelected ? "text-blue-400" : "text-gray-300"}`}
                   >
                     ${amount}
                   </Text>
@@ -115,16 +74,10 @@ const CashPaymentView = () => {
             })}
             <TouchableOpacity
               onPress={handleSelectExact}
-              className={`py-3 px-6 rounded-lg border ${
-                selectedAmountId === "exact"
-                  ? "border-primary-400 bg-primary-400"
-                  : "border-gray-300"
-              }`}
+              className={`py-3 px-6 rounded-lg border ${selectedAmountId === "exact" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
             >
               <Text
-                className={`text-xl font-semibold ${
-                  selectedAmountId === "exact" ? "text-white" : "text-gray-600"
-                }`}
+                className={`text-xl font-semibold ${selectedAmountId === "exact" ? "text-white" : "text-gray-300"}`}
               >
                 Exact Amount
               </Text>
@@ -134,44 +87,48 @@ const CashPaymentView = () => {
 
         {/* Amount Tendered Input */}
         <View className="mt-6">
-          <Text className="text-2xl font-semibold text-accent-500 mb-3">
+          <Text className="text-2xl font-semibold text-gray-300 mb-3">
             Amount Tendered
           </Text>
           <TextInput
             value={amountTendered}
-            onChangeText={setAmountTendered}
-            placeholder={`+ ${activeOrderOutstandingTotal.toFixed(2)}`}
+            onChangeText={(text) => {
+              setAmountTendered(text);
+              setSelectedAmountId(null); // Deselect quick buttons when typing manually
+            }}
+            placeholder={`${activeOrderOutstandingTotal.toFixed(2)}`}
             keyboardType="numeric"
-            className="w-full p-6 bg-gray-100 border border-gray-200 rounded-lg text-3xl text-right font-semibold text-accent-500"
+            className="w-full p-6 bg-[#212121] border border-gray-600 rounded-lg text-3xl text-right font-semibold text-white"
+            placeholderTextColor="#6B7280"
           />
         </View>
 
         {/* Change Due */}
         <View className="flex-row justify-between items-center mt-6">
-          <Text className="text-2xl font-semibold text-accent-500">
+          <Text className="text-2xl font-semibold text-gray-300">
             Change Due
           </Text>
           <Text
-            className={`text-4xl font-bold ${changeDue >= 0 ? "text-green-600" : "text-red-600"}`}
+            className={`text-4xl font-bold ${changeDue >= 0 ? "text-green-400" : "text-red-400"}`}
           >
             ${changeDue.toFixed(2)}
           </Text>
         </View>
 
         {/* Actions */}
-        <View className="border-t border-gray-200 pt-4 mt-6">
+        <View className="border-t border-gray-700 pt-6 mt-6">
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={close}
-              className="flex-1 py-4 border border-gray-300 rounded-lg"
+              className="flex-1 py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
             >
-              <Text className="text-2xl font-bold text-gray-700 text-center">
-                Close & Save Order
+              <Text className="text-2xl font-bold text-white text-center">
+                Close & Save
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setView("success")}
-              className="flex-1 py-4 bg-primary-400 rounded-lg"
+              className="flex-1 py-4 bg-blue-600 rounded-xl items-center"
             >
               <Text className="text-2xl font-bold text-white text-center">
                 Open Drawer

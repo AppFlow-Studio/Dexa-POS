@@ -97,20 +97,13 @@ const BillItem: React.FC<BillItemProps> = ({
                   {item.name}
                 </Text>
                 <View className="flex-row items-center mt-1">
-                  {/* FIX: Conditional rendering logic */}
-                  {item.isDraft ? (
-                    <View className="px-3 py-1 bg-yellow-100 rounded-full">
-                      <Text className="text-lg font-medium text-yellow-700">
-                        In Progress
-                      </Text>
-                    </View>
-                  ) : (
+                  {isEditable && !item.isDraft && (
                     <TouchableOpacity
                       className="flex-row items-center px-3 py-1 bg-blue-900/30 border border-blue-500 rounded-3xl"
                       onPress={handleNotesPress}
                     >
                       <Text className="text-lg font-semibold text-blue-400 mr-1">
-                        {isReadOnly ? "View" : "Edit"}
+                        Edit
                       </Text>
                       {isExpanded ? (
                         <ChevronUp color="#60A5FA" size={16} />
@@ -118,6 +111,13 @@ const BillItem: React.FC<BillItemProps> = ({
                         <ChevronDown color="#60A5FA" size={16} />
                       )}
                     </TouchableOpacity>
+                  )}
+                  {item.isDraft && (
+                    <View className="px-3 py-1 bg-yellow-100 rounded-full">
+                      <Text className="text-lg font-medium text-yellow-700">
+                        In Progress
+                      </Text>
+                    </View>
                   )}
                 </View>
               </View>

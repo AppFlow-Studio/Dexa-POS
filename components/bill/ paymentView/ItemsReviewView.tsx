@@ -21,7 +21,6 @@ const ItemsReviewView = () => {
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
-  // State for managing expanded item
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const handleToggleExpand = (itemId: string) => {
@@ -29,108 +28,71 @@ const ItemsReviewView = () => {
   };
 
   return (
-    <View className=" bg-background-100 p-6 rounded-2xl">
-      <Text className="text-3xl font-bold text-center mb-4 text-accent-400">
-        Items
+    <View className="bg-[#212121] p-8 rounded-2xl border border-gray-700 w-[600px]">
+      <Text className="text-3xl font-bold text-center mb-6 text-white">
+        Review Items
       </Text>
-      <ScrollView contentContainerClassName="gap-y-2">
+      <ScrollView
+        className="max-h-[350px] mb-4"
+        contentContainerClassName="gap-y-2"
+      >
         {items.map((item) => (
           <BillItem
             key={item.id}
             item={item}
             expandedItemId={expandedItemId}
             onToggleExpand={handleToggleExpand}
+            isEditable={false} // Hide the Edit/Delete functionality in this view
           />
         ))}
       </ScrollView>
-      <View className="border-t border-gray-200 pt-4 mt-4">
+      <View className="border-t border-gray-700 pt-4">
         {/* Totals Summary */}
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-2xl text-gray-600">Subtotal</Text>
-          <Text className="text-2xl text-gray-800">
+          <Text className="text-2xl text-gray-300">Subtotal</Text>
+          <Text className="text-2xl text-white">
             ${activeOrderSubtotal.toFixed(2)}
           </Text>
         </View>
         {activeOrderDiscount > 0 && (
           <View className="flex-row justify-between">
-            <Text className="text-2xl text-green-600">Discount</Text>
-            <Text className="text-2xl text-green-600">
+            <Text className="text-2xl text-green-400">Discount</Text>
+            <Text className="text-2xl text-green-400">
               -${activeOrderDiscount.toFixed(2)}
             </Text>
           </View>
         )}
         <View className="flex-row justify-between items-center mb-2">
-          <Text className="text-2xl text-gray-600">Tax</Text>
-          <Text className="text-2xl text-gray-800">
+          <Text className="text-2xl text-gray-300">Tax</Text>
+          <Text className="text-2xl text-white">
             ${activeOrderTax.toFixed(2)}
           </Text>
         </View>
-        <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300">
-          <Text className="text-3xl font-bold text-gray-900">Total</Text>
-          <Text className="text-3xl font-bold text-gray-900">
+        <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-600">
+          <Text className="text-3xl font-bold text-white">Total</Text>
+          <Text className="text-3xl font-bold text-white">
             ${activeOrderTotal.toFixed(2)}
           </Text>
-        </View>
-        {/* Outstanding section (to be charged now) */}
-        <View className="mt-4 p-4 rounded-lg bg-yellow-50 border border-yellow-200">
-          <Text className="text-xl font-semibold text-yellow-800 mb-2">
-            Outstanding Amount
-          </Text>
-
-          <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-xl text-yellow-700">Subtotal</Text>
-            <Text className="text-xl font-medium text-yellow-800">
-              ${activeOrderOutstandingSubtotal.toFixed(2)}
-            </Text>
-          </View>
-          {activeOrderDiscount > 0 && (
-            <View className="flex-row justify-between items-center mb-1">
-              <Text className="text-xl text-yellow-700">Discount</Text>
-              <Text className="text-xl font-medium text-yellow-800">
-                - ${activeOrderDiscount.toFixed(2)}
-              </Text>
-            </View>
-          )}
-
-          <View className="flex-row justify-between items-center mb-1">
-            <Text className="text-xl text-yellow-700">Tax</Text>
-            <Text className="text-xl font-medium text-yellow-800">
-              ${activeOrderOutstandingTax.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between items-center pt-2 border-t border-yellow-200">
-            <Text className="text-2xl font-bold text-yellow-800">Total</Text>
-            <Text className="text-2xl font-bold text-yellow-800">
-              ${activeOrderOutstandingTotal.toFixed(2)}
-            </Text>
-          </View>
         </View>
 
         {/* Action Buttons */}
         <View className="flex-row gap-4 mt-6">
           <TouchableOpacity
             onPress={close}
-            className="flex-1 py-4 border border-gray-300 rounded-lg"
+            className="flex-1 py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
           >
-            <Text className="text-2xl font-bold text-gray-700 text-center">
+            <Text className="text-2xl font-bold text-white text-center">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
-              // Route to the correct payment method view based on the selected method
-              if (paymentMethod === "Card") {
-                setView("card");
-              } else if (paymentMethod === "Cash") {
-                setView("cash");
-              } else if (paymentMethod === "Split") {
-                setView("split");
-              } else {
-                // Default to cash if no method is selected
-                setView("cash");
-              }
+              if (paymentMethod === "Card") setView("card");
+              else if (paymentMethod === "Cash") setView("cash");
+              else if (paymentMethod === "Split") setView("split");
+              else setView("cash");
             }}
-            className="flex-1 py-4 bg-accent-400 rounded-lg"
+            className="flex-1 py-4 bg-blue-600 rounded-xl items-center"
           >
             <Text className="text-2xl font-bold text-white text-center">
               Continue
