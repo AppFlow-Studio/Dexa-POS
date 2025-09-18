@@ -83,8 +83,8 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
       {/* Tooltip */}
       {showTooltip && (
         <View className="absolute top-16 left-0 bg-white rounded-xl shadow-lg border border-gray-200 gap-y-3 pb-6 z-50 w-[440px]">
-          <View className="flex-col justify-between items-center w-full px-6 pt-4 gap-y-3">
-            <View className="w-full flex flex-row  items-center">
+          <View className="flex-col justify-start items-center w-full px-6 pt-4 gap-y-3">
+            <View className="w-full flex flex-row justify-start items-center">
               <Text className="text-3xl font-bold text-accent-500 mr-4">
                 {order.customer_name}
               </Text>

@@ -48,6 +48,7 @@ const BillSection = ({
     startNewOrder,
     fireActiveOrderToKitchen,
     assignOrderToTable,
+    setActiveOrder,
   } = useOrderStore();
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { updateTableStatus } = useFloorPlanStore();
@@ -122,6 +123,8 @@ const BillSection = ({
                 clearSelectedTable(); // Clear the selected table after assignment
               }
               fireActiveOrderToKitchen();
+              const newOrder = startNewOrder();
+              setActiveOrder(newOrder.id);
             }}
             activeOpacity={0.85}
           >
@@ -152,18 +155,16 @@ const BillSection = ({
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={!activeOrder || activeOrder.items.length === 0}
-              className={`flex-1 py-4 rounded-xl ${
-                !activeOrder || activeOrder.items.length === 0
+              className={`flex-1 py-4 rounded-xl ${!activeOrder || activeOrder.items.length === 0
                   ? "bg-gray-600"
                   : "bg-blue-600"
-              }`}
+                }`}
             >
               <Text
-                className={`text-center text-2xl font-bold ${
-                  !activeOrder || activeOrder.items.length === 0
+                className={`text-center text-2xl font-bold ${!activeOrder || activeOrder.items.length === 0
                     ? "text-gray-400"
                     : "text-white "
-                }`}
+                  }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

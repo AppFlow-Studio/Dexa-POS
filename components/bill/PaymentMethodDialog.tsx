@@ -50,8 +50,13 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
     };
 
     const handleProceedToPayment = () => {
-        // For dine-in orders, check if table is selected
-        if (activeOrder?.order_type === "Dine In" && !selectedTable) {
+        // For dine-in orders, allow proceeding if either a selected table exists
+        // OR the order is already assigned to a table.
+        if (
+            activeOrder?.order_type === "Dine In" &&
+            !selectedTable &&
+            !activeOrder?.service_location_id
+        ) {
             toast.error("Please select a table", {
                 duration: 4000,
                 position: ToastPosition.BOTTOM,
@@ -59,15 +64,23 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
             return;
         }
 
-        // If this is a dine-in order with a selected table, assign it first
-        if (activeOrder?.order_type === "Dine In" && selectedTable && activeOrder.id) {
+        // If this is a dine-in order with a selected table and the order is not yet assigned, assign it
+        if (
+            activeOrder?.order_type === "Dine In" &&
+            selectedTable &&
+            activeOrder.id &&
+            !activeOrder.service_location_id
+        ) {
             assignOrderToTable(activeOrder.id, selectedTable.id);
             updateTableStatus(selectedTable.id, "In Use");
-            clearSelectedTable(); // Clear the selected table after assignment
+            clearSelectedTable();
         }
 
-        // Open payment modal with the table ID
-        const tableIdForOrder = activeOrder?.order_type === "Dine In" ? selectedTable?.id : activeOrder?.service_location_id;
+        // Open payment modal with the correct table ID for dine-in
+        const tableIdForOrder =
+            activeOrder?.order_type === "Dine In"
+                ? (activeOrder?.service_location_id || selectedTable?.id)
+                : activeOrder?.service_location_id;
         openPaymentModal(selectedMethod, tableIdForOrder);
         onClose();
     };

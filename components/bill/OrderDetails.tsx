@@ -19,11 +19,11 @@ import { Label } from "../ui/label";
 type SelectOption = { label: string; value: string };
 
 // Static options for the Order Type dropdown
-const ORDER_TYPE_OPTIONS: SelectOption[] = [
-  { label: "Dine In", value: "Dine In" },
-  { label: "Take Away", value: "Take Away" },
-  { label: "Delivery", value: "Delivery" },
-];
+// const ORDER_TYPE_OPTIONS: SelectOption[] = [
+//   { label: "Dine In", value: "Dine In" },
+//   { label: "Take Away", value: "Take Away" },
+//   { label: "Delivery", value: "Delivery" },
+// ];
 
 const OrderDetails: React.FC = () => {
   const { tables, updateTableStatus } = useFloorPlanStore();

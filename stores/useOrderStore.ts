@@ -296,6 +296,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         items: [],
         opened_at: new Date().toISOString(),
       };
+      console.log("newOrder", newOrder);
       set((state) => ({ orders: [...state.orders, newOrder] }));
       return newOrder;
     },
@@ -770,7 +771,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }
 
       // After closing, there is no active order
-      set({ activeOrderId: null });
+      // set({ activeOrderId: null });
       recalculateTotals(null);
 
       return tableId;

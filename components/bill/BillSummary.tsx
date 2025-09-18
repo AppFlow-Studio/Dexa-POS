@@ -1,4 +1,5 @@
 import { CartItem } from "@/lib/types"; // Use your global CartItem type
+import { useOrderStore } from "@/stores/useOrderStore";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import BillItem from "./BillItem";
@@ -21,11 +22,15 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   itemCourseMap,
   sentCourses,
 }) => {
+  const { activeOrderId } = useOrderStore();
   return (
     <View className="flex-1 bg-[#212121]">
       <View className="my-4 px-6 h-full">
         <View className="flex flex-row items-center justify-between">
-          <Text className="text-3xl font-bold text-white">Cart</Text>
+          <View className="flex-row items-center justify-center gap-2">
+            <Text className="text-3xl font-bold text-white">Cart</Text>
+            <Text className="text-lg text-gray-300">{activeOrderId}</Text>
+          </View>
           <Text className="text-xl text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">

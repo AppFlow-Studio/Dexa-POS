@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import React from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const MerchantLoginScreen = () => {
   const router = useRouter();
@@ -17,7 +17,7 @@ const MerchantLoginScreen = () => {
         Merchant Login
       </Text>
 
-      <View className="mb-6">
+      <KeyboardAvoidingView behavior="padding" className="mb-6">
         <Text className="text-2xl font-medium text-white mb-2">Email</Text>
         <TextInput
           className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
@@ -26,16 +26,18 @@ const MerchantLoginScreen = () => {
           keyboardType="email-address"
           autoCapitalize="none"
         />
-      </View>
+      </KeyboardAvoidingView>
 
-      <View className="mb-6">
+      <View  className="mb-6">
         <Text className="text-2xl font-medium text-white mb-2">Password</Text>
-        <TextInput
-          className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
-          placeholderTextColor="white"
-          placeholder="••••••••"
-          secureTextEntry
-        />
+        <KeyboardAvoidingView >
+          <TextInput
+            className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
+            placeholderTextColor="white"
+            placeholder="••••••••"
+            secureTextEntry
+          />
+        </KeyboardAvoidingView>
       </View>
 
       <TouchableOpacity className="self-end mb-8">

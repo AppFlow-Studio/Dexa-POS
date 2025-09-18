@@ -17,10 +17,12 @@ import { Text, View } from "react-native";
 
 const OrderProcessing = () => {
   const {
+    activeOrderId,
     orders,
     setActiveOrder,
     startNewOrder,
     updateOrderStatus,
+    markAllItemsAsReady,
     archiveOrder,
   } = useOrderStore();
 
@@ -29,23 +31,33 @@ const OrderProcessing = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
-    const { activeOrderId } = useOrderStore.getState();
-
-    // Check if there's already an active order that's a global building order
-    let activeOrder = orders.find(
+    // Ensure there is at least one active order. If none, create/select a global Building order.
+    const globalBuilding = orders.find(
       (o) => o.service_location_id === null && o.order_status === "Building"
     );
 
-    // If no active order exists or the current active order is not a global building order
-    if (!activeOrder || (activeOrderId && activeOrder.id !== activeOrderId)) {
-      activeOrder = startNewOrder(); // No tableId, creates a global order
+    if (!activeOrderId) {
+      if (globalBuilding) {
+        setActiveOrder(globalBuilding.id);
+      } else {
+        const newOrder = startNewOrder();
+        setActiveOrder(newOrder.id);
+      }
+      return;
     }
 
-    setActiveOrder(activeOrder.id);
-
-    // Cleanup on unmount
-    return () => setActiveOrder(null);
-  }, [orders, setActiveOrder, startNewOrder]);
+    // If activeOrderId exists, do not override it here. This allows "Retrieve to Pay"
+    // to set a non-global order as active without being reset by this effect.
+    const currentActive = orders.find((o) => o.id === activeOrderId);
+    if (!currentActive) {
+      if (globalBuilding) {
+        setActiveOrder(globalBuilding.id);
+      } else {
+        const newOrder = startNewOrder();
+        setActiveOrder(newOrder.id);
+      }
+    }
+  }, [orders, activeOrderId, setActiveOrder, startNewOrder]);
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
@@ -68,7 +80,7 @@ const OrderProcessing = () => {
 
   const handleMarkReady = (order: OrderProfile) => {
     // First, mark the order as ready
-    updateOrderStatus(order.id, "Ready");
+    markAllItemsAsReady(order.id);
 
     // Then, check if it's a Take Away order and archive it
     if (order.order_type === "Take Away") {
@@ -95,7 +107,7 @@ const OrderProcessing = () => {
             }
           >
             <AccordionItem value="orders">
-              <AccordionTrigger>
+              <AccordionTrigger className="">
                 <View className="flex-row items-center gap-x-2">
                   <Text className="text-3xl font-bold text-white">
                     Order Line

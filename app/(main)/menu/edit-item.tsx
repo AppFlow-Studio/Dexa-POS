@@ -389,7 +389,7 @@ const EditMenuItemScreen: React.FC = () => {
 
       <ScrollView className="flex-1 p-6">
         <Text className="text-3xl font-bold text-white mb-6">
-          Edit Menu Item
+          Edit Menu Item #{itemId}
         </Text>
 
         <View className="flex-row gap-6">

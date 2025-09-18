@@ -16,6 +16,8 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Link } from "expo-router";
 import {
   ChevronDown,
+  Computer,
+  Globe,
   Logs,
   PackagePlus,
   Search,
@@ -87,7 +89,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // Get current order type
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
-
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
       updateActiveOrderDetails({ order_type: orderType as any });
@@ -185,6 +186,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 <Text className="text-gray-300 ml-4">Orders</Text>
               </TouchableOpacity>
             </View>
+            <Link href="/online-orders" asChild>
+              <TouchableOpacity
+                onPress={() => setActiveTab("Orders")}
+                className={`flex-row items-center w-fit bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+              >
+                <Globe color="#9CA3AF" size={24} />
+              </TouchableOpacity>
+            </Link>
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
@@ -210,25 +219,22 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                     <TouchableOpacity
                       key={menu.id}
                       onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${
-                        activeMeal === menu.name
+                      className={`p-4 rounded-lg border ${activeMeal === menu.name
                           ? "bg-blue-600 border-blue-400"
                           : "bg-[#303030] border-gray-600"
-                      }`}
+                        }`}
                     >
                       <Text
-                        className={`font-semibold text-lg ${
-                          activeMeal === menu.name ? "text-white" : "text-white"
-                        }`}
+                        className={`font-semibold text-lg ${activeMeal === menu.name ? "text-white" : "text-white"
+                          }`}
                       >
                         {menu.name}
                       </Text>
                       <Text
-                        className={`text-sm mt-1 ${
-                          activeMeal === menu.name
+                        className={`text-sm mt-1 ${activeMeal === menu.name
                             ? "text-blue-100"
                             : "text-gray-400"
-                        }`}
+                          }`}
                       >
                         {menu.description}
                       </Text>
@@ -236,18 +242,16 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                         {menu.categories.map((category, index) => (
                           <View
                             key={index}
-                            className={`px-2 py-1 rounded-full ${
-                              activeMeal === menu.name
+                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
                                 ? "bg-blue-500"
                                 : "bg-gray-600"
-                            }`}
+                              }`}
                           >
                             <Text
-                              className={`text-xs ${
-                                activeMeal === menu.name
+                              className={`text-xs ${activeMeal === menu.name
                                   ? "text-white"
                                   : "text-gray-300"
-                              }`}
+                                }`}
                             >
                               {category}
                             </Text>

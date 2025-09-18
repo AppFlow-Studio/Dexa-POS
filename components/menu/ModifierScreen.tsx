@@ -25,8 +25,7 @@ const ModifierScreen = () => {
     useModifierSidebarStore();
   const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem } =
     useOrderStore();
-  const { getItemPriceForCategory } = useMenuStore();
-
+  const { getItemPriceForCategory, menuItems } = useMenuStore();
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
@@ -35,12 +34,12 @@ const ModifierScreen = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const isReadOnly = mode === "view";
+
   const currentItem =
     mode === "edit" || (mode === "fullscreen" && cartItem)
       ? cartItem
       : menuItem;
   const isFullscreen = mode === "fullscreen";
-
   // Get the correct price for the current item based on category
   const getCurrentItemPrice = useCallback(
     (item: any) => {
@@ -48,7 +47,7 @@ const ModifierScreen = () => {
 
       // If we have a categoryId and the item has custom pricing, use it
       if (categoryId && getItemPriceForCategory) {
-        return getItemPriceForCategory(item.id, categoryId);
+        return getItemPriceForCategory(item?.id.split('_')[0] || '', categoryId);
       }
 
       // Otherwise use the default price
@@ -60,7 +59,7 @@ const ModifierScreen = () => {
   // Get the menu item for modifier access (either directly or from cart item)
   const menuItemForModifiers =
     (mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem
-      ? MOCK_MENU_ITEMS.find((item) => item.id === cartItem.menuItemId)
+      ? menuItems?.find((item) => item.id === cartItem.menuItemId)
       : menuItem;
 
   // Initialize form when screen opens
@@ -176,30 +175,30 @@ const ModifierScreen = () => {
         // Convert modifier selections to the format expected by the order system
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-              ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
-                const selectedOptions = Object.entries(selections)
-                  .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
-                    return {
-                      id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
-                    };
-                  });
+            ([categoryId, selections]) => {
+              const category = menuItemForModifiers.modifiers?.find(
+                (cat) => cat.id === categoryId
+              );
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId, _]) => {
+                  const option = category?.options.find(
+                    (opt) => opt.id === optionId
+                  );
+                  return {
+                    id: optionId,
+                    name: option?.name || "",
+                    price: option?.price || 0,
+                  };
+                });
 
-                return {
-                  categoryId,
-                  categoryName: category?.name || "",
-                  options: selectedOptions,
-                };
-              }
-            )
+              return {
+                categoryId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            }
+          )
           : [];
 
         // Calculate total price
@@ -210,11 +209,11 @@ const ModifierScreen = () => {
           });
         });
 
-        // Update the draft item
+        // Update the draft item; price is per-unit. baseTotal already reflects per-unit cost
         const updatedDraftItem = {
           ...draftItem,
           quantity,
-          price: baseTotal / quantity,
+          price: baseTotal,
           customizations: {
             modifiers: selectedModifiers,
             notes,
@@ -335,28 +334,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-          const category = menuItemForModifiers.modifiers?.find(
-            (cat) => cat.id === categoryId
-          );
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId, _]) => {
-              const option = category?.options.find(
-                (opt) => opt.id === optionId
-              );
-              return {
-                id: optionId,
-                name: option?.name || "",
-                price: option?.price || 0,
-              };
-            });
+        const category = menuItemForModifiers.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        const selectedOptions = Object.entries(selections)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([optionId, _]) => {
+            const option = category?.options.find(
+              (opt) => opt.id === optionId
+            );
+            return {
+              id: optionId,
+              name: option?.name || "",
+              price: option?.price || 0,
+            };
+          });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
+        return {
+          categoryId,
+          categoryName: category?.name || "",
+          options: selectedOptions,
+        };
+      })
       : [];
 
     if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
@@ -364,7 +363,8 @@ const ModifierScreen = () => {
       const updatedItem = {
         ...cartItem,
         quantity,
-        price: total / quantity,
+        // price is per-unit
+        price: total / Math.max(1, quantity),
         customizations: {
           ...cartItem.customizations,
           modifiers: selectedModifiers,
@@ -377,7 +377,8 @@ const ModifierScreen = () => {
       const updatedItem = {
         ...cartItem,
         quantity,
-        price: total / quantity,
+        // price is per-unit
+        price: total / Math.max(1, quantity),
         isDraft: false, // Confirm the item
         customizations: {
           ...cartItem.customizations,
@@ -398,6 +399,7 @@ const ModifierScreen = () => {
       const draftItem = activeOrder?.items.find((item) =>
         item.id.startsWith(`draft_${currentItem.id}_`)
       );
+      
 
       if (draftItem) {
         // Remove the draft item first
@@ -408,7 +410,8 @@ const ModifierScreen = () => {
           ...draftItem,
           id: `${currentItem.id}_${Date.now()}`, // New ID for confirmed item
           quantity,
-          price: total / quantity,
+          // price is per-unit
+          price: total / Math.max(1, quantity),
           isDraft: false, // Confirm the item
           customizations: {
             modifiers: selectedModifiers,
@@ -493,14 +496,15 @@ const ModifierScreen = () => {
         <View className="flex-row items-center gap-4">
           <TouchableOpacity
             onPress={handleCancel}
-            className="p-3 rounded-full bg-[#303030]"
+            className="p-3 rounded-full bg-red-600"
           >
-            <X color="#9CA3AF" size={24} />
+            <X color="white" size={24} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="p-3 rounded-full bg-green-500"
+            className="p-3 rounded-full gap-x-2 flex-row items-center justify-center bg-green-500"
           >
+            <Text className="text-white text-xl font-semibold">Done</Text>
             <Check color="#FFFFFF" size={24} />
           </TouchableOpacity>
         </View>
@@ -548,19 +552,17 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-4 rounded-xl border-2 min-w-[160px] ${
-                        isActive
-                          ? "bg-blue-600 border-blue-400"
-                          : hasSelection
-                            ? "bg-green-600 border-green-400"
-                            : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`p-4 rounded-xl border-2 min-w-[160px] ${isActive
+                        ? "bg-blue-600 border-blue-400"
+                        : hasSelection
+                          ? "bg-green-600 border-green-400"
+                          : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center justify-between mb-2">
                         <Text
-                          className={`font-semibold text-xl ${
-                            isActive ? "text-white" : "text-white"
-                          }`}
+                          className={`font-semibold text-xl ${isActive ? "text-white" : "text-white"
+                            }`}
                         >
                           {category.name}
                         </Text>
@@ -572,11 +574,10 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-lg ${
-                          category.type === "required"
-                            ? "text-red-400"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-lg ${category.type === "required"
+                          ? "text-red-400"
+                          : "text-gray-400"
+                          }`}
                       >
                         {category.type === "required" ? "Required" : "Optional"}
                       </Text>
@@ -620,31 +621,28 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-6 rounded-xl border-2 min-w-[140px] ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-400"
-                              : isUnavailable
-                                ? "bg-[#1a1a1a] border-gray-700"
-                                : "bg-[#303030] border-gray-600"
-                          }`}
+                          className={`p-6 rounded-xl border-2 min-w-[140px] ${isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : isUnavailable
+                              ? "bg-[#1a1a1a] border-gray-700"
+                              : "bg-[#303030] border-gray-600"
+                            }`}
                         >
                           <Text
-                            className={`text-2xl font-medium text-center ${
-                              isSelected
-                                ? "text-white"
-                                : isUnavailable
-                                  ? "text-gray-500"
-                                  : "text-white"
-                            }`}
+                            className={`text-2xl font-medium text-center ${isSelected
+                              ? "text-white"
+                              : isUnavailable
+                                ? "text-gray-500"
+                                : "text-white"
+                              }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-xl text-center mt-1 ${
-                                isSelected ? "text-blue-200" : "text-blue-400"
-                              }`}
+                              className={`text-xl text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+                                }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>

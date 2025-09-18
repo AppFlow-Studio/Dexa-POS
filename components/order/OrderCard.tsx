@@ -7,16 +7,18 @@ interface OrderCardProps {
   order: OrderProfile;
   onViewItems: () => void;
   onComplete: () => void;
+  onRetrieve?: () => void;
 }
 
 const OrderCard: React.FC<OrderCardProps> = ({
   order,
   onViewItems,
   onComplete,
+  onRetrieve,
 }) => {
-  const isReady = order.order_status === "Ready";
-  const statusBg = isReady ? "bg-[#2BAE7433]" : "bg-[#DC9F1E33]";
-  const statusText = isReady ? "text-[#2BAE74]" : "text-[#DC9F1E]";
+  const isReady = order.order_status === "Ready" || order.order_status === "Closed";
+  const statusBg = isReady ? "bg-blue-100" : "bg-[#DC9F1E33]";
+  const statusText = isReady ? "text-blue-700" : "text-[#DC9F1E]";
   const paidBg =
     order.paid_status === "Paid"
       ? "bg-green-100"
@@ -29,11 +31,12 @@ const OrderCard: React.FC<OrderCardProps> = ({
       : order.paid_status === "Pending"
         ? "text-yellow-700"
         : "text-red-700";
+  const isUnpaid = order.paid_status !== "Paid";
 
   return (
     <View className="bg-white p-4 rounded-2xl border border-background-400 w-72 mr-4">
       <View className="flex-row items-center gap-2">
-        <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg}`}>
+        <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg} `}>
           <Text className={`text-xs font-bold ${statusText}`}>
             {order.order_status}
           </Text>
@@ -78,6 +81,16 @@ const OrderCard: React.FC<OrderCardProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+      {isUnpaid && onRetrieve && (
+        <View className="mt-2">
+          <TouchableOpacity
+            onPress={onRetrieve}
+            className="px-5 py-2.5 bg-blue-600 rounded-xl"
+          >
+            <Text className="text-white font-bold text-center">Retrieve to Pay</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 };

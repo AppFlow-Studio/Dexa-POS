@@ -71,7 +71,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       };
     });
   },
-
   addTable: (tableData) => {
     const shape = TABLE_SHAPES[tableData.shapeId];
     if (!shape) return; // Safety check

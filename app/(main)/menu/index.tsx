@@ -792,7 +792,7 @@ const MenuPage: React.FC = () => {
                         : "Multiple"}
                     </Text>
                   </View>
-                  <View
+                  {/* <View
                     className={`px-4 py-2 rounded-full ${modifierGroup.source === "store" ? "bg-green-900/30 border border-green-500" : "bg-yellow-900/30 border border-yellow-500"}`}
                   >
                     <Text
@@ -800,7 +800,7 @@ const MenuPage: React.FC = () => {
                     >
                       {modifierGroup.source === "store" ? "Custom" : "Built-in"}
                     </Text>
-                  </View>
+                  </View> */}
                 </View>
 
                 <View className="flex-row items-center gap-2">

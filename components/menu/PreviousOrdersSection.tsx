@@ -133,6 +133,12 @@ const OrderRow: React.FC<OrderRowProps> = ({ order, onViewItems, onAssignToBill 
                         </TouchableOpacity>
                     </View>
 
+                    {order.paid_status !== "Paid" && (
+                        <View className="w-full">
+                            <RetrieveButton orderId={order.id} />
+                        </View>
+                    )}
+
                     <Text className="text-sm text-gray-400 text-right w-full">
                         {new Date(order.opened_at).toLocaleTimeString("en-US", {
                             hour: "2-digit",
@@ -142,6 +148,18 @@ const OrderRow: React.FC<OrderRowProps> = ({ order, onViewItems, onAssignToBill 
                 </View>
             </View>
         </View>
+    );
+};
+
+const RetrieveButton = ({ orderId }: { orderId: string }) => {
+    const { setActiveOrder } = useOrderStore();
+    return (
+        <TouchableOpacity
+            onPress={() => setActiveOrder(orderId)}
+            className="flex-row items-center justify-center p-3 rounded-lg bg-green-600"
+        >
+            <Text className="font-semibold text-white ml-2">Retrieve to Pay</Text>
+        </TouchableOpacity>
     );
 };
 
@@ -161,7 +179,7 @@ const PreviousOrdersSection = () => {
         if (activeTab === "All") {
             return allOrders;
         }
-        return allOrders.filter((o) => o.order_type === activeTab && o.items.length > 0 );
+        return allOrders.filter((o) => o.order_type === activeTab && o.items.length > 0);
     }, [allOrders, activeTab]);
 
     // Function passed to OrderTabs to update the state

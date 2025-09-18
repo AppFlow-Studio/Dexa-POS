@@ -10,7 +10,7 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  const { orders, markAllItemsAsReady } = useOrderStore();
+  const { orders, markAllItemsAsReady, setActiveOrder } = useOrderStore();
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
@@ -18,25 +18,24 @@ const OrderLineSection: React.FC = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const totalOrder = orders.filter(
-    (o) => o.order_status === "Preparing" || o.order_status === "Ready"
+    (o) =>
+      (o.order_status === "Preparing" || o.order_status === "Ready") ||
+      o.paid_status === "Paid"
   ).length;
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
-    // Show only orders that are in a "kitchen" state (not closed)
-    const kitchenOrders = orders.filter(
+    // Only show orders that were sent to kitchen (Preparing/Ready) or are fully paid
+    const visibleOrders = orders.filter(
       (o) =>
-        // Condition 1: Must be in Preparing or Ready state (not closed)
-        o.order_status === "Preparing" &&
-        // Condition 2: Must have one or more items
+        (o.order_status === "Preparing" || o.order_status === "Ready" || o.paid_status === "Paid") &&
         o.items.length > 0
     );
 
-    // This part of the logic remains the same
     if (activeTab === "All") {
-      return kitchenOrders;
+      return visibleOrders;
     }
-    return kitchenOrders.filter((o) => o.order_type === activeTab);
+    return visibleOrders.filter((o) => o.order_type === activeTab);
   }, [orders, activeTab]);
 
   // Ref to control the FlatList for scrolling
@@ -84,6 +83,10 @@ const OrderLineSection: React.FC = () => {
     markAllItemsAsReady(orderId);
   };
 
+  const handleRetrieve = (orderId: string) => {
+    setActiveOrder(orderId);
+  };
+
   return (
     <View>
       <View className="flex-row justify-between items-center">
@@ -121,6 +124,7 @@ const OrderLineSection: React.FC = () => {
             order={item}
             onViewItems={() => handleViewItems(item.id)}
             onComplete={() => handleCompleteOrder(item.id)}
+            onRetrieve={() => handleRetrieve(item.id)}
           />
         )}
         ListEmptyComponent={

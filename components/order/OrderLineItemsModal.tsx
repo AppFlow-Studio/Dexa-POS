@@ -18,12 +18,11 @@ const OrderLineItemsModal: React.FC<OrderLineItemsModalProps> = ({
 
   // This effect ensures that the payment modal's context is set to this order
   // so that the ItemsReviewView shows the correct data.
-  useEffect(() => {
-    if (isOpen && orderId) {
-      setActiveOrder(orderId);
-    }
-    return () => setActiveOrder(null); // Clean up on close
-  }, [isOpen, orderId, setActiveOrder]);
+  // useEffect(() => {
+  //   if (isOpen && orderId) {
+  //     setActiveOrder(orderId);
+  //   }
+  // }, [isOpen, orderId, setActiveOrder]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

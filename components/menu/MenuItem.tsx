@@ -63,8 +63,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   return (
     <TouchableOpacity
+      disabled={item.availability === false}
       onPress={handlePress}
-      className="w-[23%] rounded-[20px] mb-4 bg-[#303030] border border-gray-600"
+      className={`w-[23%] rounded-[20px] ${item.availability === false ? "opacity-50" : ""} mb-4 bg-[#303030] border border-gray-600`}
     >
       <View className="flex-col items-center gap-3 overflow-hidden rounded-lg">
         {imageSource ? (

@@ -80,7 +80,7 @@ interface MenuState {
 
 // Helper function to generate unique IDs
 let nextId = 1000;
-const generateId = () => `menu_${nextId++}`;
+const generateId = () => `${nextId++}`;
 
 let categoryId = 100;
 const generateCategoryId = () => `cat_${categoryId++}`;
@@ -635,6 +635,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     getItemPriceForCategory: (itemId, categoryId) => {
       const item = get().menuItems.find((item) => item.id === itemId);
+      console.log('item', itemId)
       if (!item) return 0;
 
       // Check for custom pricing for this category
