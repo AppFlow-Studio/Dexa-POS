@@ -22,7 +22,7 @@ import {
   Sofa,
   Table,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   ScrollView,
@@ -108,6 +108,29 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     });
     setFilteredMenuItems(filtered);
   }, [activeMeal, activeCategory, isCategoryAvailableNow, menuItems]);
+
+  // Logic to add spacer items for perfect grid alignment ---
+  const numColumns = 4;
+  const dataWithSpacers = useMemo(() => {
+    const items = [...filteredMenuItems];
+    const numberOfFullRows = Math.floor(items.length / numColumns);
+    let numberOfElementsLastRow = items.length - numberOfFullRows * numColumns;
+    while (
+      numberOfElementsLastRow !== numColumns &&
+      numberOfElementsLastRow !== 0
+    ) {
+      items.push({
+        id: `spacer-${numberOfElementsLastRow}`,
+        name: "spacer",
+        price: 0,
+        category: [],
+        meal: [],
+      }); // Add a dummy spacer item
+      numberOfElementsLastRow++;
+    }
+    return items;
+  }, [filteredMenuItems]);
+  // --- END FIX ---
 
   if (isOpen && mode === "fullscreen") {
     return <ModifierScreen />;
@@ -280,10 +303,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           {activeTab === "Menu" ? (
             <Animated.View key={"Menu"}>
               <FlatList
-                data={filteredMenuItems}
+                data={dataWithSpacers}
                 keyExtractor={(item) => item.id}
-                numColumns={4}
-                className="mt-4"
+                numColumns={numColumns}
+                className="mt-4 mb-[550px]"
                 showsVerticalScrollIndicator={false}
                 columnWrapperStyle={{
                   justifyContent: "space-between",
@@ -297,6 +320,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   </View>
                 }
                 renderItem={({ item }) => {
+                  if (item.name === "spacer") {
+                    return <View className="w-[23%]" />;
+                  }
+
                   const currentCategory = categories.find(
                     (cat) => cat.name === activeCategory
                   );
