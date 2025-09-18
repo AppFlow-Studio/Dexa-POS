@@ -36,90 +36,111 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
     <Link href={orderPath as Href} asChild>
       <TouchableOpacity
         activeOpacity={0.7}
-        className="flex-row items-center p-6 border-b border-gray-100"
+        className="flex-row items-center p-6 border-b border-gray-700"
       >
-        {/* Define widths for columns for alignment */}
-        <Text className="w-[8%] text-2xl font-semibold text-gray-600">
+        <Text
+          style={{ width: "9%" }}
+          className="text-lg font-semibold text-gray-300 px-2"
+        >
           {order.serialNo}
         </Text>
-        <View className="w-[10%]">
-          <Text className="text-xl text-gray-800 font-semibold">
+        <View style={{ width: "9%" }} className="px-2">
+          <Text className="text-xl text-white font-semibold">
             {order.orderDate}
           </Text>
-          <Text className="text-lg text-gray-500">{order.orderTime}</Text>
+          <Text className="text-lg text-gray-400">{order.orderTime}</Text>
         </View>
-        <Text className="w-[10%] text-2xl font-semibold text-gray-600">
-          {order.orderId.slice(0, 11)}...
+        <Text
+          style={{ width: "9%" }}
+          className="text-lg font-semibold text-gray-300 px-2"
+        >
+          {order.orderId}
         </Text>
-        <Text className="w-[12%] text-2xl font-semibold text-gray-800">
+        <Text
+          style={{ width: "12%" }}
+          className="text-lg font-semibold text-white px-2"
+        >
           {order.customer}
         </Text>
-        <View className="w-[12%]">
+        <View style={{ width: "9%" }} className="px-2">
           <View
             className={`px-3 py-2 rounded-full self-start ${statusClasses[order.paymentStatus]}`}
           >
             <Text
-              className={`font-bold text-xl ${statusClasses[order.paymentStatus]}`}
+              className={`font-bold text-lg ${statusClasses[order.paymentStatus]}`}
             >
               {order.paymentStatus}
             </Text>
           </View>
-          {order.refunded && (
-            <Text className="text-lg text-red-600 mt-1">Refunded</Text>
-          )}
         </View>
-
-        <Text className="w-[12%] text-2xl font-semibold text-gray-600">
+        <Text
+          style={{ width: "9%" }}
+          className="text-lg font-semibold text-gray-300 px-2"
+        >
           {order.server}
         </Text>
-
-        <Text className="w-[10%] text-2xl font-semibold text-gray-600 text-center">
+        <Text
+          style={{ width: "7%" }}
+          className="text-lg font-semibold text-gray-300 text-center px-2"
+        >
           {order.itemCount}
         </Text>
-        <Text className="w-[10%] text-2xl font-semibold text-gray-600">
+        <Text
+          style={{ width: "9%" }}
+          className="text-lg font-semibold text-gray-300 px-2"
+        >
           {order.type}
         </Text>
-        <View className="w-[10%]">
-          <Text className="text-2xl font-bold text-gray-800">
+        <View style={{ width: "9%" }}>
+          <Text className="text-lg font-bold text-white px-2">
             ${order.total.toFixed(2)}
           </Text>
           {order.refundedAmount != null && order.refundedAmount > 0 && (
-            <Text className="text-lg text-red-600">
-              Refunded: ${order.refundedAmount.toFixed(2)}
+            <Text className="text-lg text-red-400">
+              -${order.refundedAmount.toFixed(2)}
             </Text>
           )}
         </View>
-
-        <View className="w-[10%]" onTouchStart={(e) => e.stopPropagation()}>
+        <View
+          style={{ width: "12%" }}
+          onTouchStart={(e) => e.stopPropagation()}
+        >
           <TouchableOpacity
             onPress={() => onViewNotes(order)}
-            className="flex-row items-center gap-1 bg-blue-50 py-2 px-3 rounded-md self-start"
+            className="flex-row items-center justify-center gap-1 bg-blue-900/30 border border-blue-500 py-3 px-3 rounded-lg self-start"
           >
-            <Text className="font-bold text-lg text-blue-600">Notes</Text>
-            <Pencil size={16} color="#2563eb" />
+            <Text className="font-bold text-xl text-blue-400">Notes</Text>
+            <Pencil size={20} color="#60A5FA" />
           </TouchableOpacity>
         </View>
-        <View className="w-[6%] items-end">
+        <View style={{ width: "5%" }} className="items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-2">
-                <MoreHorizontal color="#6b7280" />
+                <MoreHorizontal color="#9CA3AF" />
               </TouchableOpacity>
             </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-48">
-              {/* Pass the whole order object to each handler */}
-              <DropdownMenuItem onPress={() => onViewNotes(order)}>
-                <Pencil className="mr-2 h-6 w-6" color="#4b5563" />
-                <Text className="text-2xl">View Modifiers</Text>
+            <DropdownMenuContent className="w-56 bg-[#303030] border-gray-600">
+              <DropdownMenuItem
+                onTouchStart={(e) => e.stopPropagation()}
+                onPress={() => onViewNotes(order)}
+              >
+                <Pencil className="mr-2 h-6 w-6" color="#9CA3AF" />
+                <Text className="text-2xl text-white">View Modifiers</Text>
               </DropdownMenuItem>
-              <DropdownMenuItem onPress={() => onPrint(order)}>
-                <Printer className="mr-2 h-6 w-6" color="#4b5563" />
-                <Text className="text-2xl">Print Receipt</Text>
+              <DropdownMenuItem
+                onTouchStart={(e) => e.stopPropagation()}
+                onPress={() => onPrint(order)}
+              >
+                <Printer className="mr-2 h-6 w-6" color="#9CA3AF" />
+                <Text className="text-2xl text-white">Print Receipt</Text>
               </DropdownMenuItem>
-
-              <DropdownMenuItem onPress={() => onDelete(order)}>
-                <Trash2 className="mr-2 h-6 w-6 text-red-500" color="#ef4444" />
-                <Text className="text-2xl text-red-500">Delete</Text>
+              <DropdownMenuItem
+                onTouchStart={(e) => e.stopPropagation()}
+                onPress={() => onDelete(order)}
+              >
+                <Trash2 className="mr-2 h-6 w-6 text-red-400" color="#F87171" />
+                <Text className="text-2xl text-red-400">Delete</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

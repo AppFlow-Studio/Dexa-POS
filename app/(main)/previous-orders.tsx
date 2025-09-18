@@ -91,46 +91,44 @@ const PreviousOrdersScreen = () => {
   return (
     <View className="flex-1 p-6 bg-[#212121]">
       {/* Toolbar */}
-      <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center bg-background-300 border border-background-400 rounded-lg px-4 w-[400px]">
-          <Search color="#6b7280" size={24} />
+      <View className="flex-row items-center justify-between mb-6">
+        <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-4 w-[450px]">
+          <Search color="#9CA3AF" size={24} />
           <TextInput
-            placeholder="Search Order"
-            className="ml-3 text-2xl flex-1"
+            placeholder="Search Order ID or Customer Name..."
+            placeholderTextColor="#9CA3AF"
             value={searchText}
             onChangeText={setSearchText}
+            className="ml-3 text-2xl h-16 flex-1 text-white"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Table */}
-      <View className="flex-1">
+      <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
         {/* Table Header */}
-        <View className="flex-row p-6 rounded-t-xl border-b border-background-200">
-          {TABLE_HEADERS.map((header, index) => {
-            const widths: Record<number, string> = {
-              0: "w-[8%]",
-              1: "w-[10%]",
-              2: "w-[10%]",
-              3: "w-[12%]",
-              4: "w-[12%]",
-              5: "w-[12%]",
-              6: "w-[10%]",
-              7: "w-[10%]",
-              8: "w-[10%]",
-              9: "w-[10%]",
-              10: "w-[6%]",
-            };
-            return (
-              <Text
-                key={header}
-                className={`font-bold text-xl text-gray-500 ${widths[index]}`}
-              >
-                {header}
-              </Text>
-            );
-          })}
+        <View className="flex-row p-6 border-b border-gray-700">
+          {TABLE_HEADERS.map((header, index) => (
+            <Text
+              key={header}
+              className="font-bold text-xl text-gray-400"
+              style={{
+                width:
+                  header === "Order Notes"
+                    ? "12%"
+                    : header === "Customer"
+                      ? "12%"
+                      : header === ""
+                        ? "5%"
+                        : header === "Items"
+                          ? "7%"
+                          : "9%",
+              }}
+            >
+              {header}
+            </Text>
+          ))}
         </View>
         {/* Table Body */}
         <FlatList
@@ -144,6 +142,13 @@ const PreviousOrdersScreen = () => {
               onPrint={() => handleOpenPrint(item)}
             />
           )}
+          ListEmptyComponent={
+            <View className="items-center justify-center py-10">
+              <Text className="text-2xl text-gray-500">
+                No orders found for this date.
+              </Text>
+            </View>
+          }
         />
       </View>
 

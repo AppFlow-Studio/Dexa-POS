@@ -2,6 +2,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 
 const OpenItemAdder = () => {
   const { activeOrderId, addItemToActiveOrder, orders } = useOrderStore();
@@ -147,7 +148,7 @@ const OpenItemAdder = () => {
     );
   };
   return (
-    <View className="flex-1 bg-[#212121] p-6">
+    <ScrollView className="flex-1 bg-[#212121] py-6">
       <Text className="text-3xl font-bold text-white mb-3">Add Open Item</Text>
 
       {/* Item Name Input */}
@@ -183,11 +184,11 @@ const OpenItemAdder = () => {
       {/* Add Button */}
       <TouchableOpacity
         onPress={handleAddOpenItem}
-        className="bg-blue-600 rounded-lg py-4 items-center"
+        className="bg-blue-600 rounded-lg py-4 items-center mb-10"
       >
         <Text className="text-2xl font-bold text-white">Add Item</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 };
 

@@ -1,6 +1,7 @@
 import { CartItem, PreviousOrder } from "@/lib/types";
+import { X } from "lucide-react-native";
 import React from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 interface OrderNotesModalProps {
@@ -8,35 +9,44 @@ interface OrderNotesModalProps {
   onClose: () => void;
   order: PreviousOrder | null;
 }
+
 const ModifierItem = ({ item }: { item: CartItem }) => (
-  <View className="border-b border-gray-100 pb-4">
+  <View className="border-b border-gray-700 pb-4">
     <View className="flex-row justify-between items-center">
-      <Text className="text-lg font-bold text-gray-800">{item.name}</Text>
-      <Text className="font-semibold text-gray-600">{item.quantity} PCs</Text>
+      <Text className="text-2xl font-bold text-white">{item.name}</Text>
+      <Text className="font-semibold text-xl text-gray-300">
+        {item.quantity} PCs
+      </Text>
     </View>
 
-    {item.customizations?.addOns && item.customizations.addOns.length > 0 && (
-      <View className="mt-2">
-        <Text className="font-bold text-gray-600 mb-2">Add-ons</Text>
-        <View className="flex-row flex-wrap gap-2">
-          {item.customizations.addOns.map((addon) => (
-            <View
-              key={addon.id}
-              className="py-2 px-3 bg-white border border-gray-200 rounded-lg"
-            >
-              <Text className="text-gray-700 font-semibold">
-                {addon.name} + ${addon.price.toFixed(2)}
+    {item.customizations?.modifiers &&
+      item.customizations.modifiers.length > 0 && (
+        <View className="mt-2">
+          {item.customizations.modifiers.map((mod, index) => (
+            <View key={index} className="mt-1">
+              <Text className="font-bold text-lg text-gray-400">
+                {mod.categoryName}:
+              </Text>
+              <Text className="text-lg text-gray-300 ml-2">
+                {mod.options
+                  .map(
+                    (opt) =>
+                      `${opt.name}${opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""}`
+                  )
+                  .join(", ")}
               </Text>
             </View>
           ))}
         </View>
-      </View>
-    )}
+      )}
+
     {item.customizations?.notes && (
       <View className="mt-2">
-        <Text className="font-bold text-gray-600 mb-2">Notes</Text>
-        <View className="p-3 bg-white border border-gray-200 rounded-lg">
-          <Text className="text-gray-500">{item.customizations.notes}</Text>
+        <Text className="font-bold text-lg text-gray-400 mb-1">Notes:</Text>
+        <View className="p-3 bg-[#212121] border border-gray-700 rounded-lg">
+          <Text className="text-lg text-gray-300 italic">
+            {item.customizations.notes}
+          </Text>
         </View>
       </View>
     )}
@@ -48,24 +58,31 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
   onClose,
   order,
 }) => {
+  if (!order) return null;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl w-full p-6 rounded-2xl bg-gray-50">
-        <DialogHeader className="flex-row justify-between items-center mb-4">
-          <DialogTitle className="text-2xl font-bold text-gray-800">
-            Modifiers
+      <DialogContent className="max-w-2xl w-full p-0 rounded-2xl bg-[#303030] border-gray-700">
+        <DialogHeader className="flex-row justify-between items-center p-6 border-b border-gray-700">
+          <DialogTitle className="text-3xl font-bold text-white">
+            Order Notes & Modifiers
           </DialogTitle>
-          <Text className="text-lg font-semibold text-gray-600">
-            Total ${order?.total.toFixed(2)}
-          </Text>
+          <TouchableOpacity onPress={onClose} className="p-2">
+            <X color="#9CA3AF" size={24} />
+          </TouchableOpacity>
         </DialogHeader>
-        <ScrollView className="max-h-[70vh]">
-          <View className="space-y-4">
-            {order?.items.map((item) => (
-              <ModifierItem key={item.id} item={item} />
-            ))}
-          </View>
-        </ScrollView>
+        <View className="p-6">
+          <Text className="text-xl font-semibold text-gray-400 mb-4">
+            Order #{order.orderId} - Total ${order.total.toFixed(2)}
+          </Text>
+          <ScrollView className="max-h-[60vh]">
+            <View className="space-y-4">
+              {order.items.map((item) => (
+                <ModifierItem key={item.id} item={item} />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
       </DialogContent>
     </Dialog>
   );

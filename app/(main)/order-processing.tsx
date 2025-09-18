@@ -91,7 +91,7 @@ const OrderProcessing = () => {
             type="single"
             collapsible
             onValueChange={(value: string | undefined) =>
-              setIsAccordionOpen(value === "orders")
+              setIsAccordionOpen(!!value)
             }
           >
             <AccordionItem value="orders">
@@ -101,7 +101,7 @@ const OrderProcessing = () => {
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-full justify-center items-center p-2">
+                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-2 h-10 w-10">
                       <Text className="text-xl font-bold text-white">
                         {filteredOrders.length}
                       </Text>

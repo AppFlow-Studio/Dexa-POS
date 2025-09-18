@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function MainLayout() {
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
     >
       <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">

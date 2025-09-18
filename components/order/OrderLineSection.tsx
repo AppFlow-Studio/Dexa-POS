@@ -87,19 +87,19 @@ const OrderLineSection: React.FC = () => {
   return (
     <View>
       <View className="flex-row justify-between items-center">
-        <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder || 0} />
+        <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder} />
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-2 bg-white border border-gray-200 rounded-full"
+            className="p-3 bg-[#303030] border border-gray-600 rounded-full"
           >
-            <ChevronLeft color="#374151" size={20} />
+            <ChevronLeft color="#9CA3AF" size={24} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}
-            className="p-2 bg-blue-500 rounded-full"
+            className="p-3 bg-blue-600 rounded-full"
           >
-            <ChevronRight color="#FFFFFF" size={20} />
+            <ChevronRight color="#FFFFFF" size={24} />
           </TouchableOpacity>
         </View>
       </View>
@@ -125,7 +125,9 @@ const OrderLineSection: React.FC = () => {
         )}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center w-full">
-            <Text className="text-gray-500">No orders for this category.</Text>
+            <Text className="text-2xl text-gray-400">
+              No orders for this category.
+            </Text>
           </View>
         }
       />

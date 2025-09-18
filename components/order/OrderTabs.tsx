@@ -29,27 +29,27 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
   };
 
   return (
-    <View className="bg-background-300 border border-background-400 p-1 rounded-xl flex-row self-start">
+    <View className="bg-[#303030] border border-gray-700 p-2 rounded-xl flex-row self-start">
       {TABS.map((tab) => {
         const isActive = activeWindow === tab.name;
         return (
           <Pressable
             key={tab.name}
             onPress={() => handlePress(tab.name)}
-            className={`py-2.5 px-4 rounded-lg flex-row items-center ${
-              isActive ? "bg-white" : ""
+            className={`py-3 px-6 rounded-lg flex-row items-center ${
+              isActive ? "bg-[#212121]" : ""
             }`}
           >
             <Text
-              className={`font-semibold ${
-                isActive ? "text-primary-400" : "text-accent-400"
+              className={`font-semibold text-2xl ${
+                isActive ? "text-blue-400" : "text-gray-400"
               }`}
             >
               {tab.name}
             </Text>
             {tab.count !== undefined && tab.count > 0 && (
-              <View className="bg-primary-400 rounded-full w-6 h-6 items-center justify-center ml-2">
-                <Text className="text-white font-bold text-xs">
+              <View className="bg-blue-600 rounded-md w-8 h-8 items-center justify-center ml-2">
+                <Text className="text-white font-bold text-xl">
                   {String(tab.count)}
                 </Text>
               </View>

@@ -23,7 +23,7 @@ import {
 const generateTitleFromPath = (pathname: string): string => {
   if (pathname === "/" || pathname === "/home") return "Menu";
   if (pathname === "/order-processing") return "Back to Menu";
-
+  if (pathname.startsWith("/previous-orders")) return "Back to Menu";
   if (pathname.startsWith("/inventory/vendors")) return "Vendors";
   if (pathname.startsWith("/inventory/purchase-orders"))
     return "Purchase Orders";

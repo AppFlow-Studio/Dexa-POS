@@ -71,12 +71,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
   const [activeTab, setActiveTab] = useState("Menu");
-  const [activeMeal, setActiveMeal] = useState(menus[0].name);
-  const [activeCategory, setActiveCategory] = useState(menus[0].categories[0]);
-  const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
-  const { isOpen, mode, cartItem, close } = useModifierSidebarStore();
 
-  // State to hold the items that are actually displayed after filtering
+  // FIX: Initialize state safely
+  const [activeMeal, setActiveMeal] = useState("");
+  const [activeCategory, setActiveCategory] = useState("");
+
+  const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
+  const { isOpen, mode } = useModifierSidebarStore();
+
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
   );
@@ -84,6 +86,17 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
+
+  // Use useEffect to safely set initial state once menus are loaded
+  useEffect(() => {
+    if (menus && menus.length > 0 && !activeMeal) {
+      const initialMenu = menus[0];
+      setActiveMeal(initialMenu.name);
+      if (initialMenu.categories && initialMenu.categories.length > 0) {
+        setActiveCategory(initialMenu.categories[0]);
+      }
+    }
+  }, [menus, activeMeal]);
 
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
@@ -100,37 +113,40 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   };
 
   useEffect(() => {
-    const filtered = menuItems.filter((item) => {
-      const categoryMatch =
-        Array.isArray(item.category) && item.category.includes(activeCategory);
-      const categoryAvailable = isCategoryAvailableNow(activeCategory);
-      return categoryMatch && categoryAvailable;
-    });
-    setFilteredMenuItems(filtered);
+    if (activeCategory) {
+      // Only filter if activeCategory is set
+      const filtered = menuItems.filter((item) => {
+        const categoryMatch =
+          Array.isArray(item.category) &&
+          item.category.includes(activeCategory);
+        const categoryAvailable = isCategoryAvailableNow(activeCategory);
+        return categoryMatch && categoryAvailable;
+      });
+      setFilteredMenuItems(filtered);
+    } else {
+      setFilteredMenuItems([]);
+    }
   }, [activeMeal, activeCategory, isCategoryAvailableNow, menuItems]);
 
-  // Logic to add spacer items for perfect grid alignment ---
   const numColumns = 4;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
-    const numberOfFullRows = Math.floor(items.length / numColumns);
-    let numberOfElementsLastRow = items.length - numberOfFullRows * numColumns;
-    while (
-      numberOfElementsLastRow !== numColumns &&
-      numberOfElementsLastRow !== 0
-    ) {
+    const numberOfElementsLastRow = items.length % numColumns;
+    if (numberOfElementsLastRow === 0) {
+      return items;
+    }
+    const numberOfSpacers = numColumns - numberOfElementsLastRow;
+    for (let i = 0; i < numberOfSpacers; i++) {
       items.push({
-        id: `spacer-${numberOfElementsLastRow}`,
+        id: `spacer-${i}`,
         name: "spacer",
         price: 0,
         category: [],
         meal: [],
-      }); // Add a dummy spacer item
-      numberOfElementsLastRow++;
+      });
     }
     return items;
   }, [filteredMenuItems]);
-  // --- END FIX ---
 
   if (isOpen && mode === "fullscreen") {
     return <ModifierScreen />;
@@ -138,8 +154,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   return (
     <>
-      <View className="mt-6 bg-[#212121]">
-        <View className="flex flex-row items-center justify-between pb-4">
+      <View className="mt-6 flex-1 bg-[#212121]">
+        <View className="flex flex-row items-center justify-between pb-4 px-4">
           <View className="flex-row items-center gap-4">
             <Text className="text-2xl font-bold text-white">Menu</Text>
             {/* Order Type Button */}
@@ -285,7 +301,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        <View className="w-full">
+        <View className="flex-1 px-4">
           {activeTab === "Menu" && (
             <MenuControls
               activeMeal={activeMeal}
@@ -306,7 +322,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 data={dataWithSpacers}
                 keyExtractor={(item) => item.id}
                 numColumns={numColumns}
-                className="mt-4 mb-[550px]"
+                className="mt-4 mb-20"
                 showsVerticalScrollIndicator={false}
                 columnWrapperStyle={{
                   justifyContent: "space-between",

@@ -15,68 +15,70 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onComplete,
 }) => {
   const isReady = order.order_status === "Ready";
-  const statusBg = isReady ? "bg-[#2BAE7433]" : "bg-[#DC9F1E33]";
-  const statusText = isReady ? "text-[#2BAE74]" : "text-[#DC9F1E]";
+  const statusBg = isReady ? "bg-green-500/20" : "bg-yellow-500/20";
+  const statusText = isReady ? "text-green-400" : "text-yellow-400";
   const paidBg =
     order.paid_status === "Paid"
-      ? "bg-green-100"
+      ? "bg-green-500/20"
       : order.paid_status === "Pending"
-        ? "bg-yellow-100"
-        : "bg-red-100";
+        ? "bg-yellow-500/20"
+        : "bg-red-500/20";
   const paidText =
     order.paid_status === "Paid"
-      ? "text-green-700"
+      ? "text-green-400"
       : order.paid_status === "Pending"
-        ? "text-yellow-700"
-        : "text-red-700";
+        ? "text-yellow-400"
+        : "text-red-400";
 
   return (
-    <View className="bg-white p-4 rounded-2xl border border-background-400 w-72 mr-4">
+    <View className="bg-[#303030] p-4 rounded-2xl border border-gray-700 w-80 mr-4">
       <View className="flex-row items-center gap-2">
-        <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg}`}>
-          <Text className={`text-xs font-bold ${statusText}`}>
+        <View className={`px-3 py-1 rounded-full self-start ${statusBg}`}>
+          <Text className={`text-lg font-bold ${statusText}`}>
             {order.order_status}
           </Text>
         </View>
-        <View className={`px-2.5 py-1 rounded-3xl self-start ${paidBg}`}>
-          <Text className={`text-xs font-bold ${paidText}`}>
+        <View className={`px-3 py-1 rounded-full self-start ${paidBg}`}>
+          <Text className={`text-lg font-bold ${paidText}`}>
             {order.paid_status}
           </Text>
         </View>
       </View>
-      <Text className="text-lg font-bold text-accent-500 mt-2">
+      <Text className="text-2xl font-bold text-white mt-2">
         {order.customer_name || "Walk-In"} #{order.id.slice(-5)}
       </Text>
       <View className="flex-row justify-between mt-2">
-        <Text className="text-sm text-accent-500 ">
+        <Text className="text-xl text-gray-400 ">
           {order.order_type}
           {order.service_location_id && (
-            <>• Table {order.service_location_id}</>
+            <> • Table {order.service_location_id}</>
           )}
         </Text>
-        <Text className="text-sm text-accent-500">
+        <Text className="text-xl text-gray-400">
           {new Date(order.opened_at).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
           })}
         </Text>
       </View>
-      <View className="flex-row justify-between items-center mt-2">
-        <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={onViewItems}
-            className="flex-row items-center justify-center p-2.5 rounded-xl border border-background-500"
-          >
-            <Text className="font-semibold text-[#282828] mr-1">Item</Text>
-            <ArrowUpRight color="#4b5563" size={16} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onComplete}
-            className="px-5 py-2.5 bg-primary-400 rounded-xl flex-1"
-          >
-            <Text className="text-white font-bold text-center">Complete</Text>
-          </TouchableOpacity>
-        </View>
+      <View className="flex-row justify-between items-center mt-4">
+        <TouchableOpacity
+          onPress={onViewItems}
+          className="flex-row items-center justify-center p-3 rounded-xl border border-gray-600 bg-[#212121]"
+        >
+          <Text className="font-semibold text-white text-lg mr-1">
+            View Items
+          </Text>
+          <ArrowUpRight color="#FFFFFF" size={20} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onComplete}
+          className="px-5 py-3 bg-blue-600 rounded-xl flex-1 ml-2"
+        >
+          <Text className="text-white font-bold text-center text-lg">
+            Complete
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
