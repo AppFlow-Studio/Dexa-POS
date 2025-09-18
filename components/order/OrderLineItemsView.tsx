@@ -1,7 +1,7 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import BillItem from "../bill/BillItem";
+import ReadOnlyBillItem from "./ReadOnlyBillItem";
 
 // FIX: Update props to accept a specific orderId
 interface OrderLineItemsViewProps {
@@ -93,17 +93,16 @@ const OrderLineItemsView = ({ onClose, orderId }: { onClose: () => void, orderId
         </View>
       </View>
       <ScrollView
-        className="max-h-[350px] mb-4"
+        className="max-h-[400px] mb-4"
         contentContainerClassName="gap-y-2"
         showsVerticalScrollIndicator={false}
       >
         {items.map((item) => (
-          <BillItem
+          <ReadOnlyBillItem
             key={item.id}
             item={item}
             expandedItemId={expandedItemId}
             onToggleExpand={handleToggleExpand}
-            isEditable={false}
           />
         ))}
       </ScrollView>

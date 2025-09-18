@@ -16,13 +16,11 @@ import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Link } from "expo-router";
 import {
   ChevronDown,
-  Computer,
-  Globe,
   Logs,
   PackagePlus,
   Search,
   Sofa,
-  Table,
+  Table
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -42,26 +40,28 @@ import ModifierScreen from "./ModifierScreen";
 import OpenItemAdder from "./OpenItemAdder";
 import OrderTypeDrawer from "./OrderTypeDrawer";
 import PreviousOrdersSection from "./PreviousOrdersSection";
-
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
 }
-
+// Get image source for preview
 const getImageSource = (item: MenuItemType) => {
   if (item.image && item.image.length > 200) {
     return { uri: `data:image/jpeg;base64,${item.image}` };
   }
+
   if (item.image) {
+    // Try to get image from assets
     try {
       return MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP];
     } catch {
       return undefined;
     }
   }
+
   return undefined;
 };
-
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
+  // State for the active filters
   const {
     menuItems,
     menus,
@@ -73,19 +73,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
   const [activeTab, setActiveTab] = useState("Menu");
-
-  // FIX: Initialize state safely
-  const [activeMeal, setActiveMeal] = useState("");
-  const [activeCategory, setActiveCategory] = useState("");
-
+  const [activeMeal, setActiveMeal] = useState(menus[0].name);
+  const [activeCategory, setActiveCategory] = useState(menus[0].categories[0]);
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
-  const { isOpen, mode } = useModifierSidebarStore();
+  const { isOpen, mode, cartItem, close } = useModifierSidebarStore();
 
+  // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
   );
   const { openSearch } = useSearchStore();
 
+  // Get current order type
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
   const handleOrderTypeSelect = (orderType: string) => {
@@ -101,23 +100,15 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     );
     setIsMenuDialogOpen(false);
   };
-
+  
   useEffect(() => {
-    if (activeCategory) {
-      // Only filter if activeCategory is set
-      const filtered = menuItems.filter((item) => {
-        const categoryMatch =
-          Array.isArray(item.category) &&
-          item.category.includes(activeCategory);
-        const categoryAvailable = isCategoryAvailableNow(activeCategory);
-        return categoryMatch && categoryAvailable;
-      });
-      setFilteredMenuItems(filtered);
-    } else {
-      setFilteredMenuItems([]);
-    }
-  }, [activeMeal, activeCategory, isCategoryAvailableNow, menuItems]);
-
+    const filtered = menuItems.filter((item) => {
+      const categoryMatch = item.category.includes(activeCategory);
+      const categoryAvailable = isCategoryAvailableNow(activeCategory);
+      return categoryMatch && categoryAvailable;
+    });
+    setFilteredMenuItems(filtered);
+  }, [activeMeal, activeCategory, isCategoryAvailableNow]);
   const numColumns = 4;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
@@ -137,14 +128,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     }
     return items;
   }, [filteredMenuItems]);
-
+  // Show modifier screen when in fullscreen mode (both add and edit), otherwise show regular menu
   if (isOpen && mode === "fullscreen") {
     return <ModifierScreen />;
   }
 
   return (
     <>
-      <Animated.View className="mt-6 flex-1 bg-[#212121]">
+      <View className="mt-6 flex-1 bg-[#212121]">
         <View className="flex flex-row items-center justify-between pb-4 px-4">
           <View className="flex-row items-center gap-4">
             <Text className="text-2xl font-bold text-white">Menu</Text>
@@ -212,14 +203,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 <Text className="text-gray-300 ml-4">Orders</Text>
               </TouchableOpacity>
             </View>
-            <Link href="/online-orders" asChild>
-              <TouchableOpacity
-                onPress={() => setActiveTab("Orders")}
-                className={`flex-row items-center w-fit bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
-              >
-                <Globe color="#9CA3AF" size={24} />
-              </TouchableOpacity>
-            </Link>
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
@@ -294,58 +277,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        {activeTab === "Menu" && (
-          <MenuControls
-            activeMeal={activeMeal}
-            onMealChange={(value) => {
-              setActiveMeal(value);
-              setActiveCategory(
-                menus.find((menu) => menu.name === value)?.categories[0] || ""
-              );
-            }}
-            activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
-          />
-        )}
-
-        {activeTab === "Menu" ? (
-          <Animated.View key={"Menu"}>
-            <FlatList
-              data={filteredMenuItems}
-              keyExtractor={(item) => item.id}
-              numColumns={4}
-              className="mt-4 flex"
-              contentContainerStyle={{
-                marginLeft: "auto",
-                width: "99%",
-                paddingBottom: 150,
-                alignSelf: "center",
-              }}
-              showsVerticalScrollIndicator={false}
-              columnWrapperStyle={{ gap: 16 }}
-              removeClippedSubviews={false}
-              ListEmptyComponent={
-                <View className="flex-1 items-center justify-center h-48">
-                  <Text className="text-gray-400 text-lg">
-                    No items match the current filters.
-                  </Text>
-                </View>
-              }
-              renderItem={({ item }) => {
-                // Find the current category ID
-                const currentCategory = categories.find(
-                  (cat) => cat.name === activeCategory
-                );
-                const categoryId = currentCategory?.id;
-
-                return (
-                  <MenuItem
-                    item={item}
-                    imageSource={getImageSource(item)}
-                    onOrderClosedCheck={onOrderClosedCheck}
-                    categoryId={categoryId}
-                    getItemPriceForCategory={getItemPriceForCategory}
-                  />
+        <View className="flex-1 px-4">
+          {activeTab === "Menu" && (
+            <MenuControls
+              activeMeal={activeMeal}
+              onMealChange={(value) => {
+                setActiveMeal(value);
+                setActiveCategory(
+                  menus.find((menu) => menu.name === value)?.categories[0] || ""
                 );
               }}
               activeCategory={activeCategory}
@@ -353,69 +292,70 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             />
           )}
 
-            {activeTab === "Menu" ? (
-              <Animated.View key={"Menu"}>
-                <FlatList
-                  data={dataWithSpacers}
-                  keyExtractor={(item) => item.id}
-                  numColumns={numColumns}
-                  className="mt-4 mb-20"
-                  showsVerticalScrollIndicator={false}
-                  columnWrapperStyle={{
-                    justifyContent: "space-between",
-                    marginBottom: 16,
-                  }}
-                  ListEmptyComponent={
-                    <View className="flex-1 items-center justify-center h-48">
-                      <Text className="text-gray-400 text-lg">
-                        No items match the current filters.
-                      </Text>
-                    </View>
+          {activeTab === "Menu" ? (
+            <Animated.View key={"Menu"}>
+              <FlatList
+                data={dataWithSpacers}
+                keyExtractor={(item) => item.id}
+                numColumns={numColumns}
+                className="mt-4 mb-20"
+                showsVerticalScrollIndicator={false}
+                columnWrapperStyle={{
+                  justifyContent: "space-between",
+                  marginBottom: 16,
+                }}
+                ListEmptyComponent={
+                  <View className="flex-1 items-center justify-center h-48">
+                    <Text className="text-gray-400 text-lg">
+                      No items match the current filters.
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  if (item.name === "spacer") {
+                    return <View className="w-[23%]" />;
                   }
-                  renderItem={({ item }) => {
-                    if (item.name === "spacer") {
-                      return <View className="w-[23%]" />;
-                    }
 
-                    const currentCategory = categories.find(
-                      (cat) => cat.name === activeCategory
-                    );
-                    const categoryId = currentCategory?.id;
-                    return (
-                      <MenuItem
-                        item={item}
-                        imageSource={getImageSource(item)}
-                        onOrderClosedCheck={onOrderClosedCheck}
-                        categoryId={categoryId}
-                        getItemPriceForCategory={getItemPriceForCategory}
-                      />
-                    );
-                  }}
-                />
-              </Animated.View>
-            ) : activeTab === "Open Item" ? (
-              <Animated.View
-                key={"Open Item"}
-                className={"flex-1"}
-                layout={FadingTransition.reduceMotion(ReduceMotion.Never)
-                  .duration(1000)
-                  .delay(500)}
-              >
-                <OpenItemAdder />
-              </Animated.View>
-            ) : activeTab === "Orders" ? (
-              <Animated.View
-                key={"Orders"}
-                layout={FadingTransition.duration(1000).delay(500)}
-                className="flex-1"
-              >
-                <PreviousOrdersSection />
-              </Animated.View>
-            ) : null}
-          </Animated.View>
-        )}
+                  const currentCategory = categories.find(
+                    (cat) => cat.name === activeCategory
+                  );
+                  const categoryId = currentCategory?.id;
+                  return (
+                    <MenuItem
+                      item={item}
+                      imageSource={getImageSource(item)}
+                      onOrderClosedCheck={onOrderClosedCheck}
+                      categoryId={categoryId}
+                      getItemPriceForCategory={getItemPriceForCategory}
+                    />
+                  );
+                }}
+              />
+            </Animated.View>
+          ) : activeTab === "Open Item" ? (
+            <Animated.View
+              key={"Open Item"}
+              className={"flex-1"}
+              layout={FadingTransition.reduceMotion(ReduceMotion.Never)
+                .duration(1000)
+                .delay(500)}
+            >
+              <OpenItemAdder />
+            </Animated.View>
+          ) : activeTab === "Orders" ? (
+            <Animated.View
+              key={"Orders"}
+              layout={FadingTransition.duration(1000).delay(500)}
+              className="flex-1"
+            >
+              <PreviousOrdersSection />
+            </Animated.View>
+          ) : null}
+        </View>
       </View>
 
+
+      {/* Order Type Drawer */}
       <OrderTypeDrawer
         isVisible={isOrderTypeDrawerOpen}
         onClose={closeDrawer}

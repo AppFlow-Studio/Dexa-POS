@@ -1022,15 +1022,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         });
       } catch { }
     },
-    transferOrderToTable: (orderId, newTableId) => {
-      set((state) => ({
-        orders: state.orders.map((order) =>
-          order.id === orderId
-            ? { ...order, service_location_id: newTableId }
-            : order
-        ),
-      }));
-    },
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);
     },
