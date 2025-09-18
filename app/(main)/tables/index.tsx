@@ -1,32 +1,21 @@
-import DraggableTable from "@/components/tables/DraggableTable";
+import { GuestCountModal } from "@/components/tables/GuestCountModal";
+import TableLayoutView from "@/components/tables/TableLayoutView";
 import TableListItem from "@/components/tables/TableListItem";
-import { MOCK_TABLES } from "@/lib/mockData";
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { router } from "expo-router";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { Href, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
-import Svg, { Line } from "react-native-svg";
 
-type TablePositions = {
-  [key: string]: { x: number; y: number };
-};
-
-// Reusable Select Component (can be moved to its own file)
 const ReusableSelect = ({
   options,
   placeholder,
@@ -41,56 +30,39 @@ const ReusableSelect = ({
 );
 
 const TablesScreen = () => {
+  const router = useRouter();
+  const {
+    layouts,
+    activeLayoutId,
+    setActiveLayout,
+    selectedTableIds,
+    toggleTableSelection,
+    clearSelection,
+  } = useFloorPlanStore();
+  const { startNewOrder, setActiveOrder, orders, activeOrderId } =
+    useOrderStore();
+
   const [searchText, setSearchText] = useState("");
   const [searchCustomerText, setSearchCustomerText] = useState("");
-
   const [statusFilter, setStatusFilter] = useState("All Table");
   const [capacityFilter, setCapacityFilter] = useState("All Capacity");
-  const [tablePositions, setTablePositions] = useState<TablePositions>({});
-  const [isEditMode, setIsEditMode] = useState(false);
-  const { tables, updateTablePosition, updateTableStatus } =
-    useFloorPlanStore();
-  const { orders } = useOrderStore();
+  const [isJoinMode, setIsJoinMode] = useState(false);
+  const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
-  const scale = useSharedValue(1);
-  const savedScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
+  useEffect(() => {
+    if (!activeLayoutId && layouts.length > 0) {
+      setActiveLayout(layouts[0].id);
+    }
+    clearSelection();
+  }, [activeLayoutId, layouts, setActiveLayout, clearSelection]);
 
-  const panGesture = Gesture.Pan()
-    .enabled(!isEditMode) // Disable panning the whole canvas if we are editing a single table
-    .onUpdate((e) => {
-      translateX.value = savedTranslateX.value + e.translationX;
-      translateY.value = savedTranslateY.value + e.translationY;
-    })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
-    });
-
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((e) => {
-      scale.value = savedScale.value * e.scale;
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value;
-    });
-
-  // Combine gestures
-  const combinedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
-
-  // 4. Create the animated style for the canvas container
-  const canvasAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-      { scale: scale.value },
-    ],
-  }));
+  const activeLayout = useMemo(
+    () => layouts.find((l) => l.id === activeLayoutId),
+    [layouts, activeLayoutId]
+  );
 
   const filteredTables = useMemo(() => {
+    const tables = activeLayout?.tables || [];
     return tables.filter((table) => {
       const matchesSearch = table.name
         .toLowerCase()
@@ -103,55 +75,75 @@ const TablesScreen = () => {
         table.capacity.toString() === capacityFilter;
       return matchesSearch && matchesStatus && matchesCapacity;
     });
-  }, [searchText, statusFilter, capacityFilter]);
-
-  // Initialize positions from mock data when the component mounts
-  useEffect(() => {
-    const initialPositions = MOCK_TABLES.reduce((acc, table) => {
-      acc[table.id] = { x: table.x, y: table.y };
-      return acc;
-    }, {} as TablePositions);
-    setTablePositions(initialPositions);
-  }, []);
+  }, [searchText, statusFilter, capacityFilter, activeLayout]);
 
   const handleTablePress = (table: TableType) => {
-    if (table.type !== "table") return;
+    if (isJoinMode) {
+      if (table.status === "Available") {
+        toggleTableSelection(table.id);
+      }
+    } else {
+      // Find the primary table if part of a merged group
+      let targetTable = table;
+      if (table.mergedWith && !table.isPrimary) {
+        const primary = activeLayout?.tables.find(
+          (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+        );
+        if (primary) targetTable = primary;
+      }
 
-    let targetTable = table;
-    // Logic to find the primary table in a merged group ---
-    if (table.mergedWith && !table.isPrimary) {
-      const primaryTable = tables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-      );
-      if (primaryTable) {
-        targetTable = primaryTable;
+      switch (targetTable.status) {
+        case "Available":
+          toggleTableSelection(targetTable.id);
+          setGuestModalOpen(true);
+          break;
+        case "In Use":
+          router.push(`/tables/${targetTable.id}`);
+          break;
+        case "Needs Cleaning":
+          router.push(`/tables/clean-table/${targetTable.id}`);
+          break;
       }
     }
+  };
 
-    // Find if there's an open order for this table
-    const activeOrder = orders.find(
-      (o) =>
-        o.service_location_id === targetTable.id &&
-        (o.order_status === "Preparing" || o.order_status === "Ready")
-    );
-
-    switch (targetTable.status) {
-      case "Available":
-        router.push(`/tables/${targetTable.id}`);
-        break;
-      case "In Use":
-        if (activeOrder) {
-          router.push(`/tables/${targetTable.id}`);
-        } else {
-          alert(
-            `Error: Table ${targetTable.name} is "In Use" but no open order was found.`
-          );
-        }
-        break;
-      case "Needs Cleaning":
-        router.push(`/tables/clean-table/${targetTable.id}`);
-        break;
+  const handleConfirmJoin = () => {
+    if (selectedTableIds.length > 1) {
+      setGuestModalOpen(true);
     }
+  };
+
+  const handleGuestCountSubmit = (guestCount: number) => {
+    const allTables = layouts.flatMap((layout) => layout.tables);
+
+    // 1. Calculate the total capacity of the selected tables
+    const totalCapacity = selectedTableIds.reduce((acc, tableId) => {
+      const table = allTables.find((t) => t.id === tableId);
+      return acc + (table?.capacity || 0);
+    }, 0);
+
+    // 2. Validate guest count against capacity
+    if (guestCount > totalCapacity) {
+      toast.error(
+        `Guest count (${guestCount}) exceeds the total capacity (${totalCapacity}) of the selected tables.`,
+        {
+          duration: 4000,
+          position: ToastPosition.BOTTOM,
+        }
+      );
+      return; // Stop the process
+    }
+
+    // 3. If validation passes, proceed as before
+    const primaryTableId = selectedTableIds[0];
+    const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
+    setActiveOrder(newOrder.id);
+
+    setGuestModalOpen(false);
+    clearSelection();
+    setIsJoinMode(false);
+
+    router.push(`/tables/${primaryTableId}`);
   };
 
   return (
@@ -184,6 +176,23 @@ const TablesScreen = () => {
 
         {/* --- Right Panel: Floor Plan --- */}
         <View className="flex-1 p-6">
+          {/* Layout/Room Tabs */}
+          <View className="flex-row items-center bg-[#303030] border border-gray-600 p-2 rounded-xl mb-4 self-start">
+            {layouts.map((layout) => (
+              <TouchableOpacity
+                key={layout.id}
+                onPress={() => setActiveLayout(layout.id)}
+                className={`py-3 px-6 rounded-lg ${activeLayoutId === layout.id ? "bg-[#212121]" : ""}`}
+              >
+                <Text
+                  className={`text-xl font-semibold ${activeLayoutId === layout.id ? "text-blue-400" : "text-gray-300"}`}
+                >
+                  {layout.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           {/* Toolbar */}
           <View className="flex-row items-end gap-3 w-full justify-end mb-4">
             <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 flex-1 max-w-sm">
@@ -193,7 +202,7 @@ const TablesScreen = () => {
                 placeholderTextColor="#9CA3AF"
                 value={searchText}
                 onChangeText={setSearchText}
-                className="ml-3 text-2xl flex-1 text-white"
+                className="ml-3 text-2xl h-16 flex-1 text-white"
               />
             </View>
             <ReusableSelect
@@ -205,7 +214,7 @@ const TablesScreen = () => {
               placeholder={capacityFilter}
             />
             <TouchableOpacity
-              onPress={() => router.push("/tables/edit-layout")}
+              onPress={() => router.push(`/(main)/tables/floor-plan` as Href)}
               className="py-4 px-6 rounded-lg bg-blue-500 "
             >
               <Text className="text-2xl font-bold text-white">Edit Layout</Text>
@@ -231,72 +240,27 @@ const TablesScreen = () => {
                   Needs Cleaning
                 </Text>
               </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-4 h-4 rounded-full bg-gray-400" />
-                <Text className="text-xl font-semibold text-white">
-                  Available Soon
-                </Text>
-              </View>
             </View>
 
             {/* Floor Plan Area */}
-            <View className="flex-1 mt-4  relative overflow-hidden">
-              <GestureDetector gesture={combinedGesture}>
-                {/* This Animated.View is our "canvas" that will move and scale */}
-                <Animated.View
-                  style={canvasAnimatedStyle}
-                  className="w-full h-full"
-                >
-                  <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-                    {tables.map((table) => {
-                      if (table.isPrimary && table.mergedWith) {
-                        const primaryCenter = {
-                          x: table.x + 50,
-                          y: table.y + 50,
-                        }; // Approx center
-                        return table.mergedWith.map((mergedId) => {
-                          const mergedTable = tables.find(
-                            (t) => t.id === mergedId
-                          );
-                          if (!mergedTable) return null;
-                          const mergedCenter = {
-                            x: mergedTable.x + 50,
-                            y: mergedTable.y + 50,
-                          };
-                          return (
-                            <Line
-                              key={`${table.id}-${mergedId}`}
-                              x1={primaryCenter.x}
-                              y1={primaryCenter.y}
-                              x2={mergedCenter.x}
-                              y2={mergedCenter.y}
-                              stroke="#F59E0B" // Amber-500
-                              strokeWidth="4"
-                              strokeDasharray="8, 4"
-                            />
-                          );
-                        });
-                      }
-                      return null;
-                    })}
-                  </Svg>
-                  {tables.map((table) => (
-                    <DraggableTable
-                      key={table.id}
-                      table={table}
-                      isEditMode={false} // Never edit mode here
-                      isSelected={false} // Never selected here
-                      onSelect={() => {}} // Does nothing here
-                      canvasScale={scale}
-                      onPress={() => handleTablePress(table)}
-                    />
-                  ))}
-                </Animated.View>
-              </GestureDetector>
-            </View>
+            <TableLayoutView
+              tables={activeLayout?.tables || []}
+              isSelectionMode={true}
+              onTableSelect={handleTablePress}
+              showConnections={true}
+              layoutId={activeLayoutId || ""}
+            />
           </View>
         </View>
       </View>
+      <GuestCountModal
+        isOpen={isGuestModalOpen}
+        onClose={() => {
+          setGuestModalOpen(false);
+          clearSelection();
+        }}
+        onSubmit={handleGuestCountSubmit}
+      />
     </View>
   );
 };
