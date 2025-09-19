@@ -137,20 +137,20 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
         <View className="flex-row bg-[#303030] border border-gray-700 p-2 rounded-xl self-start mb-4">
           <TouchableOpacity
             onPress={() => setActiveTab("check")}
-            className={`py-3 px-6 rounded-lg ${activeTab === "check" ? "bg-[#212121]" : ""}`}
+            className={`py-3 px-3 rounded-lg ${activeTab === "check" ? "bg-[#212121]" : ""}`}
           >
             <Text
-              className={`text-2xl font-semibold ${activeTab === "check" ? "text-blue-400" : "text-gray-400"}`}
+              className={`text-xl font-semibold ${activeTab === "check" ? "text-blue-400" : "text-gray-400"}`}
             >
               Apply to check
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab("items")}
-            className={`py-3 px-6 rounded-lg ${activeTab === "items" ? "bg-[#212121]" : ""}`}
+            className={`py-3 px-3 rounded-lg ${activeTab === "items" ? "bg-[#212121]" : ""}`}
           >
             <Text
-              className={`text-2xl font-semibold ${activeTab === "items" ? "text-blue-400" : "text-gray-400"}`}
+              className={`text-xl font-semibold ${activeTab === "items" ? "text-blue-400" : "text-gray-400"}`}
             >
               Apply to items
             </Text>
@@ -164,9 +164,9 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
                 <TouchableOpacity
                   key={d.id}
                   onPress={() => handleApplyCheckDiscount(d)}
-                  className="w-[48%] p-6 border rounded-2xl mb-3 items-center justify-center h-24 bg-[#303030] border-gray-600"
+                  className="w-[48%] p-1 border rounded-2xl mb-3 items-center justify-center h-24 bg-[#303030] border-gray-600"
                 >
-                  <Text className="text-xl font-bold text-center text-white">
+                  <Text className="text-xl text-wrap w-full overflow-hidden font-bold text-center text-white">
                     {d.label}
                   </Text>
                 </TouchableOpacity>
@@ -191,7 +191,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
                           {item.name}
                         </Text>
                         <Text
-                          className={`text-xl font-semibold mt-1 ${isApplied ? "text-blue-300" : "text-gray-400"}`}
+                          className={`text-xl w-full overflow-hidden font-semibold text-wrap mt-1 ${isApplied ? "text-blue-300" : "text-gray-400"}`}
                         >
                           {item.availableDiscount?.label}
                         </Text>

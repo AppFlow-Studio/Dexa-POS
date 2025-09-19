@@ -63,66 +63,77 @@ const TimeclockScreen = () => {
   };
 
   return (
-    // Apply dark mode styling to the entire container
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row items-center my-4">
-        <TouchableOpacity
-          className="p-3 flex-row items-center gap-3"
-          onPress={() => router.back()}
-        >
-          <ArrowLeft size={24} color="#FFFFFF" />
-          <Text className="text-3xl font-semibold text-white">
-            Clock In/Out
-          </Text>
-        </TouchableOpacity>
+    <View className="flex-1 bg-[#212121]">
+      {/* Header */}
+      <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="mr-4 p-2"
+          >
+            <ArrowLeft color="#9CA3AF" size={24} />
+          </TouchableOpacity>
+          <View>
+            <Text className="text-2xl font-bold text-white">Time Clock</Text>
+            <Text className="text-sm text-gray-400">Track your work hours and breaks</Text>
+          </View>
+        </View>
       </View>
 
-      <View className="flex-1 flex-row gap-6 h-full w-full">
-        <UserProfileCard />
+      <View className="flex-1 p-6">
+        <View className="flex-row gap-6 h-full">
+          {/* User Profile Card */}
+          <View className="w-80">
+            <UserProfileCard />
+          </View>
 
-        <View className="flex-1">
-          <View className="flex-1 border border-gray-700 rounded-xl">
-            {/* Table Header */}
-            <View className="flex-row p-6 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
-              {TABLE_HEADERS.map((header) => (
-                <Text
-                  key={header}
-                  className="flex-1 font-bold text-xl text-gray-100"
-                >
-                  {header}
-                </Text>
-              ))}
+          {/* Shift History Table */}
+          <View className="flex-1">
+            <View className="bg-[#303030] rounded-2xl border border-gray-600 overflow-hidden">
+              {/* Table Header */}
+              <View className="flex-row p-4 bg-[#404040] border-b border-gray-600">
+                {TABLE_HEADERS.map((header) => (
+                  <Text
+                    key={header}
+                    className="flex-1 font-semibold text-sm text-gray-300"
+                  >
+                    {header}
+                  </Text>
+                ))}
+              </View>
+
+              {/* Table Body */}
+              <FlatList
+                data={shiftHistory}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <View className="flex-row p-4 border-b border-gray-600 last:border-b-0">
+                    <Text className="flex-1 text-sm text-white">
+                      {item.date}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.role}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.clockIn}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.breakInitiated}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.breakEnded}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.clockOut}
+                    </Text>
+                    <Text className="flex-1 text-sm text-white">
+                      {item.duration}
+                    </Text>
+                  </View>
+                )}
+                showsVerticalScrollIndicator={false}
+              />
             </View>
-            {/* Table Body now renders the live history from the store */}
-            <FlatList
-              data={shiftHistory}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <View className="flex-row p-6 border-b border-gray-700">
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.date}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.role}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.clockIn}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.breakInitiated}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.breakEnded}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.clockOut}
-                  </Text>
-                  <Text className="flex-1 text-2xl font-semibold text-gray-300">
-                    {item.duration}
-                  </Text>
-                </View>
-              )}
-            />
           </View>
         </View>
       </View>

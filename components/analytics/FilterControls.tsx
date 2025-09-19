@@ -1,8 +1,8 @@
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Calendar, ChevronDown, MapPin, User } from "lucide-react-native";
 import React, { useState } from "react";
-import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import DatePicker from 'react-native-date-picker';
+import { Modal, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface FilterChipProps {
     label: string;
@@ -24,19 +24,26 @@ const FilterChip: React.FC<FilterChipProps> = ({ label, value, icon, onPress }) 
     </TouchableOpacity>
 );
 
-const FilterControls = () => {
+interface FilterControlsProps {
+    onFilterChange?: () => void;
+}
+
+const FilterControls: React.FC<FilterControlsProps> = ({ onFilterChange }) => {
     const {
         filters,
         setDateRange,
         setLocation,
         setEmployee,
-        resetFilters
+        resetFilters,
+        fetchReportData
     } = useAnalyticsStore();
 
     const [showDateModal, setShowDateModal] = useState(false);
     const [showLocationModal, setShowLocationModal] = useState(false);
     const [showEmployeeModal, setShowEmployeeModal] = useState(false);
     const [tempDateRange, setTempDateRange] = useState(filters.dateRange);
+    const [showFromDatePicker, setShowFromDatePicker] = useState(false);
+    const [showToDatePicker, setShowToDatePicker] = useState(false);
 
     // Mock data - replace with actual data from your store
     const locations = [
@@ -64,8 +71,8 @@ const FilterControls = () => {
     ];
 
     const formatDateRange = () => {
-        const from = new Date(filters.dateRange.from);
-        const to = new Date(filters.dateRange.to);
+        const from = new Date(filters.dateRange.start);
+        const to = new Date(filters.dateRange.end);
 
         if (from.toDateString() === to.toDateString()) {
             return from.toLocaleDateString();
@@ -75,12 +82,12 @@ const FilterControls = () => {
     };
 
     const getLocationName = () => {
-        const location = locations.find(l => l.id === filters.locationId);
+        const location = locations.find(l => l.id === filters.location);
         return location?.name || 'All Stores';
     };
 
     const getEmployeeName = () => {
-        const employee = employees.find(e => e.id === filters.employeeId);
+        const employee = employees.find(e => e.id === filters.employee);
         return employee?.name || 'All Employees';
     };
 
@@ -90,17 +97,53 @@ const FilterControls = () => {
         fromDate.setDate(today.getDate() + days);
 
         const newDateRange = {
-            from: fromDate.toISOString().split('T')[0],
-            to: today.toISOString().split('T')[0],
+            start: fromDate,
+            end: today,
         };
 
         setDateRange(newDateRange);
         setShowDateModal(false);
+        // Trigger a refresh of the current report
+        setTimeout(() => {
+            if (onFilterChange) {
+                onFilterChange();
+            } else {
+                fetchReportData({ type: 'overview' });
+            }
+        }, 100);
     };
 
     const handleDateConfirm = () => {
         setDateRange(tempDateRange);
         setShowDateModal(false);
+        // Trigger a refresh of the current report
+        setTimeout(() => {
+            if (onFilterChange) {
+                onFilterChange();
+            } else {
+                fetchReportData({ type: 'overview' });
+            }
+        }, 100);
+    };
+
+    const handleFromDateChange = (event: any, selectedDate?: Date) => {
+        setShowFromDatePicker(Platform.OS === 'ios');
+        if (selectedDate) {
+            setTempDateRange(prev => ({
+                ...prev,
+                start: selectedDate
+            }));
+        }
+    };
+
+    const handleToDateChange = (event: any, selectedDate?: Date) => {
+        setShowToDatePicker(Platform.OS === 'ios');
+        if (selectedDate) {
+            setTempDateRange(prev => ({
+                ...prev,
+                end: selectedDate
+            }));
+        }
     };
 
     return (
@@ -183,29 +226,65 @@ const FilterControls = () => {
                             <View className="space-y-4">
                                 <View>
                                     <Text className="text-gray-400 mb-2">From Date</Text>
-                                    <DatePicker
-                                        date={new Date(tempDateRange.from)}
-                                        mode="date"
-                                        onDateChange={(date) => setTempDateRange(prev => ({
-                                            ...prev,
-                                            from: date.toISOString().split('T')[0]
-                                        }))}
-                                        style={{ backgroundColor: '#212121' }}
-                                        textColor="#ffffff"
-                                    />
+                                    <TouchableOpacity
+                                        onPress={() => setShowFromDatePicker(true)}
+                                        className="bg-[#212121] border border-gray-600 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                                    >
+                                        <Text className="text-white text-lg">
+                                            {new Date(tempDateRange.start).toLocaleDateString()}
+                                        </Text>
+                                        <Calendar color="#9CA3AF" size={20} />
+                                    </TouchableOpacity>
+                                    {showFromDatePicker && (
+                                        <View className="mt-2">
+                                            <DateTimePicker
+                                                value={new Date(tempDateRange.start)}
+                                                mode="date"
+                                                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                                onChange={handleFromDateChange}
+                                                textColor="#ffffff"
+                                            />
+                                            {Platform.OS === 'ios' && (
+                                                <TouchableOpacity
+                                                    onPress={() => setShowFromDatePicker(false)}
+                                                    className="bg-blue-600 py-2 px-4 rounded-lg mt-2"
+                                                >
+                                                    <Text className="text-white text-center">Done</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    )}
                                 </View>
                                 <View>
                                     <Text className="text-gray-400 mb-2">To Date</Text>
-                                    <DatePicker
-                                        date={new Date(tempDateRange.to)}
-                                        mode="date"
-                                        onDateChange={(date) => setTempDateRange(prev => ({
-                                            ...prev,
-                                            to: date.toISOString().split('T')[0]
-                                        }))}
-                                        style={{ backgroundColor: '#212121' }}
-                                        textColor="#ffffff"
-                                    />
+                                    <TouchableOpacity
+                                        onPress={() => setShowToDatePicker(true)}
+                                        className="bg-[#212121] border border-gray-600 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                                    >
+                                        <Text className="text-white text-lg">
+                                            {new Date(tempDateRange.end).toLocaleDateString()}
+                                        </Text>
+                                        <Calendar color="#9CA3AF" size={20} />
+                                    </TouchableOpacity>
+                                    {showToDatePicker && (
+                                        <View className="mt-2">
+                                            <DateTimePicker
+                                                value={new Date(tempDateRange.end)}
+                                                mode="date"
+                                                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                                                onChange={handleToDateChange}
+                                                textColor="#ffffff"
+                                            />
+                                            {Platform.OS === 'ios' && (
+                                                <TouchableOpacity
+                                                    onPress={() => setShowToDatePicker(false)}
+                                                    className="bg-blue-600 py-2 px-4 rounded-lg mt-2"
+                                                >
+                                                    <Text className="text-white text-center">Done</Text>
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
+                                    )}
                                 </View>
                             </View>
                         </View>
@@ -246,13 +325,21 @@ const FilterControls = () => {
                                     onPress={() => {
                                         setLocation(location.id);
                                         setShowLocationModal(false);
+                                        // Trigger a refresh of the current report
+                                        setTimeout(() => {
+                                            if (onFilterChange) {
+                                                onFilterChange();
+                                            } else {
+                                                fetchReportData({ type: 'overview' });
+                                            }
+                                        }, 100);
                                     }}
-                                    className={`p-4 rounded-xl mb-2 ${filters.locationId === location.id
+                                    className={`p-4 rounded-xl mb-2 ${filters.location === location.id
                                         ? 'bg-blue-900/30 border border-blue-500'
                                         : 'bg-[#212121] border border-gray-600'
                                         }`}
                                 >
-                                    <Text className={`text-lg ${filters.locationId === location.id ? 'text-blue-400' : 'text-white'
+                                    <Text className={`text-lg ${filters.location === location.id ? 'text-blue-400' : 'text-white'
                                         }`}>
                                         {location.name}
                                     </Text>
@@ -289,13 +376,21 @@ const FilterControls = () => {
                                     onPress={() => {
                                         setEmployee(employee.id);
                                         setShowEmployeeModal(false);
+                                        // Trigger a refresh of the current report
+                                        setTimeout(() => {
+                                            if (onFilterChange) {
+                                                onFilterChange();
+                                            } else {
+                                                fetchReportData({ type: 'overview' });
+                                            }
+                                        }, 100);
                                     }}
-                                    className={`p-4 rounded-xl mb-2 ${filters.employeeId === employee.id
+                                    className={`p-4 rounded-xl mb-2 ${filters.employee === employee.id
                                         ? 'bg-blue-900/30 border border-blue-500'
                                         : 'bg-[#212121] border border-gray-600'
                                         }`}
                                 >
-                                    <Text className={`text-lg ${filters.employeeId === employee.id ? 'text-blue-400' : 'text-white'
+                                    <Text className={`text-lg ${filters.employee === employee.id ? 'text-blue-400' : 'text-white'
                                         }`}>
                                         {employee.name}
                                     </Text>

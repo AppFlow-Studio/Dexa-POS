@@ -166,11 +166,11 @@ const PinLoginScreen = () => {
       </View>
 
       <Link href="/timeclock" asChild>
-        <TouchableOpacity className="self-center mt-8 flex-row items-center gap-2">
-          <Text className="text-xl font-semibold text-primary-400">
+        <TouchableOpacity className="self-center bg-[#2D2D2D] border border-gray-700 rounded-xl p-6 mt-8 flex-row items-center gap-2">
+          <Text className="text-xl font-semibold text-white">
             Open Timeclock
           </Text>
-          <Clock className="text-white" size={24} />
+          <Clock color="white" size={24} />
         </TouchableOpacity>
       </Link>
 

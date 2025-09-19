@@ -1,8 +1,10 @@
 import FilterControls from "@/components/analytics/FilterControls";
+import KpiTooltip from "@/components/analytics/KpiTooltip";
+import ReportChart from "@/components/analytics/ReportChart";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useRouter } from "expo-router";
-import { BarChart3, Calendar, FileText, PieChart, Plus, TrendingUp, Users } from "lucide-react-native";
-import React from "react";
+import { BarChart3, Calendar, Package, PieChart, Plus, ShoppingCart, TrendingUp, Users } from "lucide-react-native";
+import React, { useEffect } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface ReportCardProps {
@@ -32,51 +34,92 @@ const ReportCard: React.FC<ReportCardProps> = ({ title, description, icon, onPre
 
 const AnalyticsDashboardScreen = () => {
     const router = useRouter();
-    const { savedCustomReports } = useAnalyticsStore();
+    const {
+        savedCustomReports,
+        currentReportData,
+        isLoading,
+        error,
+        fetchReportData,
+        filters
+    } = useAnalyticsStore();
+
+    // Helper function to generate smart date range titles
+    const getDateRangeTitle = (baseTitle: string) => {
+        if (!currentReportData?.salesTrends || currentReportData.salesTrends.length === 0) {
+            return baseTitle;
+        }
+
+        const dates = currentReportData.salesTrends.map(trend => new Date(trend.date));
+        const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
+        const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
+
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+
+        if (startYear === endYear) {
+            return `${baseTitle} - ${startYear}`;
+        } else {
+            return `${baseTitle} - ${startYear} - ${endYear}`;
+        }
+    };
+
+    useEffect(() => {
+        // Load overview data on mount
+        fetchReportData({ type: 'overview' });
+    }, []);
 
     const preBuiltReports = [
         {
-            id: 'sales_summary',
+            id: 'sales-summary',
             title: 'Sales Summary',
             description: 'Overview of total sales, orders, and key metrics',
             icon: <TrendingUp color="#3b82f6" size={24} />,
+            chartType: 'line'
         },
         {
-            id: 'item_sales',
+            id: 'item-sales',
             title: 'Item Sales',
             description: 'Best selling items and sales performance',
-            icon: <BarChart3 color="#3b82f6" size={24} />,
+            icon: <ShoppingCart color="#3b82f6" size={24} />,
+            chartType: 'bar'
         },
         {
-            id: 'sales_by_hour',
+            id: 'sales-by-hour',
             title: 'Sales by Hour',
             description: 'Peak hours and hourly sales patterns',
             icon: <Calendar color="#3b82f6" size={24} />,
+            chartType: 'line'
         },
         {
-            id: 'sales_by_employee',
+            id: 'sales-by-employee',
             title: 'Sales by Employee',
             description: 'Individual employee performance metrics',
             icon: <Users color="#3b82f6" size={24} />,
+            chartType: 'pie'
         },
         {
             id: 'discounts',
             title: 'Discounts',
             description: 'Discount usage and impact on revenue',
             icon: <PieChart color="#3b82f6" size={24} />,
+            chartType: 'pie'
         },
         {
             id: 'payments',
             title: 'Payments',
             description: 'Payment methods and transaction analysis',
-            icon: <FileText color="#3b82f6" size={24} />,
+            icon: <Package color="#3b82f6" size={24} />,
+            chartType: 'pie'
         },
     ];
 
-    const handleReportPress = (reportId: string) => {
+    const handleReportPress = (reportId: string, chartType?: string) => {
         router.push({
             pathname: '/analytics/report-view',
-            params: { reportType: reportId }
+            params: {
+                reportType: reportId,
+                chartType: chartType || 'bar'
+            }
         });
     };
 
@@ -97,15 +140,107 @@ const AnalyticsDashboardScreen = () => {
         <View className="flex-1 bg-[#212121]">
             <ScrollView contentContainerClassName="p-6">
                 {/* Header */}
-                <View className="mb-6">
+                {/* <View className="mb-6">
                     <Text className="text-3xl font-bold text-white mb-2">Analytics & Reports</Text>
                     <Text className="text-lg text-gray-400">
                         Analyze your business performance with detailed reports
                     </Text>
-                </View>
+                </View> */}
 
                 {/* Filter Controls */}
                 <FilterControls />
+
+                {/* KPI Cards */}
+                {currentReportData && (
+                    <View className="mt-6">
+                        <Text className="text-xl font-bold text-white mb-4">Key Performance Indicators</Text>
+                        <View className="flex-row flex-wrap gap-4">
+                            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                                <View className="flex-row items-center justify-between mb-2">
+                                    <Text className="text-sm text-gray-400">Gross Margin</Text>
+                                    <KpiTooltip definition="Percentage of revenue remaining after subtracting cost of goods sold" />
+                                </View>
+                                <Text className="text-2xl font-bold text-white">
+                                    {currentReportData.kpis.grossMargin.toFixed(1)}%
+                                </Text>
+                            </View>
+
+                            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                                <View className="flex-row items-center justify-between mb-2">
+                                    <Text className="text-sm text-gray-400">Total Revenue</Text>
+                                    <KpiTooltip definition="Total sales revenue for the selected period" />
+                                </View>
+                                <Text className="text-2xl font-bold text-white">
+                                    ${currentReportData.kpis.totalRevenue.toFixed(0)}
+                                </Text>
+                            </View>
+
+                            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                                <View className="flex-row items-center justify-between mb-2">
+                                    <Text className="text-sm text-gray-400">Avg Order Value</Text>
+                                    <KpiTooltip definition="Average value per order" />
+                                </View>
+                                <Text className="text-2xl font-bold text-white">
+                                    ${currentReportData.kpis.averageOrderValue.toFixed(2)}
+                                </Text>
+                            </View>
+
+                            <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                                <View className="flex-row items-center justify-between mb-2">
+                                    <Text className="text-sm text-gray-400">Total Orders</Text>
+                                    <KpiTooltip definition="Total number of orders placed" />
+                                </View>
+                                <Text className="text-2xl font-bold text-white">
+                                    {currentReportData.kpis.totalOrders}
+                                </Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
+
+                {/* Sales Trend Chart */}
+                {currentReportData && (
+                    <View className="mt-8">
+                        <Text className="text-xl font-bold text-white mb-4">Sales Trend</Text>
+                        <ReportChart
+                            data={currentReportData.chartData}
+                            chartType="line"
+                            title={getDateRangeTitle("Revenue Over Time")}
+                        />
+                    </View>
+                )}
+
+                {/* Fast & Slow Movers */}
+                {currentReportData && (
+                    <View className="mt-8">
+                        <Text className="text-xl font-bold text-white mb-4">Inventory Analysis</Text>
+                        <View className="flex-row gap-4">
+                            <View className="flex-1">
+                                <Text className="text-lg font-semibold text-white mb-3">Top 5 Fast Movers</Text>
+                                <View className="bg-[#303030] rounded-xl border border-gray-600 p-4">
+                                    {currentReportData.inventoryAnalysis.fastMovers.map((item, index) => (
+                                        <View key={index} className="flex-row justify-between items-center py-2 border-b border-gray-600 last:border-b-0">
+                                            <Text className="text-white text-sm flex-1">{item.itemName}</Text>
+                                            <Text className="text-blue-400 text-sm font-semibold">{item.totalSold}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            </View>
+
+                            <View className="flex-1">
+                                <Text className="text-lg font-semibold text-white mb-3">Top 5 Slow Movers</Text>
+                                <View className="bg-[#303030] rounded-xl border border-gray-600 p-4">
+                                    {currentReportData.inventoryAnalysis.slowMovers.map((item, index) => (
+                                        <View key={index} className="flex-row justify-between items-center py-2 border-b border-gray-600 last:border-b-0">
+                                            <Text className="text-white text-sm flex-1">{item.itemName}</Text>
+                                            <Text className="text-red-400 text-sm font-semibold">{item.totalSold}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                            </View>
+                        </View>
+                    </View>
+                )}
 
                 {/* Pre-built Reports Section */}
                 <View className="mt-8">
@@ -116,7 +251,7 @@ const AnalyticsDashboardScreen = () => {
                             title={report.title}
                             description={report.description}
                             icon={report.icon}
-                            onPress={() => handleReportPress(report.id)}
+                            onPress={() => handleReportPress(report.id, report.chartType)}
                         />
                     ))}
                 </View>

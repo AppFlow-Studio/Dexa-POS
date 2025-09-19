@@ -3,8 +3,9 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { ChevronDown } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import TableLayoutView from "../tables/TableLayoutView";
 
 interface OrderTypeDrawerProps {
@@ -35,6 +36,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const activeOrder = useOrderStore((state) =>
     state.orders.find((order) => order.id === activeOrderId)
   );
+
+  // Floor selection state
+  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
+  const [showFloorModal, setShowFloorModal] = useState(false);
   const orderTypes = [
     { value: "Dine In", label: "Dine In" },
     { value: "Take Away", label: "Take Away" },
@@ -50,6 +55,18 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
 
   const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+
+  // Get tables for the selected floor
+  const floorTables = useMemo(() => {
+    if (!selectedFloor) return [];
+    const layout = layouts.find(l => l.id === selectedFloor);
+    return layout ? layout.tables : [];
+  }, [selectedFloor, layouts]);
+
+  // Get available tables for the selected floor
+  const availableFloorTables = useMemo(() => {
+    return floorTables.filter(table => table.status === "Available");
+  }, [floorTables]);
 
   // Check for existing customer when phone number changes
   useEffect(() => {
@@ -135,6 +152,13 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
     setIsExistingCustomer(true);
     setShowSuggestions(false);
+  };
+
+  const handleFloorSelect = (floorId: string) => {
+    setSelectedFloor(floorId);
+    setShowFloorModal(false);
+    // Clear selected table when changing floors
+    setSelectedTable(null);
   };
 
   const handleTableSelect = (table: any) => {
@@ -235,117 +259,117 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           {/* Customer Info Section for Delivery/Take Away */}
           {(currentOrderType === "Delivery" ||
             currentOrderType === "Take Away") && (
-            <View className="mt-6">
-              <Text className="text-white font-semibold text-3xl mb-4">
-                Customer Information
-              </Text>
+              <View className="mt-6">
+                <Text className="text-white font-semibold text-3xl mb-4">
+                  Customer Information
+                </Text>
 
-              {/* Existing Customer Indicator */}
-              {isExistingCustomer && (
-                <View className="mb-3 p-3 bg-green-600/20 border border-green-600 rounded-lg">
-                  <Text className="text-2xl text-green-400 font-medium">
-                    ✓ Existing Customer Found
+                {/* Existing Customer Indicator */}
+                {isExistingCustomer && (
+                  <View className="mb-3 p-3 bg-green-600/20 border border-green-600 rounded-lg">
+                    <Text className="text-2xl text-green-400 font-medium">
+                      ✓ Existing Customer Found
+                    </Text>
+                  </View>
+                )}
+
+                {/* Name Input */}
+                <View className="mb-3">
+                  <Text className="text-gray-300 text-xl font-medium mb-1">
+                    Customer Name
                   </Text>
-                </View>
-              )}
-
-              {/* Name Input */}
-              <View className="mb-3">
-                <Text className="text-gray-300 text-xl font-medium mb-1">
-                  Customer Name
-                </Text>
-                <TextInput
-                  className="w-full p-4 border border-gray-600 rounded-lg h-16 px-4 py-3 text-2xl text-white"
-                  placeholder="Enter customer name"
-                  placeholderTextColor="#9CA3AF"
-                  value={customerName}
-                  onChangeText={setCustomerName}
-                  autoFocus
-                />
-              </View>
-
-              {/* Phone Number Input */}
-              <View className="mb-3">
-                <Text className="text-gray-300 text-xl font-medium mb-1">
-                  Phone Number
-                </Text>
-                <View className="relative">
                   <TextInput
                     className="w-full p-4 border border-gray-600 rounded-lg h-16 px-4 py-3 text-2xl text-white"
-                    placeholder="(555) 123-4567"
+                    placeholder="Enter customer name"
                     placeholderTextColor="#9CA3AF"
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    keyboardType="number-pad"
+                    value={customerName}
+                    onChangeText={setCustomerName}
+                    autoFocus
                   />
-
-                  {/* Customer Suggestions Dropdown */}
-                  {showSuggestions && customerSuggestions.length > 0 && (
-                    <View className="absolute top-full left-0 right-0 bg-[#212121] border border-gray-600 rounded-lg mt-1 max-h-32 z-10">
-                      {customerSuggestions.map((customer) => (
-                        <TouchableOpacity
-                          key={customer.id}
-                          onPress={() => handleSelectCustomer(customer)}
-                          className="p-4 border-b border-gray-600 last:border-b-0"
-                        >
-                          <Text className="text-xl text-white font-medium">
-                            {customer.name}
-                          </Text>
-                          <Text className="text-lg text-gray-400">
-                            {customer.phoneNumber}
-                          </Text>
-                          {customer.address && (
-                            <Text className="text-gray-500 text-xs">
-                              {customer.address}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
                 </View>
-              </View>
 
-              {/* Address Input - Only for Delivery */}
-              {currentOrderType === "Delivery" && (
-                <View className="mb-4">
+                {/* Phone Number Input */}
+                <View className="mb-3">
                   <Text className="text-gray-300 text-xl font-medium mb-1">
-                    Delivery Address
+                    Phone Number
                   </Text>
-                  <TextInput
-                    className="w-full p-4 border border-gray-600 rounded-lg h-20 px-4 py-3 text-2xl text-white"
-                    placeholder="Enter delivery address"
-                    placeholderTextColor="#9CA3AF"
-                    value={address}
-                    onChangeText={setAddress}
-                    multiline
-                    numberOfLines={2}
-                  />
-                </View>
-              )}
+                  <View className="relative">
+                    <TextInput
+                      className="w-full p-4 border border-gray-600 rounded-lg h-16 px-4 py-3 text-2xl text-white"
+                      placeholder="(555) 123-4567"
+                      placeholderTextColor="#9CA3AF"
+                      value={phoneNumber}
+                      onChangeText={setPhoneNumber}
+                      keyboardType="number-pad"
+                    />
 
-              {/* Save Customer Info Button - Only show for new customers */}
-              {!isExistingCustomer && (
-                <TouchableOpacity
-                  onPress={handleSaveNewCustomer}
-                  className="w-full py-4 bg-blue-600 rounded-lg items-center mb-4"
-                >
-                  <Text className="text-2xl text-white font-semibold">
-                    Save New Customer
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Customer Assigned Indicator */}
-              {isExistingCustomer && (
-                <View className="w-full py-4 bg-green-600 rounded-lg items-center mb-4">
-                  <Text className="text-2xl text-white font-semibold">
-                    ✓ Customer Assigned to Order
-                  </Text>
+                    {/* Customer Suggestions Dropdown */}
+                    {showSuggestions && customerSuggestions.length > 0 && (
+                      <View className="absolute top-full left-0 right-0 bg-[#212121] border border-gray-600 rounded-lg mt-1 max-h-32 z-10">
+                        {customerSuggestions.map((customer) => (
+                          <TouchableOpacity
+                            key={customer.id}
+                            onPress={() => handleSelectCustomer(customer)}
+                            className="p-4 border-b border-gray-600 last:border-b-0"
+                          >
+                            <Text className="text-xl text-white font-medium">
+                              {customer.name}
+                            </Text>
+                            <Text className="text-lg text-gray-400">
+                              {customer.phoneNumber}
+                            </Text>
+                            {customer.address && (
+                              <Text className="text-gray-500 text-xs">
+                                {customer.address}
+                              </Text>
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </View>
                 </View>
-              )}
-            </View>
-          )}
+
+                {/* Address Input - Only for Delivery */}
+                {currentOrderType === "Delivery" && (
+                  <View className="mb-4">
+                    <Text className="text-gray-300 text-xl font-medium mb-1">
+                      Delivery Address
+                    </Text>
+                    <TextInput
+                      className="w-full p-4 border border-gray-600 rounded-lg h-20 px-4 py-3 text-2xl text-white"
+                      placeholder="Enter delivery address"
+                      placeholderTextColor="#9CA3AF"
+                      value={address}
+                      onChangeText={setAddress}
+                      multiline
+                      numberOfLines={2}
+                    />
+                  </View>
+                )}
+
+                {/* Save Customer Info Button - Only show for new customers */}
+                {!isExistingCustomer && (
+                  <TouchableOpacity
+                    onPress={handleSaveNewCustomer}
+                    className="w-full py-4 bg-blue-600 rounded-lg items-center mb-4"
+                  >
+                    <Text className="text-2xl text-white font-semibold">
+                      Save New Customer
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Customer Assigned Indicator */}
+                {isExistingCustomer && (
+                  <View className="w-full py-4 bg-green-600 rounded-lg items-center mb-4">
+                    <Text className="text-2xl text-white font-semibold">
+                      ✓ Customer Assigned to Order
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
 
           {/* Table Selection Section for Dine In */}
           {currentOrderType === "Dine In" && (
@@ -353,6 +377,25 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
               <Text className="text-white font-semibold text-2xl mb-4">
                 Select Table
               </Text>
+
+              {/* Floor Selection Dropdown */}
+              <View className="mb-4">
+                <Text className="text-gray-300 text-lg font-medium mb-2">
+                  Select Floor
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowFloorModal(true)}
+                  className="flex-row items-center justify-between p-4 bg-[#404040] border border-gray-600 rounded-lg"
+                >
+                  <Text className="text-white text-lg">
+                    {selectedFloor
+                      ? layouts.find(l => l.id === selectedFloor)?.name || "Select Floor"
+                      : "Select Floor"
+                    }
+                  </Text>
+                  <ChevronDown color="#9CA3AF" size={20} />
+                </TouchableOpacity>
+              </View>
 
               {/* Selected Table Info */}
               {selectedTable && (
@@ -363,28 +406,43 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   <Text className="text-xl text-green-300">
                     Capacity: {selectedTable.capacity} people
                   </Text>
+                  <Text className="text-lg text-green-300">
+                    Floor: {layouts.find(l => l.id === selectedFloor)?.name}
+                  </Text>
                 </View>
               )}
 
-              <View className="flex-1 border border-gray-600 rounded-lg">
-                <TableLayoutView
-                  tables={allTables}
-                  isSelectionMode={true}
-                  selectedTableId={selectedTable?.id}
-                  onTableSelect={handleTableSelect}
-                  activeOrderId={activeOrderId}
-                  showConnections={false}
-                />
-              </View>
+              {/* Table Layout View - Only show if floor is selected */}
+              {selectedFloor && (
+                <View className="flex-1 border border-gray-600 rounded-lg">
+                  <TableLayoutView
+                    tables={floorTables}
+                    isSelectionMode={true}
+                    selectedTableId={selectedTable?.id}
+                    onTableSelect={handleTableSelect}
+                    activeOrderId={activeOrderId}
+                    showConnections={false}
+                  />
+                </View>
+              )}
 
-              {allTables.filter((table) => table.status === "Available")
-                .length === 0 && (
+              {/* No floor selected message */}
+              {!selectedFloor && (
+                <View className="flex-1 border border-gray-600 rounded-lg p-8 items-center justify-center">
+                  <Text className="text-gray-400 text-lg text-center">
+                    Please select a floor to view available tables
+                  </Text>
+                </View>
+              )}
+
+              {/* No available tables message */}
+              {selectedFloor && availableFloorTables.length === 0 && (
                 <View className="p-4 bg-red-600/20 border border-red-600 rounded-lg">
                   <Text className="text-2xl text-red-400 font-medium">
                     No available tables
                   </Text>
                   <Text className="text-xl text-red-300">
-                    All tables are currently in use
+                    All tables on this floor are currently in use
                   </Text>
                 </View>
               )}
@@ -392,6 +450,63 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           )}
         </View>
       </View>
+
+      {/* Floor Selection Modal */}
+      <Modal
+        visible={showFloorModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowFloorModal(false)}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center p-6">
+          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full max-w-md">
+            {/* Modal Header */}
+            <View className="flex-row items-center justify-between p-6 border-b border-gray-600">
+              <Text className="text-xl font-bold text-white">Select Floor</Text>
+              <TouchableOpacity
+                onPress={() => setShowFloorModal(false)}
+                className="p-2"
+              >
+                <Text className="text-gray-400 text-lg">Cancel</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Floor List */}
+            <ScrollView className="max-h-80">
+              {layouts.map((layout) => (
+                <TouchableOpacity
+                  key={layout.id}
+                  onPress={() => handleFloorSelect(layout.id)}
+                  className={`p-4 border-b border-gray-600 last:border-b-0 ${selectedFloor === layout.id
+                    ? 'bg-blue-600/20 border-l-4 border-l-blue-500'
+                    : ''
+                    }`}
+                >
+                  <View className="flex-row items-center justify-between">
+                    <View>
+                      <Text className={`text-lg font-semibold ${selectedFloor === layout.id ? 'text-blue-400' : 'text-white'
+                        }`}>
+                        {layout.name}
+                      </Text>
+                      <Text className="text-sm text-gray-400">
+                        {layout.tables.length} tables
+                      </Text>
+                      <Text className="text-sm text-gray-400">
+                        {layout.tables.filter(t => t.status === "Available").length} available
+                      </Text>
+                    </View>
+                    {selectedFloor === layout.id && (
+                      <View className="w-6 h-6 bg-blue-500 rounded-full items-center justify-center">
+                        <Text className="text-white text-sm font-bold">✓</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

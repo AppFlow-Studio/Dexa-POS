@@ -2,7 +2,7 @@ import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useRouter } from "expo-router";
 import { ArrowLeft, BarChart3, Save, TrendingUp } from "lucide-react-native";
 import React, { useState } from "react";
-import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 interface MetricOption {
     id: string;
@@ -75,12 +75,7 @@ const CustomReportBuilderScreen = () => {
             chartType,
         };
 
-        router.push({
-            pathname: '/analytics/report-view',
-            params: {
-                customReport: JSON.stringify(customConfig)
-            }
-        });
+        
     };
 
     const handleSaveReport = () => {
@@ -104,6 +99,12 @@ const CustomReportBuilderScreen = () => {
             metrics: selectedMetrics,
             breakdown: selectedBreakdown,
             chartType,
+            filters: {
+                dateRange: {
+                    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                    end: new Date()
+                }
+            }
         };
 
         saveCustomReport(customConfig);
@@ -132,9 +133,13 @@ const CustomReportBuilderScreen = () => {
                 <View className="mb-8">
                     <Text className="text-xl font-bold text-white mb-4">Report Name</Text>
                     <View className="bg-[#303030] border border-gray-600 rounded-xl p-4">
-                        <Text className="text-white text-lg">
-                            {reportName || 'Untitled Report'}
-                        </Text>
+                        <TextInput
+                            value={reportName}
+                            onChangeText={setReportName}
+                            placeholder="Enter report name..."
+                            placeholderTextColor="#9CA3AF"
+                            className="text-white text-lg"
+                        />
                     </View>
                 </View>
 
@@ -147,7 +152,7 @@ const CustomReportBuilderScreen = () => {
                         Choose the data points you want to analyze
                     </Text>
 
-                    <View className="space-y-3">
+                    <View className="gap-y-3">
                         {availableMetrics.map((metric) => (
                             <TouchableOpacity
                                 key={metric.id}
@@ -189,7 +194,7 @@ const CustomReportBuilderScreen = () => {
                         Choose how to group and analyze your data
                     </Text>
 
-                    <View className="space-y-3">
+                    <View className="gap-y-3">
                         {availableDimensions.map((dimension) => (
                             <TouchableOpacity
                                 key={dimension.id}

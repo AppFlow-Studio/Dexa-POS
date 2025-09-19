@@ -84,7 +84,7 @@ const TableBillSection = ({
 
   return (
     <>
-      <View className="max-w-96 bg-[#303030] flex-1">
+      <View className="max-w-lg bg-[#303030] flex-1">
         {showOrderDetails && <OrderDetails />}
 
         {/* Coursing Summary */}
@@ -96,19 +96,43 @@ const TableBillSection = ({
                 .map(([course, count]) => {
                   const sent = !!sentCourses?.[Number(course)];
                   const isActive = Number(course) === (currentCourse ?? 0);
+
+                  // Get items in this course to check their kitchen status
+                  const itemsInCourse = cart.filter(item =>
+                    (itemCourseMap?.[item.id] ?? 1) === Number(course)
+                  );
+
+                  // Check if all items in course are sent to kitchen
+                  const allItemsSent = itemsInCourse.every(item =>
+                    item.kitchen_status === "sent" ||
+                    item.kitchen_status === "ready" ||
+                    item.kitchen_status === "served"
+                  );
+
+                  // Check if any items are ready
+                  const anyItemsReady = itemsInCourse.some(item =>
+                    item.kitchen_status === "ready" || item.kitchen_status === "served"
+                  );
+
                   return (
                     <View
                       key={course}
-                      className={`px-3 py-2 rounded-full flex-row items-center gap-2 ${
-                        sent
-                          ? "bg-green-900/30 border border-green-500"
+                      className={`px-3 py-2 rounded-full flex-row items-center gap-2 ${sent || allItemsSent
+                        ? "bg-green-900/30 border border-green-500"
+                        : anyItemsReady
+                          ? "bg-yellow-900/30 border border-yellow-500"
                           : isActive
                             ? "bg-blue-900/30 border border-blue-500"
                             : "bg-[#212121] border border-gray-700"
-                      }`}
+                        }`}
                     >
                       <View
-                        className={`w-3 h-3 rounded-full ${sent ? "bg-green-500" : "bg-gray-500"}`}
+                        className={`w-3 h-3 rounded-full ${sent || allItemsSent
+                          ? "bg-green-500"
+                          : anyItemsReady
+                            ? "bg-yellow-500"
+                            : "bg-gray-500"
+                          }`}
                       />
                       <Text className="text-xl font-semibold text-white">
                         Course {course}
@@ -117,9 +141,13 @@ const TableBillSection = ({
                       <Text className="text-xl font-semibold text-gray-300">
                         x{count}
                       </Text>
-                      {sent ? (
+                      {sent || allItemsSent ? (
                         <Text className="text-xl font-bold text-green-400 ml-2">
                           Sent
+                        </Text>
+                      ) : anyItemsReady ? (
+                        <Text className="text-xl font-bold text-yellow-400 ml-2">
+                          In Progress
                         </Text>
                       ) : (
                         <Text

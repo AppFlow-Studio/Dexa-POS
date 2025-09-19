@@ -14,6 +14,11 @@ type CoursingState = {
     setItemCourse: (orderId: string, itemId: string, course: number) => void;
     finalizeCurrentCourse: (orderId: string, itemIds: string[]) => number; // returns new current course
     markCourseSent: (orderId: string, course: number) => void;
+    isCourseSent: (orderId: string, course: number) => boolean;
+    getSentCourses: (orderId: string) => number[];
+    getUnsentCourses: (orderId: string) => number[];
+    getCourseStatus: (orderId: string, course: number) => 'unsent' | 'sent' | 'in_progress' | 'not_found';
+    getAllCourseStatuses: (orderId: string) => Record<number, 'unsent' | 'sent' | 'in_progress'>;
 };
 
 export const useCoursingStore = create<CoursingState>((set, get) => ({
@@ -104,6 +109,89 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
                 },
             };
         });
+    },
+
+    // Helper function to check if a specific course was sent
+    isCourseSent: (orderId, course) => {
+        const state = get();
+        const orderCoursing = state.byOrderId[orderId];
+        if (!orderCoursing) return false;
+        return !!orderCoursing.sentCourses[course];
+    },
+
+    // Helper function to get all sent courses for an order
+    getSentCourses: (orderId) => {
+        const state = get();
+        const orderCoursing = state.byOrderId[orderId];
+        if (!orderCoursing) return [];
+
+        return Object.entries(orderCoursing.sentCourses)
+            .filter(([_, isSent]) => isSent)
+            .map(([course, _]) => Number(course))
+            .sort((a, b) => a - b);
+    },
+
+    // Helper function to get all unsent courses for an order
+    getUnsentCourses: (orderId) => {
+        const state = get();
+        const orderCoursing = state.byOrderId[orderId];
+        if (!orderCoursing) return [];
+
+        // Get all courses that have items assigned to them
+        const allCourses = new Set<number>();
+        Object.values(orderCoursing.itemCourseMap).forEach(course => {
+            allCourses.add(course);
+        });
+
+        // Filter out sent courses
+        return Array.from(allCourses)
+            .filter(course => !orderCoursing.sentCourses[course])
+            .sort((a, b) => a - b);
+    },
+
+    // Helper function to get detailed status of a specific course
+    getCourseStatus: (orderId, course) => {
+        const state = get();
+        const orderCoursing = state.byOrderId[orderId];
+        if (!orderCoursing) return 'not_found';
+
+        // Check if course has any items assigned to it
+        const hasItems = Object.values(orderCoursing.itemCourseMap).includes(course);
+        if (!hasItems) return 'not_found';
+
+        // Check if course was sent
+        if (orderCoursing.sentCourses[course]) {
+            return 'sent';
+        }
+
+        // Course exists but not sent
+        return 'unsent';
+    },
+
+    // Helper function to get status of all courses for an order
+    getAllCourseStatuses: (orderId) => {
+        const state = get();
+        const orderCoursing = state.byOrderId[orderId];
+        if (!orderCoursing) return {};
+
+        const statuses: Record<number, 'unsent' | 'sent' | 'in_progress'> = {};
+
+        // Get all courses that have items assigned to them
+        const allCourses = new Set<number>();
+        Object.values(orderCoursing.itemCourseMap).forEach(course => {
+            allCourses.add(course);
+        });
+
+        // Determine status for each course
+        Array.from(allCourses).forEach(course => {
+            if (orderCoursing.sentCourses[course]) {
+                statuses[course] = 'sent';
+            } else {
+                statuses[course] = 'unsent';
+            }
+        });
+
+        return statuses;
     },
 }));
 

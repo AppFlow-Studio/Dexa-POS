@@ -5,7 +5,7 @@ import ReportTable from "@/components/analytics/ReportTable";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowLeft, Download, Share } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const ReportViewScreen = () => {
@@ -19,37 +19,76 @@ const ReportViewScreen = () => {
         clearError
     } = useAnalyticsStore();
 
-    const [reportConfig, setReportConfig] = useState<{
-        type?: string;
-        customConfig?: any;
-    }>({});
+    // Helper function to generate smart date range titles for charts
+    const getChartTitle = (baseTitle: string) => {
+        if (!currentReportData?.salesTrends || currentReportData.salesTrends.length === 0) {
+            return baseTitle;
+        }
+
+        const dates = currentReportData.salesTrends.map(trend => new Date(trend.date));
+        const startDate = new Date(Math.min(...dates.map(d => d.getTime())));
+        const endDate = new Date(Math.max(...dates.map(d => d.getTime())));
+
+        const startYear = startDate.getFullYear();
+        const endYear = endDate.getFullYear();
+
+        if (startYear === endYear) {
+            return `${baseTitle} - ${startYear}`;
+        } else {
+            return `${baseTitle} - ${startYear} - ${endYear}`;
+        }
+    };
+
+    const [reportType, setReportType] = useState<string | null>(null);
+    const [customConfig, setCustomConfig] = useState<any>(params.customConfig || null);
+    const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
+    const [hasInitialized, setHasInitialized] = useState(false);
 
     useEffect(() => {
-        // Parse navigation parameters
-        if (params.reportType) {
-            setReportConfig({ type: params.reportType as string });
-        } else if (params.customReport) {
-            try {
-                const customConfig = JSON.parse(params.customReport as string);
-                setReportConfig({ customConfig });
-            } catch (e) {
-                console.error('Failed to parse custom report config:', e);
-                Alert.alert('Error', 'Invalid report configuration');
-                router.back();
-                return;
+        // Parse navigation parameters only once
+        if (!hasInitialized) {
+            if (params.reportType) {
+                setReportType(params.reportType as string);
+                // Set chart type from params or use default
+                const paramChartType = params.chartType as string;
+                if (paramChartType === 'line' || paramChartType === 'pie') {
+                    setChartType(paramChartType);
+                } else {
+                    setChartType('bar');
+                }
+            } else if (params.customReport) {
+                try {
+                    const parsedConfig = JSON.parse(params.customReport as string);
+                    setCustomConfig(parsedConfig);
+                    // Use chart type from custom config or default
+                    const configChartType = parsedConfig.chartType;
+                    if (configChartType === 'line' || configChartType === 'pie') {
+                        setChartType(configChartType);
+                    } else {
+                        setChartType('bar');
+                    }
+                } catch (e) {
+                    console.error('Failed to parse custom report config:', e);
+                    Alert.alert('Error', 'Invalid report configuration');
+                    router.back();
+                    return;
+                }
+            }
+            setHasInitialized(true);
+            clearError();
+        }
+    }, [params, hasInitialized]);
+
+    useEffect(() => {
+        // Fetch data when report type or custom config changes
+        if (hasInitialized) {
+            if (reportType) {
+                fetchReportData({ type: reportType });
+            } else if (customConfig) {
+                fetchReportData({ customConfig });
             }
         }
-
-        // Clear any previous errors
-        clearError();
-    }, [params]);
-
-    useEffect(() => {
-        // Fetch data when report config changes
-        if (reportConfig.type || reportConfig.customConfig) {
-            fetchReportData(reportConfig);
-        }
-    }, [reportConfig]);
+    }, [reportType, customConfig, hasInitialized]);
 
     // const handleExportCSV = async () => {
     //     if (!currentReportData?.tableData) {
@@ -88,11 +127,13 @@ const ReportViewScreen = () => {
     //     }
     // };
 
-    const handleRefresh = () => {
-        if (reportConfig.type || reportConfig.customConfig) {
-            fetchReportData(reportConfig);
+    const handleRefresh = useCallback(() => {
+        if (reportType) {
+            fetchReportData({ type: reportType });
+        } else if (customConfig) {
+            fetchReportData({ customConfig });
         }
-    };
+    }, [reportType, customConfig]);
 
     if (isLoading && !currentReportData) {
         return (
@@ -175,21 +216,51 @@ const ReportViewScreen = () => {
 
             <ScrollView contentContainerClassName="p-6">
                 {/* Filter Controls */}
-                <FilterControls />
+                <FilterControls onFilterChange={handleRefresh} />
 
                 {/* KPIs Section */}
                 <View className="mt-6">
                     <Text className="text-xl font-bold text-white mb-4">Key Performance Indicators</Text>
                     <View className="flex-row flex-wrap gap-4">
-                        {currentReportData.kpis.map((kpi, index) => (
-                            <View key={index} className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[200px]">
-                                <View className="flex-row items-center justify-between mb-2">
-                                    <Text className="text-sm text-gray-400">{kpi.label}</Text>
-                                    <KpiTooltip definition={kpi.definition} />
-                                </View>
-                                <Text className="text-2xl font-bold text-white">{kpi.value}</Text>
+                        <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                            <View className="flex-row items-center justify-between mb-2">
+                                <Text className="text-sm text-gray-400">Gross Margin</Text>
+                                <KpiTooltip definition="Percentage of revenue remaining after subtracting cost of goods sold" />
                             </View>
-                        ))}
+                            <Text className="text-2xl font-bold text-white">
+                                {currentReportData.kpis.grossMargin.toFixed(1)}%
+                            </Text>
+                        </View>
+
+                        <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                            <View className="flex-row items-center justify-between mb-2">
+                                <Text className="text-sm text-gray-400">Total Revenue</Text>
+                                <KpiTooltip definition="Total sales revenue for the selected period" />
+                            </View>
+                            <Text className="text-2xl font-bold text-white">
+                                ${currentReportData.kpis.totalRevenue.toFixed(0)}
+                            </Text>
+                        </View>
+
+                        <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                            <View className="flex-row items-center justify-between mb-2">
+                                <Text className="text-sm text-gray-400">Avg Order Value</Text>
+                                <KpiTooltip definition="Average value per order" />
+                            </View>
+                            <Text className="text-2xl font-bold text-white">
+                                ${currentReportData.kpis.averageOrderValue.toFixed(2)}
+                            </Text>
+                        </View>
+
+                        <View className="bg-[#303030] p-4 rounded-xl border border-gray-600 flex-1 min-w-[150px]">
+                            <View className="flex-row items-center justify-between mb-2">
+                                <Text className="text-sm text-gray-400">Total Orders</Text>
+                                <KpiTooltip definition="Total number of orders placed" />
+                            </View>
+                            <Text className="text-2xl font-bold text-white">
+                                {currentReportData.kpis.totalOrders}
+                            </Text>
+                        </View>
                     </View>
                 </View>
 
@@ -199,7 +270,8 @@ const ReportViewScreen = () => {
                     <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
                         <ReportChart
                             data={currentReportData.chartData}
-                            chartType={reportConfig.customConfig?.chartType || 'bar'}
+                            chartType={chartType}
+                            title={getChartTitle("Data Analysis")}
                         />
                     </View>
                 </View>
@@ -207,7 +279,7 @@ const ReportViewScreen = () => {
                 {/* Table Section */}
                 <View className="mt-8">
                     <Text className="text-xl font-bold text-white mb-4">Detailed Data</Text>
-                    <View className="bg-[#303030] rounded-2xl border border-gray-600 overflow-hidden">
+                    <View className="bg-[#303030] w-full rounded-2xl border border-gray-600 overflow-hidden">
                         <ReportTable data={currentReportData.tableData} />
                     </View>
                 </View>

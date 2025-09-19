@@ -34,7 +34,7 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    fireActiveOrderToKitchen,
+    sendNewItemsToKitchen,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
@@ -193,6 +193,16 @@ const UpdateTableScreen = () => {
 
   const handleSendCourseToKitchen = (course: number) => {
     if (!activeOrder) return;
+
+    // Use helper function to check if course was already sent
+    if (coursing.isCourseSent(activeOrder.id, course)) {
+      toast.error(`Course ${course} has already been sent to kitchen.`, {
+        duration: 2500,
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
     const state = coursing.getForOrder(activeOrder.id);
     const itemsInCourse = activeOrder.items.filter(
       (i) => (state?.itemCourseMap?.[i.id] ?? 1) === course
@@ -204,17 +214,26 @@ const UpdateTableScreen = () => {
       });
       return;
     }
+
+    // Update items in the course to "sent" status
     itemsInCourse.forEach((i) => {
-      // Mark items as Preparing to simulate sending to kitchen for this course
-      if ((i.item_status || "Preparing") !== "Preparing") {
-        updateItemStatusInActiveOrder(i.id, "Preparing");
-      }
+      // Update both kitchen_status and item_status for course items
+      updateItemStatusInActiveOrder(i.id, "Preparing");
     });
+
+    // Mark the course as sent
     coursing.markCourseSent(activeOrder.id, course);
+
+    // Update order status if it was building
+    if (activeOrder.order_status === "Building") {
+      updateOrderStatus(activeOrder.id, "Preparing");
+    }
+
     // Update table status like Take Order
     if (tableId && table?.status !== "In Use") {
       handleAssignToTable();
     }
+
     toast.success(`Sent course ${course} to kitchen.`, {
       duration: 2500,
       position: ToastPosition.BOTTOM,
@@ -344,12 +363,14 @@ const UpdateTableScreen = () => {
                 <Text className="font-bold text-white">New Course</Text>
               </TouchableOpacity>
               <TouchableOpacity
+
                 onPress={() =>
                   handleSendCourseToKitchen(
                     coursing.getForOrder(activeOrder?.id || "")
                       ?.currentCourse ?? 1
                   )
                 }
+
                 className="px-4 py-2 rounded-lg bg-blue-500"
               >
                 <Text className="font-bold text-white">
@@ -367,9 +388,9 @@ const UpdateTableScreen = () => {
       {/* Per-item status tracker */}
       {activeOrder && activeOrder.items?.length > 0 && (
         <View className="bg-[#303030] border-t border-gray-700 p-4">
-          <Text className="text-base font-bold text-blue-400 mb-3">
+          {/* <Text className="text-base font-bold text-blue-400 mb-3">
             Items Status
-          </Text>
+          </Text> */}
           <ScrollView
             className="max-h-32 w-full "
             contentContainerStyle={{ columnGap: 16 }}
@@ -416,14 +437,12 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${
-                      isReady ? "bg-yellow-500" : "bg-green-500"
-                    }`}
+                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-500" : "bg-green-500"
+                      }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${
-                        isReady ? "text-yellow-100" : "text-white"
-                      }`}
+                      className={`text-xs font-bold ${isReady ? "text-yellow-100" : "text-white"
+                        }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
                     </Text>
@@ -447,22 +466,20 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-2 py-1 rounded-full ${
-                activeOrder.paid_status === "Paid"
-                  ? "bg-green-600"
-                  : activeOrder.paid_status === "Pending"
-                    ? "bg-yellow-600"
-                    : "bg-red-600"
-              }`}
+              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
+                ? "bg-green-600"
+                : activeOrder.paid_status === "Pending"
+                  ? "bg-yellow-600"
+                  : "bg-red-600"
+                }`}
             >
               <Text
-                className={`text-xs font-semibold ${
-                  activeOrder.paid_status === "Paid"
-                    ? "text-green-100"
-                    : activeOrder.paid_status === "Pending"
-                      ? "text-yellow-100"
-                      : "text-red-100"
-                }`}
+                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
+                  ? "text-green-100"
+                  : activeOrder.paid_status === "Pending"
+                    ? "text-yellow-100"
+                    : "text-red-100"
+                  }`}
               >
                 {activeOrder.paid_status}
               </Text>
@@ -526,9 +543,13 @@ const UpdateTableScreen = () => {
             ) : (
               // Unpaid: show Send to Kitchen, Pay, and Close (which may void)
               <>
-                <TouchableOpacity
+                {/* <TouchableOpacity
                   onPress={() => {
-                    fireActiveOrderToKitchen();
+                    sendNewItemsToKitchen();
+                    handleSendCourseToKitchen(
+                      coursing.getForOrder(activeOrder?.id || "")
+                        ?.currentCourse ?? 1
+                    )
                     toast.success("Order sent to kitchen", {
                       duration: 3000,
                       position: ToastPosition.BOTTOM,
@@ -537,12 +558,12 @@ const UpdateTableScreen = () => {
                   disabled={
                     !activeOrder ||
                     activeOrder.items.length === 0 ||
-                    activeOrder.order_status !== "Building"
+                    (activeOrder.order_status !== "Building" && activeOrder.order_status !== "Preparing")
                   }
                   className={`px-8 py-3 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "bg-gray-600" : "bg-orange-500"}`}
                 >
                   <Text className="font-bold text-white">Send to Kitchen</Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
                 <TouchableOpacity
                   onPress={handlePay}
                   className="px-8 py-3 rounded-lg bg-blue-500"

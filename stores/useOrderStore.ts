@@ -388,13 +388,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const activeOrder = orders.find((o) => o.id === activeOrderId);
       if (!activeOrder) return;
 
-      // Generate composite key for the new item
-      const newItemKey = generateItemCompositeKey(newItem.menuItemId, newItem.customizations);
+      // Get the current course for this order from the coursing store
+      const coursingState = require('./useCoursingStore').useCoursingStore.getState();
+      const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
-      // Find an existing item in the cart that has the exact same composite key
+      // Generate composite key for the new item (including course)
+      const newItemKey = generateItemCompositeKey(newItem.menuItemId, newItem.customizations);
+      const newItemCourseKey = `${newItemKey}_course_${currentCourse}`;
+
+      // Find an existing item in the cart that has the exact same composite key AND same course
       const existingItemIndex = activeOrder.items.findIndex((cartItem) => {
         const existingItemKey = generateItemCompositeKey(cartItem.menuItemId, cartItem.customizations);
-        return existingItemKey === newItemKey;
+        const existingItemCourse = coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[cartItem.id] ?? 1;
+        const existingItemCourseKey = `${existingItemKey}_course_${existingItemCourse}`;
+        return existingItemCourseKey === newItemCourseKey;
       });
 
       set((state) => ({
@@ -429,15 +436,17 @@ export const useOrderStore = create<OrderState>((set, get) => {
                 o.order_status !== "Building" &&
                 o.service_location_id !== null;
 
-              updatedCart = [
-                ...o.items,
-                {
-                  ...newItem,
-                  paidQuantity: newItem.paidQuantity ?? 0,
-                  item_status: shouldSetItemStatus ? "Preparing" : undefined,
-                  kitchen_status: "new",
-                },
-              ];
+              const newCartItem: CartItem = {
+                ...newItem,
+                paidQuantity: newItem.paidQuantity ?? 0,
+                item_status: shouldSetItemStatus ? ("Preparing" as const) : undefined,
+                kitchen_status: "new" as const,
+              };
+
+              updatedCart = [...o.items, newCartItem];
+
+              // Assign the new item to the current course
+              coursingState.setItemCourse(activeOrderId, newCartItem.id, currentCourse);
             }
 
             // Only sync order status for dine-in orders that are assigned to tables
@@ -517,9 +526,23 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set((state) => {
         const updatedOrders = state.orders.map((o) => {
           if (o.id === activeOrderId) {
-            const updatedItems = o.items.map((i) =>
-              i.id === itemId ? { ...i, item_status: status } : i
-            );
+            const updatedItems = o.items.map((i) => {
+              if (i.id === itemId) {
+                const updatedItem = { ...i, item_status: status };
+
+                // Update kitchen_status based on item_status
+                if (status === "Preparing" && (!i.kitchen_status || i.kitchen_status === "new")) {
+                  updatedItem.kitchen_status = "sent";
+                } else if (status === "Ready") {
+                  updatedItem.kitchen_status = "ready";
+                } else if (status === "Served") {
+                  updatedItem.kitchen_status = "served";
+                }
+
+                return updatedItem;
+              }
+              return i;
+            });
 
             // Only sync order status for dine-in orders that are assigned to tables
             // Don't sync for orders that are still being built or takeaway orders

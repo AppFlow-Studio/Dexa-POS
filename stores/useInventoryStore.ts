@@ -274,7 +274,6 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
     soldItems.forEach((cartItem) => {
       const menuItem = menuItems.find((mi) => mi.id === cartItem.menuItemId);
       if (!menuItem) return;
-      console.log("Found menu item", menuItem);
       // Check if menu item has a recipe
       if (
         menuItem.stockTrackingMode === "quantity" &&

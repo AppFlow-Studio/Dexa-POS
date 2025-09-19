@@ -96,6 +96,8 @@ const Header = () => {
     pathname === "/customers-list" ||
     pathname === "/settings" ||
     pathname === "/settings/floor-plan" ||
+    pathname.startsWith("/analytics") ||
+    pathname.startsWith("/analytics-dashboard") && pathname.split("/").length > 2 ||
     (pathname.startsWith("/menu/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/inventory/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/online-orders/") &&

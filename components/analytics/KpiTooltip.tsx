@@ -1,54 +1,49 @@
-import { HelpCircle } from "lucide-react-native";
-import React, { useState } from "react";
-import { Modal, Text, TouchableOpacity, View } from "react-native";
+// components/analytics/KpiTooltip.tsx
+
+import { HelpCircle, X } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Modal, Text, TouchableOpacity, View } from 'react-native';
 
 interface KpiTooltipProps {
     definition: string;
 }
 
-const KpiTooltip: React.FC<KpiTooltipProps> = ({ definition }) => {
-    const [showTooltip, setShowTooltip] = useState(false);
+export default function KpiTooltip({ definition }: KpiTooltipProps) {
+    const [isVisible, setIsVisible] = useState(false);
 
     return (
         <>
             <TouchableOpacity
-                onPress={() => setShowTooltip(true)}
+                onPress={() => setIsVisible(true)}
                 className="ml-2"
-                activeOpacity={0.7}
             >
-                <HelpCircle color="#6b7280" size={16} />
+                <HelpCircle color="#9CA3AF" size={16} />
             </TouchableOpacity>
 
             <Modal
-                visible={showTooltip}
+                visible={isVisible}
                 transparent
                 animationType="fade"
-                onRequestClose={() => setShowTooltip(false)}
+                onRequestClose={() => setIsVisible(false)}
             >
-                <TouchableOpacity
-                    className="flex-1 bg-black/50 items-center justify-center p-6"
-                    activeOpacity={1}
-                    onPress={() => setShowTooltip(false)}
-                >
-                    <View className="bg-[#303030] rounded-2xl p-6 max-w-sm border border-gray-600">
-                        <View className="flex-row items-center mb-3">
-                            <HelpCircle color="#60A5FA" size={20} />
-                            <Text className="text-white font-semibold ml-2">Definition</Text>
+                <View className="flex-1 bg-black/50 items-center justify-center p-6">
+                    <View className="bg-[#303030] rounded-2xl border border-gray-600 p-6 max-w-sm">
+                        <View className="flex-row items-center justify-between mb-4">
+                            <Text className="text-white text-lg font-semibold">Definition</Text>
+                            <TouchableOpacity
+                                onPress={() => setIsVisible(false)}
+                                className="p-1"
+                            >
+                                <X color="#9CA3AF" size={20} />
+                            </TouchableOpacity>
                         </View>
-                        <Text className="text-gray-300 text-base leading-6">
+
+                        <Text className="text-gray-300 text-sm leading-5">
                             {definition}
                         </Text>
-                        <TouchableOpacity
-                            onPress={() => setShowTooltip(false)}
-                            className="mt-4 bg-blue-600 py-3 rounded-xl items-center"
-                        >
-                            <Text className="text-white font-semibold">Got it</Text>
-                        </TouchableOpacity>
                     </View>
-                </TouchableOpacity>
+                </View>
             </Modal>
         </>
     );
-};
-
-export default KpiTooltip;
+}
