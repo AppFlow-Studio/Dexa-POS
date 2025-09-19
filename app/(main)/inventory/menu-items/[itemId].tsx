@@ -63,8 +63,8 @@ const MenuItemScreen = () => {
         category: "",
         defaultVendor: "",
         unitOfMeasure: "",
-        stockQuantity: "",
-        reorderThreshold: "",
+        stockQuantity: "10",
+        reorderThreshold: "5",
         price: "",
         stockTrackingMode: ""
     });
@@ -186,11 +186,12 @@ const MenuItemScreen = () => {
             ...item,
             name: editForm.name,
             category: editForm.category ? editForm.category.split(",").map(c => c.trim()) : [],
-            price: parseFloat(editForm.price)
+            price: parseFloat(editForm.price),
+            stockTrackingMode: editStockTrackingMode
         };
 
         // Update stock tracking mode using store function
-        const stockQuantity = editStockTrackingMode === "quantity" ?
+        const stockQuantity = editForm.stockTrackingMode === "quantity" ?
             (editForm.stockQuantity ? Number(parseFloat(editForm.stockQuantity).toFixed(2)) : undefined) : undefined;
         const reorderThreshold = editStockTrackingMode === "quantity" ?
             (editForm.reorderThreshold ? parseInt(editForm.reorderThreshold) : undefined) : undefined;
@@ -343,6 +344,7 @@ const MenuItemScreen = () => {
         ));
     };
 
+
     const handleCancel = () => {
         if (!item) return;
 
@@ -469,7 +471,7 @@ const MenuItemScreen = () => {
                     <View className="flex-row justify-between mb-2">
                         <Text className="text-gray-300">Current Stock:</Text>
                         <Text className="text-white font-semibold">
-                            {item.stockQuantity || 0} units
+                            {item.stockTrackingMode === 'quantity' ? `${item.stockQuantity || 0} units` : item.stockTrackingMode === 'in_stock' ? 'In Stock' : 'Out of Stock'} 
                         </Text>
                     </View>
 

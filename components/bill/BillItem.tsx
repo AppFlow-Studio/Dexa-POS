@@ -142,7 +142,7 @@ const BillItem: React.FC<BillItemProps> = ({
                 <View className="flex-row items-center mt-1">
                   <Text className="text-xl text-gray-300">x {item.quantity}</Text>
 
-                  {!item.isDraft && (
+                  {/* {!item.isDraft && (
                     <TouchableOpacity
                       className="flex-row items-center ml-3 px-3 py-1 bg-blue-900/30 border border-blue-500 rounded-3xl"
                     // onPress={handleNotesPress}
@@ -157,7 +157,7 @@ const BillItem: React.FC<BillItemProps> = ({
                         <ChevronDown color="#60A5FA" size={16} />
                       )}
                     </TouchableOpacity>
-                  )}
+                  )} */}
                 </View>
               </View>
               <Text className="font-semibold text-2xl text-white">

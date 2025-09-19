@@ -36,6 +36,7 @@ interface InventoryState {
   cancelPurchaseOrder: (poId: string) => void; // -> Cancelled
   // --- NEW ACTIONS ---
   decrementStockFromSale: (soldItems: CartItem[]) => void;
+  decrementStockFromItem: (cartItem: CartItem) => void;
   getLowStockItems: () => InventoryItem[];
 }
 
@@ -264,35 +265,106 @@ export const useInventoryStore = create<InventoryState>((set, get) => ({
 
   // Real-time stock deduction logic ---
   decrementStockFromSale: (soldItems) => {
-    const { menuItems } = useMenuStore.getState();
+    const { menuItems, updateMenuItem } = useMenuStore.getState();
     const currentInventory = get().inventoryItems;
 
     const stockUpdates: Record<string, number> = {};
+    const menuItemStockUpdates: Record<string, number> = {};
 
     soldItems.forEach((cartItem) => {
       const menuItem = menuItems.find((mi) => mi.id === cartItem.menuItemId);
-      if (menuItem?.recipe) {
-        menuItem.recipe.forEach((recipeItem) => {
-          const currentDecrement =
-            stockUpdates[recipeItem.inventoryItemId] || 0;
-          stockUpdates[recipeItem.inventoryItemId] =
-            currentDecrement + recipeItem.quantity * cartItem.quantity;
-        });
+      if (!menuItem) return;
+      console.log("Found menu item", menuItem);
+      // Check if menu item has a recipe
+      if (
+        menuItem.stockTrackingMode === "quantity" &&
+        menuItem.stockQuantity !== undefined
+      ) {
+        if (menuItem.recipe && menuItem.recipe.length > 0) {
+          // Recipe-based depletion: deplete ingredients according to recipe
+
+          menuItem.recipe.forEach((recipeItem) => {
+            const currentDecrement = stockUpdates[recipeItem.inventoryItemId] || 0;
+            stockUpdates[recipeItem.inventoryItemId] =
+              currentDecrement + recipeItem.quantity * cartItem.quantity;
+          });
+          console.log("Found recipe", menuItem.recipe);
+          console.log("Stock updates", stockUpdates);
+        }
+        // Simple item depletion: deplete the menu item's own stock
+        const currentDecrement = menuItemStockUpdates[menuItem.id] || 0;
+        menuItemStockUpdates[menuItem.id] = currentDecrement + cartItem.quantity;
+        console.log("Found quantity tracking mode", menuItem.stockTrackingMode);
+        console.log("Menu item stock updates", menuItemStockUpdates);
       }
+      // If stockTrackingMode is "in_stock" or "out_of_stock", no quantity tracking needed
     });
 
+    // Update inventory items (for recipe-based items)
     const updatedInventory = currentInventory.map((invItem) => {
       const totalToDecrement = stockUpdates[invItem.id];
       if (totalToDecrement) {
         return {
           ...invItem,
-          stockQuantity: invItem.stockQuantity - totalToDecrement,
+          stockQuantity: Math.max(0, invItem.stockQuantity - totalToDecrement),
         };
       }
       return invItem;
     });
 
+    // Update menu items (for simple items with quantity tracking)
+    Object.entries(menuItemStockUpdates).forEach(([menuItemId, quantityToDecrement]) => {
+      const menuItem = menuItems.find((mi) => mi.id === menuItemId);
+      if (menuItem && menuItem.stockQuantity !== undefined) {
+        const newStockQuantity = Math.max(0, menuItem.stockQuantity - quantityToDecrement);
+        updateMenuItem(menuItemId, { stockQuantity: newStockQuantity });
+      }
+    });
+
     set({ inventoryItems: updatedInventory });
+  },
+
+  // Single item stock deduction logic ---
+  decrementStockFromItem: (cartItem) => {
+    const { menuItems, updateMenuItem } = useMenuStore.getState();
+    const currentInventory = get().inventoryItems;
+
+    const menuItem = menuItems.find((mi) => mi.id === cartItem.menuItemId);
+    if (!menuItem) return;
+
+    // Check if menu item has a recipe
+    if (menuItem.recipe && menuItem.recipe.length > 0) {
+      // Recipe-based depletion: deplete ingredients according to recipe
+      const stockUpdates: Record<string, number> = {};
+
+      menuItem.recipe.forEach((recipeItem) => {
+        const currentDecrement = stockUpdates[recipeItem.inventoryItemId] || 0;
+        stockUpdates[recipeItem.inventoryItemId] =
+          currentDecrement + recipeItem.quantity * cartItem.quantity;
+      });
+
+      // Update inventory items
+      const updatedInventory = currentInventory.map((invItem) => {
+        const totalToDecrement = stockUpdates[invItem.id];
+        if (totalToDecrement) {
+          return {
+            ...invItem,
+            stockQuantity: Math.max(0, invItem.stockQuantity - totalToDecrement),
+          };
+        }
+        return invItem;
+      });
+
+      set({ inventoryItems: updatedInventory });
+    } else if (
+      menuItem.stockTrackingMode === "quantity" &&
+      menuItem.stockQuantity !== undefined
+    ) {
+      // Simple item depletion: deplete the menu item's own stock
+      const newStockQuantity = Math.max(0, menuItem.stockQuantity - cartItem.quantity);
+      updateMenuItem(menuItem.id, { stockQuantity: newStockQuantity });
+    }
+    // If stockTrackingMode is "in_stock" or "out_of_stock", no quantity tracking needed
   },
 
   // --- Selector for low stock items ---

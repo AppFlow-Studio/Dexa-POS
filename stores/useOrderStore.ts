@@ -36,7 +36,7 @@ interface OrderState {
   confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
     itemId: string,
-    status: "Preparing" | "Ready"
+    status: "Preparing" | "Ready" | "Served"
   ) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => void;
   applyDiscountToCheck: (orderId: string, discount: Discount) => void;
@@ -61,6 +61,7 @@ interface OrderState {
 
   archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
   markAllItemsAsReady: (orderId: string) => void;
+  markAllItemsAsServed: (orderId: string) => void;
   consolidateOrdersForTables: (
     tableIds: string[],
     tableNames: string[]
@@ -487,11 +488,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === updatedItem.id ? updatedItem : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === updatedItem.id ? updatedItem : i
+              ),
+            }
             : o
         ),
       }));
@@ -499,8 +500,19 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     updateItemStatusInActiveOrder: (itemId, status) => {
-      const { activeOrderId } = get();
+      const { activeOrderId, orders } = get();
       if (!activeOrderId) return;
+
+      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      if (!activeOrder) return;
+
+      // Find the item being updated
+      const itemToUpdate = activeOrder.items.find((i) => i.id === itemId);
+
+      // Trigger inventory depletion when an item is marked as "Ready" or "Served"
+      if ((status === "Ready" || status === "Served") && itemToUpdate) {
+        useInventoryStore.getState().decrementStockFromItem(itemToUpdate);
+      }
 
       set((state) => {
         const updatedOrders = state.orders.map((o) => {
@@ -516,15 +528,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
               o.order_status !== "Building" &&
               o.service_location_id !== null
             ) {
+              const allItemsServed = updatedItems.every(
+                (item) => item.item_status === "Served"
+              );
               const allItemsReady = updatedItems.every(
-                (item) => item.item_status === "Ready"
+                (item) => item.item_status === "Ready" || item.item_status === "Served"
               );
               const anyItemsPreparing = updatedItems.some(
                 (item) => item.item_status === "Preparing"
               );
 
               let newOrderStatus = o.order_status;
-              if (allItemsReady && updatedItems.length > 0) {
+              if (allItemsServed && updatedItems.length > 0) {
+                newOrderStatus = "Served";
+              } else if (allItemsReady && updatedItems.length > 0) {
                 newOrderStatus = "Ready";
               } else if (anyItemsPreparing) {
                 newOrderStatus = "Preparing";
@@ -572,11 +589,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === itemId ? { ...i, isDraft: false } : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === itemId ? { ...i, isDraft: false } : i
+              ),
+            }
             : o
         ),
       }));
@@ -687,11 +704,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-              ...o,
-              service_location_id: tableId,
-              order_type: "Dine In" as const,
-              order_status: "Preparing" as const,
-            }
+            ...o,
+            service_location_id: tableId,
+            order_type: "Dine In" as const,
+            order_status: "Preparing" as const,
+          }
           : o
       );
 
@@ -766,6 +783,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const order = orders.find((o) => o.id === orderId);
       if (!order) return;
 
+      // Trigger inventory depletion when order is paid (alternative trigger point)
+      if (order.items.length > 0 && order.order_status !== "Ready" && order.order_status !== "Served") {
+        useInventoryStore.getState().decrementStockFromSale(order.items);
+      }
+
       // Calculate total based on items (this is the subtotal)
       const subtotal = order.items.reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -781,13 +803,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-                ...o,
-                paid_status: "Paid",
-                check_status: "Closed",
-                total_amount: total, // Save the correct final total
-                total_tax: tax,
-                total_discount: activeOrderDiscount, // Save the discount amount
-              }
+              ...o,
+              paid_status: "Paid",
+              check_status: "Closed",
+              total_amount: total, // Save the correct final total
+              total_tax: tax,
+              total_discount: activeOrderDiscount, // Save the discount amount
+            }
             : o
         ),
       }));
@@ -857,6 +879,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
       return tableId;
     },
     markAllItemsAsReady: (orderId) => {
+      const { orders } = get();
+      const order = orders.find((o) => o.id === orderId);
+
+      if (!order) return;
+
+      // Trigger inventory depletion when all items are marked as ready
+      if (order.items.length > 0) {
+        useInventoryStore.getState().decrementStockFromSale(order.items);
+      }
+
       set((state) => ({
         orders: state.orders.map((order) => {
           if (order.id === orderId) {
@@ -877,13 +909,44 @@ export const useOrderStore = create<OrderState>((set, get) => {
           return order;
         }),
       }));
-      const { orders } = get();
-      const order = orders.find((o) => o.id === orderId);
 
       // if (order?.order_type === "Take Away") {
       //   //if order type is take away then add it archive after ready
       //   get().archiveOrder(orderId);
       // }
+    },
+
+    markAllItemsAsServed: (orderId) => {
+      const { orders } = get();
+      const order = orders.find((o) => o.id === orderId);
+
+      if (!order) return;
+
+      // Trigger inventory depletion when all items are marked as served
+      if (order.items.length > 0) {
+        useInventoryStore.getState().decrementStockFromSale(order.items);
+      }
+
+      set((state) => ({
+        orders: state.orders.map((order) => {
+          if (order.id === orderId) {
+            // Create a new items array where every item's status is "Served"
+            const updatedItems = order.items.map((item) => ({
+              ...item,
+              item_status: "Served" as const, // Use 'as const' for strict typing
+              kitchen_status: "served" as const, // Update kitchen status to served
+            }));
+
+            // Return the order with the updated items and the overall order status also set to "Served"
+            return {
+              ...order,
+              items: updatedItems,
+              order_status: "Served" as const,
+            };
+          }
+          return order;
+        }),
+      }));
     },
     consolidateOrdersForTables: (tableIds, tableNames) => {
       const { orders, startNewOrder } = get();
@@ -965,7 +1028,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch {}
+      } catch { }
     },
     transferOrderToTable: (orderId, newTableId) => {
       set((state) => ({

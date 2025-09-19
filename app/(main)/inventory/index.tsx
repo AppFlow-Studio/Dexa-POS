@@ -511,11 +511,21 @@ const InventoryScreen = () => {
                           {isSelected ? <Check color="#fff" size={16} /> : null}
                         </TouchableOpacity>
                       </View>
-                      <Text className="text-white text-2xl w-[22%]">{item.name}</Text>
+                      <View className="w-[22%] flex-row items-center">
+                        <Text className="text-white text-2xl flex-1">{item.name}</Text>
+                      </View>
                       <Text className="text-gray-300 text-2xl w-[12%]">${item.price.toFixed(2)}</Text>
-                      <Text className={`text-2xl w-[12%] ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
-                        {typeof item.stockQuantity === 'number' ? item.stockQuantity : '—'}
-                      </Text>
+                      <View className="w-[12%] flex-row items-center justify-between">
+                        <Text className={`text-2xl ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
+                          {typeof item.stockQuantity === 'number' ? item.stockQuantity : '—'}
+                        </Text>
+                        {(item.availability === false ||
+                          (typeof item.stockQuantity === 'number' &&
+                            typeof item.reorderThreshold === 'number' &&
+                            item.stockQuantity <= item.reorderThreshold)) && (
+                            <AlertTriangle color="#EF4444" size={20} className="ml-2" />
+                          )}
+                      </View>
                       <View className="w-[22%] items-start flex ">
                         <Text className={`text-2xl w-[60%] text-center ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
                           {typeof item.reorderThreshold === 'number' ? `${item.reorderThreshold}` : ''}

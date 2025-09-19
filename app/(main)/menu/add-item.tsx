@@ -1,6 +1,5 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
-import { Button } from "@/components/ui/button";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -655,7 +654,7 @@ const AddMenuItemScreen: React.FC = () => {
                           className={`px-3 py-2 rounded-full ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? "bg-red-900 border border-red-500" : "bg-red-900/30 border border-red-500"}` : `${formData.modifiers.includes(modifier.id) ? "bg-blue-900 border border-blue-500" : "bg-blue-900/30 border border-blue-500"}`}`}
                         >
                           <Text
-                            className={`text-lg ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? 'text-red-100' : 'text-red-400'}`: `${formData.modifiers.includes(modifier.id) ? 'text-blue-100' : 'text-blue-400'}`}`}
+                            className={`text-lg ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? 'text-red-100' : 'text-red-400'}` : `${formData.modifiers.includes(modifier.id) ? 'text-blue-100' : 'text-blue-400'}`}`}
                           >
                             {modifier.type}
                           </Text>

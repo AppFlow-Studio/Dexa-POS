@@ -634,7 +634,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     },
 
     getItemPriceForCategory: (itemId, categoryId) => {
-      const item = get().menuItems.find((item) => item.id === itemId);
+      const item = get().menuItems.find((item) => item.id === itemId.split('|')[0]);
       if (!item) return 0;
 
       // Check for custom pricing for this category

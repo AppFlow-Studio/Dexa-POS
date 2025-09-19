@@ -1,5 +1,6 @@
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
@@ -25,6 +26,7 @@ const PaymentSuccessView = () => {
   const { close, paymentMethod, activeTableId } = usePaymentStore();
   const { updateTableStatus } = useFloorPlanStore();
   const { clearSelectedTable } = useDineInStore();
+  const { decrementStockFromSale } = useInventoryStore();
   const {
     activeOrderId,
     orders,
@@ -60,6 +62,7 @@ const PaymentSuccessView = () => {
       startNewOrder,
       setActiveOrder,
     } = useOrderStore.getState();
+    // decrementStockFromSale(items);
 
     if (activeOrderId) {
       markOrderAsPaid(activeOrderId);
@@ -69,9 +72,9 @@ const PaymentSuccessView = () => {
       updateTableStatus(activeTableId, "In Use");
     }
 
-    if (activeOrderId) {
-      updateOrderStatus(activeOrderId, "Preparing");
-    }
+    // if (activeOrderId) {
+    //   updateOrderStatus(activeOrderId, "Preparing");
+    // }
 
     clearSelectedTable();
     close();
@@ -139,7 +142,7 @@ const PaymentSuccessView = () => {
             {receiptSummary.map((item, index) => (
               <ReceiptRow
                 key={`${item.name}_${index}`}
-                label={item.displayName}
+                label={`${item.name} x(${item.quantity})`}
                 value={`${item.totalPrice.toFixed(2)}`}
               />
             ))}

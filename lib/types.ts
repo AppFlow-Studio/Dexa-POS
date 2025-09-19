@@ -252,7 +252,7 @@ export interface CartItem {
   // Tracks how many of the quantity have been fully paid. Defaults to 0.
   paidQuantity?: number;
   // Per-item preparation status tracking for table workflow
-  item_status?: "Preparing" | "Ready";
+  item_status?: "Preparing" | "Ready" | "Served";
   // Kitchen send status - tracks whether item has been sent to kitchen
   kitchen_status?: "new" | "sent" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
@@ -424,6 +424,7 @@ export interface OrderProfile {
   | "Cancelled"
   | "Preparing"
   | "Ready"
+  | "Served"
   | "Building"
   | "Voided";
 
