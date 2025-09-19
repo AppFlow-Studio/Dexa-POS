@@ -1,3 +1,4 @@
+import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
@@ -7,8 +8,8 @@ import { Text, TouchableOpacity, View } from "react-native";
 const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-
   const { layouts, updateTableStatus } = useFloorPlanStore();
+  
 
   // Find the table by searching through all tables in all layouts
   const table = useMemo(() => {
@@ -23,6 +24,7 @@ const CleanTableScreen = () => {
   const handleCleanTable = () => {
     if (tableId) {
       updateTableStatus(tableId as string, "Available");
+      
       router.back(); // Go back to the floor plan
     }
   };
@@ -80,3 +82,7 @@ const CleanTableScreen = () => {
 };
 
 export default CleanTableScreen;
+function clearSelectedTable() {
+  throw new Error("Function not implemented.");
+}
+

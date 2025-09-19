@@ -81,7 +81,7 @@ const AnalyticsDashboardScreen = () => {
             title: 'Item Sales',
             description: 'Best selling items and sales performance',
             icon: <ShoppingCart color="#3b82f6" size={24} />,
-            chartType: 'bar'
+            chartType: 'pie'
         },
         {
             id: 'sales-by-hour',

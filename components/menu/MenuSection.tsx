@@ -43,6 +43,7 @@ import PreviousOrdersSection from "./PreviousOrdersSection";
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
 }
+
 // Get image source for preview
 const getImageSource = (item: MenuItemType) => {
   if (item.image && item.image.length > 200) {

@@ -151,7 +151,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           />
           <View className="absolute inset-0 items-center justify-center">
             <Text className="text-white font-bold text-lg">{table.name}</Text>
-            {table.type === "table" && (
+            {table.type === "table" && table.status === "In Use" && (
               <Text className="text-white font-bold text-lg">
                 ${orderTotal.toFixed(2)}
               </Text>

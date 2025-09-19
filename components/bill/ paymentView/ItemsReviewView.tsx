@@ -33,7 +33,7 @@ const ItemsReviewView = () => {
         Review Items
       </Text>
       <ScrollView
-        className="max-h-[350px] mb-4"
+        className="max-h-[400px] mb-4"
         contentContainerClassName="gap-y-2"
       >
         {items.map((item) => (

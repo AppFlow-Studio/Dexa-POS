@@ -104,6 +104,7 @@ const TablesScreen = () => {
           router.push(`/tables/clean-table/${targetTable.id}`);
           break;
       }
+      
     }
   };
 
@@ -145,6 +146,7 @@ const TablesScreen = () => {
 
     router.push(`/tables/${primaryTableId}`);
   };
+
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">

@@ -33,6 +33,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
 
   // The table's status from the floor plan store is the source of truth for its state
   const status = table.status;
+  console.log(activeOrderForThisTable ? activeOrderForThisTable : "No order");
   return (
     <View className="p-6 border-b border-gray-100">
       <View className="flex-row items-center justify-between">
@@ -54,7 +55,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
         <Text className="text-xl text-white ml-8 mt-1">
           Order {activeOrderForThisTable.id.slice(-5)}
           {activeOrderForThisTable.customer_name || ""}
-          {activeOrderForThisTable.order_status === "Closed" && (
+          {activeOrderForThisTable?.check_status === "Closed" && (
             <Text className="text-red-600 font-semibold"> (Closed)</Text>
           )}
         </Text>

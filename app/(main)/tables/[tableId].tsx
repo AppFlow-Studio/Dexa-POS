@@ -358,12 +358,12 @@ const UpdateTableScreen = () => {
             <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={finalizeCurrentCourse}
-                className="px-4 py-2 rounded-lg bg-[#4B5563]"
+                className="px-4 py-2 rounded-lg bg-green-200"
               >
-                <Text className="font-bold text-white">New Course</Text>
+                <Text className="font-bold text-green-600">New Course</Text>
               </TouchableOpacity>
               <TouchableOpacity
-
+                disabled={coursing.getForOrder(activeOrder?.id || "")?.currentCourse === 1}
                 onPress={() =>
                   handleSendCourseToKitchen(
                     coursing.getForOrder(activeOrder?.id || "")
@@ -381,7 +381,33 @@ const UpdateTableScreen = () => {
               </TouchableOpacity>
             </View>
           </View>
-          <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
+
+          {(() => {
+            const coursingState = coursing.getForOrder(activeOrder?.id || "");
+            const currentCourse = coursingState?.currentCourse ?? 1;
+            const isCurrentCourseSent = coursing.isCourseSent(activeOrder?.id || "", currentCourse);
+
+            if (isCurrentCourseSent) {
+              // Show "Start New Course" button when current course is sent
+              return (
+                <View className="flex-1 justify-center items-center">
+                  <TouchableOpacity
+                    onPress={finalizeCurrentCourse}
+                    className="px-6 py-3 rounded-lg bg-green-600 border border-green-500"
+                    activeOpacity={0.8}
+                  >
+                    <Text className="font-bold text-white text-lg">
+                      ✨ Start New Course
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            } else {
+              // Show normal menu section
+              return <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />;
+            }
+          })()}
+
         </View>
       </View>
 
@@ -543,36 +569,17 @@ const UpdateTableScreen = () => {
             ) : (
               // Unpaid: show Send to Kitchen, Pay, and Close (which may void)
               <>
-                {/* <TouchableOpacity
-                  onPress={() => {
-                    sendNewItemsToKitchen();
-                    handleSendCourseToKitchen(
-                      coursing.getForOrder(activeOrder?.id || "")
-                        ?.currentCourse ?? 1
-                    )
-                    toast.success("Order sent to kitchen", {
-                      duration: 3000,
-                      position: ToastPosition.BOTTOM,
-                    });
-                  }}
-                  disabled={
-                    !activeOrder ||
-                    activeOrder.items.length === 0 ||
-                    (activeOrder.order_status !== "Building" && activeOrder.order_status !== "Preparing")
-                  }
-                  className={`px-8 py-3 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "bg-gray-600" : "bg-orange-500"}`}
-                >
-                  <Text className="font-bold text-white">Send to Kitchen</Text>
-                </TouchableOpacity> */}
                 <TouchableOpacity
                   onPress={handlePay}
-                  className="px-8 py-3 rounded-lg bg-blue-500"
+                  disabled={activeOrder?.items.length === 0}
+                  className={`px-8 py-3 rounded-lg bg-blue-500 ${activeOrder?.items.length === 0 ? "bg-gray-600" : ""}`}
                 >
                   <Text className="font-bold text-white">Pay</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleCloseCheck}
-                  className="px-8 py-3 rounded-lg border border-gray-600 bg-[#303030]"
+                  disabled={activeOrder?.items.length === 0}
+                  className={`px-8 py-3 rounded-lg border border-gray-600 bg-[#303030] ${activeOrder?.items.length === 0 ? "bg-gray-600" : ""}`}
                 >
                   <Text className="font-bold text-white">Close Check</Text>
                 </TouchableOpacity>

@@ -71,18 +71,18 @@ const PaymentSuccessView = () => {
     if (activeOrder?.order_type === "Dine In" && activeTableId) {
       updateTableStatus(activeTableId, "In Use");
     }
+    else {
+      setTimeout(() => {
+        const newOrder = startNewOrder();
+        setActiveOrder(newOrder.id);
+      }, 100);
+    }
 
-    // if (activeOrderId) {
-    //   updateOrderStatus(activeOrderId, "Preparing");
-    // }
 
-    clearSelectedTable();
+    if (activeOrderId) {
+      updateOrderStatus(activeOrderId, "Preparing");
+    }
     close();
-
-    setTimeout(() => {
-      const newOrder = startNewOrder();
-      setActiveOrder(newOrder.id);
-    }, 100);
   };
 
   const handlePrint = () => {
