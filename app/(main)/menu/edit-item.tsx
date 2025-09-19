@@ -1,19 +1,24 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
+import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
   Camera,
+  ChevronDown,
+  ChevronUp,
   Plus,
   Save,
   Trash2,
   Utensils,
-  X,
+  X
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -67,6 +72,13 @@ const EditMenuItemScreen: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   const [isRecipeModalOpen, setRecipeModalOpen] = useState(false);
+  const recipeSheetRef = React.useRef<any>(null);
+  const [expandedModifiers, setExpandedModifiers] = useState<Record<string, boolean>>({});
+  // Recipe editing state
+  const [editingRecipeItemIndex, setEditingRecipeItemIndex] = useState<number | null>(null);
+  const inventorySelectionSheetRef = React.useRef<BottomSheet>(null);
+  const inventorySnapPoints = useMemo(() => ["70%"], []);
+  const [inventorySearchQuery, setInventorySearchQuery] = useState("");
 
   const { inventoryItems } = useInventoryStore();
 
@@ -258,24 +270,14 @@ const EditMenuItemScreen: React.FC = () => {
   };
 
   // Get image source for preview
-  const getImageSource = (): { uri: string } | undefined => {
-    if (formData.imageBase64) {
-      return { uri: `data:image/jpeg;base64,${formData.imageBase64}` };
+  const getImageSource = (image: string | undefined) => {
+    if (image && image.length > 200) {
+      return { uri: `data:image/jpeg;base64,${image}` };
     }
 
-    if (formData.image) {
-      if (
-        formData.image.startsWith("http") ||
-        formData.image.startsWith("file://")
-      ) {
-        return { uri: formData.image };
-      }
+    if (image) {
       // Try to get image from assets
-      try {
-        return { uri: `@/assets/images/${formData.image}` };
-      } catch {
-        return undefined;
-      }
+      return `${image}`;
     }
 
     return undefined;
@@ -361,6 +363,90 @@ const EditMenuItemScreen: React.FC = () => {
     }));
   };
 
+  // Helper functions for inventory items
+  const getInventoryItemName = (inventoryItemId: string) => {
+    const item = inventoryItems.find(i => i.id === inventoryItemId);
+    return item?.name || "Unknown Item";
+  };
+
+  const getInventoryItemUnit = (inventoryItemId: string) => {
+    const item = inventoryItems.find(i => i.id === inventoryItemId);
+    return item?.unit || "";
+  };
+
+  // Filter inventory items based on search
+  const filteredInventoryItems = useMemo(() => {
+    if (!inventorySearchQuery.trim()) return inventoryItems;
+    const query = inventorySearchQuery.toLowerCase();
+    return inventoryItems.filter(item =>
+      item.name.toLowerCase().includes(query) ||
+      item.category.toLowerCase().includes(query)
+    );
+  }, [inventorySearchQuery, inventoryItems]);
+
+  // Open inventory selection sheet
+  const openInventorySelection = () => {
+    setInventorySearchQuery("");
+    inventorySelectionSheetRef.current?.expand();
+  };
+
+  // Select inventory item for recipe
+  const selectInventoryItem = (inventoryItemId: string) => {
+    if (editingRecipeItemIndex !== null) {
+      // Replace existing item
+      setFormData(prev => ({
+        ...prev,
+        recipe: prev.recipe.map((item, index) =>
+          index === editingRecipeItemIndex
+            ? { ...item, inventoryItemId }
+            : item
+        )
+      }));
+      setEditingRecipeItemIndex(null);
+    } else {
+      // Add new item
+      setFormData(prev => ({
+        ...prev,
+        recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }]
+      }));
+    }
+    inventorySelectionSheetRef.current?.close();
+  };
+
+  // Update recipe item quantity
+  const updateRecipeItemQuantity = (index: number, quantity: string) => {
+    setFormData(prev => ({
+      ...prev,
+      recipe: prev.recipe.map((item, i) =>
+        i === index ? { ...item, quantity: parseFloat(quantity) || 0 } : item
+      )
+    }));
+  };
+
+  // Remove recipe item
+  const removeRecipeItem = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      recipe: prev.recipe.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Render inventory backdrop
+  const renderInventoryBackdrop = useMemo(
+    () => (backdropProps: any) => (
+      <BottomSheetBackdrop {...backdropProps} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+    ),
+    []
+  );
+
+  const toggleModifierExpand = (modifierId: string) => {
+    setExpandedModifiers((prev) => ({
+      ...prev,
+      [modifierId]: !prev[modifierId],
+    }));
+  };
+
+
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
@@ -388,9 +474,12 @@ const EditMenuItemScreen: React.FC = () => {
       </View>
 
       <ScrollView className="flex-1 p-6">
-        <Text className="text-3xl font-bold text-white mb-6">
-          Edit Menu Item #{itemId}
-        </Text>
+        <View className="flex-row items-center justify-between w-full gap-2">
+          <Text className="text-3xl font-bold text-white">
+            Edit Menu Item - <Text className=" italic">{formData.name}</Text>
+          </Text>
+          <Text className="text-md text-gray-400">id:#{itemId}</Text>
+        </View>
 
         <View className="flex-row gap-6">
           {/* Left Column - Form */}
@@ -514,18 +603,16 @@ const EditMenuItemScreen: React.FC = () => {
                       <TouchableOpacity
                         key={category.id}
                         onPress={() => toggleCategory(category.name)}
-                        className={`px-6 py-4 rounded-lg border ${
-                          formData.categories.includes(category.name)
-                            ? "bg-blue-600 border-blue-500"
-                            : "bg-[#303030] border-gray-600"
-                        }`}
+                        className={`px-6 py-4 rounded-lg border ${formData.categories.includes(category.name)
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
+                          }`}
                       >
                         <Text
-                          className={`text-xl font-medium ${
-                            formData.categories.includes(category.name)
-                              ? "text-white"
-                              : "text-gray-300"
-                          }`}
+                          className={`text-xl font-medium ${formData.categories.includes(category.name)
+                            ? "text-white"
+                            : "text-gray-300"
+                            }`}
                         >
                           {category.name}
                         </Text>
@@ -569,7 +656,7 @@ const EditMenuItemScreen: React.FC = () => {
             </View>
 
             {/* Meal Types */}
-            <View className="mb-6">
+            {/* <View className="mb-6">
               <Text className="text-2xl font-semibold text-white mb-4">
                 Available For
               </Text>
@@ -578,25 +665,23 @@ const EditMenuItemScreen: React.FC = () => {
                   <TouchableOpacity
                     key={meal}
                     onPress={() => toggleMeal(meal)}
-                    className={`px-6 py-3 rounded-lg border ${
-                      formData.meal.includes(meal)
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                    }`}
+                    className={`px-6 py-3 rounded-lg border ${formData.meal.includes(meal)
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-[#303030] border-gray-600"
+                      }`}
                   >
                     <Text
-                      className={`text-xl font-medium ${
-                        formData.meal.includes(meal)
-                          ? "text-white"
-                          : "text-gray-300"
-                      }`}
+                      className={`text-xl font-medium ${formData.meal.includes(meal)
+                        ? "text-white"
+                        : "text-gray-300"
+                        }`}
                     >
                       {meal}
                     </Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </View> */}
 
             {/* Modifier Groups */}
             <View className="mb-6">
@@ -618,8 +703,8 @@ const EditMenuItemScreen: React.FC = () => {
               {modifierGroups.length === 0 ? (
                 <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
                   <Text className="text-2xl text-gray-400 text-center mb-3">
-                    No modifier groups available. Create one to add
-                    customization options.
+                    No modifier groups available. Create one to add customization
+                    options.
                   </Text>
                   <TouchableOpacity
                     onPress={() => router.push("/menu/add-modifier")}
@@ -633,39 +718,118 @@ const EditMenuItemScreen: React.FC = () => {
                 </View>
               ) : (
                 <>
-                  <View className="flex-row flex-wrap gap-3">
-                    {modifierGroups.map((modifier) => (
-                      <TouchableOpacity
-                        key={modifier.id}
-                        onPress={() => toggleModifier(modifier.id)}
-                        className={`px-6 py-4 rounded-lg border ${
-                          formData.modifiers.includes(modifier.id)
-                            ? "bg-blue-600 border-blue-500"
-                            : "bg-[#303030] border-gray-600"
-                        }`}
-                      >
-                        <View className="flex-row items-center gap-2">
-                          <Text
-                            className={`text-xl font-medium ${
-                              formData.modifiers.includes(modifier.id)
-                                ? "text-white"
-                                : "text-gray-300"
-                            }`}
-                          >
-                            {modifier.name}
-                          </Text>
-                          <View
-                            className={`px-3 py-2 rounded-full ${modifier.type === "required" ? "bg-red-900/30 border border-red-500" : "bg-blue-900/30 border border-blue-500"}`}
-                          >
-                            <Text
-                              className={`text-lg ${modifier.type === "required" ? "text-red-400" : "text-blue-400"}`}
+                  <View className="flex-col gap-3">
+                    {modifierGroups.map((modifier) => {
+                      const selected = formData.modifiers.includes(modifier.id);
+                      const expanded = !!expandedModifiers[modifier.id];
+                      const optionPreview = modifier.options?.slice(0, 5) || [];
+
+                      return (
+                        <View
+                          key={modifier.id}
+                          className={`rounded-lg border ${selected ? "bg-blue-600/10 border-blue-500" : "bg-[#303030] border-gray-600"}`}
+                        >
+                          {/* Header */}
+                          <View className="flex-row items-center justify-between p-6">
+                            <TouchableOpacity
+                              onPress={() => toggleModifier(modifier.id)}
+                              className="flex-row items-center gap-3 flex-1"
                             >
-                              {modifier.type}
-                            </Text>
+                              <Text
+                                className={`text-2xl font-medium ${selected ? "text-white" : "text-gray-300"}`}
+                              >
+                                {modifier.name}
+                              </Text>
+                              <View
+                                className={`px-3 py-2 rounded-full ${modifier.type === "required" ? "bg-red-900/30 border border-red-500" : "bg-blue-900/30 border border-blue-500"}`}
+                              >
+                                <Text
+                                  className={`text-xl ${modifier.type === "required" ? "text-red-400" : "text-blue-400"}`}
+                                >
+                                  {modifier.type}
+                                </Text>
+                              </View>
+                              <View className="bg-gray-600/30 border border-gray-500 px-3 py-2 rounded-full">
+                                <Text className="text-xl text-gray-300">
+                                  {modifier.selectionType === "single"
+                                    ? "Single"
+                                    : "Multiple"}
+                                  {modifier.selectionType === "multiple" &&
+                                    modifier.maxSelections
+                                    ? ` • Max ${modifier.maxSelections}`
+                                    : ""}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => toggleModifierExpand(modifier.id)}
+                              className="pl-4 py-2"
+                            >
+                              {expanded ? (
+                                <ChevronUp size={24} color="#9CA3AF" />
+                              ) : (
+                                <ChevronDown size={24} color="#9CA3AF" />
+                              )}
+                            </TouchableOpacity>
                           </View>
+
+                          {/* Details */}
+                          {expanded && (
+                            <View className="px-6 pb-6">
+                              {modifier.description ? (
+                                <Text className="text-xl text-gray-400 mb-2">
+                                  {modifier.description}
+                                </Text>
+                              ) : null}
+
+                              {optionPreview.length > 0 && (
+                                <View>
+                                  <Text className="text-xl text-gray-300 mb-1">
+                                    Options
+                                  </Text>
+                                  <View className="gap-2">
+                                    {optionPreview.map((opt) => (
+                                      <View
+                                        key={opt.id}
+                                        className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-md px-4 py-3"
+                                      >
+                                        <View className="flex-row items-center gap-2">
+                                          <Text className="text-xl text-white">
+                                            {opt.name}
+                                          </Text>
+                                          {opt.isDefault ? (
+                                            <View className="px-3 py-1 rounded-full bg-green-900/30 border border-green-500">
+                                              <Text className="text-lg text-green-400">
+                                                Default
+                                              </Text>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                        <Text className="text-xl text-gray-300">
+                                          {opt.price
+                                            ? `${opt.price.toFixed(2)}`
+                                            : "$0.00"}
+                                        </Text>
+                                      </View>
+                                    ))}
+                                    {modifier.options &&
+                                      modifier.options.length >
+                                      optionPreview.length ? (
+                                      <Text className="text-xl text-gray-400 mt-1">
+                                        +
+                                        {modifier.options.length -
+                                          optionPreview.length}{" "}
+                                        more
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                </View>
+                              )}
+                            </View>
+                          )}
                         </View>
-                      </TouchableOpacity>
-                    ))}
+                      );
+                    })}
                   </View>
 
                   {formData.modifiers.length > 0 && (
@@ -708,55 +872,80 @@ const EditMenuItemScreen: React.FC = () => {
                 <Text className="text-2xl font-semibold text-white">
                   Recipe / Components
                 </Text>
-                <TouchableOpacity
-                  onPress={() => setRecipeModalOpen(true)}
-                  className="flex-row items-center bg-green-600 px-4 py-2 rounded-lg"
-                >
-                  <Plus size={24} color="white" />
-                  <Text className="text-xl text-white font-medium ml-1">
-                    Add Ingredient
-                  </Text>
-                </TouchableOpacity>
               </View>
 
-              {formData.recipe.length > 0 ? (
-                <View className="flex-col gap-3">
-                  {formData.recipe.map((recipeItem, index) => {
-                    const inventoryItem = inventoryItems.find(
-                      (i) => i.id === recipeItem.inventoryItemId
-                    );
-                    return (
-                      <View
-                        key={recipeItem.inventoryItemId}
-                        className="flex-row justify-between items-center bg-[#303030] border border-gray-600 rounded-lg p-4"
-                      >
-                        <Text className="text-2xl text-white">
-                          {inventoryItem?.name || "Unknown Item"}
-                        </Text>
-                        <View className="flex-row items-center gap-4">
-                          <Text className="text-xl text-gray-300">
-                            {recipeItem.quantity} {inventoryItem?.unit}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() =>
-                              handleRemoveIngredient(recipeItem.inventoryItemId)
-                            }
-                          >
-                            <Trash2 size={24} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  })}
+              {formData.recipe.length === 0 ? (
+                <View className="bg-gray-800 rounded-lg p-6 items-center">
+                  <Text className="text-gray-400 text-center mb-2">No recipe items defined</Text>
+                  <Text className="text-gray-500 text-sm text-center mb-4">
+                    Add inventory items to create a recipe for this menu item
+                  </Text>
+                  <TouchableOpacity
+                    onPress={openInventorySelection}
+                    className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
+                  >
+                    <Plus color="white" size={16} />
+                    <Text className="text-white ml-2 font-semibold">Add Recipe Item</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
-                <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
-                  <Text className="text-2xl text-gray-400">
-                    No inventory items linked yet.
-                  </Text>
-                  <Text className="text-xl text-gray-500 mt-1">
-                    Add ingredients to track stock automatically.
-                  </Text>
+                <View className="gap-y-3">
+                  {formData.recipe.map((recipeItem, index) => (
+                    <View key={index} className="bg-gray-800 rounded-lg p-4">
+                      <View className="flex-row items-center gap-3">
+                        <TouchableOpacity
+                          className="flex-1"
+                          onPress={() => {
+                            setEditingRecipeItemIndex(index);
+                            openInventorySelection();
+                          }}
+                        >
+                          <View className="opacity-100">
+                            <Text className="font-semibold text-white">
+                              {getInventoryItemName(recipeItem.inventoryItemId)}
+                            </Text>
+                            <Text className="text-sm text-gray-400">
+                              {getInventoryItemUnit(recipeItem.inventoryItemId)}
+                            </Text>
+                            <Text className="text-blue-400 text-xs mt-1">
+                              Tap to change item
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        <View className="w-24">
+                          <View>
+                            <TextInput
+                              value={recipeItem.quantity.toString()}
+                              onChangeText={(text) => updateRecipeItemQuantity(index, text)}
+                              keyboardType="numeric"
+                              className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center"
+                              placeholder="0"
+                              placeholderTextColor="#9CA3AF"
+                            />
+                            <Text className="text-gray-400 text-xs text-center mt-1">
+                              Quantity
+                            </Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => removeRecipeItem(index)}
+                          className="bg-red-600 p-2 rounded-lg"
+                        >
+                          <X color="white" size={16} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    onPress={openInventorySelection}
+                    className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-4 items-center"
+                  >
+                    <Plus color="#9CA3AF" size={24} />
+                    <Text className="text-gray-400 mt-2 font-semibold">Add Recipe Item</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -768,25 +957,29 @@ const EditMenuItemScreen: React.FC = () => {
               </Text>
 
               {/* Image Preview */}
-              {getImageSource() && (
-                <View className="mb-4">
-                  <View className="w-40 h-40 rounded-lg border border-gray-600 overflow-hidden">
+              <View className="w-1/6 aspect-square mb-4 rounded border border-gray-600 overflow-hidden">
+
+                {getImageSource(formData.image) && (
+                  <View className="w-full h-full relative overflow-visible">
+                    <TouchableOpacity
+                      onPress={removeImage}
+                      className="absolute top-0  z-10 right-0 bg-red-600 rounded-full p-2"
+                    >
+                      <Trash2 size={24} color="white" />
+                    </TouchableOpacity>
                     <Image
-                      source={getImageSource()}
+                      source={
+                        typeof getImageSource(formData.image) === "string"
+                          ? MENU_IMAGE_MAP[
+                          formData.image as keyof typeof MENU_IMAGE_MAP
+                          ]
+                          : getImageSource(formData.image)
+                      }
                       className="w-full h-full object-cover"
                     />
                   </View>
-                  <TouchableOpacity
-                    onPress={removeImage}
-                    className="flex-row items-center mt-2"
-                  >
-                    <Trash2 size={24} color="#EF4444" />
-                    <Text className="text-xl text-red-400 ml-1">
-                      Remove Image
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                )}
+              </View>
 
               <TouchableOpacity
                 onPress={pickImage}
@@ -794,7 +987,7 @@ const EditMenuItemScreen: React.FC = () => {
               >
                 <Camera size={24} color="white" />
                 <Text className="text-2xl text-white font-medium ml-2">
-                  {getImageSource() ? "Change Image" : "Pick Image"}
+                  {getImageSource(formData.image) ? "Change Image" : "Pick Image"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -811,11 +1004,10 @@ const EditMenuItemScreen: React.FC = () => {
                     availability: !prev.availability,
                   }))
                 }
-                className={`flex-row items-center px-6 py-4 rounded-lg border ${
-                  formData.availability
-                    ? "bg-green-600 border-green-500"
-                    : "bg-red-600 border-red-500"
-                }`}
+                className={`flex-row items-center px-6 py-4 rounded-lg border ${formData.availability
+                  ? "bg-green-600 border-green-500"
+                  : "bg-red-600 border-red-500"
+                  }`}
               >
                 <Text className="text-2xl text-white font-medium">
                   {formData.availability ? "Available" : "Unavailable"}
@@ -832,15 +1024,21 @@ const EditMenuItemScreen: React.FC = () => {
 
             <View className="bg-[#303030] rounded-lg border border-gray-700 p-6">
               {/* Image Preview */}
-              <View className="w-full h-56 rounded-lg border border-gray-600 overflow-hidden mb-4">
-                {getImageSource() ? (
+              <View className="w-full aspect-square mb-4 rounded border border-gray-600 overflow-hidden">
+                {getImageSource(formData.image) ? (
                   <Image
-                    source={getImageSource()}
+                    source={
+                      typeof getImageSource(formData.image) === "string"
+                        ? MENU_IMAGE_MAP[
+                        formData.image as keyof typeof MENU_IMAGE_MAP
+                        ]
+                        : getImageSource(formData.image)
+                    }
                     className="w-full h-full object-cover"
                   />
                 ) : (
                   <View className="w-full h-full bg-gray-600 items-center justify-center">
-                    <Utensils color="#9ca3af" size={48} />
+                    <Utensils color="#9ca3af" size={24} />
                   </View>
                 )}
               </View>
@@ -911,9 +1109,9 @@ const EditMenuItemScreen: React.FC = () => {
                         return (
                           <View
                             key={index}
-                            className="bg-purple-900/30 border border-purple-500 px-3 py-2 rounded"
+                            className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded"
                           >
-                            <Text className="text-lg text-purple-400">
+                            <Text className="text-lg text-blue-400">
                               {modifier?.name}
                             </Text>
                           </View>
@@ -961,15 +1159,25 @@ const EditMenuItemScreen: React.FC = () => {
 
             {/* Item Preview */}
             <View className="bg-[#212121] rounded-lg p-6 mb-6">
-              <View className="flex-row items-center gap-4">
-                {getImageSource() && (
-                  <View className="w-16 h-16 rounded border border-gray-600 overflow-hidden">
+              <View className="flex-row items-center gap-4 w-full">
+                <View className="w-full aspect-square rounded border border-gray-600 overflow-hidden">
+                  {getImageSource(formData.image) ? (
                     <Image
-                      source={getImageSource()}
+                      source={
+                        typeof getImageSource(formData.image) === "string"
+                          ? MENU_IMAGE_MAP[
+                          formData.image as keyof typeof MENU_IMAGE_MAP
+                          ]
+                          : getImageSource(formData.image)
+                      }
                       className="w-full h-full object-cover"
                     />
-                  </View>
-                )}
+                  ) : (
+                    <View className="w-full h-full bg-gray-600 items-center justify-center">
+                      <Utensils color="#9ca3af" size={24} />
+                    </View>
+                  )}
+                </View>
                 <View className="flex-1">
                   <Text className="text-2xl text-white font-medium">
                     {formData.name || "Item Name"}
@@ -1018,6 +1226,125 @@ const EditMenuItemScreen: React.FC = () => {
         onClose={() => setRecipeModalOpen(false)}
         onAddIngredient={handleAddIngredient}
       />
+      <RecipeIngredientSheet
+        ref={recipeSheetRef}
+        existingIds={formData.recipe.map(r => r.inventoryItemId)}
+        currentId={null}
+        onSelect={(inventoryItemId) => {
+          // If already exists, ignore
+          if (formData.recipe.some(r => r.inventoryItemId === inventoryItemId)) return;
+          // Add with default quantity 1, then user edits in-line
+          setFormData(prev => ({ ...prev, recipe: [...prev.recipe, { inventoryItemId, quantity: 1 }] }));
+        }}
+      />
+
+      {/* Inventory Selection Bottom Sheet */}
+      <BottomSheet
+        ref={inventorySelectionSheetRef}
+        index={-1}
+        snapPoints={inventorySnapPoints}
+        enablePanDownToClose={true}
+        backgroundStyle={{ backgroundColor: "#303030" }}
+        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        backdropComponent={renderInventoryBackdrop}
+      >
+        <View className="flex-1">
+          <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
+            <View className="flex-1">
+              <Text className="text-xl font-bold text-white">
+                {editingRecipeItemIndex !== null ? "Replace Inventory Item" : "Select Inventory Item"}
+              </Text>
+              {editingRecipeItemIndex !== null && (
+                <Text className="text-blue-400 text-sm mt-1">
+                  Choose a new item to replace the current one
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity onPress={() => {
+              setEditingRecipeItemIndex(null);
+              inventorySelectionSheetRef.current?.close();
+            }}>
+              <X color="#9CA3AF" size={24} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Bar */}
+          <View className="p-4 border-b border-gray-700">
+            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
+              <TextInput
+                value={inventorySearchQuery}
+                onChangeText={setInventorySearchQuery}
+                placeholder="Search inventory items..."
+                placeholderTextColor="#9CA3AF"
+                className="flex-1 text-white ml-3"
+              />
+            </View>
+          </View>
+
+          {/* Inventory Items List */}
+          {filteredInventoryItems.length === 0 ? (
+            <View className="flex-1 justify-center items-center p-8">
+              <Text className="text-gray-400 text-lg text-center">
+                {inventorySearchQuery ? "No items found" : "No inventory items available"}
+              </Text>
+            </View>
+          ) : (
+            <BottomSheetFlatList
+              data={filteredInventoryItems}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item: inventoryItem }) => {
+                const isAlreadyInRecipe = formData.recipe.some(recipeItem => recipeItem.inventoryItemId === inventoryItem.id);
+                const isCurrentlyEditing = editingRecipeItemIndex !== null &&
+                  formData.recipe[editingRecipeItemIndex]?.inventoryItemId === inventoryItem.id;
+
+                return (
+                  <TouchableOpacity
+                    onPress={() => selectInventoryItem(inventoryItem.id)}
+                    disabled={isAlreadyInRecipe && !isCurrentlyEditing}
+                    className={`p-4 border-b border-gray-700 ${isCurrentlyEditing
+                      ? "bg-blue-900 border-blue-600"
+                      : isAlreadyInRecipe
+                        ? "bg-gray-800 opacity-50"
+                        : "bg-transparent"
+                      }`}
+                  >
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1">
+                        <Text className={`font-semibold ${isCurrentlyEditing
+                          ? "text-blue-300"
+                          : isAlreadyInRecipe
+                            ? "text-gray-500"
+                            : "text-white"
+                          }`}>
+                          {inventoryItem.name}
+                        </Text>
+                        <Text className={`text-sm ${isCurrentlyEditing
+                          ? "text-blue-400"
+                          : isAlreadyInRecipe
+                            ? "text-gray-600"
+                            : "text-gray-400"
+                          }`}>
+                          {inventoryItem.stockQuantity} {inventoryItem.unit} • ${inventoryItem.cost.toFixed(2)}
+                        </Text>
+                      </View>
+                      {isCurrentlyEditing ? (
+                        <View className="bg-blue-600 px-2 py-1 rounded">
+                          <Text className="text-white text-xs">Currently Selected</Text>
+                        </View>
+                      ) : isAlreadyInRecipe ? (
+                        <View className="bg-gray-600 px-2 py-1 rounded">
+                          <Text className="text-gray-300 text-xs">Added</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+            />
+          )}
+        </View>
+      </BottomSheet>
     </View>
   );
 };

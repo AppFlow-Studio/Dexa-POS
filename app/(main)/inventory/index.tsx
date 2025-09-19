@@ -1,3 +1,4 @@
+import AddInventoryItemSheet from "@/components/inventory/AddInventoryItemSheet";
 import InventoryItemFormModal from "@/components/inventory/InventoryItemFormModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
@@ -43,21 +44,21 @@ const InventoryCatalogRow: React.FC<{
   return (
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
       <TouchableOpacity className="flex-row items-center p-6 border-b border-gray-700">
-        <Text className="w-[18%] text-2xl font-semibold text-white">
+        <Text className="w-[20%] text-2xl font-semibold text-white">
           {item.name}
         </Text>
         {/* <Text className="w-[15%] text-2xl text-gray-300">{item.category}</Text> */}
-        <View className="w-[25%]">
+        <View className="w-[20%]">
           <Text
             className={`text-2xl font-semibold ${isLowStock ? "text-red-400" : "text-white"}`}
           >
-            {item?.stockQuantity?.toFixed(2)} {item.unit}
+            {item?.stockQuantity?.toFixed(0)} {item.unit}
           </Text>
         </View>
-        <Text className="w-[12%] text-2xl text-gray-300">
+        <Text className="w-[15%] text-2xl text-gray-300">
           {item.reorderThreshold} {item.unit}
         </Text>
-        <Text className="w-[12%] text-2xl text-gray-300">
+        <Text className="w-[15%] text-2xl text-gray-300">
           ${item.cost.toFixed(2)}
         </Text>
         <Text className="w-[18%] text-2xl text-gray-300">{vendor?.name || "Unknown"}</Text>
@@ -98,6 +99,7 @@ const InventoryScreen = () => {
   const { menuItems, toggleItemAvailability, updateMenuItem } = useMenuStore();
   const [activeTab, setActiveTab] = useState<"inventory" | "menu">("menu");
   const router = useRouter();
+  const addItemSheetRef = React.useRef<BottomSheet>(null);
 
   const [modalMode, setModalMode] = useState<"add" | "edit" | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -243,7 +245,7 @@ const InventoryScreen = () => {
   const TABLE_HEADERS_INVENTORY = [
     "Name",
     "In Stock",
-    "Threshold",
+    "Reorder Point",
     "Cost",
     "Vendor",
     "",
@@ -251,9 +253,9 @@ const InventoryScreen = () => {
   const TABLE_HEADERS_MENU = [
     "Select",
     "Name",
-    "Category",
     "Price",
     "Stock",
+    "Reorder Point",
     "Availability",
     "",
   ];
@@ -423,13 +425,13 @@ const InventoryScreen = () => {
                 key={header}
                 className={`font-bold text-xl text-gray-400 ${activeTab === "inventory"
                   ? header === "Name"
-                    ? "w-[18%]"
+                    ? "w-[20%]"
                     : header === "Vendor"
                       ? "w-fit"
                       : header === "In Stock"
-                        ? "w-[25%]"
-                        : header === "Threshold"
-                          ? "w-[12%]"
+                        ? "w-[20%]"
+                        : header === "Reorder Point"
+                          ? "w-[15%]"
                           : header === "Category" || header === "Cost"
                             ? "w-[15%]"
                             : "w-[5%]"
@@ -437,15 +439,13 @@ const InventoryScreen = () => {
                     ? "w-[6%]"
                     : header === "Name"
                       ? "w-[22%]"
-                      : header === "Category"
-                        ? "w-[22%]"
-                        : header === "Price"
+                      : header === "Price"
+                        ? "w-[12%]"
+                        : header === "Stock"
                           ? "w-[12%]"
-                          : header === "Stock"
-                            ? "w-[12%]"
-                            : header === "Availability"
-                              ? "w-fit"
-                              : "w-[12%]"
+                          : header === "Reorder Point"
+                            ? "w-[22%]"
+                            : 'w-[12%]'
                   }`}
               >
                 {header === "Select" ? (
@@ -468,7 +468,8 @@ const InventoryScreen = () => {
               /> */}
               </TouchableOpacity>
               {activeTab === "inventory" && <TouchableOpacity
-                onPress={handleOpenAddModal}
+                onPress={() => addItemSheetRef.current?.expand()}
+
                 className="py-4 px-6 w-1/2 bg-blue-600 rounded-lg flex-row items-center justify-center"
               >
                 <Plus color="white" size={20} className="mr-2" />
@@ -501,7 +502,7 @@ const InventoryScreen = () => {
                 const isSelected = selectedMenuIds.includes(item.id);
                 return (
                   <Link href={`/inventory/menu-items/${item.id}`} asChild>
-                    <TouchableOpacity className="flex-row items-center px-6 py-4 border-b border-gray-700">
+                    <TouchableOpacity className="flex-row items-center px-6 py-6 border-b border-gray-700">
                       <View className="w-[6%]">
                         <TouchableOpacity
                           onPress={() => toggleSelectMenuItem(item.id)}
@@ -510,20 +511,23 @@ const InventoryScreen = () => {
                           {isSelected ? <Check color="#fff" size={16} /> : null}
                         </TouchableOpacity>
                       </View>
-                      <Text className="text-white text-xl w-[22%]">{item.name}</Text>
-                      <Text className="text-gray-300 text-xl w-[22%]" numberOfLines={1}>
-                        {categories.join(", ") || "—"}
-                      </Text>
-                      <Text className="text-gray-300 text-xl w-[12%]">${item.price.toFixed(2)}</Text>
-                      <Text className={`text-xl w-[12%] ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
+                      <Text className="text-white text-2xl w-[22%]">{item.name}</Text>
+                      <Text className="text-gray-300 text-2xl w-[12%]">${item.price.toFixed(2)}</Text>
+                      <Text className={`text-2xl w-[12%] ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
                         {typeof item.stockQuantity === 'number' ? item.stockQuantity : '—'}
-                        {typeof item.reorderThreshold === 'number' ? ` / ${item.reorderThreshold}` : ''}
                       </Text>
-                      <View className="w-[14%]">
-                        <Text className={`text-sm px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}>
+                      <View className="w-[22%] items-start flex ">
+                        <Text className={`text-2xl w-[60%] text-center ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
+                          {typeof item.reorderThreshold === 'number' ? `${item.reorderThreshold}` : ''}
+                        </Text>
+                      </View>
+                      <View className="w-[12%]">
+                        <Text className={`text-2xl px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}>
                           {item.availability !== false ? "Available" : "Unavailable"}
                         </Text>
                       </View>
+
+
                       <View className="w-[12%] items-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -852,7 +856,8 @@ const InventoryScreen = () => {
             }}
           />
         </BottomSheet>
-
+        {/* Guided Add Item Flow */}
+        <AddInventoryItemSheet ref={addItemSheetRef} />
         {/* Inventory Search Bottom Sheet */}
         <BottomSheet
           ref={invSearchSheetRef}

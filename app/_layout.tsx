@@ -79,7 +79,7 @@ export default function RootLayout() {
                 backgroundColor: "#ffffff",
                 borderWidth: 1,
                 borderColor: "#e5e7eb",
-                width: "100%",
+                flex: 1,
               },
               text: {
                 color: "#1f2937",

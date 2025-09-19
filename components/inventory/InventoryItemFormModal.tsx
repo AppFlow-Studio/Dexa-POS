@@ -26,7 +26,7 @@ interface InventoryItemFormModalProps {
   initialData?: InventoryItem | null;
 }
 
-const UNIT_OPTIONS: { label: string; value: InventoryUnit }[] = [
+export const UNIT_OPTIONS: { label: string; value: InventoryUnit }[] = [
   { label: "Pieces (pcs)", value: "pcs" },
   { label: "Grams (g)", value: "g" },
   { label: "Kilograms (kg)", value: "kg" },

@@ -30,7 +30,7 @@ const MerchantLoginScreen = () => {
 
       <View  className="mb-6">
         <Text className="text-2xl font-medium text-white mb-2">Password</Text>
-        <KeyboardAvoidingView >
+        <KeyboardAvoidingView behavior="position">
           <TextInput
             className="w-full p-6 border text-white border-neutral-200 rounded-xl text-2xl"
             placeholderTextColor="white"

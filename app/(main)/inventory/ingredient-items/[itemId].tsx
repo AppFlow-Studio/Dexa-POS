@@ -26,7 +26,7 @@ import {
 interface InventoryTransaction {
     id: string;
     itemId: string;
-    type: "PO_RECEIPT" | "SALES_CONSUMPTION" | "SPOILAGE_WASTE" | "INTERNAL_TRANSFER" | "COUNT_CORRECTION";
+    type: "PO_RECEIPT" | "SALES_CONSUMPTION" | "SPOILAGE_WASTE" | "INTERNAL_TRANSFER" | "COUNT_CORRECTION" | "NOTE";
     quantityChange: number;
     resultingQuantity: number;
     reason: string;
@@ -40,7 +40,11 @@ const IngredientItemScreen = () => {
     const { itemId } = useLocalSearchParams();
     const router = useRouter();
     const { inventoryItems, updateInventoryItem, vendors } = useInventoryStore();
-
+    const [showError, setShowError] = useState({
+        title: "",
+        description: "",
+        show: false
+    });
     const [item, setItem] = useState<InventoryItem | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [editStockTrackingMode, setEditStockTrackingMode] = useState<"in_stock" | "out_of_stock" | "quantity">("in_stock");
@@ -68,6 +72,7 @@ const IngredientItemScreen = () => {
     const [logUsageForm, setLogUsageForm] = useState({
         quantityUsed: "",
         reason: "",
+        customReason: "",
         notes: ""
     });
 
@@ -77,6 +82,8 @@ const IngredientItemScreen = () => {
         reason: "",
         notes: ""
     });
+    // Custom note entry for history sheet
+    const [historyNote, setHistoryNote] = useState("");
 
     useEffect(() => {
         if (itemId && inventoryItems.length > 0) {
@@ -183,18 +190,24 @@ const IngredientItemScreen = () => {
 
     const handleLogUsage = () => {
         if (!item || !logUsageForm.quantityUsed || !logUsageForm.reason) return;
-        if (editStockTrackingMode !== "quantity") return; // Only applicable when tracking by quantity
-
+        if (editStockTrackingMode !== "quantity") {
+            setShowError({
+                title: "This item is not set to track stock by quantity.",
+                description: "Please set the stock tracking mode to quantity to log usage.",
+                show: true
+            });
+            return;
+        }; // Only applicable when tracking by quantity
         const quantityChange = -parseFloat(logUsageForm.quantityUsed);
         const newQuantity = Number(((item.stockQuantity || 0) + quantityChange).toFixed(2));
 
         const newTransaction: InventoryTransaction = {
             id: Date.now().toString(),
             itemId: item.id,
-            type: logUsageForm.reason as any,
+            type: (logUsageForm.reason === "CUSTOM" ? "COUNT_CORRECTION" : logUsageForm.reason) as any,
             quantityChange,
             resultingQuantity: newQuantity,
-            reason: logUsageForm.reason,
+            reason: logUsageForm.reason === "CUSTOM" && logUsageForm.customReason.trim() ? logUsageForm.customReason.trim() : logUsageForm.reason,
             notes: logUsageForm.notes,
             timestamp: new Date().toISOString(),
             userId: "current_user"
@@ -205,7 +218,7 @@ const IngredientItemScreen = () => {
             stockQuantity: newQuantity
         });
         setInventoryHistory(prev => [newTransaction, ...prev]);
-        setLogUsageForm({ quantityUsed: "", reason: "", notes: "" });
+        setLogUsageForm({ quantityUsed: "", reason: "", customReason: "", notes: "" });
         setIsLogUsageModalOpen(false);
         setItem(prev => prev ? { ...prev, stockQuantity: newQuantity } : null);
     };
@@ -246,6 +259,7 @@ const IngredientItemScreen = () => {
             case "SPOILAGE_WASTE": return "Spoilage/Waste";
             case "INTERNAL_TRANSFER": return "Internal Transfer";
             case "COUNT_CORRECTION": return "Count Correction";
+            case "NOTE": return "Note";
             default: return type;
         }
     };
@@ -571,7 +585,7 @@ const IngredientItemScreen = () => {
                 onRequestClose={() => setIsLogUsageModalOpen(false)}
             >
                 <View className="flex-1 bg-black/50 justify-center items-center px-6">
-                    <View className="bg-[#303030] rounded-xl p-6 w-full max-w-md">
+                    <View className="bg-[#303030] rounded-xl p-6 w-full h-[90%] max-w-5xl">
                         <Text className="text-2xl font-bold text-white mb-4">Log Usage</Text>
 
                         <View className="mb-4">
@@ -617,7 +631,25 @@ const IngredientItemScreen = () => {
                                 >
                                     <Text className="text-white">Count Correction</Text>
                                 </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={() => setLogUsageForm(prev => ({ ...prev, reason: "CUSTOM" }))}
+                                    className={`p-3 ${logUsageForm.reason === "CUSTOM" ? "bg-blue-600" : ""}`}
+                                >
+                                    <Text className="text-white">Other (Custom)</Text>
+                                </TouchableOpacity>
                             </View>
+                            {logUsageForm.reason === "CUSTOM" && (
+                                <View className="mt-3">
+                                    <Text className="text-gray-300 mb-2">Custom Reason</Text>
+                                    <TextInput
+                                        value={logUsageForm.customReason}
+                                        onChangeText={(text) => setLogUsageForm(prev => ({ ...prev, customReason: text }))}
+                                        placeholder="Describe the reason for this adjustment"
+                                        placeholderTextColor="#9CA3AF"
+                                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                                    />
+                                </View>
+                            )}
                         </View>
 
                         <View className="mb-6">
@@ -629,7 +661,7 @@ const IngredientItemScreen = () => {
                                 placeholderTextColor="#9CA3AF"
                                 multiline
                                 numberOfLines={3}
-                                className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                                className="bg-[#212121] border border-gray-600 h-[120px] rounded-lg px-4 py-3 text-white text-lg"
                             />
                         </View>
 
@@ -647,6 +679,12 @@ const IngredientItemScreen = () => {
                                 <Text className="text-white text-lg font-semibold text-center">Log Usage</Text>
                             </TouchableOpacity>
                         </View>
+                        {showError.show && (
+                            <View className="mt-4 border border-red-500 rounded-lg p-4 bg-red-100 ">
+                                <Text className="text-red-500">{showError.title}</Text>
+                                <Text className="text-red-500">{showError.description}</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
             </Modal>
@@ -751,6 +789,49 @@ const IngredientItemScreen = () => {
                         </TouchableOpacity>
                     </View>
 
+                    {/* Custom Note Entry */}
+                    <View className="p-4 border-b border-gray-700">
+                        <Text className="text-gray-300 mb-2">Add Note to History</Text>
+                        <TextInput
+                            value={historyNote}
+                            onChangeText={setHistoryNote}
+                            placeholder="Type a note about this ingredient..."
+                            placeholderTextColor="#9CA3AF"
+                            multiline
+                            numberOfLines={3}
+                            className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white"
+                        />
+                        <View className="flex-row gap-3 mt-3">
+                            <TouchableOpacity
+                                onPress={() => setHistoryNote("")}
+                                className="px-4 py-3 bg-gray-600 rounded-lg"
+                            >
+                                <Text className="text-white font-semibold">Clear</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => {
+                                    if (!item || !historyNote.trim()) return;
+                                    const newTransaction: InventoryTransaction = {
+                                        id: Date.now().toString(),
+                                        itemId: item.id,
+                                        type: "NOTE",
+                                        quantityChange: 0,
+                                        resultingQuantity: item.stockQuantity || 0,
+                                        reason: "Note",
+                                        notes: historyNote.trim(),
+                                        timestamp: new Date().toISOString(),
+                                        userId: "current_user",
+                                    };
+                                    setInventoryHistory(prev => [newTransaction, ...prev]);
+                                    setHistoryNote("");
+                                }}
+                                className="px-4 py-3 bg-blue-600 rounded-lg"
+                            >
+                                <Text className="text-white font-semibold">Save Note</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
                     {inventoryHistory.length === 0 ? (
                         <View className="flex-1 justify-center items-center p-8">
                             <History color="#9CA3AF" size={48} />
@@ -779,12 +860,18 @@ const IngredientItemScreen = () => {
                                     </View>
 
                                     <View className="flex-row items-center justify-between mb-1">
-                                        <Text className="text-white font-semibold">
-                                            {transaction.quantityChange > 0 ? "+" : ""}{transaction.quantityChange} {item.unit}
-                                        </Text>
-                                        <Text className="text-gray-300">
-                                            Result: {transaction.resultingQuantity}
-                                        </Text>
+                                        {transaction.type !== "NOTE" ? (
+                                            <>
+                                                <Text className="text-white font-semibold">
+                                                    {transaction.quantityChange > 0 ? "+" : ""}{transaction.quantityChange} {item.unit}
+                                                </Text>
+                                                <Text className="text-gray-300">
+                                                    Result: {transaction.resultingQuantity}
+                                                </Text>
+                                            </>
+                                        ) : (
+                                            <Text className="text-gray-300 italic">Note entry</Text>
+                                        )}
                                     </View>
 
                                     {transaction.notes && (

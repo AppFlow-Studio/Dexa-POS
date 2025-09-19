@@ -42,6 +42,8 @@ export interface InventoryItem {
   reorderThreshold: number;
   cost: number; // Cost per unit
   vendorId: string | null;
+  // Stock tracking mode: in/out toggles or explicit quantity tracking
+  stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
 }
 
 export interface POLineItem {

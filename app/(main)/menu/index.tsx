@@ -864,8 +864,8 @@ const MenuPage: React.FC = () => {
                               source={
                                 typeof getImageSource(item.image) === "string"
                                   ? MENU_IMAGE_MAP[
-                                      item.image as keyof typeof MENU_IMAGE_MAP
-                                    ]
+                                  item.image as keyof typeof MENU_IMAGE_MAP
+                                  ]
                                   : getImageSource(item.image)
                               }
                               className="w-full h-full object-cover"
@@ -949,121 +949,121 @@ const MenuPage: React.FC = () => {
         <View className="gap-4">
           {scheduleViewType === "menus"
             ? menus.map((menu) => (
-                <View
-                  key={menu.id}
-                  className="bg-[#303030] rounded-lg border border-gray-700 p-6"
-                >
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-2xl text-white font-semibold">
-                      {menu.name}
+              <View
+                key={menu.id}
+                className="bg-[#303030] rounded-lg border border-gray-700 p-6"
+              >
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-2xl text-white font-semibold">
+                    {menu.name}
+                  </Text>
+                  <View
+                    className={`px-3 py-2 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+                  >
+                    <Text
+                      className={`text-xl ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
+                    >
+                      {menu.isActive
+                        ? menu.isAvailableNow
+                          ? "Available Now"
+                          : "Unavailable Now"
+                        : "Inactive"}
                     </Text>
-                    <View
-                      className={`px-3 py-2 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
-                    >
-                      <Text
-                        className={`text-xl ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
-                      >
-                        {menu.isActive
-                          ? menu.isAvailableNow
-                            ? "Available Now"
-                            : "Unavailable Now"
-                          : "Inactive"}
-                      </Text>
-                    </View>
-                  </View>
-                  {(menu.schedules ?? []).length === 0 ? (
-                    <View>
-                      <Text className="text-xl text-gray-400">
-                        Always available (no schedule rules)
-                      </Text>
-                    </View>
-                  ) : (
-                    <View className="gap-2">
-                      {menu.schedules!.map((r) => (
-                        <View
-                          key={r.id}
-                          className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
-                        >
-                          <Text className="text-xl text-gray-200">
-                            {r.name || r.id}
-                          </Text>
-                          <Text className="text-xl text-gray-400">
-                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  <View className="mt-3">
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push(`/menu/edit-menu?id=${menu.id}`)
-                      }
-                      className="self-start px-4 py-3 rounded-lg bg-blue-600"
-                    >
-                      <Text className="text-xl text-white">Edit Schedules</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
-              ))
+                {(menu.schedules ?? []).length === 0 ? (
+                  <View>
+                    <Text className="text-xl text-gray-400">
+                      Always available (no schedule rules)
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="gap-2">
+                    {menu.schedules!.map((r) => (
+                      <View
+                        key={r.id}
+                        className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                      >
+                        <Text className="text-xl text-gray-200">
+                          {r.name || r.id}
+                        </Text>
+                        <Text className="text-xl text-gray-400">
+                          {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <View className="mt-3">
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push(`/menu/edit-menu?id=${menu.id}`)
+                    }
+                    className="self-start px-4 py-3 rounded-lg bg-blue-600"
+                  >
+                    <Text className="text-xl text-white">Edit Schedules</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
             : storeCategories.map((category) => (
-                <View
-                  key={category.id}
-                  className="bg-[#303030] rounded-lg border border-gray-700 p-6"
-                >
-                  <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-2xl text-white font-semibold">
-                      {category.name}
+              <View
+                key={category.id}
+                className="bg-[#303030] rounded-lg border border-gray-700 p-6"
+              >
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-2xl text-white font-semibold">
+                    {category.name}
+                  </Text>
+                  <View
+                    className={`px-3 py-2 rounded-full ${category.isActive && isCategoryAvailableNow(category.name) ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+                  >
+                    <Text
+                      className={`text-xl ${category.isActive && isCategoryAvailableNow(category.name) ? "text-green-400" : "text-red-400"}`}
+                    >
+                      {category.isActive
+                        ? isCategoryAvailableNow(category.name)
+                          ? "Available Now"
+                          : "Unavailable Now"
+                        : "Inactive"}
                     </Text>
-                    <View
-                      className={`px-3 py-2 rounded-full ${category.isActive && isCategoryAvailableNow(category.name) ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
-                    >
-                      <Text
-                        className={`text-xl ${category.isActive && isCategoryAvailableNow(category.name) ? "text-green-400" : "text-red-400"}`}
-                      >
-                        {category.isActive
-                          ? isCategoryAvailableNow(category.name)
-                            ? "Available Now"
-                            : "Unavailable Now"
-                          : "Inactive"}
-                      </Text>
-                    </View>
-                  </View>
-                  {(category.schedules ?? []).length === 0 ? (
-                    <View>
-                      <Text className="text-xl text-gray-400">
-                        Always available (no schedule rules)
-                      </Text>
-                    </View>
-                  ) : (
-                    <View className="gap-2">
-                      {category.schedules!.map((r) => (
-                        <View
-                          key={r.id}
-                          className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
-                        >
-                          <Text className="text-xl text-gray-200">
-                            {r.name || r.id}
-                          </Text>
-                          <Text className="text-xl text-gray-400">
-                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  <View className="mt-3">
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push(`/menu/edit-category?id=${category.id}`)
-                      }
-                      className="self-start px-4 py-3 rounded-lg bg-blue-600"
-                    >
-                      <Text className="text-xl text-white">Edit Schedules</Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
-              ))}
+                {(category.schedules ?? []).length === 0 ? (
+                  <View>
+                    <Text className="text-xl text-gray-400">
+                      Always available (no schedule rules)
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="gap-2">
+                    {category.schedules!.map((r) => (
+                      <View
+                        key={r.id}
+                        className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                      >
+                        <Text className="text-xl text-gray-200">
+                          {r.name || r.id}
+                        </Text>
+                        <Text className="text-xl text-gray-400">
+                          {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <View className="mt-3">
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push(`/menu/edit-category?id=${category.id}`)
+                    }
+                    className="self-start px-4 py-3 rounded-lg bg-blue-600"
+                  >
+                    <Text className="text-xl text-white">Edit Schedules</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
         </View>
       </ScrollView>
     </View>
@@ -1128,16 +1128,6 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
             <Text className="text-xl font-semibold text-white">
               {item.name}
             </Text>
-            <TouchableOpacity
-              onPress={() => onToggleAvailability(item.id)}
-              className="p-1"
-            >
-              {item.availability !== false ? (
-                <Eye size={22} color="#10B981" />
-              ) : (
-                <EyeOff size={22} color="#EF4444" />
-              )}
-            </TouchableOpacity>
           </View>
 
           {item.description && (
@@ -1202,19 +1192,29 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           </View>
         </View>
 
-        <View className="flex-row gap-2 ml-4">
+        <View className="flex-col gap-y-2 ml-4">
           <TouchableOpacity
             onPress={() => onEdit(item)}
             className="p-2 bg-blue-900/30 border border-blue-500 rounded"
           >
-            <Edit size={22} color="#60A5FA" />
+            <Edit size={25} color="#60A5FA" />
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => onDelete(item.id)}
             className="p-2 bg-red-900/30 border border-red-500 rounded"
           >
-            <Trash2 size={22} color="#F87171" />
+            <Trash2 size={25} color="#F87171" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onToggleAvailability(item.id)}
+            className="p-2"
+          >
+            {item.availability !== false ? (
+              <Eye size={25} color="#10B981" />
+            ) : (
+              <EyeOff size={25} color="#EF4444" />
+            )}
           </TouchableOpacity>
         </View>
       </View>
