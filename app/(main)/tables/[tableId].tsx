@@ -363,7 +363,6 @@ const UpdateTableScreen = () => {
                 <Text className="font-bold text-green-600">New Course</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                disabled={coursing.getForOrder(activeOrder?.id || "")?.currentCourse === 1}
                 onPress={() =>
                   handleSendCourseToKitchen(
                     coursing.getForOrder(activeOrder?.id || "")

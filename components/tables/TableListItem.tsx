@@ -33,7 +33,6 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
 
   // The table's status from the floor plan store is the source of truth for its state
   const status = table.status;
-  console.log(activeOrderForThisTable ? activeOrderForThisTable : "No order");
   return (
     <View className="p-6 border-b border-gray-100">
       <View className="flex-row items-center justify-between">

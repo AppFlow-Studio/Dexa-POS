@@ -64,10 +64,11 @@ const OrderProcessing = () => {
     // Show only orders that are in a "kitchen" state
     const kitchenOrders = orders.filter(
       (o) =>
+        o.order_type !== 'Dine In' &&
         // Condition 1: Must be in Preparing state
-       ( o.order_status === "Preparing" &&
-        // Condition 2: Must have one or more items
-        o.items.length > 0) || o.paid_status === "Unpaid" && o.order_status !== "Building"
+        (o.order_status === "Preparing"  &&
+          // Condition 2: Must have one or more items
+          o.items.length > 0) || o.paid_status === "Unpaid" && o.order_status !== "Building"
     );
 
     return kitchenOrders;

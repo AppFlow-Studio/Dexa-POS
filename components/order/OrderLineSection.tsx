@@ -28,7 +28,7 @@ const OrderLineSection: React.FC = () => {
     // Only show orders that have items sent to kitchen
     const visibleOrders = orders.filter(
       (o) =>
-        (o.order_status === "Preparing" || o.order_status === "Ready") &&
+        (o.order_status === "Preparing" || o.order_status === "Ready") && o.order_type !== 'Dine In' &&
         o.items.some(item => item.kitchen_status === "sent" || item.kitchen_status === "ready") &&
         o.items.length > 0
     );
