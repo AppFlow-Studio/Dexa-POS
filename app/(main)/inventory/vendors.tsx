@@ -8,7 +8,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Vendor } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+} from "@gorhom/bottom-sheet";
 import { Link, useRouter } from "expo-router";
 import {
   Edit,
@@ -18,7 +21,13 @@ import {
   Trash2,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const VendorRow: React.FC<{
   item: Vendor;
@@ -124,7 +133,6 @@ const VendorScreen = () => {
 
   return (
     <View className="flex-1">
-
       <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
         <View className="flex-row py-3 px-3 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
           {TABLE_HEADERS.map((header) => (
@@ -193,7 +201,12 @@ const VendorScreen = () => {
         backgroundStyle={{ backgroundColor: "#303030" }}
         handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
         backdropComponent={(props) => (
-          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+          <BottomSheetBackdrop
+            {...props}
+            appearsOnIndex={0}
+            disappearsOnIndex={-1}
+            opacity={0.7}
+          />
         )}
       >
         <View className="p-4 border-b border-gray-700">
@@ -205,7 +218,7 @@ const VendorScreen = () => {
               onChangeText={setSearchQuery}
               placeholder="Search vendors..."
               placeholderTextColor="#9CA3AF"
-              className="flex-1 text-white ml-3 text-xl"
+              className="flex-1 text-white ml-3 px-6 py-4 text-xl"
             />
           </View>
         </View>
@@ -223,8 +236,12 @@ const VendorScreen = () => {
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">
-                  <Text className="text-white text-xl font-semibold">{item.name}</Text>
-                  <Text className="text-gray-400 text-sm">{item.contactPerson} • {item.phone}</Text>
+                  <Text className="text-white text-xl font-semibold">
+                    {item.name}
+                  </Text>
+                  <Text className="text-gray-400 text-sm">
+                    {item.contactPerson} • {item.phone}
+                  </Text>
                   <Text className="text-gray-500 text-sm">{item.email}</Text>
                 </View>
               </View>

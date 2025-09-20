@@ -96,7 +96,7 @@ const AddCashToRegisterScreen = () => {
               <TextInput
                 value={slipNumber}
                 onChangeText={setSlipNumber}
-                className="p-6 bg-gray-100 rounded-lg border border-gray-200 text-2xl"
+                className="px-6 py-4 bg-gray-100 rounded-lg border border-gray-200 text-2xl"
               />
             </View>
             <View>
@@ -137,7 +137,7 @@ const AddCashToRegisterScreen = () => {
                 onChangeText={setNotes}
                 multiline
                 placeholder="Write a note..."
-                className="p-6 bg-gray-100 rounded-lg border border-gray-200 text-2xl h-32"
+                className="px-6 py-4 bg-gray-100 rounded-lg border border-gray-200 text-2xl h-32"
               />
             </View>
           </View>

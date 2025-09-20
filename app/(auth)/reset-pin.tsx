@@ -41,7 +41,7 @@ const ResetPinScreen = () => {
         <TextInput
           value={newPin}
           onChangeText={setNewPin}
-          className="w-full p-6 bg-white border border-gray-200 rounded-lg text-2xl"
+          className="w-full px-6 py-4 bg-white border border-gray-200 rounded-lg text-2xl"
           placeholder="••••"
           keyboardType="number-pad"
           secureTextEntry
