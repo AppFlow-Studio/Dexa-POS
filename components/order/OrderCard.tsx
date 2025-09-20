@@ -16,7 +16,8 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onComplete,
   onRetrieve,
 }) => {
-  const isReady = order.order_status === "Ready" || order.order_status === "Closed";
+  const isReady =
+    order.order_status === "Ready" || order.order_status === "Closed";
   const statusBg = isReady ? "bg-blue-100" : "bg-[#DC9F1E33]";
   const statusText = isReady ? "text-blue-700" : "text-[#DC9F1E]";
   const paidBg =
@@ -36,8 +37,8 @@ const OrderCard: React.FC<OrderCardProps> = ({
   return (
     <View className="bg-[#303030] p-4 rounded-2xl border border-gray-700 w-80 mr-4">
       <View className="flex-row items-center gap-2">
-        <View className={`px-2.5 py-1 rounded-3xl self-start ${statusBg} `}>
-          <Text className={`text-xs font-bold ${statusText}`}>
+        <View className={`px-3 py-1 rounded-full self-start ${statusBg}`}>
+          <Text className={`text-lg font-bold ${statusText}`}>
             {order.order_status}
           </Text>
         </View>
@@ -89,7 +90,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
             onPress={onRetrieve}
             className="px-5 py-2.5 bg-blue-600 rounded-xl"
           >
-            <Text className="text-white font-bold text-center">Retrieve to Pay</Text>
+            <Text className="text-white font-bold text-center">
+              Retrieve to Pay
+            </Text>
           </TouchableOpacity>
         </View>
       )}

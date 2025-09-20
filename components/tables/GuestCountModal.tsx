@@ -42,7 +42,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
             value={count}
             onChangeText={setCount}
             keyboardType="number-pad"
-            className="p-3 py-6 h-fit bg-[#212121] border border-gray-600 rounded-lg text-6xl text-white text-center font-bold"
+            className="px-3 py-4 h-fit bg-[#212121] border border-gray-600 rounded-lg text-6xl text-white text-center font-bold"
             autoFocus
             maxLength={3}
           />

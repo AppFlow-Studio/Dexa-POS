@@ -20,7 +20,7 @@ import {
   PackagePlus,
   Search,
   Sofa,
-  Table
+  Table,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -30,10 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated, {
-  FadingTransition,
-  ReduceMotion,
-} from "react-native-reanimated";
+import Animated, { FadingTransition } from "react-native-reanimated";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 import ModifierScreen from "./ModifierScreen";
@@ -101,7 +98,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     );
     setIsMenuDialogOpen(false);
   };
-  
+
   useEffect(() => {
     const filtered = menuItems.filter((item) => {
       const categoryMatch = item.category.includes(activeCategory);
@@ -231,22 +228,25 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                     <TouchableOpacity
                       key={menu.id}
                       onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${activeMeal === menu.name
-                        ? "bg-blue-600 border-blue-400"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`p-4 rounded-lg border ${
+                        activeMeal === menu.name
+                          ? "bg-blue-600 border-blue-400"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <Text
-                        className={`font-semibold text-lg ${activeMeal === menu.name ? "text-white" : "text-white"
-                          }`}
+                        className={`font-semibold text-lg ${
+                          activeMeal === menu.name ? "text-white" : "text-white"
+                        }`}
                       >
                         {menu.name}
                       </Text>
                       <Text
-                        className={`text-sm mt-1 ${activeMeal === menu.name
-                          ? "text-blue-100"
-                          : "text-gray-400"
-                          }`}
+                        className={`text-sm mt-1 ${
+                          activeMeal === menu.name
+                            ? "text-blue-100"
+                            : "text-gray-400"
+                        }`}
                       >
                         {menu.description}
                       </Text>
@@ -254,16 +254,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                         {menu.categories.map((category, index) => (
                           <View
                             key={index}
-                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
-                              ? "bg-blue-500"
-                              : "bg-gray-600"
-                              }`}
+                            className={`px-2 py-1 rounded-full ${
+                              activeMeal === menu.name
+                                ? "bg-blue-500"
+                                : "bg-gray-600"
+                            }`}
                           >
                             <Text
-                              className={`text-xs ${activeMeal === menu.name
-                                ? "text-white"
-                                : "text-gray-300"
-                                }`}
+                              className={`text-xs ${
+                                activeMeal === menu.name
+                                  ? "text-white"
+                                  : "text-gray-300"
+                              }`}
                             >
                               {category}
                             </Text>
@@ -334,13 +336,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               />
             </Animated.View>
           ) : activeTab === "Open Item" ? (
-            <Animated.View
-              key={"Open Item"}
-              className={"flex-1"}
-              layout={FadingTransition.reduceMotion(ReduceMotion.Never)
-                .duration(1000)
-                .delay(500)}
-            >
+            <Animated.View key={"Open Item"} className={"flex-1"}>
               <OpenItemAdder />
             </Animated.View>
           ) : activeTab === "Orders" ? (
@@ -354,7 +350,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           ) : null}
         </View>
       </View>
-
 
       {/* Order Type Drawer */}
       <OrderTypeDrawer

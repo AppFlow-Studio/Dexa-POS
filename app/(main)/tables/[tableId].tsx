@@ -242,26 +242,23 @@ const UpdateTableScreen = () => {
 
   // Close/ Void check behavior
   const handleCloseCheck = () => {
-    if (!activeOrder) return;
-
-    // 1) If unpaid and has items => prompt to void
+    if (!activeOrder || !tableId) return;
+    // If the order is already paid, "closing" it means clearing the table for the next customer.
+    if (activeOrder.paid_status === "Paid") {
+      handleClearTable(); // This function already archives the order and sets the table to "Needs Cleaning".
+      return;
+    }
+    // If the order is unpaid AND has items, prompt to void it.
     if (!hasPayments && hasAnyItems) {
       setVoidConfirmOpen(true);
       return;
     }
 
-    // 2) If reopened and fully covered (no new items) => simply close
-    if (isReopenedPaidNoNewItems) {
-      updateOrderStatus(activeOrder.id, "Closed");
-      toast.success("Check closed.", {
-        duration: 2500,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
-
-    // Fallback: if no items or already closed
+    // Fallback for other cases (e.g., an empty order)
     updateOrderStatus(activeOrder.id, "Closed");
+    // If it's an empty order, the table becomes available immediately.
+    updateTableStatus(tableId as string, "Available");
+    router.back();
   };
 
   const confirmVoid = () => {
@@ -369,7 +366,6 @@ const UpdateTableScreen = () => {
                       ?.currentCourse ?? 1
                   )
                 }
-
                 className="px-4 py-2 rounded-lg bg-blue-500"
               >
                 <Text className="font-bold text-white">
@@ -384,7 +380,10 @@ const UpdateTableScreen = () => {
           {(() => {
             const coursingState = coursing.getForOrder(activeOrder?.id || "");
             const currentCourse = coursingState?.currentCourse ?? 1;
-            const isCurrentCourseSent = coursing.isCourseSent(activeOrder?.id || "", currentCourse);
+            const isCurrentCourseSent = coursing.isCourseSent(
+              activeOrder?.id || "",
+              currentCourse
+            );
 
             if (isCurrentCourseSent) {
               // Show "Start New Course" button when current course is sent
@@ -403,10 +402,11 @@ const UpdateTableScreen = () => {
               );
             } else {
               // Show normal menu section
-              return <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />;
+              return (
+                <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
+              );
             }
           })()}
-
         </View>
       </View>
 
@@ -462,12 +462,14 @@ const UpdateTableScreen = () => {
                         isReady ? "Preparing" : "Ready"
                       )
                     }
-                    className={`px-3 py-2 rounded-lg ${isReady ? "bg-yellow-500" : "bg-green-500"
-                      }`}
+                    className={`px-3 py-2 rounded-lg ${
+                      isReady ? "bg-yellow-500" : "bg-green-500"
+                    }`}
                   >
                     <Text
-                      className={`text-xs font-bold ${isReady ? "text-yellow-100" : "text-white"
-                        }`}
+                      className={`text-xs font-bold ${
+                        isReady ? "text-yellow-100" : "text-white"
+                      }`}
                     >
                       {isReady ? "Mark Preparing" : "Mark Ready"}
                     </Text>
@@ -491,20 +493,22 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                ? "bg-green-600"
-                : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-600"
-                  : "bg-red-600"
-                }`}
+              className={`px-2 py-1 rounded-full ${
+                activeOrder.paid_status === "Paid"
+                  ? "bg-green-600"
+                  : activeOrder.paid_status === "Pending"
+                    ? "bg-yellow-600"
+                    : "bg-red-600"
+              }`}
             >
               <Text
-                className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                  ? "text-green-100"
-                  : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-100"
-                    : "text-red-100"
-                  }`}
+                className={`text-xs font-semibold ${
+                  activeOrder.paid_status === "Paid"
+                    ? "text-green-100"
+                    : activeOrder.paid_status === "Pending"
+                      ? "text-yellow-100"
+                      : "text-red-100"
+                }`}
               >
                 {activeOrder.paid_status}
               </Text>

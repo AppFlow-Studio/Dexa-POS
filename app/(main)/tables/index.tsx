@@ -38,6 +38,7 @@ const TablesScreen = () => {
     selectedTableIds,
     toggleTableSelection,
     clearSelection,
+    updateTableStatus,
   } = useFloorPlanStore();
   const { startNewOrder, setActiveOrder, orders, activeOrderId } =
     useOrderStore();
@@ -104,7 +105,6 @@ const TablesScreen = () => {
           router.push(`/tables/clean-table/${targetTable.id}`);
           break;
       }
-      
     }
   };
 
@@ -140,13 +140,17 @@ const TablesScreen = () => {
     const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
     setActiveOrder(newOrder.id);
 
+    // 4. Iterate over all selected tables and mark them as "In Use"
+    selectedTableIds.forEach((tableId) => {
+      updateTableStatus(tableId, "In Use");
+    });
+
     setGuestModalOpen(false);
     clearSelection();
     setIsJoinMode(false);
 
     router.push(`/tables/${primaryTableId}`);
   };
-
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">

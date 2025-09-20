@@ -23,8 +23,12 @@ interface ModifierSelection {
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, categoryId, close } =
     useModifierSidebarStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder, confirmDraftItem, generateCartItemId } =
-    useOrderStore();
+  const {
+    addItemToActiveOrder,
+    updateItemInActiveOrder,
+    confirmDraftItem,
+    generateCartItemId,
+  } = useOrderStore();
   const { getItemPriceForCategory, menuItems } = useMenuStore();
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
@@ -68,7 +72,10 @@ const ModifierScreen = () => {
 
       // If we have a categoryId and the item has custom pricing, use it
       if (categoryId && getItemPriceForCategory) {
-        return getItemPriceForCategory(item?.id.split('_')[0] || '', categoryId);
+        return getItemPriceForCategory(
+          item?.id.split("_")[0] || "",
+          categoryId
+        );
       }
 
       // Otherwise use the default price
@@ -160,7 +167,11 @@ const ModifierScreen = () => {
       if (mode !== "edit" && !cartItem) {
         const itemPrice = getCurrentItemPrice(currentItem);
         const draftItem = {
-          id: generateCartItemId(currentItem.id, { modifiers: [], notes: "" }, true),
+          id: generateCartItemId(
+            currentItem.id,
+            { modifiers: [], notes: "" },
+            true
+          ),
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
@@ -196,30 +207,30 @@ const ModifierScreen = () => {
         // Convert modifier selections to the format expected by the order system
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-            ([categoryId, selections]) => {
-              const category = menuItemForModifiers.modifiers?.find(
-                (cat) => cat.id === categoryId
-              );
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId, _]) => {
-                  const option = category?.options.find(
-                    (opt) => opt.id === optionId
-                  );
-                  return {
-                    id: optionId,
-                    name: option?.name || "",
-                    price: option?.price || 0,
-                  };
-                });
+              ([categoryId, selections]) => {
+                const category = menuItemForModifiers.modifiers?.find(
+                  (cat) => cat.id === categoryId
+                );
+                const selectedOptions = Object.entries(selections)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([optionId, _]) => {
+                    const option = category?.options.find(
+                      (opt) => opt.id === optionId
+                    );
+                    return {
+                      id: optionId,
+                      name: option?.name || "",
+                      price: option?.price || 0,
+                    };
+                  });
 
-              return {
-                categoryId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            }
-          )
+                return {
+                  categoryId,
+                  categoryName: category?.name || "",
+                  options: selectedOptions,
+                };
+              }
+            )
           : [];
 
         // Calculate total price
@@ -355,28 +366,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-        const category = menuItemForModifiers.modifiers?.find(
-          (cat) => cat.id === categoryId
-        );
-        const selectedOptions = Object.entries(selections)
-          .filter(([_, isSelected]) => isSelected)
-          .map(([optionId, _]) => {
-            const option = category?.options.find(
-              (opt) => opt.id === optionId
-            );
-            return {
-              id: optionId,
-              name: option?.name || "",
-              price: option?.price || 0,
-            };
-          });
+          const category = menuItemForModifiers.modifiers?.find(
+            (cat) => cat.id === categoryId
+          );
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId, _]) => {
+              const option = category?.options.find(
+                (opt) => opt.id === optionId
+              );
+              return {
+                id: optionId,
+                name: option?.name || "",
+                price: option?.price || 0,
+              };
+            });
 
-        return {
-          categoryId,
-          categoryName: category?.name || "",
-          options: selectedOptions,
-        };
-      })
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
       : [];
 
     if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
@@ -420,7 +431,6 @@ const ModifierScreen = () => {
       const draftItem = activeOrder?.items.find((item) =>
         item.id.startsWith(`draft_${currentItem.id}_`)
       );
-
 
       if (draftItem) {
         // Remove the draft item first
@@ -576,17 +586,19 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-4 rounded-xl border-2 min-w-[160px] ${isActive
-                        ? "bg-blue-600 border-blue-400"
-                        : hasSelection
-                          ? "bg-green-600 border-green-400"
-                          : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`p-4 rounded-xl border-2 min-w-[160px] ${
+                        isActive
+                          ? "bg-blue-600 border-blue-400"
+                          : hasSelection
+                            ? "bg-green-600 border-green-400"
+                            : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <View className="flex-row items-center justify-between mb-2">
                         <Text
-                          className={`font-semibold text-xl ${isActive ? "text-white" : "text-white"
-                            }`}
+                          className={`font-semibold text-xl ${
+                            isActive ? "text-white" : "text-white"
+                          }`}
                         >
                           {category.name}
                         </Text>
@@ -598,10 +610,11 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-lg ${category.type === "required"
-                          ? "text-red-400"
-                          : "text-gray-400"
-                          }`}
+                        className={`text-lg ${
+                          category.type === "required"
+                            ? "text-red-400"
+                            : "text-gray-400"
+                        }`}
                       >
                         {category.type === "required" ? "Required" : "Optional"}
                       </Text>
@@ -645,28 +658,31 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-6 rounded-xl border-2 min-w-[140px] ${isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : isUnavailable
-                              ? "bg-[#1a1a1a] border-gray-700"
-                              : "bg-[#303030] border-gray-600"
-                            }`}
+                          className={`p-6 rounded-xl border-2 min-w-[140px] ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-400"
+                              : isUnavailable
+                                ? "bg-[#1a1a1a] border-gray-700"
+                                : "bg-[#303030] border-gray-600"
+                          }`}
                         >
                           <Text
-                            className={`text-2xl font-medium text-center ${isSelected
-                              ? "text-white"
-                              : isUnavailable
-                                ? "text-gray-500"
-                                : "text-white"
-                              }`}
+                            className={`text-2xl font-medium text-center ${
+                              isSelected
+                                ? "text-white"
+                                : isUnavailable
+                                  ? "text-gray-500"
+                                  : "text-white"
+                            }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-xl text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
-                                }`}
+                              className={`text-xl text-center mt-1 ${
+                                isSelected ? "text-blue-200" : "text-blue-400"
+                              }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>
@@ -725,7 +741,7 @@ const ModifierScreen = () => {
             placeholderTextColor="#9CA3AF"
             multiline
             maxLength={80}
-            className="p-6 border border-gray-600 rounded-lg bg-[#303030] min-h-[100px] text-2xl text-white"
+            className="px-6 py-4 border border-gray-600 rounded-lg bg-[#303030] min-h-[100px] text-2xl text-white"
           />
           <Text className="text-lg text-gray-400 mt-2 text-right">
             {notes.length}/80
