@@ -1,8 +1,15 @@
+// /components/tables/TableLayoutView.tsx
+
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { Minus, Plus } from "lucide-react-native";
-import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  LayoutChangeEvent,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
@@ -19,6 +26,8 @@ interface TableLayoutViewProps {
   className?: string;
   isSelectionMode?: boolean;
   onTableSelect?: (table: TableType) => void;
+  selectedTableId?: string; // Added to handle selection state from parent
+  activeOrderId?: string | null;
 }
 
 const TableLayoutView: React.FC<TableLayoutViewProps> = ({
@@ -29,8 +38,21 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   className = "",
   isSelectionMode = false,
   onTableSelect,
+  selectedTableId, // Consuming the new prop
+  activeOrderId,
 }) => {
-  const { selectedTableIds, toggleTableSelection } = useFloorPlanStore();
+  const { toggleTableSelection, selectedTableIds: globallySelectedTableIds } =
+    useFloorPlanStore();
+
+  // Use the correct selection state based on mode
+  const selectedTableIds = isSelectionMode
+    ? selectedTableId
+      ? [selectedTableId]
+      : []
+    : globallySelectedTableIds;
+
+  const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
+  const [contentDims, setContentDims] = useState({ width: 0, height: 0 });
 
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -38,6 +60,52 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+
+  // 1. Calculate the bounding box of the tables
+  useEffect(() => {
+    if (tables.length > 0) {
+      let maxX = 0;
+      let maxY = 0;
+      tables.forEach((table) => {
+        // Approximate width/height of a table for bounding box calculation
+        const tableWidth = 100;
+        const tableHeight = 100;
+        if (table.x + tableWidth > maxX) {
+          maxX = table.x + tableWidth;
+        }
+        if (table.y + tableHeight > maxY) {
+          maxY = table.y + tableHeight;
+        }
+      });
+      setContentDims({ width: maxX, height: maxY });
+    }
+  }, [tables]);
+
+  // 2. Calculate and set initial scale and position once we have dimensions
+  useEffect(() => {
+    if (containerDims.width > 0 && contentDims.width > 0) {
+      const scaleX = containerDims.width / contentDims.width;
+      const scaleY = containerDims.height / contentDims.height;
+      const initialScale = Math.min(scaleX, scaleY);
+
+      const initialTranslateX =
+        ((containerDims.width - contentDims.width) * initialScale) / 2;
+      const initialTranslateY =
+        ((containerDims.height - contentDims.height) * initialScale) / 2;
+
+      scale.value = initialScale;
+      savedScale.value = initialScale;
+      translateX.value = initialTranslateX;
+      savedTranslateX.value = initialTranslateX;
+      translateY.value = initialTranslateY;
+      savedTranslateY.value = initialTranslateY;
+    }
+  }, [containerDims, contentDims]);
+
+  const onLayout = (event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setContainerDims({ width, height });
+  };
 
   const panGesture = Gesture.Pan()
     .onUpdate((event) => {
@@ -68,7 +136,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   }));
 
   return (
-    <View className={`flex-1 relative overflow-hidden ${className}`}>
+    // 3. Add onLayout prop to the container
+    <View
+      onLayout={onLayout}
+      className={`flex-1 relative overflow-hidden ${className}`}
+    >
       <View className="absolute top-2 left-2 flex flex-col z-20 gap-y-2">
         <TouchableOpacity
           onPress={() => {

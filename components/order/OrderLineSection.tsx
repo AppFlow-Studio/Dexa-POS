@@ -10,7 +10,8 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  const { orders, markAllItemsAsReady, setActiveOrder } = useOrderStore();
+  const { orders, markAllItemsAsReady, setActiveOrder, archiveOrder } =
+    useOrderStore();
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
@@ -20,7 +21,10 @@ const OrderLineSection: React.FC = () => {
   const totalOrder = orders.filter(
     (o) =>
       (o.order_status === "Preparing" || o.order_status === "Ready") &&
-      o.items.some(item => item.kitchen_status === "sent" || item.kitchen_status === "ready")
+      o.items.some(
+        (item) =>
+          item.kitchen_status === "sent" || item.kitchen_status === "ready"
+      )
   ).length;
 
   // State to hold the orders that are actually displayed
@@ -28,8 +32,12 @@ const OrderLineSection: React.FC = () => {
     // Only show orders that have items sent to kitchen
     const visibleOrders = orders.filter(
       (o) =>
-        (o.order_status === "Preparing" || o.order_status === "Ready") && o.order_type !== 'Dine In' &&
-        o.items.some(item => item.kitchen_status === "sent" || item.kitchen_status === "ready") &&
+        (o.order_status === "Preparing" || o.order_status === "Ready") &&
+        o.order_type !== "Dine In" &&
+        o.items.some(
+          (item) =>
+            item.kitchen_status === "sent" || item.kitchen_status === "ready"
+        ) &&
         o.items.length > 0
     );
 
@@ -82,6 +90,7 @@ const OrderLineSection: React.FC = () => {
     // Sync order status based on item statuses
     // updateOrderStatus(orderId, "Ready");
     markAllItemsAsReady(orderId);
+    archiveOrder(orderId);
   };
 
   const handleRetrieve = (orderId: string) => {
