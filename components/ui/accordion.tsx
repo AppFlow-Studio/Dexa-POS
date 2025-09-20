@@ -1,3 +1,5 @@
+// /components/ui/accordion.tsx
+
 import * as AccordionPrimitive from "@rn-primitives/accordion";
 import * as React from "react";
 import { Platform, Pressable, View } from "react-native";
@@ -6,7 +8,7 @@ import Animated, {
   FadeIn,
   FadeOutUp,
   LayoutAnimationConfig,
-  LinearTransition,
+  LinearTransition, // Make sure LinearTransition is imported
   interpolate,
   useAnimatedStyle,
   useDerivedValue,
@@ -15,6 +17,8 @@ import Animated, {
 import { TextClassContext } from "~/components/ui/text";
 import { ChevronDown } from "~/lib/icons/ChevronDown";
 import { cn } from "~/lib/utils";
+
+// ... (Accordion, AccordionItem, and AccordionTrigger components remain unchanged)
 
 function Accordion({
   children,
@@ -91,7 +95,7 @@ function AccordionTrigger({
           >
             {children}
             <Animated.View style={chevronStyle}>
-              <ChevronDown size={24} className={'text-white shrink-0'} />
+              <ChevronDown size={24} className={"text-white shrink-0"} />
             </Animated.View>
           </Trigger>
         </AccordionPrimitive.Trigger>
@@ -136,7 +140,9 @@ function InnerContent({
     return <View className={cn("pb-4", className)}>{children}</View>;
   }
   return (
+    // --- FIX IS HERE ---
     <Animated.View
+      layout={LinearTransition.duration(200)} // This line makes the animation smooth
       entering={FadeIn}
       exiting={FadeOutUp.duration(200)}
       className={cn("pb-4", className)}

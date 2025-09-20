@@ -99,7 +99,7 @@ const PreviousOrdersScreen = () => {
             placeholderTextColor="#9CA3AF"
             value={searchText}
             onChangeText={setSearchText}
-            className="ml-3 text-2xl h-16 flex-1 text-white"
+            className="ml-3 text-2xl px-6 py-4 h-16 flex-1 text-white"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />

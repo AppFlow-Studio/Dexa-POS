@@ -33,7 +33,7 @@ const ForgotPinScreen = () => {
         <TextInput
           value={email}
           onChangeText={setEmail}
-          className="w-full p-6 bg-white border border-gray-200 rounded-lg text-2xl"
+          className="w-full p-6 py-4 bg-white border border-gray-200 rounded-lg text-2xl"
           placeholder="john@gmail.com"
           keyboardType="email-address"
           autoCapitalize="none"
