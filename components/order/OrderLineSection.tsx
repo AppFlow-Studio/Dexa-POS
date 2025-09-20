@@ -20,11 +20,12 @@ const OrderLineSection: React.FC = () => {
 
   const totalOrder = orders.filter(
     (o) =>
-      (o.order_status === "Preparing" || o.order_status === "Ready") &&
-      o.items.some(
-        (item) =>
-          item.kitchen_status === "sent" || item.kitchen_status === "ready"
-      )
+      (o.order_type !== "Dine In" &&
+        // Condition 1: Must be in Preparing state
+        o.order_status === "Preparing" &&
+        // Condition 2: Must have one or more items
+        o.items.length > 0) ||
+      (o.paid_status === "Unpaid" && o.order_status !== "Building")
   ).length;
 
   // State to hold the orders that are actually displayed
@@ -32,13 +33,14 @@ const OrderLineSection: React.FC = () => {
     // Only show orders that have items sent to kitchen
     const visibleOrders = orders.filter(
       (o) =>
-        (o.order_status === "Preparing" || o.order_status === "Ready") &&
-        o.order_type !== "Dine In" &&
-        o.items.some(
-          (item) =>
-            item.kitchen_status === "sent" || item.kitchen_status === "ready"
-        ) &&
-        o.items.length > 0
+        (o.order_type !== "Dine In" &&
+          // Condition 1: Must be in Preparing state
+          o.order_status === "Preparing" &&
+          // Condition 2: Must have one or more items
+          o.items.length > 0) ||
+        (o.paid_status === "Unpaid" &&
+          o.order_status !== "Building" &&
+          o.items.length > 0)
     );
 
     if (activeTab === "All") {
