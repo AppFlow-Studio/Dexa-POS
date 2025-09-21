@@ -10,6 +10,7 @@ export interface SaleEvent {
     category?: string;
     employeeId?: string;
     paymentMethod?: string;
+    orderId?: string; // Optional order ID for better tracking
 }
 
 export interface KPIs {
@@ -54,7 +55,12 @@ export function calculateNetMargin(sales: SaleEvent[]): number {
 // Average Order Value = Total Revenue / Number of Orders
 export function calculateAverageOrderValue(sales: SaleEvent[]): number {
     const totalRevenue = sales.reduce((sum, s) => sum + s.salePrice * s.quantitySold, 0);
-    const uniqueOrders = new Set(sales.map(s => s.date.split('T')[0])).size;
+
+    // Use orderId if available, otherwise fall back to date-based grouping
+    const uniqueOrders = sales.some(s => s.orderId)
+        ? new Set(sales.map(s => s.orderId).filter(Boolean)).size
+        : new Set(sales.map(s => s.date.split('T')[0])).size;
+
     return uniqueOrders > 0 ? totalRevenue / uniqueOrders : 0;
 }
 
@@ -72,8 +78,9 @@ export function analyzeMovers(sales: SaleEvent[]): {
     fastMovers: { itemName: string; totalSold: number; revenue: number }[],
     slowMovers: { itemName: string; totalSold: number; revenue: number }[]
 } {
-    const itemSales = new Map<string, { totalSold: number; revenue: number }>();
+    console.log('🏃 Fast Movers Analysis: Processing', sales.length, 'sales events');
 
+    const itemSales = new Map<string, { totalSold: number; revenue: number }>();
     sales.forEach(s => {
         const existing = itemSales.get(s.itemName) || { totalSold: 0, revenue: 0 };
         itemSales.set(s.itemName, {
@@ -88,6 +95,8 @@ export function analyzeMovers(sales: SaleEvent[]): {
 
     const fastMovers = sortedItems.slice(0, 5);
     const slowMovers = sortedItems.slice(-5).reverse();
+
+    console.log('🏃 Fast Movers Analysis: Top items:', fastMovers);
 
     return { fastMovers, slowMovers };
 }
@@ -150,18 +159,48 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
     inventoryAnalysis: InventoryAnalysis;
     salesTrends: SalesTrend[];
 } {
+    console.log('🧮 Analytics Engine: Calculating metrics for', sales.length, 'sales events');
+
     // Filter data by date range if provided
     const filteredData = dateRange
         ? sales.filter(s => {
             const saleDate = new Date(s.date);
-            return saleDate >= dateRange.start && saleDate <= dateRange.end;
+            const isInRange = saleDate >= dateRange.start && saleDate <= dateRange.end;
+            if (!isInRange) {
+                console.log('🧮 Analytics Engine: Filtering out sale:', {
+                    item: s.itemName,
+                    date: s.date,
+                    saleDate: saleDate.toISOString(),
+                    start: dateRange.start.toISOString(),
+                    end: dateRange.end.toISOString()
+                });
+            }
+            return isInRange;
         })
         : sales;
 
+    console.log('🧮 Analytics Engine: Filtered data count:', filteredData.length);
+    console.log('🧮 Analytics Engine: Date range:', dateRange ? {
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString()
+    } : 'No date range');
+
     const totalRevenue = filteredData.reduce((sum, s) => sum + s.salePrice * s.quantitySold, 0);
     const totalCOGS = filteredData.reduce((sum, s) => sum + s.costOfGoods * s.quantitySold, 0);
-    const totalOrders = new Set(filteredData.map(s => s.date.split('T')[0])).size;
+
+    // Use orderId if available for more accurate order counting
+    const totalOrders = filteredData.some(s => s.orderId)
+        ? new Set(filteredData.map(s => s.orderId).filter(Boolean)).size
+        : new Set(filteredData.map(s => s.date.split('T')[0])).size;
+
     const totalItemsSold = filteredData.reduce((sum, s) => sum + s.quantitySold, 0);
+
+    console.log('🧮 Analytics Engine: Calculated totals:', {
+        totalRevenue,
+        totalCOGS,
+        totalOrders,
+        totalItemsSold
+    });
 
     const kpis: KPIs = {
         grossMargin: calculateGrossMargin(filteredData),

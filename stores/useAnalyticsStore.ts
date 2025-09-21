@@ -56,7 +56,7 @@ export interface AnalyticsState {
     filters: Filters;
 
     // Actions
-    addSaleEvent: (event: SaleEvent) => void;
+    addSaleEvent: (event: SaleEvent[]) => void;
     setFilters: (filters: Partial<Filters>) => void;
     setDateRange: (dateRange: DateRange) => void;
     setLocation: (location: string) => void;
@@ -66,6 +66,7 @@ export interface AnalyticsState {
     deleteCustomReport: (id: string) => void;
     clearError: () => void;
     resetFilters: () => void;
+    forceRefresh: () => void;
 }
 
 // Initialize with mock data
@@ -74,7 +75,7 @@ const initialSalesData = generateMockSalesData(30);
 const defaultFilters: Filters = {
     dateRange: {
         start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-        end: new Date()
+        end: new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow to ensure today is included
     }
 };
 
@@ -88,15 +89,31 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
     filters: defaultFilters,
 
     // Actions
-    addSaleEvent: (event: SaleEvent) => {
-        set((state) => ({
-            salesData: [...state.salesData, event]
-        }));
+    addSaleEvent: (event: SaleEvent[]) => {
+        console.log('📈 Analytics Store: Adding sale events:', event);
+
+        set((state) => {
+            const newSalesData = [...state.salesData, ...event];
+            console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
+            return {
+                salesData: newSalesData
+            };
+        });
 
         // Recalculate current report if it exists
         const { currentReportData } = get();
         if (currentReportData) {
-            get().fetchReportData({ type: 'overview' });
+            console.log('📈 Analytics Store: Refreshing report data...');
+            // Use setTimeout to avoid blocking the UI during payment processing
+            setTimeout(() => {
+                get().fetchReportData({ type: 'overview' });
+            }, 100);
+        } else {
+            console.log('📈 Analytics Store: No current report data, initializing...');
+            // Initialize the report data if it doesn't exist
+            setTimeout(() => {
+                get().fetchReportData({ type: 'overview' });
+            }, 100);
         }
     },
 
@@ -181,6 +198,12 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
 
     resetFilters: () => {
         set({ filters: defaultFilters });
+    },
+
+    // Force refresh analytics data (useful for debugging)
+    forceRefresh: () => {
+        console.log('🔄 Analytics Store: Force refreshing...');
+        get().fetchReportData({ type: 'overview' });
     }
 }));
 

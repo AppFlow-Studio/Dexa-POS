@@ -1,6 +1,9 @@
+import { getMenuItemCategory, getMenuItemCostOfGoods } from "@/lib/chartUtils";
+import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
@@ -8,6 +11,18 @@ import { Printer, ShoppingBag } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
+
+// export interface SaleEvent {
+//   date: string; // ISO string
+//   menuItemId: string;
+//   itemName: string;
+//   quantitySold: number;
+//   salePrice: number; // Price per item
+//   costOfGoods: number; // Cost per item
+//   category?: string;
+//   employeeId?: string;
+//   paymentMethod?: string;
+// }
 
 const ReceiptRow = ({
   label,
@@ -27,6 +42,7 @@ const PaymentSuccessView = () => {
   const { updateTableStatus } = useFloorPlanStore();
   const { clearSelectedTable } = useDineInStore();
   const { decrementStockFromSale } = useInventoryStore();
+
   const {
     activeOrderId,
     orders,
@@ -37,6 +53,9 @@ const PaymentSuccessView = () => {
     activeOrderOutstandingTotal,
     addPaymentToOrder,
   } = useOrderStore();
+  const { categories, menuItems } = useMenuStore();
+
+  const { addSaleEvent } = useAnalyticsStore();
 
   const appliedRef = useRef(false);
   useEffect(() => {
@@ -63,6 +82,37 @@ const PaymentSuccessView = () => {
       setActiveOrder,
     } = useOrderStore.getState();
     // decrementStockFromSale(items);
+
+    // Create sale events for analytics tracking
+    const saleEvents = items.map((item) => {
+      const saleEvent = {
+        date: new Date().toISOString(),
+        itemName: item.name,
+        menuItemId: item.menuItemId, // Use the actual menu item ID
+        quantitySold: item.quantity,
+        salePrice: item.price,
+        costOfGoods: getMenuItemCostOfGoods(item.menuItemId, menuItems),
+        category: getMenuItemCategory(item.menuItemId, menuItems),
+        employeeId: activeOrder?.server_name || 'Unknown', // Use actual server name
+        paymentMethod: paymentMethod || "Card",
+        orderId: activeOrderId || undefined, // Add order ID for better tracking
+      };
+
+      // Debug logging
+      console.log('🍟 Creating sale event:', {
+        item: item.name,
+        quantity: item.quantity,
+        price: item.price,
+        total: item.price * item.quantity,
+        category: saleEvent.category,
+        date: saleEvent.date
+      });
+
+      return saleEvent;
+    });
+
+    console.log('📊 Adding sale events to analytics:', saleEvents);
+    addSaleEvent(saleEvents);
 
     if (activeOrderId) {
       markOrderAsPaid(activeOrderId);

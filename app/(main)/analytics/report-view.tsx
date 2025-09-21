@@ -135,6 +135,17 @@ const ReportViewScreen = () => {
         }
     }, [reportType, customConfig]);
 
+    const handleDataPointPress = useCallback((dataPoint: any, position: { x: number; y: number }) => {
+        // This is where you can add custom logic for handling tooltip interactions
+        // For example, logging, analytics tracking, or additional data processing
+        console.log('Data point pressed:', dataPoint);
+        console.log('Position:', position);
+
+        // You can add more detailed information processing here
+        // For example, if you want to show additional details in a modal
+        // or perform some action based on the data point
+    }, []);
+
     if (isLoading && !currentReportData) {
         return (
             <View className="flex-1 bg-[#212121] items-center justify-center">
@@ -177,7 +188,6 @@ const ReportViewScreen = () => {
             </View>
         );
     }
-
     return (
         <View className="flex-1 bg-[#212121]">
             {/* Header */}
@@ -272,7 +282,9 @@ const ReportViewScreen = () => {
                             data={currentReportData.chartData}
                             chartType={chartType}
                             title={getChartTitle("Data Analysis")}
+                            onDataPointPress={handleDataPointPress}
                         />
+
                     </View>
                 </View>
 

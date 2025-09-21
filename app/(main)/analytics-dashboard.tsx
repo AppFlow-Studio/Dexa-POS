@@ -1,6 +1,6 @@
 import FilterControls from "@/components/analytics/FilterControls";
 import KpiTooltip from "@/components/analytics/KpiTooltip";
-import ReportChart from "@/components/analytics/ReportChart";
+import VictoryNativeSalesTrendChart from "@/components/analytics/VictoryNativeSalesTrendChart";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useRouter } from "expo-router";
 import { BarChart3, Calendar, Package, PieChart, Plus, ShoppingCart, TrendingUp, Users } from "lucide-react-native";
@@ -40,7 +40,8 @@ const AnalyticsDashboardScreen = () => {
         isLoading,
         error,
         fetchReportData,
-        filters
+        filters,
+        forceRefresh
     } = useAnalyticsStore();
 
     // Helper function to generate smart date range titles
@@ -150,6 +151,17 @@ const AnalyticsDashboardScreen = () => {
                 {/* Filter Controls */}
                 <FilterControls />
 
+                {/* Debug Button */}
+                <TouchableOpacity
+                    onPress={() => {
+                        console.log('🔄 Debug: Force refreshing analytics...');
+                        forceRefresh();
+                    }}
+                    className="mt-4 bg-blue-600 p-3 rounded-lg"
+                >
+                    <Text className="text-white text-center font-bold">🔄 Force Refresh Analytics</Text>
+                </TouchableOpacity>
+
                 {/* KPI Cards */}
                 {currentReportData && (
                     <View className="mt-6">
@@ -202,11 +214,12 @@ const AnalyticsDashboardScreen = () => {
                 {currentReportData && (
                     <View className="mt-8">
                         <Text className="text-xl font-bold text-white mb-4">Sales Trend</Text>
-                        <ReportChart
+                        {/* <ReportChart
                             data={currentReportData.chartData}
                             chartType="line"
                             title={getDateRangeTitle("Revenue Over Time")}
-                        />
+                        /> */}
+                        <VictoryNativeSalesTrendChart />
                     </View>
                 )}
 
