@@ -39,10 +39,18 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
         </DialogHeader>
         <View className="py-4">
           <TextInput
+            textAlign="center"
+            textAlignVertical="bottom"
             value={count}
             onChangeText={setCount}
             keyboardType="number-pad"
-            className="px-3 py-4 h-fit bg-[#212121] border border-gray-600 rounded-lg text-6xl text-white text-center font-bold"
+            className="px-3 py-5 h-fit  bg-[#212121] border border-gray-600 rounded-lg flex text-4xl items-center justify-center text-white text-center font-bold"
+            style={{
+              marginBottom: 5,
+              textAlign: "center",
+              textDecorationColor: "white",
+              height: 80,
+            }}
             autoFocus
             maxLength={3}
           />
