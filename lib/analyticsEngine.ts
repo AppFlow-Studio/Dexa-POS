@@ -7,7 +7,7 @@ export interface SaleEvent {
     quantitySold: number;
     salePrice: number; // Price per item
     costOfGoods: number; // Cost per item
-    category?: string;
+    category: string;
     employeeId?: string;
     paymentMethod?: string;
     orderId?: string; // Optional order ID for better tracking
@@ -78,7 +78,7 @@ export function analyzeMovers(sales: SaleEvent[]): {
     fastMovers: { itemName: string; totalSold: number; revenue: number }[],
     slowMovers: { itemName: string; totalSold: number; revenue: number }[]
 } {
-    console.log('🏃 Fast Movers Analysis: Processing', sales.length, 'sales events');
+    // console.log('🏃 Fast Movers Analysis: Processing', sales.length, 'sales events');
 
     const itemSales = new Map<string, { totalSold: number; revenue: number }>();
     sales.forEach(s => {
@@ -96,7 +96,7 @@ export function analyzeMovers(sales: SaleEvent[]): {
     const fastMovers = sortedItems.slice(0, 5);
     const slowMovers = sortedItems.slice(-5).reverse();
 
-    console.log('🏃 Fast Movers Analysis: Top items:', fastMovers);
+    // console.log('🏃 Fast Movers Analysis: Top items:', fastMovers);
 
     return { fastMovers, slowMovers };
 }
@@ -171,8 +171,8 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
                     item: s.itemName,
                     date: s.date,
                     saleDate: saleDate.toISOString(),
-                    start: dateRange.start.toISOString(),
-                    end: dateRange.end.toISOString()
+                    start: dateRange?.start?.toISOString() || 'No start date',
+                    end: dateRange?.end?.toISOString() || 'No end date'
                 });
             }
             return isInRange;
@@ -181,8 +181,8 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
 
     console.log('🧮 Analytics Engine: Filtered data count:', filteredData.length);
     console.log('🧮 Analytics Engine: Date range:', dateRange ? {
-        start: dateRange.start.toISOString(),
-        end: dateRange.end.toISOString()
+        start: dateRange.start?.toISOString() || 'No start date',
+        end: dateRange.end?.toISOString() || 'No end date'
     } : 'No date range');
 
     const totalRevenue = filteredData.reduce((sum, s) => sum + s.salePrice * s.quantitySold, 0);

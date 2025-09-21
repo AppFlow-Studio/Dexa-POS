@@ -55,7 +55,7 @@ const CardPaymentView = () => {
       {/* Dark Content */}
       <View className="p-8 bg-[#303030] rounded-b-2xl">
         {/* Totals Summary */}
-        <View className="space-y-3 mb-4">
+        <View className="gap-y-3 mb-4">
           <View className="flex-row justify-between">
             <Text className="text-2xl text-gray-300">Subtotal</Text>
             <Text className="text-2xl text-white">

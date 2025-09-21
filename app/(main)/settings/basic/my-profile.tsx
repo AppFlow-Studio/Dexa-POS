@@ -35,20 +35,6 @@ const MyProfileScreen = () => {
       icon: <User color="#3b82f6" size={24} />,
     },
     {
-      id: "category",
-      title: "Categories",
-      subtitle: "Menu Categories",
-      route: "/settings/basic/category",
-      icon: <Database color="#3b82f6" size={24} />,
-    },
-    {
-      id: "modifiers",
-      title: "Modifiers",
-      subtitle: "Item Customizations",
-      route: "/settings/basic/modifiers",
-      icon: <Settings color="#3b82f6" size={24} />,
-    },
-    {
       id: "taxes",
       title: "Taxes",
       subtitle: "Tax Configuration",

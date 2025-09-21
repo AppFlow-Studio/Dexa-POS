@@ -117,7 +117,7 @@ const RevenueCentersCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 space-y-3">
+        <View className="flex-1 ml-6 gap-y-3">
           {revenueCentersData.map((item) => (
             <LegendRow
               key={item.label}

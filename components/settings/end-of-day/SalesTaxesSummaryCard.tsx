@@ -124,7 +124,7 @@ const SalesTaxesSummaryCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 space-y-3">
+        <View className="flex-1 ml-6 gap-y-3">
           {salesTaxesData.map((item) => (
             <LegendRow
               key={item.label}

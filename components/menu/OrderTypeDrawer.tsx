@@ -224,7 +224,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
         <View className="flex-1 p-6">
           {/* Common Order Types */}
           <View className="mb-6">
-            <View className="space-y-3">
+            <View className="gap-y-3">
               {orderTypes.map((orderType) => (
                 <TouchableOpacity
                   key={orderType.value}

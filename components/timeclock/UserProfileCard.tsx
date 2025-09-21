@@ -1,6 +1,6 @@
 import { MOCK_USER_PROFILE } from "@/lib/mockData";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { Clock, Timer } from "lucide-react-native";
+import { Clock, Timer, User } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
@@ -20,12 +20,26 @@ const formatDuration = (milliseconds: number): string => {
 const UserProfileCard: React.FC = () => {
   // --- STATE FROM THE STORE ---
   // Get all necessary state and actions directly from our single source of truth.
-  const { status, currentShift, clockIn, clockOut, startBreak } =
+  const { status, currentShift, clockIn, clockOut, startBreak, clockedInByPin, savedUserProfiles } =
     useTimeclockStore();
 
   // --- LOCAL UI STATE ---
   const [currentTime, setCurrentTime] = useState(new Date());
   const [shiftDuration, setShiftDuration] = useState("0 h 00 m");
+
+  // Get current user from clocked in users
+  const currentUser = React.useMemo(() => {
+    const clockedInPins = Object.keys(clockedInByPin);
+    if (clockedInPins.length > 0) {
+      // Get the first (and likely only) clocked in user
+      const firstPin = clockedInPins[0];
+      return clockedInByPin[firstPin]?.userProfile;
+    }
+    return null;
+  }, [clockedInByPin]);
+
+  // Get the most recent saved user if no one is currently clocked in
+  const displayUser = currentUser || (savedUserProfiles.length > 0 ? savedUserProfiles[savedUserProfiles.length - 1] : MOCK_USER_PROFILE);
 
   // Effect to manage all live timers (current time and shift duration)
   useEffect(() => {
@@ -58,7 +72,7 @@ const UserProfileCard: React.FC = () => {
               </View>
             </View>
 
-            <View className="space-y-3 mb-4">
+            <View className="gap-y-3 mb-4">
               <View className="flex-row items-center">
                 <Timer color="#9CA3AF" size={16} />
                 <Text className="text-sm ml-2 text-gray-300">
@@ -78,7 +92,7 @@ const UserProfileCard: React.FC = () => {
               </View>
             </View>
 
-            <View className="space-y-3">
+            <View className="gap-y-3">
               <TouchableOpacity
                 onPress={startBreak}
                 disabled={status === "onBreak" || currentShift?.hasTakenBreak}
@@ -146,16 +160,36 @@ const UserProfileCard: React.FC = () => {
       </View>
 
       <View className="items-center mb-6">
-        <Image
-          source={require("@/assets/images/tom_hardy.jpg")}
-          className="w-24 h-24 rounded-xl mb-4"
-        />
+        {displayUser.profileImageUrl ? (
+          <Image
+            source={{ uri: displayUser.profileImageUrl }}
+            className="w-24 h-24 rounded-xl mb-4"
+          />
+        ) : (
+          <View className="w-24 h-24 rounded-xl mb-4 bg-blue-600 items-center justify-center">
+            <User color="white" size={32} />
+          </View>
+        )}
         <Text className="text-xl font-bold text-white text-center">
-          {MOCK_USER_PROFILE.fullName}
+          {displayUser.fullName}
         </Text>
         <Text className="text-sm text-gray-400 text-center">
-          {MOCK_USER_PROFILE.employeeId}
+          {displayUser.employeeId}
         </Text>
+        {currentUser && (
+          <View className="mt-2 px-3 py-1 bg-green-600/20 border border-green-500/30 rounded-lg">
+            <Text className="text-xs text-green-400 font-semibold">
+              Currently Clocked In
+            </Text>
+          </View>
+        )}
+        {!currentUser && savedUserProfiles.length > 0 && (
+          <View className="mt-2 px-3 py-1 bg-gray-600/20 border border-gray-500/30 rounded-lg">
+            <Text className="text-xs text-gray-400 font-semibold">
+              Last User Profile
+            </Text>
+          </View>
+        )}
       </View>
 
       {renderContent()}

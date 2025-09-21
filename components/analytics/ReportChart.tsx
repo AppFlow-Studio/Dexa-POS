@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { BarChart, PieChart } from 'react-native-chart-kit';
+import { BarChart } from 'react-native-chart-kit';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import VictoryLineChart from './VictoryLineChart';
 import VictoryPieChart from './VictoryPieChart';
@@ -55,12 +55,14 @@ const conformDataToVictoryFormat = (data: any[]): Array<{ x: string | number; y:
     }
 
     return data.map((item: any, index: number) => {
-        // Extract x value (label/date/name)
+        // Extract x value (label/date/name) - prioritize name for custom reports
         let xValue: string | number;
-        if (item.date) {
-            xValue = item.date.replace('/2025', '') || `Point ${index + 1}`;
-        } else if (item.name) {
+        if (item.name) {
+            // For custom reports with breakdown (category, item, employee, etc.)
             xValue = item.name;
+        } else if (item.date) {
+            // For time-based reports
+            xValue = item.date.replace('/2025', '') || `Point ${index + 1}`;
         } else if (item.hour !== undefined) {
             xValue = item.hour;
         } else if (item.employee) {
@@ -99,6 +101,15 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
     const [tooltipData, setTooltipData] = useState<any>(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
     const chartRef = useRef<View>(null);
+
+    // Debug logging
+    console.log('📊 ReportChart: Received data:', {
+        dataLength: data?.length,
+        chartType,
+        firstItem: data?.[0],
+        hasName: data?.[0]?.name,
+        hasDate: data?.[0]?.date
+    });
 
     const handleChartPress = (event: any, dataPoint?: any, index?: number) => {
         if (!data || data.length === 0) return;
@@ -284,19 +295,21 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
         );
     }
 
-    const formattedData = 
-    data?.map((item: any) => ({
-        x: item.date || item.name || item.hour || item.employee || item.method || item.category || 'N/A',
-        y: item.value || item.revenue || item.quantity || 0,
-        label: item.label || item.name || item.hour || item.employee || item.method || item.category || 'N/A',
-        value: item.value || item.revenue || item.quantity || 0
-    })) || [];
-    
+    const formattedData =
+        data?.map((item: any) => ({
+            x: item.name || item.date || item.hour || item.employee || item.method || item.category || 'N/A',
+            y: item.value || item.revenue || item.quantity || 0,
+            label: item.label || item.name || item.hour || item.employee || item.method || item.category || 'N/A',
+            value: item.value || item.revenue || item.quantity || 0
+        })) || [];
+
     const formatDataForChart = (): ChartData => {
         switch (chartType) {
             case 'bar':
+                const barLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || '');
+                console.log('📊 ReportChart: Bar chart labels:', barLabels);
                 return {
-                    labels: data.map(item => item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || ''),
+                    labels: barLabels,
                     datasets: [{
                         data: data.map(item => item.value || item.quantity || item.revenue || item.orders || 0),
                         color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
@@ -304,8 +317,10 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
                 };
 
             case 'line':
+                const lineLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || '');
+                console.log('📊 ReportChart: Line chart labels:', lineLabels);
                 return {
-                    labels: data.map(item => item?.date?.replace('/2025', '') || item.name || ''),
+                    labels: lineLabels,
                     datasets: [{
                         data: data.map(item => item.value || item.revenue || item.orders || 0),
                         color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
@@ -348,7 +363,6 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
                                 data={chartData}
                                 width={chartWidth}
                                 height={height}
-                                onDataPointClick={handleDataPointClick}
                                 chartConfig={chartConfig}
                                 verticalLabelRotation={30}
                                 showValuesOnTopOfBars={true}
@@ -371,7 +385,7 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
 
             case 'pie':
                 return (
-                   <VictoryPieChart data={formattedData} />
+                    <VictoryPieChart data={formattedData} />
                 );
 
             default:

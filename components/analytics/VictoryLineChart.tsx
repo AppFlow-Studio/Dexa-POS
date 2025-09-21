@@ -114,8 +114,13 @@ const StockArea = ({
     startX: SharedValue<number>;
     endX: SharedValue<number>;
 } & ChartBounds) => {
-    const { path: areaPath } = useAreaPath(points, bottom);
-    const { path: linePath } = useLinePath(points);
+    const { path: areaPath } = useAreaPath(points, bottom, {
+        curveType: "natural"
+    });
+    const { path: linePath } = useLinePath(points, {
+        curveType: "natural"
+    });
+
 
     const backgroundClip = useDerivedValue(() => {
         const path = Skia.Path.Make();
@@ -163,6 +168,7 @@ const StockArea = ({
                     color={
                         "#60a5fa"
                     }
+                    
                 />
             </Group>
             {/* Clipped window */}
