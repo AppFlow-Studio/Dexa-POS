@@ -137,7 +137,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               <TextInput
                 value={name}
                 onChangeText={setName}
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
               />
             </View>
             <View className="flex-1">
@@ -147,7 +147,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               <TextInput
                 value={category}
                 onChangeText={setCategory}
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
               />
             </View>
           </View>
@@ -160,7 +160,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 value={stockQuantity}
                 onChangeText={setStockQuantity}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
               />
             </View>
             <View className="flex-1">
@@ -199,7 +199,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 value={reorderThreshold}
                 onChangeText={setReorderThreshold}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
               />
             </View>
             <View className="flex-1">
@@ -210,7 +210,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                 value={cost}
                 onChangeText={setCost}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
               />
             </View>
           </View>

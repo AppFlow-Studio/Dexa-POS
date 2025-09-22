@@ -95,7 +95,7 @@ const SyncStatusScreen = () => {
                   <TextInput
                     placeholder="Search Order"
                     placeholderTextColor="#9CA3AF"
-                    className="ml-3 text-2xl flex-1 text-white"
+                    className="ml-3 text-2xl flex-1 text-white h-20"
                   />
                 </View>
                 <DatePicker

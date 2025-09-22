@@ -169,7 +169,7 @@ const AddMenuScreen: React.FC = () => {
             Menu Name
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             placeholder="e.g., Lunch Menu, Dinner Specials, Weekend Brunch"
             placeholderTextColor="#9CA3AF"
             value={menuName}
@@ -184,7 +184,7 @@ const AddMenuScreen: React.FC = () => {
             Description (Optional)
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             placeholder="Describe what makes this menu special..."
             placeholderTextColor="#9CA3AF"
             value={menuDescription}

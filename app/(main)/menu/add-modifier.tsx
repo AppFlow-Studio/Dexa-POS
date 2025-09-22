@@ -236,7 +236,7 @@ const AddModifierScreen: React.FC = () => {
             Modifier Name
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             placeholder="e.g., Size, Toppings, Sauce"
             placeholderTextColor="#9CA3AF"
             value={formData.name}
@@ -348,7 +348,7 @@ const AddModifierScreen: React.FC = () => {
               Max Selections (Optional)
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+              className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
               placeholder="Leave empty for unlimited"
               placeholderTextColor="#9CA3AF"
               value={formData.maxSelections?.toString() || ""}
@@ -374,7 +374,7 @@ const AddModifierScreen: React.FC = () => {
             Description (Optional)
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             placeholder="e.g., Choose up to 3 toppings"
             placeholderTextColor="#9CA3AF"
             value={formData.description}
@@ -449,7 +449,7 @@ const AddModifierScreen: React.FC = () => {
                         Option Name
                       </Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
                         placeholder="e.g., Large, Extra Cheese"
                         placeholderTextColor="#9CA3AF"
                         value={option.name}
@@ -461,7 +461,7 @@ const AddModifierScreen: React.FC = () => {
                     <View className="w-32">
                       <Text className="text-xl text-gray-300 mb-2">Price</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
                         placeholder="0.00"
                         placeholderTextColor="#9CA3AF"
                         value={option.price.toString()}

@@ -62,7 +62,7 @@ const LayoutNameModal = ({
             onChangeText={setName}
             placeholder="e.g., Main Dining, Patio"
             placeholderTextColor="#9CA3AF"
-            className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+            className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             autoFocus
           />
         </View>

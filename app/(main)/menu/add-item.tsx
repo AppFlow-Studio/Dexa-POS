@@ -4,7 +4,10 @@ import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { toast } from "@backpackapp-io/react-native-toast";
-import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+} from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import {
@@ -13,7 +16,7 @@ import {
   Plus,
   Save,
   Utensils,
-  X
+  X,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -77,7 +80,9 @@ const AddMenuItemScreen: React.FC = () => {
   const recipeSheetRef = React.useRef<any>(null);
 
   // Recipe editing state
-  const [editingRecipeItemIndex, setEditingRecipeItemIndex] = useState<number | null>(null);
+  const [editingRecipeItemIndex, setEditingRecipeItemIndex] = useState<
+    number | null
+  >(null);
   const inventorySelectionSheetRef = React.useRef<BottomSheet>(null);
   const inventorySnapPoints = useMemo(() => ["70%"], []);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
@@ -274,12 +279,12 @@ const AddMenuItemScreen: React.FC = () => {
 
   // Helper functions for inventory items
   const getInventoryItemName = (inventoryItemId: string) => {
-    const item = inventoryItems.find(i => i.id === inventoryItemId);
+    const item = inventoryItems.find((i) => i.id === inventoryItemId);
     return item?.name || "Unknown Item";
   };
 
   const getInventoryItemUnit = (inventoryItemId: string) => {
-    const item = inventoryItems.find(i => i.id === inventoryItemId);
+    const item = inventoryItems.find((i) => i.id === inventoryItemId);
     return item?.unit || "";
   };
 
@@ -287,9 +292,10 @@ const AddMenuItemScreen: React.FC = () => {
   const filteredInventoryItems = useMemo(() => {
     if (!inventorySearchQuery.trim()) return inventoryItems;
     const query = inventorySearchQuery.toLowerCase();
-    return inventoryItems.filter(item =>
-      item.name.toLowerCase().includes(query) ||
-      item.category.toLowerCase().includes(query)
+    return inventoryItems.filter(
+      (item) =>
+        item.name.toLowerCase().includes(query) ||
+        item.category.toLowerCase().includes(query)
     );
   }, [inventorySearchQuery, inventoryItems]);
 
@@ -303,35 +309,42 @@ const AddMenuItemScreen: React.FC = () => {
   const selectInventoryItem = (inventoryItemId: string) => {
     if (editingRecipeItemIndex !== null) {
       // Replace existing item
-      setRecipeItems(prev => prev.map((item, index) =>
-        index === editingRecipeItemIndex
-          ? { ...item, inventoryItemId }
-          : item
-      ));
+      setRecipeItems((prev) =>
+        prev.map((item, index) =>
+          index === editingRecipeItemIndex ? { ...item, inventoryItemId } : item
+        )
+      );
       setEditingRecipeItemIndex(null);
     } else {
       // Add new item
-      setRecipeItems(prev => [...prev, { inventoryItemId, quantity: 1 }]);
+      setRecipeItems((prev) => [...prev, { inventoryItemId, quantity: 1 }]);
     }
     inventorySelectionSheetRef.current?.close();
   };
 
   // Update recipe item quantity
   const updateRecipeItemQuantity = (index: number, quantity: string) => {
-    setRecipeItems(prev => prev.map((item, i) =>
-      i === index ? { ...item, quantity: parseFloat(quantity) || 0 } : item
-    ));
+    setRecipeItems((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, quantity: parseFloat(quantity) || 0 } : item
+      )
+    );
   };
 
   // Remove recipe item
   const removeRecipeItem = (index: number) => {
-    setRecipeItems(prev => prev.filter((_, i) => i !== index));
+    setRecipeItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) => (
-      <BottomSheetBackdrop {...backdropProps} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+      <BottomSheetBackdrop
+        {...backdropProps}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
     ),
     []
   );
@@ -380,8 +393,9 @@ const AddMenuItemScreen: React.FC = () => {
                 Name *
               </Text>
               <TextInput
-                className={`bg-[#303030] border rounded-lg px-6 py-4 text-2xl text-white ${errors.name ? "border-red-500" : "border-gray-600"
-                  }`}
+                className={`bg-[#303030] border rounded-lg px-6 py-4 text-2xl h-20 text-white ${
+                  errors.name ? "border-red-500" : "border-gray-600"
+                }`}
                 placeholder="Enter item name"
                 placeholderTextColor="#9CA3AF"
                 value={formData.name}
@@ -400,7 +414,7 @@ const AddMenuItemScreen: React.FC = () => {
                 Description
               </Text>
               <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+                className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 h-20 text-2xl text-white"
                 placeholder="Enter item description"
                 placeholderTextColor="#9CA3AF"
                 value={formData.description}
@@ -461,7 +475,7 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-4">
                 <Text className="text-2xl text-white">Price *</Text>
                 <TextInput
-                  className="flex-1 ml-2 text-2xl text-white"
+                  className="flex-1 ml-2 text-2xl h-20 text-white"
                   placeholder="0.00"
                   placeholderTextColor="#9CA3AF"
                   value={formData.price}
@@ -486,7 +500,7 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-4">
                 <Text className="text-2xl text-white"></Text>
                 <TextInput
-                  className="flex-1 ml-2 text-2xl text-white"
+                  className="flex-1 ml-2 text-2xl text-white h-20"
                   placeholder="0.00"
                   placeholderTextColor="#9CA3AF"
                   value={formData.cashPrice}
@@ -543,16 +557,18 @@ const AddMenuItemScreen: React.FC = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => toggleCategory(category.name)}
-                      className={`px-6 py-4 rounded-lg border ${formData.categories.includes(category.name)
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`px-6 py-4 rounded-lg border ${
+                        formData.categories.includes(category.name)
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <Text
-                        className={`text-xl font-medium ${formData.categories.includes(category.name)
-                          ? "text-white"
-                          : "text-gray-300"
-                          }`}
+                        className={`text-xl font-medium ${
+                          formData.categories.includes(category.name)
+                            ? "text-white"
+                            : "text-gray-300"
+                        }`}
                       >
                         {category.name}
                       </Text>
@@ -616,8 +632,8 @@ const AddMenuItemScreen: React.FC = () => {
             {modifierGroups.length === 0 ? (
               <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
                 <Text className="text-2xl text-gray-400 text-center mb-3">
-                  No modifier groups available. Create one to add
-                  customization options.
+                  No modifier groups available. Create one to add customization
+                  options.
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.push("/menu/add-modifier")}
@@ -636,17 +652,19 @@ const AddMenuItemScreen: React.FC = () => {
                     <Pressable
                       key={modifier.id}
                       onPress={() => toggleModifier(modifier.id)}
-                      className={`px-6 py-4 h-20 rounded-lg border ${formData.modifiers.includes(modifier.id)
-                        ? "bg-green-600 border-green-500"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`px-6 py-4 h-20 rounded-lg border ${
+                        formData.modifiers.includes(modifier.id)
+                          ? "bg-green-600 border-green-500"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <View className="flex-row items-center gap-2">
                         <Text
-                          className={`text-xl font-medium ${formData.modifiers.includes(modifier.id)
-                            ? "text-white"
-                            : "text-gray-300"
-                            }`}
+                          className={`text-xl font-medium ${
+                            formData.modifiers.includes(modifier.id)
+                              ? "text-white"
+                              : "text-gray-300"
+                          }`}
                         >
                           {modifier.name}
                         </Text>
@@ -654,7 +672,7 @@ const AddMenuItemScreen: React.FC = () => {
                           className={`px-3 py-2 rounded-full ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? "bg-red-900 border border-red-500" : "bg-red-900/30 border border-red-500"}` : `${formData.modifiers.includes(modifier.id) ? "bg-blue-900 border border-blue-500" : "bg-blue-900/30 border border-blue-500"}`}`}
                         >
                           <Text
-                            className={`text-lg ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? 'text-red-100' : 'text-red-400'}` : `${formData.modifiers.includes(modifier.id) ? 'text-blue-100' : 'text-blue-400'}`}`}
+                            className={`text-lg ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? "text-red-100" : "text-red-400"}` : `${formData.modifiers.includes(modifier.id) ? "text-blue-100" : "text-blue-400"}`}`}
                           >
                             {modifier.type}
                           </Text>
@@ -708,7 +726,9 @@ const AddMenuItemScreen: React.FC = () => {
 
             {recipeItems.length === 0 ? (
               <View className="bg-gray-800 rounded-lg p-6 items-center">
-                <Text className="text-gray-400 text-center mb-2">No recipe items defined</Text>
+                <Text className="text-gray-400 text-center mb-2">
+                  No recipe items defined
+                </Text>
                 <Text className="text-gray-500 text-sm text-center mb-4">
                   Add inventory items to create a recipe for this menu item
                 </Text>
@@ -717,7 +737,9 @@ const AddMenuItemScreen: React.FC = () => {
                   className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
                 >
                   <Plus color="white" size={16} />
-                  <Text className="text-white ml-2 font-semibold">Add Recipe Item</Text>
+                  <Text className="text-white ml-2 font-semibold">
+                    Add Recipe Item
+                  </Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -749,9 +771,11 @@ const AddMenuItemScreen: React.FC = () => {
                         <View>
                           <TextInput
                             value={recipeItem.quantity.toString()}
-                            onChangeText={(text) => updateRecipeItemQuantity(index, text)}
+                            onChangeText={(text) =>
+                              updateRecipeItemQuantity(index, text)
+                            }
                             keyboardType="numeric"
-                            className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center"
+                            className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center h-20"
                             placeholder="0"
                             placeholderTextColor="#9CA3AF"
                           />
@@ -776,7 +800,9 @@ const AddMenuItemScreen: React.FC = () => {
                   className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-4 items-center"
                 >
                   <Plus color="#9CA3AF" size={24} />
-                  <Text className="text-gray-400 mt-2 font-semibold">Add Recipe Item</Text>
+                  <Text className="text-gray-400 mt-2 font-semibold">
+                    Add Recipe Item
+                  </Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -794,19 +820,21 @@ const AddMenuItemScreen: React.FC = () => {
                   availability: !prev.availability,
                 }))
               }
-              className={`flex-row items-center justify-between p-6 rounded-lg border ${formData.availability
-                ? "bg-green-900/30 border-green-500"
-                : "bg-red-900/30 border-red-500"
-                }`}
+              className={`flex-row items-center justify-between p-6 rounded-lg border ${
+                formData.availability
+                  ? "bg-green-900/30 border-green-500"
+                  : "bg-red-900/30 border-red-500"
+              }`}
             >
               <Text className="text-2xl text-white font-medium">
                 {formData.availability ? "Available" : "Unavailable"}
               </Text>
               <View
-                className={`w-8 h-8 rounded-full border-2 ${formData.availability
-                  ? "bg-green-500 border-green-500"
-                  : "bg-transparent border-red-500"
-                  }`}
+                className={`w-8 h-8 rounded-full border-2 ${
+                  formData.availability
+                    ? "bg-green-500 border-green-500"
+                    : "bg-transparent border-red-500"
+                }`}
               >
                 {formData.availability && (
                   <View className="w-3 h-3 bg-white rounded-full m-1" />
@@ -931,8 +959,9 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="bg-[#212121] p-4 rounded-lg">
                 <Text className="text-xl text-gray-400">Status</Text>
                 <Text
-                  className={`text-2xl font-medium ${formData.availability ? "text-green-400" : "text-red-400"
-                    }`}
+                  className={`text-2xl font-medium ${
+                    formData.availability ? "text-green-400" : "text-red-400"
+                  }`}
                 >
                   {formData.availability ? "Available" : "Unavailable"}
                 </Text>
@@ -1028,11 +1057,12 @@ const AddMenuItemScreen: React.FC = () => {
       />
       <RecipeIngredientSheet
         ref={recipeSheetRef}
-        existingIds={recipeItems.map(r => r.inventoryItemId)}
+        existingIds={recipeItems.map((r) => r.inventoryItemId)}
         currentId={null}
         onSelect={(inventoryItemId) => {
-          if (recipeItems.some(r => r.inventoryItemId === inventoryItemId)) return;
-          setRecipeItems(prev => [...prev, { inventoryItemId, quantity: 1 }]);
+          if (recipeItems.some((r) => r.inventoryItemId === inventoryItemId))
+            return;
+          setRecipeItems((prev) => [...prev, { inventoryItemId, quantity: 1 }]);
         }}
       />
 
@@ -1050,7 +1080,9 @@ const AddMenuItemScreen: React.FC = () => {
           <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
             <View className="flex-1">
               <Text className="text-xl font-bold text-white">
-                {editingRecipeItemIndex !== null ? "Replace Inventory Item" : "Select Inventory Item"}
+                {editingRecipeItemIndex !== null
+                  ? "Replace Inventory Item"
+                  : "Select Inventory Item"}
               </Text>
               {editingRecipeItemIndex !== null && (
                 <Text className="text-blue-400 text-sm mt-1">
@@ -1058,10 +1090,12 @@ const AddMenuItemScreen: React.FC = () => {
                 </Text>
               )}
             </View>
-            <TouchableOpacity onPress={() => {
-              setEditingRecipeItemIndex(null);
-              inventorySelectionSheetRef.current?.close();
-            }}>
+            <TouchableOpacity
+              onPress={() => {
+                setEditingRecipeItemIndex(null);
+                inventorySelectionSheetRef.current?.close();
+              }}
+            >
               <X color="#9CA3AF" size={24} />
             </TouchableOpacity>
           </View>
@@ -1074,7 +1108,7 @@ const AddMenuItemScreen: React.FC = () => {
                 onChangeText={setInventorySearchQuery}
                 placeholder="Search inventory items..."
                 placeholderTextColor="#9CA3AF"
-                className="flex-1 text-white ml-3"
+                className="flex-1 text-white ml-3 h-20"
               />
             </View>
           </View>
@@ -1083,7 +1117,9 @@ const AddMenuItemScreen: React.FC = () => {
           {filteredInventoryItems.length === 0 ? (
             <View className="flex-1 justify-center items-center p-8">
               <Text className="text-gray-400 text-lg text-center">
-                {inventorySearchQuery ? "No items found" : "No inventory items available"}
+                {inventorySearchQuery
+                  ? "No items found"
+                  : "No inventory items available"}
               </Text>
             </View>
           ) : (
@@ -1091,43 +1127,58 @@ const AddMenuItemScreen: React.FC = () => {
               data={filteredInventoryItems}
               keyExtractor={(item) => item.id}
               renderItem={({ item: inventoryItem }) => {
-                const isAlreadyInRecipe = recipeItems.some(recipeItem => recipeItem.inventoryItemId === inventoryItem.id);
-                const isCurrentlyEditing = editingRecipeItemIndex !== null &&
-                  recipeItems[editingRecipeItemIndex]?.inventoryItemId === inventoryItem.id;
+                const isAlreadyInRecipe = recipeItems.some(
+                  (recipeItem) =>
+                    recipeItem.inventoryItemId === inventoryItem.id
+                );
+                const isCurrentlyEditing =
+                  editingRecipeItemIndex !== null &&
+                  recipeItems[editingRecipeItemIndex]?.inventoryItemId ===
+                    inventoryItem.id;
 
                 return (
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
-                    className={`p-4 border-b border-gray-700 ${isCurrentlyEditing
-                      ? "bg-blue-900 border-blue-600"
-                      : isAlreadyInRecipe
-                        ? "bg-gray-800 opacity-50"
-                        : "bg-transparent"
-                      }`}
+                    className={`p-4 border-b border-gray-700 ${
+                      isCurrentlyEditing
+                        ? "bg-blue-900 border-blue-600"
+                        : isAlreadyInRecipe
+                          ? "bg-gray-800 opacity-50"
+                          : "bg-transparent"
+                    }`}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
-                        <Text className={`font-semibold ${isCurrentlyEditing
-                          ? "text-blue-300"
-                          : isAlreadyInRecipe
-                            ? "text-gray-500"
-                            : "text-white"
-                          }`}>
+                        <Text
+                          className={`font-semibold ${
+                            isCurrentlyEditing
+                              ? "text-blue-300"
+                              : isAlreadyInRecipe
+                                ? "text-gray-500"
+                                : "text-white"
+                          }`}
+                        >
                           {inventoryItem.name}
                         </Text>
-                        <Text className={`text-sm ${isCurrentlyEditing
-                          ? "text-blue-400"
-                          : isAlreadyInRecipe
-                            ? "text-gray-600"
-                            : "text-gray-400"
-                          }`}>
-                          {inventoryItem.stockQuantity} {inventoryItem.unit} • ${inventoryItem.cost.toFixed(2)}
+                        <Text
+                          className={`text-sm ${
+                            isCurrentlyEditing
+                              ? "text-blue-400"
+                              : isAlreadyInRecipe
+                                ? "text-gray-600"
+                                : "text-gray-400"
+                          }`}
+                        >
+                          {inventoryItem.stockQuantity} {inventoryItem.unit} • $
+                          {inventoryItem.cost.toFixed(2)}
                         </Text>
                       </View>
                       {isCurrentlyEditing ? (
                         <View className="bg-blue-600 px-2 py-1 rounded">
-                          <Text className="text-white text-xs">Currently Selected</Text>
+                          <Text className="text-white text-xs">
+                            Currently Selected
+                          </Text>
                         </View>
                       ) : isAlreadyInRecipe ? (
                         <View className="bg-gray-600 px-2 py-1 rounded">

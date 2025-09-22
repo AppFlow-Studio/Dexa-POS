@@ -798,7 +798,7 @@ const ModifierScreen = () => {
               placeholderTextColor="#9CA3AF"
               keyboardType="numeric"
               autoFocus
-              className="p-4 border border-gray-600 rounded-lg bg-[#212121] text-2xl text-white text-center mb-6"
+              className="p-4 border border-gray-600 rounded-lg bg-[#212121] text-2xl text-white text-center mb-6 h-20"
             />
             <View className="flex-row gap-4">
               <TouchableOpacity

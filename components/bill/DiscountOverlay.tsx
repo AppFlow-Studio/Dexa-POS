@@ -215,7 +215,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
         <View className="flex-row items-center gap-3 mt-4 pt-4 border-t border-gray-700">
           <TextInput
             placeholder="Add promo or voucher"
-            className="flex-1 p-4 bg-[#303030] rounded-xl text-2xl text-white border border-gray-600"
+            className="flex-1 p-4 bg-[#303030] rounded-xl text-2xl text-white border border-gray-600 h-20"
             placeholderTextColor="#6B7280"
           />
           <TouchableOpacity className="px-6 py-4 bg-blue-600 rounded-xl">

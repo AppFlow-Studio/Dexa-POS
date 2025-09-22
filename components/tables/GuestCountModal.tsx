@@ -47,8 +47,8 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
             className="px-3 py-5 h-fit  bg-[#212121] border border-gray-600 rounded-lg flex text-4xl items-center justify-center text-white text-center font-bold"
             style={{
               marginBottom: 5,
-              textAlign: 'center',
-              textDecorationColor : 'white',
+              textAlign: "center",
+              textDecorationColor: "white",
               height: 80,
             }}
             autoFocus

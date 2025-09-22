@@ -47,7 +47,7 @@ const InventoryItemForm: React.FC<InventoryItemFormProps> = ({
             <TextInput
               value={itemName}
               onChangeText={setItemName}
-              className="p-4 bg-gray-100 rounded-lg text-2xl"
+              className="p-4 bg-gray-100 rounded-lg text-2xl h-20"
             />
           </View>
           <View>

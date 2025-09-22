@@ -271,7 +271,7 @@ const OrderDetails: React.FC = () => {
           </TouchableOpacity>
         </View>
       </View>
-      
+
       {/* Customer Name Modal */}
       <Dialog
         open={isCustomerNameModalVisible}
@@ -299,7 +299,7 @@ const OrderDetails: React.FC = () => {
                 Customer Name
               </Text>
               <TextInput
-                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500"
+                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
                 placeholder="Enter customer name"
                 placeholderTextColor="#9CA3AF"
                 value={tempCustomerName}

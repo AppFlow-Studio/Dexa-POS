@@ -10,7 +10,12 @@ import {
 import { InventoryItem, MenuItemType } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList, BottomSheetModal, BottomSheetModalProvider } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetModal,
+  BottomSheetModalProvider,
+} from "@gorhom/bottom-sheet";
 import { Link, useRouter } from "expo-router";
 import {
   AlertTriangle,
@@ -21,7 +26,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
-  Trash2
+  Trash2,
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -30,7 +35,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 const InventoryCatalogRow: React.FC<{
@@ -61,7 +66,9 @@ const InventoryCatalogRow: React.FC<{
         <Text className="w-[15%] text-2xl text-gray-300">
           ${item.cost.toFixed(2)}
         </Text>
-        <Text className="w-[18%] text-2xl text-gray-300">{vendor?.name || "Unknown"}</Text>
+        <Text className="w-[18%] text-2xl text-gray-300">
+          {vendor?.name || "Unknown"}
+        </Text>
         <View className="w-[5%] items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -106,7 +113,9 @@ const InventoryScreen = () => {
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Menu item actions state
-  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemType | null>(null);
+  const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemType | null>(
+    null
+  );
   const [isStockModalOpen, setStockModalOpen] = useState(false);
   const [stockQuantity, setStockQuantity] = useState("");
   const [reorderThreshold, setReorderThreshold] = useState("");
@@ -116,10 +125,15 @@ const InventoryScreen = () => {
   const [bulkStockQuantity, setBulkStockQuantity] = useState("");
   const [bulkReorderThreshold, setBulkReorderThreshold] = useState("");
   // Inventory bottom sheet multi-select & bulk
-  const [selectedInventoryIds, setSelectedInventoryIds] = useState<string[]>([]);
-  const [isBulkInventoryStockModalOpen, setBulkInventoryStockModalOpen] = useState(false);
-  const [bulkInventoryStockQuantity, setBulkInventoryStockQuantity] = useState("");
-  const [bulkInventoryReorderThreshold, setBulkInventoryReorderThreshold] = useState("");
+  const [selectedInventoryIds, setSelectedInventoryIds] = useState<string[]>(
+    []
+  );
+  const [isBulkInventoryStockModalOpen, setBulkInventoryStockModalOpen] =
+    useState(false);
+  const [bulkInventoryStockQuantity, setBulkInventoryStockQuantity] =
+    useState("");
+  const [bulkInventoryReorderThreshold, setBulkInventoryReorderThreshold] =
+    useState("");
 
   const handleOpenAddModal = () => {
     setSelectedItem(null);
@@ -223,8 +237,12 @@ const InventoryScreen = () => {
   };
   const handleSaveBulkStock = () => {
     if (selectedMenuIds.length === 0) return;
-    const stockQty = bulkStockQuantity ? parseInt(bulkStockQuantity) : undefined;
-    const threshold = bulkReorderThreshold ? parseInt(bulkReorderThreshold) : undefined;
+    const stockQty = bulkStockQuantity
+      ? parseInt(bulkStockQuantity)
+      : undefined;
+    const threshold = bulkReorderThreshold
+      ? parseInt(bulkReorderThreshold)
+      : undefined;
     selectedMenuIds.forEach((id) => {
       updateMenuItem(id, {
         stockQuantity: stockQty,
@@ -294,7 +312,8 @@ const InventoryScreen = () => {
 
   // Inventory selection helpers (for the bottom sheet)
   const isAllInventorySelected =
-    selectedInventoryIds.length > 0 && selectedInventoryIds.length === filteredInventory.length;
+    selectedInventoryIds.length > 0 &&
+    selectedInventoryIds.length === filteredInventory.length;
   const toggleSelectInventoryItem = (id: string) => {
     setSelectedInventoryIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -315,8 +334,12 @@ const InventoryScreen = () => {
   };
   const handleSaveBulkInventoryStock = () => {
     if (selectedInventoryIds.length === 0) return;
-    const stockQty = bulkInventoryStockQuantity ? parseInt(bulkInventoryStockQuantity) : undefined;
-    const threshold = bulkInventoryReorderThreshold ? parseInt(bulkInventoryReorderThreshold) : undefined;
+    const stockQty = bulkInventoryStockQuantity
+      ? parseInt(bulkInventoryStockQuantity)
+      : undefined;
+    const threshold = bulkInventoryReorderThreshold
+      ? parseInt(bulkInventoryReorderThreshold)
+      : undefined;
     selectedInventoryIds.forEach((id) => {
       updateInventoryItem(id, {
         stockQuantity: stockQty ?? (undefined as any),
@@ -407,49 +430,63 @@ const InventoryScreen = () => {
             onPress={() => setActiveTab("menu")}
             className={`px-4 py-2 rounded-lg border ${activeTab === "menu" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-700"}`}
           >
-            <Text className={`text-xl font-semibold ${activeTab === "menu" ? "text-white" : "text-gray-300"}`}>Menu Items</Text>
+            <Text
+              className={`text-xl font-semibold ${activeTab === "menu" ? "text-white" : "text-gray-300"}`}
+            >
+              Menu Items
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab("inventory")}
             className={`px-4 py-2 rounded-lg border ${activeTab === "inventory" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-700"}`}
           >
-            <Text className={`text-xl font-semibold ${activeTab === "inventory" ? "text-white" : "text-gray-300"}`}>Inventory Items</Text>
+            <Text
+              className={`text-xl font-semibold ${activeTab === "inventory" ? "text-white" : "text-gray-300"}`}
+            >
+              Inventory Items
+            </Text>
           </TouchableOpacity>
-
         </View>
 
         <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
           <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
-            {(activeTab === "inventory" ? TABLE_HEADERS_INVENTORY : TABLE_HEADERS_MENU).map((header) => (
+            {(activeTab === "inventory"
+              ? TABLE_HEADERS_INVENTORY
+              : TABLE_HEADERS_MENU
+            ).map((header) => (
               <Text
                 key={header}
-                className={`font-bold text-xl text-gray-400 ${activeTab === "inventory"
-                  ? header === "Name"
-                    ? "w-[20%]"
-                    : header === "Vendor"
-                      ? "w-fit"
-                      : header === "In Stock"
-                        ? "w-[20%]"
-                        : header === "Reorder Point"
-                          ? "w-[15%]"
-                          : header === "Category" || header === "Cost"
-                            ? "w-[15%]"
-                            : "w-[5%]"
-                  : header === "Select"
-                    ? "w-[6%]"
-                    : header === "Name"
-                      ? "w-[22%]"
-                      : header === "Price"
-                        ? "w-[12%]"
-                        : header === "Stock"
-                          ? "w-[12%]"
+                className={`font-bold text-xl text-gray-400 ${
+                  activeTab === "inventory"
+                    ? header === "Name"
+                      ? "w-[20%]"
+                      : header === "Vendor"
+                        ? "w-fit"
+                        : header === "In Stock"
+                          ? "w-[20%]"
                           : header === "Reorder Point"
-                            ? "w-[22%]"
-                            : 'w-[12%]'
-                  }`}
+                            ? "w-[15%]"
+                            : header === "Category" || header === "Cost"
+                              ? "w-[15%]"
+                              : "w-[5%]"
+                    : header === "Select"
+                      ? "w-[6%]"
+                      : header === "Name"
+                        ? "w-[22%]"
+                        : header === "Price"
+                          ? "w-[12%]"
+                          : header === "Stock"
+                            ? "w-[12%]"
+                            : header === "Reorder Point"
+                              ? "w-[22%]"
+                              : "w-[12%]"
+                }`}
               >
                 {header === "Select" ? (
-                  <TouchableOpacity onPress={toggleSelectAllMenu} className="h-6 w-6 items-center justify-center border border-gray-600 rounded">
+                  <TouchableOpacity
+                    onPress={toggleSelectAllMenu}
+                    className="h-6 w-6 items-center justify-center border border-gray-600 rounded"
+                  >
                     {isAllSelected ? <Check color="#fff" size={16} /> : null}
                   </TouchableOpacity>
                 ) : (
@@ -458,8 +495,10 @@ const InventoryScreen = () => {
               </Text>
             ))}
             <View className="flex-row items-center flex-1 justify-end gap-x-6">
-              <TouchableOpacity onPress={openSearchSheet}
-                className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4 ">
+              <TouchableOpacity
+                onPress={openSearchSheet}
+                className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4 "
+              >
                 <Search color="#9CA3AF" size={20} />
                 {/* <TextInput
                 placeholder="Search by item name..."
@@ -467,14 +506,15 @@ const InventoryScreen = () => {
                 className="ml-3 text-2xl text-white flex-1"
               /> */}
               </TouchableOpacity>
-              {activeTab === "inventory" && <TouchableOpacity
-                onPress={() => addItemSheetRef.current?.expand()}
-
-                className="py-4 px-6 w-1/2 bg-blue-600 rounded-lg flex-row items-center justify-center"
-              >
-                <Plus color="white" size={20} className="mr-2" />
-                {/* <Text className="text-2xl font-bold text-white">Add New Item</Text> */}
-              </TouchableOpacity>}
+              {activeTab === "inventory" && (
+                <TouchableOpacity
+                  onPress={() => addItemSheetRef.current?.expand()}
+                  className="py-4 px-6 w-1/2 bg-blue-600 rounded-lg flex-row items-center justify-center"
+                >
+                  <Plus color="white" size={20} className="mr-2" />
+                  {/* <Text className="text-2xl font-bold text-white">Add New Item</Text> */}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
           {activeTab === "inventory" ? (
@@ -512,31 +552,50 @@ const InventoryScreen = () => {
                         </TouchableOpacity>
                       </View>
                       <View className="w-[22%] flex-row items-center">
-                        <Text className="text-white text-2xl flex-1">{item.name}</Text>
+                        <Text className="text-white text-2xl flex-1">
+                          {item.name}
+                        </Text>
                       </View>
-                      <Text className="text-gray-300 text-2xl w-[12%]">${item.price.toFixed(2)}</Text>
+                      <Text className="text-gray-300 text-2xl w-[12%]">
+                        ${item.price.toFixed(2)}
+                      </Text>
                       <View className="w-[12%] flex-row items-center justify-between">
-                        <Text className={`text-2xl ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
-                          {typeof item.stockQuantity === 'number' ? item.stockQuantity : '—'}
+                        <Text
+                          className={`text-2xl ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                        >
+                          {typeof item.stockQuantity === "number"
+                            ? item.stockQuantity
+                            : "—"}
                         </Text>
                         {(item.availability === false ||
-                          (typeof item.stockQuantity === 'number' &&
-                            typeof item.reorderThreshold === 'number' &&
+                          (typeof item.stockQuantity === "number" &&
+                            typeof item.reorderThreshold === "number" &&
                             item.stockQuantity <= item.reorderThreshold)) && (
-                            <AlertTriangle color="#EF4444" size={20} className="ml-2" />
-                          )}
+                          <AlertTriangle
+                            color="#EF4444"
+                            size={20}
+                            className="ml-2"
+                          />
+                        )}
                       </View>
                       <View className="w-[22%] items-start flex ">
-                        <Text className={`text-2xl w-[60%] text-center ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
-                          {typeof item.reorderThreshold === 'number' ? `${item.reorderThreshold}` : ''}
+                        <Text
+                          className={`text-2xl w-[60%] text-center ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                        >
+                          {typeof item.reorderThreshold === "number"
+                            ? `${item.reorderThreshold}`
+                            : ""}
                         </Text>
                       </View>
                       <View className="w-[12%]">
-                        <Text className={`text-2xl px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}>
-                          {item.availability !== false ? "Available" : "Unavailable"}
+                        <Text
+                          className={`text-2xl px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}
+                        >
+                          {item.availability !== false
+                            ? "Available"
+                            : "Unavailable"}
                         </Text>
                       </View>
-
 
                       <View className="w-[12%] items-end">
                         <DropdownMenu>
@@ -556,7 +615,9 @@ const InventoryScreen = () => {
                                 <Eye color="#9CA3AF" size={16} />
                               )}
                               <Text className="text-white ml-2">
-                                {item.availability !== false ? "Make Unavailable" : "Make Available"}
+                                {item.availability !== false
+                                  ? "Make Unavailable"
+                                  : "Make Available"}
                               </Text>
                             </DropdownMenuItem>
                             <DropdownMenuItem
@@ -564,7 +625,9 @@ const InventoryScreen = () => {
                               className="flex-row items-center p-3"
                             >
                               <Edit color="#9CA3AF" size={16} />
-                              <Text className="text-white ml-2">Update Stock</Text>
+                              <Text className="text-white ml-2">
+                                Update Stock
+                              </Text>
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -580,25 +643,33 @@ const InventoryScreen = () => {
         {/* Bulk actions toolbar for menu selection */}
         {activeTab === "menu" && selectedMenuIds.length > 0 && (
           <View className="mt-3 p-4 bg-[#303030] border border-gray-700 rounded-xl flex-row items-center justify-between">
-            <Text className="text-white text-lg">Selected: {selectedMenuIds.length}</Text>
+            <Text className="text-white text-lg">
+              Selected: {selectedMenuIds.length}
+            </Text>
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(true)}
                 className="px-4 py-3 bg-green-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">Set Available</Text>
+                <Text className="text-white text-lg font-semibold">
+                  Set Available
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(false)}
                 className="px-4 py-3 bg-yellow-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">Set Unavailable</Text>
+                <Text className="text-white text-lg font-semibold">
+                  Set Unavailable
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleOpenBulkStockModal}
                 className="px-4 py-3 bg-blue-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">Update Stock</Text>
+                <Text className="text-white text-lg font-semibold">
+                  Update Stock
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={clearSelection}
@@ -642,26 +713,30 @@ const InventoryScreen = () => {
               </Text>
 
               <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">Stock Quantity</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Stock Quantity
+                </Text>
                 <TextInput
                   value={stockQuantity}
                   onChangeText={setStockQuantity}
                   placeholder="Enter stock quantity"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
 
               <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">Reorder Threshold</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Reorder Threshold
+                </Text>
                 <TextInput
                   value={reorderThreshold}
                   onChangeText={setReorderThreshold}
                   placeholder="Enter reorder threshold"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
 
@@ -670,13 +745,17 @@ const InventoryScreen = () => {
                   onPress={handleCloseStockModal}
                   className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Cancel</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveStock}
                   className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Save</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Save
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -696,25 +775,29 @@ const InventoryScreen = () => {
                 Update Inventory Stock ({selectedInventoryIds.length} items)
               </Text>
               <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">Stock Quantity</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Stock Quantity
+                </Text>
                 <TextInput
                   value={bulkInventoryStockQuantity}
                   onChangeText={setBulkInventoryStockQuantity}
                   placeholder="Enter stock quantity (optional)"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
               <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">Reorder Threshold</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Reorder Threshold
+                </Text>
                 <TextInput
                   value={bulkInventoryReorderThreshold}
                   onChangeText={setBulkInventoryReorderThreshold}
                   placeholder="Enter reorder threshold (optional)"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
               <View className="flex-row gap-3">
@@ -722,13 +805,17 @@ const InventoryScreen = () => {
                   onPress={handleCloseBulkInventoryStockModal}
                   className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Cancel</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveBulkInventoryStock}
                   className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Save</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Save
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -748,25 +835,29 @@ const InventoryScreen = () => {
                 Update Stock ({selectedMenuIds.length} items)
               </Text>
               <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">Stock Quantity</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Stock Quantity
+                </Text>
                 <TextInput
                   value={bulkStockQuantity}
                   onChangeText={setBulkStockQuantity}
                   placeholder="Enter stock quantity (optional)"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
               <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">Reorder Threshold</Text>
+                <Text className="text-lg text-gray-300 mb-2">
+                  Reorder Threshold
+                </Text>
                 <TextInput
                   value={bulkReorderThreshold}
                   onChangeText={setBulkReorderThreshold}
                   placeholder="Enter reorder threshold (optional)"
                   placeholderTextColor="#9CA3AF"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
                 />
               </View>
               <View className="flex-row gap-3">
@@ -774,13 +865,17 @@ const InventoryScreen = () => {
                   onPress={handleCloseBulkStockModal}
                   className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Cancel</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveBulkStock}
                   className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">Save</Text>
+                  <Text className="text-white text-lg font-semibold text-center">
+                    Save
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -803,7 +898,7 @@ const InventoryScreen = () => {
               onChangeText={setSearchQuery}
               placeholder="Search menu items..."
               placeholderTextColor="#9CA3AF"
-              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg"
+              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg h-20"
             />
           </View>
           <BottomSheetFlatList
@@ -826,16 +921,38 @@ const InventoryScreen = () => {
                       {isSelected ? <Check color="#fff" size={16} /> : null}
                     </TouchableOpacity>
                   </View>
-                  <Text className="text-white text-lg w-[22%]" numberOfLines={1}>{item.name}</Text>
-                  <Text className="text-gray-300 text-lg w-[22%]" numberOfLines={1}>{categories.join(", ") || "—"}</Text>
-                  <Text className="text-gray-300 text-lg w-[12%]">${item.price.toFixed(2)}</Text>
-                  <Text className={`text-lg w-[12%] ${typeof item.stockQuantity === 'number' && typeof item.reorderThreshold === 'number' && item.stockQuantity <= item.reorderThreshold ? 'text-red-400' : 'text-gray-300'}`}>
-                    {typeof item.stockQuantity === 'number' ? item.stockQuantity : '—'}
-                    {typeof item.reorderThreshold === 'number' ? ` / ${item.reorderThreshold}` : ''}
+                  <Text
+                    className="text-white text-lg w-[22%]"
+                    numberOfLines={1}
+                  >
+                    {item.name}
+                  </Text>
+                  <Text
+                    className="text-gray-300 text-lg w-[22%]"
+                    numberOfLines={1}
+                  >
+                    {categories.join(", ") || "—"}
+                  </Text>
+                  <Text className="text-gray-300 text-lg w-[12%]">
+                    ${item.price.toFixed(2)}
+                  </Text>
+                  <Text
+                    className={`text-lg w-[12%] ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                  >
+                    {typeof item.stockQuantity === "number"
+                      ? item.stockQuantity
+                      : "—"}
+                    {typeof item.reorderThreshold === "number"
+                      ? ` / ${item.reorderThreshold}`
+                      : ""}
                   </Text>
                   <View className="w-[14%]">
-                    <Text className={`text-xs px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}>
-                      {item.availability !== false ? "Available" : "Unavailable"}
+                    <Text
+                      className={`text-xs px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}
+                    >
+                      {item.availability !== false
+                        ? "Available"
+                        : "Unavailable"}
                     </Text>
                   </View>
                   <View className="w-[12%] items-end">
@@ -846,15 +963,25 @@ const InventoryScreen = () => {
                         </TouchableOpacity>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="bg-[#303030] border-gray-700">
-                        <DropdownMenuItem onPress={() => handleToggleAvailability(item)} className="flex-row items-center p-3">
+                        <DropdownMenuItem
+                          onPress={() => handleToggleAvailability(item)}
+                          className="flex-row items-center p-3"
+                        >
                           {item.availability !== false ? (
                             <EyeOff color="#9CA3AF" size={16} />
                           ) : (
                             <Eye color="#9CA3AF" size={16} />
                           )}
-                          <Text className="text-white ml-2">{item.availability !== false ? "Make Unavailable" : "Make Available"}</Text>
+                          <Text className="text-white ml-2">
+                            {item.availability !== false
+                              ? "Make Unavailable"
+                              : "Make Available"}
+                          </Text>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onPress={() => handleOpenStockModal(item)} className="flex-row items-center p-3">
+                        <DropdownMenuItem
+                          onPress={() => handleOpenStockModal(item)}
+                          className="flex-row items-center p-3"
+                        >
                           <Edit color="#9CA3AF" size={16} />
                           <Text className="text-white ml-2">Update Stock</Text>
                         </DropdownMenuItem>
@@ -884,7 +1011,7 @@ const InventoryScreen = () => {
               onChangeText={setSearchQuery}
               placeholder="Search inventory items..."
               placeholderTextColor="#9CA3AF"
-              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg"
+              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg h-20"
             />
           </View>
           <BottomSheetFlatList
@@ -893,8 +1020,13 @@ const InventoryScreen = () => {
             ListHeaderComponent={() => (
               <View className="flex-row items-center px-4 py-2 border-b border-gray-700">
                 <View className="w-[6%]">
-                  <TouchableOpacity onPress={toggleSelectAllInventory} className="h-6 w-6 items-center justify-center border border-gray-600 rounded">
-                    {isAllInventorySelected ? <Check color="#fff" size={16} /> : null}
+                  <TouchableOpacity
+                    onPress={toggleSelectAllInventory}
+                    className="h-6 w-6 items-center justify-center border border-gray-600 rounded"
+                  >
+                    {isAllInventorySelected ? (
+                      <Check color="#fff" size={16} />
+                    ) : null}
                   </TouchableOpacity>
                 </View>
                 <Text className="text-gray-400 text-sm">Select All</Text>
@@ -929,19 +1061,25 @@ const InventoryScreen = () => {
 
           {selectedInventoryIds.length > 0 && (
             <View className="p-4 border-t border-gray-700 bg-[#303030]">
-              <Text className="text-white mb-2">Selected: {selectedInventoryIds.length}</Text>
+              <Text className="text-white mb-2">
+                Selected: {selectedInventoryIds.length}
+              </Text>
               <View className="flex-row gap-3">
                 <TouchableOpacity
                   onPress={handleOpenBulkInventoryStockModal}
                   className="px-4 py-3 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold">Bulk Update Stock</Text>
+                  <Text className="text-white text-lg font-semibold">
+                    Bulk Update Stock
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={clearInventorySelection}
                   className="px-4 py-3 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold">Clear</Text>
+                  <Text className="text-white text-lg font-semibold">
+                    Clear
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>

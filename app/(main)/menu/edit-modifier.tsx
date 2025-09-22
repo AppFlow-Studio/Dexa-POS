@@ -189,7 +189,7 @@ const EditModifierScreen: React.FC = () => {
         <View className="mb-6">
           <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             value={name}
             onChangeText={setName}
             placeholder="Modifier name"
@@ -257,7 +257,7 @@ const EditModifierScreen: React.FC = () => {
               Max Selections (optional)
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+              className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
               keyboardType="numeric"
               value={maxSelections?.toString() || ""}
               onChangeText={(t) =>
@@ -274,7 +274,7 @@ const EditModifierScreen: React.FC = () => {
             Description
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             value={description}
             onChangeText={setDescription}
             placeholder="Optional description"
@@ -308,7 +308,7 @@ const EditModifierScreen: React.FC = () => {
                     <View className="flex-1">
                       <Text className="text-xl text-gray-300 mb-1">Name</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white"
+                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white h-20"
                         value={opt.name}
                         onChangeText={(t) => updateOption(idx, "name", t)}
                         placeholder="e.g., Large"
@@ -318,7 +318,7 @@ const EditModifierScreen: React.FC = () => {
                     <View className="w-32">
                       <Text className="text-xl text-gray-300 mb-1">Price</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white"
+                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white h-20"
                         value={opt.price.toString()}
                         onChangeText={(t) => updateOption(idx, "price", t)}
                         keyboardType="numeric"

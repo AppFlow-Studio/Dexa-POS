@@ -48,7 +48,10 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
       alert("Please fill in at least the vendor name and contact person.");
       return;
     }
-    onSave({ name, contactPerson, email, phone, description: desc }, initialData?.id);
+    onSave(
+      { name, contactPerson, email, phone, description: desc },
+      initialData?.id
+    );
     onClose();
   };
 
@@ -68,7 +71,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
             <TextInput
               value={name}
               onChangeText={setName}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
           <View>
@@ -78,7 +81,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
             <TextInput
               value={contactPerson}
               onChangeText={setContactPerson}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
           <View>
@@ -89,7 +92,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
           <View>
@@ -100,7 +103,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
           <View>
@@ -110,7 +113,7 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
             <TextInput
               value={desc}
               onChangeText={setDesc}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
         </View>

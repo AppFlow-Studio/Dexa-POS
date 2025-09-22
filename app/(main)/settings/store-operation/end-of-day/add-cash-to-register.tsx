@@ -96,7 +96,7 @@ const AddCashToRegisterScreen = () => {
               <TextInput
                 value={slipNumber}
                 onChangeText={setSlipNumber}
-                className="px-6 py-4 bg-gray-100 rounded-lg border border-gray-200 text-2xl"
+                className="px-6 py-4 bg-gray-100 rounded-lg border border-gray-200 text-2xl h-20"
               />
             </View>
             <View>

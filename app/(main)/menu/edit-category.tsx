@@ -244,7 +244,7 @@ const EditCategoryScreen: React.FC = () => {
         <View className="mb-6">
           <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             value={name}
             onChangeText={setName}
             placeholder="Category name"
@@ -396,7 +396,7 @@ const EditCategoryScreen: React.FC = () => {
                                           <Minus size={14} color="#9CA3AF" />
                                         </TouchableOpacity>
                                         <TextInput
-                                          className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center"
+                                          className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
                                           value={editingPricing.pricing.price.toString()}
                                           onChangeText={(text) =>
                                             setEditingPricing({
@@ -522,7 +522,7 @@ const EditCategoryScreen: React.FC = () => {
                                 <Minus size={14} color="#9CA3AF" />
                               </TouchableOpacity>
                               <TextInput
-                                className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center"
+                                className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
                                 value={newPricing.price.toString()}
                                 onChangeText={(text) =>
                                   setNewPricing({

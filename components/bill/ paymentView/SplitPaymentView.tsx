@@ -10,10 +10,16 @@ import { ScrollView } from "react-native-gesture-handler";
 type SplitOption = "Split Evenly" | "Split by Item" | "Custom Amount";
 type PaymentType = "Card" | "Cash";
 
+interface SplitItem {
+  cartItem: CartItem;
+  quantity: number; // The quantity of this item assigned to THIS split
+  price: number; // Price per unit of the item
+}
+
 interface Split {
   id: number;
   amount: number;
-  items: CartItem[];
+  items: SplitItem[];
   paymentType: PaymentType;
 }
 
@@ -23,13 +29,15 @@ const SplitPaymentView = () => {
   const { close, setView } = usePaymentStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const items = activeOrder?.items || [];
+  const originalItems = activeOrder?.items || [];
 
   // --- State Management ---
   const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");
   const [numberOfPeople, setNumberOfPeople] = useState(2);
   const [splits, setSplits] = useState<Split[]>([]);
-  const [unassignedItems, setUnassignedItems] = useState<CartItem[]>([]); // For "Split by Item"
+  const [unassignedQuantities, setUnassignedQuantities] = useState<
+    Record<string, number>
+  >({});
 
   const totalInCents = useMemo(
     () => Math.round(activeOrderOutstandingTotal * 100),
@@ -45,70 +53,40 @@ const SplitPaymentView = () => {
     );
   };
 
-  const billSummary = useMemo(() => {
-    // Don't group items by name - preserve each unique item with its modifiers
-    return items.map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      totalPrice: item.price * item.quantity,
-      // Include modifier info in the name for clarity
-      displayName: (item.customizations.modifiers && item.customizations.modifiers.length > 0) || item.customizations.notes
-        ? `${item.name}${item.customizations.notes ? ` (${item.customizations.notes})` : ''}${(item.customizations.modifiers && item.customizations.modifiers.length > 0) ? ` [${item.customizations.modifiers.map(m => m.categoryName).join(', ')}]` : ''}`
-        : item.name
-    }));
-  }, [items]);
-
   const { activeOrderSubtotal, activeOrderTax, activeOrderDiscount } =
     useOrderStore();
 
   useEffect(() => {
-    // Recalculate splits whenever the primary option changes
-    if (splitOption === "Split Evenly") {
-      const amountPerPerson = activeOrderOutstandingTotal / numberOfPeople;
-      const newSplits = Array.from({ length: numberOfPeople }, (_, i) => ({
-        id: i + 1,
-        amount: amountPerPerson,
-        items: [], // Not needed for "Split Evenly"
-        paymentType: "Card" as PaymentType, // Default to Card
-      }));
-      setSplits(newSplits);
-    } else if (splitOption === "Split by Item") {
-      setUnassignedItems(items); // Start with all items unassigned
-      setSplits(
-        Array.from({ length: 2 }, (_, i) => ({
-          id: i + 1,
-          amount: 0,
-          items: [],
-          paymentType: "Card",
-        }))
-      );
-    } else {
-      // Custom Amount
-      setSplits([
-        {
-          id: 1,
-          amount: 0,
-          items: [],
-          paymentType: "Card",
-        },
-      ]);
-    }
-  }, [splitOption, numberOfPeople, activeOrderOutstandingTotal, items]);
+    // Initialize unassigned quantities when the component loads or items change
+    const initialQuantities: Record<string, number> = {};
+    originalItems.forEach((item) => {
+      initialQuantities[item.id] = item.quantity;
+    });
+    setUnassignedQuantities(initialQuantities);
+  }, [originalItems]);
 
-  // Create a stable, string-based dependency for the item calculation effect
   const itemDependency = JSON.stringify(
-    splits.map((s) => s.items.map((i) => i.id + i.quantity))
+    splits.map((s) => s.items.map((i) => i.cartItem.id + i.quantity))
   );
 
   useEffect(() => {
     if (splitOption === "Split by Item") {
       setSplits((currentSplits) =>
         currentSplits.map((split) => {
-          const newAmount = split.items.reduce(
-            (acc, item) => acc + item.price * item.quantity,
+          const splitSubtotal = split.items.reduce(
+            (acc, splitItem) =>
+              acc + splitItem.cartItem.price * splitItem.quantity,
             0
           );
-          // Only update if the amount is actually different
+
+          const proportionOfTotal =
+            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
+
+          const splitTax = activeOrderTax * proportionOfTotal;
+          const splitDiscount = activeOrderDiscount * proportionOfTotal;
+
+          const newAmount = splitSubtotal + splitTax - splitDiscount;
+
           if (split.amount !== newAmount) {
             return { ...split, amount: newAmount };
           }
@@ -116,44 +94,116 @@ const SplitPaymentView = () => {
         })
       );
     }
-  }, [itemDependency, splitOption]);
+  }, [
+    itemDependency,
+    splitOption,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderDiscount,
+  ]);
+
+  useEffect(() => {
+    if (splitOption === "Split by Item") {
+      setSplits((currentSplits) =>
+        currentSplits.map((split) => {
+          // Calculate the subtotal for just the items in this split
+          const splitSubtotal = split.items.reduce(
+            (acc, item) => acc + item.price * item.quantity,
+            0
+          );
+
+          // Determine this split's proportion of the total order subtotal
+          const proportionOfTotal =
+            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
+
+          // Calculate the proportional tax and discount for this split
+          const splitTax = activeOrderTax * proportionOfTotal;
+          const splitDiscount = activeOrderDiscount * proportionOfTotal;
+
+          // Calculate the final amount for this split
+          const newAmount = splitSubtotal + splitTax - splitDiscount;
+
+          if (split.amount !== newAmount) {
+            return { ...split, amount: newAmount };
+          }
+          return split;
+        })
+      );
+    }
+  }, [
+    itemDependency,
+    splitOption,
+    activeOrderSubtotal,
+    activeOrderTax,
+    activeOrderDiscount,
+  ]);
 
   const totalPaid = splits.reduce((acc, split) => acc + split.amount, 0);
   const remainingBalance = activeOrderOutstandingTotal - totalPaid;
 
-  const handleAssignItem = (itemToAssign: CartItem, targetSplitId: number) => {
-    // Remove from unassigned
-    setUnassignedItems((prev) =>
-      prev.filter((item) => item.id !== itemToAssign.id)
-    );
-    // Add to the target split
-    setSplits((prev) =>
-      prev.map((split) =>
-        split.id === targetSplitId
-          ? { ...split, items: [...split.items, itemToAssign] }
-          : split
-      )
+  const handleAssignItem = (
+    cartItem: CartItem,
+    targetSplitId: number,
+    quantityToAssign: number = 1
+  ) => {
+    // Decrease unassigned quantity
+    setUnassignedQuantities((prev) => ({
+      ...prev,
+      [cartItem.id]: prev[cartItem.id] - quantityToAssign,
+    }));
+
+    // Add or update item in the target split
+    setSplits((prevSplits) =>
+      prevSplits.map((split) => {
+        if (split.id === targetSplitId) {
+          const existingItemIndex = split.items.findIndex(
+            (item) => item.cartItem.id === cartItem.id
+          );
+          if (existingItemIndex > -1) {
+            // Item already exists, just update quantity
+            const updatedItems = [...split.items];
+            updatedItems[existingItemIndex] = {
+              ...updatedItems[existingItemIndex],
+              quantity:
+                updatedItems[existingItemIndex].quantity + quantityToAssign,
+            };
+            return { ...split, items: updatedItems };
+          } else {
+            // Add new item to the split
+            return {
+              ...split,
+              items: [
+                ...split.items,
+                { cartItem, quantity: quantityToAssign, price: cartItem.price },
+              ],
+            };
+          }
+        }
+        return split;
+      })
     );
   };
 
-  const handleUnassignItem = (
-    itemToUnassign: CartItem,
-    sourceSplitId: number
-  ) => {
-    // Add back to unassigned
-    setUnassignedItems((prev) => [...prev, itemToUnassign]);
-    // Remove from the source split
-    setSplits((prev) =>
-      prev.map((split) =>
-        split.id === sourceSplitId
-          ? {
+  const handleUnassignItem = (splitItem: SplitItem, sourceSplitId: number) => {
+    // Increase unassigned quantity
+    setUnassignedQuantities((prev) => ({
+      ...prev,
+      [splitItem.cartItem.id]: prev[splitItem.cartItem.id] + splitItem.quantity,
+    }));
+
+    // Remove item from the source split
+    setSplits((prevSplits) =>
+      prevSplits.map((split) => {
+        if (split.id === sourceSplitId) {
+          return {
             ...split,
             items: split.items.filter(
-              (item) => item.id !== itemToUnassign.id
+              (item) => item.cartItem.id !== splitItem.cartItem.id
             ),
-          }
-          : split
-      )
+          };
+        }
+        return split;
+      })
     );
   };
 
@@ -174,7 +224,14 @@ const SplitPaymentView = () => {
     }
 
     // Return all items from the removed split back to the unassigned pool
-    setUnassignedItems((prev) => [...prev, ...splitToRemove.items]);
+    setUnassignedQuantities((prev) => {
+      const updated = { ...prev };
+      splitToRemove.items.forEach((item) => {
+        updated[item.cartItem.id] =
+          (updated[item.cartItem.id] || 0) + item.quantity;
+      });
+      return updated;
+    });
 
     // Filter out the removed split from the main splits array
     setSplits((prev) => prev.filter((s) => s.id !== splitToRemove.id));
@@ -190,9 +247,9 @@ const SplitPaymentView = () => {
       currentSplits.map((split) =>
         split.id === splitId
           ? {
-            ...split,
-            amount: parseFloat(sanitizedText),
-          }
+              ...split,
+              amount: parseFloat(sanitizedText),
+            }
           : split
       )
     );
@@ -255,17 +312,20 @@ const SplitPaymentView = () => {
           </View>
         );
       case "Split by Item":
+        const unassignedItemsToDisplay = originalItems.filter(
+          (item) => unassignedQuantities[item.id] > 0
+        );
         return (
           <View className="mt-6 gap-y-4">
             <View>
               <Text className="text-2xl font-semibold text-gray-300 mb-3">
                 Unassigned Items
               </Text>
-              {unassignedItems.length > 0 ? (
-                unassignedItems.map((item) => (
+              {unassignedItemsToDisplay.length > 0 ? (
+                unassignedItemsToDisplay.map((item) => (
                   <View key={item.id} className="p-3 border-b border-gray-700">
                     <Text className="text-2xl font-semibold text-white">
-                      {item.name} (x{item.quantity})
+                      {item.name} (Unassigned: {unassignedQuantities[item.id]})
                     </Text>
                     <View className="flex-row gap-2 mt-2">
                       {splits.map((split) => (
@@ -275,7 +335,7 @@ const SplitPaymentView = () => {
                           className="py-2 px-3 bg-gray-600 rounded-md"
                         >
                           <Text className="text-xl font-bold text-white">
-                            To Split {split.id}
+                            +1 to Split {split.id}
                           </Text>
                         </TouchableOpacity>
                       ))}
@@ -307,19 +367,19 @@ const SplitPaymentView = () => {
                       </TouchableOpacity>
                     )}
                   </View>
-                  {split.items.map((item) => (
+                  {split.items.map((splitItem) => (
                     <View
-                      key={item.id}
+                      key={splitItem.cartItem.id}
                       className="flex-row justify-between items-center"
                     >
                       <Text className="text-2xl text-gray-300">
-                        {item.name} (x{item.quantity})
+                        {splitItem.cartItem.name} (x{splitItem.quantity})
                       </Text>
                       <TouchableOpacity
-                        onPress={() => handleUnassignItem(item, split.id)}
+                        onPress={() => handleUnassignItem(splitItem, split.id)}
                       >
                         <Text className="text-xl text-red-500 font-semibold">
-                          Unassign
+                          Unassign All
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -354,7 +414,7 @@ const SplitPaymentView = () => {
                 <View className="flex-1 flex-row items-center bg-[#303030] rounded-md px-2 border border-gray-600">
                   <Text className="font-bold text-2xl text-gray-400">$</Text>
                   <TextInput
-                    className="flex-1 p-3 text-2xl font-semibold text-right text-white"
+                    className="flex-1 p-3 text-2xl font-semibold text-right text-white h-20"
                     value={split.amount > 0 ? split.amount.toString() : ""}
                     onChangeText={(text) =>
                       handleCustomAmountChange(split.id, text)
@@ -390,7 +450,7 @@ const SplitPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] h-full border border-gray-700">
+    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[600px]">
       {/* Dark Header */}
       <View className="p-8">
         <Text className="text-3xl text-white font-bold text-center">
@@ -401,7 +461,7 @@ const SplitPaymentView = () => {
       {/* Dark Content */}
       <View className="p-8 bg-[#303030] rounded-b-2xl">
         <ScrollView
-          className="max-h-[600px]"
+          className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
         >
           {/* Total */}

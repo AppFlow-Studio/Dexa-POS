@@ -110,7 +110,7 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
               value={quantity}
               onChangeText={setQuantity}
               keyboardType="numeric"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
         </View>
