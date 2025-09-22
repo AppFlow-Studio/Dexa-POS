@@ -1,9 +1,11 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Clock } from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface SwitchAccountModalProps {
   isOpen: boolean;
@@ -14,21 +16,39 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { employees, loadMockEmployees, signIn, clockIn } = useEmployeeStore();
+  const { clockIn: tcClockIn } = useTimeclockStore();
   const [pin, setPin] = useState("");
-  const MAX_PIN_LENGTH = 6;
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const MAX_PIN_LENGTH = 4;
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { loadMockEmployees(8); }, []);
 
   const handleKeyPress = (input: NumpadInput) => {
     if (typeof input === "number") {
-      if (pin.length < MAX_PIN_LENGTH) setPin((prev) => prev + input);
+      if (pin.length < MAX_PIN_LENGTH) { setPin((prev) => prev + input); setError(null); }
     } else {
-      if (input === "backspace") setPin((prev) => prev.slice(0, -1));
-      if (input === "clear") setPin("");
+      if (input === "backspace") { setPin((prev) => prev.slice(0, -1)); setError(null); }
+      if (input === "clear") { setPin(""); setError(null); }
     }
   };
 
   const handleSwitchUser = () => {
-    // Add logic to verify PIN and switch user
-    alert(`Switching user with PIN: ${pin}`);
+    if (!selectedEmployeeId) { setError('Select a profile'); return; }
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    if (!emp) { setError('Invalid employee'); return; }
+    if (emp.shiftStatus !== 'clocked_in') {
+      try { clockIn(emp.id); } catch { }
+      try { tcClockIn(); } catch { }
+    }
+    const res = signIn(selectedEmployeeId, pin);
+    if (!res.ok) {
+      setError(res.reason === 'invalid_pin' ? 'Incorrect PIN' : 'Employee is not clocked in');
+      return;
+    }
+    setPin("");
+    setError(null);
     onClose();
   };
 
@@ -41,11 +61,19 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
           </DialogTitle>
         </View>
         <View className="bg-white p-6 w-full">
-          <Text className="font-semibold text-gray-600 mb-2">
-            Enter your pin
-          </Text>
+          <Text className="font-semibold text-gray-600 mb-2">Select a profile</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
+            {employees.map(e => (
+              <TouchableOpacity key={e.id} onPress={() => { setSelectedEmployeeId(e.id); setPin(''); setError(null); }} className={`mr-3 items-center ${selectedEmployeeId === e.id ? '' : 'opacity-70'}`}>
+                <Image source={e.profilePictureUrl ? { uri: e.profilePictureUrl } : require("@/assets/images/tom_hardy.jpg")} className="w-14 h-14 rounded-full" />
+                <Text className="text-gray-700 text-xs mt-1">{e.fullName}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <Text className="font-semibold text-gray-600 mb-2">Enter 4-digit PIN</Text>
           <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
           <PinNumpad onKeyPress={handleKeyPress} />
+          {error ? (<Text className="text-red-500 mt-2">{error}</Text>) : null}
           <TouchableOpacity className="self-end my-4">
             <Text className="font-semibold text-primary-400">Forgot Pin</Text>
           </TouchableOpacity>

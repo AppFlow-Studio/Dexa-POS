@@ -80,7 +80,7 @@ const Header = () => {
   const title = generateTitleFromPath(pathname);
 
   const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
-  const { employees, activeEmployeeId } = useEmployeeStore();
+  const { employees, activeEmployeeId, clockOut: empClockOut, signOut } = useEmployeeStore();
   const [activeModal, setActiveModal] = useState<
     "switchAccount" | "break" | "breakEnded" | null
   >(null);
@@ -199,7 +199,14 @@ const Header = () => {
               <Text className="text-2xl">Switch Account</Text>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onPress={() => alert("Logging out...")}>
+            <DropdownMenuItem onPress={() => {
+              if (activeEmployeeId) {
+                try { empClockOut(activeEmployeeId); } catch { }
+                try { useTimeclockStore.getState().clockOut(); } catch { }
+                try { signOut(); } catch { }
+              }
+              router.replace('/pin-login');
+            }}>
               <LogOut className="mr-2 h-6 w-6 text-red-500" />
               <Text className="text-2xl text-red-500">Logout</Text>
             </DropdownMenuItem>
