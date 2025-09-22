@@ -30,7 +30,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Animated, { FadingTransition } from "react-native-reanimated";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 import ModifierScreen from "./ModifierScreen";
@@ -296,7 +295,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           )}
 
           {activeTab === "Menu" ? (
-            <Animated.View key={"Menu"}>
+            <View key={"Menu"}>
               <FlatList
                 data={dataWithSpacers}
                 keyExtractor={(item) => item.id}
@@ -334,19 +333,15 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   );
                 }}
               />
-            </Animated.View>
+            </View>
           ) : activeTab === "Open Item" ? (
-            <Animated.View key={"Open Item"} className={"flex-1"}>
+            <View key={"Open Item"} className={"flex-1"}>
               <OpenItemAdder />
-            </Animated.View>
+            </View>
           ) : activeTab === "Orders" ? (
-            <Animated.View
-              key={"Orders"}
-              layout={FadingTransition.duration(1000).delay(500)}
-              className="flex-1"
-            >
+            <View key={"Orders"} className="flex-1">
               <PreviousOrdersSection />
-            </Animated.View>
+            </View>
           ) : null}
         </View>
       </View>
