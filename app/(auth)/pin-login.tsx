@@ -1,19 +1,20 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Link, useRouter } from "expo-router";
 import { Clock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
-  const { isPinClockedIn, clockInWithPin, clockOutWithPin } =
-    useTimeclockStore();
+  const { isPinClockedIn, clockInWithPin, clockIn: tcClockIn, clockOut: tcClockOut } = useTimeclockStore();
+  const { employees, loadMockEmployees, clockIn, clockOut, signIn } = useEmployeeStore();
   const canSubmit = useMemo(() => pin.length > 0, [pin]);
 
   const [dialog, setDialog] = useState<{
@@ -28,6 +29,12 @@ const PinLoginScreen = () => {
     variant: "success" | "warning" | "error"
   ) => setDialog({ visible: true, title, message, variant });
   const hideDialog = () => setDialog((d) => ({ ...d, visible: false }));
+
+  React.useEffect(() => {
+    loadMockEmployees(8);
+  }, []);
+
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   const handleKeyPress = (input: NumpadInput) => {
     if (typeof input === "number") {
@@ -57,90 +64,67 @@ const PinLoginScreen = () => {
       );
       return;
     }
-
-    // Check if user is already clocked in
-    if (isPinClockedIn(pin)) {
-      // User is already clocked in, just sign in
-      showDialog(
-        "Signed In",
-        "Welcome back! You are already clocked in.",
-        "success"
-      );
-      setTimeout(() => {
-        router.replace("/home");
-      }, 1500);
+    if (!selectedEmployeeId) {
+      showDialog("Select Employee", "Please select your profile first.", "error");
       return;
     }
 
-    // Clock in the user automatically
-    const clockInResult = clockInWithPin(pin);
-    if (!clockInResult.ok) {
-      showDialog("Sign In Failed", "Please enter a valid PIN.", "error");
+    // Auto clock-in before signing in, so terminal session + shift state are aligned
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    if (emp && emp.shiftStatus !== 'clocked_in') {
+      clockIn(selectedEmployeeId);
+      tcClockIn();
+    }
+
+    const res = signIn(selectedEmployeeId, pin);
+    if (!res.ok) {
+      if (res.reason === 'not_clocked_in') {
+        showDialog("Not Clocked In", "Please clock in before signing into the terminal.", "warning");
+      } else {
+        showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      }
       return;
     }
 
-    // Successfully clocked in and signed in
-    const userProfile = clockInResult.userProfile;
-    showDialog(
-      "Signed In Successfully",
-      `Welcome ${userProfile.fullName}!\nRole: ${userProfile.employeeId}\nEmail: ${userProfile.email}\nYou have been automatically clocked in.`,
-      "success"
-    );
     setPin("");
-    setTimeout(() => {
-      router.replace("/home");
-    }, 1500);
+    router.replace("/home");
   };
 
   const handleClockIn = () => {
-    if (!canSubmit) return;
-    const res = clockInWithPin(pin);
-    if (!res.ok && res.reason === "already_clocked_in") {
-      showDialog(
-        "Already Clocked In",
-        "You are already clocked in.",
-        "warning"
-      );
+    if (!selectedEmployeeId) {
+      showDialog("Select Employee", "Tap your profile first, then Clock In.", "warning");
       return;
     }
-    if (!res.ok) {
-      showDialog("Clock In Failed", "Please enter a valid PIN.", "error");
-      return;
-    }
-
-    // Show success dialog with user information
-    const userProfile = res.userProfile;
-    showDialog(
-      "Clocked In Successfully",
-      `Welcome ${userProfile.fullName}!\nRole: ${userProfile.employeeId}\nEmail: ${userProfile.email}\nYour time has been recorded.`,
-      "success"
-    );
+    // Mark shift status only; do not navigate
+    clockIn(selectedEmployeeId);
+    // Also update timeclock store status so MenuItem & others see clockedIn state
+    tcClockIn();
     setPin("");
+    showDialog("Clocked In", "You're now on the clock. Enter your PIN to sign into the terminal.", "success");
   };
 
   const handleClockOut = () => {
-    if (!canSubmit) return;
-    const res = clockOutWithPin(pin);
-    if (!res.ok && res.reason === "not_clocked_in") {
-      showDialog(
-        "Not Clocked In",
-        "You are not currently clocked in.",
-        "warning"
-      );
+    if (!selectedEmployeeId) {
+      showDialog("Select Employee", "Tap your profile first, then enter PIN to clock out.", "warning");
       return;
     }
-    if (!res.ok) {
-      showDialog("Clock Out Failed", "Please enter a valid PIN.", "error");
+    if (!canSubmit) {
+      showDialog("Enter PIN", "Please enter your 4-digit PIN to clock out.", "error");
       return;
     }
-
-    // Show success dialog with user information
-    const userProfile = res.userProfile;
-    showDialog(
-      "Clocked Out Successfully",
-      `Goodbye ${userProfile.fullName}!\nYour shift has been recorded and saved.\nProfile saved for future reference.`,
-      "success"
-    );
+    const emp = employees.find(e => e.id === selectedEmployeeId);
+    if (!emp) return;
+    if (emp.pin !== pin) {
+      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      return;
+    }
+    if (emp.shiftStatus !== 'clocked_in') {
+      showDialog("Not Clocked In", "You are not currently clocked in.", "warning");
+      return;
+    }
+    clockOut(selectedEmployeeId);
+    tcClockOut();
+    showDialog("Clocked Out Successfully", `Goodbye ${emp.fullName}!`, "success");
     setPin("");
   };
 
@@ -150,9 +134,18 @@ const PinLoginScreen = () => {
         Get Started
       </Text>
 
-      <Text className="text-xl font-semibold text-white mb-2">
-        ENTER YOUR PASSCODE
-      </Text>
+      <Text className="text-xl font-semibold text-white mb-2">Select Your Profile</Text>
+      <ScrollView horizontal className="mb-4" showsHorizontalScrollIndicator={false}>
+        {employees.map((e) => (
+          <TouchableOpacity key={e.id} onPress={() => setSelectedEmployeeId(e.id)} className={`mr-4 items-center ${selectedEmployeeId === e.id ? 'opacity-100' : 'opacity-50'}`}>
+            <Image source={e.profilePictureUrl ? { uri: e.profilePictureUrl } : require("@/assets/images/tom_hardy.jpg")} className="w-20 h-20 rounded-full" />
+            <Text className="text-white mt-2">{e.fullName}</Text>
+            <Text className={`text-xs mt-1 ${e.shiftStatus === 'clocked_in' ? 'text-green-400' : 'text-gray-400'}`}>{e.shiftStatus === 'clocked_in' ? 'Clocked In' : 'Clocked Out'}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text className="text-xl font-semibold text-white mb-2">ENTER YOUR PASSCODE</Text>
       <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
       <View className="mt-6">

@@ -1,3 +1,4 @@
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { usePathname, useRouter } from "expo-router";
 import {
@@ -79,6 +80,7 @@ const Header = () => {
   const title = generateTitleFromPath(pathname);
 
   const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
+  const { employees, activeEmployeeId } = useEmployeeStore();
   const [activeModal, setActiveModal] = useState<
     "switchAccount" | "break" | "breakEnded" | null
   >(null);
@@ -164,14 +166,14 @@ const Header = () => {
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center cursor-pointer">
               <Image
-                source={require("@/assets/images/tom_hardy.jpg")}
+                source={activeEmployeeId ? (employees.find(e => e.id === activeEmployeeId)?.profilePictureUrl ? { uri: employees.find(e => e.id === activeEmployeeId)!.profilePictureUrl! } : require("@/assets/images/tom_hardy.jpg")) : require("@/assets/images/tom_hardy.jpg")}
                 className="w-12 h-12 rounded-full"
               />
               <View className="ml-3">
                 <Text className="text-2xl font-semibold text-white">
-                  Jessica
+                  {activeEmployeeId ? (employees.find(e => e.id === activeEmployeeId)?.fullName || 'Employee') : 'Guest'}
                 </Text>
-                <Text className="text-xl text-white">New York</Text>
+                <Text className="text-xl text-white">{activeEmployeeId ? 'Signed In' : 'Not Signed In'}</Text>
               </View>
               <ChevronDown color="white" size={24} className="ml-2" />
             </TouchableOpacity>

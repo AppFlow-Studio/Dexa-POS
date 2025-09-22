@@ -1,4 +1,5 @@
 import { MOCK_USER_PROFILE } from "@/lib/mockData";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -10,7 +11,15 @@ const DetailRow = ({ label, value }: { label: string; value: string }) => (
 );
 
 const ProfileInfoTab = () => {
-  const user = MOCK_USER_PROFILE;
+  const { employees, activeEmployeeId } = useEmployeeStore();
+  const emp = employees.find(e => e.id === activeEmployeeId) || employees.find(e => e.shiftStatus === 'clocked_in');
+  const user = emp ? {
+    fullName: emp.fullName,
+    dob: emp.dob || '—',
+    gender: emp.gender ? (emp.gender.charAt(0).toUpperCase() + emp.gender.slice(1)) : '—',
+    country: emp.country || '—',
+    address: emp.address || '—'
+  } : MOCK_USER_PROFILE;
   return (
     <View className="space-y-4">
       <DetailRow label="Full Name" value={user.fullName} />

@@ -3,12 +3,11 @@ import ProfileCard from "@/components/profile/ProfileCard";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   Building2,
-  Database,
   Receipt,
-  Settings,
-  User,
+  User
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -17,6 +16,13 @@ type TabName = "Profile Info" | "Security" | "History";
 const TABS: TabName[] = ["Profile Info", "Security", "History"];
 
 const MyProfileScreen = () => {
+  const { activeEmployeeId, employees, loadMockEmployees } = useEmployeeStore();
+  const currentEmployee = React.useMemo(() => {
+    return activeEmployeeId
+      ? employees.find(e => e.id === activeEmployeeId)
+      : employees.find(e => e.shiftStatus === 'clocked_in');
+  }, [activeEmployeeId, employees]);
+  React.useEffect(() => { loadMockEmployees(8); }, []);
   const [activeTab, setActiveTab] = useState<TabName>("Profile Info");
 
   const basicSubsections = [
@@ -86,7 +92,7 @@ const MyProfileScreen = () => {
           </View>
 
           {/* Content Area */}
-          <View className="flex-row flex-1 mt-6">
+          <View className="flex-row  mt-6">
             {/* Left: Shared Profile Card */}
             <ProfileCard />
 
@@ -95,7 +101,8 @@ const MyProfileScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-end pt-4 border-t border-gray-600 w-full">
+          <View className="flex-row justify-between items-center pt-4 border-t border-gray-600 w-full ">
+            <Text className="text-gray-400">{currentEmployee ? `Viewing profile for: ${currentEmployee.fullName}` : 'No employee signed in'}</Text>
             {activeTab === "Profile Info" ? (
               <>
                 <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg mr-2">

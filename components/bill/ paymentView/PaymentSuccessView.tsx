@@ -55,7 +55,7 @@ const PaymentSuccessView = () => {
   } = useOrderStore();
   const { categories, menuItems } = useMenuStore();
 
-  const { addSaleEvent } = useAnalyticsStore();
+  const { addSaleEvent, forceRefresh } = useAnalyticsStore();
 
   const appliedRef = useRef(false);
   useEffect(() => {
@@ -113,6 +113,10 @@ const PaymentSuccessView = () => {
 
     console.log('📊 Adding sale events to analytics:', saleEvents);
     addSaleEvent(saleEvents);
+    // Nudge refresh after write to ensure dashboard updates
+    setTimeout(() => {
+      try { forceRefresh(); } catch { }
+    }, 150);
 
     if (activeOrderId) {
       markOrderAsPaid(activeOrderId);

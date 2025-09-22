@@ -1,4 +1,5 @@
 import { MOCK_USER_PROFILE } from "@/lib/mockData";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore"; // 1. Import the timeclock store
 import { Clock, Timer } from "lucide-react-native";
 import React, { useEffect, useState } from "react"; // Import hooks
@@ -17,7 +18,11 @@ const formatDuration = (milliseconds: number): string => {
 };
 
 const ProfileCard = () => {
-  const user = MOCK_USER_PROFILE;
+  const { employees, activeEmployeeId } = useEmployeeStore();
+  const activeEmployee = employees.find((e) => e.id === activeEmployeeId) || employees.find(e => e.shiftStatus === 'clocked_in');
+  const user = activeEmployee
+    ? { fullName: activeEmployee.fullName, employeeId: activeEmployee.id, profileImageUrl: activeEmployee.profilePictureUrl }
+    : MOCK_USER_PROFILE;
 
   // 2. Get the live timeclock state and actions from the store
   const { status, currentShift, clockIn, clockOut } = useTimeclockStore();
@@ -95,7 +100,7 @@ const ProfileCard = () => {
   return (
     <View className="w-80 p-4 rounded-2xl items-center bg-white border border-gray-200">
       <Image
-        source={require("@/assets/images/tom_hardy.jpg")}
+        source={user.profileImageUrl ? { uri: user.profileImageUrl } : require("@/assets/images/tom_hardy.jpg")}
         className="w-24 h-24 rounded-2xl"
       />
       <Text className="text-xl font-bold text-gray-800 mt-4">

@@ -243,7 +243,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <View className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl">
+      <ScrollView bounces={false} className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl">
         {/* Header */}
         <View className="flex-row items-center justify-between p-6 border-b border-gray-200">
           <Text className="text-3xl font-bold text-white">Order Type</Text>
@@ -456,7 +456,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
               {/* Table Layout View - Only show if floor is selected */}
               {selectedFloor && (
-                <View className="flex-1 border border-gray-600 rounded-lg">
+                <View className="flex-1 min-h-[350px] border border-gray-600 rounded-lg">
                   <TableLayoutView
                     layoutId={selectedFloor!}
                     tables={floorTables}
@@ -492,7 +492,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             </View>
           )}
         </View>
-      </View>
+      </ScrollView>
 
       <GuestCountModal
         isOpen={isGuestModalOpen}
