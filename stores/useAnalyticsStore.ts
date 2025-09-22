@@ -27,7 +27,7 @@ export interface CustomReportConfig {
     name: string;
     metrics: string[];
     breakdown: string;
-    chartType: 'bar' | 'line';
+    chartType: 'bar' | 'line' | 'pie';
     filters: Filters;
     createdAt: Date;
 }
@@ -56,7 +56,7 @@ export interface AnalyticsState {
     filters: Filters;
 
     // Actions
-    addSaleEvent: (event: SaleEvent) => void;
+    addSaleEvent: (event: SaleEvent[]) => void;
     setFilters: (filters: Partial<Filters>) => void;
     setDateRange: (dateRange: DateRange) => void;
     setLocation: (location: string) => void;
@@ -66,6 +66,7 @@ export interface AnalyticsState {
     deleteCustomReport: (id: string) => void;
     clearError: () => void;
     resetFilters: () => void;
+    forceRefresh: () => void;
 }
 
 // Initialize with mock data
@@ -74,7 +75,7 @@ const initialSalesData = generateMockSalesData(30);
 const defaultFilters: Filters = {
     dateRange: {
         start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-        end: new Date()
+        end: new Date(Date.now() + 24 * 60 * 60 * 1000) // Tomorrow to ensure today is included
     }
 };
 
@@ -88,15 +89,31 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
     filters: defaultFilters,
 
     // Actions
-    addSaleEvent: (event: SaleEvent) => {
-        set((state) => ({
-            salesData: [...state.salesData, event]
-        }));
+    addSaleEvent: (event: SaleEvent[]) => {
+        console.log('📈 Analytics Store: Adding sale events:', event);
+
+        set((state) => {
+            const newSalesData = [...state.salesData, ...event];
+            console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
+            return {
+                salesData: newSalesData
+            };
+        });
 
         // Recalculate current report if it exists
         const { currentReportData } = get();
         if (currentReportData) {
-            get().fetchReportData({ type: 'overview' });
+            console.log('📈 Analytics Store: Refreshing report data...');
+            // Use setTimeout to avoid blocking the UI during payment processing
+            setTimeout(() => {
+                get().fetchReportData({ type: 'overview' });
+            }, 100);
+        } else {
+            console.log('📈 Analytics Store: No current report data, initializing...');
+            // Initialize the report data if it doesn't exist
+            setTimeout(() => {
+                get().fetchReportData({ type: 'overview' });
+            }, 100);
         }
     },
 
@@ -140,7 +157,13 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
                 reportData = generatePreBuiltReport(config.type, salesData, filters);
             } else if (config.customConfig) {
                 // Custom report
+                console.log('📊 Analytics Store: Generating custom report with config:', config.customConfig);
                 reportData = generateCustomReport(config.customConfig, salesData);
+                console.log('📊 Analytics Store: Generated custom report data:', {
+                    title: reportData.title,
+                    chartDataLength: reportData.chartData?.length,
+                    firstChartItem: reportData.chartData?.[0]
+                });
             } else {
                 throw new Error('Invalid report configuration');
             }
@@ -181,6 +204,12 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
 
     resetFilters: () => {
         set({ filters: defaultFilters });
+    },
+
+    // Force refresh analytics data (useful for debugging)
+    forceRefresh: () => {
+        console.log('🔄 Analytics Store: Force refreshing...');
+        get().fetchReportData({ type: 'overview' });
     }
 }));
 
@@ -285,7 +314,12 @@ function generatePreBuiltReport(type: string, salesData: SaleEvent[], filters: F
 }
 
 function generateCustomReport(config: CustomReportConfig, salesData: SaleEvent[]): ReportData {
-    const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, config.filters.dateRange);
+    // Ensure dateRange is valid before passing to calculateAllMetrics
+    const dateRange = config.filters.dateRange?.start && config.filters.dateRange?.end
+        ? config.filters.dateRange
+        : undefined;
+
+    const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, dateRange);
 
     return {
         title: getSmartDateRangeTitle(config.name, salesTrends),
@@ -375,8 +409,98 @@ function formatPaymentChartData(salesData: SaleEvent[]) {
 }
 
 function formatCustomChartData(salesData: SaleEvent[], config: CustomReportConfig) {
-    // This would be more complex based on the custom configuration
-    return formatChartData(calculateAllMetrics(salesData, config.filters.dateRange).salesTrends, 'revenue');
+    console.log('📊 Custom Report: Generating chart data for', config.name);
+    console.log('📊 Custom Report: Metrics:', config.metrics);
+    console.log('📊 Custom Report: Breakdown:', config.breakdown);
+
+    // Filter data by date range
+    const filteredData = salesData.filter(s => {
+        const saleDate = new Date(s.date);
+        const startDate = config.filters.dateRange?.start;
+        const endDate = config.filters.dateRange?.end;
+
+        if (!startDate || !endDate) {
+            console.log('📊 Custom Report: No valid date range, including all data');
+            return true;
+        }
+
+        return saleDate >= startDate && saleDate <= endDate;
+    });
+
+    // Group data by breakdown dimension
+    const groupedData = new Map<string, any>();
+
+    filteredData.forEach(sale => {
+        let groupKey: string;
+
+        switch (config.breakdown) {
+            case 'item':
+                groupKey = sale.itemName;
+                break;
+            case 'category':
+                groupKey = sale.category || 'Uncategorized';
+                break;
+            case 'employee':
+                groupKey = sale.employeeId || 'Unknown';
+                break;
+            case 'payment_method':
+                groupKey = sale.paymentMethod || 'Unknown';
+                break;
+            case 'hour':
+                groupKey = new Date(sale.date).getHours().toString();
+                break;
+            case 'day':
+                groupKey = new Date(sale.date).toLocaleDateString('en-US', { weekday: 'long' });
+                break;
+            case 'date':
+                groupKey = new Date(sale.date).toLocaleDateString();
+                break;
+            default:
+                groupKey = 'All';
+        }
+
+        if (!groupedData.has(groupKey)) {
+            groupedData.set(groupKey, {
+                name: groupKey,
+                revenue: 0,
+                costOfGoods: 0,
+                grossMargin: 0,
+                orderCount: new Set(),
+                itemQuantity: 0,
+                averageOrderValue: 0
+            });
+        }
+
+        const group = groupedData.get(groupKey);
+        group.revenue += sale.salePrice * sale.quantitySold;
+        group.costOfGoods += sale.costOfGoods * sale.quantitySold;
+        group.itemQuantity += sale.quantitySold;
+        if (sale.orderId) {
+            group.orderCount.add(sale.orderId);
+        }
+    });
+
+    // Calculate derived metrics
+    groupedData.forEach(group => {
+        group.grossMargin = group.revenue - group.costOfGoods;
+        group.averageOrderValue = group.orderCount.size > 0 ? group.revenue / group.orderCount.size : 0;
+    });
+
+    // Convert to array and sort by primary metric
+    const primaryMetric = config.metrics[0] || 'revenue';
+    const sortedData = Array.from(groupedData.values()).sort((a, b) => {
+        return (b[primaryMetric] || 0) - (a[primaryMetric] || 0);
+    });
+
+    console.log('📊 Custom Report: Generated data:', sortedData.slice(0, 5));
+    console.log('📊 Custom Report: Sample data structure:', {
+        firstItem: sortedData[0],
+        hasName: sortedData[0]?.name,
+        hasDate: sortedData[0]?.date,
+        breakdown: config.breakdown
+    });
+
+    return sortedData;
 }
 
 // Table data formatting functions
@@ -440,8 +564,67 @@ function formatPaymentTableData(salesData: SaleEvent[]) {
 }
 
 function formatCustomTableData(salesData: SaleEvent[], config: CustomReportConfig) {
-    // This would be more complex based on the custom configuration
-    return formatTableData(calculateAllMetrics(salesData, config.filters.dateRange).salesTrends);
+    console.log('📊 Custom Report: Generating table data for', config.name);
+
+    // Use the same logic as formatCustomChartData
+    const chartData = formatCustomChartData(salesData, config);
+
+    // Generate headers based on selected metrics and breakdown
+    const headers = [config.breakdown.charAt(0).toUpperCase() + config.breakdown.slice(1)];
+    config.metrics.forEach(metric => {
+        switch (metric) {
+            case 'revenue':
+                headers.push('Revenue');
+                break;
+            case 'cost_of_goods':
+                headers.push('Cost of Goods');
+                break;
+            case 'gross_margin':
+                headers.push('Gross Margin');
+                break;
+            case 'order_count':
+                headers.push('Orders');
+                break;
+            case 'item_quantity':
+                headers.push('Items Sold');
+                break;
+            case 'average_order_value':
+                headers.push('Avg Order Value');
+                break;
+        }
+    });
+
+    // Generate rows
+    const rows = chartData.map(item => {
+        const row = [item.name];
+        config.metrics.forEach(metric => {
+            switch (metric) {
+                case 'revenue':
+                    row.push(`$${item.revenue.toFixed(2)}`);
+                    break;
+                case 'cost_of_goods':
+                    row.push(`$${item.costOfGoods.toFixed(2)}`);
+                    break;
+                case 'gross_margin':
+                    row.push(`$${item.grossMargin.toFixed(2)}`);
+                    break;
+                case 'order_count':
+                    row.push(item.orderCount.size.toString());
+                    break;
+                case 'item_quantity':
+                    row.push(item.itemQuantity.toString());
+                    break;
+                case 'average_order_value':
+                    row.push(`$${item.averageOrderValue.toFixed(2)}`);
+                    break;
+            }
+        });
+        return row;
+    });
+
+    console.log('📊 Custom Report: Generated table:', { headers, rows: rows.slice(0, 3) });
+
+    return { headers, rows };
 }
 
 // Initialize the store with default data

@@ -97,7 +97,7 @@ const PaymentDetailsCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 space-y-3 justify-center">
+        <View className="flex-1 ml-6 gap-y-3 justify-center">
           <LegendRow
             color={paymentData.color}
             label={paymentData.label}

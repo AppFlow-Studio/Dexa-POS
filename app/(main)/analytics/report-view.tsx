@@ -135,6 +135,17 @@ const ReportViewScreen = () => {
         }
     }, [reportType, customConfig]);
 
+    const handleDataPointPress = useCallback((dataPoint: any, position: { x: number; y: number }) => {
+        // This is where you can add custom logic for handling tooltip interactions
+        // For example, logging, analytics tracking, or additional data processing
+        console.log('Data point pressed:', dataPoint);
+        console.log('Position:', position);
+
+        // You can add more detailed information processing here
+        // For example, if you want to show additional details in a modal
+        // or perform some action based on the data point
+    }, []);
+
     if (isLoading && !currentReportData) {
         return (
             <View className="flex-1 bg-[#212121] items-center justify-center">
@@ -143,32 +154,32 @@ const ReportViewScreen = () => {
         );
     }
 
-    if (error) {
-        return (
-            <View className="flex-1 bg-[#212121] p-6">
-                <View className="flex-row items-center mb-6">
-                    <TouchableOpacity
-                        onPress={() => router.back()}
-                        className="mr-4 p-2"
-                    >
-                        <ArrowLeft color="#9CA3AF" size={24} />
-                    </TouchableOpacity>
-                    <Text className="text-2xl font-bold text-white">Report Error</Text>
-                </View>
+    // if (error) {
+    //     return (
+    //         <View className="flex-1 bg-[#212121] p-6">
+    //             <View className="flex-row items-center mb-6">
+    //                 <TouchableOpacity
+    //                     onPress={() => router.back()}
+    //                     className="mr-4 p-2"
+    //                 >
+    //                     <ArrowLeft color="#9CA3AF" size={24} />
+    //                 </TouchableOpacity>
+    //                 <Text className="text-2xl font-bold text-white">Report Error</Text>
+    //             </View>
 
-                <View className="bg-red-900/30 border border-red-500 p-6 rounded-2xl">
-                    <Text className="text-red-400 text-lg font-semibold mb-2">Error Loading Report</Text>
-                    <Text className="text-red-300 mb-4">{error}</Text>
-                    <TouchableOpacity
-                        onPress={handleRefresh}
-                        className="bg-red-600 px-6 py-3 rounded-xl self-start"
-                    >
-                        <Text className="text-white font-semibold">Retry</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
-    }
+    //             <View className="bg-red-900/30 border border-red-500 p-6 rounded-2xl">
+    //                 <Text className="text-red-400 text-lg font-semibold mb-2">Error Loading Report</Text>
+    //                 <Text className="text-red-300 mb-4">{error}</Text>
+    //                 <TouchableOpacity
+    //                     onPress={handleRefresh}
+    //                     className="bg-red-600 px-6 py-3 rounded-xl self-start"
+    //                 >
+    //                     <Text className="text-white font-semibold">Retry</Text>
+    //                 </TouchableOpacity>
+    //             </View>
+    //         </View>
+    //     );
+    // }
 
     if (!currentReportData) {
         return (
@@ -177,7 +188,6 @@ const ReportViewScreen = () => {
             </View>
         );
     }
-
     return (
         <View className="flex-1 bg-[#212121]">
             {/* Header */}
@@ -272,7 +282,9 @@ const ReportViewScreen = () => {
                             data={currentReportData.chartData}
                             chartType={chartType}
                             title={getChartTitle("Data Analysis")}
+                            onDataPointPress={handleDataPointPress}
                         />
+
                     </View>
                 </View>
 

@@ -75,7 +75,7 @@ const ServerTipoutsCard = () => {
   const textX1 = font ? center - font.measureText("Total Sales").width / 2 : 0;
   const textX2 = boldFont
     ? center -
-      boldFont.measureText(`${tipoutData.displayValue.toFixed(2)}`).width / 2
+    boldFont.measureText(`${tipoutData.displayValue.toFixed(2)}`).width / 2
     : 0;
 
   return (
@@ -133,7 +133,7 @@ const ServerTipoutsCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 space-y-3 justify-center">
+        <View className="flex-1 ml-6 gap-y-3 justify-center">
           <LegendRow
             color={tipoutData.color}
             label={tipoutData.label}

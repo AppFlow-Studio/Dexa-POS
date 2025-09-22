@@ -80,9 +80,10 @@ const PinLoginScreen = () => {
     }
 
     // Successfully clocked in and signed in
+    const userProfile = clockInResult.userProfile;
     showDialog(
-      "Signed In",
-      "Welcome! You have been automatically clocked in.",
+      "Signed In Successfully",
+      `Welcome ${userProfile.fullName}!\nRole: ${userProfile.employeeId}\nEmail: ${userProfile.email}\nYou have been automatically clocked in.`,
       "success"
     );
     setPin("");
@@ -106,7 +107,14 @@ const PinLoginScreen = () => {
       showDialog("Clock In Failed", "Please enter a valid PIN.", "error");
       return;
     }
-    showDialog("Clocked In", "Your time has been recorded.", "success");
+
+    // Show success dialog with user information
+    const userProfile = res.userProfile;
+    showDialog(
+      "Clocked In Successfully",
+      `Welcome ${userProfile.fullName}!\nRole: ${userProfile.employeeId}\nEmail: ${userProfile.email}\nYour time has been recorded.`,
+      "success"
+    );
     setPin("");
   };
 
@@ -125,7 +133,14 @@ const PinLoginScreen = () => {
       showDialog("Clock Out Failed", "Please enter a valid PIN.", "error");
       return;
     }
-    showDialog("Clocked Out", "You have clocked out.", "success");
+
+    // Show success dialog with user information
+    const userProfile = res.userProfile;
+    showDialog(
+      "Clocked Out Successfully",
+      `Goodbye ${userProfile.fullName}!\nYour shift has been recorded and saved.\nProfile saved for future reference.`,
+      "success"
+    );
     setPin("");
   };
 
