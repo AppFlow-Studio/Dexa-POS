@@ -10,7 +10,7 @@ const FormInput = ({ label, value, onChangeText, ...props }: any) => (
     <TextInput
       value={value}
       onChangeText={onChangeText}
-      className="py-3 px-4 bg-[#303030] rounded-xl text-lg text-white border border-gray-600"
+      className="py-3 px-4 bg-[#303030] rounded-xl text-lg text-white border border-gray-600 h-20"
       {...props}
     />
   </View>

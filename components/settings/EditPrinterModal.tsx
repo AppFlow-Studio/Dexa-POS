@@ -85,7 +85,7 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
               value={itemName}
               onChangeText={setItemName}
               placeholder="Printer Name"
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
             />
           </View>
 
@@ -95,7 +95,7 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
               value={printerId}
               onChangeText={setPrinterId}
               placeholder="Printer ID"
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
               editable={false}
             />
           </View>

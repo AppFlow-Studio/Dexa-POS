@@ -414,7 +414,7 @@ const SplitPaymentView = () => {
                 <View className="flex-1 flex-row items-center bg-[#303030] rounded-md px-2 border border-gray-600">
                   <Text className="font-bold text-2xl text-gray-400">$</Text>
                   <TextInput
-                    className="flex-1 p-3 text-2xl font-semibold text-right text-white"
+                    className="flex-1 p-3 text-2xl font-semibold text-right text-white h-20"
                     value={split.amount > 0 ? split.amount.toString() : ""}
                     onChangeText={(text) =>
                       handleCustomAmountChange(split.id, text)

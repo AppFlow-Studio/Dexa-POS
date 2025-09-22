@@ -170,7 +170,7 @@ const CustomReportBuilderScreen = () => {
               onChangeText={setReportName}
               placeholder="Enter report name..."
               placeholderTextColor="#9CA3AF"
-              className="text-white text-lg px-6 py-4"
+              className="text-white text-lg px-6 py-4 h-20"
             />
           </View>
         </View>

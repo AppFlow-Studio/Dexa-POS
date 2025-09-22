@@ -295,7 +295,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                 placeholder="Enter reason for refund (e.g., Customer dissatisfied, Order error, Item returned)..."
                 multiline
                 numberOfLines={3}
-                className="w-full p-4 border border-gray-300 rounded-lg text-lg text-gray-800"
+                className="w-full p-4 border border-gray-300 rounded-lg text-lg text-gray-800 h-20"
               />
             </View>
           )}
@@ -374,7 +374,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                                 }
                               }}
                               keyboardType="numeric"
-                              className="flex-1 p-3 border border-gray-300 rounded text-center text-xl"
+                              className="flex-1 p-3 border border-gray-300 rounded text-center text-xl h-20"
                             />
                             <Text className="text-xl text-gray-600">
                               / {item.quantity}
@@ -387,7 +387,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                               updateItemReason(item.id, text)
                             }
                             placeholder="Reason for this item..."
-                            className="w-full p-3 border border-gray-300 rounded text-lg"
+                            className="w-full p-3 border border-gray-300 rounded text-lg h-20"
                           />
                         </View>
                       )}

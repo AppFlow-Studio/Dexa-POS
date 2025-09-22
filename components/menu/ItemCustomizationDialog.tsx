@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 const ItemCustomizationDialog: React.FC = () => {
   const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
-  const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } = useOrderStore();
+  const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } =
+    useOrderStore();
 
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
@@ -73,7 +74,11 @@ const ItemCustomizationDialog: React.FC = () => {
     } else {
       // If in add mode, create a brand new CartItem
       const newItem: CartItem = {
-        id: generateCartItemId(menuItem.id, { size: selectedSize, addOns: selectedAddOns, notes }),
+        id: generateCartItemId(menuItem.id, {
+          size: selectedSize,
+          addOns: selectedAddOns,
+          notes,
+        }),
         menuItemId: menuItem.id,
         name: menuItem.name,
         quantity,
@@ -227,7 +232,7 @@ const ItemCustomizationDialog: React.FC = () => {
               onChangeText={setNotes}
               placeholder="Make the cheese more melted"
               multiline
-              className="p-3 border bg-white border-[#F1F1F1] rounded-lg"
+              className="p-3 border bg-white border-[#F1F1F1] rounded-lg h-20"
             />
           </View>
           <View className="border-t border-gray-200 flex-row justify-between items-center py-2">

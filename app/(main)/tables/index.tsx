@@ -197,7 +197,7 @@ const TablesScreen = () => {
                 placeholderTextColor="#9CA3AF"
                 value={searchText}
                 onChangeText={setSearchText}
-                className="ml-3 text-2xl h-16 flex-1 text-white"
+                className="ml-3 text-2xl h-20 flex-1 text-white"
               />
             </View>
             <ReusableSelect

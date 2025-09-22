@@ -55,7 +55,7 @@ const TrackOrderSection = () => {
               placeholder="Search Order"
               value={searchText}
               onChangeText={setSearchText}
-              className="ml-3 text-2xl flex-1 text-white placeholder:text-gray-400"
+              className="ml-3 text-2xl flex-1 h-20 text-white placeholder:text-gray-400"
             />
           </View>
           <TouchableOpacity

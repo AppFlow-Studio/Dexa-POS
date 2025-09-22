@@ -73,7 +73,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
               value={itemName}
               onChangeText={setItemName}
               placeholder="Printer Name"
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
             />
           </View>
 
@@ -117,7 +117,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                 value={ipAddress}
                 onChangeText={setIpAddress}
                 placeholder="Type IP Address"
-                className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+                className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
               />
             </View>
           )}

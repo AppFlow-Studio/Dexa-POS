@@ -72,21 +72,21 @@ const ReceiptAndTippingRulesScreen = () => {
                     <TextInput
                       value={tip1}
                       onChangeText={setTip1}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600"
+                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip2}
                       onChangeText={setTip2}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600"
+                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip3}
                       onChangeText={setTip3}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600"
+                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />

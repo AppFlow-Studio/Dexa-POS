@@ -141,7 +141,7 @@ const ViewEmployeesScreen = () => {
           <Search color="#6b7280" size={24} />
           <TextInput
             placeholder="Search by Check Number or Payee"
-            className="ml-3 text-2xl flex-1"
+            className="ml-3 text-2xl flex-1 h-20"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />

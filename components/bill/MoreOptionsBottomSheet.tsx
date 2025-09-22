@@ -193,7 +193,7 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
               secureTextEntry
               keyboardType="numeric"
               maxLength={4}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-xl text-center text-2xl font-bold mb-4 text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-xl text-center text-2xl font-bold mb-4 text-white h-20"
               placeholderTextColor="#6B7280"
             />
             <View className="flex-row gap-4">

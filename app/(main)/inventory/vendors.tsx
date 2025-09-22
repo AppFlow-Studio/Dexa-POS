@@ -218,7 +218,7 @@ const VendorScreen = () => {
               onChangeText={setSearchQuery}
               placeholder="Search vendors..."
               placeholderTextColor="#9CA3AF"
-              className="flex-1 text-white ml-3 px-6 py-4 text-xl"
+              className="flex-1 text-white ml-3 px-6 py-4 text-xl h-20"
             />
           </View>
         </View>

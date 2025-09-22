@@ -117,7 +117,7 @@ const EditMenuScreen: React.FC = () => {
         <View className="mb-6">
           <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             value={name}
             onChangeText={setName}
             placeholder="Menu name"
@@ -130,7 +130,7 @@ const EditMenuScreen: React.FC = () => {
             Description
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
             value={description}
             onChangeText={setDescription}
             placeholder="Optional description"

@@ -78,7 +78,7 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
             <TextInput
               value={terminalName}
               onChangeText={setTerminalName}
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
             />
           </View>
 
@@ -86,7 +86,7 @@ const EditTerminalModal: React.FC<EditTerminalModalProps> = ({
             <Text className="font-bold mb-2 text-accent-500">Terminal ID</Text>
             <TextInput
               value={terminal.id}
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500"
+              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
               editable={false}
             />
           </View>

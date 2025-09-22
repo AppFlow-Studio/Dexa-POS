@@ -98,7 +98,7 @@ const CashPaymentView = () => {
             }}
             placeholder={`${activeOrderOutstandingTotal.toFixed(2)}`}
             keyboardType="numeric"
-            className="w-full px-6 py-4 bg-[#212121] border border-gray-600 rounded-lg text-3xl text-right font-semibold text-white"
+            className="w-full px-6 py-4 bg-[#212121] border border-gray-600 rounded-lg text-3xl text-right font-semibold text-white h-20"
             placeholderTextColor="#6B7280"
           />
         </View>

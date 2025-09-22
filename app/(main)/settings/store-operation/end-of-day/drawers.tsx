@@ -98,7 +98,7 @@ const DrawerSummaryScreen = () => {
           <Search color="#6b7280" size={20} />
           <TextInput
             placeholder="Search by Check Number or Payee"
-            className="ml-2 text-base flex-1"
+            className="ml-2 text-base flex-1 h-20"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />

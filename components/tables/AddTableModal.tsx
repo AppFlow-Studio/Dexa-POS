@@ -83,7 +83,7 @@ const AddTableModal: React.FC<AddTableModalProps> = ({
               onChangeText={setName}
               placeholder="e.g., T-24 or Patio 1"
               placeholderTextColor="#9CA3AF"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white"
+              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
             />
           </View>
           <View>
