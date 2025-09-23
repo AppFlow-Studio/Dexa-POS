@@ -200,17 +200,17 @@ const TablesScreen = () => {
                 className="ml-3 text-2xl h-20 flex-1 text-white"
               />
             </View>
-            <ReusableSelect
+            {/* <ReusableSelect
               options={["All Table", "Available", "In Use", "Needs Cleaning"]}
               placeholder={statusFilter}
             />
             <ReusableSelect
               options={["All Capacity", "Small", "Medium", "Large"]}
               placeholder={capacityFilter}
-            />
+            /> */}
             <TouchableOpacity
               onPress={() => router.push(`/(main)/tables/floor-plan` as Href)}
-              className="py-4 px-6 rounded-lg bg-blue-500 "
+              className="py-4 px-6 h-20 flex-row items-center justify-center rounded-lg bg-blue-500 "
             >
               <Text className="text-2xl font-bold text-white">Edit Layout</Text>
             </TouchableOpacity>

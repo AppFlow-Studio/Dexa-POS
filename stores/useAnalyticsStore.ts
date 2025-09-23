@@ -95,8 +95,32 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
         set((state) => {
             const newSalesData = [...state.salesData, ...event];
             console.log('📈 Analytics Store: Total sales data count:', newSalesData.length);
+            // Ensure current filters include "now" so new sales reflect immediately
+            const now = new Date();
+            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const currentRange = state.filters?.dateRange;
+            let updatedFilters = state.filters;
+            if (currentRange) {
+                // If end is before now, extend to tomorrow
+                if (currentRange.end < now) {
+                    updatedFilters = {
+                        ...state.filters,
+                        dateRange: {
+                            start: currentRange.start,
+                            end: tomorrow
+                        }
+                    };
+                }
+            } else {
+                updatedFilters = {
+                    ...state.filters,
+                    dateRange: { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: tomorrow }
+                };
+            }
+
             return {
-                salesData: newSalesData
+                salesData: newSalesData,
+                filters: updatedFilters
             };
         });
 

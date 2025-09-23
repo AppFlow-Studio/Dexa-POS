@@ -28,7 +28,6 @@ export default function ReportTable({ data, title }: ReportTableProps) {
     }
 
     const headerWidth = data.headers.length;
-
     return (
         <View className="bg-[#303030] w-full rounded-2xl border border-gray-600 overflow-hidden">
             {title && (

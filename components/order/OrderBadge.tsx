@@ -163,6 +163,10 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </View>
           </View>
           {/* Mark Ready Button */}
+
+          {/* 
+            Need to set up here stock management logic
+          */}
          {order.order_status === "Preparing" && <Button
             variant="outline"
             onPress={() => {

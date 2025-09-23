@@ -63,7 +63,7 @@ const VendorRow = ({
         {onSelectVendor && (
           <TouchableOpacity
             onPress={() => onSelectVendor(vendorId)}
-            className="px-3 py-1.5 rounded-lg bg-blue-500"
+            className="px-3 py-1.5 h-12 flex-row items-center justify-center rounded-lg bg-blue-500"
           >
             <Text className="text-white text-xs font-bold">Select Vendor</Text>
           </TouchableOpacity>
@@ -98,7 +98,7 @@ const VendorRow = ({
                     </Text>
                     <TouchableOpacity
                       onPress={() => onUseTemplate(po.id)}
-                      className="px-3 py-1.5 rounded-lg bg-blue-500"
+                      className="px-3 py-1.5 h-12 flex-row items-center justify-center rounded-lg bg-blue-500"
                     >
                       <Text className="text-white text-xs font-bold">
                         Use Template

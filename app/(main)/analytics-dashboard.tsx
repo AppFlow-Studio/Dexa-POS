@@ -103,7 +103,7 @@ const AnalyticsDashboardScreen = () => {
             title: 'Discounts',
             description: 'Discount usage and impact on revenue',
             icon: <PieChart color="#3b82f6" size={24} />,
-            chartType: 'pie'
+            chartType: 'line'
         },
         {
             id: 'payments',
@@ -157,7 +157,7 @@ const AnalyticsDashboardScreen = () => {
                         console.log('🔄 Debug: Force refreshing analytics...');
                         forceRefresh();
                     }}
-                    className="mt-4 bg-blue-600 p-3 rounded-lg"
+                    className="mt-4 bg-blue-600 w-fit p-3 rounded-lg"
                 >
                     <Text className="text-white text-center font-bold">🔄 Force Refresh Analytics</Text>
                 </TouchableOpacity>

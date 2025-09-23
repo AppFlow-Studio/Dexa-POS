@@ -29,7 +29,6 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
     }));
 
     const font = useFont(Inter as any, 14);
-
     return (
         <View
             style={{
@@ -43,11 +42,11 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
                 valueKey={"value"}
                 labelKey={"label"}
             >
-                <Pie.Chart>
+                <Pie.Chart innerRadius="50%">
                     {({ slice }) => {
                         return (
                             <>
-                                <Pie.Slice >
+                                <Pie.Slice animate={{ type: "spring" }}>
                                     <Pie.Label radiusOffset={0.6}>
                                         {(position) => (
                                             <PieChartCustomLabel

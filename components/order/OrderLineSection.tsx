@@ -25,7 +25,7 @@ const OrderLineSection: React.FC = () => {
         o.order_status === "Preparing" &&
         // Condition 2: Must have one or more items
         o.items.length > 0) ||
-      (o.paid_status === "Unpaid" && o.order_status !== "Building")
+      (o.paid_status === "Unpaid" && o.order_status !== "Closed" && o.order_status !== "Building")
   ).length;
 
   // State to hold the orders that are actually displayed
@@ -38,8 +38,8 @@ const OrderLineSection: React.FC = () => {
           o.order_status === "Preparing" &&
           // Condition 2: Must have one or more items
           o.items.length > 0) ||
-        (o.paid_status === "Unpaid" &&
-          o.order_status !== "Building" &&
+        (o.paid_status === "Unpaid" && o.order_status !== "Closed" && 
+          o.order_status !== "Building" && 
           o.items.length > 0)
     );
 

@@ -111,6 +111,7 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
         hasDate: data?.[0]?.date
     });
 
+
     const handleChartPress = (event: any, dataPoint?: any, index?: number) => {
         if (!data || data.length === 0) return;
 
@@ -317,12 +318,12 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
                 };
 
             case 'line':
-                const lineLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || '');
+                const lineLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || item.y || '');
                 console.log('📊 ReportChart: Line chart labels:', lineLabels);
                 return {
                     labels: lineLabels,
                     datasets: [{
-                        data: data.map(item => item.value || item.revenue || item.orders || 0),
+                        data: data.map(item => item.value || item.revenue || item.orders  || 0),
                         color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
                         strokeWidth: 2,
                     }]
