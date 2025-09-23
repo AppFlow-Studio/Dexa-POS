@@ -81,7 +81,7 @@ const VendorScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const sheetRef = useRef<BottomSheet>(null);
-  const snapPoints = useMemo(() => ["70%"], []);
+  const snapPoints = useMemo(() => ["70%", "95%"], []);
 
   const filteredVendors = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -213,7 +213,6 @@ const VendorScreen = () => {
           <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2 border border-gray-600">
             <Search color="#9CA3AF" size={20} />
             <TextInput
-              autoFocus
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search vendors..."
