@@ -176,21 +176,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     setSelectedTable(null);
   };
 
-  // --- FIX #4: Create a new submit handler for the guest count modal ---
   const handleGuestCountSubmit = (guestCount: number) => {
     if (!selectedTable) return;
-
-    // Validate guest count against capacity
-    if (guestCount > selectedTable.capacity) {
-      toast.error(
-        `Guest count (${guestCount}) exceeds table capacity (${selectedTable.capacity}).`,
-        {
-          duration: 4000,
-          position: ToastPosition.BOTTOM,
-        }
-      );
-      return;
-    }
 
     // Create a new order and assign it to the table
     const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
@@ -243,7 +230,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       />
 
       {/* Drawer */}
-      <ScrollView bounces={false} className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl">
+      <ScrollView
+        bounces={false}
+        className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl"
+      >
         {/* Header */}
         <View className="flex-row items-center justify-between p-6 border-b border-gray-200">
           <Text className="text-3xl font-bold text-white">Order Type</Text>

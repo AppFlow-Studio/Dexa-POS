@@ -1,9 +1,8 @@
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useRouter } from "expo-router";
 import { RotateCcw, Trash2 } from "lucide-react-native";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -40,11 +39,35 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
 }) => {
-  const { updateTablePosition, updateTableRotation, removeTable } =
+  const { layouts, updateTablePosition, updateTableRotation, removeTable } =
     useFloorPlanStore();
   const { orders } = useOrderStore();
 
-  const router = useRouter();
+  const displayName = useMemo(() => {
+    const allTables = layouts.flatMap((l) => l.tables);
+
+    // Case 1: It's a primary table
+    if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
+      const mergedNames = table.mergedWith
+        .map((id) => allTables.find((t) => t.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      return `${table.name} (Merged: ${mergedNames})`;
+    }
+
+    // Case 2: It's a non-primary merged table
+    if (table.mergedWith && !table.isPrimary) {
+      const primaryTable = allTables.find(
+        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+      );
+      if (primaryTable) {
+        return `${table.name} (Merged: ${primaryTable.name})`;
+      }
+    }
+
+    // Case 3: It's a standalone table
+    return table.name;
+  }, [table, layouts]);
 
   const translateX = useSharedValue(table.x);
   const translateY = useSharedValue(table.y);
@@ -149,8 +172,13 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
             }
           />
-          <View className="absolute inset-0 items-center justify-center">
-            <Text className="text-white font-bold text-lg">{table.name}</Text>
+          <View className="absolute inset-0 items-center justify-center p-1">
+            <Text
+              className="text-white font-bold text-lg text-center"
+              numberOfLines={2}
+            >
+              {displayName}
+            </Text>
             {table.type === "table" && table.status === "In Use" && (
               <Text className="text-white font-bold text-lg">
                 ${orderTotal.toFixed(2)}

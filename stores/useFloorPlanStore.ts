@@ -192,9 +192,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     if (!activeLayout) return null;
 
     const primaryTableId = tableIds[0];
-    const tableNames = tableIds
-      .map((id) => activeLayout.tables.find((t) => t.id === id)?.name || id)
-      .join("-");
     let mergedCapacity = 0;
 
     set((state) => ({
@@ -205,7 +202,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
               mergedCapacity += table.capacity;
               return {
                 ...table,
-                name: tableNames,
                 isPrimary: table.id === primaryTableId,
                 mergedWith: tableIds.filter((id) => id !== table.id),
                 status: "In Use" as TableStatus,
@@ -213,7 +209,8 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
                   table.id === primaryTableId
                     ? {
                         id: primaryOrderId,
-                        customerName: `Group (${tableNames})`,
+                        // Customer name can be simplified now
+                        customerName: `Group at ${table.name}`,
                         total: 0,
                       }
                     : null,

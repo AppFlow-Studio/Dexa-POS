@@ -61,13 +61,28 @@ const OrderInfoHeader = () => {
 
   const getTableDisplayName = () => {
     if (!table) return "N/A";
+    const allTables = layouts.flatMap((l) => l.tables);
+
+    // Case 1: The table is a primary in a merge group
     if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
-      const allTables = layouts.flatMap((l) => l.tables);
       const mergedNames = table.mergedWith
-        .map((id) => allTables.find((t) => t.id === id)?.name || id)
-        .join(" + ");
-      return `${table.name} + ${mergedNames}`;
+        .map((id) => allTables.find((t) => t.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      return `${table.name} (Merged with ${mergedNames})`;
     }
+
+    // Case 2: The table is a non-primary part of a merge group
+    if (table.mergedWith && !table.isPrimary) {
+      const primaryTable = allTables.find(
+        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+      );
+      if (primaryTable) {
+        return `${table.name} (Merged to ${primaryTable.name})`;
+      }
+    }
+
+    // Case 3: It's a regular, standalone table
     return table.name;
   };
 
