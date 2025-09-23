@@ -62,7 +62,12 @@ export interface PurchaseOrder {
   // Awaiting Payment: goods received and logged; payment will be made on next delivery
   // Paid: invoice fully paid and logged
   // Cancelled: order cancelled
-  status: "Draft" | "Pending Delivery" | "Awaiting Payment" | "Paid" | "Cancelled";
+  status:
+    | "Draft"
+    | "Pending Delivery"
+    | "Awaiting Payment"
+    | "Paid"
+    | "Cancelled";
   items: POLineItem[];
   // Immutable snapshot of what was originally requested at creation time
   originalItems?: POLineItem[];
@@ -138,6 +143,10 @@ export interface ModifierCategory {
   maxSelections?: number; // For multiple selection with limits
   description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
   options: ModifierOption[];
+}
+
+export interface ExtendedModifierGroup extends ModifierCategory {
+  items: MenuItemType[]; // Array of menu items that use this modifier group
 }
 
 export interface MenuItemType {
@@ -419,14 +428,14 @@ export interface OrderProfile {
 
   // The current lifecycle stage of the order.
   order_status:
-  | "Open"
-  | "Closed"
-  | "Cancelled"
-  | "Preparing"
-  | "Ready"
-  | "Served"
-  | "Building"
-  | "Voided";
+    | "Open"
+    | "Closed"
+    | "Cancelled"
+    | "Preparing"
+    | "Ready"
+    | "Served"
+    | "Building"
+    | "Voided";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
