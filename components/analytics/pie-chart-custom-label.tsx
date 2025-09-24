@@ -26,16 +26,16 @@ export const PieChartCustomLabel = ({
 
     return (
         <Group transform={[{ translateY: -centerLabel }]}>
-            <Text
+            {/* <Text
                 x={x - getLabelWidth(label) / 2}
                 y={y}
                 text={label}
                 font={font}
                 color={"white"}
-            />
+            /> */}
             <Group>
                 <Text
-                    x={x - getLabelWidth(value) / 2}
+                    x={x - getLabelWidth(value) }
                     y={y + fontSize + 10}
                     text={value}
                     font={font}

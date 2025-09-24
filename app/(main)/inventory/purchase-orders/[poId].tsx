@@ -64,6 +64,7 @@ const PurchaseOrderDetailScreen = () => {
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalImageUri, setModalImageUri] = useState<string | null>(null);
 
+
   if (!po) {
     return (
       <View className="flex-1 bg-[#212121] items-center justify-center">
@@ -253,6 +254,7 @@ const PurchaseOrderDetailScreen = () => {
     setDeliveryPhotos((prev) => prev.filter((_, i) => i !== index));
   };
 
+
   return (
     <ScrollView className="flex-1 bg-[#212121]">
       <View className="p-6">
@@ -286,6 +288,27 @@ const PurchaseOrderDetailScreen = () => {
               <Text className="text-lg text-gray-400">Total Cost</Text>
               <Text className="text-xl font-semibold text-white">
                 ${totalCost.toFixed(2)}
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-row justify-between mb-4">
+            <View>
+              <Text className="text-lg text-gray-400">Created By</Text>
+              <Text className="text-xl font-semibold text-white">
+                {po.createdByEmployeeName || "Unknown Employee"}
+              </Text>
+            </View>
+            <View>
+              <Text className="text-lg text-gray-400">PO Number</Text>
+              <Text className="text-xl font-semibold text-white">
+                {po.poNumber}
+              </Text>
+            </View>
+            <View>
+              <Text className="text-lg text-gray-400">Items Count</Text>
+              <Text className="text-xl font-semibold text-white">
+                {po.items.length}
               </Text>
             </View>
           </View>
@@ -542,11 +565,10 @@ const PurchaseOrderDetailScreen = () => {
                   <View className="flex-row gap-3">
                     <TouchableOpacity
                       onPress={() => setPaymentMethod("Card")}
-                      className={`flex-1 p-3 rounded-lg border ${
-                        paymentMethod === "Card"
-                          ? "border-blue-500 bg-blue-500/20"
-                          : "border-gray-600"
-                      }`}
+                      className={`flex-1 p-3 rounded-lg border ${paymentMethod === "Card"
+                        ? "border-blue-500 bg-blue-500/20"
+                        : "border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center justify-center">
                         <CreditCard
@@ -565,11 +587,10 @@ const PurchaseOrderDetailScreen = () => {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setPaymentMethod("Cash")}
-                      className={`flex-1 p-3 rounded-lg border ${
-                        paymentMethod === "Cash"
-                          ? "border-green-500 bg-green-500/20"
-                          : "border-gray-600"
-                      }`}
+                      className={`flex-1 p-3 rounded-lg border ${paymentMethod === "Cash"
+                        ? "border-green-500 bg-green-500/20"
+                        : "border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center justify-center">
                         <DollarSign
@@ -832,6 +853,7 @@ const PurchaseOrderDetailScreen = () => {
           </View>
         )}
 
+
         {/* Cancel PO Button */}
         {po.status !== "Cancelled" && po.status !== "Paid" && (
           <View className="bg-[#303030] border border-gray-700 rounded-xl p-6 w-fit">
@@ -903,6 +925,7 @@ const PurchaseOrderDetailScreen = () => {
             </View>
           </View>
         )}
+
 
         {/* Image Viewer Modal */}
         <Dialog

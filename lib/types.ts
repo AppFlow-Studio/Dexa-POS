@@ -52,6 +52,32 @@ export interface POLineItem {
   cost: number; // Cost at the time of order
 }
 
+export interface ExternalExpenseLineItem {
+  inventoryItemId: string; // Reference to the inventory item
+  itemName: string; // Display name of the item
+  quantity: number; // Quantity purchased
+  unitPrice: number; // Price per unit
+  totalAmount: number; // Total amount for this line item (quantity * unitPrice)
+  notes?: string; // Optional notes for this specific item
+}
+
+export interface ExternalExpense {
+  id: string;
+  expenseNumber: string; // e.g., "EXP-0001"
+  totalAmount: number; // Total amount for all items in this expense
+  purchasedByEmployeeId: string; // Employee who made the purchase
+  purchasedByEmployeeName: string; // Employee name for display
+  purchasedAt: string; // When the purchase was made
+  items: ExternalExpenseLineItem[]; // Array of items purchased
+  notes?: string; // Optional notes about the entire expense
+  // Optional reference to a purchase order if this expense is related to a specific PO
+  relatedPOId?: string;
+  relatedPONumber?: string;
+  // Store information
+  storeName?: string; // Name of the store where items were purchased
+  storeLocation?: string; // Location of the store
+}
+
 export interface PurchaseOrder {
   id: string;
   poNumber: string; // e.g., "PO-0001"
@@ -80,6 +106,9 @@ export interface PurchaseOrder {
   deliveryPhotos?: string[];
   // Notes entered when logging delivery (e.g., missing/damaged)
   discrepancyNotes?: string;
+  // Employee attribution for accountability
+  createdByEmployeeId?: string;
+  createdByEmployeeName?: string;
   // Payment logging info when marking as Paid
   payment?: {
     method: "Card" | "Cash";

@@ -386,7 +386,7 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
 
             case 'pie':
                 return (
-                    <VictoryPieChart data={formattedData} />
+                    <VictoryPieChart data={formattedData} onSlicePress={() => {}} />
                 );
 
             default:
