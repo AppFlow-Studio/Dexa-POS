@@ -206,14 +206,14 @@ const MainMenu: React.FC = () => {
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
-        <DialogContent className="w-fit h-fit bg-white">
+        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
           <DialogHeader>
-            <DialogTitle className="text-center text-3xl font-semibold">
+            <DialogTitle className="text-center text-3xl font-semibold text-white">
               Manager Access Required
             </DialogTitle>
           </DialogHeader>
           <View className="py-4">
-            <Text className="text-center text-2xl text-gray-600 mb-6">
+            <Text className="text-center text-2xl text-gray-300 mb-6">
               Enter your manager PIN to access this feature
             </Text>
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
@@ -223,7 +223,6 @@ const MainMenu: React.FC = () => {
                   if (currentPin.length < 4) {
                     const newPin = currentPin + input.toString();
                     setCurrentPin(newPin);
-                    // Auto-submit when PIN is complete
                     if (newPin.length === 4) {
                       setTimeout(() => {
                         handlePinSubmit();
@@ -237,14 +236,14 @@ const MainMenu: React.FC = () => {
                 }
               }}
             />
+
             <TouchableOpacity
-              onPress={() => {
-                setPinDialogOpen(false);
-                handlePinSubmit();
-              }}
-              className="p-4 bg-primary-400 rounded-full w-[80%] self-center mt-6"
+              onPress={handlePinSubmit}
+              className="p-4 bg-blue-600 rounded-lg w-full self-center mt-6"
             >
-              <Text className="text-center text-2xl text-white">Enter</Text>
+              <Text className="text-center text-2xl font-bold text-white">
+                Enter
+              </Text>
             </TouchableOpacity>
           </View>
         </DialogContent>

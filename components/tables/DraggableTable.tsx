@@ -53,25 +53,53 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     (o) => o.service_location_id === table.id && o.order_status !== "Voided"
   );
 
+  const orderForThisGroup = useMemo(() => {
+    // If the table is part of a merge, find the primary table's order.
+    if (table.mergedWith) {
+      const allTables = layouts.flatMap((l) => l.tables);
+      const primaryTable = table.isPrimary
+        ? table
+        : allTables.find(
+            (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+          );
+
+      if (primaryTable) {
+        return orders.find(
+          (o) =>
+            o.service_location_id === primaryTable.id &&
+            o.order_status !== "Voided" &&
+            o.order_status !== "Closed"
+        );
+      }
+    }
+    // Otherwise, find the order for this specific table.
+    return orders.find(
+      (o) =>
+        o.service_location_id === table.id &&
+        o.order_status !== "Voided" &&
+        o.order_status !== "Closed"
+    );
+  }, [table, orders, layouts]);
+
   useEffect(() => {
-    if (table.status !== "In Use" || !activeOrderForThisTable?.opened_at) {
+    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
       setDuration("");
       setIsOvertime(false);
       return;
     }
 
     const timer = setInterval(() => {
-      const startTime = new Date(activeOrderForThisTable.opened_at);
+      const startTime = new Date(orderForThisGroup.opened_at);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
 
       setDuration(`${diffMins} min`);
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 60000); // Update every minute
+    }, 1000); // Update every second for a smoother timer
 
     // Run once immediately
-    const startTime = new Date(activeOrderForThisTable.opened_at);
+    const startTime = new Date(orderForThisGroup.opened_at);
     const now = new Date();
     const diffMs = now.getTime() - startTime.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -79,7 +107,36 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     setIsOvertime(diffMins > defaultSittingTimeMinutes);
 
     return () => clearInterval(timer);
-  }, [table.status, activeOrderForThisTable, defaultSittingTimeMinutes]);
+  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
+
+  // Timer Logic now uses the correct order for the entire group
+  useEffect(() => {
+    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
+      setDuration("");
+      setIsOvertime(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const startTime = new Date(orderForThisGroup.opened_at);
+      const now = new Date();
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      setDuration(`${diffMins} min`);
+      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    }, 1000); // Update every second for a smoother timer
+
+    // Run once immediately
+    const startTime = new Date(orderForThisGroup.opened_at);
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    setDuration(`${diffMins} min`);
+    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+
+    return () => clearInterval(timer);
+  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
 
   const displayName = useMemo(() => {
     const allTables = layouts.flatMap((l) => l.tables);
@@ -184,7 +241,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const orderTotal =
-    activeOrderForThisTable?.items.reduce(
+    orderForThisGroup?.items.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0
     ) || 0;
@@ -206,10 +263,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
             color={table.type === "table" ? tableColor : "#E5E7EB"}
             chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
           />
-          <View className="absolute inset-0 items-center justify-center p-1">
+          <View className="absolute inset-0 items-center justify-center px-1">
             <Text
               className="text-white font-bold text-base text-center"
-              numberOfLines={2}
+              numberOfLines={1}
             >
               {displayName}
             </Text>
@@ -219,7 +276,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
                 <Text className="text-white font-bold text-base">
                   ${orderTotal.toFixed(2)}
                 </Text>
-                <Text className="text-white font-semibold text-base mt-1">
+                <Text className="text-white font-semibold text-base">
                   {duration}
                 </Text>
               </>

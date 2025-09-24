@@ -307,9 +307,21 @@ const UpdateTableScreen = () => {
   };
 
   const handleClearTable = () => {
-    if (!tableId || !activeOrderId || !activeOrder) return;
+    if (!activeOrderId || !activeOrder) return;
 
-    // Check if all items are ready
+    // Find the primary table for the current order
+    const allTables = layouts.flatMap((l) => l.tables);
+    const primaryTable = allTables.find(
+      (t) => t.id === activeOrder.service_location_id
+    );
+
+    if (!primaryTable) {
+      toast.error("Could not find the table for this order.", {
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
     const allItemsReady = activeOrder.items.every(
       (item) => (item.item_status || "Preparing") === "Ready"
     );
@@ -322,14 +334,27 @@ const UpdateTableScreen = () => {
       return;
     }
 
-    // Only proceed if all items are ready
-    updateTableStatus(tableId as string, "Needs Cleaning");
+    // Determine all tables that need to be cleaned
+    const tablesToClean = [primaryTable.id];
+    if (primaryTable.isPrimary && primaryTable.mergedWith) {
+      tablesToClean.push(...primaryTable.mergedWith);
+    }
+
+    // Update status for all tables in the group
+    tablesToClean.forEach((id) => {
+      updateTableStatus(id, "Needs Cleaning");
+    });
+
+    // Archive the order and navigate back
     archiveOrder(activeOrderId);
     router.back();
-    toast.success("Table marked for cleaning.", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
-    });
+    toast.success(
+      `Table(s) ${tablesToClean.map((id) => allTables.find((t) => t.id === id)?.name).join(", ")} marked for cleaning.`,
+      {
+        duration: 3000,
+        position: ToastPosition.BOTTOM,
+      }
+    );
   };
 
   // Function to check if order is closed and show warning

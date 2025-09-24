@@ -1,5 +1,4 @@
-// components/menu/MenuSearchSheet.tsx
-import { useSearchStore } from "@/stores/searchStore";
+import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -24,7 +23,7 @@ interface MenuSearchSheetProps {
 
 const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
   ({ activeTab }, ref) => {
-    const { closeSearch } = useSearchStore();
+    const { closeSearch } = useMenuManagementSearchStore();
     const {
       menuItems,
       categories: storeCategories,
