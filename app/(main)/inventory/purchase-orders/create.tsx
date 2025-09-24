@@ -7,21 +7,36 @@ import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { Plus, Trash2 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import POVendorsSheet from "./_compoenets/POVendorsSheet";
 
 const CreatePurchaseOrderScreen = () => {
   const router = useRouter();
-  const { vendors, inventoryItems, createPurchaseOrder, submitPurchaseOrder, purchaseOrders, addInventoryItem } = useInventoryStore();
+  const {
+    vendors,
+    inventoryItems,
+    createPurchaseOrder,
+    submitPurchaseOrder,
+    purchaseOrders,
+    addInventoryItem,
+  } = useInventoryStore();
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const vendorsSheetRef = useRef<BottomSheet>(null);
   const itemsSheetRef = useRef<BottomSheet>(null);
-  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
+  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<
+    string | null
+  >(null);
   const [selectedQuantity, setSelectedQuantity] = useState<string>("1");
   const [newItemModalOpen, setNewItemModalOpen] = useState(false);
   const [newItemName, setNewItemName] = useState("");
@@ -46,7 +61,11 @@ const CreatePurchaseOrderScreen = () => {
       alert("This item is already in the purchase order.");
       return;
     }
-    const newLine: POLineItem = { inventoryItemId: inv.id, quantity: qtyNum, cost: inv.cost };
+    const newLine: POLineItem = {
+      inventoryItemId: inv.id,
+      quantity: qtyNum,
+      cost: inv.cost,
+    };
     setLineItems((prev) => [...prev, newLine]);
     // reset and close sheet
     setSelectedInventoryItemId(null);
@@ -128,7 +147,11 @@ const CreatePurchaseOrderScreen = () => {
     }
     // First create as Draft, then immediately submit to Pending Delivery
     const tempId = `po_${Date.now()}`; // predict id not ideal, so instead we update latest created
-    createPurchaseOrder({ vendorId: selectedVendorId, status: "Pending Delivery", items: lineItems });
+    createPurchaseOrder({
+      vendorId: selectedVendorId,
+      status: "Pending Delivery",
+      items: lineItems,
+    });
     router.back();
   };
 
@@ -152,15 +175,37 @@ const CreatePurchaseOrderScreen = () => {
     setSelectedVendorId(vendorId);
     vendorsSheetRef.current?.close();
   };
+
+  const handleQuantityChange = (itemId: string, text: string) => {
+    const newQuantity = parseInt(text, 10);
+    setLineItems((prevItems) =>
+      prevItems.map((item) => {
+        if (item.inventoryItemId === itemId) {
+          // If input is empty or invalid, default to 0, otherwise use the parsed number
+          return { ...item, quantity: isNaN(newQuantity) ? 0 : newQuantity };
+        }
+        return item;
+      })
+    );
+  };
+
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-3xl font-bold text-white">Create Purchase Order</Text>
+        <Text className="text-3xl font-bold text-white">
+          Create Purchase Order
+        </Text>
         <View className="flex-row gap-3">
-          <TouchableOpacity onPress={handleSave} className="py-4 px-6 bg-gray-600 rounded-lg">
+          <TouchableOpacity
+            onPress={handleSave}
+            className="py-4 px-6 bg-gray-600 rounded-lg"
+          >
             <Text className="text-2xl font-bold text-white">Save as Draft</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSubmit} className="py-4 px-6 bg-blue-600 rounded-lg">
+          <TouchableOpacity
+            onPress={handleSubmit}
+            className="py-4 px-6 bg-blue-600 rounded-lg"
+          >
             <Text className="text-2xl font-bold text-white">Submit</Text>
           </TouchableOpacity>
         </View>
@@ -168,7 +213,10 @@ const CreatePurchaseOrderScreen = () => {
 
       <View className="bg-[#303030] border border-gray-700 rounded-xl p-6">
         <Text className="text-xl font-medium text-gray-300 mb-2">Vendor</Text>
-        <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-4" onPress={() => vendorsSheetRef.current?.expand()}>
+        <TouchableOpacity
+          className="h-fit border border-gray-600 border-dashed rounded-lg p-4"
+          onPress={() => vendorsSheetRef.current?.expand()}
+        >
           <Text className="text-2xl text-white">
             {selectedVendorId
               ? vendorOptions.find((v) => v.value === selectedVendorId)?.label
@@ -190,9 +238,19 @@ const CreatePurchaseOrderScreen = () => {
                   <Text className="text-2xl text-white flex-1">
                     {invItem?.name}
                   </Text>
-                  <Text className="text-xl text-gray-300 w-40">
-                    {item.quantity} {invItem?.unit}
-                  </Text>
+                  <View className="flex-row items-center gap-x-2 w-40">
+                    <TextInput
+                      value={item.quantity.toString()}
+                      onChangeText={(text) =>
+                        handleQuantityChange(item.inventoryItemId, text)
+                      }
+                      keyboardType="number-pad"
+                      className="w-20 bg-[#212121] border border-gray-500 rounded-lg text-xl text-white text-center h-12"
+                    />
+                    <Text className="text-xl text-gray-300">
+                      {invItem?.unit}
+                    </Text>
+                  </View>
                   <Text className="text-xl text-gray-300 w-40">
                     ${(item.cost * item.quantity).toFixed(2)}
                   </Text>
@@ -213,8 +271,11 @@ const CreatePurchaseOrderScreen = () => {
           <TouchableOpacity
             disabled={!selectedVendorId}
             onPress={() => itemsSheetRef.current?.expand()}
-            className={`mt-4 py-3 border border-dashed rounded-lg items-center ${selectedVendorId ? "border-gray-500" : "border-gray-700 opacity-50"
-              }`}
+            className={`mt-4 py-3 border border-dashed rounded-lg items-center ${
+              selectedVendorId
+                ? "border-gray-500"
+                : "border-gray-700 opacity-50"
+            }`}
           >
             <Text className="text-xl font-semibold text-gray-300">
               + Add Item
@@ -246,15 +307,33 @@ const CreatePurchaseOrderScreen = () => {
 
           <View className="px-4 py-3">
             {!selectedVendorId ? (
-              <Text className="text-gray-400">Select a vendor to see their items.</Text>
+              <Text className="text-gray-400">
+                Select a vendor to see their items.
+              </Text>
             ) : vendorItems.length === 0 ? (
-              <Text className="text-gray-400">No items found for this vendor.</Text>
+              <Text className="text-gray-400">
+                No items found for this vendor.
+              </Text>
             ) : (
               <>
                 {/* Quantity selector appears when an item is picked */}
                 {selectedInventoryItemId && (
                   <View className="mb-4 p-3 rounded-lg border border-gray-700 bg-[#303030]">
-                    <Text className="text-white mb-2 text-xl font-semibold">Enter Quantity - {vendorItems.find((i) => i.id === selectedInventoryItemId)?.name} ({vendorItems.find((i) => i.id === selectedInventoryItemId)?.unit})</Text>
+                    <Text className="text-white mb-2 text-xl font-semibold">
+                      Enter Quantity -{" "}
+                      {
+                        vendorItems.find(
+                          (i) => i.id === selectedInventoryItemId
+                        )?.name
+                      }{" "}
+                      (
+                      {
+                        vendorItems.find(
+                          (i) => i.id === selectedInventoryItemId
+                        )?.unit
+                      }
+                      )
+                    </Text>
                     <TextInput
                       keyboardType="number-pad"
                       value={selectedQuantity}
@@ -263,7 +342,10 @@ const CreatePurchaseOrderScreen = () => {
                       placeholderTextColor="#9CA3AF"
                       className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 mb-3 h-20"
                     />
-                    <Button onPress={addSelectedItemToPO} className="bg-blue-600 border border-blue-500">
+                    <Button
+                      onPress={addSelectedItemToPO}
+                      className="bg-blue-600 border border-blue-500"
+                    >
                       <Text className="text-white">Add to Purchase Order</Text>
                     </Button>
                   </View>
@@ -281,10 +363,16 @@ const CreatePurchaseOrderScreen = () => {
                     >
                       <View className="flex-row justify-between items-center">
                         <View className="flex-1 pr-3">
-                          <Text className="text-white text-lg font-semibold">{item.name}</Text>
-                          <Text className="text-gray-400 text-sm">Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}</Text>
+                          <Text className="text-white text-lg font-semibold">
+                            {item.name}
+                          </Text>
+                          <Text className="text-gray-400 text-sm">
+                            Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}
+                          </Text>
                         </View>
-                        <Text className="text-gray-300">Stock: {item.stockQuantity}</Text>
+                        <Text className="text-gray-300">
+                          Stock: {item.stockQuantity}
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -297,45 +385,110 @@ const CreatePurchaseOrderScreen = () => {
       {/* Create New Inventory Item Modal */}
       <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
         <DialogContent className="">
-          <ScrollView bounces={false} className="rounded-2xl h-full p-6 w-[600px]" style={{ backgroundColor: "#2b2b2b", borderWidth: 1, borderColor: "#4b5563" }}>
-            <Text className="text-white text-2xl font-bold mb-4">Add Inventory Item</Text>
+          <ScrollView
+            bounces={false}
+            className="rounded-2xl h-full p-6 w-[600px]"
+            style={{
+              backgroundColor: "#2b2b2b",
+              borderWidth: 1,
+              borderColor: "#4b5563",
+            }}
+          >
+            <Text className="text-white text-2xl font-bold mb-4">
+              Add Inventory Item
+            </Text>
             <View className="gap-y-3">
               <Text className="text-gray-300">Vendor</Text>
               <View className="bg-[#303030] border border-gray-700 rounded-lg p-3">
-                <Text className="text-white text-lg">{vendorOptions.find(v => v.value === selectedVendorId)?.label || "Select a vendor"}</Text>
+                <Text className="text-white text-lg">
+                  {vendorOptions.find((v) => v.value === selectedVendorId)
+                    ?.label || "Select a vendor"}
+                </Text>
               </View>
 
               <Text className="text-gray-300 mt-3">Item Name</Text>
-              <TextInput value={newItemName} onChangeText={setNewItemName} placeholder="e.g., Tomatoes" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                value={newItemName}
+                onChangeText={setNewItemName}
+                placeholder="e.g., Tomatoes"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <Text className="text-gray-300 mt-3">Unit</Text>
-              <TextInput value={newItemUnit} onChangeText={setNewItemUnit} placeholder="e.g., kg, pcs" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                value={newItemUnit}
+                onChangeText={setNewItemUnit}
+                placeholder="e.g., kg, pcs"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <Text className="text-gray-300 mt-3">Cost per Unit</Text>
-              <TextInput keyboardType="decimal-pad" value={newItemCost} onChangeText={setNewItemCost} placeholder="e.g., 2.50" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                keyboardType="decimal-pad"
+                value={newItemCost}
+                onChangeText={setNewItemCost}
+                placeholder="e.g., 2.50"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <Text className="text-gray-300 mt-3">Stock Quantity</Text>
-              <TextInput keyboardType="number-pad" value={newItemStock} onChangeText={setNewItemStock} placeholder="e.g., 100" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                keyboardType="number-pad"
+                value={newItemStock}
+                onChangeText={setNewItemStock}
+                placeholder="e.g., 100"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <Text className="text-gray-300 mt-3">Reorder Threshold</Text>
-              <TextInput keyboardType="number-pad" value={newItemReorder} onChangeText={setNewItemReorder} placeholder="e.g., 20" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                keyboardType="number-pad"
+                value={newItemReorder}
+                onChangeText={setNewItemReorder}
+                placeholder="e.g., 20"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <Text className="text-gray-300 mt-3">Quantity for this PO</Text>
-              <TextInput keyboardType="number-pad" value={newItemPOQty} onChangeText={setNewItemPOQty} placeholder="e.g., 10" placeholderTextColor="#9CA3AF" className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2" />
+              <TextInput
+                keyboardType="number-pad"
+                value={newItemPOQty}
+                onChangeText={setNewItemPOQty}
+                placeholder="e.g., 10"
+                placeholderTextColor="#9CA3AF"
+                className="text-white text-lg bg-[#303030] border border-gray-700 rounded-lg px-3 py-2"
+              />
 
               <View className="flex-row gap-3 mt-4">
-                <TouchableOpacity onPress={() => setNewItemModalOpen(false)} className="flex-1 py-3 rounded-lg border border-gray-600 items-center">
+                <TouchableOpacity
+                  onPress={() => setNewItemModalOpen(false)}
+                  className="flex-1 py-3 rounded-lg border border-gray-600 items-center"
+                >
                   <Text className="text-gray-300 text-lg">Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleCreateNewItem} className="flex-1 py-3 rounded-lg bg-blue-600 border border-blue-500 items-center">
-                  <Text className="text-white text-lg font-semibold">Add Item</Text>
+                <TouchableOpacity
+                  onPress={handleCreateNewItem}
+                  className="flex-1 py-3 rounded-lg bg-blue-600 border border-blue-500 items-center"
+                >
+                  <Text className="text-white text-lg font-semibold">
+                    Add Item
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
         </DialogContent>
       </Dialog>
-      <POVendorsSheet ref={vendorsSheetRef} onUseTemplate={handleUseTemplate} onSelectVendor={selectVendor} />
+      <POVendorsSheet
+        ref={vendorsSheetRef}
+        onUseTemplate={handleUseTemplate}
+        onSelectVendor={selectVendor}
+      />
     </View>
   );
 };
