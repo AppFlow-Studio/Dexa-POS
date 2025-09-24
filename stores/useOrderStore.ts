@@ -69,7 +69,11 @@ interface OrderState {
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => void;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
-  generateCartItemId: (menuItemId: string, customizations: CartItem["customizations"], isDraft?: boolean) => string;
+  generateCartItemId: (
+    menuItemId: string,
+    customizations: CartItem["customizations"],
+    isDraft?: boolean
+  ) => string;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -263,19 +267,25 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     // Add add-ons (sorted for consistency)
     if (customizations.addOns && customizations.addOns.length > 0) {
-      const addOnIds = customizations.addOns.map(a => a.id).sort();
-      keyParts.push(`addons:${addOnIds.join(',')}`);
+      const addOnIds = customizations.addOns.map((a) => a.id).sort();
+      keyParts.push(`addons:${addOnIds.join(",")}`);
     }
 
     // Add modifiers (sorted for consistency)
     if (customizations.modifiers && customizations.modifiers.length > 0) {
       const modifierKeys = customizations.modifiers
-        .map(mod => `${mod.categoryId}:${mod.options.map(opt => opt.id).sort().join(',')}`)
+        .map(
+          (mod) =>
+            `${mod.categoryId}:${mod.options
+              .map((opt) => opt.id)
+              .sort()
+              .join(",")}`
+        )
         .sort();
-      keyParts.push(`modifiers:${modifierKeys.join('|')}`);
+      keyParts.push(`modifiers:${modifierKeys.join("|")}`);
     }
 
-    return keyParts.join('|');
+    return keyParts.join("|");
   };
 
   // --- Helper function to generate a unique CartItem ID ---
@@ -318,23 +328,33 @@ export const useOrderStore = create<OrderState>((set, get) => {
       return false;
     }
     // 4. Check if modifiers are the same
-    const modifiersA = custA.modifiers?.map(mod => ({
-      categoryId: mod.categoryId,
-      options: mod.options.map(opt => opt.id).sort()
-    })).sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
-    const modifiersB = custB.modifiers?.map(mod => ({
-      categoryId: mod.categoryId,
-      options: mod.options.map(opt => opt.id).sort()
-    })).sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
+    const modifiersA =
+      custA.modifiers
+        ?.map((mod) => ({
+          categoryId: mod.categoryId,
+          options: mod.options.map((opt) => opt.id).sort(),
+        }))
+        .sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
+    const modifiersB =
+      custB.modifiers
+        ?.map((mod) => ({
+          categoryId: mod.categoryId,
+          options: mod.options.map((opt) => opt.id).sort(),
+        }))
+        .sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
 
     if (modifiersA.length !== modifiersB.length) {
       return false;
     }
 
     for (let i = 0; i < modifiersA.length; i++) {
-      if (modifiersA[i].categoryId !== modifiersB[i].categoryId ||
+      if (
+        modifiersA[i].categoryId !== modifiersB[i].categoryId ||
         modifiersA[i].options.length !== modifiersB[i].options.length ||
-        !modifiersA[i].options.every((opt, idx) => opt === modifiersB[i].options[idx])) {
+        !modifiersA[i].options.every(
+          (opt, idx) => opt === modifiersB[i].options[idx]
+        )
+      ) {
         return false;
       }
     }
@@ -389,17 +409,28 @@ export const useOrderStore = create<OrderState>((set, get) => {
       if (!activeOrder) return;
 
       // Get the current course for this order from the coursing store
-      const coursingState = require('./useCoursingStore').useCoursingStore.getState();
-      const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
+      const coursingState =
+        require("./useCoursingStore").useCoursingStore.getState();
+      const currentCourse =
+        coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
       // Generate composite key for the new item (including course)
-      const newItemKey = generateItemCompositeKey(newItem.menuItemId, newItem.customizations);
+      const newItemKey = generateItemCompositeKey(
+        newItem.menuItemId,
+        newItem.customizations
+      );
       const newItemCourseKey = `${newItemKey}_course_${currentCourse}`;
 
       // Find an existing item in the cart that has the exact same composite key AND same course
       const existingItemIndex = activeOrder.items.findIndex((cartItem) => {
-        const existingItemKey = generateItemCompositeKey(cartItem.menuItemId, cartItem.customizations);
-        const existingItemCourse = coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[cartItem.id] ?? 1;
+        const existingItemKey = generateItemCompositeKey(
+          cartItem.menuItemId,
+          cartItem.customizations
+        );
+        const existingItemCourse =
+          coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
+            cartItem.id
+          ] ?? 1;
         const existingItemCourseKey = `${existingItemKey}_course_${existingItemCourse}`;
         return existingItemCourseKey === newItemCourseKey;
       });
@@ -439,14 +470,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
               const newCartItem: CartItem = {
                 ...newItem,
                 paidQuantity: newItem.paidQuantity ?? 0,
-                item_status: shouldSetItemStatus ? ("Preparing" as const) : undefined,
+                item_status: shouldSetItemStatus
+                  ? ("Preparing" as const)
+                  : undefined,
                 kitchen_status: "new" as const,
               };
 
               updatedCart = [...o.items, newCartItem];
 
               // Assign the new item to the current course
-              coursingState.setItemCourse(activeOrderId, newCartItem.id, currentCourse);
+              coursingState.setItemCourse(
+                activeOrderId,
+                newCartItem.id,
+                currentCourse
+              );
             }
 
             // Only sync order status for dine-in orders that are assigned to tables
@@ -497,11 +534,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === updatedItem.id ? updatedItem : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === updatedItem.id ? updatedItem : i
+                ),
+              }
             : o
         ),
       }));
@@ -531,7 +568,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
                 const updatedItem = { ...i, item_status: status };
 
                 // Update kitchen_status based on item_status
-                if (status === "Preparing" && (!i.kitchen_status || i.kitchen_status === "new")) {
+                if (
+                  status === "Preparing" &&
+                  (!i.kitchen_status || i.kitchen_status === "new")
+                ) {
                   updatedItem.kitchen_status = "sent";
                 } else if (status === "Ready") {
                   updatedItem.kitchen_status = "ready";
@@ -555,7 +595,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
                 (item) => item.item_status === "Served"
               );
               const allItemsReady = updatedItems.every(
-                (item) => item.item_status === "Ready" || item.item_status === "Served"
+                (item) =>
+                  item.item_status === "Ready" || item.item_status === "Served"
               );
               const anyItemsPreparing = updatedItems.some(
                 (item) => item.item_status === "Preparing"
@@ -612,11 +653,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === itemId ? { ...i, isDraft: false } : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === itemId ? { ...i, isDraft: false } : i
+                ),
+              }
             : o
         ),
       }));
@@ -727,11 +768,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-            ...o,
-            service_location_id: tableId,
-            order_type: "Dine In" as const,
-            order_status: "Preparing" as const,
-          }
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+              order_status: "Preparing" as const,
+            }
           : o
       );
 
@@ -807,7 +848,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       if (!order) return;
 
       // Trigger inventory depletion when order is paid (alternative trigger point)
-      if (order.items.length > 0 && order.order_status !== "Ready" && order.order_status !== "Served") {
+      if (
+        order.items.length > 0 &&
+        order.order_status !== "Ready" &&
+        order.order_status !== "Served"
+      ) {
         useInventoryStore.getState().decrementStockFromSale(order.items);
       }
 
@@ -826,13 +871,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-              ...o,
-              paid_status: "Paid",
-              check_status: "Closed",
-              total_amount: total, // Save the correct final total
-              total_tax: tax,
-              total_discount: activeOrderDiscount, // Save the discount amount
-            }
+                ...o,
+                paid_status: "Paid",
+                check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
+              }
             : o
         ),
       }));
@@ -981,6 +1026,14 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const oldOrderIds = ordersToMerge.map((o) => o.id);
       const primaryTableId = tableIds[0];
 
+      // Find the earliest start time from all orders being merged
+      const earliestStartTime = ordersToMerge.reduce(
+        (earliest, currentOrder) => {
+          const currentOpenTime = new Date(currentOrder.opened_at).getTime();
+          return currentOpenTime < earliest ? currentOpenTime : earliest;
+        },
+        new Date().getTime()
+      ); // Initialize with current time as a fallback
       // Create a new order object with all necessary properties
       const newMergedOrderData = {
         id: `order_${Date.now()}`,
@@ -990,7 +1043,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         check_status: "Opened" as const,
         paid_status: "Unpaid" as const,
         items: allItems,
-        opened_at: new Date().toISOString(),
+        opened_at: new Date(earliestStartTime).toISOString(),
         customer_name: `Merged Table (${tableNames.join(", ")})`,
       };
 
@@ -1051,7 +1104,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch { }
+      } catch {}
     },
     transferOrderToTable: (orderId, newTableId) => {
       set((state) => ({
@@ -1070,8 +1123,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
       if (!currentOrder) return;
 
       // Filter items that are new (not yet sent to kitchen)
-      const newItems = currentOrder.items.filter(item =>
-        item.kitchen_status === "new" || !item.kitchen_status
+      const newItems = currentOrder.items.filter(
+        (item) => item.kitchen_status === "new" || !item.kitchen_status
       );
 
       if (newItems.length === 0) return;
@@ -1094,7 +1147,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
                 return item;
               }),
               // Update order status to Preparing if it was Building
-              order_status: o.order_status === "Building" ? "Preparing" as const : o.order_status,
+              order_status:
+                o.order_status === "Building"
+                  ? ("Preparing" as const)
+                  : o.order_status,
             };
           }
           return o;
@@ -1102,11 +1158,14 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
 
       try {
-        toast.success(`${newItems.length} item${newItems.length > 1 ? 's' : ''} sent to kitchen`, {
-          duration: 2500,
-          position: ToastPosition.BOTTOM,
-        });
-      } catch { }
+        toast.success(
+          `${newItems.length} item${newItems.length > 1 ? "s" : ""} sent to kitchen`,
+          {
+            duration: 2500,
+            position: ToastPosition.BOTTOM,
+          }
+        );
+      } catch {}
     },
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);

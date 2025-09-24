@@ -18,10 +18,10 @@ const PinButton = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-40 h-20 bg-white border border-neutral-200 rounded-xl items-center justify-center"
+    className="w-40 h-20 bg-[#212121] border-gray-700 rounded-xl items-center justify-center"
   >
     {typeof value === "string" ? (
-      <Text className="text-base font-bold text-accent-500">{value}</Text>
+      <Text className="text-3xl font-bold text-white">{value}</Text>
     ) : (
       value
     )}
@@ -45,10 +45,10 @@ const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
     "7",
     "8",
     "9",
-    { icon: <X className="text-accent-500" size={21} />, action: "clear" },
+    { icon: <X color="white" size={24} />, action: "clear" },
     "0",
     {
-      icon: <Delete className="text-accent-500" size={21} />,
+      icon: <Delete color="white" size={24} />,
       action: "backspace",
     },
   ];

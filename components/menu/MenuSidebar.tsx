@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
+import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
 import { ChevronRight, Plus, Search } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 // Sidebar Tab Types
 type SidebarTab = "menus" | "categories" | "items" | "modifiers" | "schedules";
@@ -21,6 +22,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   activeTab: externalActiveTab,
   onTabChange,
 }) => {
+  const { openSearch } = useMenuManagementSearchStore();
   const {
     menuItems,
     categories: storeCategories,
@@ -133,16 +135,24 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   };
 
   return (
-    <View className="w-96 border-r border-gray-700 h-full bg-[#303030]">
+    <View className="w-[400px] border-r border-gray-700 h-full bg-[#303030]">
       {/* Header */}
       <View className="p-6  flex-row items-center justify-between">
         <Text className="text-3xl font-bold text-white">Menu Management</Text>
-        <TouchableOpacity
-          onPress={handleAddPress}
-          className="p-3 bg-blue-600 rounded-lg"
-        >
-          <Plus size={24} color="white" />
-        </TouchableOpacity>
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity
+            onPress={openSearch}
+            className="p-3 bg-gray-700 rounded-lg"
+          >
+            <Search size={24} color="#9CA3AF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAddPress}
+            className="p-3 bg-blue-600 rounded-lg"
+          >
+            <Plus size={24} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search */}

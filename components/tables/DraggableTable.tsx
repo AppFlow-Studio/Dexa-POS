@@ -1,9 +1,9 @@
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useRouter } from "expo-router";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { RotateCcw, Trash2 } from "lucide-react-native";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -24,11 +24,12 @@ interface DraggableTableProps {
   onPress?: () => void;
 }
 
-const STATUS_COLORS: Record<TableType["status"], string> = {
+const STATUS_COLORS: Record<TableType["status"] | "Overtime", string> = {
   Available: "#10B981", // Green
   "In Use": "#3B82F6", // Blue
-  "Needs Cleaning": "#EF4444", // Red,
+  "Needs Cleaning": "#EF4444", // Red
   "Not in Service": "#6B7280", // Gray
+  Overtime: "#F59E0B", // Yellow-Orange
 };
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -40,11 +41,128 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
 }) => {
-  const { updateTablePosition, updateTableRotation, removeTable } =
+  const { layouts, updateTablePosition, updateTableRotation, removeTable } =
     useFloorPlanStore();
   const { orders } = useOrderStore();
+  const { defaultSittingTimeMinutes } = useSettingsStore();
 
-  const router = useRouter();
+  const [duration, setDuration] = useState("");
+  const [isOvertime, setIsOvertime] = useState(false);
+
+  const activeOrderForThisTable = orders.find(
+    (o) => o.service_location_id === table.id && o.order_status !== "Voided"
+  );
+
+  const orderForThisGroup = useMemo(() => {
+    // If the table is part of a merge, find the primary table's order.
+    if (table.mergedWith) {
+      const allTables = layouts.flatMap((l) => l.tables);
+      const primaryTable = table.isPrimary
+        ? table
+        : allTables.find(
+            (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+          );
+
+      if (primaryTable) {
+        return orders.find(
+          (o) =>
+            o.service_location_id === primaryTable.id &&
+            o.order_status !== "Voided" &&
+            o.order_status !== "Closed"
+        );
+      }
+    }
+    // Otherwise, find the order for this specific table.
+    return orders.find(
+      (o) =>
+        o.service_location_id === table.id &&
+        o.order_status !== "Voided" &&
+        o.order_status !== "Closed"
+    );
+  }, [table, orders, layouts]);
+
+  useEffect(() => {
+    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
+      setDuration("");
+      setIsOvertime(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const startTime = new Date(orderForThisGroup.opened_at);
+      const now = new Date();
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      setDuration(`${diffMins} min`);
+      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    }, 1000); // Update every second for a smoother timer
+
+    // Run once immediately
+    const startTime = new Date(orderForThisGroup.opened_at);
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    setDuration(`${diffMins} min`);
+    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+
+    return () => clearInterval(timer);
+  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
+
+  // Timer Logic now uses the correct order for the entire group
+  useEffect(() => {
+    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
+      setDuration("");
+      setIsOvertime(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const startTime = new Date(orderForThisGroup.opened_at);
+      const now = new Date();
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      setDuration(`${diffMins} min`);
+      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    }, 1000); // Update every second for a smoother timer
+
+    // Run once immediately
+    const startTime = new Date(orderForThisGroup.opened_at);
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    setDuration(`${diffMins} min`);
+    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+
+    return () => clearInterval(timer);
+  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
+
+  const displayName = useMemo(() => {
+    const allTables = layouts.flatMap((l) => l.tables);
+
+    // Case 1: It's a primary table
+    if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
+      const mergedNames = table.mergedWith
+        .map((id) => allTables.find((t) => t.id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      return `${table.name} (Merged: ${mergedNames})`;
+    }
+
+    // Case 2: It's a non-primary merged table
+    if (table.mergedWith && !table.isPrimary) {
+      const primaryTable = allTables.find(
+        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+      );
+      if (primaryTable) {
+        return `${table.name} (Merged: ${primaryTable.name})`;
+      }
+    }
+
+    // Case 3: It's a standalone table
+    return table.name;
+  }, [table, layouts]);
 
   const translateX = useSharedValue(table.x);
   const translateY = useSharedValue(table.y);
@@ -122,17 +240,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     };
   });
 
-  const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "Voided"
-  );
-
   const orderTotal =
-    activeOrderForThisTable?.items.reduce(
+    orderForThisGroup?.items.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0
     ) || 0;
 
   const TableComponent = table.component;
+
+  const tableColor = isOvertime
+    ? STATUS_COLORS.Overtime
+    : STATUS_COLORS[table.status];
 
   return (
     <GestureDetector gesture={dragGesture}>
@@ -142,19 +260,26 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           activeOpacity={0.8}
         >
           <TableComponent
-            color={
-              table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
-            }
-            chairColor={
-              table.type === "table" ? STATUS_COLORS[table.status] : "#E5E7EB"
-            }
+            color={table.type === "table" ? tableColor : "#E5E7EB"}
+            chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
           />
-          <View className="absolute inset-0 items-center justify-center">
-            <Text className="text-white font-bold text-lg">{table.name}</Text>
+          <View className="absolute inset-0 items-center justify-center px-1">
+            <Text
+              className="text-white font-bold text-base text-center"
+              numberOfLines={1}
+            >
+              {displayName}
+            </Text>
+
             {table.type === "table" && table.status === "In Use" && (
-              <Text className="text-white font-bold text-lg">
-                ${orderTotal.toFixed(2)}
-              </Text>
+              <>
+                <Text className="text-white font-bold text-base">
+                  ${orderTotal.toFixed(2)}
+                </Text>
+                <Text className="text-white font-semibold text-base">
+                  {duration}
+                </Text>
+              </>
             )}
           </View>
         </TouchableOpacity>

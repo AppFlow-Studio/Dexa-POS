@@ -4,7 +4,6 @@ import TableListItem from "@/components/tables/TableListItem";
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Href, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -115,32 +114,11 @@ const TablesScreen = () => {
   };
 
   const handleGuestCountSubmit = (guestCount: number) => {
-    const allTables = layouts.flatMap((layout) => layout.tables);
-
-    // 1. Calculate the total capacity of the selected tables
-    const totalCapacity = selectedTableIds.reduce((acc, tableId) => {
-      const table = allTables.find((t) => t.id === tableId);
-      return acc + (table?.capacity || 0);
-    }, 0);
-
-    // 2. Validate guest count against capacity
-    if (guestCount > totalCapacity) {
-      toast.error(
-        `Guest count (${guestCount}) exceeds the total capacity (${totalCapacity}) of the selected tables.`,
-        {
-          duration: 4000,
-          position: ToastPosition.BOTTOM,
-        }
-      );
-      return; // Stop the process
-    }
-
-    // 3. If validation passes, proceed as before
     const primaryTableId = selectedTableIds[0];
     const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
     setActiveOrder(newOrder.id);
 
-    // 4. Iterate over all selected tables and mark them as "In Use"
+    // Iterate over all selected tables and mark them as "In Use"
     selectedTableIds.forEach((tableId) => {
       updateTableStatus(tableId, "In Use");
     });

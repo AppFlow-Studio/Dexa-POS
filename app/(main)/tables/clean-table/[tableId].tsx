@@ -1,4 +1,3 @@
-import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Info } from "lucide-react-native";
@@ -9,22 +8,54 @@ const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
   const { layouts, updateTableStatus } = useFloorPlanStore();
-  
 
-  // Find the table by searching through all tables in all layouts
-  const table = useMemo(() => {
-    if (!tableId) return null;
-    for (const layout of layouts) {
-      const foundTable = layout.tables.find((t) => t.id === tableId);
-      if (foundTable) return foundTable;
+  const { table, allTablesInGroup, displayNames } = useMemo(() => {
+    if (!tableId)
+      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
+
+    const allTables = layouts.flatMap((l) => l.tables);
+    const foundTable = allTables.find((t) => t.id === tableId);
+
+    if (!foundTable) {
+      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
     }
-    return null;
+
+    // Determine the primary table and all associated tables
+    let primaryTable = foundTable;
+    if (!foundTable.isPrimary && foundTable.mergedWith) {
+      const primary = allTables.find(
+        (t) => t.isPrimary && t.mergedWith?.includes(foundTable.id)
+      );
+      if (primary) primaryTable = primary;
+    }
+
+    const groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
+    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
+
+    // Create the display name
+    const primaryName = primaryTable.name;
+    const secondaryNames = groupTables
+      .filter((t) => !t.isPrimary)
+      .map((t) => t.name)
+      .join(", ");
+
+    const finalDisplayName = secondaryNames
+      ? `${primaryName} (Merged with ${secondaryNames})`
+      : primaryName;
+
+    return {
+      table: foundTable,
+      allTablesInGroup: groupTables,
+      displayNames: finalDisplayName,
+    };
   }, [layouts, tableId]);
 
   const handleCleanTable = () => {
-    if (tableId) {
-      updateTableStatus(tableId as string, "Available");
-      
+    if (allTablesInGroup.length > 0) {
+      // Update the status for every table in the group
+      allTablesInGroup.forEach((t) => {
+        updateTableStatus(t.id, "Available");
+      });
       router.back(); // Go back to the floor plan
     }
   };
@@ -37,6 +68,11 @@ const CleanTableScreen = () => {
     );
   }
 
+  const totalCapacity = allTablesInGroup.reduce(
+    (acc, t) => acc + t.capacity,
+    0
+  );
+
   return (
     <View className="flex-1 bg-[#212121]">
       {/* --- Main Content Area --- */}
@@ -45,18 +81,18 @@ const CleanTableScreen = () => {
           {/* Title */}
           <View className="items-center text-center">
             <Text className="text-3xl font-bold text-white">
-              Please Clean Table
+              Please Clean Table(s)
             </Text>
             <Text className="text-2xl text-gray-400 mt-1">
-              Cleaning is required to make this table available
+              Cleaning is required to make this group available
             </Text>
           </View>
 
-          {/* Info Banner */}
+          {/* Info Banner - NOW DISPLAYS MERGED INFO */}
           <View className="flex-row items-center p-6 bg-[#303030] rounded-lg my-6">
             <Info color="#f97316" size={24} />
             <Text className="ml-3 font-semibold text-2xl text-white">
-              Table No. {table.name}, Table Size - Medium, {table.capacity}
+              Tables: {displayNames} (Capacity: {totalCapacity})
             </Text>
           </View>
 
@@ -72,7 +108,9 @@ const CleanTableScreen = () => {
               onPress={handleCleanTable}
               className="flex-1 py-6 bg-blue-500 rounded-lg items-center"
             >
-              <Text className="text-2xl font-bold text-white">Clean Table</Text>
+              <Text className="text-2xl font-bold text-white">
+                Clean Tables
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -82,7 +120,3 @@ const CleanTableScreen = () => {
 };
 
 export default CleanTableScreen;
-function clearSelectedTable() {
-  throw new Error("Function not implemented.");
-}
-
