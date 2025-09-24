@@ -1,3 +1,4 @@
+// /components/tables/OrderInfoHeader.tsx
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronDown, Minus, Plus } from "lucide-react-native";
@@ -16,16 +17,18 @@ const FormInput = ({ label, value, onChangeText, ...props }: any) => (
   </View>
 );
 
-const OrderInfoHeader = () => {
+interface OrderInfoHeaderProps {
+  duration?: string;
+}
+
+const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
   const { layouts } = useFloorPlanStore();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
-  // This local state is still needed for the expanded view's interactive counter
   const [numberOfGuests, setNumberOfGuests] = useState(1);
 
-  // Sync local state with the store's state whenever the active order changes
   useEffect(() => {
     if (activeOrder?.guest_count) {
       setNumberOfGuests(activeOrder.guest_count);
@@ -63,7 +66,6 @@ const OrderInfoHeader = () => {
     if (!table) return "N/A";
     const allTables = layouts.flatMap((l) => l.tables);
 
-    // Case 1: The table is a primary in a merge group
     if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
       const mergedNames = table.mergedWith
         .map((id) => allTables.find((t) => t.id === id)?.name)
@@ -72,7 +74,6 @@ const OrderInfoHeader = () => {
       return `${table.name} (Merged with ${mergedNames})`;
     }
 
-    // Case 2: The table is a non-primary part of a merge group
     if (table.mergedWith && !table.isPrimary) {
       const primaryTable = allTables.find(
         (t) => t.isPrimary && t.mergedWith?.includes(table.id)
@@ -82,7 +83,6 @@ const OrderInfoHeader = () => {
       }
     }
 
-    // Case 3: It's a regular, standalone table
     return table.name;
   };
 
@@ -99,9 +99,7 @@ const OrderInfoHeader = () => {
         </Text>
         <Text className="mx-4 text-gray-400">|</Text>
         <Text className="font-semibold text-white">
-          Guests:{" "}
-          {/* FIX: Read directly from the store, which now has a reliable default */}
-          <Text className="font-normal">{activeOrder.guest_count}</Text>
+          Guests: <Text className="font-normal">{activeOrder.guest_count}</Text>
         </Text>
         <Text className="mx-4 text-gray-400">|</Text>
         <Text className="font-semibold text-white">
@@ -110,6 +108,14 @@ const OrderInfoHeader = () => {
             {activeOrder.customer_name || "Walk-In"}
           </Text>
         </Text>
+        {duration && (
+          <>
+            <Text className="mx-4 text-gray-400">|</Text>
+            <Text className="font-semibold text-white">
+              Duration: <Text className="font-normal">{duration}</Text>
+            </Text>
+          </>
+        )}
         <View className="ml-auto">
           <ChevronDown color="white" size={24} />
         </View>
@@ -139,7 +145,7 @@ const OrderInfoHeader = () => {
             <Text className="text-base font-semibold text-white mb-2">
               Table Info
             </Text>
-            <View className="py-3 px-4 bg-gray-600 rounded-xl border border-gray-500">
+            <View className="py-3 px-4 bg-gray-600 rounded-xl border border-gray-500 h-20 justify-center">
               <Text className="text-lg text-gray-300">
                 {getTableDisplayName()}
               </Text>
@@ -149,7 +155,7 @@ const OrderInfoHeader = () => {
             <Text className="text-base font-semibold text-white mb-2">
               Guests
             </Text>
-            <View className="flex-row items-center justify-between p-2 pl-4 bg-[#212121] rounded-xl border border-gray-600">
+            <View className="flex-row items-center justify-between p-2 pl-4 bg-[#212121] rounded-xl border border-gray-600 h-20">
               <Text className="text-sm text-white">Number of people</Text>
               <View className="flex-row items-center gap-2 bg-[#303030] p-1 rounded-full border border-gray-700">
                 <TouchableOpacity
@@ -170,6 +176,17 @@ const OrderInfoHeader = () => {
               </View>
             </View>
           </View>
+          {/* --- THIS IS THE NEWLY ADDED BLOCK --- */}
+          {duration && (
+            <View className="flex-1">
+              <Text className="text-base font-semibold text-white mb-2">
+                Duration
+              </Text>
+              <View className="py-3 px-4 bg-gray-600 rounded-xl border border-gray-500 h-20 justify-center">
+                <Text className="text-lg font-bold text-white">{duration}</Text>
+              </View>
+            </View>
+          )}
         </View>
       </View>
       <TouchableOpacity

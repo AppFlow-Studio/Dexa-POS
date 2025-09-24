@@ -7,6 +7,7 @@ import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle } from "lucide-react-native";
@@ -14,6 +15,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
+  const { defaultSittingTimeMinutes } = useSettingsStore();
+  const [duration, setDuration] = useState("");
+  const [isOvertime, setIsOvertime] = useState(false);
+
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
 
@@ -78,6 +83,34 @@ const UpdateTableScreen = () => {
   }, [activeOrder]);
 
   // --- Core Logic ---
+  useEffect(() => {
+    if (table?.status !== "In Use" || !activeOrder?.opened_at) {
+      setDuration("");
+      setIsOvertime(false);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      const startTime = new Date(activeOrder.opened_at);
+      const now = new Date();
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+
+      setDuration(`${diffMins} min`);
+      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    }, 60000); // Update every minute
+
+    // Run once immediately
+    const startTime = new Date(activeOrder.opened_at);
+    const now = new Date();
+    const diffMs = now.getTime() - startTime.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    setDuration(`${diffMins} min`);
+    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+
+    return () => clearInterval(timer);
+  }, [table?.status, activeOrder, defaultSittingTimeMinutes]);
+
   useEffect(() => {
     if (table?.status === "Needs Cleaning") {
       router.push("/tables");
@@ -319,9 +352,17 @@ const UpdateTableScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
+      {isOvertime && (
+        <View className="p-3 bg-yellow-500 items-center">
+          <Text className="text-lg font-bold text-yellow-900">
+            This table has exceeded the default sitting time of{" "}
+            {defaultSittingTimeMinutes} minutes.
+          </Text>
+        </View>
+      )}
       {/* --- Customer Info Section (Top) --- */}
       <View className="px-2 mt-2">
-        <OrderInfoHeader />
+        <OrderInfoHeader duration={duration} />
       </View>
 
       <View className="flex-1 flex-row ">

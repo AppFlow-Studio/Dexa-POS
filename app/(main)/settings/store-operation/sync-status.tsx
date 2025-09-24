@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   Search,
   Store,
+  Utensils,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -46,6 +47,14 @@ const SyncStatusScreen = () => {
       subtitle: "Receipt Configuration",
       route: "/settings/store-operation/receipt-rules",
       icon: <Receipt color="#3b82f6" size={24} />,
+      isLocked: true,
+    },
+    {
+      id: "dining-options",
+      title: "Dining Options",
+      subtitle: "Table & Seating Rules",
+      route: "/settings/store-operation/dining-options",
+      icon: <Utensils color="#3b82f6" size={24} />,
       isLocked: true,
     },
     {

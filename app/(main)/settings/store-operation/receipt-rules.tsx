@@ -2,7 +2,7 @@ import RadioButton from "@/components/settings/RadioButton";
 import SettingsCard from "@/components/settings/SettingsCard";
 import SettingsHeader from "@/components/settings/SettingsHeader";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
-import { Receipt, RefreshCcw, Store } from "lucide-react-native";
+import { Receipt, RefreshCcw, Store, Utensils } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -33,6 +33,14 @@ const ReceiptAndTippingRulesScreen = () => {
       subtitle: "Receipt Configuration",
       route: "/settings/store-operation/receipt-rules",
       icon: <Receipt color="#3b82f6" size={24} />,
+      isLocked: true,
+    },
+    {
+      id: "dining-options",
+      title: "Dining Options",
+      subtitle: "Table & Seating Rules",
+      route: "/settings/store-operation/dining-options",
+      icon: <Utensils color="#3b82f6" size={24} />,
       isLocked: true,
     },
     {
