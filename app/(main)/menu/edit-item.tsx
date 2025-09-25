@@ -119,7 +119,7 @@ const EditMenuItemScreen: React.FC = () => {
             ? itemToEdit.image
             : undefined,
         availability: itemToEdit.availability !== false,
-        modifiers: itemToEdit.modifiers?.map((modifier) => modifier.id) || [],
+        modifiers: itemToEdit.modifierGroupIds || [],
         recipe: itemToEdit.recipe || [],
       });
     }
@@ -229,7 +229,9 @@ const EditMenuItemScreen: React.FC = () => {
         meal: formData.meal,
         image: formData.imageBase64 || formData.image || undefined,
         availability: formData.availability,
-        modifiers: selectedModifiers.length > 0 ? selectedModifiers : undefined,
+        modifierGroupIds:
+          formData.modifiers.length > 0 ? formData.modifiers : undefined,
+
         recipe: formData.recipe,
       };
 
@@ -1179,10 +1181,11 @@ const EditMenuItemScreen: React.FC = () => {
               </Text>
             </View>
 
-            {/* Item Preview */}
+            {/* Item Preview (Corrected Layout) */}
             <View className="bg-[#212121] rounded-lg p-6 mb-6">
               <View className="flex-row items-center gap-4 w-full">
-                <View className="w-full aspect-square rounded border border-gray-600 overflow-hidden">
+                {/* Image Container with fixed width */}
+                <View className="w-24 h-24 rounded border border-gray-600 overflow-hidden">
                   {getImageSource(formData.image) ? (
                     <Image
                       source={
@@ -1192,7 +1195,8 @@ const EditMenuItemScreen: React.FC = () => {
                             ]
                           : getImageSource(formData.image)
                       }
-                      className="w-full h-full object-cover"
+                      className="w-full h-full"
+                      resizeMode="cover"
                     />
                   ) : (
                     <View className="w-full h-full bg-gray-600 items-center justify-center">
@@ -1200,11 +1204,12 @@ const EditMenuItemScreen: React.FC = () => {
                     </View>
                   )}
                 </View>
+                {/* Text content takes up remaining space */}
                 <View className="flex-1">
                   <Text className="text-2xl text-white font-medium">
                     {formData.name || "Item Name"}
                   </Text>
-                  <Text className="text-xl text-gray-400">
+                  <Text className="text-xl text-gray-400 mt-1">
                     {formData.categories.length > 0
                       ? formData.categories.join(", ")
                       : "No categories"}{" "}

@@ -13,9 +13,11 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
+import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { Link } from "expo-router";
 import {
   ChevronDown,
+  Clock,
   Logs,
   PackagePlus,
   Search,
@@ -62,10 +64,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const {
     menuItems,
     menus,
+    isMenuAvailableNow,
+    temporaryActiveMenus,
     isCategoryAvailableNow,
     categories,
     getItemPriceForCategory,
   } = useMenuStore();
+  const { requestPinOverride } = usePinOverrideStore();
+
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
@@ -98,11 +104,20 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   };
 
   const handleMenuSelect = (menuName: string) => {
-    setActiveMeal(menuName);
-    setActiveCategory(
-      menus.find((menu) => menu.name === menuName)?.categories[0] || ""
-    );
-    setIsMenuDialogOpen(false);
+    const menu = menus.find((m) => m.name === menuName);
+    if (!menu) return;
+
+    const isAvailable =
+      isMenuAvailableNow(menu.id) || temporaryActiveMenus.includes(menu.name);
+
+    if (isAvailable) {
+      setActiveMeal(menuName);
+      setActiveCategory(menu.categories[0] || "");
+      setIsMenuDialogOpen(false);
+    } else {
+      // Request override
+      requestPinOverride({ type: "select_menu", payload: { menuName } });
+    }
   };
 
   // Compute next availability window for the active category
@@ -149,7 +164,13 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       return categoryMatch && categoryAvailable;
     });
     setFilteredMenuItems(filtered);
-  }, [activeMeal, activeCategory, isCategoryAvailableNow, menuItems, availabilityTick]);
+  }, [
+    activeMeal,
+    activeCategory,
+    isCategoryAvailableNow,
+    menuItems,
+    availabilityTick,
+  ]);
   const numColumns = 4;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
@@ -270,51 +291,65 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   className="gap-3 mt-4 w-full"
                   contentContainerStyle={{ gap: 16 }}
                 >
-                  {menus.map((menu) => (
-                    <TouchableOpacity
-                      key={menu.id}
-                      onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${activeMeal === menu.name
-                        ? "bg-blue-600 border-blue-400"
-                        : "bg-[#303030] border-gray-600"
+                  {menus.map((menu) => {
+                    const isAvailable =
+                      isMenuAvailableNow(menu.id) ||
+                      temporaryActiveMenus.includes(menu.name);
+                    const isScheduled =
+                      menu.schedules && menu.schedules.length > 0;
+
+                    return (
+                      <TouchableOpacity
+                        key={menu.id}
+                        onPress={() => handleMenuSelect(menu.name)}
+                        className={`p-4 rounded-lg border mb-3 ${
+                          activeMeal === menu.name
+                            ? "bg-blue-600 border-blue-400"
+                            : !isAvailable
+                              ? "bg-gray-700 border-gray-600 opacity-60"
+                              : "bg-[#303030] border-gray-600"
                         }`}
-                    >
-                      <Text
-                        className={`font-semibold text-lg ${activeMeal === menu.name ? "text-white" : "text-white"
-                          }`}
                       >
-                        {menu.name}
-                      </Text>
-                      <Text
-                        className={`text-sm mt-1 ${activeMeal === menu.name
-                          ? "text-blue-100"
-                          : "text-gray-400"
+                        <View className="flex-row justify-between items-center">
+                          <Text className="font-semibold text-lg text-white">
+                            {menu.name}
+                          </Text>
+                          {isScheduled && <Clock size={16} color="#9CA3AF" />}
+                        </View>
+                        <Text
+                          className={`text-sm mt-1 ${
+                            activeMeal === menu.name
+                              ? "text-blue-100"
+                              : "text-gray-400"
                           }`}
-                      >
-                        {menu.description}
-                      </Text>
-                      <View className="flex-row flex-wrap gap-1 mt-2">
-                        {menu.categories.map((category, index) => (
-                          <View
-                            key={index}
-                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
-                              ? "bg-blue-500"
-                              : "bg-gray-600"
+                        >
+                          {menu.description}
+                        </Text>
+                        <View className="flex-row flex-wrap gap-1 mt-2">
+                          {menu.categories.map((category, index) => (
+                            <View
+                              key={index}
+                              className={`px-2 py-1 rounded-full ${
+                                activeMeal === menu.name
+                                  ? "bg-blue-500"
+                                  : "bg-gray-600"
                               }`}
-                          >
-                            <Text
-                              className={`text-xs ${activeMeal === menu.name
-                                ? "text-white"
-                                : "text-gray-300"
-                                }`}
                             >
-                              {category}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                              <Text
+                                className={`text-xs ${
+                                  activeMeal === menu.name
+                                    ? "text-white"
+                                    : "text-gray-300"
+                                }`}
+                              >
+                                {category}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
               </DialogContent>
             </Dialog>

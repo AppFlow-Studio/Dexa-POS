@@ -2,6 +2,8 @@ import "@/global.css";
 import { PortalHost } from "@rn-primitives/portal";
 
 import ClockInWallModal from "@/components/auth/ClockInWallModal";
+import ManagerPinModal from "@/components/auth/ManagerPinModal";
+import CustomerSheet from "@/components/bill/CustomerSheet";
 import PaymentModal from "@/components/bill/PaymentModal";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
@@ -64,7 +66,11 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
           <StatusBar style={"dark"} />
-          <Stack screenOptions={{ headerShown: false }} initialRouteName="(main)" />{/* Remove after testing */}
+          <Stack
+            screenOptions={{ headerShown: false }}
+            initialRouteName="(main)"
+          />
+          {/* Remove after testing */}
           <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />
@@ -73,6 +79,8 @@ export default function RootLayout() {
             isOpen={isClockInWallOpen}
             onClose={hideClockInWall}
           />
+          <ManagerPinModal />
+          <CustomerSheet />
           <Toasts
             defaultStyle={{
               view: {

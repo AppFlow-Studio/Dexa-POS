@@ -1,3 +1,4 @@
+import { ModifierCategory } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -23,14 +24,17 @@ interface ModifierSelection {
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, categoryId, close } =
     useModifierSidebarStore();
-    console.log(menuItem?.modifiers)
   const {
     addItemToActiveOrder,
     updateItemInActiveOrder,
     confirmDraftItem,
     generateCartItemId,
   } = useOrderStore();
-  const { getItemPriceForCategory, menuItems } = useMenuStore();
+  const {
+    getItemPriceForCategory,
+    menuItems,
+    modifierGroups: allModifierGroups,
+  } = useMenuStore();
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
@@ -86,10 +90,17 @@ const ModifierScreen = () => {
   );
 
   // Get the menu item for modifier access (either directly or from cart item)
-  const menuItemForModifiers =
-    (mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem
-      ? menuItems?.find((item) => item.id === cartItem.menuItemId)
-      : menuItem;
+  const baseMenuItem =
+    menuItem || menuItems.find((mi) => mi.id === cartItem?.menuItemId);
+
+  // Use the IDs from the baseMenuItem to look up the full modifier group objects
+  const menuItemForModifiers = useMemo(() => {
+    if (!baseMenuItem || !baseMenuItem.modifierGroupIds) return null;
+    const modifiers = baseMenuItem.modifierGroupIds
+      .map((id) => allModifierGroups.find((mg) => mg.id === id))
+      .filter((mg): mg is ModifierCategory => !!mg);
+    return { ...baseMenuItem, modifiers };
+  }, [baseMenuItem, allModifierGroups]);
 
   // Initialize form when screen opens
   useEffect(() => {
@@ -337,9 +348,11 @@ const ModifierScreen = () => {
   );
 
   const handleSave = useCallback(() => {
-    if (!currentItem) return;
+    // Use the base menu item for consistent checks
+    const baseItem = menuItem || menuItemForModifiers;
+    if (!baseItem) return;
 
-    // Validate required selections (only if modifiers exist)
+    // Validate required selections
     if (
       menuItemForModifiers?.modifiers &&
       menuItemForModifiers.modifiers.length > 0
@@ -391,97 +404,86 @@ const ModifierScreen = () => {
         })
       : [];
 
-    if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
-      // Update existing item (both sidebar edit and fullscreen edit)
+    const finalCustomizations = {
+      // size: selectedSize, // If you have size selection
+      modifiers: selectedModifiers,
+      notes,
+    };
+
+    if (mode === "edit" || (mode === "fullscreen" && cartItem)) {
+      // --- UPDATE EXISTING CART ITEM ---
+      if (!cartItem) return;
       const updatedItem = {
         ...cartItem,
         quantity,
-        // price is per-unit
         price: total / Math.max(1, quantity),
-        customizations: {
-          ...cartItem.customizations,
-          modifiers: selectedModifiers,
-          notes,
-        },
+        customizations: finalCustomizations,
+        isDraft: false, // Ensure it's not a draft anymore
       };
       updateItemInActiveOrder(updatedItem);
-    } else if (cartItem && cartItem.isDraft) {
-      // Update draft item and confirm it
-      const updatedItem = {
-        ...cartItem,
-        quantity,
-        // price is per-unit
-        price: total / Math.max(1, quantity),
-        isDraft: false, // Confirm the item
-        customizations: {
-          ...cartItem.customizations,
-          modifiers: selectedModifiers,
-          notes,
-        },
-      };
-      updateItemInActiveOrder(updatedItem);
+      toast.success(`Updated ${currentItem?.name}`, {
+        position: ToastPosition.BOTTOM,
+      });
     } else {
-      // Update the existing draft item to confirmed
-      const {
-        activeOrderId,
-        orders,
-        addItemToActiveOrder,
-        removeItemFromActiveOrder,
-      } = useOrderStore.getState();
+      // --- ADD NEW ITEM TO CART ---
+      const { activeOrderId, orders } = useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+      const draftItem = activeOrder?.items.find(
+        (item) => item.isDraft && item.menuItemId === baseItem.id
       );
 
       if (draftItem) {
-        // Remove the draft item first
-        removeItemFromActiveOrder(draftItem.id);
-
-        // Add the confirmed item with a new ID
+        // Confirm the existing draft item
         const confirmedItem = {
           ...draftItem,
-          id: generateCartItemId(currentItem.id, {
-            modifiers: selectedModifiers,
-            notes,
-          }), // New ID for confirmed item
+          id: generateCartItemId(baseItem.id, finalCustomizations), // Generate final ID
           quantity,
-          // price is per-unit
           price: total / Math.max(1, quantity),
-          isDraft: false, // Confirm the item
-          customizations: {
-            modifiers: selectedModifiers,
-            notes,
-          },
+          isDraft: false,
+          customizations: finalCustomizations,
         };
-        addItemToActiveOrder(confirmedItem);
+        updateItemInActiveOrder(confirmedItem);
+        toast.success(`Added ${baseItem.name}`, {
+          position: ToastPosition.BOTTOM,
+        });
+      } else {
+        // Or add a completely new item if no draft was found
+        const newItem = {
+          id: generateCartItemId(baseItem.id, finalCustomizations),
+          menuItemId: baseItem.id,
+          name: baseItem.name,
+          quantity,
+          originalPrice: baseItem.price,
+          price: total / Math.max(1, quantity),
+          image: baseItem.image,
+          customizations: finalCustomizations,
+          availableDiscount: baseItem.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+          isDraft: false,
+        };
+        addItemToActiveOrder(newItem);
+        toast.success(`Added ${baseItem.name}`, {
+          position: ToastPosition.BOTTOM,
+        });
       }
     }
-
-    const message =
-      mode === "edit" || (mode === "fullscreen" && cartItem)
-        ? "Updated"
-        : cartItem && cartItem.isDraft
-          ? "Confirmed"
-          : "Added";
-
-    toast.success(`${message} ${currentItem.name} ${total.toFixed(2)}`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
-    });
 
     close();
   }, [
     currentItem,
+    cartItem,
+    menuItem,
+    menuItemForModifiers,
     modifierSelections,
     quantity,
     notes,
     total,
     mode,
-    cartItem,
     close,
     addItemToActiveOrder,
     updateItemInActiveOrder,
-    menuItemForModifiers,
+    generateCartItemId,
   ]);
 
   const handleCancel = useCallback(() => {

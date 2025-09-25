@@ -16,15 +16,12 @@ import {
   Utensils,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import {
-  Alert,
-  Image,
+  Gesture,
+  GestureDetector,
   ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+} from "react-native-gesture-handler";
 import Animated, {
   Extrapolate,
   interpolate,
@@ -320,7 +317,7 @@ const MenuPage: React.FC = () => {
     menuItems,
     categories: storeCategories,
     menus: storeMenus,
-    modifierGroups: storeModifierGroups,
+    modifierGroups,
     deleteMenuItem,
     toggleItemAvailability,
     getItemsInCategory,
@@ -379,144 +376,16 @@ const MenuPage: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Get unique categories from menu items (flatten arrays)
-  // const categories = Array.from(
-  //   new Set(
-  //     menuItems.flatMap((item) =>
-  //       Array.isArray(item.category) ? item.category : [item.category]
-  //     )
-  //   )
-  // ).sort(); 
-
-  // Get unique modifier groups from both menu items and store
-  const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
-    new Set(
-      menuItems.flatMap(
-        (item) => item.modifiers?.map((modifier) => modifier.id) || []
-      )
-    )
-  ).map((modifierId) => {
-    const modifier = menuItems
-      .find((item) => item.modifiers?.some((m) => m.id === modifierId))
-      ?.modifiers?.find((m) => m.id === modifierId);
-
-    const itemsUsingModifier = menuItems.filter((item) =>
-      item.modifiers?.some((m) => m.id === modifierId)
-    );
-
-    return {
-      id: modifierId,
-      name: modifier?.name || modifierId,
-      type: modifier?.type || "optional",
-      selectionType: modifier?.selectionType || "single",
-      description: modifier?.description,
-      options: modifier?.options || [],
-      items: itemsUsingModifier,
-      source: "menuItem" as const,
-    };
-  });
-
-  // Get modifier groups from store
-  // const storeModifierGroupsData: ExtendedModifierGroup[] =
-  //   storeModifierGroups.map((modifierGroup) => {
-  //     const itemsUsingModifier = menuItems.filter((item) =>
-  //       item.modifiers?.some((m) => m.id === modifierGroup.id)
-  //     );
-
-  //     return {
-  //       ...modifierGroup,
-  //       items: itemsUsingModifier,
-  //       source: "store" as const,
-  //     };
-  //   });
-
-  // Combine and deduplicate modifier groups
-  // const allModifierGroups = [
-  //   ...menuItemModifierGroups,
-  //   ...storeModifierGroupsData,
-  // ];
   const uniqueModifierGroups = useMemo(() => {
-    const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
-      new Set(
-        menuItems.flatMap(
-          (item) => item.modifiers?.map((modifier) => modifier.id) || []
-        )
-      )
-    ).map((modifierId) => {
-      // FIRST: Check if this modifier exists in the store (updated data)
-      const storeModifier = storeModifierGroups.find(
-        (m) => m.id === modifierId
-      );
-      if (storeModifier) {
-        const itemsUsingModifier = menuItems.filter((item) =>
-          item.modifiers?.some((m) => m.id === modifierId)
-        );
-        return {
-          ...storeModifier, // Use the store data (which gets updated)
-          items: itemsUsingModifier,
-          source: "store" as const,
-        };
-      }
-
-      // SECOND: Fallback to menu item data (for modifiers not in store)
-      const modifier = menuItems
-        .find((item) => item.modifiers?.some((m) => m.id === modifierId))
-        ?.modifiers?.find((m) => m.id === modifierId);
-
-      const itemsUsingModifier = menuItems.filter((item) =>
-        item.modifiers?.some((m) => m.id === modifierId)
-      );
-
-      return {
-        id: modifierId,
-        name: modifier?.name || modifierId,
-        type: modifier?.type || "optional",
-        selectionType: modifier?.selectionType || "single",
-        description: modifier?.description,
-        options: modifier?.options || [],
-        items: itemsUsingModifier,
-        source: "menuItem" as const,
-      };
-    });
-
-    const storeModifierGroupsData: ExtendedModifierGroup[] =
-      storeModifierGroups.map((modifierGroup) => {
-        const itemsUsingModifier = menuItems.filter((item) =>
-          item.modifiers?.some((m) => m.id === modifierGroup.id)
-        );
-
-        return {
-          ...modifierGroup,
-          items: itemsUsingModifier,
-          source: "store" as const,
-        };
-      });
-
-    const allModifierGroups = [
-      ...storeModifierGroupsData, // Store data first
-      ...menuItemModifierGroups.filter(
-        (mg) => !storeModifierGroupsData.some((storeMg) => storeMg.id === mg.id)
-      ),
-    ];
-
-    const reduced = allModifierGroups.reduce(
-      (acc: ExtendedModifierGroup[], current) => {
-        const existing = acc.find((item) => item.id === current.id);
-        if (!existing) {
-          acc.push(current);
-        } else {
-          const combinedItems = [
-            ...new Set([...existing.items, ...current.items]),
-          ];
-          existing.items = combinedItems;
-        }
-        return acc;
-      },
-      []
-    );
-
-    return reduced.sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuItems, storeModifierGroups]);
+    return modifierGroups
+      .map((group) => ({
+        ...group,
+        items: menuItems.filter((item) =>
+          item.modifierGroupIds?.includes(group.id)
+        ),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [menuItems, modifierGroups]);
 
   // Filter menu items based on search
   const filteredItems = menuItems.filter((item) => {
@@ -530,7 +399,6 @@ const MenuPage: React.FC = () => {
   const handleAddMenu = () => {
     router.push("/menu/add-menu");
   };
-
 
   const handleAddCategory = () => {
     router.push("/menu/add-category");
@@ -608,31 +476,29 @@ const MenuPage: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1">
+      <ScrollView className="flex-1" nestedScrollEnabled={true}>
         <View className="gap-4">
-          {menus
-            .filter((m) => m.isActive && m.isAvailableNow)
-            .map((menu, index) => (
-              <DraggableMenu
-                key={menu.id}
-                menu={menu}
-                index={index}
-                onReorder={handleReorderMenus}
-                onReorderCategories={handleReorderMenuCategories}
-                onToggleMenuActive={handleToggleMenuActive}
-                onToggleCategoryActive={handleToggleCategoryActiveForMenu}
-                onSchedule={() => {
-                  // Find the original menu from storeMenus to avoid type issues
-                  const originalMenu = storeMenus.find((m) => m.id === menu.id);
-                  if (originalMenu) {
-                    setSelectedMenu(originalMenu);
-                    setScheduleViewType("menus");
-                    setShowScheduleModal(true);
-                  }
-                }}
-                onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-              />
-            ))}
+          {menus.map((menu, index) => (
+            <DraggableMenu
+              key={menu.id}
+              menu={menu}
+              index={index}
+              onReorder={handleReorderMenus}
+              onReorderCategories={handleReorderMenuCategories}
+              onToggleMenuActive={handleToggleMenuActive}
+              onToggleCategoryActive={handleToggleCategoryActiveForMenu}
+              onSchedule={() => {
+                // Find the original menu from storeMenus to avoid type issues
+                const originalMenu = storeMenus.find((m) => m.id === menu.id);
+                if (originalMenu) {
+                  setSelectedMenu(originalMenu);
+                  setScheduleViewType("menus");
+                  setShowScheduleModal(true);
+                }
+              }}
+              onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+            />
+          ))}
         </View>
       </ScrollView>
     </View>
@@ -693,10 +559,15 @@ const MenuPage: React.FC = () => {
                     <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
                       <Clock size={24} color="#9CA3AF" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleCategoryActive(categoryName?.id)} className="p-3 bg-[#212121] rounded border border-gray-600">
-                      {
-                        categoryName.isActive ? <Eye size={24} color="#10B981" /> : <EyeOff size={24} color="#EF4444" />
-                      }
+                    <TouchableOpacity
+                      onPress={() => handleCategoryActive(categoryName?.id)}
+                      className="p-3 bg-[#212121] rounded border border-gray-600"
+                    >
+                      {categoryName.isActive ? (
+                        <Eye size={24} color="#10B981" />
+                      ) : (
+                        <EyeOff size={24} color="#EF4444" />
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
@@ -939,8 +810,8 @@ const MenuPage: React.FC = () => {
                               source={
                                 typeof getImageSource(item.image) === "string"
                                   ? MENU_IMAGE_MAP[
-                                  item.image as keyof typeof MENU_IMAGE_MAP
-                                  ]
+                                      item.image as keyof typeof MENU_IMAGE_MAP
+                                    ]
                                   : getImageSource(item.image)
                               }
                               className="w-full h-full object-cover"
@@ -1024,121 +895,121 @@ const MenuPage: React.FC = () => {
         <View className="gap-4">
           {scheduleViewType === "menus"
             ? menus.map((menu) => (
-              <View
-                key={menu.id}
-                className="bg-[#303030] rounded-lg border border-gray-700 p-6"
-              >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-2xl text-white font-semibold">
-                    {menu.name}
-                  </Text>
-                  <View
-                    className={`px-3 py-2 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
-                  >
-                    <Text
-                      className={`text-xl ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
+                <View
+                  key={menu.id}
+                  className="bg-[#303030] rounded-lg border border-gray-700 p-6"
+                >
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-2xl text-white font-semibold">
+                      {menu.name}
+                    </Text>
+                    <View
+                      className={`px-3 py-2 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
                     >
-                      {menu.isActive
-                        ? menu.isAvailableNow
-                          ? "Available Now"
-                          : "Unavailable Now"
-                        : "Inactive"}
-                    </Text>
-                  </View>
-                </View>
-                {(menu.schedules ?? []).length === 0 ? (
-                  <View>
-                    <Text className="text-xl text-gray-400">
-                      Always available (no schedule rules)
-                    </Text>
-                  </View>
-                ) : (
-                  <View className="gap-2">
-                    {menu.schedules!.map((r) => (
-                      <View
-                        key={r.id}
-                        className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                      <Text
+                        className={`text-xl ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
                       >
-                        <Text className="text-xl text-gray-200">
-                          {r.name || r.id}
-                        </Text>
-                        <Text className="text-xl text-gray-400">
-                          {r.days.join(", ")} • {r.startTime} - {r.endTime}
-                        </Text>
-                      </View>
-                    ))}
+                        {menu.isActive
+                          ? menu.isAvailableNow
+                            ? "Available Now"
+                            : "Unavailable Now"
+                          : "Inactive"}
+                      </Text>
+                    </View>
                   </View>
-                )}
-                <View className="mt-3">
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push(`/menu/edit-menu?id=${menu.id}`)
-                    }
-                    className="self-start px-4 py-3 rounded-lg bg-blue-600"
-                  >
-                    <Text className="text-xl text-white">Edit Schedules</Text>
-                  </TouchableOpacity>
+                  {(menu.schedules ?? []).length === 0 ? (
+                    <View>
+                      <Text className="text-xl text-gray-400">
+                        Always available (no schedule rules)
+                      </Text>
+                    </View>
+                  ) : (
+                    <View className="gap-2">
+                      {menu.schedules!.map((r) => (
+                        <View
+                          key={r.id}
+                          className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                        >
+                          <Text className="text-xl text-gray-200">
+                            {r.name || r.id}
+                          </Text>
+                          <Text className="text-xl text-gray-400">
+                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View className="mt-3">
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push(`/menu/edit-menu?id=${menu.id}`)
+                      }
+                      className="self-start px-4 py-3 rounded-lg bg-blue-600"
+                    >
+                      <Text className="text-xl text-white">Edit Schedules</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))
+              ))
             : storeCategories.map((category) => (
-              <View
-                key={category.id}
-                className="bg-[#303030] rounded-lg border border-gray-700 p-6"
-              >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-2xl text-white font-semibold">
-                    {category.name}
-                  </Text>
-                  <View
-                    className={`px-3 py-2 rounded-full ${category.isActive && isCategoryAvailableNow(category.name) ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
-                  >
-                    <Text
-                      className={`text-xl ${category.isActive && isCategoryAvailableNow(category.name) ? "text-green-400" : "text-red-400"}`}
+                <View
+                  key={category.id}
+                  className="bg-[#303030] rounded-lg border border-gray-700 p-6"
+                >
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-2xl text-white font-semibold">
+                      {category.name}
+                    </Text>
+                    <View
+                      className={`px-3 py-2 rounded-full ${category.isActive && isCategoryAvailableNow(category.name) ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
                     >
-                      {category.isActive
-                        ? isCategoryAvailableNow(category.name)
-                          ? "Available Now"
-                          : "Unavailable Now"
-                        : "Inactive"}
-                    </Text>
-                  </View>
-                </View>
-                {(category.schedules ?? []).length === 0 ? (
-                  <View>
-                    <Text className="text-xl text-gray-400">
-                      Always available (no schedule rules)
-                    </Text>
-                  </View>
-                ) : (
-                  <View className="gap-2">
-                    {category.schedules!.map((r) => (
-                      <View
-                        key={r.id}
-                        className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                      <Text
+                        className={`text-xl ${category.isActive && isCategoryAvailableNow(category.name) ? "text-green-400" : "text-red-400"}`}
                       >
-                        <Text className="text-xl text-gray-200">
-                          {r.name || r.id}
-                        </Text>
-                        <Text className="text-xl text-gray-400">
-                          {r.days.join(", ")} • {r.startTime} - {r.endTime}
-                        </Text>
-                      </View>
-                    ))}
+                        {category.isActive
+                          ? isCategoryAvailableNow(category.name)
+                            ? "Available Now"
+                            : "Unavailable Now"
+                          : "Inactive"}
+                      </Text>
+                    </View>
                   </View>
-                )}
-                <View className="mt-3">
-                  <TouchableOpacity
-                    onPress={() =>
-                      router.push(`/menu/edit-category?id=${category.id}`)
-                    }
-                    className="self-start px-4 py-3 rounded-lg bg-blue-600"
-                  >
-                    <Text className="text-xl text-white">Edit Schedules</Text>
-                  </TouchableOpacity>
+                  {(category.schedules ?? []).length === 0 ? (
+                    <View>
+                      <Text className="text-xl text-gray-400">
+                        Always available (no schedule rules)
+                      </Text>
+                    </View>
+                  ) : (
+                    <View className="gap-2">
+                      {category.schedules!.map((r) => (
+                        <View
+                          key={r.id}
+                          className="flex-row justify-between bg-[#212121] p-4 rounded border border-gray-700"
+                        >
+                          <Text className="text-xl text-gray-200">
+                            {r.name || r.id}
+                          </Text>
+                          <Text className="text-xl text-gray-400">
+                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  <View className="mt-3">
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push(`/menu/edit-category?id=${category.id}`)
+                      }
+                      className="self-start px-4 py-3 rounded-lg bg-blue-600"
+                    >
+                      <Text className="text-xl text-white">Edit Schedules</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))}
         </View>
       </ScrollView>
     </View>

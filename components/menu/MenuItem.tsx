@@ -84,7 +84,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Text className="text-2xl font-bold text-white mt-3 flex-1">
               {item.name}
             </Text>
-            {item.modifiers && item.modifiers.length > 0 && (
+            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
               <Settings color="#60A5FA" size={24} className="ml-2" />
             )}
           </View>

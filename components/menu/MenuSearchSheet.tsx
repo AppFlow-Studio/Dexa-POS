@@ -132,7 +132,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
             <CategoryCard
               categoryName={item.name}
               isExpanded={false}
-              onToggleExpand={() => { }}
+              onToggleExpand={() => {}}
               onEdit={() => {
                 closeSearch();
                 router.push(`/menu/edit-category?id=${item.id}`);

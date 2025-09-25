@@ -124,11 +124,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-            ...layout,
-            tables: layout.tables.map((t) =>
-              t.id === tableId ? { ...t, ...newPosition } : t
-            ),
-          }
+              ...layout,
+              tables: layout.tables.map((t) =>
+                t.id === tableId ? { ...t, ...newPosition } : t
+              ),
+            }
           : layout
       ),
     }));
@@ -139,11 +139,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-            ...layout,
-            tables: layout.tables.map((t) =>
-              t.id === tableId ? { ...t, rotation: newRotation } : t
-            ),
-          }
+              ...layout,
+              tables: layout.tables.map((t) =>
+                t.id === tableId ? { ...t, rotation: newRotation } : t
+              ),
+            }
           : layout
       ),
     }));
@@ -154,9 +154,9 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-            ...layout,
-            tables: layout.tables.filter((t) => t.id !== tableId),
-          }
+              ...layout,
+              tables: layout.tables.filter((t) => t.id !== tableId),
+            }
           : layout
       ),
     }));
@@ -208,11 +208,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
                 order:
                   table.id === primaryTableId
                     ? {
-                      id: primaryOrderId,
-                      // Customer name can be simplified now
-                      customerName: `Group at ${table.name}`,
-                      total: 0,
-                    }
+                        id: primaryOrderId,
+                        // Customer name can be simplified now
+                        customerName: `Group at ${table.name}`,
+                        total: 0,
+                      }
                     : null,
               };
             }

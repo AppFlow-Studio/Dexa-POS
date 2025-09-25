@@ -1,18 +1,12 @@
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useCustomerStore } from "@/stores/useCustomerStore";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { ChevronDown } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  Modal,
-  ScrollView,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
+import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
 
@@ -50,6 +44,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     state.orders.find((order) => order.id === activeOrderId)
   );
 
+  const { openSheet } = useCustomerSheetStore();
+
   // Floor selection state
   const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
   const [showFloorModal, setShowFloorModal] = useState(false);
@@ -62,9 +58,9 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   ];
 
   // Customer info state
-  const [customerName, setCustomerName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [address, setAddress] = useState("");
+  // const [customerName, setCustomerName] = useState("");
+  // const [phoneNumber, setPhoneNumber] = useState("");
+  // const [address, setAddress] = useState("");
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
@@ -84,40 +80,40 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   }, [floorTables]);
 
   // Check for existing customer when phone number changes
-  useEffect(() => {
-    if (phoneNumber.length >= 3) {
-      const suggestions = searchCustomersByPhone(phoneNumber);
-      setCustomerSuggestions(suggestions);
-      setShowSuggestions(suggestions.length > 0);
-    } else {
-      setShowSuggestions(false);
-      setCustomerSuggestions([]);
-    }
+  // useEffect(() => {
+  //   if (phoneNumber.length >= 3) {
+  //     const suggestions = searchCustomersByPhone(phoneNumber);
+  //     setCustomerSuggestions(suggestions);
+  //     setShowSuggestions(suggestions.length > 0);
+  //   } else {
+  //     setShowSuggestions(false);
+  //     setCustomerSuggestions([]);
+  //   }
 
-    if (phoneNumber.length >= 10) {
-      const existingCustomer = findCustomerByPhone(phoneNumber);
-      if (existingCustomer) {
-        setCustomerName(existingCustomer.name);
-        setAddress(existingCustomer.address || "");
-        setIsExistingCustomer(true);
-        setShowSuggestions(false);
-      } else {
-        setIsExistingCustomer(false);
-      }
-    }
-  }, [phoneNumber, findCustomerByPhone, searchCustomersByPhone]);
+  //   if (phoneNumber.length >= 10) {
+  //     const existingCustomer = findCustomerByPhone(phoneNumber);
+  //     if (existingCustomer) {
+  //       setCustomerName(existingCustomer.name);
+  //       setAddress(existingCustomer.address || "");
+  //       setIsExistingCustomer(true);
+  //       setShowSuggestions(false);
+  //     } else {
+  //       setIsExistingCustomer(false);
+  //     }
+  //   }
+  // }, [phoneNumber, findCustomerByPhone, searchCustomersByPhone]);
 
-  const handleSelectCustomer = (customer: any) => {
-    setPhoneNumber(customer.phoneNumber);
-    setCustomerName(customer.name);
-    setAddress(customer.address || "");
-    setIsExistingCustomer(true);
-    setShowSuggestions(false);
-    setCustomerSuggestions([]);
+  // const handleSelectCustomer = (customer: any) => {
+  //   setPhoneNumber(customer.phoneNumber);
+  //   setCustomerName(customer.name);
+  //   setAddress(customer.address || "");
+  //   setIsExistingCustomer(true);
+  //   setShowSuggestions(false);
+  //   setCustomerSuggestions([]);
 
-    // Assign customer to order immediately
-    assignCustomerToOrder(customer);
-  };
+  //   // Assign customer to order immediately
+  //   assignCustomerToOrder(customer);
+  // };
 
   const assignCustomerToOrder = (customer: any) => {
     if (activeOrderId) {
@@ -138,36 +134,36 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     });
   };
 
-  const handleSaveNewCustomer = () => {
-    if (!customerName.trim() || !phoneNumber.trim()) {
-      toast.error("Please fill in name and phone number", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
+  // const handleSaveNewCustomer = () => {
+  //   if (!customerName.trim() || !phoneNumber.trim()) {
+  //     toast.error("Please fill in name and phone number", {
+  //       duration: 3000,
+  //       position: ToastPosition.BOTTOM,
+  //     });
+  //     return;
+  //   }
 
-    if (currentOrderType === "Delivery" && !address.trim()) {
-      toast.error("Please provide delivery address", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      });
-      return;
-    }
+  //   if (currentOrderType === "Delivery" && !address.trim()) {
+  //     toast.error("Please provide delivery address", {
+  //       duration: 3000,
+  //       position: ToastPosition.BOTTOM,
+  //     });
+  //     return;
+  //   }
 
-    // Create new customer
-    const newCustomer = addCustomer({
-      name: customerName.trim(),
-      phoneNumber: phoneNumber.trim(),
-      address: currentOrderType === "Delivery" ? address.trim() : undefined,
-    });
+  //   // Create new customer
+  //   const newCustomer = addCustomer({
+  //     name: customerName.trim(),
+  //     phoneNumber: phoneNumber.trim(),
+  //     address: currentOrderType === "Delivery" ? address.trim() : undefined,
+  //   });
 
-    // Assign customer to order
-    assignCustomerToOrder(newCustomer);
+  //   // Assign customer to order
+  //   assignCustomerToOrder(newCustomer);
 
-    setIsExistingCustomer(true);
-    setShowSuggestions(false);
-  };
+  //   setIsExistingCustomer(true);
+  //   setShowSuggestions(false);
+  // };
 
   const handleFloorSelect = (floorId: string) => {
     setSelectedFloor(floorId);
@@ -296,108 +292,49 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                 Customer Information
               </Text>
 
-              {/* Existing Customer Indicator */}
-              {isExistingCustomer && (
-                <View className="mb-3 p-3 bg-green-600/20 border border-green-600 rounded-lg">
-                  <Text className="text-2xl text-green-400 font-medium">
-                    ✓ Existing Customer Found
-                  </Text>
-                </View>
-              )}
-
-              {/* Name Input */}
-              <View className="mb-3">
-                <Text className="text-gray-300 text-xl font-medium mb-1">
-                  Customer Name
-                </Text>
-                <TextInput
-                  className="w-full p-4 border border-gray-600 rounded-lg h-20 px-4 py-3 text-2xl text-white"
-                  placeholder="Enter customer name"
-                  placeholderTextColor="#9CA3AF"
-                  value={customerName}
-                  onChangeText={setCustomerName}
-                  
-                />
-              </View>
-
-              {/* Phone Number Input */}
-              <View className="mb-3">
-                <Text className="text-gray-300 text-xl font-medium mb-1">
-                  Phone Number
-                </Text>
-                <View className="relative">
-                  <TextInput
-                    className="w-full p-4 border border-gray-600 rounded-lg h-20 px-4 py-3 text-2xl text-white"
-                    placeholder="(555) 123-4567"
-                    placeholderTextColor="#9CA3AF"
-                    value={phoneNumber}
-                    onChangeText={setPhoneNumber}
-                    keyboardType="number-pad"
-                  />
-
-                  {/* Customer Suggestions Dropdown */}
-                  {showSuggestions && customerSuggestions.length > 0 && (
-                    <View className="absolute top-full left-0 right-0 bg-[#212121] border border-gray-600 rounded-lg mt-1 max-h-32 z-10">
-                      {customerSuggestions.map((customer) => (
-                        <TouchableOpacity
-                          key={customer.id}
-                          onPress={() => handleSelectCustomer(customer)}
-                          className="p-4 border-b border-gray-600 last:border-b-0"
-                        >
-                          <Text className="text-xl text-white font-medium">
-                            {customer.name}
-                          </Text>
-                          <Text className="text-lg text-gray-400">
-                            {customer.phoneNumber}
-                          </Text>
-                          {customer.address && (
-                            <Text className="text-gray-500 text-xs">
-                              {customer.address}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      ))}
+              <TouchableOpacity
+                onPress={openSheet} // 3. This now opens the global customer sheet
+                className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#212121] min-h-[80px]"
+              >
+                {activeOrder?.customer_name ? (
+                  <>
+                    <User color="#A5A5B5" size={32} />
+                    <View className="ml-4 flex-1">
+                      <Text
+                        className="text-2xl font-semibold text-white"
+                        numberOfLines={1}
+                      >
+                        {activeOrder.customer_name}
+                      </Text>
+                      {activeOrder.customer_phone && (
+                        <Text className="text-xl text-gray-400">
+                          {activeOrder.customer_phone}
+                        </Text>
+                      )}
                     </View>
-                  )}
-                </View>
-              </View>
+                    <Edit3 color="#60A5FA" size={24} />
+                  </>
+                ) : (
+                  <>
+                    <Plus color="#9CA3AF" size={24} />
+                    <Text className="text-2xl font-semibold text-gray-300 ml-3">
+                      Add Customer to Order
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
-              {/* Address Input - Only for Delivery */}
+              {/* Address field is only shown for delivery and is now read-only */}
               {currentOrderType === "Delivery" && (
-                <View className="mb-4">
+                <View className="mt-4">
                   <Text className="text-gray-300 text-xl font-medium mb-1">
                     Delivery Address
                   </Text>
-                  <TextInput
-                    className="w-full p-4 border border-gray-600 rounded-lg h-20 px-4 py-3 text-2xl text-white"
-                    placeholder="Enter delivery address"
-                    placeholderTextColor="#9CA3AF"
-                    value={address}
-                    onChangeText={setAddress}
-                    multiline
-                    numberOfLines={2}
-                  />
-                </View>
-              )}
-
-              {/* Save Customer Info Button - Only show for new customers */}
-              {!isExistingCustomer && (
-                <TouchableOpacity
-                  onPress={handleSaveNewCustomer}
-                  className="w-full py-4 bg-blue-600 rounded-lg items-center mb-4"
-                >
-                  <Text className="text-2xl text-white font-semibold">
-                    Save New Customer
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Customer Assigned Indicator */}
-              {isExistingCustomer && (
-                <View className="w-full py-4 bg-green-600 rounded-lg items-center mb-4">
-                  <Text className="text-2xl text-white font-semibold">
-                    ✓ Customer Assigned to Order
-                  </Text>
+                  <View className="w-full p-4 border border-gray-600 rounded-lg bg-[#212121] h-20 justify-center">
+                    <Text className="text-2xl text-white">
+                      {activeOrder?.delivery_address || "No address set"}
+                    </Text>
+                  </View>
                 </View>
               )}
             </View>

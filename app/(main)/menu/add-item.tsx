@@ -175,11 +175,6 @@ const AddMenuItemScreen: React.FC = () => {
     setShowConfirmation(false);
 
     try {
-      // Get the full modifier group objects for the selected modifier IDs
-      const selectedModifiers = modifierGroups.filter((modifier) =>
-        formData.modifiers.includes(modifier.id)
-      );
-
       const newMenuItem: Omit<MenuItemType, "id"> = {
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
@@ -191,7 +186,8 @@ const AddMenuItemScreen: React.FC = () => {
         meal: formData.meal,
         image: formData.imageBase64 || formData.image || undefined,
         availability: formData.availability,
-        modifiers: selectedModifiers.length > 0 ? selectedModifiers : undefined,
+        modifierGroupIds:
+          formData.modifiers.length > 0 ? formData.modifiers : undefined,
         recipe: recipeItems,
       };
 

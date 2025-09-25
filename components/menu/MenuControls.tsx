@@ -1,5 +1,7 @@
 import { useMenuStore } from "@/stores/useMenuStore";
+import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import type { TriggerRef } from "@rn-primitives/select";
+import { Clock } from "lucide-react-native";
 import React from "react";
 import {
   Platform,
@@ -40,7 +42,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
     isCategoryAvailableNow,
     isCategoryActiveForMenu,
     getCategoryScheduleInfo,
+    temporaryActiveCategories,
   } = useMenuStore();
+  const { requestPinOverride } = usePinOverrideStore();
   const visibleMenus = menus.filter(
     (m) => m.isActive && isMenuAvailableNow(m.id)
   );
@@ -77,27 +81,30 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             className=" p-2 rounded-lg w-fit bg-[#303030] "
           >
             {categories?.map((tab, index) => {
-              const baseAvailable = isCategoryAvailableNow(tab);
-              const categoryAvailableInfo = getCategoryScheduleInfo(tab);
               const catObj = storeCategories.find((c) => c.name === tab);
-              const menuActive =
-                currentMenu && catObj
+              const isScheduled =
+                catObj?.schedules && catObj.schedules.length > 0;
+              const isNormallyAvailable =
+                isCategoryAvailableNow(tab) && currentMenu && catObj
                   ? isCategoryActiveForMenu(currentMenu.id, catObj.id)
                   : false;
-              const available = baseAvailable && !!menuActive;
-              const dotColor = available ? "#10B981" : "#EF4444";
-              const isDisabled = !available;
+              const hasOverride = temporaryActiveCategories.includes(tab);
+
+              const isAvailable = isNormallyAvailable || hasOverride;
+              const dotColor = isAvailable ? "#10B981" : "#EF4444";
+              const isDisabled = !isAvailable;
 
               return (
                 <View key={tab} className="w-fit flex-row items-center">
                   <TouchableOpacity
                     onPress={() => !isDisabled && onCategoryChange(tab)}
-                    className={`py-3 px-6 rounded-full flex-row items-center gap-2 ${activeCategory === tab
-                      ? "border border-accent-300 bg-accent-100"
-                      : isDisabled
-                        ? "border border-gray-600 bg-gray-700 opacity-60"
-                        : "border border-transparent"
-                      }`}
+                    className={`py-3 px-6 rounded-full flex-row items-center gap-2 ${
+                      activeCategory === tab
+                        ? "border border-accent-300 bg-accent-100"
+                        : isDisabled
+                          ? "border border-gray-600 bg-gray-700 opacity-60"
+                          : "border border-transparent"
+                    }`}
                   >
                     {/* Availability dot */}
                     <View
@@ -105,18 +112,22 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                       style={{ backgroundColor: dotColor }}
                     />
                     <Text
-                      className={`font-semibold text-2xl ${activeCategory === tab
-                        ? "text-accent-400"
-                        : isDisabled
-                          ? "text-gray-400"
-                          : "text-accent-100"
-                        }`}
+                      className={`font-semibold text-2xl ${
+                        activeCategory === tab
+                          ? "text-accent-400"
+                          : isDisabled
+                            ? "text-gray-400"
+                            : "text-accent-100"
+                      }`}
                     >
                       {tab}
                     </Text>
-                    <Text className="text-gray-400 text-xs">
-                      {!baseAvailable && categoryAvailableInfo.timeframe}
-                    </Text>
+                    {isScheduled && !isNormallyAvailable && (
+                      <Clock
+                        size={16}
+                        color={hasOverride ? "#60A5FA" : "#9CA3AF"}
+                      />
+                    )}
                   </TouchableOpacity>
                   <View
                     className={`${index !== categories.length - 1 ? "border-r border-gray-400 h-[50%] mx-3" : ""}`}
