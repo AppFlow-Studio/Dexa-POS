@@ -231,7 +231,7 @@ const OrderDetails: React.FC = () => {
           </Text>
           <TouchableOpacity
             onPress={openSheet} // 3. Trigger the bottom sheet
-            className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-20"
+            className="flex-row w-full items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-16"
           >
             {activeOrder?.customer_name ? (
               <>
@@ -254,8 +254,8 @@ const OrderDetails: React.FC = () => {
             ) : (
               <>
                 <Plus color="#9CA3AF" size={24} />
-                <Text className="text-2xl font-semibold text-gray-300 ml-3">
-                  Add Customer to Order
+                <Text className="text-xl font-semibold text-gray-300 ml-3">
+                  Add Customer 
                 </Text>
               </>
             )}
@@ -267,7 +267,7 @@ const OrderDetails: React.FC = () => {
           </Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-4 border border-background-400 rounded-lg bg-[#303030] h-20"
+            className="w-full flex-row items-center justify-between p-4 border border-background-400 rounded-lg bg-[#303030] h-16"
             onPress={openDrawer}
           >
             <Text className="text-xl font-semibold text-white">
