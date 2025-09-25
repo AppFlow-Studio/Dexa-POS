@@ -1,3 +1,4 @@
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -5,7 +6,7 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Lock, X } from "lucide-react-native";
+import { Lock, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -16,6 +17,8 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   const [isTaxExempt, setIsTaxExempt] = useState(false);
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
+
+  const { openSheet } = useCustomerSheetStore();
 
   const handleApplyPromoCode = () => {
     if (promoCode.trim()) {
@@ -75,6 +78,16 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
     }
   };
 
+  const handleAddCustomer = () => {
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close(); // Close the 'More' sheet first
+    }
+    // Open the customer sheet after a short delay
+    setTimeout(() => {
+      openSheet();
+    }, 250);
+  };
+
   const renderBackdrop = useMemo(
     () => (props: any) => (
       <BottomSheetBackdrop
@@ -113,7 +126,20 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
               <X color="#9CA3AF" size={24} />
             </TouchableOpacity>
           </View>
-
+          <View className="p-6 border-b border-gray-700">
+            <Text className="text-2xl font-semibold text-white mb-3">
+              Customer
+            </Text>
+            <TouchableOpacity
+              onPress={handleAddCustomer}
+              className="flex-row items-center gap-x-3 w-full bg-[#303030] border border-gray-600 p-4 rounded-lg"
+            >
+              <User color="#9CA3AF" size={24} />
+              <Text className="text-xl text-gray-300">
+                Add Customer to Order
+              </Text>
+            </TouchableOpacity>
+          </View>
           {/* Order Notes Section */}
           <View className="p-6">
             <Text className="text-2xl font-semibold text-white mb-3">

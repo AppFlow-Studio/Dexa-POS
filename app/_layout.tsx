@@ -3,6 +3,7 @@ import { PortalHost } from "@rn-primitives/portal";
 
 import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import ManagerPinModal from "@/components/auth/ManagerPinModal";
+import CustomerSheet from "@/components/bill/CustomerSheet";
 import PaymentModal from "@/components/bill/PaymentModal";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
@@ -79,6 +80,7 @@ export default function RootLayout() {
             onClose={hideClockInWall}
           />
           <ManagerPinModal />
+          <CustomerSheet />
           <Toasts
             defaultStyle={{
               view: {

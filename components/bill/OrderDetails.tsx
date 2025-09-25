@@ -1,8 +1,9 @@
+import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { Edit3, Plus } from "lucide-react-native";
+import { Edit3, Plus, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -39,7 +40,7 @@ const OrderDetails: React.FC = () => {
     setPendingTableSelection,
   } = useOrderStore();
   const { openDrawer } = useOrderTypeDrawerStore();
-
+  const { openSheet } = useCustomerSheetStore();
   // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
@@ -225,43 +226,48 @@ const OrderDetails: React.FC = () => {
       {/* Header */}
       <View className="flex-row flex items-center justify-center my-2 w-full gap-x-4">
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-2xl">
-            Customer Name
-          </Label>
-          {/* Customer Name Button */}
-          {customerName && customerName !== "Walk-In Customer" ? (
-            // Edit Mode - Show customer name with edit icon
-            <TouchableOpacity
-              onPress={handleAddCustomerName}
-              className="flex-row items-center justify-between py-4 px-6 rounded-lg border border-white bg-accent-50 w-full"
-            >
-              <View className="flex-row items-center flex-1">
-                <Text className="text-2xl font-semibold text-white flex-1">
-                  {customerName}
+          <Text className="text-white font-semibold text-2xl mb-2">
+            Customer
+          </Text>
+          <TouchableOpacity
+            onPress={openSheet} // 3. Trigger the bottom sheet
+            className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-20"
+          >
+            {activeOrder?.customer_name ? (
+              <>
+                <User color="#A5A5B5" size={24} />
+                <View className="ml-3 flex-1">
+                  <Text
+                    className="text-2xl font-semibold text-white"
+                    numberOfLines={1}
+                  >
+                    {activeOrder.customer_name}
+                  </Text>
+                  {activeOrder.customer_phone && (
+                    <Text className="text-xl text-gray-400">
+                      {activeOrder.customer_phone}
+                    </Text>
+                  )}
+                </View>
+                <Edit3 color="#60A5FA" size={24} />
+              </>
+            ) : (
+              <>
+                <Plus color="#9CA3AF" size={24} />
+                <Text className="text-2xl font-semibold text-gray-300 ml-3">
+                  Add Customer to Order
                 </Text>
-              </View>
-              <Edit3 color="#3B82F6" size={24} />
-            </TouchableOpacity>
-          ) : (
-            // Add Mode - Show add button with plus icon
-            <TouchableOpacity
-              onPress={handleAddCustomerName}
-              className="flex-row items-center justify-center py-4 px-6 gap-x-2 rounded-lg border-2 border-dashed border-gray-800 bg-[#303030] w-full"
-            >
-              <Plus color="#9CA3AF" size={20} />
-              <Text className="font-semibold text-white">
-                Add Customer Name
-              </Text>
-            </TouchableOpacity>
-          )}
+              </>
+            )}
+          </TouchableOpacity>
         </View>
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-2xl">
+          <Label className="text-white font-semibold text-2xl mb-2">
             Order Type
           </Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row justify-between items-center p-4 border border-background-400 rounded-lg bg-[#303030]"
+            className="w-full flex-row items-center justify-between p-4 border border-background-400 rounded-lg bg-[#303030] h-20"
             onPress={openDrawer}
           >
             <Text className="text-xl font-semibold text-white">

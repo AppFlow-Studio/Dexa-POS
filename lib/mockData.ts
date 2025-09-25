@@ -2,6 +2,7 @@ import CashierStand from "@/components/tables/svg/CashierStand";
 import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
 import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
 import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
+import { Customer } from "@/stores/useCustomerStore";
 import {
   AddOn,
   CartItem,
@@ -3922,4 +3923,43 @@ export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [
     },
   },
   // ... add more employees to fill the list
+];
+
+export const MOCK_CUSTOMERS: Customer[] = [
+  {
+    id: "cust_1",
+    name: "John Smith",
+    phoneNumber: "555-123-4567",
+    address: "123 Main St, Anytown, USA",
+    email: "john.smith@example.com",
+    createdAt: new Date(),
+    totalOrders: 5,
+  },
+  {
+    id: "cust_2",
+    name: "Jane Doe",
+    phoneNumber: "555-987-6543",
+    address: "456 Oak Ave, Sometown, USA",
+    email: "jane.doe@example.com",
+    createdAt: new Date(),
+    totalOrders: 2,
+  },
+  {
+    id: "cust_3",
+    name: "Mike Johnson",
+    phoneNumber: "555-555-1212",
+    address: "", // No address for this customer
+    email: "mike.j@example.com",
+    createdAt: new Date(),
+    totalOrders: 12,
+  },
+  {
+    id: "cust_4",
+    name: "Jessica Williams",
+    phoneNumber: "555-333-4444",
+    address: "789 Pine Ln, Otherville, USA",
+    email: "jess.w@example.com",
+    createdAt: new Date(),
+    totalOrders: 1,
+  },
 ];
