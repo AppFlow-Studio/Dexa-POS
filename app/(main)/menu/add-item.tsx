@@ -1101,7 +1101,7 @@ const AddMenuItemScreen: React.FC = () => {
             <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
               <TextInput
                 value={inventorySearchQuery}
-                onChangeText={setInventorySearchQuery}
+                onChangeText={(text) => setInventorySearchQuery(text.trim())}
                 placeholder="Search inventory items..."
                 placeholderTextColor="#9CA3AF"
                 className="flex-1 text-white ml-3 h-20"

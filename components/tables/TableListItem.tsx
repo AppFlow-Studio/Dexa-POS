@@ -1,8 +1,9 @@
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { Link } from "expo-router";
 import React, { useMemo } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 // Update the StatusIndicator to use the correct color scheme
 const StatusIndicator = ({ status }: { status: TableType["status"] }) => {
@@ -15,7 +16,7 @@ const StatusIndicator = ({ status }: { status: TableType["status"] }) => {
   return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
 
-const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
+const TableListItem: React.FC<{ table: TableType, handleTablePress: (table: TableType) => void }> = ({ table, handleTablePress }) => {
   // Get the full list of orders from the store
   const { orders } = useOrderStore();
   const { layouts } = useFloorPlanStore();
@@ -62,7 +63,7 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
   // The table's status from the floor plan store is the source of truth for its state
   const status = table.status;
   return (
-    <View className="p-6 border-b border-gray-100">
+    <TouchableOpacity onPress={() => handleTablePress(table)} className="p-6 border-b border-gray-100">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-3">
           <StatusIndicator status={status} />
@@ -70,24 +71,29 @@ const TableListItem: React.FC<{ table: TableType }> = ({ table }) => {
             {displayName}
           </Text>
         </View>
+      </View>
+      {/* Display the order details from the active order */}
+      <View className="flex-col items-start my-1">
         {/* Display the total only if an active order exists for this table */}
         {status === "In Use" && activeOrderForThisTable && (
           <Text className="text-2xl font-bold text-white">
             ${orderTotal.toFixed(2)}
           </Text>
         )}
+        {status === "In Use" && activeOrderForThisTable && (
+          <Text className="text-sm text-white mt-1">
+            Order {activeOrderForThisTable.id.slice(-5)}{`\n`}
+
+            <Text className="text-xl text-white">{activeOrderForThisTable.customer_name || ""}</Text>
+
+            {activeOrderForThisTable?.check_status === "Closed" && (
+              <Text className="text-red-600 font-semibold"> (Closed)</Text>
+            )}
+
+          </Text>
+        )}
       </View>
-      {/* Display the order details from the active order */}
-      {status === "In Use" && activeOrderForThisTable && (
-        <Text className="text-xl text-white ml-8 mt-1">
-          Order {activeOrderForThisTable.id.slice(-5)}
-          {activeOrderForThisTable.customer_name || ""}
-          {activeOrderForThisTable?.check_status === "Closed" && (
-            <Text className="text-red-600 font-semibold"> (Closed)</Text>
-          )}
-        </Text>
-      )}
-    </View>
+    </TouchableOpacity>
   );
 };
 

@@ -12,7 +12,7 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { ChevronDown, Plus, Trash2, User } from "lucide-react-native";
+import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
@@ -40,6 +40,15 @@ const CreateExternalExpenseScreen = () => {
     const [selectedQuantity, setSelectedQuantity] = useState<string>("1");
     const [selectedUnitPrice, setSelectedUnitPrice] = useState<string>("");
     const [itemNotes, setItemNotes] = useState("");
+    const [itemSearch, setItemSearch] = useState("");
+    const filteredInventoryItems = useMemo(() => {
+        const q = itemSearch.trim().toLowerCase();
+        if (!q) return inventoryItems;
+        return inventoryItems.filter((i) =>
+            i.name.toLowerCase().includes(q) ||
+            (i.unit ?? "").toString().toLowerCase().includes(q)
+        );
+    }, [inventoryItems, itemSearch]);
 
     // New item modal state
     const [newItemModalOpen, setNewItemModalOpen] = useState(false);
@@ -415,9 +424,19 @@ const CreateExternalExpenseScreen = () => {
                 backgroundStyle={{ backgroundColor: "#2b2b2b" }}
                 handleIndicatorStyle={{ backgroundColor: "#666" }}
             >
-                <BottomSheetView className="flex-1 h-full w-full">
-                    <View className="px-4 pt-2 pb-3 border-b border-gray-700 flex-row items-center justify-between">
+                <BottomSheetView className="h-full w-full flex-1 flex-col">
+                    <View className="px-4 pt-2 pb-3  border-b border-gray-700 flex-row items-center justify-between">
                         <Text className="text-white text-xl font-bold">Select Item</Text>
+                        <View className="mb-3 w-1/2 flex-row items-center gap-2 bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2">
+                            <Search color="#9CA3AF" size={18} />
+                            <TextInput
+                                value={itemSearch}
+                                onChangeText={setItemSearch}
+                                placeholder="Search items..."
+                                placeholderTextColor="#9CA3AF"
+                                className=" text-white h-12 w-full"
+                            />
+                        </View>
                         <Button
                             onPress={() => setNewItemModalOpen(true)}
                             className="bg-blue-600 border flex-row items-center gap-2 border-blue-500"
@@ -434,7 +453,7 @@ const CreateExternalExpenseScreen = () => {
                             <>
                                 {/* Item details form appears when an item is picked */}
                                 {selectedInventoryItemId && (
-                                    <View className="mb-4 p-3 rounded-lg border border-gray-700 bg-[#303030]">
+                                    <View className="mb-4 p-3 rounded-lg border border-gray-700 bg-[#8f8f8f]">
                                         <Text className="text-white mb-2 text-xl font-semibold">
                                             Enter Details - {inventoryItems.find((i) => i.id === selectedInventoryItemId)?.name}
                                         </Text>
@@ -480,9 +499,8 @@ const CreateExternalExpenseScreen = () => {
                                         </Button>
                                     </View>
                                 )}
-
                                 <FlatList
-                                    data={inventoryItems}
+                                    data={filteredInventoryItems}
                                     keyExtractor={(i) => i.id}
                                     renderItem={({ item }) => (
                                         <TouchableOpacity
@@ -501,6 +519,9 @@ const CreateExternalExpenseScreen = () => {
                                             </View>
                                         </TouchableOpacity>
                                     )}
+                                    ListEmptyComponent={
+                                        <Text className="text-gray-400 px-4 py-6">No items match your search.</Text>
+                                    }
                                 />
                             </>
                         )}
@@ -511,7 +532,7 @@ const CreateExternalExpenseScreen = () => {
             {/* Create New Inventory Item Modal */}
             <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
                 <DialogContent className="">
-                    <ScrollView bounces={false} className="rounded-2xl h-full p-6 w-[600px]" style={{ backgroundColor: "#2b2b2b", borderWidth: 1, borderColor: "#4b5563" }}>
+                    <ScrollView bounces={false} className="rounded-2xl h-fit p-6 w-[600px]" style={{ backgroundColor: "#2b2b2b", borderWidth: 1, borderColor: "#4b5563" }}>
                         <Text className="text-white text-2xl font-bold mb-4">Add Inventory Item</Text>
                         <View className="gap-y-3">
                             <Text className="text-gray-300">Item Name</Text>

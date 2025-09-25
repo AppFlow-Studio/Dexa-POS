@@ -1399,7 +1399,7 @@ const MenuItemScreen = () => {
               <Search color="#9CA3AF" size={20} />
               <TextInput
                 value={inventorySearchQuery}
-                onChangeText={setInventorySearchQuery}
+                onChangeText={(text) => setInventorySearchQuery(text.trim())}
                 placeholder="Search inventory items..."
                 placeholderTextColor="#9CA3AF"
                 className="flex-1 text-white ml-3 h-20"

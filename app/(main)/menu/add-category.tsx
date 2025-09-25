@@ -66,6 +66,7 @@ const AddCategoryScreen: React.FC = () => {
     itemId: string;
     price: number;
   } | null>(null);
+  const [newPricingText, setNewPricingText] = useState<string>("");
   const [customPricingRules, setCustomPricingRules] = useState<{
     [itemId: string]: number;
   }>({});
@@ -98,18 +99,23 @@ const AddCategoryScreen: React.FC = () => {
     const item = availableItems.find((i) => i.id === itemId);
     if (item) {
       setNewPricing({ itemId, price: item.price });
+      setNewPricingText(item.price.toFixed(2));
     }
   };
 
   const handleSaveCustomPricing = () => {
     if (!newPricing || !categoryName.trim()) return;
-
-    // Store the custom pricing rule
+    const parsed = parseFloat(newPricingText.replace(",", "."));
+    if (isNaN(parsed)) {
+      Alert.alert("Invalid price", "Please enter a valid number.");
+      return;
+    }
     setCustomPricingRules((prev) => ({
       ...prev,
-      [newPricing.itemId]: newPricing.price,
+      [newPricing.itemId]: parsed,
     }));
     setNewPricing(null);
+    setNewPricingText("");
   };
 
   const handleRemoveCustomPricing = (itemId: string) => {
@@ -435,36 +441,29 @@ const AddCategoryScreen: React.FC = () => {
                           <View className="flex-col items-center gap-2 mt-2">
                             <View className="flex-row items-center gap-2">
                               <TouchableOpacity
-                                onPress={() =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: Math.max(0, newPricing.price - 0.25),
-                                  })
-                                }
+                                onPress={() => {
+                                  const current = parseFloat(newPricingText.replace(",", "."));
+                                  const next = isNaN(current) ? 0 : Math.max(0, current - 0.25);
+                                  setNewPricingText(next.toFixed(2));
+                                }}
                                 className="p-1"
                               >
                                 <Minus size={14} color="#9CA3AF" />
                               </TouchableOpacity>
                               <TextInput
                                 className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
-                                value={newPricing.price.toString()}
-                                onChangeText={(text) =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: parseFloat(text) || 0,
-                                  })
-                                }
-                                keyboardType="numeric"
+                                value={newPricingText}
+                                onChangeText={(text) => setNewPricingText(text)}
+                                keyboardType="decimal-pad"
                                 placeholder="0.00"
                                 placeholderTextColor="#9CA3AF"
                               />
                               <TouchableOpacity
-                                onPress={() =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: newPricing.price + 0.25,
-                                  })
-                                }
+                                onPress={() => {
+                                  const current = parseFloat(newPricingText.replace(",", "."));
+                                  const next = isNaN(current) ? 0 : current + 0.25;
+                                  setNewPricingText(next.toFixed(2));
+                                }}
                                 className="p-1"
                               >
                                 <Plus size={14} color="#9CA3AF" />
@@ -479,7 +478,7 @@ const AddCategoryScreen: React.FC = () => {
                                 <Save size={24} color="white" />
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onPress={() => setNewPricing(null)}
+                                onPress={() => { setNewPricing(null); setNewPricingText(""); }}
                                 className="p-1 flex items-center justify-center bg-gray-600 rounded"
                               >
                                 <X size={24} color="white" />

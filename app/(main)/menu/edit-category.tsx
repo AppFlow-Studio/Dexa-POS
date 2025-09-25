@@ -1,6 +1,7 @@
 import CategoryAddScheduleSheet from "@/components/menu/CategoryAddScheduleSheet";
 import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
+import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { CustomPricing, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
@@ -8,6 +9,7 @@ import BottomSheet, {
   BottomSheetFlatList,
   BottomSheetTextInput
 } from "@gorhom/bottom-sheet";
+
 import { router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
@@ -40,15 +42,12 @@ const getImageSource = (image: string | undefined) => {
 
   if (image) {
     // Try to get image from assets
-    try {
-      return { uri: `@/assets/images/${image}` };
-    } catch {
-      return undefined;
-    }
+    return `${image}`;
   }
 
   return undefined;
 };
+
 const EditCategoryScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const {
@@ -91,10 +90,12 @@ const EditCategoryScreen: React.FC = () => {
     itemId: string;
     pricing: CustomPricing;
   } | null>(null);
+  const [editingPricingText, setEditingPricingText] = useState<string>("");
   const [newPricing, setNewPricing] = useState<{
     itemId: string;
     price: number;
   } | null>(null);
+  const [newPricingText, setNewPricingText] = useState<string>("");
 
   // Bottom sheet for quick search & select items
   const quickSearchSheetRef = useRef<BottomSheet>(null);
@@ -115,6 +116,8 @@ const EditCategoryScreen: React.FC = () => {
   const handleSaveSchedule = (rule: any) => {
     setSchedules([...(schedules ?? []), rule]);
   };
+
+
 
   const editSheetRef = useRef<BottomSheet>(null);
   const [editingRule, setEditingRule] = useState<any>(null);
@@ -143,28 +146,39 @@ const EditCategoryScreen: React.FC = () => {
     const item = allItems.find((i) => i.id === itemId);
     if (item && existing) {
       setNewPricing({ itemId, price: item.price });
+      setNewPricingText(item.price.toFixed(2));
     }
   };
 
   const handleSaveCustomPricing = () => {
     if (!newPricing || !existing) return;
-
+    const parsed = parseFloat(newPricingText.replace(",", "."));
+    if (isNaN(parsed)) {
+      Alert.alert("Invalid price", "Please enter a valid number.");
+      return;
+    }
     addCustomPricing(newPricing.itemId, {
       categoryId: existing.id,
       categoryName: existing.name,
-      price: newPricing.price,
+      price: parsed,
       isActive: true,
     });
     setNewPricing(null);
+    setNewPricingText("");
   };
 
   const handleUpdateCustomPricing = () => {
     if (!editingPricing) return;
-
+    const parsed = parseFloat(editingPricingText.replace(",", "."));
+    if (isNaN(parsed)) {
+      Alert.alert("Invalid price", "Please enter a valid number.");
+      return;
+    }
     updateCustomPricing(editingPricing.itemId, editingPricing.pricing.id, {
-      price: editingPricing.pricing.price,
+      price: parsed,
     });
     setEditingPricing(null);
+    setEditingPricingText("");
   };
 
   const handleDeleteCustomPricing = (itemId: string, pricingId: string) => {
@@ -237,6 +251,7 @@ const EditCategoryScreen: React.FC = () => {
       },
     ]);
   };
+
 
   if (!existing) {
     return (
@@ -373,10 +388,16 @@ const EditCategoryScreen: React.FC = () => {
                     >
                       <View className="flex-row items-center gap-4">
                         {/* Item Image */}
-                        <View className="w-16 h-16 rounded-lg border border-gray-600 overflow-hidden">
+                        <View className="h-24 aspect-square rounded-lg border border-gray-600 overflow-hidden">
                           {getImageSource(item.image) ? (
                             <Image
-                              source={getImageSource(item.image)}
+                              source={
+                                typeof getImageSource(item.image) === "string"
+                                  ? MENU_IMAGE_MAP[
+                                  item.image as keyof typeof MENU_IMAGE_MAP
+                                  ]
+                                  : getImageSource(item.image)
+                              }
                               className="w-full h-full object-cover"
                             />
                           ) : (
@@ -393,7 +414,7 @@ const EditCategoryScreen: React.FC = () => {
                           </Text>
                           {item.description && (
                             <Text className="text-gray-400 text-sm mt-1">
-                              {item.description.slice(0, 45)}...
+                              {item.description.slice(0, 20)}...
                             </Text>
                           )}
 
@@ -430,66 +451,53 @@ const EditCategoryScreen: React.FC = () => {
                                     {editingPricing?.itemId === item.id &&
                                       editingPricing.pricing.id === pricing.id ? (
                                       // Edit mode
-                                      <View className="flex-row items-center gap-2 flex-1">
-                                        <TouchableOpacity
-                                          onPress={() =>
-                                            setEditingPricing({
-                                              ...editingPricing,
-                                              pricing: {
-                                                ...pricing,
-                                                price: Math.max(
-                                                  0,
-                                                  pricing.price - 0.25
-                                                ),
-                                              },
-                                            })
-                                          }
-                                          className="p-1"
-                                        >
-                                          <Minus size={14} color="#9CA3AF" />
-                                        </TouchableOpacity>
-                                        <TextInput
-                                          className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
-                                          value={editingPricing.pricing.price.toString()}
-                                          onChangeText={(text) =>
-                                            setEditingPricing({
-                                              ...editingPricing,
-                                              pricing: {
-                                                ...pricing,
-                                                price: parseFloat(text) || 0,
-                                              },
-                                            })
-                                          }
-                                          keyboardType="numeric"
-                                        />
-                                        <TouchableOpacity
-                                          onPress={() =>
-                                            setEditingPricing({
-                                              ...editingPricing,
-                                              pricing: {
-                                                ...pricing,
-                                                price: pricing.price + 0.25,
-                                              },
-                                            })
-                                          }
-                                          className="p-1"
-                                        >
-                                          <Plus size={14} color="#9CA3AF" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                          onPress={handleUpdateCustomPricing}
-                                          className="p-1 bg-green-600 rounded"
-                                        >
-                                          <Save size={12} color="white" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                          onPress={() =>
-                                            setEditingPricing(null)
-                                          }
-                                          className="p-1 bg-gray-600 rounded"
-                                        >
-                                          <X size={12} color="white" />
-                                        </TouchableOpacity>
+                                      <View className="flex-col items-center gap-2 flex-1">
+                                        <View className="flex-row items-center gap-2">
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              const current = parseFloat(editingPricingText.replace(",", "."));
+                                              const next = isNaN(current) ? 0 : Math.max(0, current - 0.25);
+                                              setEditingPricingText(next.toFixed(2));
+                                            }}
+                                            className="p-1"
+                                          >
+                                            <Minus size={16} color="#9CA3AF" />
+                                          </TouchableOpacity>
+                                          <TextInput
+                                            className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
+                                            value={editingPricingText}
+                                            onChangeText={(text) => setEditingPricingText(text)}
+                                            keyboardType="decimal-pad"
+                                            placeholder="0.00"
+                                          />
+                                          <TouchableOpacity
+                                            onPress={() => {
+                                              const current = parseFloat(editingPricingText.replace(",", "."));
+                                              const next = isNaN(current) ? 0 : current + 0.25;
+                                              setEditingPricingText(next.toFixed(2));
+                                            }}
+                                            className="p-1"
+                                          >
+                                            <Plus size={16} color="#9CA3AF" />
+                                          </TouchableOpacity>
+                                        </View>
+
+                                        <View className="flex-row items-center gap-2">
+                                          <TouchableOpacity
+                                            onPress={handleUpdateCustomPricing}
+                                            className="p-1 bg-green-600 rounded"
+                                          >
+                                            <Save size={24} color="white" />
+                                          </TouchableOpacity>
+                                          <TouchableOpacity
+                                            onPress={() =>
+                                              setEditingPricing(null)
+                                            }
+                                            className="p-1 bg-gray-600 rounded"
+                                          >
+                                            <X size={24} color="white" />
+                                          </TouchableOpacity>
+                                        </View>
                                       </View>
                                     ) : (
                                       // View mode
@@ -503,7 +511,7 @@ const EditCategoryScreen: React.FC = () => {
                                             ${pricing.price.toFixed(2)}
                                           </Text>
                                         </View>
-                                        <TouchableOpacity
+                                        {/* <TouchableOpacity
                                           onPress={() =>
                                             handleToggleCustomPricingActive(
                                               item.id,
@@ -512,18 +520,16 @@ const EditCategoryScreen: React.FC = () => {
                                           }
                                           className={`p-1 rounded ${pricing.isActive ? "bg-green-600" : "bg-gray-600"}`}
                                         >
-                                          <Check size={12} color="white" />
-                                        </TouchableOpacity>
+                                          <Check size={24} color="white" />
+                                        </TouchableOpacity> */}
                                         <TouchableOpacity
-                                          onPress={() =>
-                                            setEditingPricing({
-                                              itemId: item.id,
-                                              pricing,
-                                            })
-                                          }
+                                          onPress={() => {
+                                            setEditingPricing({ itemId: item.id, pricing });
+                                            setEditingPricingText(pricing.price.toFixed(2));
+                                          }}
                                           className="p-1 bg-blue-600 rounded"
                                         >
-                                          <Edit size={12} color="white" />
+                                          <Edit size={24} color="white" />
                                         </TouchableOpacity>
                                         <TouchableOpacity
                                           onPress={() =>
@@ -534,7 +540,7 @@ const EditCategoryScreen: React.FC = () => {
                                           }
                                           className="p-1 bg-red-600 rounded"
                                         >
-                                          <Trash2 size={12} color="white" />
+                                          <Trash2 size={24} color="white" />
                                         </TouchableOpacity>
                                       </View>
                                     )}
@@ -562,54 +568,52 @@ const EditCategoryScreen: React.FC = () => {
 
                           {/* New Pricing Input */}
                           {newPricing?.itemId === item.id && (
-                            <View className="flex-row items-center gap-2 mt-2">
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: Math.max(0, newPricing.price - 0.25),
-                                  })
-                                }
-                                className="p-1"
-                              >
-                                <Minus size={14} color="#9CA3AF" />
-                              </TouchableOpacity>
-                              <TextInput
-                                className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
-                                value={newPricing.price.toString()}
-                                onChangeText={(text) =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: parseFloat(text) || 0,
-                                  })
-                                }
-                                keyboardType="numeric"
-                                placeholder="0.00"
-                                placeholderTextColor="#9CA3AF"
-                              />
-                              <TouchableOpacity
-                                onPress={() =>
-                                  setNewPricing({
-                                    ...newPricing,
-                                    price: newPricing.price + 0.25,
-                                  })
-                                }
-                                className="p-1"
-                              >
-                                <Plus size={14} color="#9CA3AF" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={handleSaveCustomPricing}
-                                className="p-1 bg-green-600 rounded"
-                              >
-                                <Save size={12} color="white" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() => setNewPricing(null)}
-                                className="p-1 bg-gray-600 rounded"
-                              >
-                                <X size={12} color="white" />
-                              </TouchableOpacity>
+                            <View className="flex-col justify-center items-center gap-2 mt-2">
+                              <View className="flex-row items-center gap-2">
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    const current = parseFloat(newPricingText.replace(",", "."));
+                                    const next = isNaN(current) ? 0 : Math.max(0, current - 0.25);
+                                    setNewPricingText(next.toFixed(2));
+                                  }}
+                                  className="p-1"
+                                >
+                                  <Minus size={14} color="#9CA3AF" />
+                                </TouchableOpacity>
+                                <TextInput
+                                  className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
+                                  value={newPricingText}
+                                  onChangeText={(text) => setNewPricingText(text)}
+                                  keyboardType="decimal-pad"
+                                  placeholder="0.00"
+                                  placeholderTextColor="#9CA3AF"
+                                />
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    const current = parseFloat(newPricingText.replace(",", "."));
+                                    const next = isNaN(current) ? 0 : current + 0.25;
+                                    setNewPricingText(next.toFixed(2));
+                                  }}
+                                  className="p-1"
+                                >
+                                  <Plus size={14} color="#9CA3AF" />
+                                </TouchableOpacity>
+                              </View>
+
+                              <View className="flex-row items-center gap-2">
+                                <TouchableOpacity
+                                  onPress={handleSaveCustomPricing}
+                                  className="p-1 bg-green-600 rounded"
+                                >
+                                  <Save size={24} color="white" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => { setNewPricing(null); setNewPricingText(""); }}
+                                  className="p-1 bg-gray-600 rounded"
+                                >
+                                  <X size={24} color="white" />
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           )}
 
@@ -724,12 +728,18 @@ const EditCategoryScreen: React.FC = () => {
                   <View className="w-12 h-12 rounded border border-gray-600 overflow-hidden">
                     {getImageSource(item.image) ? (
                       <Image
-                        source={getImageSource(item.image)}
+                        source={
+                          typeof getImageSource(item.image) === "string"
+                            ? MENU_IMAGE_MAP[
+                            item.image as keyof typeof MENU_IMAGE_MAP
+                            ]
+                            : getImageSource(item.image)
+                        }
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <View className="w-full h-full bg-gray-600 items-center justify-center">
-                        <Utensils color="#9ca3af" size={18} />
+                        <Utensils color="#9ca3af" size={24} />
                       </View>
                     )}
                   </View>
@@ -737,11 +747,11 @@ const EditCategoryScreen: React.FC = () => {
                     <Text className="text-white text-xl" numberOfLines={1}>
                       {item.name}
                     </Text>
-                    {!!item.description && (
+                    {/* {!!item.description && (
                       <Text className="text-gray-400" numberOfLines={1}>
                         {item.description}
                       </Text>
-                    )}
+                    )} */}
                   </View>
                 </View>
                 <View
