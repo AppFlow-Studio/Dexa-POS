@@ -1,5 +1,11 @@
 import { ALL_MODIFIER_GROUPS, MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { CustomPricing, Menu, MenuItemType, ModifierCategory, Schedule } from "@/lib/types";
+import {
+  CustomPricing,
+  Menu,
+  MenuItemType,
+  ModifierCategory,
+  Schedule,
+} from "@/lib/types";
 import { create } from "zustand";
 
 export interface Category {
@@ -71,11 +77,25 @@ interface MenuState {
   increaseMenuItemStock: (itemId: string, quantity: number) => void;
   getLowStockMenuItems: () => MenuItemType[];
   // Stock tracking mode helpers
-  getMenuItemStockTrackingMode: (itemId: string) => "in_stock" | "out_of_stock" | "quantity";
-  setMenuItemStockTrackingMode: (itemId: string, mode: "in_stock" | "out_of_stock" | "quantity", stockQuantity?: number, reorderThreshold?: number) => void;
+  getMenuItemStockTrackingMode: (
+    itemId: string
+  ) => "in_stock" | "out_of_stock" | "quantity";
+  setMenuItemStockTrackingMode: (
+    itemId: string,
+    mode: "in_stock" | "out_of_stock" | "quantity",
+    stockQuantity?: number,
+    reorderThreshold?: number
+  ) => void;
   // Custom Pricing Operations
-  addCustomPricing: (itemId: string, customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">) => void;
-  updateCustomPricing: (itemId: string, pricingId: string, updates: Partial<CustomPricing>) => void;
+  addCustomPricing: (
+    itemId: string,
+    customPricing: Omit<CustomPricing, "id" | "createdAt" | "updatedAt">
+  ) => void;
+  updateCustomPricing: (
+    itemId: string,
+    pricingId: string,
+    updates: Partial<CustomPricing>
+  ) => void;
   deleteCustomPricing: (itemId: string, pricingId: string) => void;
   toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
   getItemPriceForCategory: (itemId: string, categoryId: string) => number;
@@ -84,8 +104,11 @@ interface MenuState {
   getCategoryScheduleInfo: (
     name: string,
     at?: Date
-  ) => { daysAvailable: string[]; availableToday: boolean; timeframe: string | null };
-
+  ) => {
+    daysAvailable: string[];
+    availableToday: boolean;
+    timeframe: string | null;
+  };
 }
 
 // Helper function to generate unique IDs
@@ -162,7 +185,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         ...itemData,
         id: generateId(),
         // Default to "in_stock" mode (availability: true) unless explicitly set
-        availability: itemData.availability !== undefined ? itemData.availability : true,
+        availability:
+          itemData.availability !== undefined ? itemData.availability : true,
         // Default stock tracking mode to "in_stock" unless explicitly set
         stockTrackingMode: itemData.stockTrackingMode || "in_stock",
       };
@@ -252,7 +276,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
       const state = get();
       const category = state.categories.find((c) => c.id === categoryId);
       if (!category) {
-        console.warn("toggleMenuCategoryActive: category not found", { menuId, categoryId });
+        console.warn("toggleMenuCategoryActive: category not found", {
+          menuId,
+          categoryId,
+        });
         return;
       }
 
@@ -270,7 +297,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
         },
       }));
 
-      console.log("Menu-specific category availability toggled:", { menuId, categoryId, value: nextValue });
+      console.log("Menu-specific category availability toggled:", {
+        menuId,
+        categoryId,
+        value: nextValue,
+      });
     },
 
     isCategoryActiveForMenu: (menuId, categoryId) => {
@@ -450,21 +481,30 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     deleteModifierGroup: (id) => {
       set((state) => ({
-        // Remove the modifier group from the registry
+        // Remove the modifier group from the central registry
         modifierGroups: state.modifierGroups.filter(
           (modifierGroup) => modifierGroup.id !== id
         ),
-        // Cascade remove from all menu items that reference it
+        // Cascade remove the ID reference from all menu items
         menuItems: state.menuItems.map((item) => {
-          if (!item.modifiers || item.modifiers.length === 0) return item;
-          const filtered = item.modifiers.filter((m) => m.id !== id);
-          // Only change object if something was removed
-          if (filtered.length !== item.modifiers.length) {
+          // Check if the item has any modifier group IDs to begin with
+          if (!item.modifierGroupIds || item.modifierGroupIds.length === 0) {
+            return item;
+          }
+
+          // Filter out the deleted ID
+          const filteredIds = item.modifierGroupIds.filter(
+            (modId) => modId !== id
+          );
+
+          // Only create a new item object if a change was actually made
+          if (filteredIds.length !== item.modifierGroupIds.length) {
             return {
               ...item,
-              modifiers: filtered.length > 0 ? filtered : undefined,
-            } as typeof item;
+              modifierGroupIds: filteredIds,
+            };
           }
+
           return item;
         }),
       }));
@@ -534,7 +574,6 @@ export const useMenuStore = create<MenuState>((set, get) => {
             return {
               ...item,
               customPricing: [...existingPricing, newPricing],
-
             };
           }
           return item;
@@ -651,7 +690,9 @@ export const useMenuStore = create<MenuState>((set, get) => {
     },
 
     getItemPriceForCategory: (itemId, categoryId) => {
-      const item = get().menuItems.find((item) => item.id === itemId.split('|')[0]);
+      const item = get().menuItems.find(
+        (item) => item.id === itemId.split("|")[0]
+      );
       if (!item) return 0;
 
       // Check for custom pricing for this category
@@ -678,7 +719,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     // Stock tracking mode helpers
     getMenuItemStockTrackingMode: (itemId: string) => {
-      const item = get().menuItems.find(item => item.id === itemId);
+      const item = get().menuItems.find((item) => item.id === itemId);
       if (!item) return "in_stock"; // Default fallback
 
       // Return stored stockTrackingMode if it exists
@@ -696,7 +737,12 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }
     },
 
-    setMenuItemStockTrackingMode: (itemId: string, mode: "in_stock" | "out_of_stock" | "quantity", stockQuantity?: number, reorderThreshold?: number) => {
+    setMenuItemStockTrackingMode: (
+      itemId: string,
+      mode: "in_stock" | "out_of_stock" | "quantity",
+      stockQuantity?: number,
+      reorderThreshold?: number
+    ) => {
       set((state) => ({
         menuItems: state.menuItems.map((item) => {
           if (item.id === itemId) {

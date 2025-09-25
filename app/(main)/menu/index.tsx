@@ -320,7 +320,7 @@ const MenuPage: React.FC = () => {
     menuItems,
     categories: storeCategories,
     menus: storeMenus,
-    modifierGroups: storeModifierGroups,
+    modifierGroups,
     deleteMenuItem,
     toggleItemAvailability,
     getItemsInCategory,
@@ -379,144 +379,16 @@ const MenuPage: React.FC = () => {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Get unique categories from menu items (flatten arrays)
-  // const categories = Array.from(
-  //   new Set(
-  //     menuItems.flatMap((item) =>
-  //       Array.isArray(item.category) ? item.category : [item.category]
-  //     )
-  //   )
-  // ).sort();
-
-  // Get unique modifier groups from both menu items and store
-  const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
-    new Set(
-      menuItems.flatMap(
-        (item) => item.modifiers?.map((modifier) => modifier.id) || []
-      )
-    )
-  ).map((modifierId) => {
-    const modifier = menuItems
-      .find((item) => item.modifiers?.some((m) => m.id === modifierId))
-      ?.modifiers?.find((m) => m.id === modifierId);
-
-    const itemsUsingModifier = menuItems.filter((item) =>
-      item.modifiers?.some((m) => m.id === modifierId)
-    );
-
-    return {
-      id: modifierId,
-      name: modifier?.name || modifierId,
-      type: modifier?.type || "optional",
-      selectionType: modifier?.selectionType || "single",
-      description: modifier?.description,
-      options: modifier?.options || [],
-      items: itemsUsingModifier,
-      source: "menuItem" as const,
-    };
-  });
-
-  // Get modifier groups from store
-  // const storeModifierGroupsData: ExtendedModifierGroup[] =
-  //   storeModifierGroups.map((modifierGroup) => {
-  //     const itemsUsingModifier = menuItems.filter((item) =>
-  //       item.modifiers?.some((m) => m.id === modifierGroup.id)
-  //     );
-
-  //     return {
-  //       ...modifierGroup,
-  //       items: itemsUsingModifier,
-  //       source: "store" as const,
-  //     };
-  //   });
-
-  // Combine and deduplicate modifier groups
-  // const allModifierGroups = [
-  //   ...menuItemModifierGroups,
-  //   ...storeModifierGroupsData,
-  // ];
   const uniqueModifierGroups = useMemo(() => {
-    const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
-      new Set(
-        menuItems.flatMap(
-          (item) => item.modifiers?.map((modifier) => modifier.id) || []
-        )
-      )
-    ).map((modifierId) => {
-      // FIRST: Check if this modifier exists in the store (updated data)
-      const storeModifier = storeModifierGroups.find(
-        (m) => m.id === modifierId
-      );
-      if (storeModifier) {
-        const itemsUsingModifier = menuItems.filter((item) =>
-          item.modifiers?.some((m) => m.id === modifierId)
-        );
-        return {
-          ...storeModifier, // Use the store data (which gets updated)
-          items: itemsUsingModifier,
-          source: "store" as const,
-        };
-      }
-
-      // SECOND: Fallback to menu item data (for modifiers not in store)
-      const modifier = menuItems
-        .find((item) => item.modifiers?.some((m) => m.id === modifierId))
-        ?.modifiers?.find((m) => m.id === modifierId);
-
-      const itemsUsingModifier = menuItems.filter((item) =>
-        item.modifiers?.some((m) => m.id === modifierId)
-      );
-
-      return {
-        id: modifierId,
-        name: modifier?.name || modifierId,
-        type: modifier?.type || "optional",
-        selectionType: modifier?.selectionType || "single",
-        description: modifier?.description,
-        options: modifier?.options || [],
-        items: itemsUsingModifier,
-        source: "menuItem" as const,
-      };
-    });
-
-    const storeModifierGroupsData: ExtendedModifierGroup[] =
-      storeModifierGroups.map((modifierGroup) => {
-        const itemsUsingModifier = menuItems.filter((item) =>
-          item.modifiers?.some((m) => m.id === modifierGroup.id)
-        );
-
-        return {
-          ...modifierGroup,
-          items: itemsUsingModifier,
-          source: "store" as const,
-        };
-      });
-
-    const allModifierGroups = [
-      ...storeModifierGroupsData, // Store data first
-      ...menuItemModifierGroups.filter(
-        (mg) => !storeModifierGroupsData.some((storeMg) => storeMg.id === mg.id)
-      ),
-    ];
-
-    const reduced = allModifierGroups.reduce(
-      (acc: ExtendedModifierGroup[], current) => {
-        const existing = acc.find((item) => item.id === current.id);
-        if (!existing) {
-          acc.push(current);
-        } else {
-          const combinedItems = [
-            ...new Set([...existing.items, ...current.items]),
-          ];
-          existing.items = combinedItems;
-        }
-        return acc;
-      },
-      []
-    );
-
-    return reduced.sort((a, b) => a.name.localeCompare(b.name));
-  }, [menuItems, storeModifierGroups]);
+    return modifierGroups
+      .map((group) => ({
+        ...group,
+        items: menuItems.filter((item) =>
+          item.modifierGroupIds?.includes(group.id)
+        ),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [menuItems, modifierGroups]);
 
   // Filter menu items based on search
   const filteredItems = menuItems.filter((item) => {

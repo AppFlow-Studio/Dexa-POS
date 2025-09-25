@@ -190,7 +190,7 @@ export interface MenuItemType {
   availableDiscount?: Discount;
   sizes?: ItemSize[];
   addOns?: AddOn[];
-  modifiers?: ModifierCategory[];
+  modifierGroupIds?: string[];
   allergens?: string[];
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
