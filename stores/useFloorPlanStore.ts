@@ -124,11 +124,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.map((t) =>
-                t.id === tableId ? { ...t, ...newPosition } : t
-              ),
-            }
+            ...layout,
+            tables: layout.tables.map((t) =>
+              t.id === tableId ? { ...t, ...newPosition } : t
+            ),
+          }
           : layout
       ),
     }));
@@ -139,11 +139,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.map((t) =>
-                t.id === tableId ? { ...t, rotation: newRotation } : t
-              ),
-            }
+            ...layout,
+            tables: layout.tables.map((t) =>
+              t.id === tableId ? { ...t, rotation: newRotation } : t
+            ),
+          }
           : layout
       ),
     }));
@@ -154,9 +154,9 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.filter((t) => t.id !== tableId),
-            }
+            ...layout,
+            tables: layout.tables.filter((t) => t.id !== tableId),
+          }
           : layout
       ),
     }));
@@ -208,11 +208,11 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
                 order:
                   table.id === primaryTableId
                     ? {
-                        id: primaryOrderId,
-                        // Customer name can be simplified now
-                        customerName: `Group at ${table.name}`,
-                        total: 0,
-                      }
+                      id: primaryOrderId,
+                      // Customer name can be simplified now
+                      customerName: `Group at ${table.name}`,
+                      total: 0,
+                    }
                     : null,
               };
             }
@@ -246,13 +246,16 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     if (!table || (!table.isPrimary && !table.mergedWith?.length)) return;
 
     let groupIds: string[] = [];
+    let primaryId: string | null = null;
     if (table.isPrimary) {
+      primaryId = table.id;
       groupIds = [table.id, ...(table.mergedWith || [])];
     } else {
       const primaryTable = activeLayout.tables.find(
         (t) => t.isPrimary && t.mergedWith?.includes(tableId)
       );
       if (primaryTable) {
+        primaryId = primaryTable.id;
         groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
       }
     }
@@ -266,6 +269,17 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
             ...layout,
             tables: layout.tables.map((t) => {
               if (groupIds.includes(t.id)) {
+                // If this is the primary table, only unlink but keep its status and active order
+                if (t.id === primaryId) {
+                  return {
+                    ...t,
+                    isPrimary: undefined,
+                    mergedWith: undefined,
+                    // keep status, name, capacity, and order as-is
+                  } as typeof t;
+                }
+
+                // For connected tables, unlink and reset to available, no active order
                 const originalCapacity =
                   MOCK_TABLES.find((mt) => mt.id === t.id)?.capacity ||
                   t.capacity;

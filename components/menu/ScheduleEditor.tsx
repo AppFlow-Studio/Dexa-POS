@@ -1,117 +1,21 @@
 import { Schedule } from "@/lib/types";
-import { Clock, Plus, Trash2 } from "lucide-react-native";
+import { Clock, Plus } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 type DayKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 const DAY_ORDER: DayKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-interface TimeFieldProps {
-    value: string;
-    onChange: (next: string) => void;
-}
-
-const TimeField: React.FC<TimeFieldProps> = ({ value, onChange }) => {
-    // Very simple time picker made of increment buttons for iPad quick taps
-    const [hours, minutes] = useMemo(() => {
-        const [h = "0", m = "0"] = value?.split(":") ?? [];
-        return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
-    }, [value]);
-
-    const set = (h: number, m: number) => onChange(`${String((h + 24) % 24).padStart(2, "0")}:${String((m + 60) % 60).padStart(2, "0")}`);
-
-    const toAmPm = (h: number, m: number) => {
-        const period = h >= 12 ? "PM" : "AM";
-        const hour12 = h % 12 === 0 ? 12 : h % 12;
-        const minutesStr = String(m).padStart(2, "0");
-        return `${hour12}:${minutesStr} ${period}`;
-    };
-
-    return (
-        <View className="flex-row items-center gap-2">
-            <TouchableOpacity onPress={() => set(hours === 23 ? 0 : hours + 1, minutes)} className="px-2 py-1 bg-[#212121] border border-gray-600 rounded">
-                <Text className="text-white">+1h</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => set(hours === 0 ? 23 : hours - 1, minutes)} className="px-2 py-1 bg-[#212121] border border-gray-600 rounded">
-                <Text className="text-white">-1h</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => set(hours, (minutes + 15) % 60)} className="px-2 py-1 bg-[#212121] border border-gray-600 rounded">
-                <Text className="text-white">+15m</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => set(hours, (minutes + 45) % 60)} className="px-2 py-1 bg-[#212121] border border-gray-600 rounded">
-                <Text className="text-white">-15m</Text>
-            </TouchableOpacity>
-            <View className="flex-row items-center gap-2 ml-2">
-                <View className="flex-row items-center gap-1">
-                    <Clock size={16} color="#9CA3AF" />
-                    <Text className="text-white font-medium">{String(hours).padStart(2, "0")}:{String(minutes).padStart(2, "0")}</Text>
-                </View>
-                <View className="px-2 py-1 rounded bg-[#212121] border border-gray-600">
-                    <Text className="text-gray-300 text-xs">{toAmPm(hours, minutes)}</Text>
-                </View>
-            </View>
-        </View>
-    );
-};
-
 export interface ScheduleEditorProps {
     value: Schedule[] | undefined;
     onChange: (next: Schedule[]) => void;
+    onAddPress?: () => void;
+    onEditPress?: (rule: Schedule, index: number) => void;
 }
 
-const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ value, onChange }) => {
+const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ value, onChange, onAddPress, onEditPress }) => {
     const schedules = value ?? [];
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-    const toggleDay = (idx: number, day: DayKey) => {
-        const rule = schedules[idx];
-        const has = rule.days.includes(day);
-        const nextDays = has ? rule.days.filter((d) => d !== day) : [...rule.days, day];
-        const ordered = DAY_ORDER.filter((d) => nextDays.includes(d));
-        changeRule(idx, { days: ordered });
-    };
-
-    const changeRule = (idx: number, updates: Partial<Schedule>) => {
-        const next = schedules.map((r, i) => (i === idx ? { ...r, ...updates } : r));
-        // block if overlap would be introduced
-        for (let i = 0; i < next.length; i++) {
-            for (let j = i + 1; j < next.length; j++) {
-                if (hasOverlap(next[i], next[j])) {
-                    setErrorMsg("Change prevented: overlapping rules are not allowed.");
-                    return;
-                }
-            }
-        }
-        setErrorMsg(null);
-        onChange(next);
-    };
-
-    const removeRule = (idx: number) => {
-        const next = schedules.filter((_, i) => i !== idx);
-        onChange(next);
-    };
-
-    const addRule = () => {
-        const newRule: Schedule = {
-            id: `sch_${Date.now()}`,
-            name: "New Rule",
-            startTime: "11:00",
-            endTime: "15:00",
-            days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-            isActive: true,
-        };
-        const next = [...(schedules ?? []), newRule];
-        for (let i = 0; i < next.length; i++) {
-            for (let j = i + 1; j < next.length; j++) {
-                if (hasOverlap(next[i], next[j])) {
-                    setErrorMsg("Cannot add rule: it overlaps an existing one.");
-                    return;
-                }
-            }
-        }
-        setErrorMsg(null);
-        onChange(next);
-    };
 
     const hasOverlap = (a: Schedule, b: Schedule) => {
         const sharedDays = a.days.some((d) => b.days.includes(d));
@@ -127,7 +31,6 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ value, onChange }) => {
         if (aEnd >= aStart && bEnd >= bStart) {
             return aStart < bEnd && bStart < aEnd;
         }
-        // Overnight windows considered overlapping for shared days to keep UX simple
         return true;
     };
 
@@ -143,6 +46,17 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ value, onChange }) => {
         return flags;
     }, [schedules]);
 
+    const addRule = () => {
+        if (onAddPress) onAddPress();
+    };
+
+    const formatTime = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        const d = new Date();
+        d.setHours(h, m || 0, 0, 0);
+        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    };
+
     return (
         <View className="gap-3">
             {!!errorMsg && (
@@ -151,55 +65,62 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({ value, onChange }) => {
                 </View>
             )}
             {schedules.length === 0 && (
-                <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+                <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
                     <Text className="text-gray-300">No schedules yet.</Text>
                 </View>
             )}
 
             {schedules.map((rule, idx) => (
-                <View key={rule.id} className={`bg-[#303030] border rounded-lg p-4 ${overlaps[idx] ? "border-red-500" : "border-gray-600"}`}>
-                    <View className="flex-row items-center justify-between mb-3">
-                        <Text className="text-white font-semibold">{rule.name || `Rule ${idx + 1}`}</Text>
-                        <TouchableOpacity onPress={() => removeRule(idx)} className="p-2 bg-red-900/30 border border-red-500 rounded">
-                            <Trash2 size={16} color="#F87171" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <View className="mb-3">
-                        <Text className="text-gray-300 mb-2">Days</Text>
-                        <View className="flex-row flex-wrap gap-2">
-                            {DAY_ORDER.map((d) => {
-                                const active = rule.days.includes(d);
-                                return (
-                                    <TouchableOpacity key={d} onPress={() => toggleDay(idx, d)} className={`px-3 py-2 rounded-lg border ${active ? "bg-blue-600 border-blue-500" : "bg-[#212121] border-gray-600"}`}>
-                                        <Text className={`text-sm ${active ? "text-white" : "text-gray-300"}`}>{d}</Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
+                <TouchableOpacity
+                    key={rule.id}
+                    onPress={() => onEditPress && onEditPress(rule, idx)}
+                    activeOpacity={0.9}
+                    className={`bg-[#303030] border rounded-xl p-5 ${overlaps[idx] ? "border-red-500" : "border-gray-600"}`}
+                >
+                    <View className="flex-row items-center justify-between mb-2">
+                        <Text className="text-white text-2xl font-semibold" numberOfLines={1}>
+                            {rule.name || `Rule ${idx + 1}`}
+                        </Text>
+                        <View className="flex-row items-center">
+                            <Clock size={18} color="#9CA3AF" />
                         </View>
                     </View>
 
-                    <View className="mb-2">
-                        <Text className="text-gray-300 mb-2">Start Time</Text>
-                        <TimeField value={rule.startTime} onChange={(v) => changeRule(idx, { startTime: v })} />
-                    </View>
-
-                    <View className="mb-2">
-                        <Text className="text-gray-300 mb-2">End Time</Text>
-                        <TimeField value={rule.endTime} onChange={(v) => changeRule(idx, { endTime: v })} />
-                    </View>
+                    <Text className="text-white text-xl font-medium">
+                        {formatTime(rule.startTime)}
+                        <Text className="text-gray-400">  to  </Text>
+                        {formatTime(rule.endTime)}
+                    </Text>
 
                     <View className="mt-2">
-                        <Text className={`text-xs ${overlaps[idx] ? "text-red-400" : "text-gray-400"}`}>
-                            {overlaps[idx] ? "This rule overlaps another. Adjust times or days." : ""}
-                        </Text>
+                        <Text className="text-gray-300 text-lg">Days available</Text>
+                        <View className="flex-row flex-wrap gap-2 mt-1">
+                            {DAY_ORDER.map((d) => (
+                                <View
+                                    key={d}
+                                    className={`px-3 py-1.5 rounded-full border ${rule.days.includes(d)
+                                        ? "bg-blue-900/40 border-blue-500"
+                                        : "bg-[#212121] border-gray-600"}`}
+                                >
+                                    <Text className={`${rule.days.includes(d) ? "text-blue-200" : "text-gray-400"} text-base`}>{d}</Text>
+                                </View>
+                            ))}
+                        </View>
                     </View>
-                </View>
+
+                    {overlaps[idx] && (
+                        <View className="mt-3 bg-red-900/30 border border-red-500 rounded-lg p-2">
+                            <Text className="text-red-400 text-sm">
+                                This rule overlaps another. Tap to edit.
+                            </Text>
+                        </View>
+                    )}
+                </TouchableOpacity>
             ))}
 
-            <TouchableOpacity onPress={addRule} className="flex-row items-center gap-2 px-4 py-3 rounded-lg bg-blue-600 self-start">
-                <Plus size={16} color="#FFFFFF" />
-                <Text className="text-white font-medium">Add Schedule</Text>
+            <TouchableOpacity onPress={addRule} className="flex-row items-center gap-2 px-5 py-4 rounded-lg bg-blue-600 self-start">
+                <Plus size={18} color="#FFFFFF" />
+                <Text className="text-white text-xl font-semibold">Add Schedule</Text>
             </TouchableOpacity>
         </View>
     );

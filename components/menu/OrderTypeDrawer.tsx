@@ -316,7 +316,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   placeholderTextColor="#9CA3AF"
                   value={customerName}
                   onChangeText={setCustomerName}
-                  autoFocus
+                  
                 />
               </View>
 

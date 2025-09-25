@@ -18,7 +18,7 @@ export const useMenuManagementSearchStore = create<MenuSearchStore>((set) => ({
     const { searchSheetRef } = useMenuManagementSearchStore.getState();
     // Safely access the .current property
     if (searchSheetRef?.current) {
-      searchSheetRef.current.snapToIndex(0);
+      searchSheetRef.current.expand();
     }
   },
   closeSearch: () => {

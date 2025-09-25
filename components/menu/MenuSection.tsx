@@ -81,6 +81,13 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   );
   const { openSearch } = useSearchStore();
 
+  // Tick each minute to refresh availability indicators
+  const [availabilityTick, setAvailabilityTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAvailabilityTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Get current order type
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const currentOrderType = activeOrder?.order_type || "Take Away";
@@ -98,6 +105,43 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     setIsMenuDialogOpen(false);
   };
 
+  // Compute next availability window for the active category
+  const nextAvailability = useMemo(() => {
+    const cat = categories.find((c) => c.name === activeCategory);
+    const rules = (cat?.schedules || []).filter((r) => r.isActive);
+    const availableNow = isCategoryAvailableNow(activeCategory);
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const now = new Date();
+
+    let bestStart: Date | null = null;
+    let bestEnd: Date | null = null;
+
+    // Search up to two weeks ahead for the next window
+    for (let offset = 0; offset < 14 && !availableNow; offset++) {
+      const check = new Date(now);
+      check.setDate(now.getDate() + offset);
+      const dayKey = dayNames[check.getDay()];
+      const todays = rules.filter((r) => r.days.includes(dayKey as any));
+      for (const r of todays) {
+        const [sh, sm] = r.startTime.split(":").map(Number);
+        const [eh, em] = r.endTime.split(":").map(Number);
+        const start = new Date(check);
+        start.setHours(sh, sm || 0, 0, 0);
+        const end = new Date(check);
+        end.setHours(eh, em || 0, 0, 0);
+        if (start > now) {
+          if (!bestStart || start < bestStart) {
+            bestStart = start;
+            bestEnd = end;
+          }
+        }
+      }
+      if (bestStart) break;
+    }
+
+    return { availableNow, start: bestStart, end: bestEnd };
+  }, [activeCategory, categories, isCategoryAvailableNow, availabilityTick]);
+
   useEffect(() => {
     const filtered = menuItems.filter((item) => {
       const categoryMatch = item.category.includes(activeCategory);
@@ -105,7 +149,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       return categoryMatch && categoryAvailable;
     });
     setFilteredMenuItems(filtered);
-  }, [activeMeal, activeCategory, isCategoryAvailableNow]);
+  }, [activeMeal, activeCategory, isCategoryAvailableNow, menuItems, availabilityTick]);
   const numColumns = 4;
   const dataWithSpacers = useMemo(() => {
     const items = [...filteredMenuItems];
@@ -121,7 +165,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         price: 0,
         category: [],
         meal: [],
-      });
+      } as any);
     }
     return items;
   }, [filteredMenuItems]);
@@ -129,6 +173,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   if (isOpen && mode === "fullscreen") {
     return <ModifierScreen />;
   }
+
+  const formatTime = (d?: Date | null) =>
+    d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
 
   return (
     <>
@@ -227,25 +274,22 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                     <TouchableOpacity
                       key={menu.id}
                       onPress={() => handleMenuSelect(menu.name)}
-                      className={`p-4 rounded-lg border ${
-                        activeMeal === menu.name
-                          ? "bg-blue-600 border-blue-400"
-                          : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`p-4 rounded-lg border ${activeMeal === menu.name
+                        ? "bg-blue-600 border-blue-400"
+                        : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <Text
-                        className={`font-semibold text-lg ${
-                          activeMeal === menu.name ? "text-white" : "text-white"
-                        }`}
+                        className={`font-semibold text-lg ${activeMeal === menu.name ? "text-white" : "text-white"
+                          }`}
                       >
                         {menu.name}
                       </Text>
                       <Text
-                        className={`text-sm mt-1 ${
-                          activeMeal === menu.name
-                            ? "text-blue-100"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-sm mt-1 ${activeMeal === menu.name
+                          ? "text-blue-100"
+                          : "text-gray-400"
+                          }`}
                       >
                         {menu.description}
                       </Text>
@@ -253,18 +297,16 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                         {menu.categories.map((category, index) => (
                           <View
                             key={index}
-                            className={`px-2 py-1 rounded-full ${
-                              activeMeal === menu.name
-                                ? "bg-blue-500"
-                                : "bg-gray-600"
-                            }`}
+                            className={`px-2 py-1 rounded-full ${activeMeal === menu.name
+                              ? "bg-blue-500"
+                              : "bg-gray-600"
+                              }`}
                           >
                             <Text
-                              className={`text-xs ${
-                                activeMeal === menu.name
-                                  ? "text-white"
-                                  : "text-gray-300"
-                              }`}
+                              className={`text-xs ${activeMeal === menu.name
+                                ? "text-white"
+                                : "text-gray-300"
+                                }`}
                             >
                               {category}
                             </Text>
@@ -294,6 +336,36 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             />
           )}
 
+          {/* Availability indicator for active category */}
+          {/* {activeTab === "Menu" && (
+            <View className="mt-3 mb-1 flex-row items-center gap-3">
+              <View
+                className={`px-3 py-2 rounded-full ${nextAvailability.availableNow
+                    ? "bg-green-900/30 border border-green-500"
+                    : "bg-red-900/30 border border-red-500"
+                  }`}
+              >
+                <Text
+                  className={`text-sm ${nextAvailability.availableNow ? "text-green-400" : "text-red-400"
+                    }`}
+                >
+                  {nextAvailability.availableNow ? "Available now" : "Unavailable now"}
+                </Text>
+              </View>
+              {!nextAvailability.availableNow && (
+                <Text className="text-sm text-gray-300">
+                  {(() => {
+                    const s = nextAvailability.start as Date | null | undefined;
+                    const e = nextAvailability.end as Date | null | undefined;
+                    return s
+                      ? `Next: ${s.toLocaleDateString(undefined, { weekday: "short" })} ${formatTime(s)} – ${formatTime(e)}`
+                      : "No upcoming window";
+                  })()}
+                </Text>
+              )}
+            </View>
+          )} */}
+
           {activeTab === "Menu" ? (
             <View key={"Menu"}>
               <FlatList
@@ -314,7 +386,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   </View>
                 }
                 renderItem={({ item }) => {
-                  if (item.name === "spacer") {
+                  if ((item as any).name === "spacer") {
                     return <View className="w-[23%]" />;
                   }
 

@@ -18,6 +18,9 @@ interface MenuState {
   menus: Menu[];
   modifierGroups: ModifierCategory[];
 
+  // Global scheduling toggle
+  isMenuSchedulingEnabled: boolean;
+
   // Per-menu overrides for category availability (does not remove the category)
   // map: menuId -> (categoryId -> isActive)
   menuCategoryOverrides: Record<string, Record<string, boolean>>;
@@ -62,6 +65,7 @@ interface MenuState {
   setCategorySchedules: (id: string, schedules: Schedule[]) => void;
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
+  setMenuSchedulingEnabled: (isEnabled: boolean) => void;
   // MENU STOCK (optional per-menu-item)
   decreaseMenuItemStock: (itemId: string, quantity: number) => void;
   increaseMenuItemStock: (itemId: string, quantity: number) => void;
@@ -75,6 +79,12 @@ interface MenuState {
   deleteCustomPricing: (itemId: string, pricingId: string) => void;
   toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
   getItemPriceForCategory: (itemId: string, categoryId: string) => number;
+
+  // Category schedule info helper
+  getCategoryScheduleInfo: (
+    name: string,
+    at?: Date
+  ) => { daysAvailable: string[]; availableToday: boolean; timeframe: string | null };
 
 }
 
@@ -144,6 +154,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     categories: initialCategories,
     menus: initialMenus,
     modifierGroups: initialModifierGroups,
+    isMenuSchedulingEnabled: true,
     menuCategoryOverrides: {},
     // // CRUD Operations
     addMenuItem: (itemData) => {
@@ -488,6 +499,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
       const menu = state.menus.find((m: Menu) => m.id === id);
       if (!menu) return false;
       if (!menu.isActive) return false;
+      // If global scheduling is disabled, treat as always available when active
+      if (!state.isMenuSchedulingEnabled) return true;
       if (!menu.schedules || menu.schedules.length === 0) return true;
       return isNowInAnySchedule(menu.schedules, at);
     },
@@ -496,9 +509,13 @@ export const useMenuStore = create<MenuState>((set, get) => {
       const cat = state.categories.find((c: Category) => c.name === name);
       if (!cat) return false;
       if (!cat.isActive) return false;
+      // If global scheduling is disabled, treat as always available when active
+      if (!state.isMenuSchedulingEnabled) return true;
       if (!cat.schedules || cat.schedules.length === 0) return true;
       return isNowInAnySchedule(cat.schedules, at);
     },
+    setMenuSchedulingEnabled: (isEnabled: boolean) =>
+      set(() => ({ isMenuSchedulingEnabled: isEnabled })),
 
     // Custom Pricing Operations
     addCustomPricing: (itemId, customPricing) => {
@@ -707,6 +724,38 @@ export const useMenuStore = create<MenuState>((set, get) => {
           return item;
         }),
       }));
+    },
+
+    // Category schedule info helper
+    getCategoryScheduleInfo: (name: string, at?: Date) => {
+      const state = get();
+      const cat = state.categories.find((c) => c.name === name);
+      const schedules = (cat?.schedules || []).filter((r) => r.isActive);
+      const daysAvailable = Array.from(
+        new Set(schedules.flatMap((r) => r.days))
+      ) as string[];
+      const now = at ?? new Date();
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const todayKey = dayNames[now.getDay()];
+      const todays = schedules.filter((r) => r.days.includes(todayKey as any));
+      const availableToday = todays.length > 0;
+
+      // If multiple windows today, return the first window as timeframe (or join)
+      const formatTime = (t: string) => {
+        const [h, m] = t.split(":").map(Number);
+        const d = new Date();
+        d.setHours(h, m || 0, 0, 0);
+        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      };
+      let timeframe: string | null = null;
+      if (availableToday) {
+        // Combine all windows into comma-separated ranges
+        timeframe = todays
+          .map((r) => `${formatTime(r.startTime)} to ${formatTime(r.endTime)}`)
+          .join(", ");
+      }
+
+      return { daysAvailable, availableToday, timeframe };
     },
   };
 });

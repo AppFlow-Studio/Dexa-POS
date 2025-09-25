@@ -1,8 +1,11 @@
+import MenuAddScheduleSheet from "@/components/menu/MenuAddScheduleSheet";
+import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
 import { useMenuStore } from "@/stores/useMenuStore";
+import BottomSheet from "@gorhom/bottom-sheet";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -32,6 +35,26 @@ const EditMenuScreen: React.FC = () => {
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
   >({});
+
+  // Add Schedule bottom sheet
+  const addScheduleRef = useRef<BottomSheet>(null);
+  const openAddSchedule = () => addScheduleRef.current?.expand();
+  const handleSaveSchedule = (rule: any) => setSchedules([...(schedules ?? []), rule]);
+
+  // Edit Schedule sheet
+  const editSheetRef = useRef<BottomSheet>(null);
+  const [editingRule, setEditingRule] = useState<any>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const openEditSchedule = (rule: any, index: number) => {
+    setEditingRule(rule);
+    setEditingIndex(index);
+    editSheetRef.current?.expand();
+  };
+  const handleEditSave = (updated: any) => {
+    if (editingIndex === null) return;
+    const next = schedules.map((r, i) => (i === editingIndex ? updated : r));
+    setSchedules(next);
+  };
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories((prev) =>
@@ -160,7 +183,6 @@ const EditMenuScreen: React.FC = () => {
               );
             })}
           </View>
-          {/* Expandable selected categories */}
           {selectedCategories.length > 0 && (
             <View className="mt-4 gap-4">
               {selectedCategories
@@ -242,9 +264,17 @@ const EditMenuScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
           </View>
-          <ScheduleEditor value={schedules} onChange={setSchedules} />
+          <ScheduleEditor
+            value={schedules}
+            onChange={setSchedules}
+            onAddPress={openAddSchedule}
+            onEditPress={openEditSchedule}
+          />
         </View>
       </ScrollView>
+
+      <MenuAddScheduleSheet ref={addScheduleRef} existing={schedules} onSave={handleSaveSchedule} />
+      <ScheduleEditSheet ref={editSheetRef} rule={editingRule} onSave={handleEditSave} />
     </View>
   );
 };

@@ -12,15 +12,6 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { Plus, Trash2 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
 import { ChevronDown, Plus, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -350,11 +341,10 @@ const CreatePurchaseOrderScreen = () => {
           <TouchableOpacity
             disabled={!selectedVendorId}
             onPress={() => itemsSheetRef.current?.expand()}
-            className={`mt-4 py-3 border border-dashed rounded-lg items-center ${
-              selectedVendorId
-                ? "border-gray-500"
-                : "border-gray-700 opacity-50"
-            }`}
+            className={`mt-4 py-3 border border-dashed rounded-lg items-center ${selectedVendorId
+              ? "border-gray-500"
+              : "border-gray-700 opacity-50"
+              }`}
           >
             <Text className="text-xl font-semibold text-gray-300">
               + Add Item
