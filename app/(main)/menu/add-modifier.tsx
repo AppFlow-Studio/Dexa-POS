@@ -59,6 +59,14 @@ const AddModifierScreen: React.FC = () => {
       newErrors.options = "Please add at least one option";
     }
 
+    if(formData.options.some((option) => option.name.trim() === "")) {
+      newErrors.options = "Option name is required";
+    }
+    
+    if(formData.type === "required" && formData.options.some((option) => option.isDefault !== true)) {
+      newErrors.options = "One option must be set as default";
+    }
+
     if (
       formData.selectionType === "multiple" &&
       formData.maxSelections &&
@@ -69,6 +77,7 @@ const AddModifierScreen: React.FC = () => {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+
   };
 
   // Handle save

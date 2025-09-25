@@ -12,8 +12,8 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { Plus, Trash2 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import { ChevronDown, Plus, Trash2, User } from "lucide-react-native";
+import { default as React, useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   ScrollView,
@@ -21,9 +21,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ChevronDown, Plus, Trash2, User } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import POVendorsSheet from "./_compoenets/POVendorsSheet";
@@ -42,7 +39,9 @@ const CreatePurchaseOrderScreen = () => {
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(activeEmployeeId);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
+    activeEmployeeId
+  );
   const [lineItems, setLineItems] = useState<POLineItem[]>([]);
   const vendorsSheetRef = useRef<BottomSheet>(null);
   const itemsSheetRef = useRef<BottomSheet>(null);
@@ -156,7 +155,7 @@ const CreatePurchaseOrderScreen = () => {
       alert("Please select a vendor and add at least one item.");
       return;
     }
-    const assignedEmployee = employees.find(e => e.id === selectedEmployeeId);
+    const assignedEmployee = employees.find((e) => e.id === selectedEmployeeId);
     createPurchaseOrder({
       vendorId: selectedVendorId,
       status: "Draft",
@@ -174,14 +173,14 @@ const CreatePurchaseOrderScreen = () => {
     }
     // First create as Draft, then immediately submit to Pending Delivery
     const tempId = `po_${Date.now()}`; // predict id not ideal, so instead we update latest created
-    const assignedEmployee = employees.find(e => e.id === selectedEmployeeId);
+    const assignedEmployee = employees.find((e) => e.id === selectedEmployeeId);
     createPurchaseOrder({
       vendorId: selectedVendorId,
       status: "Pending Delivery",
       items: lineItems,
 
       createdByEmployeeId: selectedEmployeeId || undefined,
-      createdByEmployeeName: assignedEmployee?.fullName
+      createdByEmployeeName: assignedEmployee?.fullName,
     });
     router.back();
   };
@@ -227,11 +226,16 @@ const CreatePurchaseOrderScreen = () => {
           Create Purchase Order
         </Text>
         <View className="flex-row gap-3">
-
-          <TouchableOpacity onPress={() => router.back()} className="py-4 px-6 bg-gray-600 rounded-lg">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="py-4 px-6 bg-gray-600 rounded-lg"
+          >
             <Text className="text-2xl font-bold text-white">Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSave} className="py-4 px-6 bg-gray-600 rounded-lg">
+          <TouchableOpacity
+            onPress={handleSave}
+            className="py-4 px-6 bg-gray-600 rounded-lg"
+          >
             <Text className="text-2xl font-bold text-white">Save as Draft</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -257,7 +261,9 @@ const CreatePurchaseOrderScreen = () => {
         </TouchableOpacity>
 
         <View className="mt-6">
-          <Text className="text-xl font-medium text-gray-300 mb-2">Assigned Employee</Text>
+          <Text className="text-xl font-medium text-gray-300 mb-2">
+            Assigned Employee
+          </Text>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-4 flex-row items-center justify-between">
@@ -265,7 +271,8 @@ const CreatePurchaseOrderScreen = () => {
                   <User color="#9CA3AF" size={20} className="mr-2" />
                   <Text className="text-2xl text-white">
                     {selectedEmployeeId
-                      ? employees.find((e) => e.id === selectedEmployeeId)?.fullName
+                      ? employees.find((e) => e.id === selectedEmployeeId)
+                          ?.fullName
                       : "Select an employee..."}
                   </Text>
                 </View>
@@ -282,7 +289,11 @@ const CreatePurchaseOrderScreen = () => {
                   <View className="flex-row items-center flex-1">
                     <View className="w-8 h-8 bg-blue-600 rounded-full items-center justify-center mr-3">
                       <Text className="text-white text-sm font-semibold">
-                        {employee.fullName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                        {employee.fullName
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()}
                       </Text>
                     </View>
                     <View className="flex-1">
@@ -290,7 +301,9 @@ const CreatePurchaseOrderScreen = () => {
                         {employee.fullName}
                       </Text>
                       <Text className="text-gray-400 text-sm">
-                        {employee.shiftStatus === 'clocked_in' ? 'Currently Clocked In' : 'Clocked Out'}
+                        {employee.shiftStatus === "clocked_in"
+                          ? "Currently Clocked In"
+                          : "Clocked Out"}
                       </Text>
                     </View>
                     {selectedEmployeeId === employee.id && (

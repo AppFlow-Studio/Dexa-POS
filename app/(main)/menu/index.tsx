@@ -15,7 +15,7 @@ import {
   Trash2,
   Utensils,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -370,19 +370,23 @@ const MenuPage: React.FC = () => {
     isAvailableNow: isMenuAvailableNow(storeMenu.id),
   }));
 
-  // Get unique categories from menu items (flatten arrays)
-  const categories = Array.from(
-    new Set(
-      menuItems.flatMap((item) =>
-        Array.isArray(item.category) ? item.category : [item.category]
-      )
-    )
-  ).sort();
+  // Periodic tick to refresh time-based availability
+  const [availabilityTick, setAvailabilityTick] = useState(0);
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setAvailabilityTick((t) => t + 1);
+    }, 60_000);
+    return () => clearInterval(intervalId);
+  }, []);
 
-  // Get unique meals
-  const meals = Array.from(
-    new Set(menuItems.flatMap((item) => item.meal))
-  ).sort();
+  // Get unique categories from menu items (flatten arrays)
+  // const categories = Array.from(
+  //   new Set(
+  //     menuItems.flatMap((item) =>
+  //       Array.isArray(item.category) ? item.category : [item.category]
+  //     )
+  //   )
+  // ).sort();
 
   // Get unique modifier groups from both menu items and store
   const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
@@ -413,24 +417,24 @@ const MenuPage: React.FC = () => {
   });
 
   // Get modifier groups from store
-  const storeModifierGroupsData: ExtendedModifierGroup[] =
-    storeModifierGroups.map((modifierGroup) => {
-      const itemsUsingModifier = menuItems.filter((item) =>
-        item.modifiers?.some((m) => m.id === modifierGroup.id)
-      );
+  // const storeModifierGroupsData: ExtendedModifierGroup[] =
+  //   storeModifierGroups.map((modifierGroup) => {
+  //     const itemsUsingModifier = menuItems.filter((item) =>
+  //       item.modifiers?.some((m) => m.id === modifierGroup.id)
+  //     );
 
-      return {
-        ...modifierGroup,
-        items: itemsUsingModifier,
-        source: "store" as const,
-      };
-    });
+  //     return {
+  //       ...modifierGroup,
+  //       items: itemsUsingModifier,
+  //       source: "store" as const,
+  //     };
+  //   });
 
   // Combine and deduplicate modifier groups
-  const allModifierGroups = [
-    ...menuItemModifierGroups,
-    ...storeModifierGroupsData,
-  ];
+  // const allModifierGroups = [
+  //   ...menuItemModifierGroups,
+  //   ...storeModifierGroupsData,
+  // ];
   const uniqueModifierGroups = useMemo(() => {
     const menuItemModifierGroups: ExtendedModifierGroup[] = Array.from(
       new Set(
@@ -550,6 +554,10 @@ const MenuPage: React.FC = () => {
     ]);
   };
 
+  const handleCategoryActive = (id: string) => {
+    toggleCategoryActive(id);
+  };
+
   const handleToggleAvailability = (id: string) => {
     toggleItemAvailability(id);
   };
@@ -601,27 +609,29 @@ const MenuPage: React.FC = () => {
 
       <ScrollView className="flex-1">
         <View className="gap-4">
-          {menus.map((menu, index) => (
-            <DraggableMenu
-              key={menu.id}
-              menu={menu}
-              index={index}
-              onReorder={handleReorderMenus}
-              onReorderCategories={handleReorderMenuCategories}
-              onToggleMenuActive={handleToggleMenuActive}
-              onToggleCategoryActive={handleToggleCategoryActiveForMenu}
-              onSchedule={() => {
-                // Find the original menu from storeMenus to avoid type issues
-                const originalMenu = storeMenus.find((m) => m.id === menu.id);
-                if (originalMenu) {
-                  setSelectedMenu(originalMenu);
-                  setScheduleViewType("menus");
-                  setShowScheduleModal(true);
-                }
-              }}
-              onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-            />
-          ))}
+          {menus
+            .filter((m) => m.isActive && m.isAvailableNow)
+            .map((menu, index) => (
+              <DraggableMenu
+                key={menu.id}
+                menu={menu}
+                index={index}
+                onReorder={handleReorderMenus}
+                onReorderCategories={handleReorderMenuCategories}
+                onToggleMenuActive={handleToggleMenuActive}
+                onToggleCategoryActive={handleToggleCategoryActiveForMenu}
+                onSchedule={() => {
+                  // Find the original menu from storeMenus to avoid type issues
+                  const originalMenu = storeMenus.find((m) => m.id === menu.id);
+                  if (originalMenu) {
+                    setSelectedMenu(originalMenu);
+                    setScheduleViewType("menus");
+                    setShowScheduleModal(true);
+                  }
+                }}
+                onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+              />
+            ))}
         </View>
       </ScrollView>
     </View>
@@ -644,12 +654,12 @@ const MenuPage: React.FC = () => {
 
       <ScrollView className="flex-1">
         <View className="gap-4">
-          {categories.map((categoryName) => {
-            const categoryItems = getItemsInCategory(categoryName);
-            const isExpanded = !!expandedCategories[categoryName];
+          {storeCategories?.map((categoryName) => {
+            const categoryItems = getItemsInCategory(categoryName.name);
+            const isExpanded = !!expandedCategories[categoryName.name];
             return (
               <View
-                key={categoryName}
+                key={categoryName.name}
                 className="bg-[#303030] rounded-lg border border-gray-700 p-6"
               >
                 <View className="flex-row justify-between items-center">
@@ -657,7 +667,7 @@ const MenuPage: React.FC = () => {
                     onPress={() =>
                       setExpandedCategories((prev) => ({
                         ...prev,
-                        [categoryName]: !isExpanded,
+                        [categoryName.name]: !isExpanded,
                       }))
                     }
                     className="flex-row items-center gap-3 flex-1"
@@ -669,7 +679,7 @@ const MenuPage: React.FC = () => {
                     )}
                     {/* <GripVertical size={24} color="#9CA3AF" /> */}
                     <Text className="font-medium text-white text-3xl">
-                      {categoryName}
+                      {categoryName.name}
                     </Text>
                     <View className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded">
                       <Text className="text-xl text-blue-400">
@@ -682,13 +692,20 @@ const MenuPage: React.FC = () => {
                     <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
                       <Clock size={24} color="#9CA3AF" />
                     </TouchableOpacity>
-                    <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
-                      <Eye size={24} color="#10B981" />
+                    <TouchableOpacity
+                      onPress={() => handleCategoryActive(categoryName?.id)}
+                      className="p-3 bg-[#212121] rounded border border-gray-600"
+                    >
+                      {categoryName.isActive ? (
+                        <Eye size={24} color="#10B981" />
+                      ) : (
+                        <EyeOff size={24} color="#EF4444" />
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
                         const cat = storeCategories.find(
-                          (c) => c.name === categoryName
+                          (c) => c.name === categoryName.name
                         );
                         if (cat)
                           router.push(`/menu/edit-category?id=${cat.id}`);
@@ -710,7 +727,7 @@ const MenuPage: React.FC = () => {
                       <View className="gap-3 flex flex-row flex-wrap">
                         {categoryItems.map((item) => {
                           const category = storeCategories.find(
-                            (c) => c.name === categoryName
+                            (c) => c.name === categoryName.name
                           );
                           const categoryPrice = category
                             ? getItemPriceForCategory(item.id, category.id)
@@ -1201,12 +1218,12 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           )}
 
           <View className="flex-row gap-4">
-            <Text className="text-sm text-gray-400">
+            {/* <Text className="text-sm text-gray-400">
               Categories:{" "}
               {Array.isArray(item.category)
                 ? item.category.join(", ")
                 : item.category}
-            </Text>
+            </Text> */}
             <Text className="text-sm text-gray-400">
               Price: ${item.price.toFixed(2)}
             </Text>

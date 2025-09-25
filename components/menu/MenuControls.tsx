@@ -39,10 +39,19 @@ const MenuControls: React.FC<MenuControlsProps> = ({
     isMenuAvailableNow,
     isCategoryAvailableNow,
     isCategoryActiveForMenu,
+    getCategoryScheduleInfo,
   } = useMenuStore();
   const visibleMenus = menus.filter(
     (m) => m.isActive && isMenuAvailableNow(m.id)
   );
+  // Trigger re-render every minute so availability updates as time passes
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      forceUpdate();
+    }, 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
   const currentMenu = visibleMenus.find((menu) => menu.name === activeMeal);
   const categories = currentMenu?.categories;
   const ref = React.useRef<TriggerRef>(null);
@@ -69,6 +78,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
           >
             {categories?.map((tab, index) => {
               const baseAvailable = isCategoryAvailableNow(tab);
+              const categoryAvailableInfo = getCategoryScheduleInfo(tab);
               const catObj = storeCategories.find((c) => c.name === tab);
               const menuActive =
                 currentMenu && catObj
@@ -82,13 +92,12 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 <View key={tab} className="w-fit flex-row items-center">
                   <TouchableOpacity
                     onPress={() => !isDisabled && onCategoryChange(tab)}
-                    className={`py-3 px-6 rounded-full flex-row items-center gap-2 ${
-                      activeCategory === tab
-                        ? "border border-accent-300 bg-accent-100"
-                        : isDisabled
-                          ? "border border-gray-600 bg-gray-700 opacity-60"
-                          : "border border-transparent"
-                    }`}
+                    className={`py-3 px-6 rounded-full flex-row items-center gap-2 ${activeCategory === tab
+                      ? "border border-accent-300 bg-accent-100"
+                      : isDisabled
+                        ? "border border-gray-600 bg-gray-700 opacity-60"
+                        : "border border-transparent"
+                      }`}
                   >
                     {/* Availability dot */}
                     <View
@@ -96,15 +105,17 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                       style={{ backgroundColor: dotColor }}
                     />
                     <Text
-                      className={`font-semibold text-2xl ${
-                        activeCategory === tab
-                          ? "text-accent-400"
-                          : isDisabled
-                            ? "text-gray-400"
-                            : "text-accent-100"
-                      }`}
+                      className={`font-semibold text-2xl ${activeCategory === tab
+                        ? "text-accent-400"
+                        : isDisabled
+                          ? "text-gray-400"
+                          : "text-accent-100"
+                        }`}
                     >
                       {tab}
+                    </Text>
+                    <Text className="text-gray-400 text-xs">
+                      {!baseAvailable && categoryAvailableInfo.timeframe}
                     </Text>
                   </TouchableOpacity>
                   <View

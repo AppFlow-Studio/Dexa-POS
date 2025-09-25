@@ -1,6 +1,13 @@
+import CategoryAddScheduleSheet from "@/components/menu/CategoryAddScheduleSheet";
+import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
 import { CustomPricing, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetTextInput
+} from "@gorhom/bottom-sheet";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
@@ -10,11 +17,12 @@ import {
   Minus,
   Plus,
   Save,
+  Search,
   Trash2,
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -22,7 +30,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
@@ -87,6 +95,40 @@ const EditCategoryScreen: React.FC = () => {
     itemId: string;
     price: number;
   } | null>(null);
+
+  // Bottom sheet for quick search & select items
+  const quickSearchSheetRef = useRef<BottomSheet>(null);
+  const [quickSearchQuery, setQuickSearchQuery] = useState("");
+  const filteredItems = useMemo(() => {
+    const q = quickSearchQuery.trim().toLowerCase();
+    if (!q) return allItems;
+    return allItems.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        i.description?.toLowerCase().includes(q)
+    );
+  }, [allItems, quickSearchQuery]);
+
+  // New schedule sheets
+  const addScheduleRef = useRef<BottomSheet>(null);
+  const openAddSchedule = () => addScheduleRef.current?.expand();
+  const handleSaveSchedule = (rule: any) => {
+    setSchedules([...(schedules ?? []), rule]);
+  };
+
+  const editSheetRef = useRef<BottomSheet>(null);
+  const [editingRule, setEditingRule] = useState<any>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const openEditSchedule = (rule: any, index: number) => {
+    setEditingRule(rule);
+    setEditingIndex(index);
+    editSheetRef.current?.expand();
+  };
+  const handleEditSave = (updated: any) => {
+    if (editingIndex === null) return;
+    const next = schedules.map((r, i) => (i === editingIndex ? updated : r));
+    setSchedules(next);
+  };
 
   const toggleItem = (item: MenuItemType) => {
     setSelectedItemIds((prev) =>
@@ -292,9 +334,18 @@ const EditCategoryScreen: React.FC = () => {
               <Text className="text-2xl font-semibold text-white">
                 Select Items
               </Text>
-              <Text className="text-xl text-gray-400">
-                {selectedItemIds.length} of {allItems.length} selected
-              </Text>
+              <View className="flex-row items-center gap-3">
+                <Text className="text-xl text-gray-400">
+                  {selectedItemIds.length} of {allItems.length} selected
+                </Text>
+                <TouchableOpacity
+                  onPress={() => quickSearchSheetRef.current?.expand()}
+                  className="p-3 rounded-lg bg-[#212121] border border-gray-600"
+                  accessibilityLabel="Quick search items"
+                >
+                  <Search size={22} color="#9CA3AF" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {allItems.length === 0 ? (
@@ -315,11 +366,10 @@ const EditCategoryScreen: React.FC = () => {
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => toggleItem(item)}
-                      className={`bg-[#303030] rounded-lg w-[32%] border p-4 ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-900/20"
-                          : "border-gray-700"
-                      }`}
+                      className={`bg-[#303030] rounded-lg w-[32%] border p-4 ${isSelected
+                        ? "border-blue-500 bg-blue-900/20"
+                        : "border-gray-700"
+                        }`}
                     >
                       <View className="flex-row items-center gap-4">
                         {/* Item Image */}
@@ -352,16 +402,19 @@ const EditCategoryScreen: React.FC = () => {
                             <Text className="text-blue-400 font-semibold">
                               ${item.price.toFixed(2)}
                             </Text>
-                            {existing && (
-                              <Text className="text-yellow-400 text-xs">
-                                (Category: $
-                                {getItemPriceForCategory(
-                                  item.id,
-                                  existing.id
-                                ).toFixed(2)}
-                                )
-                              </Text>
-                            )}
+                            {existing && getItemPriceForCategory(
+                              item.id,
+                              existing.id
+                            ).toFixed(2) !== item.price.toFixed(2) && (
+                                <Text className="text-yellow-400 text-xs">
+                                  (Category: $
+                                  {getItemPriceForCategory(
+                                    item.id,
+                                    existing.id
+                                  ).toFixed(2)}
+                                  )
+                                </Text>
+                              )}
                           </View>
 
                           {/* Custom Pricing for this category */}
@@ -375,7 +428,7 @@ const EditCategoryScreen: React.FC = () => {
                                     className="flex-row items-center gap-2 mb-1"
                                   >
                                     {editingPricing?.itemId === item.id &&
-                                    editingPricing.pricing.id === pricing.id ? (
+                                      editingPricing.pricing.id === pricing.id ? (
                                       // Edit mode
                                       <View className="flex-row items-center gap-2 flex-1">
                                         <TouchableOpacity
@@ -582,11 +635,10 @@ const EditCategoryScreen: React.FC = () => {
 
                         {/* Selection Indicator */}
                         <View
-                          className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-600"
-                              : "border-gray-500"
-                          }`}
+                          className={`w-6 h-6 rounded-full border-2 items-center justify-center ${isSelected
+                            ? "bg-blue-600 border-blue-600"
+                            : "border-gray-500"
+                            }`}
                         >
                           {isSelected && <Check size={16} color="white" />}
                         </View>
@@ -613,9 +665,101 @@ const EditCategoryScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
           </View>
-          <ScheduleEditor value={schedules} onChange={setSchedules} />
+          <ScheduleEditor
+            value={schedules}
+            onChange={setSchedules}
+            onAddPress={openAddSchedule}
+            onEditPress={openEditSchedule}
+          />
         </View>
       </ScrollView>
+
+      <CategoryAddScheduleSheet ref={addScheduleRef} existing={schedules} onSave={handleSaveSchedule} />
+      <ScheduleEditSheet ref={editSheetRef} rule={editingRule} onSave={handleEditSave} />
+
+      {/* Quick Search Bottom Sheet */}
+      <BottomSheet
+        ref={quickSearchSheetRef}
+        index={-1}
+        snapPoints={["70%", "90%"]}
+        enablePanDownToClose
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop
+            {...props}
+            disappearsOnIndex={-1}
+            appearsOnIndex={0}
+          />
+        )}
+        backgroundStyle={{ backgroundColor: "#212121" }}
+        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      >
+        <View className="p-4 border-b border-gray-700">
+          <Text className="text-white text-2xl font-bold">Add Items</Text>
+          <Text className="text-gray-400 text-lg mt-1">
+            Quickly search and toggle items for this category
+          </Text>
+        </View>
+        <View className="p-4">
+          <BottomSheetTextInput
+            value={quickSearchQuery}
+            onChangeText={setQuickSearchQuery}
+            placeholder="Search items..."
+            placeholderTextColor="#9CA3AF"
+            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-xl"
+          />
+        </View>
+        <BottomSheetFlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          renderItem={({ item }) => {
+            const isSelected = selectedItemIds.includes(item.id);
+            return (
+              <TouchableOpacity
+                onPress={() => toggleItem(item)}
+                className={`flex-row items-center justify-between bg-[#303030] border rounded-lg px-4 py-3 mb-3 ${isSelected ? "border-blue-500 bg-blue-900/20" : "border-gray-700"
+                  }`}
+              >
+                <View className="flex-row items-center gap-3 flex-1">
+                  <View className="w-12 h-12 rounded border border-gray-600 overflow-hidden">
+                    {getImageSource(item.image) ? (
+                      <Image
+                        source={getImageSource(item.image)}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <View className="w-full h-full bg-gray-600 items-center justify-center">
+                        <Utensils color="#9ca3af" size={18} />
+                      </View>
+                    )}
+                  </View>
+                  <View className="flex-1 pr-3">
+                    <Text className="text-white text-xl" numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    {!!item.description && (
+                      <Text className="text-gray-400" numberOfLines={1}>
+                        {item.description}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <View
+                  className={`w-7 h-7 rounded-full border-2 items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-500"
+                    }`}
+                >
+                  {isSelected && <Check size={16} color="white" />}
+                </View>
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            <View className="items-center justify-center p-10">
+              <Text className="text-xl text-gray-400">No items found.</Text>
+            </View>
+          }
+        />
+      </BottomSheet>
     </View>
   );
 };

@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useMenuStore } from "@/stores/useMenuStore";
 import { useRouter } from "expo-router";
 import {
   Lock,
@@ -67,6 +68,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
 
 const SettingsScreen: React.FC = () => {
   const router = useRouter();
+  const { isMenuSchedulingEnabled, setMenuSchedulingEnabled } = useMenuStore();
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [targetRoute, setTargetRoute] = useState<string | null>(null);
@@ -136,6 +138,27 @@ const SettingsScreen: React.FC = () => {
   return (
     <View className="w-full h-full flex-1 bg-[#212121]">
       <View className="flex-1 p-6 w-full h-full">
+        {/* Global Menu Scheduling Toggle */}
+        <View className="mb-6 bg-[#303030] border border-gray-600 rounded-2xl p-4">
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text className="text-2xl font-semibold text-white">
+                Menu Scheduling
+              </Text>
+              <Text className="text-lg text-gray-300">
+                Enable time-based visibility for menus and categories
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setMenuSchedulingEnabled(!isMenuSchedulingEnabled)}
+              className={`px-4 py-3 rounded-lg border ${isMenuSchedulingEnabled ? "bg-green-900/30 border-green-500" : "bg-red-900/30 border-red-500"}`}
+            >
+              <Text className={`text-xl ${isMenuSchedulingEnabled ? "text-green-400" : "text-red-400"}`}>
+                {isMenuSchedulingEnabled ? "Enabled" : "Disabled"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         {/* Main Categories */}
         <View className="mb-8 h-full w-full justify-center items-center flex">
           <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">

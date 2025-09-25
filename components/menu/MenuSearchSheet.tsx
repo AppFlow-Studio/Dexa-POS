@@ -177,7 +177,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
       <BottomSheet
         ref={ref}
         index={-1}
-        snapPoints={["85%"]}
+        snapPoints={["70%", "85%"]}
         enablePanDownToClose
         onClose={closeSearch}
         backdropComponent={(props) => (

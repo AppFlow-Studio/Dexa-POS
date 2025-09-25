@@ -23,6 +23,7 @@ interface ModifierSelection {
 const ModifierScreen = () => {
   const { isOpen, mode, menuItem, cartItem, categoryId, close } =
     useModifierSidebarStore();
+    console.log(menuItem?.modifiers)
   const {
     addItemToActiveOrder,
     updateItemInActiveOrder,
