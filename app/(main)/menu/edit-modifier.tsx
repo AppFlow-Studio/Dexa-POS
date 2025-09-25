@@ -1,4 +1,6 @@
+import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -13,80 +15,104 @@ import {
   View,
 } from "react-native";
 
+// Form data interface (consistent with add screen)
+interface ModifierFormData {
+  name: string;
+  type: "required" | "optional";
+  selectionType: "single" | "multiple";
+  maxSelections?: number;
+  description?: string;
+  options: ModifierOption[];
+}
+
+// Error interface
+interface FormErrors {
+  name?: string;
+  options?: string;
+  maxSelections?: string;
+}
+
 const EditModifierScreen: React.FC = () => {
-  const { id, returnTab } = useLocalSearchParams<{
-    id: string;
-    returnTab?: string;
-  }>();
-  const {
-    modifierGroups,
-    updateModifierGroup,
-    deleteModifierGroup,
-    getModifierGroup,
-  } = useMenuStore();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { modifierGroups, updateModifierGroup, deleteModifierGroup } =
+    useMenuStore();
 
   const existing = useMemo(
-    () => (id ? getModifierGroup(id) : undefined),
+    () => modifierGroups.find((m) => m.id === id),
     [id, modifierGroups]
   );
 
-  const [name, setName] = useState(existing?.name || "");
-  const [type, setType] = useState<"required" | "optional">(
-    existing?.type || "optional"
-  );
-  const [selectionType, setSelectionType] = useState<"single" | "multiple">(
-    existing?.selectionType || "single"
-  );
-  const [maxSelections, setMaxSelections] = useState<number | undefined>(
-    existing?.maxSelections
-  );
-  const [description, setDescription] = useState(existing?.description || "");
-  const [options, setOptions] = useState(existing?.options || []);
+  // Use a single formData state object for consistency
+  const [formData, setFormData] = useState<ModifierFormData>({
+    name: "",
+    type: "optional",
+    selectionType: "single",
+    maxSelections: undefined,
+    description: "",
+    options: [],
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!existing) return;
-    setName(existing.name);
-    setType(existing.type);
-    setSelectionType(existing.selectionType);
-    setMaxSelections(existing.maxSelections);
-    setDescription(existing.description || "");
-    setOptions(existing.options || []);
-  }, [existing?.id]);
+    if (existing) {
+      setFormData({
+        name: existing.name,
+        type: existing.type,
+        selectionType: existing.selectionType,
+        maxSelections: existing.maxSelections,
+        description: existing.description || "",
+        options: existing.options || [],
+      });
+    }
+  }, [existing]);
 
-  const addOption = () => {
-    setOptions((prev) => [
-      ...prev,
-      { id: `opt_${Date.now()}`, name: "", price: 0 },
-    ]);
-  };
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
 
-  const updateOption = (
-    idx: number,
-    field: "name" | "price",
-    value: string
-  ) => {
-    setOptions((prev) =>
-      prev.map((o, i) =>
-        i === idx
-          ? {
-              ...o,
-              [field]: field === "price" ? parseFloat(value) || 0 : value,
-            }
-          : o
-      )
-    );
-  };
+    if (!formData.name.trim()) {
+      newErrors.name = "Modifier name is required";
+    }
 
-  const removeOption = (idx: number) => {
-    setOptions((prev) => prev.filter((_, i) => i !== idx));
+    if (formData.options.length === 0) {
+      newErrors.options = "Please add at least one option";
+    }
+
+    if (formData.options.some((option) => option.name.trim() === "")) {
+      newErrors.options = "All options must have a name";
+    }
+
+    if (
+      formData.type === "required" &&
+      !formData.options.some((option) => option.isDefault === true)
+    ) {
+      newErrors.options =
+        "One option must be set as default for required modifiers";
+    }
+
+    if (
+      formData.selectionType === "multiple" &&
+      formData.maxSelections &&
+      formData.maxSelections < 1
+    ) {
+      newErrors.maxSelections = "Max selections must be at least 1";
+    }
+
+    setErrors(newErrors);
+
+    // Show toasts for errors
+    if (Object.keys(newErrors).length > 0) {
+      Object.values(newErrors).forEach((error) => {
+        toast.error(error, { position: ToastPosition.BOTTOM });
+      });
+    }
+
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSave = () => {
-    if (!existing) return;
-    if (!name.trim()) {
-      Alert.alert("Validation", "Name is required");
+    if (!validateForm()) {
       return;
     }
     setShowConfirm(true);
@@ -98,14 +124,17 @@ const EditModifierScreen: React.FC = () => {
     setShowConfirm(false);
     try {
       updateModifierGroup(existing.id, {
-        name: name.trim(),
-        type,
-        selectionType,
-        maxSelections: selectionType === "multiple" ? maxSelections : undefined,
-        description: description.trim() || undefined,
-        options: options.map((o) => ({ ...o, name: o.name.trim() })),
+        name: formData.name.trim(),
+        type: formData.type,
+        selectionType: formData.selectionType,
+        maxSelections:
+          formData.selectionType === "multiple"
+            ? formData.maxSelections
+            : undefined,
+        description: formData.description?.trim() || undefined,
+        options: formData.options.map((o) => ({ ...o, name: o.name.trim() })),
       });
-      await new Promise((r) => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 400));
       router.back();
     } finally {
       setIsSaving(false);
@@ -121,13 +150,54 @@ const EditModifierScreen: React.FC = () => {
         style: "destructive",
         onPress: () => {
           deleteModifierGroup(existing.id);
-          router.replace({
-            pathname: "/menu",
-            params: { tab: returnTab || "modifiers" },
-          });
+          router.back();
         },
       },
     ]);
+  };
+
+  // --- Form update functions ---
+  const addOption = () => {
+    setFormData((prev) => ({
+      ...prev,
+      options: [
+        ...prev.options,
+        { id: `opt_${Date.now()}`, name: "", price: 0, isDefault: false },
+      ],
+    }));
+  };
+
+  const updateOption = (
+    index: number,
+    field: keyof ModifierOption,
+    value: string | number | boolean
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      options: prev.options.map((option, i) =>
+        i === index ? { ...option, [field]: value } : option
+      ),
+    }));
+  };
+
+  const removeOption = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      options: prev.options.filter((_, i) => i !== index),
+    }));
+  };
+
+  const toggleDefaultOption = (index: number) => {
+    setFormData((prev) => {
+      const newOptions = [...prev.options];
+      if (prev.selectionType === "single") {
+        newOptions.forEach((option, i) => {
+          if (i !== index) option.isDefault = false;
+        });
+      }
+      newOptions[index].isDefault = !newOptions[index].isDefault;
+      return { ...prev, options: newOptions };
+    });
   };
 
   if (!existing) {
@@ -181,7 +251,7 @@ const EditModifierScreen: React.FC = () => {
         </View>
       </View>
 
-      <ScrollView className="flex-1 p-6">
+      <ScrollView className="flex-1 p-6 pb-12">
         <Text className="text-3xl font-bold text-white mb-6">
           Edit Modifier Group
         </Text>
@@ -190,32 +260,47 @@ const EditModifierScreen: React.FC = () => {
           <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
           <TextInput
             className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
-            value={name}
-            onChangeText={setName}
+            value={formData.name}
+            onChangeText={(text) =>
+              setFormData((prev) => ({ ...prev, name: text }))
+            }
             placeholder="Modifier name"
             placeholderTextColor="#9CA3AF"
           />
+          {errors.name && (
+            <Text className="text-xl text-red-400 mt-1">{errors.name}</Text>
+          )}
         </View>
 
         <View className="mb-6">
           <Text className="text-2xl font-semibold text-white mb-3">Type</Text>
           <View className="flex-row gap-4">
             <TouchableOpacity
-              onPress={() => setType("optional")}
-              className={`flex-1 px-6 py-4 rounded-lg border ${type === "optional" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-600"}`}
+              onPress={() =>
+                setFormData((prev) => ({ ...prev, type: "optional" }))
+              }
+              className={`flex-1 px-6 py-4 rounded-lg border ${formData.type === "optional" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-600"}`}
             >
               <Text
-                className={`text-2xl text-center ${type === "optional" ? "text-white" : "text-gray-300"}`}
+                className={`text-2xl text-center ${formData.type === "optional" ? "text-white" : "text-gray-300"}`}
               >
                 Optional
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setType("required")}
-              className={`flex-1 px-6 py-4 rounded-lg border ${type === "required" ? "bg-red-600 border-red-500" : "bg-[#303030] border-gray-600"}`}
+              onPress={() =>
+                setFormData((prev) => ({ ...prev, type: "required" }))
+              }
+              className={`flex-1 px-6 py-4 rounded-lg border ${
+                formData.type === "required"
+                  ? "bg-red-600 border-red-500"
+                  : "bg-[#303030] border-gray-600"
+              }`}
             >
               <Text
-                className={`text-2xl text-center ${type === "required" ? "text-white" : "text-gray-300"}`}
+                className={`text-2xl font-medium text-center ${
+                  formData.type === "required" ? "text-white" : "text-gray-300"
+                }`}
               >
                 Required
               </Text>
@@ -229,21 +314,29 @@ const EditModifierScreen: React.FC = () => {
           </Text>
           <View className="flex-row gap-4">
             <TouchableOpacity
-              onPress={() => setSelectionType("single")}
-              className={`flex-1 px-6 py-4 rounded-lg border ${selectionType === "single" ? "bg-green-600 border-green-500" : "bg-[#303030] border-gray-600"}`}
+              onPress={() =>
+                setFormData((prev) => ({ ...prev, selectionType: "single" }))
+              }
+              className={`flex-1 px-6 py-4 rounded-lg border ${
+                formData.selectionType === "single"
+                  ? "bg-green-600 border-green-500"
+                  : "bg-[#303030] border-gray-600"
+              }`}
             >
               <Text
-                className={`text-2xl text-center ${selectionType === "single" ? "text-white" : "text-gray-300"}`}
+                className={`text-2xl text-center ${formData.selectionType === "single" ? "text-white" : "text-gray-300"}`}
               >
                 Single
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setSelectionType("multiple")}
-              className={`flex-1 px-6 py-4 rounded-lg border ${selectionType === "multiple" ? "bg-green-600 border-green-500" : "bg-[#303030] border-gray-600"}`}
+              onPress={() =>
+                setFormData((prev) => ({ ...prev, selectionType: "multiple" }))
+              }
+              className={`flex-1 px-6 py-4 rounded-lg border ${formData.selectionType === "multiple" ? "bg-green-600 border-green-500" : "bg-[#303030] border-gray-600"}`}
             >
               <Text
-                className={`text-2xl text-center ${selectionType === "multiple" ? "text-white" : "text-gray-300"}`}
+                className={`text-2xl text-center ${formData.selectionType === "multiple" ? "text-white" : "text-gray-300"}`}
               >
                 Multiple
               </Text>
@@ -251,7 +344,7 @@ const EditModifierScreen: React.FC = () => {
           </View>
         </View>
 
-        {selectionType === "multiple" && (
+        {formData.selectionType === "multiple" && (
           <View className="mb-6">
             <Text className="text-2xl font-semibold text-white mb-3">
               Max Selections (optional)
@@ -259,9 +352,12 @@ const EditModifierScreen: React.FC = () => {
             <TextInput
               className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
               keyboardType="numeric"
-              value={maxSelections?.toString() || ""}
-              onChangeText={(t) =>
-                setMaxSelections(t ? parseInt(t) : undefined)
+              value={formData.maxSelections?.toString() || ""}
+              onChangeText={(text) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  maxSelections: text ? parseInt(text) : undefined,
+                }))
               }
               placeholder="Leave empty for unlimited"
               placeholderTextColor="#9CA3AF"
@@ -275,14 +371,18 @@ const EditModifierScreen: React.FC = () => {
           </Text>
           <TextInput
             className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Optional description"
+            placeholder="e.g., Choose up to 3 toppings"
             placeholderTextColor="#9CA3AF"
+            value={formData.description}
+            onChangeText={(text) =>
+              setFormData((prev) => ({ ...prev, description: text }))
+            }
+            multiline
+            numberOfLines={2}
           />
         </View>
 
-        <View className="mb-2">
+        <View className="mb-12">
           <View className="flex-row items-center justify-between mb-3">
             <Text className="text-2xl font-semibold text-white">Options</Text>
             <TouchableOpacity
@@ -293,51 +393,98 @@ const EditModifierScreen: React.FC = () => {
               <Text className="text-xl text-white ml-2">Add Option</Text>
             </TouchableOpacity>
           </View>
-          {options.length === 0 ? (
+          {formData.options.length === 0 ? (
             <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
               <Text className="text-xl text-gray-400">No options yet.</Text>
             </View>
           ) : (
             <View className="gap-3">
-              {options.map((opt, idx) => (
+              {formData.options.map((option, index) => (
                 <View
-                  key={opt.id}
-                  className="bg-[#303030] border border-gray-600 rounded-lg p-4"
+                  key={option.id}
+                  className="bg-[#303030] border border-gray-600 rounded-lg p-6"
                 >
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text className="text-2xl text-white font-medium">
+                      Option {index + 1}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => removeOption(index)}
+                      className="p-2"
+                    >
+                      <Trash2 size={24} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+
                   <View className="flex-row gap-4">
                     <View className="flex-1">
-                      <Text className="text-xl text-gray-300 mb-1">Name</Text>
+                      <Text className="text-xl text-gray-300 mb-2">
+                        Option Name
+                      </Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white h-20"
-                        value={opt.name}
-                        onChangeText={(t) => updateOption(idx, "name", t)}
-                        placeholder="e.g., Large"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
+                        placeholder="e.g., Large, Extra Cheese"
                         placeholderTextColor="#9CA3AF"
+                        value={option.name}
+                        onChangeText={(text) =>
+                          updateOption(index, "name", text)
+                        }
                       />
                     </View>
                     <View className="w-32">
-                      <Text className="text-xl text-gray-300 mb-1">Price</Text>
+                      <Text className="text-xl text-gray-300 mb-2">Price</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded px-4 py-3 text-2xl text-white h-20"
-                        value={opt.price.toString()}
-                        onChangeText={(t) => updateOption(idx, "price", t)}
-                        keyboardType="numeric"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
                         placeholder="0.00"
                         placeholderTextColor="#9CA3AF"
+                        value={option.price.toString()}
+                        onChangeText={(text) =>
+                          updateOption(index, "price", parseFloat(text) || 0)
+                        }
+                        keyboardType="numeric"
                       />
                     </View>
                   </View>
-                  <View className="items-end mt-2">
+
+                  {/* --- THIS IS THE CORRECTED PART --- */}
+                  <View className="mt-4">
                     <TouchableOpacity
-                      onPress={() => removeOption(idx)}
-                      className="px-4 py-2 rounded border border-red-500"
+                      onPress={() => toggleDefaultOption(index)}
+                      className={`flex-row items-center justify-between p-4 rounded-lg border ${
+                        option.isDefault
+                          ? "bg-green-600/20 border-green-500"
+                          : "bg-[#212121] border-gray-600"
+                      }`}
                     >
-                      <Text className="text-xl text-red-400">Remove</Text>
+                      <View className="flex-row items-center">
+                        <View
+                          className={`w-6 h-6 rounded border-2 mr-4 items-center justify-center ${
+                            option.isDefault
+                              ? "bg-green-600 border-green-600"
+                              : "border-gray-400"
+                          }`}
+                        >
+                          {option.isDefault && (
+                            <View className="w-3 h-3 bg-white rounded-full" />
+                          )}
+                        </View>
+                        <View>
+                          <Text
+                            className={`text-xl font-medium ${option.isDefault ? "text-green-400" : "text-gray-300"}`}
+                          >
+                            Default Selection
+                          </Text>
+                        </View>
+                      </View>
                     </TouchableOpacity>
                   </View>
+                  {/* --- END OF CORRECTION --- */}
                 </View>
               ))}
             </View>
+          )}
+          {errors.options && (
+            <Text className="text-xl text-red-400 mt-2">{errors.options}</Text>
           )}
         </View>
       </ScrollView>
@@ -354,7 +501,7 @@ const EditModifierScreen: React.FC = () => {
               Save changes?
             </Text>
             <Text className="text-2xl text-gray-400 mb-4">
-              Update "{name}" with {options.length} option(s)?
+              Update "{formData.name}" with {formData.options.length} option(s)?
             </Text>
             <View className="flex-row gap-4">
               <TouchableOpacity

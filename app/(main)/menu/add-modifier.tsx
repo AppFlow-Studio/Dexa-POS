@@ -1,5 +1,6 @@
 import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useState } from "react";
@@ -59,11 +60,14 @@ const AddModifierScreen: React.FC = () => {
       newErrors.options = "Please add at least one option";
     }
 
-    if(formData.options.some((option) => option.name.trim() === "")) {
+    if (formData.options.some((option) => option.name.trim() === "")) {
       newErrors.options = "Option name is required";
     }
-    
-    if(formData.type === "required" && formData.options.some((option) => option.isDefault !== true)) {
+
+    if (
+      formData.type === "required" &&
+      formData.options.some((option) => option.isDefault !== true)
+    ) {
       newErrors.options = "One option must be set as default";
     }
 
@@ -76,8 +80,15 @@ const AddModifierScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
 
+    // Show toasts for errors
+    if (Object.keys(newErrors).length > 0) {
+      Object.values(newErrors).forEach((error) => {
+        toast.error(error, { position: ToastPosition.BOTTOM });
+      });
+    }
+
+    return Object.keys(newErrors).length === 0;
   };
 
   // Handle save
@@ -396,7 +407,7 @@ const AddModifierScreen: React.FC = () => {
         </View>
 
         {/* Options */}
-        <View className="mb-6">
+        <View className="mb-12">
           <View className="flex-row items-center justify-between mb-4">
             <View>
               <Text className="text-2xl font-semibold text-white">Options</Text>
