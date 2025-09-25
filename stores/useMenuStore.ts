@@ -30,6 +30,8 @@ interface MenuState {
   // Per-menu overrides for category availability (does not remove the category)
   // map: menuId -> (categoryId -> isActive)
   menuCategoryOverrides: Record<string, Record<string, boolean>>;
+  temporaryActiveMenus: string[]; // IDs of menus unlocked by PIN
+  temporaryActiveCategories: string[]; // Names of categories unlocked by PIN
 
   // CRUD Operations for Items
   addMenuItem: (item: Omit<MenuItemType, "id">) => void;
@@ -109,6 +111,10 @@ interface MenuState {
     availableToday: boolean;
     timeframe: string | null;
   };
+
+  addTemporaryMenuAccess: (menuName: string) => void;
+  addTemporaryCategoryAccess: (categoryName: string) => void;
+  clearTemporaryAccess: () => void; // Call this on logout
 }
 
 // Helper function to generate unique IDs
@@ -172,6 +178,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
   const initialCategories = getInitialCategories();
   const initialMenus = getInitialMenus();
   const initialModifierGroups = ALL_MODIFIER_GROUPS;
+
   return {
     menuItems: MOCK_MENU_ITEMS,
     categories: initialCategories,
@@ -179,6 +186,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
     modifierGroups: initialModifierGroups,
     isMenuSchedulingEnabled: true,
     menuCategoryOverrides: {},
+    temporaryActiveMenus: [],
+    temporaryActiveCategories: [],
     // // CRUD Operations
     addMenuItem: (itemData) => {
       const newItem: MenuItemType = {
@@ -802,6 +811,25 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }
 
       return { daysAvailable, availableToday, timeframe };
+    },
+    addTemporaryMenuAccess: (menuName) => {
+      set((state) => ({
+        temporaryActiveMenus: [
+          ...new Set([...state.temporaryActiveMenus, menuName]),
+        ],
+      }));
+    },
+
+    addTemporaryCategoryAccess: (categoryName) => {
+      set((state) => ({
+        temporaryActiveCategories: [
+          ...new Set([...state.temporaryActiveCategories, categoryName]),
+        ],
+      }));
+    },
+
+    clearTemporaryAccess: () => {
+      set({ temporaryActiveMenus: [], temporaryActiveCategories: [] });
     },
   };
 });

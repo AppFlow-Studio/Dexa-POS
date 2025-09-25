@@ -16,15 +16,12 @@ import {
   Utensils,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
+import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import {
-  Alert,
-  Image,
+  Gesture,
+  GestureDetector,
   ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+} from "react-native-gesture-handler";
 import Animated, {
   Extrapolate,
   interpolate,
@@ -479,31 +476,29 @@ const MenuPage: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1">
+      <ScrollView className="flex-1" nestedScrollEnabled={true}>
         <View className="gap-4">
-          {menus
-            .filter((m) => m.isActive && m.isAvailableNow)
-            .map((menu, index) => (
-              <DraggableMenu
-                key={menu.id}
-                menu={menu}
-                index={index}
-                onReorder={handleReorderMenus}
-                onReorderCategories={handleReorderMenuCategories}
-                onToggleMenuActive={handleToggleMenuActive}
-                onToggleCategoryActive={handleToggleCategoryActiveForMenu}
-                onSchedule={() => {
-                  // Find the original menu from storeMenus to avoid type issues
-                  const originalMenu = storeMenus.find((m) => m.id === menu.id);
-                  if (originalMenu) {
-                    setSelectedMenu(originalMenu);
-                    setScheduleViewType("menus");
-                    setShowScheduleModal(true);
-                  }
-                }}
-                onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
-              />
-            ))}
+          {menus.map((menu, index) => (
+            <DraggableMenu
+              key={menu.id}
+              menu={menu}
+              index={index}
+              onReorder={handleReorderMenus}
+              onReorderCategories={handleReorderMenuCategories}
+              onToggleMenuActive={handleToggleMenuActive}
+              onToggleCategoryActive={handleToggleCategoryActiveForMenu}
+              onSchedule={() => {
+                // Find the original menu from storeMenus to avoid type issues
+                const originalMenu = storeMenus.find((m) => m.id === menu.id);
+                if (originalMenu) {
+                  setSelectedMenu(originalMenu);
+                  setScheduleViewType("menus");
+                  setShowScheduleModal(true);
+                }
+              }}
+              onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+            />
+          ))}
         </View>
       </ScrollView>
     </View>

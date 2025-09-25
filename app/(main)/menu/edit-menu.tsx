@@ -1,11 +1,10 @@
-import MenuAddScheduleSheet from "@/components/menu/MenuAddScheduleSheet";
-import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
+import ScheduleRuleModal from "@/components/menu/ScheduleRuleModal";
+import { Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import BottomSheet from "@gorhom/bottom-sheet";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -35,25 +34,43 @@ const EditMenuScreen: React.FC = () => {
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
   >({});
-
-  // Add Schedule bottom sheet
-  const addScheduleRef = useRef<BottomSheet>(null);
-  const openAddSchedule = () => addScheduleRef.current?.expand();
-  const handleSaveSchedule = (rule: any) => setSchedules([...(schedules ?? []), rule]);
-
-  // Edit Schedule sheet
-  const editSheetRef = useRef<BottomSheet>(null);
-  const [editingRule, setEditingRule] = useState<any>(null);
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const openEditSchedule = (rule: any, index: number) => {
-    setEditingRule(rule);
-    setEditingIndex(index);
-    editSheetRef.current?.expand();
+  // --- State for the new modal ---
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<Omit<
+    Schedule,
+    "id" | "isActive"
+  > | null>(null);
+  const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const handleAddPress = () => {
+    setEditingRule(null);
+    setEditingRuleIndex(null);
+    setIsScheduleModalOpen(true);
   };
-  const handleEditSave = (updated: any) => {
-    if (editingIndex === null) return;
-    const next = schedules.map((r, i) => (i === editingIndex ? updated : r));
-    setSchedules(next);
+
+  const handleEditPress = (rule: Schedule, index: number) => {
+    setEditingRule(rule);
+    setEditingRuleIndex(index);
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleSaveSchedule = (ruleData: Omit<Schedule, "id" | "isActive">) => {
+    if (editingRuleIndex !== null) {
+      // Editing existing rule
+      const updatedSchedules = [...schedules];
+      updatedSchedules[editingRuleIndex] = {
+        ...schedules[editingRuleIndex],
+        ...ruleData,
+      };
+      setSchedules(updatedSchedules);
+    } else {
+      // Adding new rule
+      const newRule: Schedule = {
+        id: `sch_${Date.now()}`,
+        isActive: true,
+        ...ruleData,
+      };
+      setSchedules([...schedules, newRule]);
+    }
   };
 
   const toggleCategory = (cat: string) => {
@@ -267,14 +284,19 @@ const EditMenuScreen: React.FC = () => {
           <ScheduleEditor
             value={schedules}
             onChange={setSchedules}
-            onAddPress={openAddSchedule}
-            onEditPress={openEditSchedule}
+            onAddPress={handleAddPress}
+            onEditPress={handleEditPress}
           />
         </View>
       </ScrollView>
 
-      <MenuAddScheduleSheet ref={addScheduleRef} existing={schedules} onSave={handleSaveSchedule} />
-      <ScheduleEditSheet ref={editSheetRef} rule={editingRule} onSave={handleEditSave} />
+      <ScheduleRuleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onSave={handleSaveSchedule}
+        initialData={editingRule}
+        existingSchedules={schedules}
+      />
     </View>
   );
 };
