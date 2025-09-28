@@ -7,7 +7,7 @@ import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Link, useRouter } from "expo-router";
 import { Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const PurchaseOrderRow: React.FC<{
   item: PurchaseOrder;
@@ -176,7 +176,7 @@ const PurchaseOrdersScreen = () => {
   ];
 
   return (
-    <View className="flex-1">
+    <ScrollView bounces={false}  className="flex-1 flex-grow">
       {/* Header with Tab Bar */}
       <View className="mb-4">
         <View className="flex-row justify-between items-center mb-4">
@@ -414,7 +414,7 @@ const PurchaseOrdersScreen = () => {
         variant="destructive"
       />
 
-    </View>
+    </ScrollView>
   );
 };
 

@@ -3,7 +3,7 @@ import KpiTooltip from "@/components/analytics/KpiTooltip";
 import VictoryNativeSalesTrendChart from "@/components/analytics/VictoryNativeSalesTrendChart";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useRouter } from "expo-router";
-import { BarChart3, Calendar, Package, PieChart, Plus, ShoppingCart, TrendingUp, Users } from "lucide-react-native";
+import { BarChart3, Calendar, Package, PieChart, ShoppingCart, TrendingUp, Users } from "lucide-react-native";
 import React, { useEffect } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -111,6 +111,27 @@ const AnalyticsDashboardScreen = () => {
             description: 'Payment methods and transaction analysis',
             icon: <Package color="#3b82f6" size={24} />,
             chartType: 'pie'
+        },
+        {
+            id: 'revenue-by-category',
+            title: 'Revenue by Category',
+            description: 'Revenue breakdown by menu categories',
+            icon: <PieChart color="#3b82f6" size={24} />,
+            chartType: 'pie'
+        },
+        {
+            id: 'items-sold-by-category',
+            title: 'Items Sold by Category',
+            description: 'Number of items sold per menu category',
+            icon: <BarChart3 color="#3b82f6" size={24} />,
+            chartType: 'pie'
+        },
+        {
+            id: 'category-performance',
+            title: 'Category Performance',
+            description: 'Comprehensive category analysis with revenue and volume',
+            icon: <TrendingUp color="#3b82f6" size={24} />,
+            chartType: 'bar'
         },
     ];
 
@@ -270,7 +291,7 @@ const AnalyticsDashboardScreen = () => {
                 </View>
 
                 {/* Custom Reports Section */}
-                <View className="mt-8">
+                {/* <View className="mt-8">
                     <View className="flex-row items-center justify-between mb-4">
                         <Text className="text-2xl font-bold text-white">Custom Reports</Text>
                         <TouchableOpacity
@@ -311,7 +332,7 @@ const AnalyticsDashboardScreen = () => {
                             </TouchableOpacity>
                         </View>
                     )}
-                </View>
+                </View> */}
             </ScrollView>
         </View>
     );

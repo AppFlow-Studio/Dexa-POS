@@ -10,14 +10,13 @@ import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetFlatList, BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, FlatList, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { TextInput } from "react-native-gesture-handler";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, TextInput } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
 const CreateExternalExpenseScreen = () => {
     const router = useRouter();
     const { inventoryItems, addExternalExpense, purchaseOrders, addInventoryItem } = useInventoryStore();
@@ -220,6 +219,7 @@ const CreateExternalExpenseScreen = () => {
         right: 12,
     };
 
+    console.log(filteredInventoryItems.length);
     return (
         <View className="flex-1">
             <View className="flex-row justify-between items-center mb-6">
@@ -424,109 +424,108 @@ const CreateExternalExpenseScreen = () => {
                 backgroundStyle={{ backgroundColor: "#2b2b2b" }}
                 handleIndicatorStyle={{ backgroundColor: "#666" }}
             >
-                <BottomSheetView className="h-full w-full flex-1 flex-col">
-                    <View className="px-4 pt-2 pb-3  border-b border-gray-700 flex-row items-center justify-between">
-                        <Text className="text-white text-xl font-bold">Select Item</Text>
-                        <View className="mb-3 w-1/2 flex-row items-center gap-2 bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2">
-                            <Search color="#9CA3AF" size={18} />
-                            <TextInput
-                                value={itemSearch}
-                                onChangeText={setItemSearch}
-                                placeholder="Search items..."
-                                placeholderTextColor="#9CA3AF"
-                                className=" text-white h-12 w-full"
-                            />
-                        </View>
-                        <Button
-                            onPress={() => setNewItemModalOpen(true)}
-                            className="bg-blue-600 border flex-row items-center gap-2 border-blue-500"
-                        >
-                            <Plus color="#fff" size={24} />
-                            <Text className="text-white">Add New Item</Text>
-                        </Button>
+                <View className="px-4 border-b border-gray-700 flex-row items-center justify-between">
+                    <Text className="text-white text-xl font-bold">Select Item</Text>
+                    <View className="mb-3 w-1/2 flex-row items-center gap-2 bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2">
+                        <Search color="#9CA3AF" size={18} />
+                        <TextInput
+                            value={itemSearch}
+                            onChangeText={setItemSearch}
+                            placeholder="Search items..."
+                            placeholderTextColor="#9CA3AF"
+                            className=" text-white h-12 w-full"
+                        />
                     </View>
+                    <Button
+                        onPress={() => setNewItemModalOpen(true)}
+                        className="bg-blue-600 border flex-row items-center gap-2 border-blue-500"
+                    >
+                        <Plus color="#fff" size={24} />
+                        <Text className="text-white">Add New Item</Text>
+                    </Button>
+                </View>
 
-                    <View className="px-4 py-3">
-                        {inventoryItems.length === 0 ? (
-                            <Text className="text-gray-400">No inventory items found.</Text>
-                        ) : (
-                            <>
-                                {/* Item details form appears when an item is picked */}
-                                {selectedInventoryItemId && (
-                                    <View className="mb-4 p-3 rounded-lg border border-gray-700 bg-[#8f8f8f]">
-                                        <Text className="text-white mb-2 text-xl font-semibold">
-                                            Enter Details - {inventoryItems.find((i) => i.id === selectedInventoryItemId)?.name}
-                                        </Text>
+                <View className="px-4">
+                    {inventoryItems.length === 0 ? (
+                        <Text className="text-gray-400">No inventory items found.</Text>
+                    ) : (
+                        <>
+                            {/* Item details form appears when an item is picked */}
+                            {selectedInventoryItemId && (
+                                <View className="mb-4 p-3 rounded-lg border border-gray-700 bg-[#8f8f8f]">
+                                    <Text className="text-white mb-2 text-xl font-semibold">
+                                        Enter Details - {inventoryItems.find((i) => i.id === selectedInventoryItemId)?.name}
+                                    </Text>
 
-                                        <View className="flex-row gap-3 mb-3">
-                                            <View className="flex-1">
-                                                <Text className="text-white text-sm mb-1">Quantity</Text>
-                                                <TextInput
-                                                    keyboardType="number-pad"
-                                                    value={selectedQuantity}
-                                                    onChangeText={setSelectedQuantity}
-                                                    placeholder="1"
-                                                    placeholderTextColor="#9CA3AF"
-                                                    className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 h-12"
-                                                />
-                                            </View>
-                                            <View className="flex-1">
-                                                <Text className="text-white text-sm mb-1">Unit Price</Text>
-                                                <TextInput
-                                                    keyboardType="decimal-pad"
-                                                    value={selectedUnitPrice}
-                                                    onChangeText={setSelectedUnitPrice}
-                                                    placeholder="0.00"
-                                                    placeholderTextColor="#9CA3AF"
-                                                    className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 h-12"
-                                                />
-                                            </View>
-                                        </View>
-
-                                        <View className="mb-3">
-                                            <Text className="text-white text-sm mb-1">Item Notes (Optional)</Text>
+                                    <View className="flex-row gap-3 mb-3">
+                                        <View className="flex-1">
+                                            <Text className="text-white text-sm mb-1">Quantity</Text>
                                             <TextInput
-                                                value={itemNotes}
-                                                onChangeText={setItemNotes}
-                                                placeholder="e.g., Organic, Large size"
+                                                keyboardType="number-pad"
+                                                value={selectedQuantity}
+                                                onChangeText={setSelectedQuantity}
+                                                placeholder="1"
                                                 placeholderTextColor="#9CA3AF"
                                                 className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 h-12"
                                             />
                                         </View>
-
-                                        <Button onPress={addSelectedItemToExpense} className="bg-blue-600 border border-blue-500">
-                                            <Text className="text-white">Add to Expense</Text>
-                                        </Button>
+                                        <View className="flex-1">
+                                            <Text className="text-white text-sm mb-1">Unit Price</Text>
+                                            <TextInput
+                                                keyboardType="decimal-pad"
+                                                value={selectedUnitPrice}
+                                                onChangeText={setSelectedUnitPrice}
+                                                placeholder="0.00"
+                                                placeholderTextColor="#9CA3AF"
+                                                className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 h-12"
+                                            />
+                                        </View>
                                     </View>
-                                )}
-                                <FlatList
-                                    data={filteredInventoryItems}
-                                    keyExtractor={(i) => i.id}
-                                    renderItem={({ item }) => (
-                                        <TouchableOpacity
-                                            onPress={() => {
-                                                setSelectedInventoryItemId(item.id);
-                                                setSelectedUnitPrice(item.cost.toString());
-                                            }}
-                                            className="p-4 border-b border-gray-700"
-                                        >
-                                            <View className="flex-row justify-between items-center">
-                                                <View className="flex-1 pr-3">
-                                                    <Text className="text-white text-lg font-semibold">{item.name}</Text>
-                                                    <Text className="text-gray-400 text-sm">Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}</Text>
-                                                </View>
-                                                <Text className="text-gray-300">Stock: {item.stockQuantity}</Text>
+
+                                    <View className="mb-3">
+                                        <Text className="text-white text-sm mb-1">Item Notes (Optional)</Text>
+                                        <TextInput
+                                            value={itemNotes}
+                                            onChangeText={setItemNotes}
+                                            placeholder="e.g., Organic, Large size"
+                                            placeholderTextColor="#9CA3AF"
+                                            className="text-white text-lg bg-[#2a2a2a] border border-gray-700 rounded-lg px-3 py-2 h-12"
+                                        />
+                                    </View>
+
+                                    <Button onPress={addSelectedItemToExpense} className="bg-blue-600 border border-blue-500">
+                                        <Text className="text-white">Add to Expense</Text>
+                                    </Button>
+                                </View>
+                            )}
+                            <BottomSheetFlatList
+                                data={filteredInventoryItems}
+                                keyExtractor={(i: any) => i.id}
+                                contentContainerStyle={{ paddingBottom: 70 }}
+                                renderItem={({ item, index }: { item: any, index: number }) => (
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setSelectedInventoryItemId(item.id);
+                                            setSelectedUnitPrice(item.cost.toString());
+                                        }}
+                                        className="p-4 border-b border-gray-700"
+                                    >
+                                        <View className="flex-row justify-between items-center">
+                                            <View className="flex-1 pr-3">
+                                                <Text className="text-white text-lg font-semibold">{index + 1}. {item.name}</Text>
+                                                <Text className="text-gray-400 text-sm">Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}</Text>
                                             </View>
-                                        </TouchableOpacity>
-                                    )}
-                                    ListEmptyComponent={
-                                        <Text className="text-gray-400 px-4 py-6">No items match your search.</Text>
-                                    }
-                                />
-                            </>
-                        )}
-                    </View>
-                </BottomSheetView>
+                                            <Text className="text-gray-300">Stock: {item.stockQuantity}</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                )}
+                                ListEmptyComponent={
+                                    <Text className="text-gray-400 px-4 py-6">No items match your search.</Text>
+                                }
+                            />
+                        </>
+                    )}
+                </View>
             </BottomSheet>
 
             {/* Create New Inventory Item Modal */}

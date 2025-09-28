@@ -1,9 +1,9 @@
 // components/analytics/ReportChart.tsx
 
 import React, { useRef, useState } from 'react';
-import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { BarChart } from 'react-native-chart-kit';
+import { Dimensions, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import VictoryBarChart from './VictoryBarChart';
 import VictoryLineChart from './VictoryLineChart';
 import VictoryPieChart from './VictoryPieChart';
 
@@ -301,14 +301,16 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
             x: item.name || item.date || item.hour || item.employee || item.method || item.category || 'N/A',
             y: item.value || item.revenue || item.quantity || 0,
             label: item.label || item.name || item.hour || item.employee || item.method || item.category || 'N/A',
-            value: item.value || item.revenue || item.quantity || 0
+            value: item.value || item.revenue || item.quantity || 0,
+            valueType: item.valueType || (item.revenue ? 'revenue' : item.quantity ? 'items' : 'value'),
+            unit: item.unit || (item.revenue ? '$' : item.quantity ? 'items' : ''),
+            description: item.description || ''
         })) || [];
 
     const formatDataForChart = (): ChartData => {
         switch (chartType) {
             case 'bar':
-                const barLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || '');
-                console.log('📊 ReportChart: Bar chart labels:', barLabels);
+                const barLabels = data.map(item => item.label || item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || item.category || '');
                 return {
                     labels: barLabels,
                     datasets: [{
@@ -323,7 +325,7 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
                 return {
                     labels: lineLabels,
                     datasets: [{
-                        data: data.map(item => item.value || item.revenue || item.orders  || 0),
+                        data: data.map(item => item.value || item.revenue || item.orders || 0),
                         color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
                         strokeWidth: 2,
                     }]
@@ -346,37 +348,26 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
         }
     };
 
-    const chartData = formatDataForChart();
 
     const renderChart = () => {
-        const chartWidth = screenWidth * 2; // Account for padding
 
         switch (chartType) {
             case 'bar':
                 return (
-                    <ScrollView horizontal={true} className={`w-full`} contentContainerClassName='w-fit'>
-                        <TouchableOpacity
-                            activeOpacity={1}
-                            onPress={(event) => handleChartPress(event)}
-                            ref={chartRef}
-                        >
-                            <BarChart
-                                data={chartData}
-                                width={chartWidth}
-                                height={height}
-                                chartConfig={chartConfig}
-                                verticalLabelRotation={30}
-                                showValuesOnTopOfBars={true}
-                                fromZero={true}
-                                yAxisLabel="$"
-                                yAxisSuffix=""
-                                style={{
-                                    marginVertical: 8,
-                                    borderRadius: 16,
-                                }}
-                            />
-                        </TouchableOpacity>
-                    </ScrollView>
+                    <VictoryBarChart
+                        data={formattedData}
+                        title={title}
+                        height={height}
+                        onDataPointPress={onDataPointPress}
+                        labelKey="label"
+                        valueKey="value"
+                        valueType={formattedData[0]?.valueType || 'value'}
+                        unit={formattedData[0]?.unit || ''}
+                        barColor="#60a5fa"
+                        selectedBarColor="#3b82f6"
+                        showValueLabels={true}
+                        showTooltips={true}
+                    />
                 );
 
             case 'line':
@@ -386,7 +377,10 @@ export default function ReportChart({ data, chartType, title, height = 250, onDa
 
             case 'pie':
                 return (
-                    <VictoryPieChart data={formattedData} />
+                    <VictoryPieChart
+                        data={formattedData}
+
+                    />
                 );
 
             default:

@@ -3,10 +3,10 @@ import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { FlatList } from "react-native-gesture-handler";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -57,11 +57,9 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       snapPoints={snapPoints}
       enablePanDownToClose={true}
       onClose={closeSearch}
-      handleComponent={null}
       backdropComponent={renderBackdrop}
       keyboardBehavior="extend"
     >
-      <BottomSheetView className=" bg-white rounded-t-3xl overflow-hidden">
         {/* Header */}
         <View className="flex-row items-center border-b border-background-400 bg-background-300 rounded-2xl px-6">
           <View className="flex-row items-center">
@@ -72,7 +70,6 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
               placeholder="Search Item"
               className="flex-1 py-4 ml-3 text-2xl text-gray-900"
               placeholderTextColor="#6b7280"
-              autoFocus={true}
               focusable
             />
           </View>
@@ -88,7 +85,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
         </View>
 
         {/* Results List */}
-        <BottomSheetFlatList
+        <FlatList
           data={searchResults}
           keyExtractor={(item, index) => index.toString()}
           renderItem={({ item }) => <SearchResultItem item={item} />}
@@ -101,7 +98,6 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
             </View>
           }
         />
-      </BottomSheetView>
     </BottomSheet>
   );
 });

@@ -20,9 +20,10 @@ import {
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as React from "react";
-import { Platform } from "react-native";
+import { Keyboard, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useEffect } from "react";
 
 const LIGHT_THEME: Theme = {
   ...DefaultTheme,
@@ -35,7 +36,7 @@ const DARK_THEME: Theme = {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from "expo-router";
 
 export default function RootLayout() {
@@ -57,6 +58,19 @@ export default function RootLayout() {
     hasMounted.current = true;
   }, []);
 
+  // useEffect(() => {
+  //   // iOS: Smooth animations
+  //   if (Platform.OS === "ios") {
+  //     Keyboard.addListener("keyboardWillShow", keyboardWillShow);
+  //     Keyboard.addListener("keyboardWillHide", keyboardWillHide);
+  //   }
+  //   // Android: Immediate response
+  //   else {
+  //     Keyboard.addListener("keyboardDidShow", keyboardDidShow);
+  //     Keyboard.addListener("keyboardDidHide", keyboardDidHide);
+  //   }
+  // }, []);
+
   if (!isColorSchemeLoaded) {
     return null;
   }
@@ -65,7 +79,7 @@ export default function RootLayout() {
     <GestureHandlerRootView>
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <StatusBar style={"dark"} />
+          <StatusBar style={"dark"} translucent />
           <Stack
             screenOptions={{ headerShown: false }}
             initialRouteName="(main)"

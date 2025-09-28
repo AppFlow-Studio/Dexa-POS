@@ -1,0 +1,6 @@
+module Pods_DexaPOS {
+  umbrella header "Pods-DexaPOS-umbrella.h"
+
+  export *
+  module * { export * }
+}
