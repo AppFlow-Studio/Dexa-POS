@@ -42,12 +42,10 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
         const state = get();
         if (state.employees.length > 0) return; // already loaded
         set({ isLoading: true, error: null });
-        console.log('🔑 loadMockEmployees', count);
 
         try {
             const resp = await fetch(`https://randomuser.me/api/?results=${count}&nat=us,ca,gb,au`);
             const data = await resp.json();
-            console.log('🔑 data', data);
             const mapped: EmployeeProfile[] = (data.results || []).map((u: any, idx: number) => ({
                 id: `emp_${Date.now()}_${idx}`,
                 fullName: `${u.name?.first ?? 'User'} ${u.name?.last ?? idx}`,
