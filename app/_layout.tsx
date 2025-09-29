@@ -82,10 +82,9 @@ export default function RootLayout() {
           <StatusBar style={"dark"} translucent />
           <Stack
             screenOptions={{ headerShown: false }}
-            initialRouteName="(main)"
+            initialRouteName="(auth)"
           />
-          {/* Remove after testing */}
-          <PortalHost />
+           <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />
           <ItemCustomizationDialog />

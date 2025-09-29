@@ -134,9 +134,9 @@ const PinLoginScreen = () => {
         Get Started
       </Text> */}
 
-      <View className=" justify-between items-center w-full">
+      <View className=" justify-between items-center w-full mb-2">
         <Text className="text-xl font-semibold text-white mb-2">Select Your Profile {employees?.length}</Text>
-        <Button title="Load Mock Employees" onPress={() => loadMockEmployees(8)} variant="outline" />
+        {/* <Button title="Load Mock Employees" onPress={() => loadMockEmployees(8)} variant="outline" /> */}
       </View>
       <ScrollView horizontal className="mb-4" showsHorizontalScrollIndicator={false}>
         {employees?.map((e) => (
