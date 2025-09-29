@@ -8,7 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "eas-build-pre-install": "npm config set legacy-peer-deps true"
   },
   "dependencies": {
     "@backpackapp-io/react-native-toast": "^0.14.0",
@@ -44,7 +45,7 @@
     "@rn-primitives/toggle": "^1.2.0",
     "@rn-primitives/toggle-group": "^1.2.0",
     "@rn-primitives/tooltip": "^1.2.0",
-    "@shopify/react-native-skia": "v2.0.0-next.4",
+    "@shopify/react-native-skia": "^1.12.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-shape": "^3.2.0",
