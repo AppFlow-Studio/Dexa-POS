@@ -4,11 +4,14 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
+import { Dialog, DialogContent } from "../ui/dialog";
+import { Separator } from "../ui/separator";
 
 interface OrderTypeDrawerProps {
   isVisible: boolean;
@@ -23,6 +26,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   onOrderTypeSelect,
   currentOrderType,
 }) => {
+  const router = useRouter();
   const {
     activeOrderId,
     updateActiveOrderDetails,
@@ -175,14 +179,44 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const handleGuestCountSubmit = (guestCount: number) => {
     if (!selectedTable) return;
 
-    // Create a new order and assign it to the table
-    const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
-    setActiveOrder(newOrder.id);
-    updateTableStatus(selectedTable.id, "In Use");
+    // Check if there's an active order with items
+    if (activeOrderId && activeOrder && activeOrder.items.length > 0) {
+      // Transfer existing order to the table
+      assignOrderToTable(activeOrderId, selectedTable.id);
+      updateActiveOrderDetails({
+        order_type: "Dine In",
+        guest_count: guestCount,
+      });
+      updateTableStatus(selectedTable.id, "In Use");
 
-    // Close all modals/drawers and navigate to the new table screen
-    setGuestModalOpen(false);
-    onClose();
+      // Start a new order for the order-processing screen
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+
+      // Navigate to the table screen
+      setGuestModalOpen(false);
+      onClose();
+
+      // Navigate to the table screen
+      router.push(`/tables/${selectedTable.id}`);
+
+      toast.success(`Order transferred to Table ${selectedTable.name}`, {
+        duration: 3000,
+        position: ToastPosition.BOTTOM,
+      });
+    } else {
+      // Create a new order and assign it to the table (existing flow)
+      const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
+      setActiveOrder(newOrder.id);
+      updateTableStatus(selectedTable.id, "In Use");
+
+      // Close all modals/drawers and navigate to the new table screen
+      setGuestModalOpen(false);
+      onClose();
+
+      // Navigate to the table screen
+      router.push(`/tables/${selectedTable.id}`);
+    }
   };
 
   const handleTableSelect = (table: any) => {
@@ -287,58 +321,58 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           {/* Customer Info Section for Delivery/Take Away */}
           {(currentOrderType === "Delivery" ||
             currentOrderType === "Take Away") && (
-            <View className="mt-6">
-              <Text className="text-white font-semibold text-3xl mb-4">
-                Customer Information
-              </Text>
+              <View className="mt-6">
+                <Text className="text-white font-semibold text-3xl mb-4">
+                  Customer Information
+                </Text>
 
-              <TouchableOpacity
-                onPress={openSheet} // 3. This now opens the global customer sheet
-                className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#212121] min-h-[80px]"
-              >
-                {activeOrder?.customer_name ? (
-                  <>
-                    <User color="#A5A5B5" size={32} />
-                    <View className="ml-4 flex-1">
-                      <Text
-                        className="text-2xl font-semibold text-white"
-                        numberOfLines={1}
-                      >
-                        {activeOrder.customer_name}
-                      </Text>
-                      {activeOrder.customer_phone && (
-                        <Text className="text-xl text-gray-400">
-                          {activeOrder.customer_phone}
+                <TouchableOpacity
+                  onPress={openSheet} // 3. This now opens the global customer sheet
+                  className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#212121] min-h-[80px]"
+                >
+                  {activeOrder?.customer_name ? (
+                    <>
+                      <User color="#A5A5B5" size={32} />
+                      <View className="ml-4 flex-1">
+                        <Text
+                          className="text-2xl font-semibold text-white"
+                          numberOfLines={1}
+                        >
+                          {activeOrder.customer_name}
                         </Text>
-                      )}
-                    </View>
-                    <Edit3 color="#60A5FA" size={24} />
-                  </>
-                ) : (
-                  <>
-                    <Plus color="#9CA3AF" size={24} />
-                    <Text className="text-2xl font-semibold text-gray-300 ml-3">
-                      Add Customer to Order
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                        {activeOrder.customer_phone && (
+                          <Text className="text-xl text-gray-400">
+                            {activeOrder.customer_phone}
+                          </Text>
+                        )}
+                      </View>
+                      <Edit3 color="#60A5FA" size={24} />
+                    </>
+                  ) : (
+                    <>
+                      <Plus color="#9CA3AF" size={24} />
+                      <Text className="text-2xl font-semibold text-gray-300 ml-3">
+                        Add Customer to Order
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
 
-              {/* Address field is only shown for delivery and is now read-only */}
-              {currentOrderType === "Delivery" && (
-                <View className="mt-4">
-                  <Text className="text-gray-300 text-xl font-medium mb-1">
-                    Delivery Address
-                  </Text>
-                  <View className="w-full p-4 border border-gray-600 rounded-lg bg-[#212121] h-20 justify-center">
-                    <Text className="text-2xl text-white">
-                      {activeOrder?.delivery_address || "No address set"}
+                {/* Address field is only shown for delivery and is now read-only */}
+                {currentOrderType === "Delivery" && (
+                  <View className="mt-4">
+                    <Text className="text-gray-300 text-xl font-medium mb-1">
+                      Delivery Address
                     </Text>
+                    <View className="w-full p-4 border border-gray-600 rounded-lg bg-[#212121] h-20 justify-center">
+                      <Text className="text-2xl text-white">
+                        {activeOrder?.delivery_address || "No address set"}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              )}
-            </View>
-          )}
+                )}
+              </View>
+            )}
 
           {/* Table Selection Section for Dine In */}
           {currentOrderType === "Dine In" && (
@@ -359,7 +393,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   <Text className="text-white text-lg">
                     {selectedFloor
                       ? layouts.find((l) => l.id === selectedFloor)?.name ||
-                        "Select Floor"
+                      "Select Floor"
                       : "Select Floor"}
                   </Text>
                   <ChevronDown color="#9CA3AF" size={20} />
@@ -440,16 +474,14 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       />
 
       {/* Floor Selection Modal */}
-      <Modal
-        visible={showFloorModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowFloorModal(false)}
+      <Dialog
+        open={showFloorModal}
+        onOpenChange={setShowFloorModal}
       >
-        <View className="flex-1 bg-black/50 items-center justify-center p-6">
-          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full max-w-md">
+        <DialogContent className="bg-[#303030] border-gray-700 h-[700px] w-[700px]">
+          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full">
             {/* Modal Header */}
-            <View className="flex-row items-center justify-between p-6 border-b border-gray-600">
+            <View className="flex-row items-center w-full justify-between p-6 border-b border-gray-600">
               <Text className="text-xl font-bold text-white">Select Floor</Text>
               <TouchableOpacity
                 onPress={() => setShowFloorModal(false)}
@@ -460,25 +492,23 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             </View>
 
             {/* Floor List */}
-            <ScrollView className="max-h-80">
-              {layouts.map((layout) => (
+            <ScrollView className="h-[87%]">
+              {layouts.map((layout, index) => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => handleFloorSelect(layout.id)}
-                  className={`p-4 border-b border-gray-600 last:border-b-0 ${
-                    selectedFloor === layout.id
-                      ? "bg-blue-600/20 border-l-4 border-l-blue-500"
-                      : ""
-                  }`}
+                  className={`p-4 border-b border-gray-600 last:border-b-0 ${selectedFloor === layout.id
+                    ? "bg-blue-600/20 border-l-4 border-l-blue-500"
+                    : ""
+                    }`}
                 >
                   <View className="flex-row items-center justify-between">
                     <View>
                       <Text
-                        className={`text-lg font-semibold ${
-                          selectedFloor === layout.id
-                            ? "text-blue-400"
-                            : "text-white"
-                        }`}
+                        className={`text-lg font-semibold ${selectedFloor === layout.id
+                          ? "text-blue-400"
+                          : "text-white"
+                          }`}
                       >
                         {layout.name}
                       </Text>
@@ -499,12 +529,13 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                       </View>
                     )}
                   </View>
+                  {index !== layouts.length - 1 && <Separator orientation="horizontal" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </View>
   );
 };

@@ -8,7 +8,7 @@ const AnalyticsScreen = () => {
 
   useEffect(() => {
     // Redirect to the new analytics dashboard
-    router.replace('/analytics-dashboard');
+    router.replace('/analytics/analytics-dashboard');
   }, []);
 
   return (

@@ -36,6 +36,83 @@ const ModifierScreen = () => {
     menuItems,
     modifierGroups: allModifierGroups,
   } = useMenuStore();
+  if (
+    cartItem?.kitchen_status === "sent"
+  ) {
+    return (
+      <View className="flex-1 bg-[#212121]">
+        {/* Header */}
+        <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#212121]">
+          <TouchableOpacity
+            onPress={close}
+            className="flex-row items-center"
+          >
+            <ArrowLeft color="#9CA3AF" size={24} />
+            <Text className="text-2xl font-medium text-white ml-2">
+              Back to Bill
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content */}
+        <View className="flex-1 items-center justify-center p-8 w-full">
+          <View className="items-center w-full">
+            {/* Icon */}
+            {/* <View className="w-24 h-24 bg-orange-600 rounded-full items-center justify-center mb-6">
+              <Text className="text-4xl">🍳</Text>
+            </View> */}
+
+            {/* Title */}
+            <Text className="text-3xl font-bold text-white text-center mb-4">
+              Item Already Sent
+            </Text>
+
+            {/* Description */}
+            <Text className="text-xl text-gray-400 text-center mb-6 leading-relaxed">
+              This item has already been sent to the kitchen and cannot be modified.
+            </Text>
+
+            {/* Item Details */}
+            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-6 w-full border border-gray-600">
+              <View className="flex-row items-center justify-center w-full gap-4 mb-4">
+                <Image
+                  source={require("@/assets/images/classic_burger.png")}
+                  className="w-16 h-16 rounded-lg"
+                />
+                <View className="flex-1">
+                  <Text className="text-2xl font-semibold text-white">
+                    {cartItem.name}
+                  </Text>
+                  <Text className="text-lg text-gray-400">
+                    Quantity: {cartItem.quantity}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Status Badge */}
+              {/* <View className="flex-row items-center justify-center">
+                <View className="bg-orange-600 px-4 py-2 rounded-full">
+                  <Text className="text-lg font-semibold text-white">
+                    🍳 Sent to Kitchen
+                  </Text>
+                </View>
+              </View> */}
+            </View>
+
+            {/* Action Button */}
+            <TouchableOpacity
+              onPress={close}
+              className="mt-8 bg-blue-600 px-8 py-4 rounded-xl"
+            >
+              <Text className="text-xl font-semibold text-white">
+                Back to Bill
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
@@ -449,9 +526,17 @@ const ModifierScreen = () => {
       const { activeOrderId, orders } = useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
 
-      // Look for existing item (draft or confirmed) with same menuItemId and customizations
+      // Get current course from coursing store
+      const coursingState = require("@/stores/useCoursingStore").useCoursingStore.getState();
+      const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
+
+      // Look for existing item (draft or confirmed) with same menuItemId, customizations, AND course
       const existingItem = activeOrder?.items.find((item) => {
         if (item.menuItemId !== baseItem.id) return false;
+
+        // Check if they're in the same course
+        const existingItemCourse = coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ?? 1;
+        if (existingItemCourse !== currentCourse) return false;
 
         // Check if customizations match
         const itemCustomizations = item.customizations;
