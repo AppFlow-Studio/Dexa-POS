@@ -19,7 +19,7 @@ export default function MainLayout() {
           {/* <Sidebar /> */}
           {/* <ModifierSidebar /> */}
           <View className="flex-1 flex-col">
-            <View className="p-6">
+            <View className="p-2 px-4">
               <Header />
             </View>
             <Slot />

@@ -27,6 +27,7 @@ const ModifierScreen = () => {
   const {
     addItemToActiveOrder,
     updateItemInActiveOrder,
+    removeItemFromActiveOrder,
     confirmDraftItem,
     generateCartItemId,
   } = useOrderStore();
@@ -71,6 +72,7 @@ const ModifierScreen = () => {
       : menuItem;
   const isFullscreen = mode === "fullscreen";
   // Get the correct price for the current item based on category
+
   const getCurrentItemPrice = useCallback(
     (item: any) => {
       if (!item) return 0;
@@ -82,7 +84,6 @@ const ModifierScreen = () => {
           categoryId
         );
       }
-
       // Otherwise use the default price
       return item.price || 0;
     },
@@ -177,29 +178,47 @@ const ModifierScreen = () => {
 
       // Add draft item to cart when opening for new items (not edit mode)
       if (mode !== "edit" && !cartItem) {
-        const itemPrice = getCurrentItemPrice(currentItem);
-        const draftItem = {
-          id: generateCartItemId(
-            currentItem.id,
-            { modifiers: [], notes: "" },
-            true
-          ),
-          menuItemId: currentItem.id,
-          name: currentItem.name,
-          quantity: 1,
-          originalPrice: itemPrice,
-          price: itemPrice,
-          image: currentItem.image,
-          isDraft: true,
-          customizations: {
-            modifiers: [],
-            notes: "",
-          },
-          availableDiscount: currentItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-        };
-        addItemToActiveOrder(draftItem);
+        // Check if there's already an existing item with the same menuItemId and empty customizations
+        const { activeOrderId, orders } = useOrderStore.getState();
+        const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+        const existingItem = activeOrder?.items.find((item) => {
+          if (item.menuItemId !== currentItem.id) return false;
+          if (item.isDraft) return false; // Don't match other draft items
+
+          // Check if customizations are empty (no modifiers, no notes)
+          const hasModifiers = item.customizations.modifiers && item.customizations.modifiers.length > 0;
+          const hasNotes = item.customizations.notes && item.customizations.notes.trim() !== '';
+
+          return !hasModifiers && !hasNotes;
+        });
+
+        // Only create draft item if no existing item with same customizations
+        if (!existingItem) {
+          const itemPrice = getCurrentItemPrice(currentItem);
+          const draftItem = {
+            id: generateCartItemId(
+              currentItem.id,
+              { modifiers: [], notes: "" },
+              true
+            ),
+            menuItemId: currentItem.id,
+            name: currentItem.name,
+            quantity: 1,
+            originalPrice: itemPrice,
+            price: itemPrice,
+            image: currentItem.image,
+            isDraft: true,
+            customizations: {
+              modifiers: [],
+              notes: "",
+            },
+            availableDiscount: currentItem.availableDiscount,
+            appliedDiscount: null,
+            paidQuantity: 0,
+          };
+          addItemToActiveOrder(draftItem);
+        }
       }
     }
   }, [isOpen, currentItem, mode, cartItem]);
@@ -217,32 +236,33 @@ const ModifierScreen = () => {
 
       if (draftItem) {
         // Convert modifier selections to the format expected by the order system
+        console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-              ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
-                const selectedOptions = Object.entries(selections)
-                  .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
-                    return {
-                      id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
-                    };
-                  });
+            ([categoryId, selections]) => {
+              const category = menuItemForModifiers.modifiers?.find(
+                (cat) => cat.id === categoryId
+              );
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId, _]) => {
+                  const option = category?.options.find(
+                    (opt) => opt.id === optionId
+                  );
+                  return {
+                    id: optionId,
+                    name: option?.name || "",
+                    price: option?.price || 0,
+                  };
+                });
 
-                return {
-                  categoryId,
-                  categoryName: category?.name || "",
-                  options: selectedOptions,
-                };
-              }
-            )
+              return {
+                categoryId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            }
+          )
           : [];
 
         // Calculate total price
@@ -380,28 +400,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-          const category = menuItemForModifiers.modifiers?.find(
-            (cat) => cat.id === categoryId
-          );
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId, _]) => {
-              const option = category?.options.find(
-                (opt) => opt.id === optionId
-              );
-              return {
-                id: optionId,
-                name: option?.name || "",
-                price: option?.price || 0,
-              };
-            });
+        const category = menuItemForModifiers.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        const selectedOptions = Object.entries(selections)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([optionId, _]) => {
+            const option = category?.options.find(
+              (opt) => opt.id === optionId
+            );
+            return {
+              id: optionId,
+              name: option?.name || "",
+              price: option?.price || 0,
+            };
+          });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
+        return {
+          categoryId,
+          categoryName: category?.name || "",
+          options: selectedOptions,
+        };
+      })
       : [];
 
     const finalCustomizations = {
@@ -428,24 +448,97 @@ const ModifierScreen = () => {
       // --- ADD NEW ITEM TO CART ---
       const { activeOrderId, orders } = useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find(
-        (item) => item.isDraft && item.menuItemId === baseItem.id
-      );
 
-      if (draftItem) {
-        // Confirm the existing draft item
-        const confirmedItem = {
-          ...draftItem,
-          id: generateCartItemId(baseItem.id, finalCustomizations), // Generate final ID
-          quantity,
-          price: total / Math.max(1, quantity),
-          isDraft: false,
-          customizations: finalCustomizations,
-        };
-        updateItemInActiveOrder(confirmedItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
-        });
+      // Look for existing item (draft or confirmed) with same menuItemId and customizations
+      const existingItem = activeOrder?.items.find((item) => {
+        if (item.menuItemId !== baseItem.id) return false;
+
+        // Check if customizations match
+        const itemCustomizations = item.customizations;
+        const currentCustomizations = finalCustomizations;
+
+        // Compare modifiers
+        const itemModifiers = itemCustomizations.modifiers || [];
+        const currentModifiers = currentCustomizations.modifiers || [];
+
+        if (itemModifiers.length !== currentModifiers.length) return false;
+
+        // Check each modifier category
+        for (let i = 0; i < itemModifiers.length; i++) {
+          const itemMod = itemModifiers[i];
+          const currentMod = currentModifiers[i];
+
+          if (itemMod.categoryId !== currentMod.categoryId) return false;
+          if (itemMod.options.length !== currentMod.options.length) return false;
+
+          // Check each option
+          for (let j = 0; j < itemMod.options.length; j++) {
+            if (itemMod.options[j].id !== currentMod.options[j].id) return false;
+          }
+        }
+
+        // Compare notes
+        const itemNotes = (itemCustomizations.notes || '').trim();
+        const currentNotes = (currentCustomizations.notes || '').trim();
+        if (itemNotes !== currentNotes) return false;
+
+        return true;
+      });
+
+      if (existingItem) {
+        // First, remove any draft items for this menu item to prevent orphaned drafts
+        const draftItems = activeOrder?.items.filter((item) =>
+          item.isDraft && item.menuItemId === baseItem.id
+        );
+
+        if (draftItems && draftItems.length > 0) {
+          draftItems.forEach(draftItem => {
+            removeItemFromActiveOrder(draftItem.id);
+          });
+        }
+
+        if (existingItem.isDraft) {
+          // Remove the draft item and add the confirmed item
+          console.log("draftItem found, removing and adding confirmed item", existingItem);
+
+          // Then add the confirmed item
+          const confirmedItem = {
+            id: generateCartItemId(baseItem.id, finalCustomizations),
+            menuItemId: baseItem.id,
+            name: baseItem.name,
+            quantity,
+            originalPrice: baseItem.price,
+            price: total / Math.max(1, quantity),
+            image: baseItem.image,
+            customizations: finalCustomizations,
+            availableDiscount: baseItem.availableDiscount,
+            appliedDiscount: null,
+            paidQuantity: 0,
+            isDraft: false,
+          };
+
+          addItemToActiveOrder(confirmedItem);
+          console.log("confirmedItem added", confirmedItem);
+          toast.success(`Added ${baseItem.name}`, {
+            position: ToastPosition.BOTTOM,
+          });
+        } else {
+          // Update existing confirmed item (aggregate quantities)
+          console.log("existingItem found, aggregating quantities:", existingItem);
+          const updatedItem = {
+            ...existingItem,
+            quantity: existingItem.quantity + quantity,
+            price: total / Math.max(1, quantity), // Update price to reflect new total
+            isDraft: false,
+            customizations: finalCustomizations,
+          };
+
+          updateItemInActiveOrder(updatedItem);
+          console.log("existingItem updated", updatedItem);
+          toast.success(`Added ${baseItem.name} (${updatedItem.quantity} total)`, {
+            position: ToastPosition.BOTTOM,
+          });
+        }
       } else {
         // Or add a completely new item if no draft was found
         const newItem = {
@@ -462,6 +555,7 @@ const ModifierScreen = () => {
           paidQuantity: 0,
           isDraft: false,
         };
+        console.log("newItem", newItem);
         addItemToActiveOrder(newItem);
         toast.success(`Added ${baseItem.name}`, {
           position: ToastPosition.BOTTOM,
@@ -497,12 +591,17 @@ const ModifierScreen = () => {
       const { activeOrderId, orders, removeItemFromActiveOrder } =
         useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+
+      // Find any draft items for this menu item
+      const draftItems = activeOrder?.items.filter((item) =>
+        item.isDraft && item.menuItemId === currentItem.id
       );
 
-      if (draftItem) {
-        removeItemFromActiveOrder(draftItem.id);
+      // Remove all draft items for this menu item
+      if (draftItems && draftItems.length > 0) {
+        draftItems.forEach(draftItem => {
+          removeItemFromActiveOrder(draftItem.id);
+        });
       }
     }
     close();
@@ -589,19 +688,17 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-4 rounded-xl border-2 min-w-[160px] ${
-                        isActive
-                          ? "bg-blue-600 border-blue-400"
-                          : hasSelection
-                            ? "bg-green-600 border-green-400"
-                            : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`p-4 rounded-xl border-2 min-w-[160px] ${isActive
+                        ? "bg-blue-600 border-blue-400"
+                        : hasSelection
+                          ? "bg-green-600 border-green-400"
+                          : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center justify-between mb-2">
                         <Text
-                          className={`font-semibold text-xl ${
-                            isActive ? "text-white" : "text-white"
-                          }`}
+                          className={`font-semibold text-xl ${isActive ? "text-white" : "text-white"
+                            }`}
                         >
                           {category.name}
                         </Text>
@@ -613,11 +710,10 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-lg ${
-                          category.type === "required"
-                            ? "text-red-400"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-lg ${category.type === "required"
+                          ? "text-red-400"
+                          : "text-gray-400"
+                          }`}
                       >
                         {category.type === "required" ? "Required" : "Optional"}
                       </Text>
@@ -661,31 +757,28 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-6 rounded-xl border-2 min-w-[140px] ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-400"
-                              : isUnavailable
-                                ? "bg-[#1a1a1a] border-gray-700"
-                                : "bg-[#303030] border-gray-600"
-                          }`}
+                          className={`p-6 rounded-xl border-2 min-w-[140px] ${isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : isUnavailable
+                              ? "bg-[#1a1a1a] border-gray-700"
+                              : "bg-[#303030] border-gray-600"
+                            }`}
                         >
                           <Text
-                            className={`text-2xl font-medium text-center ${
-                              isSelected
-                                ? "text-white"
-                                : isUnavailable
-                                  ? "text-gray-500"
-                                  : "text-white"
-                            }`}
+                            className={`text-2xl font-medium text-center ${isSelected
+                              ? "text-white"
+                              : isUnavailable
+                                ? "text-gray-500"
+                                : "text-white"
+                              }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-xl text-center mt-1 ${
-                                isSelected ? "text-blue-200" : "text-blue-400"
-                              }`}
+                              className={`text-xl text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+                                }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>
