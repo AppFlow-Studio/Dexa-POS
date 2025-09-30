@@ -105,14 +105,14 @@ const LayoutEditorScreen = () => {
   if (!activeLayout) {
     return (
       <View className="flex-1 bg-[#212121] items-center justify-center">
-        <Text className="text-2xl text-white">
+        <Text className="text-xl text-white">
           Loading Layout or Layout Not Found...
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-4 p-4 bg-blue-600 rounded-lg"
+          className="mt-4 p-3 bg-blue-600 rounded-lg"
         >
-          <Text className="text-white">Go Back</Text>
+          <Text className="text-white text-base">Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -120,41 +120,41 @@ const LayoutEditorScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="bg-[#303030] p-6 flex-row justify-between items-center">
-        <Text className="text-3xl font-bold text-white">
+      <View className="bg-[#303030] p-4 flex-row justify-between items-center">
+        <Text className="text-2xl font-bold text-white">
           {activeLayout.name}
         </Text>
         <View className="flex-row gap-3">
           {selectedTableIds.length >= 2 && (
             <TouchableOpacity
               onPress={handleMerge}
-              className="py-4 px-6 rounded-lg flex-row items-center bg-green-500"
+              className="py-3 px-5 rounded-lg flex-row items-center bg-green-500"
             >
-              <LinkIcon size={24} color="white" className="mr-2" />
-              <Text className="text-2xl font-bold text-white">Merge</Text>
+              <LinkIcon size={20} color="white" className="mr-2" />
+              <Text className="text-lg font-bold text-white">Merge</Text>
             </TouchableOpacity>
           )}
           {canUnmerge && (
             <TouchableOpacity
               onPress={handleUnmerge}
-              className="py-4 px-6 rounded-lg flex-row items-center bg-yellow-500"
+              className="py-3 px-5 rounded-lg flex-row items-center bg-yellow-500"
             >
-              <X size={24} color="white" className="mr-2" />
-              <Text className="text-2xl font-bold text-white">Unmerge</Text>
+              <X size={20} color="white" className="mr-2" />
+              <Text className="text-lg font-bold text-white">Unmerge</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             onPress={() => setAddModalOpen(true)}
-            className="py-4 px-6 rounded-lg flex-row items-center bg-blue-500 text-white"
+            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500 text-white"
           >
-            <Plus size={24} color="white" />
-            <Text className="text-2xl font-bold text-white">Add Table</Text>
+            <Plus size={20} color="white" className="mr-1" />
+            <Text className="text-lg font-bold text-white">Add Table</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="py-4 px-6 rounded-lg flex-row items-center bg-gray-600"
+            className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"
           >
-            <Text className="text-2xl font-bold text-white">Save & Exit</Text>
+            <Text className="text-lg font-bold text-white">Save & Exit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -181,8 +181,8 @@ const LayoutEditorScreen = () => {
                         x2={mergedCenter.x}
                         y2={mergedCenter.y}
                         stroke="#F59E0B"
-                        strokeWidth="4"
-                        strokeDasharray="8, 4"
+                        strokeWidth="3"
+                        strokeDasharray="6, 3"
                       />
                     );
                   });

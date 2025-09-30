@@ -1,8 +1,8 @@
 import { CartItem } from "@/lib/types";
+import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
 import BillItem from "./BillItem";
-import { useOrderStore } from "@/stores/useOrderStore";
 
 interface BillSummaryProps {
   cart: CartItem[];
@@ -40,62 +40,39 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="my-4 px-6 h-full">
+      <View className="my-3 px-4 h-full">
         <View className="flex flex-row items-center justify-between">
           <View className="flex-col items-start justify-start gap-1">
             <View className="flex-row items-center justify-start gap-2">
-              <Text className="text-3xl font-bold text-white">Cart</Text>
+              <Text className="text-2xl font-bold text-white">Cart</Text>
 
-              {/* Status Badges */}
               {activeOrder && (
                 <View className="flex-row gap-2 ml-2">
-                  {/* Paid Status Badge */}
-                  <View className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid"
-                    ? "bg-green-900/30 border border-green-500"
-                    : activeOrder.paid_status === "Pending"
-                      ? "bg-yellow-900/30 border border-yellow-500"
-                      : "bg-red-900/30 border border-red-500"
-                    }`}>
-                    <Text className={`text-xs font-semibold ${activeOrder.paid_status === "Paid"
-                      ? "text-green-400"
-                      : activeOrder.paid_status === "Pending"
-                        ? "text-yellow-400"
-                        : "text-red-400"
-                      }`}>
+                  {/* Status Badges */}
+                  <View
+                    className={`px-2 py-1 rounded-full ${activeOrder.paid_status === "Paid" ? "bg-green-900/30 border border-green-500" : activeOrder.paid_status === "Pending" ? "bg-yellow-900/30 border border-yellow-500" : "bg-red-900/30 border border-red-500"}`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${activeOrder.paid_status === "Paid" ? "text-green-400" : activeOrder.paid_status === "Pending" ? "text-yellow-400" : "text-red-400"}`}
+                    >
                       {activeOrder.paid_status}
                     </Text>
                   </View>
-
-                  {/* Order Status Badge */}
-                  <View className={`px-2 py-1 rounded-full ${activeOrder.order_status === "Building"
-                    ? "bg-blue-900/30 border border-blue-500"
-                    : activeOrder.order_status === "Preparing"
-                      ? "bg-orange-900/30 border border-orange-500"
-                      : activeOrder.order_status === "Ready"
-                        ? "bg-green-900/30 border border-green-500"
-                        : "bg-gray-900/30 border border-gray-500"
-                    }`}>
-                    <Text className={`text-xs font-semibold ${activeOrder.order_status === "Building"
-                      ? "text-blue-400"
-                      : activeOrder.order_status === "Preparing"
-                        ? "text-orange-400"
-                        : activeOrder.order_status === "Ready"
-                          ? "text-green-400"
-                          : "text-gray-400"
-                      }`}>
+                  <View
+                    className={`px-2 py-1 rounded-full ${activeOrder.order_status === "Building" ? "bg-blue-900/30 border border-blue-500" : activeOrder.order_status === "Preparing" ? "bg-orange-900/30 border border-orange-500" : activeOrder.order_status === "Ready" ? "bg-green-900/30 border border-green-500" : "bg-gray-900/30 border border-gray-500"}`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${activeOrder.order_status === "Building" ? "text-blue-400" : activeOrder.order_status === "Preparing" ? "text-orange-400" : activeOrder.order_status === "Ready" ? "text-green-400" : "text-gray-400"}`}
+                    >
                       {activeOrder.order_status}
                     </Text>
                   </View>
-
-                  {/* Check Status Badge */}
-                  <View className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened"
-                    ? "bg-purple-900/30 border border-purple-500"
-                    : "bg-gray-900/30 border border-gray-500"
-                    }`}>
-                    <Text className={`text-xs font-semibold ${activeOrder.check_status === "Opened"
-                      ? "text-purple-400"
-                      : "text-gray-400"
-                      }`}>
+                  <View
+                    className={`px-2 py-1 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-900/30 border border-purple-500" : "bg-gray-900/30 border border-gray-500"}`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${activeOrder.check_status === "Opened" ? "text-purple-400" : "text-gray-400"}`}
+                    >
                       {activeOrder.check_status}
                     </Text>
                   </View>
@@ -104,10 +81,9 @@ const BillSummary: React.FC<BillSummaryProps> = ({
             </View>
             <Text className="text-xs text-gray-300">{activeOrderId}</Text>
           </View>
-          <Text className="text-xl text-gray-300">{cart.length} Items</Text>
+          <Text className="text-lg text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">
-          {/* 3. Assign the ref to the ScrollView */}
           <ScrollView
             ref={scrollViewRef}
             showsVerticalScrollIndicator={true}
@@ -133,12 +109,12 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                       const isActive =
                         currentCourse !== undefined && course === currentCourse;
                       return (
-                        <View key={`course-${course}`} className="mb-3">
+                        <View key={`course-${course}`} className="mb-2">
                           <View
-                            className={`self-start px-3 py-2 rounded-full mb-2 ${isSent ? "bg-green-900/30 border border-green-500" : isActive ? "bg-blue-900/30 border border-blue-500" : "bg-[#303030] border border-gray-700"}`}
+                            className={`self-start px-3 py-1 rounded-full mb-2 ${isSent ? "bg-green-900/30 border border-green-500" : isActive ? "bg-blue-900/30 border border-blue-500" : "bg-[#303030] border border-gray-700"}`}
                           >
                             <Text
-                              className={`text-xl font-semibold ${isSent ? "text-green-400" : isActive ? "text-blue-400" : "text-gray-300"}`}
+                              className={`text-lg font-semibold ${isSent ? "text-green-400" : isActive ? "text-blue-400" : "text-gray-300"}`}
                             >
                               Course {course}
                               {isSent ? " • Sent" : ""}
@@ -149,7 +125,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                             return (
                               <View
                                 key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-2 ${highlight ? "border border-blue-500" : ""}`}
+                                className={`rounded-xl mb-1.5 ${highlight ? "border border-blue-500" : ""}`}
                               >
                                 <BillItem
                                   item={item}
@@ -168,7 +144,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
               })()
             ) : (
               <View className="h-full items-center justify-center">
-                <Text className="text-2xl text-gray-400">Cart is empty.</Text>
+                <Text className="text-xl text-gray-400">Cart is empty.</Text>
               </View>
             )}
           </ScrollView>

@@ -79,24 +79,24 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
 
   return (
     <Dialog open={isVisible} onOpenChange={onClose}>
-      <DialogContent className="w-[600px] bg-[#212121] border-gray-700 p-8 rounded-2xl">
-        <View className="flex-row justify-between items-center mb-6">
-          <DialogTitle className="text-3xl font-bold text-white">
+      <DialogContent className="w-[600px] bg-[#212121] border-gray-700 p-6 rounded-2xl">
+        <View className="flex-row justify-between items-center mb-4">
+          <DialogTitle className="text-2xl font-bold text-white">
             Select Payment Method
           </DialogTitle>
           <TouchableOpacity onPress={onClose} className="p-2">
-            <X color="#9CA3AF" size={24} />
+            <X color="#9CA3AF" size={20} />
           </TouchableOpacity>
         </View>
 
-        <View className="gap-y-4 mb-8 w-full">
+        <View className="gap-y-3 mb-6 w-full">
           {paymentMethods.map((method) => {
             const isSelected = selectedMethod === method.name;
             return (
               <TouchableOpacity
                 key={method.name}
                 onPress={() => handleSelectMethod(method.name)}
-                className={`flex-row items-center p-6 w-full rounded-xl border-2 ${
+                className={`flex-row items-center p-4 w-full rounded-xl border-2 ${
                   isSelected
                     ? "border-blue-500 bg-blue-900/30"
                     : "border-gray-600 bg-[#303030]"
@@ -114,14 +114,14 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
                 </View>
                 <View className="flex-1">
                   <Text
-                    className={`font-bold text-2xl ${
+                    className={`font-bold text-xl ${
                       isSelected ? "text-blue-400" : "text-white"
                     }`}
                   >
                     {method.name}
                   </Text>
                   <Text
-                    className={`text-xl ${
+                    className={`text-lg ${
                       isSelected ? "text-blue-300" : "text-gray-400"
                     }`}
                   >
@@ -129,8 +129,8 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
                   </Text>
                 </View>
                 {isSelected && (
-                  <View className="w-8 h-8 border-2 border-blue-500 bg-blue-600 rounded-full items-center justify-center">
-                    <View className="w-4 h-4 bg-white rounded-full" />
+                  <View className="w-6 h-6 border-2 border-blue-500 bg-blue-600 rounded-full items-center justify-center">
+                    <View className="w-3 h-3 bg-white rounded-full" />
                   </View>
                 )}
               </TouchableOpacity>
@@ -141,23 +141,23 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
         <View className="flex-row gap-4">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#303030] rounded-xl border border-gray-600"
+            className="flex-1 py-3 bg-[#303030] rounded-xl border border-gray-600"
           >
-            <Text className="text-center font-bold text-2xl text-white">
+            <Text className="text-center font-bold text-lg text-white">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleProceedToPayment}
             disabled={!activeOrder || activeOrder.items.length === 0}
-            className={`flex-1 py-4 rounded-xl ${
+            className={`flex-1 py-3 rounded-xl ${
               !activeOrder || activeOrder.items.length === 0
                 ? "bg-gray-500"
                 : "bg-blue-600"
             }`}
           >
             <Text
-              className={`text-center font-bold text-2xl ${
+              className={`text-center font-bold text-lg ${
                 !activeOrder || activeOrder.items.length === 0
                   ? "text-gray-400"
                   : "text-white"

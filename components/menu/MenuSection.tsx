@@ -25,13 +25,8 @@ import {
   Table,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
 import ModifierScreen from "./ModifierScreen";
@@ -197,88 +192,71 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
-
   return (
     <>
-      <View className=" mt-2 flex-1 bg-[#212121]">
-        <View className="flex flex-row items-center justify-between pb-4 px-4">
-          <View className="flex-row items-center gap-4">
-            <Text className="text-2xl font-bold text-white">Menu</Text>
-            {/* Order Type Button */}
+      <View className="mt-4 flex-1 bg-[#212121]">
+        <View className="flex flex-row items-center justify-between pb-3 px-4">
+          <View className="flex-row items-center gap-3">
+            <Text className="text-xl font-bold text-white">Menu</Text>
             <TouchableOpacity
-              onPress={() => {
-                // This will be handled by the OrderDetails button
-              }}
-              className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-2"
+              onPress={() => {}}
+              className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
             >
-              <Text className="text-white font-medium mr-2">Order Type:</Text>
-              <Text className="text-blue-400 font-semibold">
+              <Text className="text-white font-medium mr-2 text-base">
+                Order Type:
+              </Text>
+              <Text className="text-blue-400 font-semibold text-base">
                 {typeof currentOrderType === "string"
                   ? currentOrderType
                   : (currentOrderType as any)?.label || "Take Away"}
               </Text>
             </TouchableOpacity>
           </View>
-          {/* Right Section: Search Bar - Now positioned at the bottom */}
           <View className="flex-1 flex-row justify-end items-center gap-x-2">
-            <View className="w-fit">
-              <TouchableOpacity
-                onPress={() => setActiveTab("Menu")}
-                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Menu" ? "border-2 border-blue-400" : "border border-gray-600"}`}
-              >
-                <Table color="#9CA3AF" size={24} />
-              </TouchableOpacity>
-            </View>
-            {/* Search Bar */}
-            <View className="w-fit">
-              <TouchableOpacity
-                onPress={openSearch}
-                className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
-              >
-                <Search color="#9CA3AF" size={24} />
-                {/* <Text className="text-gray-300 ml-4">Search</Text> */}
-              </TouchableOpacity>
-            </View>
-            {/* Open Item */}
-            <View className="w-fit">
-              <TouchableOpacity
-                onPress={() => setActiveTab("Open Item")}
-                className={`flex-row items-center bg-[#303030]  rounded-lg px-4 py-3 justify-start ${activeTab == "Open Item" ? "border-2 border-blue-400" : "border border-gray-600"}`}
-              >
-                <PackagePlus color="#9CA3AF" size={24} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => setActiveTab("Menu")}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+            >
+              <Table color="#9CA3AF" size={20} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={openSearch}
+              className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
+            >
+              <Search color="#9CA3AF" size={20} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab("Open Item")}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Open Item" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+            >
+              <PackagePlus color="#9CA3AF" size={20} />
+            </TouchableOpacity>
 
-            <View className="w-fit">
-              <Link
-                href="/tables"
-                // onPress={openSearch}
-                className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 justify-start`}
-              >
-                <Sofa color="#9CA3AF" size={24} />
-              </Link>
-            </View>
+            <Link
+              href="/tables"
+              className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
+            >
+              <Sofa color="#9CA3AF" size={20} />
+            </Link>
 
-            <View className="w-fit">
-              <TouchableOpacity
-                onPress={() => setActiveTab("Orders")}
-                className={`flex-row items-center bg-[#303030] rounded-lg px-4 py-3 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
-              >
-                <Logs color="#9CA3AF" size={24} />
-                <Text className="text-gray-300 ml-4">Orders</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() => setActiveTab("Orders")}
+              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+            >
+              <Logs color="#9CA3AF" size={20} />
+              <Text className="text-gray-300 ml-2 text-base">Orders</Text>
+            </TouchableOpacity>
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-fit bg-[#303030] border-gray-600 flex-row items-center gap-2 h-[58px]"
+                  className="w-fit bg-[#303030] border-gray-600 flex-row items-center gap-2 h-14"
                 >
-                  <Text className="text-white font-medium text-xl">
+                  <Text className="text-white font-medium text-lg">
                     {activeMeal}
                   </Text>
-                  <ChevronDown color="#9CA3AF" size={20} />
+                  <ChevronDown color="#9CA3AF" size={18} />
                 </Button>
               </DialogTrigger>
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
@@ -453,7 +431,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         </View>
       </View>
 
-      {/* Order Type Drawer */}
       <OrderTypeDrawer
         isVisible={isOrderTypeDrawerOpen}
         onClose={closeDrawer}

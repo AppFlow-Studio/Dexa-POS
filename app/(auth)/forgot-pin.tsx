@@ -22,19 +22,20 @@ const ForgotPinScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-3xl font-bold text-gray-800 text-center mb-8">
+      <Text className="text-2xl font-bold text-white text-center mb-6">
         Forgot Pin
       </Text>
 
-      <View className="mb-6">
-        <Text className="text-xl font-semibold text-gray-600 mb-2">
+      <View className="mb-4">
+        <Text className="text-lg font-semibold text-gray-300 mb-2">
           Enter your email
         </Text>
         <TextInput
           value={email}
           onChangeText={setEmail}
-          className="w-full p-6 py-4 h-20 bg-white border border-gray-200 rounded-lg text-2xl"
+          className="w-full p-4 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white h-16"
           placeholder="john@gmail.com"
+          placeholderTextColor="#6B7280"
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
@@ -43,9 +44,9 @@ const ForgotPinScreen = () => {
 
       <TouchableOpacity
         onPress={handleSubmit}
-        className="w-full p-6 bg-primary-400 rounded-lg items-center"
+        className="w-full p-4 bg-blue-600 rounded-lg items-center"
       >
-        <Text className="text-white text-2xl font-bold">Submit</Text>
+        <Text className="text-white text-xl font-bold">Submit</Text>
       </TouchableOpacity>
     </View>
   );

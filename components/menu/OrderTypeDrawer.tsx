@@ -252,120 +252,101 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   if (!isVisible) return null;
   return (
     <View className="absolute inset-0 z-50">
-      {/* Backdrop */}
       <TouchableOpacity
         className="flex-1 bg-black/50"
         onPress={onClose}
         activeOpacity={1}
       />
-
-      {/* Drawer */}
       <ScrollView
         bounces={false}
         className="absolute left-0 top-0 bottom-0 w-[85%] bg-[#303030] shadow-2xl"
       >
-        {/* Header */}
-        <View className="flex-row items-center justify-between p-6 border-b border-gray-200">
-          <Text className="text-3xl font-bold text-white">Order Type</Text>
-          {/* <TouchableOpacity
-                        onPress={onClose}
-                        className="p-2 rounded-full bg-gray-100"
-                    >
-                        <X color="#6B7280" size={24} />
-                    </TouchableOpacity> */}
-          {/* Footer */}
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
+          <Text className="text-2xl font-bold text-white">Order Type</Text>
           <TouchableOpacity
             onPress={onClose}
-            className="w-1/4 py-4 bg-green-600 rounded-lg items-center"
+            className="w-1/4 py-3 bg-green-600 rounded-lg items-center"
           >
-            <Text className="text-2xl font-semibold text-white">Done</Text>
+            <Text className="text-xl font-semibold text-white">Done</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Content */}
-        <View className="flex-1 p-6">
-          {/* Common Order Types */}
-          <View className="mb-6">
-            <View className="gap-y-3">
+        <View className="flex-1 p-4">
+          <View className="mb-4">
+            <View className="gap-y-2">
               {orderTypes.map((orderType) => (
                 <TouchableOpacity
                   key={orderType.value}
                   onPress={() => {
                     onOrderTypeSelect(orderType.value);
-                    // Update order type in the store
                     if (activeOrderId) {
                       updateActiveOrderDetails({
                         order_type: orderType.value as any,
                       });
                     }
-                    // onClose();
                   }}
-                  className="flex-row items-center p-4 rounded-lg hover:bg-gray-50"
+                  className="flex-row items-center p-3 rounded-lg"
                 >
                   <View
-                    className={`w-12 h-12 rounded-full border-2 border-gray-300 mr-4 items-center justify-center`}
+                    className={`w-10 h-10 rounded-full border-2 border-gray-400 mr-3 items-center justify-center`}
                   >
                     {currentOrderType === orderType.value && (
-                      <View className="w-7 h-7 bg-blue-600 rounded-full" />
+                      <View className="w-6 h-6 bg-blue-500 rounded-full" />
                     )}
                   </View>
-                  <Text className="text-white font-medium text-2xl">
+                  <Text className="text-white font-medium text-xl">
                     {orderType.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <View className="h-[1px] bg-gray-200 w-[90%] mx-auto " />
+          <View className="h-[1px] bg-gray-700 w-full mx-auto" />
 
-          {/* Customer Info Section for Delivery/Take Away */}
           {(currentOrderType === "Delivery" ||
             currentOrderType === "Take Away") && (
-            <View className="mt-6">
-              <Text className="text-white font-semibold text-3xl mb-4">
+            <View className="mt-4">
+              <Text className="text-white font-semibold text-2xl mb-3">
                 Customer Information
               </Text>
-
               <TouchableOpacity
-                onPress={openSheet} // 3. This now opens the global customer sheet
-                className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#212121] min-h-[80px]"
+                onPress={openSheet}
+                className="flex-row items-center p-3 border-2 border-dashed border-gray-600 rounded-lg bg-[#212121] min-h-[70px]"
               >
                 {activeOrder?.customer_name ? (
                   <>
-                    <User color="#A5A5B5" size={32} />
-                    <View className="ml-4 flex-1">
+                    <User color="#A5A5B5" size={24} />
+                    <View className="ml-3 flex-1">
                       <Text
-                        className="text-2xl font-semibold text-white"
+                        className="text-xl font-semibold text-white"
                         numberOfLines={1}
                       >
                         {activeOrder.customer_name}
                       </Text>
                       {activeOrder.customer_phone && (
-                        <Text className="text-xl text-gray-400">
+                        <Text className="text-lg text-gray-400">
                           {activeOrder.customer_phone}
                         </Text>
                       )}
                     </View>
-                    <Edit3 color="#60A5FA" size={24} />
+                    <Edit3 color="#60A5FA" size={20} />
                   </>
                 ) : (
                   <>
-                    <Plus color="#9CA3AF" size={24} />
-                    <Text className="text-2xl font-semibold text-gray-300 ml-3">
-                      Add Customer to Order
+                    <Plus color="#9CA3AF" size={20} />
+                    <Text className="text-xl font-semibold text-gray-300 ml-2">
+                      Add Customer
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
-
-              {/* Address field is only shown for delivery and is now read-only */}
               {currentOrderType === "Delivery" && (
-                <View className="mt-4">
-                  <Text className="text-gray-300 text-xl font-medium mb-1">
+                <View className="mt-3">
+                  <Text className="text-gray-300 text-lg font-medium mb-1">
                     Delivery Address
                   </Text>
-                  <View className="w-full p-4 border border-gray-600 rounded-lg bg-[#212121] h-20 justify-center">
-                    <Text className="text-2xl text-white">
+                  <View className="w-full p-3 border border-gray-600 rounded-lg bg-[#212121] h-16 justify-center">
+                    <Text className="text-xl text-white">
                       {activeOrder?.delivery_address || "No address set"}
                     </Text>
                   </View>
@@ -374,7 +355,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             </View>
           )}
 
-          {/* Table Selection Section for Dine In */}
           {currentOrderType === "Dine In" && (
             <View className="mt-6 flex-1">
               <Text className="text-white font-semibold text-2xl mb-4">
@@ -454,15 +434,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           )}
         </View>
       </ScrollView>
-
-      <GuestCountModal
-        isOpen={isGuestModalOpen}
-        onClose={() => {
-          setGuestModalOpen(false);
-          clearSelectedTable(); // Deselect table if modal is cancelled
-        }}
-        onSubmit={handleGuestCountSubmit}
-      />
 
       <GuestCountModal
         isOpen={isGuestModalOpen}

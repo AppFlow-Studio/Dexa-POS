@@ -31,26 +31,18 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
+      <DialogContent className="bg-[#303030] border-gray-700 w-[450px] p-6">
         <DialogHeader>
-          <DialogTitle className="text-white text-3xl text-center">
+          <DialogTitle className="text-white text-2xl text-center font-semibold">
             Enter Number of Guests
           </DialogTitle>
         </DialogHeader>
         <View className="py-4">
           <TextInput
-            textAlign="center"
-            textAlignVertical="bottom"
             value={count}
             onChangeText={setCount}
             keyboardType="number-pad"
-            className="px-3 py-5 h-fit  bg-[#212121] border border-gray-600 rounded-lg flex text-4xl items-center justify-center text-white text-center font-bold"
-            style={{
-              marginBottom: 5,
-              textAlign: "center",
-              textDecorationColor: "white",
-              height: 80,
-            }}
+            className="bg-[#212121] border border-gray-600 rounded-lg text-3xl text-white text-center font-bold h-16"
             autoFocus
             maxLength={3}
           />
@@ -58,17 +50,17 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
         <DialogFooter className="flex-row gap-3">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-gray-300">
+            <Text className="text-center text-xl font-bold text-gray-300">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSubmit}
-            className="flex-1 py-4 bg-blue-600 rounded-lg"
+            className="flex-1 py-3 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-xl font-bold text-white">
               Start Order
             </Text>
           </TouchableOpacity>

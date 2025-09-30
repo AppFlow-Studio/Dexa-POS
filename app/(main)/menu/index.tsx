@@ -141,19 +141,19 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
     <GestureDetector gesture={panGesture}>
       <Animated.View
         style={animatedStyle}
-        className="bg-[#303030] rounded-lg border border-gray-700 p-6 mb-4"
+        className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3"
       >
-        <View className="flex-row items-center justify-between mb-2">
-          <View className="flex-row items-center gap-3">
-            <GripVertical size={24} color="#9CA3AF" />
-            <Text className="text-3xl font-semibold text-white">
+        <View className="flex-row items-center justify-between mb-1.5">
+          <View className="flex-row items-center gap-2">
+            <GripVertical size={20} color="#9CA3AF" />
+            <Text className="text-2xl font-semibold text-white">
               {menu.name}
             </Text>
             <View
-              className={`px-3 py-2 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+              className={`px-2.5 py-1.5 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
             >
               <Text
-                className={`text-xl font-medium ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
+                className={`text-lg font-medium ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
               >
                 {menu.isActive
                   ? menu.isAvailableNow
@@ -164,40 +164,40 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
             </View>
           </View>
 
-          <View className="flex-row items-center gap-3">
+          <View className="flex-row items-center gap-2">
             {/* <TouchableOpacity
               onPress={onSchedule}
-              className="p-3 bg-[#212121] rounded border border-gray-600"
+              className="p-2 bg-[#212121] rounded border border-gray-600"
             >
-              <Clock size={24} color="#9CA3AF" />
+              <Clock size={20} color="#9CA3AF" />
             </TouchableOpacity> */}
 
             <TouchableOpacity
               onPress={() => onToggleMenuActive(menu.id)}
-              className="p-3 bg-[#212121] rounded border border-gray-600"
+              className="p-2 bg-[#212121] rounded border border-gray-600"
             >
               {menu.isActive ? (
-                <Eye size={24} color="#10B981" />
+                <Eye size={20} color="#10B981" />
               ) : (
-                <EyeOff size={24} color="#EF4444" />
+                <EyeOff size={20} color="#EF4444" />
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={onEdit}
-              className="p-3 bg-[#212121] rounded border border-gray-600"
+              className="p-2 bg-[#212121] rounded border border-gray-600"
             >
-              <Settings size={24} color="#9CA3AF" />
+              <Settings size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Categories within menu */}
-        <View className="ml-8">
-          <Text className="text-2xl font-medium text-gray-300 mb-2">
+        <View className="ml-6">
+          <Text className="text-xl font-medium text-gray-300 mb-1.5">
             Categories ({menu.categories.length})
           </Text>
-          <View className="gap-3">
+          <View className="gap-2">
             {menu.categories.map((category: any, categoryIndex: number) => (
               <DraggableMenuCategory
                 key={category.id}
@@ -278,16 +278,16 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
     <GestureDetector gesture={panGesture}>
       <Animated.View
         style={animatedStyle}
-        className="flex-row items-center justify-between bg-[#212121] p-6 rounded border border-gray-700"
+        className="flex-row items-center justify-between bg-[#212121] p-4 rounded border border-gray-700"
       >
-        <View className="flex-row items-center gap-3">
-          <GripVertical size={24} color="#6B7280" />
-          <Text className="text-gray-200 text-2xl">{category.name}</Text>
+        <View className="flex-row items-center gap-2">
+          <GripVertical size={20} color="#6B7280" />
+          <Text className="text-gray-200 text-xl">{category.name}</Text>
           <View
-            className={`px-3 py-2 rounded-full ${category.isActive ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+            className={`px-2.5 py-1.5 rounded-full ${category.isActive ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
           >
             <Text
-              className={`text-xl ${category.isActive ? "text-green-400" : "text-red-400"}`}
+              className={`text-lg ${category.isActive ? "text-green-400" : "text-red-400"}`}
             >
               {category.isActive ? "Available Now" : "Unavailable"}
             </Text>
@@ -300,9 +300,9 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
             className="p-2"
           >
             {category.isActive ? (
-              <Eye size={24} color="#10B981" />
+              <Eye size={20} color="#10B981" />
             ) : (
-              <EyeOff size={24} color="#EF4444" />
+              <EyeOff size={20} color="#EF4444" />
             )}
           </TouchableOpacity>
         </View>
@@ -463,20 +463,22 @@ const MenuPage: React.FC = () => {
   };
 
   const renderMenusContent = () => (
-    <View className="flex-1 p-6 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-3xl font-bold text-white">Menus</Text>
+    <View className="flex-1 p-4 bg-[#212121]">
+      <View className="flex-row justify-between items-center mb-4">
+        <Text className="text-2xl font-bold text-white">Menus</Text>
         <TouchableOpacity
           onPress={handleAddMenu}
-          className="flex-row items-center bg-blue-600 px-6 py-3 rounded-lg"
+          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
         >
-          <Plus size={24} color="white" />
-          <Text className="text-2xl text-white font-medium ml-2">Add Menu</Text>
+          <Plus size={20} color="white" />
+          <Text className="text-lg text-white font-medium ml-1.5">
+            Add Menu
+          </Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1" nestedScrollEnabled={true}>
-        <View className="gap-4">
+        <View className="gap-3">
           {menus.map((menu, index) => (
             <DraggableMenu
               key={menu.id}
@@ -504,29 +506,29 @@ const MenuPage: React.FC = () => {
   );
 
   const renderCategoriesContent = () => (
-    <View className="flex-1 p-6 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-3xl font-bold text-white">Categories</Text>
+    <View className="flex-1 p-4 bg-[#212121]">
+      <View className="flex-row justify-between items-center mb-4">
+        <Text className="text-2xl font-bold text-white">Categories</Text>
         <TouchableOpacity
           onPress={handleAddCategory}
-          className="flex-row items-center bg-blue-600 px-6 py-3 rounded-lg"
+          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
         >
-          <Plus size={24} color="white" />
-          <Text className="text-2xl text-white font-medium ml-2">
+          <Plus size={20} color="white" />
+          <Text className="text-lg text-white font-medium ml-1.5">
             Add Category
           </Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1">
-        <View className="gap-4">
+        <View className="gap-3">
           {storeCategories?.map((categoryName) => {
             const categoryItems = getItemsInCategory(categoryName.name);
             const isExpanded = !!expandedCategories[categoryName.name];
             return (
               <View
                 key={categoryName.name}
-                className="bg-[#303030] rounded-lg border border-gray-700 p-6"
+                className="bg-[#303030] rounded-lg border border-gray-700 p-4"
               >
                 <View className="flex-row justify-between items-center">
                   <TouchableOpacity
@@ -536,36 +538,32 @@ const MenuPage: React.FC = () => {
                         [categoryName.name]: !isExpanded,
                       }))
                     }
-                    className="flex-row items-center gap-3 flex-1"
+                    className="flex-row items-center gap-2 flex-1"
                   >
                     {isExpanded ? (
-                      <ChevronUp size={24} color="#9CA3AF" />
+                      <ChevronUp size={20} color="#9CA3AF" />
                     ) : (
-                      <ChevronDown size={24} color="#9CA3AF" />
+                      <ChevronDown size={20} color="#9CA3AF" />
                     )}
-                    {/* <GripVertical size={24} color="#9CA3AF" /> */}
-                    <Text className="font-medium text-white text-3xl">
+                    <Text className="font-medium text-white text-2xl">
                       {categoryName.name}
                     </Text>
-                    <View className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded">
-                      <Text className="text-xl text-blue-400">
+                    <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded">
+                      <Text className="text-lg text-blue-400">
                         {categoryItems.length} items
                       </Text>
                     </View>
                   </TouchableOpacity>
 
-                  <View className="flex-row items-center gap-3">
-                    {/* <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
-                      <Clock size={24} color="#9CA3AF" />
-                    </TouchableOpacity> */}
+                  <View className="flex-row items-center gap-2">
                     <TouchableOpacity
                       onPress={() => handleCategoryActive(categoryName?.id)}
-                      className="p-3 bg-[#212121] rounded border border-gray-600"
+                      className="p-2 bg-[#212121] rounded border border-gray-600"
                     >
                       {categoryName.isActive ? (
-                        <Eye size={24} color="#10B981" />
+                        <Eye size={20} color="#10B981" />
                       ) : (
-                        <EyeOff size={24} color="#EF4444" />
+                        <EyeOff size={20} color="#EF4444" />
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -576,21 +574,21 @@ const MenuPage: React.FC = () => {
                         if (cat)
                           router.push(`/menu/edit-category?id=${cat.id}`);
                       }}
-                      className="p-3 bg-[#212121] rounded border border-gray-600"
+                      className="p-2 bg-[#212121] rounded border border-gray-600"
                     >
-                      <Settings size={24} color="#9CA3AF" />
+                      <Settings size={20} color="#9CA3AF" />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {isExpanded && (
-                  <View className="mt-4 gap-3">
+                  <View className="mt-3 gap-2">
                     {categoryItems.length === 0 ? (
-                      <Text className="text-xl text-gray-400">
+                      <Text className="text-lg text-gray-400">
                         No items in this category.
                       </Text>
                     ) : (
-                      <View className="gap-3 flex flex-row flex-wrap">
+                      <View className="gap-2 flex flex-row flex-wrap">
                         {categoryItems.map((item) => {
                           const category = storeCategories.find(
                             (c) => c.name === categoryName.name
@@ -607,28 +605,28 @@ const MenuPage: React.FC = () => {
                           return (
                             <View
                               key={item.id}
-                              className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-4 py-3"
+                              className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
                             >
                               <View className="flex-row items-center gap-2 ">
-                                <Text className="text-xl text-white">
+                                <Text className="text-lg text-white">
                                   {item.name}
                                 </Text>
                                 {hasCustomPricing && (
                                   <View className="rounded">
-                                    <Text className="text-lg text-yellow-400">
+                                    <Text className="text-base text-yellow-400">
                                       Custom
                                     </Text>
                                   </View>
                                 )}
                               </View>
-                              <View className="flex-row items-center gap-2 ml-3">
+                              <View className="flex-row items-center gap-2 ml-2">
                                 <Text
-                                  className={`text-xl ${hasCustomPricing ? "text-yellow-400" : "text-gray-300"}`}
+                                  className={`text-lg ${hasCustomPricing ? "text-yellow-400" : "text-gray-300"}`}
                                 >
                                   ${categoryPrice.toFixed(2)}
                                 </Text>
                                 {hasCustomPricing && (
-                                  <Text className="text-lg text-gray-500 line-through">
+                                  <Text className="text-base text-gray-500 line-through">
                                     ${item.price.toFixed(2)}
                                   </Text>
                                 )}

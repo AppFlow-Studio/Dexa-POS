@@ -101,12 +101,10 @@ const OrderProcessing = () => {
 
   return (
     <View className="flex-1 flex-col bg-[#212121]">
-      {/* Content Section (Below Header) */}
       <View className="flex-1 flex-row">
-        {/* Bill Section (White Area) */}
         <BillSection />
 
-        <View className="flex-1 p-6 px-4 pt-0 bg-[#212121]">
+        <View className="flex-1 p-4 pt-0 bg-[#212121]">
           <Accordion
             type="single"
             collapsible
@@ -115,14 +113,14 @@ const OrderProcessing = () => {
             }
           >
             <AccordionItem value="orders">
-              <AccordionTrigger className="">
+              <AccordionTrigger className="py-3">
                 <View className="flex-row items-center gap-x-2">
-                  <Text className="text-3xl font-bold text-white">
+                  <Text className="text-2xl font-bold text-white">
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-2 h-10 w-10">
-                      <Text className="text-xl font-bold text-white">
+                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
+                      <Text className="text-base font-bold text-white">
                         {filteredOrders.length}
                       </Text>
                     </Badge>
@@ -135,9 +133,13 @@ const OrderProcessing = () => {
             </AccordionItem>
           </Accordion>
 
-          {/* Show order badges when accordion is closed */}
           {!isAccordionOpen && filteredOrders.length > 0 && (
-            <ScrollView horizontal className="mt-4 h-fit overflow-x-auto max-h-16" contentContainerClassName="h-fit flex-row gap-x-2">
+            <ScrollView
+              horizontal
+              className="mt-2 max-h-14"
+              contentContainerClassName="flex-row gap-x-2"
+              showsHorizontalScrollIndicator={false}
+            >
               {filteredOrders.map((order) => (
                 <OrderBadge
                   key={order.id}
@@ -150,12 +152,10 @@ const OrderProcessing = () => {
             </ScrollView>
           )}
 
-          {/* --- Menu Section --- */}
           <MenuSection />
         </View>
       </View>
 
-      {/* Order Items Modal */}
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}
         onClose={() => setItemsModalOpen(false)}

@@ -39,18 +39,18 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
 
   return (
     <Dialog open={isOpen}>
-      <DialogContent className="max-w-md p-8 rounded-2xl items-center text-center bg-white w-[550px]">
-        <View className="w-20 h-20 items-center justify-center bg-blue-100 rounded-full border-4 border-blue-200">
-          <Clock color="#3b82f6" size={40} />
+      <DialogContent className="max-w-md p-6 rounded-2xl items-center text-center bg-[#303030] border-gray-700 w-[550px]">
+        <View className="w-16 h-16 items-center justify-center bg-blue-900/30 rounded-full border-4 border-blue-500/30">
+          <Clock color="#60A5FA" size={32} />
         </View>
-        <Text className="text-4xl font-bold text-gray-800 mt-4">
+        <Text className="text-3xl font-bold text-white mt-4">
           Break Initiated
         </Text>
-        <Text className="text-5xl font-bold text-gray-800 my-2">
+        <Text className="text-4xl font-bold text-white my-2">
           {formatTime(timeLeft)}
         </Text>
-        <Text className="text-2xl text-gray-500">
-          Started break:
+        <Text className="text-xl text-gray-400">
+          Started break:{" "}
           {breakStartTime
             ? breakStartTime.toLocaleTimeString([], {
                 hour: "2-digit",
@@ -60,9 +60,9 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
         </Text>
         <TouchableOpacity
           onPress={onEndBreak}
-          className="w-full mt-6 py-3 bg-primary-400 rounded-lg items-center"
+          className="w-full mt-6 py-4 bg-blue-600 rounded-lg items-center"
         >
-          <Text className="font-bold text-white text-2xl">End Break</Text>
+          <Text className="font-bold text-white text-xl">End Break</Text>
         </TouchableOpacity>
       </DialogContent>
     </Dialog>

@@ -90,20 +90,20 @@ const CustomerSheet: React.FC = () => {
       )}
     >
       <BottomSheetView className="flex-1 bg-[#212121]">
-        <View className="flex-row justify-between items-center p-6 border-b border-gray-700">
-          <Text className="text-3xl font-bold text-white">Assign Customer</Text>
+        <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
+          <Text className="text-2xl font-bold text-white">Assign Customer</Text>
           <TouchableOpacity onPress={closeSheet} className="p-2">
-            <X color="#9CA3AF" size={24} />
+            <X color="#9CA3AF" size={20} />
           </TouchableOpacity>
         </View>
 
-        <View className="p-6 gap-y-4">
+        <View className="p-4 gap-y-3">
           <BottomSheetTextInput
             value={name}
             onChangeText={setName}
             placeholder="Customer Name"
             placeholderTextColor="#6B7280"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-2xl"
+            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
           />
           <BottomSheetTextInput
             value={phone}
@@ -111,50 +111,50 @@ const CustomerSheet: React.FC = () => {
             placeholder="Phone Number"
             placeholderTextColor="#6B7280"
             keyboardType="phone-pad"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-2xl"
+            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
           />
           <BottomSheetTextInput
             value={address}
             onChangeText={setAddress}
             placeholder="Delivery Address (Optional)"
             placeholderTextColor="#6B7280"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-2xl"
+            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
           />
         </View>
 
         <BottomSheetFlatList
           data={filteredCustomers}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 150 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
           renderItem={({ item }: { item: Customer }) => (
             <TouchableOpacity
               onPress={() => handleSelectCustomer(item)}
-              className="p-4 border-b border-gray-700"
+              className="p-3 border-b border-gray-700"
             >
-              <Text className="text-2xl font-semibold text-white">
+              <Text className="text-xl font-semibold text-white">
                 {item.name}
               </Text>
-              <Text className="text-xl text-gray-400">{item.phoneNumber}</Text>
+              <Text className="text-lg text-gray-400">{item.phoneNumber}</Text>
             </TouchableOpacity>
           )}
           ListHeaderComponent={
-            <Text className="text-2xl font-semibold text-gray-300 px-4 pb-2">
+            <Text className="text-xl font-semibold text-gray-300 px-3 pb-2">
               Existing Customers
             </Text>
           }
           ListEmptyComponent={
-            <Text className="text-xl text-gray-500 text-center p-8">
+            <Text className="text-lg text-gray-500 text-center p-6">
               No customers found.
             </Text>
           }
         />
 
-        <View className="absolute bottom-0 left-0 right-0 p-6 bg-[#212121] border-t border-gray-700">
+        <View className="absolute bottom-0 left-0 right-0 p-4 bg-[#212121] border-t border-gray-700">
           <TouchableOpacity
             onPress={handleAddNewCustomer}
-            className="w-full py-4 bg-blue-600 rounded-xl items-center"
+            className="w-full py-3 bg-blue-600 rounded-xl items-center"
           >
-            <Text className="text-2xl font-bold text-white">
+            <Text className="text-lg font-bold text-white">
               Add New Customer
             </Text>
           </TouchableOpacity>

@@ -33,14 +33,14 @@ const ManagerPinModal = () => {
 
   return (
     <Dialog open={isPinModalOpen} onOpenChange={closePinModal}>
-      <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
+      <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-6">
         <DialogHeader>
-          <DialogTitle className="text-center text-3xl font-semibold text-white">
+          <DialogTitle className="text-center text-2xl font-semibold text-white">
             Manager Override
           </DialogTitle>
         </DialogHeader>
         <View className="py-4">
-          <Text className="text-center text-2xl text-gray-300 mb-6">
+          <Text className="text-center text-lg text-gray-300 mb-4">
             Enter Manager PIN to access this item
           </Text>
           <PinDisplay pinLength={currentPin.length} maxLength={4} />
@@ -60,9 +60,9 @@ const ManagerPinModal = () => {
           />
           <TouchableOpacity
             onPress={handlePinSubmit}
-            className="p-4 bg-blue-600 rounded-lg w-full self-center mt-6"
+            className="py-3 bg-blue-600 rounded-lg w-full self-center mt-4"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Enter
             </Text>
           </TouchableOpacity>

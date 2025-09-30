@@ -76,22 +76,22 @@ const CleanTableScreen = () => {
   return (
     <View className="flex-1 bg-[#212121]">
       {/* --- Main Content Area --- */}
-      <View className="flex-1 items-center p-6">
+      <View className="flex-1 items-center p-4">
         <View className="w-full max-w-4xl">
           {/* Title */}
           <View className="items-center text-center">
-            <Text className="text-3xl font-bold text-white">
+            <Text className="text-2xl font-bold text-white">
               Please Clean Table(s)
             </Text>
-            <Text className="text-2xl text-gray-400 mt-1">
+            <Text className="text-xl text-gray-400 mt-1">
               Cleaning is required to make this group available
             </Text>
           </View>
 
           {/* Info Banner - NOW DISPLAYS MERGED INFO */}
-          <View className="flex-row items-center p-6 bg-[#303030] rounded-lg my-6">
-            <Info color="#f97316" size={24} />
-            <Text className="ml-3 font-semibold text-2xl text-white">
+          <View className="flex-row items-center p-4 bg-[#303030] rounded-lg my-4">
+            <Info color="#f97316" size={20} />
+            <Text className="ml-2 font-semibold text-lg text-white">
               Tables: {displayNames} (Capacity: {totalCapacity})
             </Text>
           </View>
@@ -100,17 +100,15 @@ const CleanTableScreen = () => {
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={() => router.back()}
-              className="flex-1 py-6 border border-gray-600 rounded-lg items-center bg-[#303030]"
+              className="flex-1 py-4 border border-gray-600 rounded-lg items-center bg-[#303030]"
             >
-              <Text className="text-2xl font-bold text-white">Cancel</Text>
+              <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCleanTable}
-              className="flex-1 py-6 bg-blue-500 rounded-lg items-center"
+              className="flex-1 py-4 bg-blue-500 rounded-lg items-center"
             >
-              <Text className="text-2xl font-bold text-white">
-                Clean Tables
-              </Text>
+              <Text className="text-lg font-bold text-white">Clean Tables</Text>
             </TouchableOpacity>
           </View>
         </View>

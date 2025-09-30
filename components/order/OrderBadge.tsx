@@ -1,7 +1,7 @@
 import { OrderProfile } from "@/lib/types";
 import { CheckCircle, CreditCard, Eye } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, View } from "react-native";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
@@ -59,102 +59,70 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
 
   const colors = getStatusColor(order.order_status, order.paid_status);
   const orderNumber = order.id.slice(-4); // Last 4 digits
-
   return (
-    <Tooltip className="relative">
+    <Tooltip onOpenChange={setShowTooltip}>
       <TooltipTrigger
-        // onPress={() => setShowTooltip(!showTooltip)}
-        className={`flex-row items-center px-4 py-3 rounded-full border`}
+        className={`flex-row items-center px-3 py-2 rounded-full border`}
         style={{
           backgroundColor: colors.bg,
           borderColor: colors.border,
         }}
       >
-        {/* Status Dot */}
         <View
-          className={`w-3 h-3 rounded-full mr-2`}
+          className={`w-2.5 h-2.5 rounded-full mr-2`}
           style={{ backgroundColor: colors.dot }}
         />
-
-        {/* Order Number and Status */}
-        <Text className={`font-medium text-xl`} style={{ color: colors.text }}>
+        <Text
+          className={`font-medium text-base`}
+          style={{ color: colors.text }}
+        >
           {order.customer_name ? order.customer_name : `#${orderNumber}`} -{" "}
-          {order.order_status} ({order.paid_status})
+          {order.order_status}
         </Text>
       </TooltipTrigger>
 
-      {/* Tooltip */}
-      <TooltipContent side="bottom" className=" -top-20 bg-white rounded-xl shadow-lg border border-gray-200 z-50 w-[40%]">
-        <View className="py-2 flex-col justify-center gap-y-3 items-center w-full">
-          <View className="flex-col justify-start items-center w-full px-6 gap-y-3">
+      <TooltipContent
+        side="bottom"
+        className="bg-white rounded-xl shadow-lg border border-gray-200 z-50 w-[400px]"
+      >
+        <View className="py-2 flex-col justify-center gap-y-2 items-center w-full">
+          <View className="flex-col justify-start items-center w-full px-4 pt-2 gap-y-2">
             <View className="w-full flex flex-row justify-center items-center">
-              {order.customer_name && <Text className="text-3xl font-bold text-accent-500 mr-4">
-                {order.customer_name}
-              </Text>}
-              <View className="flex-row gap-2">
-                {/* Order ID Badge */}
-                <View className="px-3 py-1 rounded-full bg-gray-100 border border-gray-300">
-                  <Text className="text-xl font-semibold text-gray-700">
+              {order.customer_name && (
+                <Text className="text-2xl font-bold text-accent-500 mr-3">
+                  {order.customer_name}
+                </Text>
+              )}
+              <View className="flex-row gap-1.5">
+                <View className="px-2 py-0.5 rounded-full bg-gray-100 border border-gray-300">
+                  <Text className="text-base font-semibold text-gray-700">
                     #{order.id.slice(-4)}
                   </Text>
                 </View>
-                {/* Order Type Badge */}
-                <View className="px-3 py-1 rounded-full bg-blue-100 border border-blue-200">
-                  <Text className="text-xl font-semibold text-blue-700">
+                <View className="px-2 py-0.5 rounded-full bg-blue-100 border border-blue-200">
+                  <Text className="text-base font-semibold text-blue-700">
                     {order.order_type}
                   </Text>
                 </View>
-                {/* Paid Status Badge */}
                 <View
-                  className={`px-3 py-1 rounded-full border ${order.paid_status === "Paid"
-                    ? "bg-green-100 border-green-200"
-                    : order.paid_status === "Pending"
-                      ? "bg-yellow-100 border-yellow-200"
-                      : "bg-red-100 border-red-200"
-                    }`}
+                  className={`px-2 py-0.5 rounded-full border ${order.paid_status === "Paid" ? "bg-green-100 border-green-200" : order.paid_status === "Pending" ? "bg-yellow-100 border-yellow-200" : "bg-red-100 border-red-200"}`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${order.paid_status === "Paid"
-                      ? "text-green-700"
-                      : order.paid_status === "Pending"
-                        ? "text-yellow-700"
-                        : "text-red-700"
-                      }`}
+                    className={`text-base font-semibold ${order.paid_status === "Paid" ? "text-green-700" : order.paid_status === "Pending" ? "text-yellow-700" : "text-red-700"}`}
                   >
                     {order.paid_status}
-                  </Text>
-                </View>
-                {/* Order Status Badge */}
-                <View
-                  className={`px-3 py-1 rounded-full border ${order.order_status === "Ready"
-                    ? "bg-green-50 border-green-200"
-                    : order.order_status === "Preparing"
-                      ? "bg-yellow-50 border-yellow-200"
-                      : "bg-gray-100 border-gray-200"
-                    }`}
-                >
-                  <Text
-                    className={`text-xl font-semibold ${order.order_status === "Ready"
-                      ? "text-green-700"
-                      : order.order_status === "Preparing"
-                        ? "text-yellow-700"
-                        : "text-gray-700"
-                      }`}
-                  >
-                    {order.order_status}
                   </Text>
                 </View>
               </View>
             </View>
             <View className="flex-row justify-between items-center w-full">
-              <Text className="text-xl text-accent-500 ">
-                {" "}
+              <Text className="text-lg text-accent-500">
                 {order.items.length} items -{" "}
                 {order.paid_status === "Paid"
-                  ? `${order.total_amount?.toFixed(2)}`
+                  ? `$${order.total_amount?.toFixed(2)}`
                   : "Pending"}
               </Text>
-              <Text className="text-xl">
+              <Text className="text-lg">
                 Opened at{" "}
                 {new Date(order.opened_at).toLocaleTimeString("en-US", {
                   hour: "2-digit",
@@ -163,75 +131,54 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
               </Text>
             </View>
           </View>
-          {/* Mark Ready Button */}
-  
-          {/* 
-                Need to set up here stock management logic
-              */}
-          {order.order_status === "Preparing" && <Button
-            variant="outline"
-            onPress={() => {
-              onMarkReady();
-              setShowTooltip(false);
-            }}
-            className="flex-row items-center px-4 py-3 bg-green-200 w-[95%] self-center border-b border-gray-100 hover:bg-gray-50"
-          >
-            <CheckCircle color="#10b981" size={24} />
-            <Text className="ml-2 font-medium text-gray-800 text-xl">
-              Mark as Done
-            </Text>
-          </Button>}
-  
-          {/* View Items Button */}
+
+          {order.order_status === "Preparing" && (
+            <Button
+              variant="outline"
+              onPress={() => {
+                onMarkReady();
+                setShowTooltip(false);
+              }}
+              className="flex-row items-center px-4 py-2 bg-green-200 w-[95%] self-center border-b border-gray-100"
+            >
+              <CheckCircle color="#10b981" size={20} />
+              <Text className="ml-2 font-medium text-gray-800 text-lg">
+                Mark as Done
+              </Text>
+            </Button>
+          )}
+
           <Button
             variant="outline"
             onPress={() => {
               onViewItems();
               setShowTooltip(false);
             }}
-            className="flex-row items-center px-4 py-3  w-[95%] self-center hover:bg-gray-50"
+            className="flex-row items-center px-4 py-2 w-[95%] self-center"
           >
-            <Eye color="#6b7280" size={24} />
-            <Text className="ml-2 font-medium text-gray-800 text-xl">
+            <Eye color="#6b7280" size={20} />
+            <Text className="ml-2 font-medium text-gray-800 text-lg">
               View Items
             </Text>
           </Button>
-  
-          {
-            order.paid_status !== "Paid" && (
-              <Button
-                variant="outline"
-                onPress={() => {
-                  setShowTooltip(false);
-                  onRetrieve();
-                }}
-                className="flex-row items-center flex px-4 py-3 w-[95%] self-center justify-center bg-blue-200 "
-              >
-                <CreditCard color="blue" size={24} />
-                <Text className="ml-2 font-medium text-blue-700 text-xl">
-                  Retrieve to Pay
-                </Text>
-              </Button>
-            )
-          }
+
+          {order.paid_status !== "Paid" && (
+            <Button
+              variant="outline"
+              onPress={() => {
+                setShowTooltip(false);
+                onRetrieve();
+              }}
+              className="flex-row items-center px-4 py-2 w-[95%] self-center justify-center bg-blue-200"
+            >
+              <CreditCard color="blue" size={20} />
+              <Text className="ml-2 font-medium text-blue-700 text-lg">
+                Retrieve to Pay
+              </Text>
+            </Button>
+          )}
         </View>
       </TooltipContent>
-
-      {/* Overlay to close tooltip when clicking outside */}
-      {showTooltip && (
-        <TouchableOpacity
-          style={{
-            position: "absolute",
-            top: -1000,
-            left: -1000,
-            right: -1000,
-            bottom: -1000,
-            zIndex: 40,
-          }}
-          onPress={() => setShowTooltip(false)}
-          activeOpacity={1}
-        />
-      )}
     </Tooltip>
   );
 };

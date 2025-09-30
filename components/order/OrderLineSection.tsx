@@ -25,7 +25,9 @@ const OrderLineSection: React.FC = () => {
         o.order_status === "Preparing" &&
         // Condition 2: Must have one or more items
         o.items.length > 0) ||
-      (o.paid_status === "Unpaid" && o.order_status !== "Closed" && o.order_status !== "Building")
+      (o.paid_status === "Unpaid" &&
+        o.order_status !== "Closed" &&
+        o.order_status !== "Building")
   ).length;
 
   // State to hold the orders that are actually displayed
@@ -38,8 +40,9 @@ const OrderLineSection: React.FC = () => {
           o.order_status === "Preparing" &&
           // Condition 2: Must have one or more items
           o.items.length > 0) ||
-        (o.paid_status === "Unpaid" && o.order_status !== "Closed" && 
-          o.order_status !== "Building" && 
+        (o.paid_status === "Unpaid" &&
+          o.order_status !== "Closed" &&
+          o.order_status !== "Building" &&
           o.items.length > 0)
     );
 
@@ -106,15 +109,15 @@ const OrderLineSection: React.FC = () => {
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}
-            className="p-3 bg-[#303030] border border-gray-600 rounded-full"
+            className="p-2 bg-[#303030] border border-gray-600 rounded-full"
           >
-            <ChevronLeft color="#9CA3AF" size={24} />
+            <ChevronLeft color="#9CA3AF" size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={scrollForward}
-            className="p-3 bg-blue-600 rounded-full"
+            className="p-2 bg-blue-600 rounded-full"
           >
-            <ChevronRight color="#FFFFFF" size={24} />
+            <ChevronRight color="#FFFFFF" size={20} />
           </TouchableOpacity>
         </View>
       </View>
@@ -141,7 +144,7 @@ const OrderLineSection: React.FC = () => {
         )}
         ListEmptyComponent={
           <View className="h-40 items-center justify-center w-full">
-            <Text className="text-2xl text-gray-400">
+            <Text className="text-lg text-gray-400">
               No orders for this category.
             </Text>
           </View>

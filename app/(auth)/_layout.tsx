@@ -10,14 +10,14 @@ export default function AuthLayout() {
       <View className="flex-1 h-full w-1/2">
         <Image
           source={images.loginBurger}
-          className="w-full h-full rounded-3xl"
+          className="w-full h-full rounded-2xl"
           resizeMode="cover"
         />
       </View>
 
       {/* Right side with the content from the active screen */}
       <View className="flex-1 items-center justify-center">
-        <View className="w-full p-16">
+        <View className="w-full p-8">
           {/* Slot renders the content of index.tsx, store-select.tsx, etc. */}
           <Slot />
         </View>

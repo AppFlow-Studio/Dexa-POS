@@ -32,27 +32,27 @@ const CashPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[600px]">
+    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
       {/* Dark Header */}
-      <View className="p-8">
-        <Text className="text-3xl text-white font-bold text-center">
+      <View className="p-4">
+        <Text className="text-2xl text-white font-bold text-center">
           Cash Payment
         </Text>
       </View>
 
       {/* Dark Content */}
-      <View className="p-8 bg-[#303030] rounded-b-2xl">
+      <View className="p-4 bg-[#303030] rounded-b-2xl">
         {/* Total */}
-        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-6">
-          <Text className="text-3xl font-bold text-white">Total</Text>
-          <Text className="text-3xl font-bold text-white">
+        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">
+          <Text className="text-2xl font-bold text-white">Total</Text>
+          <Text className="text-2xl font-bold text-white">
             ${activeOrderOutstandingTotal.toFixed(2)}
           </Text>
         </View>
 
         {/* Amount Selection */}
         <View>
-          <Text className="text-2xl font-semibold text-gray-300 mb-3">
+          <Text className="text-lg font-semibold text-gray-300 mb-2">
             Select Amount
           </Text>
           <View className="flex-row flex-wrap gap-3">
@@ -62,10 +62,10 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={amount}
                   onPress={() => handleSelectAmount(amount)}
-                  className={`py-3 px-6 rounded-lg border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                  className={`py-2 px-4 rounded-lg border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${isSelected ? "text-blue-400" : "text-gray-300"}`}
+                    className={`text-lg font-semibold ${isSelected ? "text-blue-400" : "text-gray-300"}`}
                   >
                     ${amount}
                   </Text>
@@ -74,10 +74,10 @@ const CashPaymentView = () => {
             })}
             <TouchableOpacity
               onPress={handleSelectExact}
-              className={`py-3 px-6 rounded-lg border ${selectedAmountId === "exact" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+              className={`py-2 px-4 rounded-lg border ${selectedAmountId === "exact" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
             >
               <Text
-                className={`text-xl font-semibold ${selectedAmountId === "exact" ? "text-white" : "text-gray-300"}`}
+                className={`text-lg font-semibold ${selectedAmountId === "exact" ? "text-white" : "text-gray-300"}`}
               >
                 Exact Amount
               </Text>
@@ -86,8 +86,8 @@ const CashPaymentView = () => {
         </View>
 
         {/* Amount Tendered Input */}
-        <View className="mt-6">
-          <Text className="text-2xl font-semibold text-gray-300 mb-3">
+        <View className="mt-4">
+          <Text className="text-lg font-semibold text-gray-300 mb-2">
             Amount Tendered
           </Text>
           <TextInput
@@ -98,39 +98,39 @@ const CashPaymentView = () => {
             }}
             placeholder={`${activeOrderOutstandingTotal.toFixed(2)}`}
             keyboardType="numeric"
-            className="w-full px-6 py-4 bg-[#212121] border border-gray-600 rounded-lg text-3xl text-right font-semibold text-white h-20"
+            className="w-full px-4 py-3 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-right font-semibold text-white h-16"
             placeholderTextColor="#6B7280"
           />
         </View>
 
         {/* Change Due */}
-        <View className="flex-row justify-between items-center mt-6">
-          <Text className="text-2xl font-semibold text-gray-300">
+        <View className="flex-row justify-between items-center mt-4">
+          <Text className="text-lg font-semibold text-gray-300">
             Change Due
           </Text>
           <Text
-            className={`text-4xl font-bold ${changeDue >= 0 ? "text-green-400" : "text-red-400"}`}
+            className={`text-3xl font-bold ${changeDue >= 0 ? "text-green-400" : "text-red-400"}`}
           >
             ${changeDue.toFixed(2)}
           </Text>
         </View>
 
         {/* Actions */}
-        <View className="border-t border-gray-700 pt-6 mt-6">
+        <View className="border-t border-gray-700 pt-4 mt-4">
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={close}
-              className="flex-1 py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
+              className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
             >
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text className="text-lg font-bold text-white text-center">
                 Close & Save
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setView("success")}
-              className="flex-1 py-4 bg-blue-600 rounded-xl items-center"
+              className="flex-1 py-3 bg-blue-600 rounded-xl items-center"
             >
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text className="text-lg font-bold text-white text-center">
                 Open Drawer
               </Text>
             </TouchableOpacity>

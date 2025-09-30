@@ -44,10 +44,16 @@ const mockStores = [
 const StoreSelectItem = ({ store, isSelected, onPress }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`p-6 border rounded-xl mb-3 ${isSelected ? "border-primary-400 bg-primary-100" : "border-background-400 bg-white"}`}
+    className={`p-4 border rounded-lg mb-3 ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-700 bg-[#303030]"}`}
   >
-    <Text className="text-2xl font-medium text-accent-500">{store.name}</Text>
-    <Text className="text-xl text-accent-500 mt-1">
+    <Text
+      className={`text-xl font-medium ${isSelected ? "text-blue-400" : "text-white"}`}
+    >
+      {store.name}
+    </Text>
+    <Text
+      className={`text-lg mt-1 ${isSelected ? "text-blue-300" : "text-gray-400"}`}
+    >
       {store.number}, {store.street}
     </Text>
   </TouchableOpacity>
@@ -65,11 +71,11 @@ const StoreSelectScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-5xl font-semibold text-white text-center mb-8">
+      <Text className="text-3xl font-semibold text-white text-center mb-6">
         Select Store
       </Text>
 
-      <ScrollView className="h-96 mb-6">
+      <ScrollView className="h-80 mb-6">
         {mockStores.map((store) => (
           <StoreSelectItem
             key={store.id}
@@ -82,9 +88,9 @@ const StoreSelectScreen = () => {
 
       <TouchableOpacity
         onPress={handleLogin}
-        className="w-full p-6 bg-primary-400 rounded-xl items-center"
+        className="w-full p-4 bg-blue-600 rounded-xl items-center"
       >
-        <Text className="text-white text-2xl font-bold">Login</Text>
+        <Text className="text-white text-xl font-bold">Login</Text>
       </TouchableOpacity>
     </View>
   );
