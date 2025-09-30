@@ -1,6 +1,6 @@
 import React from "react";
 import { Text, View } from "react-native";
-import { Pie, PolarChart } from "victory-native";
+// import { Pie, PolarChart } from "victory-native";
 
 interface ChartData {
   x: string;
@@ -34,15 +34,15 @@ const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
       <View className="flex-row items-center mt-4">
         {/* Chart Container - adjusted for new compact size */}
         <View className="w-24 h-24">
-          {/* The clipping container for the semi-circle effect */}
+
           <View className="w-48 h-48 absolute -left-12 -top-12">
-            <PolarChart
+            {/* <PolarChart
               data={transformedData}
               valueKey="value"
               labelKey="label"
               colorKey="color"
             >
-              {/* 👇 The main fix is here: adjusting the angles */}
+
               <Pie.Chart
                 innerRadius="75%"
                 startAngle={-150} // Start from the bottom-left
@@ -60,9 +60,9 @@ const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
                   </>
                 )}
               </Pie.Chart>
-            </PolarChart>
+            </PolarChart> */}
 
-            {/* The central label has been removed as it's not in the new design */}
+
           </View>
         </View>
 

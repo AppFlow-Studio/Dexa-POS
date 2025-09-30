@@ -1,7 +1,7 @@
 import { Group, Text, type SkFont } from "@shopify/react-native-skia";
 
 import React from "react";
-import type { PieSliceData } from "victory-native";
+// import type { PieSliceData } from "victory-native";
 
 export const PieChartCustomLabel = ({
     slice,

@@ -224,11 +224,11 @@ const OrderDetails: React.FC = () => {
   return (
     <View className=" px-6 bg-[#212121] overflow-hidden ">
       {/* Header */}
-      <View className="flex-row flex items-center justify-center my-2 w-full gap-x-4">
-        <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Text className="text-white font-semibold text-xl mb-2">
+      <View className="flex-row flex items-center justify-center w-full gap-x-4">
+        <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
+          <Label className="text-white font-semibold text-xl">
             Customer
-          </Text>
+          </Label>
           <TouchableOpacity
             onPress={openSheet} // 3. Trigger the bottom sheet
             className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
@@ -262,7 +262,7 @@ const OrderDetails: React.FC = () => {
           </TouchableOpacity>
         </View>
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-xl mb-2">
+          <Label className="text-white font-semibold text-xl">
             Order Type
           </Label>
           {/* --- Order Type Button --- */}

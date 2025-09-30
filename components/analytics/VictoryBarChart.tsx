@@ -11,7 +11,7 @@ import {
 import React from "react";
 import { Text, View } from "react-native";
 import { SharedValue, useDerivedValue } from "react-native-reanimated";
-import { CartesianChart, ChartBounds, useChartPressState } from "victory-native";
+// import { CartesianChart, ChartBounds, useChartPressState } from "victory-native";
 import Inter from "../../assets/fonts/Inter-Medium.ttf";
 
 interface VictoryBarChartProps {
@@ -109,7 +109,7 @@ export default function VictoryBarChart({
 
     return (
         <View className="h-[300px] w-full">
-            <CartesianChart
+            {/* <CartesianChart
                 data={formattedData}
                 xKey="x"
                 yKeys={["y"]}
@@ -171,7 +171,7 @@ export default function VictoryBarChart({
                         unit={unit}
                     />
                 )}
-            </CartesianChart>
+            </CartesianChart> */}
 
         </View>
     );

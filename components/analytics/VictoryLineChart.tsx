@@ -15,195 +15,195 @@ import {
     View
 } from "react-native";
 import { SharedValue, useDerivedValue } from "react-native-reanimated";
-import { CartesianChart, ChartBounds, PointsArray, useAreaPath, useChartPressState, useLinePath } from "victory-native";
+// import { CartesianChart, ChartBounds, PointsArray, useAreaPath, useChartPressState, useLinePath } from "victory-native";
 import Inter from "../../assets/fonts/Inter-Medium.ttf";
 
 
-export default function VictoryNativeSalesTrendChart({ data }: { data: any[] }) {
-    const font = useFont(Inter as any, 14);
-    const { state, isActive } = useChartPressState({ x: 0, y: { y: 0 } });
-    if (!data || data.length === 0) {
-        return (
-            <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
-                <Text className="text-red-400 text-lg">Error loading chart</Text>
-            </View>
-        );
-    }
-    const formattedData = data?.map((item: any) => ({
-        x: item.x || item.name || item.hour || item.employee || item.method || item.category || item.date || 'N/A',
-        y: item.y || item.revenue || item.quantity || 0
-    })) || [];
+// export default function VictoryNativeSalesTrendChart({ data }: { data: any[] }) {
+//     const font = useFont(Inter as any, 14);
+//     const { state, isActive } = useChartPressState({ x: 0, y: { y: 0 } });
+//     if (!data || data.length === 0) {
+//         return (
+//             <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+//                 <Text className="text-red-400 text-lg">Error loading chart</Text>
+//             </View>
+//         );
+//     }
+//     const formattedData = data?.map((item: any) => ({
+//         x: item.x || item.name || item.hour || item.employee || item.method || item.category || item.date || 'N/A',
+//         y: item.y || item.revenue || item.quantity || 0
+//     })) || [];
 
 
-    if (!formattedData || formattedData.length === 0) {
-        return (
-            <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
-                <Text className="text-gray-400 text-lg">No data available</Text>
-            </View>
-        );
-    }
+//     if (!formattedData || formattedData.length === 0) {
+//         return (
+//             <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+//                 <Text className="text-gray-400 text-lg">No data available</Text>
+//             </View>
+//         );
+//     }
 
-    return (
-        <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 p-4">
-            <CartesianChart
-                data={formattedData}
-                domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
-                xKey="x"
-                yKeys={["y"]}
-                axisOptions={{
-                    font: font,
-                    labelColor: "white",
-                    lineColor: "#374151",
-                    lineWidth: 1,
-                }}
-                chartPressState={state}
-                renderOutside={({ chartBounds }) => (
-                    <>
-                        {isActive &&
-                            <ActiveValueIndicator
-                                xPosition={state.x.position}
-                                yPosition={state.y.y.position}
-                                activeValue={state.y.y.value}
-                                activeValueDate={state.x.value}
-                                bottom={chartBounds.bottom}
-                                top={chartBounds.top}
-                                textColor="white"
-                                lineColor="#60a5fa"
-                                topOffset={5}
-                            />}
-                    </>
+//     return (
+//         <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 p-4">
+//             <CartesianChart
+//                 data={formattedData}
+//                 domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
+//                 xKey="x"
+//                 yKeys={["y"]}
+//                 axisOptions={{
+//                     font: font,
+//                     labelColor: "white",
+//                     lineColor: "#374151",
+//                     lineWidth: 1,
+//                 }}
+//                 chartPressState={state}
+//                 renderOutside={({ chartBounds }) => (
+//                     <>
+//                         {isActive &&
+//                             <ActiveValueIndicator
+//                                 xPosition={state.x.position}
+//                                 yPosition={state.y.y.position}
+//                                 activeValue={state.y.y.value}
+//                                 activeValueDate={state.x.value}
+//                                 bottom={chartBounds.bottom}
+//                                 top={chartBounds.top}
+//                                 textColor="white"
+//                                 lineColor="#60a5fa"
+//                                 topOffset={5}
+//                             />}
+//                     </>
 
-                )}
+//                 )}
 
-            >
-                {({ points, chartBounds }) => (
-                    <>
-                        <StockArea
-                            colorPrefix="dark"
-                            points={points.y}
-                            isWindowActive={isActive}
-                            // isDeltaPositive={isDeltaPositive}
-                            startX={state.x.position}
-                            endX={state.x.position}
-                            {...chartBounds}
-                        />
-                    </>
-                )}
-            </CartesianChart>
-        </View >
-    );
-}
-
-
-const StockArea = ({
-    colorPrefix,
-    points,
-    isWindowActive,
-    isDeltaPositive,
-    startX,
-    endX,
-    left,
-    right,
-    top,
-    bottom,
-}: {
-    colorPrefix: "dark" | "light";
-    points: PointsArray;
-    isWindowActive: boolean;
-    isDeltaPositive?: SharedValue<boolean>;
-    startX: SharedValue<number>;
-    endX: SharedValue<number>;
-} & ChartBounds) => {
-    const { path: areaPath } = useAreaPath(points, bottom, {
-        curveType: "natural"
-    });
-    const { path: linePath } = useLinePath(points, {
-        curveType: "natural"
-    });
+//             >
+//                 {({ points, chartBounds }) => (
+//                     <>
+//                         <StockArea
+//                             colorPrefix="dark"
+//                             points={points.y}
+//                             isWindowActive={isActive}
+//                             // isDeltaPositive={isDeltaPositive}
+//                             startX={state.x.position}
+//                             endX={state.x.position}
+//                             {...chartBounds}
+//                         />
+//                     </>
+//                 )}
+//             </CartesianChart>
+//         </View >
+//     );
+// }
 
 
-    const backgroundClip = useDerivedValue(() => {
-        const path = Skia.Path.Make();
+// const StockArea = ({
+//     colorPrefix,
+//     points,
+//     isWindowActive,
+//     isDeltaPositive,
+//     startX,
+//     endX,
+//     left,
+//     right,
+//     top,
+//     bottom,
+// }: {
+//     colorPrefix: "dark" | "light";
+//     points: PointsArray;
+//     isWindowActive: boolean;
+//     isDeltaPositive?: SharedValue<boolean>;
+//     startX: SharedValue<number>;
+//     endX: SharedValue<number>;
+// } & ChartBounds) => {
+//     const { path: areaPath } = useAreaPath(points, bottom, {
+//         curveType: "natural"
+//     });
+//     const { path: linePath } = useLinePath(points, {
+//         curveType: "natural"
+//     });
 
-        if (isWindowActive) {
-            path.addRect(Skia.XYWHRect(left, top, startX.value - left, bottom - top));
-            path.addRect(
-                Skia.XYWHRect(endX.value, top, right - endX.value, bottom - top),
-            );
-        } else {
-            path.addRect(Skia.XYWHRect(left, top, right - left, bottom - top));
-        }
 
-        return path;
-    });
+//     const backgroundClip = useDerivedValue(() => {
+//         const path = Skia.Path.Make();
 
-    const windowClip = useDerivedValue(() => {
-        if (!isWindowActive) return Skia.Path.Make();
+//         if (isWindowActive) {
+//             path.addRect(Skia.XYWHRect(left, top, startX.value - left, bottom - top));
+//             path.addRect(
+//                 Skia.XYWHRect(endX.value, top, right - endX.value, bottom - top),
+//             );
+//         } else {
+//             path.addRect(Skia.XYWHRect(left, top, right - left, bottom - top));
+//         }
 
-        const path = Skia.Path.Make();
-        path.addRect(
-            Skia.XYWHRect(startX.value, top, endX.value - startX.value, bottom - top),
-        );
-        return path;
-    });
+//         return path;
+//     });
+
+//     const windowClip = useDerivedValue(() => {
+//         if (!isWindowActive) return Skia.Path.Make();
+
+//         const path = Skia.Path.Make();
+//         path.addRect(
+//             Skia.XYWHRect(startX.value, top, endX.value - startX.value, bottom - top),
+//         );
+//         return path;
+//     });
 
 
-    return (
-        <>
-            {/* Base */}
-            <Group clip={backgroundClip} opacity={isWindowActive ? 0.3 : 1}>
-                <Path path={areaPath} style="fill">
-                    <LinearGradient
-                        start={vec(0, 0)}
-                        end={vec(top, bottom)}
-                        colors={
-                            ["#60a5fa", "#60a5fa33"]
-                        }
-                    />
-                </Path>
-                <Path
-                    path={linePath}
-                    style="stroke"
-                    strokeWidth={2}
-                    color={
-                        "#60a5fa"
-                    }
+//     return (
+//         <>
+//             {/* Base */}
+//             <Group clip={backgroundClip} opacity={isWindowActive ? 0.3 : 1}>
+//                 <Path path={areaPath} style="fill">
+//                     <LinearGradient
+//                         start={vec(0, 0)}
+//                         end={vec(top, bottom)}
+//                         colors={
+//                             ["#60a5fa", "#60a5fa33"]
+//                         }
+//                     />
+//                 </Path>
+//                 <Path
+//                     path={linePath}
+//                     style="stroke"
+//                     strokeWidth={2}
+//                     color={
+//                         "#60a5fa"
+//                     }
                     
-                />
-            </Group>
-            {/* Clipped window */}
-            {isWindowActive && (
-                <Group clip={windowClip}>
-                    <Path path={areaPath} style="fill">
-                        <LinearGradient
-                            start={vec(0, 0)}
-                            end={vec(top, bottom)}
-                            colors={
-                                !isWindowActive
-                                    ? ["#60a5fa", "#60a5fa33"]
-                                    : isDeltaPositive?.value
-                                        ? [
-                                            "#60a5fa",
-                                            "#60a5fa33",
-                                        ]
-                                        : [
-                                            "#60a5fa",
-                                            "#60a5fa33",
-                                        ]
-                            }
-                        />
-                    </Path>
-                    <Path
-                        path={linePath}
-                        style="stroke"
-                        strokeWidth={2}
-                        color={"#60a5fa"}
-                    />
-                </Group>
-            )}
-        </>
-    );
-};
+//                 />
+//             </Group>
+//             {/* Clipped window */}
+//             {isWindowActive && (
+//                 <Group clip={windowClip}>
+//                     <Path path={areaPath} style="fill">
+//                         <LinearGradient
+//                             start={vec(0, 0)}
+//                             end={vec(top, bottom)}
+//                             colors={
+//                                 !isWindowActive
+//                                     ? ["#60a5fa", "#60a5fa33"]
+//                                     : isDeltaPositive?.value
+//                                         ? [
+//                                             "#60a5fa",
+//                                             "#60a5fa33",
+//                                         ]
+//                                         : [
+//                                             "#60a5fa",
+//                                             "#60a5fa33",
+//                                         ]
+//                             }
+//                         />
+//                     </Path>
+//                     <Path
+//                         path={linePath}
+//                         style="stroke"
+//                         strokeWidth={2}
+//                         color={"#60a5fa"}
+//                     />
+//                 </Group>
+//             )}
+//         </>
+//     );
+// };
 
 const ActiveValueIndicator = ({
     xPosition,

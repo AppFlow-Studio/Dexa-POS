@@ -7,7 +7,7 @@ import {
     useSharedValue,
     withSpring
 } from 'react-native-reanimated';
-import { useChartTransformState } from "victory-native";
+// import { useChartTransformState } from "victory-native";
 import Inter from "../../assets/fonts/Inter-Medium.ttf";
 import InteractivePieChart from "./InteractivePieChart";
 
@@ -55,7 +55,7 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
             </View>
         );
     }
-    const { state } = useChartTransformState();
+    // const { state } = useChartTransformState();
 
     const transformedData = data.map((item, index) => ({
         value: item.value,

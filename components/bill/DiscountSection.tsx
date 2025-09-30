@@ -26,11 +26,11 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
       {appliedDiscount ? (
         // If a discount IS applied, show the discount label and a remove button
         <View
-          className="flex-row items-center justify-between p-2 py-1 pl-4 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
+          className="flex-row items-center justify-between p-1 py-2 pl-4 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
           style={{ elevation: 2, height: 50 }}
         >
           <View className="flex-row items-center">
-            <Text className="text-lg font-bold text-blue-400">
+            <Text className="text-base font-bold text-blue-400">
               {appliedDiscount.label}
             </Text>
           </View>
@@ -48,9 +48,9 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
           className="flex-row items-center"
           style={{ elevation: 2, height: 50 }}
         >
-          <View className="bg-[#303030] border border-gray-600 rounded-xl flex-row py-1 px-3 items-center">
-            <View className="p-2 rounded-md mr-2">
-              <Tag color="#9CA3AF" size={24} />
+          <View className="bg-[#303030] border border-gray-600 rounded-xl flex-row py-1 px-2 items-center">
+            <View className="p-1 rounded-md mr-1">
+              <Tag color="#9CA3AF" size={18} />
             </View>
             <Text className="font-bold text-lg text-gray-300">Discounts</Text>
           </View>

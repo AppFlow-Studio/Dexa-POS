@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { Area, CartesianChart, Line, useChartPressState } from "victory-native";
+// import { Area, CartesianChart, Line, useChartPressState } from "victory-native";
 
 import { View } from "react-native";
 import inter from "../../../assets/fonts/Inter-Medium.ttf";
@@ -29,10 +29,10 @@ const COLORS = { dineIn: "#3b82f6", takeout: "#f97316" };
 // --- Main Component ---
 const OrderAcceptanceChart = () => {
   const font = useFont(inter as any, 12);
-  const { state, isActive } = useChartPressState({
-    x: 0,
-    y: { dineIn: 0, takeout: 0 },
-  });
+  // const { state, isActive } = useChartPressState({
+  //   x: 0,
+  //   y: { dineIn: 0, takeout: 0 },
+  // });
 
   // Animation setup for slide-up effect
   const translateY = useSharedValue(300);
@@ -46,7 +46,7 @@ const OrderAcceptanceChart = () => {
   return (
     <View className="h-[300px] overflow-hidden">
       <Animated.View style={[{ height: 300 }, animatedStyle]}>
-        <CartesianChart
+        {/* <CartesianChart
           data={orderAcceptanceData}
           xKey="hour"
           yKeys={["dineIn", "takeout"]}
@@ -82,7 +82,7 @@ const OrderAcceptanceChart = () => {
               </Line>
             </>
           )}
-        </CartesianChart>
+        </CartesianChart> */}
       </Animated.View>
     </View>
   );
