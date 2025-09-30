@@ -73,12 +73,12 @@ const MenuControls: React.FC<MenuControlsProps> = ({
   return (
     <View className="flex-row justify-between items-start gap-4">
       {/* Left Section: All Tabs */}
-      <View className="bg-[#303030] w-full p-2 rounded-2xl flex-shrink flex flex-row items-center justify-between">
+      <View className="bg-[#303030] w-full rounded-2xl flex-shrink flex flex-row items-center justify-between">
         {/* Category Pills Container */}
-        <View className="flex-1 p-2 rounded-xl flex-row items-center gap-2">
+        <View className="flex-1  flex-row items-center gap-2">
           <ScrollView
             horizontal
-            className=" p-2 rounded-lg w-fit bg-[#303030] "
+            className=" p-3 rounded-full w-fit bg-[#303030] "
           >
             {categories?.map((tab, index) => {
               const catObj = storeCategories.find((c) => c.name === tab);
@@ -98,7 +98,7 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                 <View key={tab} className="w-fit flex-row items-center">
                   <TouchableOpacity
                     onPress={() => !isDisabled && onCategoryChange(tab)}
-                    className={`py-3 px-6 rounded-full flex-row items-center gap-2 ${
+                    className={`py-2 px-3 rounded-full flex-row items-center gap-2 ${
                       activeCategory === tab
                         ? "border border-accent-300 bg-accent-100"
                         : isDisabled

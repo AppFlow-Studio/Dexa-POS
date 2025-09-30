@@ -143,7 +143,7 @@ const FloorPlanManagementScreen = () => {
             className="flex-row items-center p-6 bg-[#303030] border border-gray-700 rounded-xl mb-4"
           >
             <View className="flex-1">
-              <Text className="text-2xl font-semibold text-white">
+              <Text className="text-2xl underline font-semibold text-white">
                 {item.name}
               </Text>
               <Text className="text-xl text-gray-400 mt-1">

@@ -159,7 +159,7 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
     inventoryAnalysis: InventoryAnalysis;
     salesTrends: SalesTrend[];
 } {
-    console.log('🧮 Analytics Engine: Calculating metrics for', sales.length, 'sales events');
+    //console.log('🧮 Analytics Engine: Calculating metrics for', sales.length, 'sales events');
 
     // Filter data by date range if provided
     const filteredData = dateRange
@@ -167,23 +167,23 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
             const saleDate = new Date(s.date);
             const isInRange = saleDate >= dateRange.start && saleDate <= dateRange.end;
             if (!isInRange) {
-                console.log('🧮 Analytics Engine: Filtering out sale:', {
-                    item: s.itemName,
-                    date: s.date,
-                    saleDate: saleDate.toISOString(),
-                    start: dateRange?.start?.toISOString() || 'No start date',
-                    end: dateRange?.end?.toISOString() || 'No end date'
-                });
+                // console.log('🧮 Analytics Engine: Filtering out sale:', {
+                //     item: s.itemName,
+                //     date: s.date,
+                //     saleDate: saleDate.toISOString(),
+                //     start: dateRange?.start?.toISOString() || 'No start date',
+                //     end: dateRange?.end?.toISOString() || 'No end date'
+                // });
             }
             return isInRange;
         })
         : sales;
 
-    console.log('🧮 Analytics Engine: Filtered data count:', filteredData.length);
-    console.log('🧮 Analytics Engine: Date range:', dateRange ? {
-        start: dateRange.start?.toISOString() || 'No start date',
-        end: dateRange.end?.toISOString() || 'No end date'
-    } : 'No date range');
+    // console.log('🧮 Analytics Engine: Filtered data count:', filteredData.length);
+    // console.log('🧮 Analytics Engine: Date range:', dateRange ? {
+    //     start: dateRange.start?.toISOString() || 'No start date',
+    //     end: dateRange.end?.toISOString() || 'No end date'
+    // } : 'No date range');
 
     const totalRevenue = filteredData.reduce((sum, s) => sum + s.salePrice * s.quantitySold, 0);
     const totalCOGS = filteredData.reduce((sum, s) => sum + s.costOfGoods * s.quantitySold, 0);
@@ -195,12 +195,12 @@ export function calculateAllMetrics(sales: SaleEvent[], dateRange?: { start: Dat
 
     const totalItemsSold = filteredData.reduce((sum, s) => sum + s.quantitySold, 0);
 
-    console.log('🧮 Analytics Engine: Calculated totals:', {
-        totalRevenue,
-        totalCOGS,
-        totalOrders,
-        totalItemsSold
-    });
+    // console.log('🧮 Analytics Engine: Calculated totals:', {
+    //     totalRevenue,
+    //     totalCOGS,
+    //     totalOrders,
+    //     totalItemsSold
+    // });
 
     const kpis: KPIs = {
         grossMargin: calculateGrossMargin(filteredData),

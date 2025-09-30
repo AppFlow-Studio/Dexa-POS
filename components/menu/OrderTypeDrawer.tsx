@@ -4,11 +4,14 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Modal, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { GuestCountModal } from "../tables/GuestCountModal";
 import TableLayoutView from "../tables/TableLayoutView";
+import { Dialog, DialogContent } from "../ui/dialog";
+import { Separator } from "../ui/separator";
 
 interface OrderTypeDrawerProps {
   isVisible: boolean;
@@ -23,6 +26,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   onOrderTypeSelect,
   currentOrderType,
 }) => {
+  const router = useRouter();
   const {
     activeOrderId,
     updateActiveOrderDetails,
@@ -175,14 +179,44 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const handleGuestCountSubmit = (guestCount: number) => {
     if (!selectedTable) return;
 
-    // Create a new order and assign it to the table
-    const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
-    setActiveOrder(newOrder.id);
-    updateTableStatus(selectedTable.id, "In Use");
+    // Check if there's an active order with items
+    if (activeOrderId && activeOrder && activeOrder.items.length > 0) {
+      // Transfer existing order to the table
+      assignOrderToTable(activeOrderId, selectedTable.id);
+      updateActiveOrderDetails({
+        order_type: "Dine In",
+        guest_count: guestCount,
+      });
+      updateTableStatus(selectedTable.id, "In Use");
 
-    // Close all modals/drawers and navigate to the new table screen
-    setGuestModalOpen(false);
-    onClose();
+      // Start a new order for the order-processing screen
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+
+      // Navigate to the table screen
+      setGuestModalOpen(false);
+      onClose();
+
+      // Navigate to the table screen
+      router.push(`/tables/${selectedTable.id}`);
+
+      toast.success(`Order transferred to Table ${selectedTable.name}`, {
+        duration: 3000,
+        position: ToastPosition.BOTTOM,
+      });
+    } else {
+      // Create a new order and assign it to the table (existing flow)
+      const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
+      setActiveOrder(newOrder.id);
+      updateTableStatus(selectedTable.id, "In Use");
+
+      // Close all modals/drawers and navigate to the new table screen
+      setGuestModalOpen(false);
+      onClose();
+
+      // Navigate to the table screen
+      router.push(`/tables/${selectedTable.id}`);
+    }
   };
 
   const handleTableSelect = (table: any) => {
@@ -440,16 +474,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       />
 
       {/* Floor Selection Modal */}
-      <Modal
-        visible={showFloorModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowFloorModal(false)}
-      >
-        <View className="flex-1 bg-black/50 items-center justify-center p-6">
-          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full max-w-md">
+      <Dialog open={showFloorModal} onOpenChange={setShowFloorModal}>
+        <DialogContent className="bg-[#303030] border-gray-700 h-[700px] w-[700px]">
+          <View className="bg-[#303030] rounded-2xl border border-gray-600 w-full">
             {/* Modal Header */}
-            <View className="flex-row items-center justify-between p-6 border-b border-gray-600">
+            <View className="flex-row items-center w-full justify-between p-6 border-b border-gray-600">
               <Text className="text-xl font-bold text-white">Select Floor</Text>
               <TouchableOpacity
                 onPress={() => setShowFloorModal(false)}
@@ -460,8 +489,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             </View>
 
             {/* Floor List */}
-            <ScrollView className="max-h-80">
-              {layouts.map((layout) => (
+            <ScrollView className="h-[87%]">
+              {layouts.map((layout, index) => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => handleFloorSelect(layout.id)}
@@ -499,12 +528,15 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                       </View>
                     )}
                   </View>
+                  {index !== layouts.length - 1 && (
+                    <Separator orientation="horizontal" />
+                  )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </View>
-        </View>
-      </Modal>
+        </DialogContent>
+      </Dialog>
     </View>
   );
 };

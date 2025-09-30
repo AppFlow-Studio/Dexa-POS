@@ -13,7 +13,7 @@ export const useSearchStore = create<SearchStore>((set) => ({
   setSearchSheetRef: (ref) => set({ searchSheetRef: ref }),
   openSearch: () => {
     const { searchSheetRef } = useSearchStore.getState();
-    searchSheetRef?.current?.snapToIndex(0);
+    searchSheetRef?.current?.expand();
   },
   closeSearch: () => {
     const { searchSheetRef } = useSearchStore.getState();

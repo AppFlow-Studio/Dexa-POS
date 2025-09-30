@@ -155,19 +155,17 @@ const BillSection = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
-              disabled={!activeOrder || activeOrder.items.length === 0}
-              className={`flex-1 py-4 rounded-xl ${
-                !activeOrder || activeOrder.items.length === 0
+              disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft) }
+              className={`flex-1 py-4 rounded-xl ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                   ? "bg-gray-500"
                   : "bg-blue-600"
-              }`}
+                }`}
             >
               <Text
-                className={`text-center text-2xl font-bold ${
-                  !activeOrder || activeOrder.items.length === 0
+                className={`text-center text-2xl font-bold ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                     ? "text-gray-400"
                     : "text-white"
-                }`}
+                  }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

@@ -5,7 +5,6 @@ import { Link, router } from "expo-router";
 import {
   ChevronDown,
   ChevronUp,
-  Clock,
   Edit,
   Eye,
   EyeOff,
@@ -166,12 +165,12 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
           </View>
 
           <View className="flex-row items-center gap-3">
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={onSchedule}
               className="p-3 bg-[#212121] rounded border border-gray-600"
             >
               <Clock size={24} color="#9CA3AF" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity
               onPress={() => onToggleMenuActive(menu.id)}
@@ -556,9 +555,9 @@ const MenuPage: React.FC = () => {
                   </TouchableOpacity>
 
                   <View className="flex-row items-center gap-3">
-                    <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
+                    {/* <TouchableOpacity className="p-3 bg-[#212121] rounded border border-gray-600">
                       <Clock size={24} color="#9CA3AF" />
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
                     <TouchableOpacity
                       onPress={() => handleCategoryActive(categoryName?.id)}
                       className="p-3 bg-[#212121] rounded border border-gray-600"

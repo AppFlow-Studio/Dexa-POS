@@ -1,7 +1,7 @@
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
@@ -88,90 +88,92 @@ const TableBillSection = ({
         {showOrderDetails && <OrderDetails />}
 
         {/* Coursing Summary */}
-        {Object.keys(courseSummary).length > 0 && (
-          <View className="px-4 py-3 border-b border-gray-700">
-            <View className="flex-row flex-wrap gap-2">
-              {Object.entries(courseSummary)
-                .sort(([a], [b]) => Number(a) - Number(b))
-                .map(([course, count]) => {
-                  const sent = !!sentCourses?.[Number(course)];
-                  const isActive = Number(course) === (currentCourse ?? 0);
-
-                  // Get items in this course to check their kitchen status
-                  const itemsInCourse = cart.filter(
-                    (item) => (itemCourseMap?.[item.id] ?? 1) === Number(course)
-                  );
-
-                  // Check if all items in course are sent to kitchen
-                  const allItemsSent =
-                    itemsInCourse.length > 0 &&
-                    itemsInCourse.every(
+        <ScrollView horizontal={true} className="max-h-20">
+          {Object.keys(courseSummary).length > 0 && (
+            <View className="px-4 py-3 border-b border-gray-700">
+              <View className="flex-row flex-wrap gap-2">
+                {Object.entries(courseSummary)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([course, count]) => {
+                    const sent = !!sentCourses?.[Number(course)];
+                    const isActive = Number(course) === (currentCourse ?? 0);
+  
+                    // Get items in this course to check their kitchen status
+                    const itemsInCourse = cart.filter(
+                      (item) => (itemCourseMap?.[item.id] ?? 1) === Number(course)
+                    );
+  
+                    // Check if all items in course are sent to kitchen
+                    const allItemsSent =
+                      itemsInCourse.length > 0 &&
+                      itemsInCourse.every(
+                        (item) =>
+                          item.kitchen_status === "sent" ||
+                          item.kitchen_status === "ready" ||
+                          item.kitchen_status === "served"
+                      );
+  
+                    // Check if any items are ready
+                    const anyItemsReady = itemsInCourse.some(
                       (item) =>
-                        item.kitchen_status === "sent" ||
                         item.kitchen_status === "ready" ||
                         item.kitchen_status === "served"
                     );
-
-                  // Check if any items are ready
-                  const anyItemsReady = itemsInCourse.some(
-                    (item) =>
-                      item.kitchen_status === "ready" ||
-                      item.kitchen_status === "served"
-                  );
-
-                  return (
-                    <View
-                      key={course}
-                      className={`px-3 py-2 rounded-full flex-row items-center gap-2 ${
-                        sent || allItemsSent
-                          ? "bg-green-900/30 border border-green-500"
-                          : anyItemsReady
-                            ? "bg-yellow-900/30 border border-yellow-500"
-                            : isActive
-                              ? "bg-blue-900/30 border border-blue-500"
-                              : "bg-[#212121] border border-gray-700"
-                      }`}
-                    >
+  
+                    return (
                       <View
-                        className={`w-3 h-3 rounded-full ${
+                        key={course}
+                        className={`px-3 py-2 rounded-full flex-row items-center gap-2 ${
                           sent || allItemsSent
-                            ? "bg-green-500"
+                            ? "bg-green-900/30 border border-green-500"
                             : anyItemsReady
-                              ? "bg-yellow-500"
-                              : "bg-gray-500"
+                              ? "bg-yellow-900/30 border border-yellow-500"
+                              : isActive
+                                ? "bg-blue-900/30 border border-blue-500"
+                                : "bg-[#212121] border border-gray-700"
                         }`}
-                      />
-                      <Text className="text-xl font-semibold text-white">
-                        Course {course}
-                      </Text>
-                      <View className="w-1" />
-                      <Text className="text-xl font-semibold text-gray-300">
-                        x{count}
-                      </Text>
-                      {sent || allItemsSent ? (
-                        <Text className="text-xl font-bold text-green-400 ml-2">
-                          Sent
+                      >
+                        <View
+                          className={`w-3 h-3 rounded-full ${
+                            sent || allItemsSent
+                              ? "bg-green-500"
+                              : anyItemsReady
+                                ? "bg-yellow-500"
+                                : "bg-gray-500"
+                          }`}
+                        />
+                        <Text className="text-xl font-semibold text-white">
+                          Course {course}
                         </Text>
-                      ) : anyItemsReady ? (
-                        <Text className="text-xl font-bold text-yellow-400 ml-2">
-                          In Progress
+                        <View className="w-1" />
+                        <Text className="text-xl font-semibold text-gray-300">
+                          x{count}
                         </Text>
-                      ) : (
-                        <Text
-                          onPress={() =>
-                            onSelectCourse && onSelectCourse(Number(course))
-                          }
-                          className="text-xl font-bold text-blue-400 ml-2"
-                        >
-                          Select
-                        </Text>
-                      )}
-                    </View>
-                  );
-                })}
+                        {sent || allItemsSent ? (
+                          <Text className="text-xl font-bold text-green-400 ml-2">
+                            Sent
+                          </Text>
+                        ) : anyItemsReady ? (
+                          <Text className="text-xl font-bold text-yellow-400 ml-2">
+                            In Progress
+                          </Text>
+                        ) : (
+                          <Text
+                            onPress={() =>
+                              onSelectCourse && onSelectCourse(Number(course))
+                            }
+                            className="text-xl font-bold text-blue-400 ml-2"
+                          >
+                            Select
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        </ScrollView>
 
         <TableBillSectionContent
           cart={cart}

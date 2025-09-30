@@ -143,7 +143,7 @@ const TablesScreen = () => {
               (table) => table.status !== "Not in Service"
             )}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <TableListItem table={item} />}
+            renderItem={({ item }) => <TableListItem table={item} handleTablePress={handleTablePress} />}
           />
         </View>
 

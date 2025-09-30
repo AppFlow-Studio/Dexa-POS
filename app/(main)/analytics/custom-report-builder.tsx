@@ -80,6 +80,8 @@ const availableDimensions: DimensionOption[] = [
     label: "Date",
     description: "Break down by date",
   },
+  { id: "vendor", label: "Vendor", description: "Break down by vendor" },
+
 ];
 
 const dateRangeOptions = [
@@ -94,7 +96,7 @@ const dateRangeOptions = [
 
 const CustomReportBuilderScreen = () => {
   const router = useRouter();
-  const { saveCustomReport } = useAnalyticsStore();
+  const { saveCustomReport, generateCustomReport, salesData } = useAnalyticsStore();
 
   const [reportName, setReportName] = useState("");
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
@@ -225,6 +227,8 @@ const CustomReportBuilderScreen = () => {
         dateRange,
       },
     };
+
+    console.log(generateCustomReport({...customConfig, chartType, id: "1", createdAt: new Date()}, salesData));
 
     // Save the report first
     saveCustomReport(customConfig);

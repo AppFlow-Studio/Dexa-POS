@@ -414,25 +414,33 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const currentCourse =
         coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
-      // Generate composite key for the new item (including course)
+      // Generate composite key for the new item (without course for basic matching)
       const newItemKey = generateItemCompositeKey(
         newItem.menuItemId,
         newItem.customizations
       );
-      const newItemCourseKey = `${newItemKey}_course_${currentCourse}`;
 
-      // Find an existing item in the cart that has the exact same composite key AND same course
+      // Find an existing item in the cart that has the exact same composite key
+      // Only match items that are not drafts and are in the same course
       const existingItemIndex = activeOrder.items.findIndex((cartItem) => {
+        // Skip draft items for aggregation
+        if (cartItem.isDraft) return false;
+
         const existingItemKey = generateItemCompositeKey(
           cartItem.menuItemId,
           cartItem.customizations
         );
+
+        // Check if the composite keys match (same item + same customizations)
+        if (existingItemKey !== newItemKey) return false;
+
+        // Check if they're in the same course
         const existingItemCourse =
           coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
-            cartItem.id
+          cartItem.id
           ] ?? 1;
-        const existingItemCourseKey = `${existingItemKey}_course_${existingItemCourse}`;
-        return existingItemCourseKey === newItemCourseKey;
+
+        return existingItemCourse === currentCourse;
       });
 
       set((state) => ({
@@ -529,16 +537,16 @@ export const useOrderStore = create<OrderState>((set, get) => {
     updateItemInActiveOrder: (updatedItem) => {
       const { activeOrderId } = get();
       if (!activeOrderId) return;
-
+      console.log("updatedItem", updatedItem);
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === updatedItem.id ? updatedItem : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === updatedItem.id ? updatedItem : i
+              ),
+            }
             : o
         ),
       }));
@@ -653,11 +661,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-                ...o,
-                items: o.items.map((i) =>
-                  i.id === itemId ? { ...i, isDraft: false } : i
-                ),
-              }
+              ...o,
+              items: o.items.map((i) =>
+                i.id === itemId ? { ...i, isDraft: false } : i
+              ),
+            }
             : o
         ),
       }));
@@ -768,11 +776,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-              ...o,
-              service_location_id: tableId,
-              order_type: "Dine In" as const,
-              order_status: "Preparing" as const,
-            }
+            ...o,
+            service_location_id: tableId,
+            order_type: "Dine In" as const,
+            order_status: "Preparing" as const,
+          }
           : o
       );
 
@@ -871,13 +879,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-                ...o,
-                paid_status: "Paid",
-                check_status: "Closed",
-                total_amount: total, // Save the correct final total
-                total_tax: tax,
-                total_discount: activeOrderDiscount, // Save the discount amount
-              }
+              ...o,
+              paid_status: "Paid",
+              check_status: "Closed",
+              total_amount: total, // Save the correct final total
+              total_tax: tax,
+              total_discount: activeOrderDiscount, // Save the discount amount
+            }
             : o
         ),
       }));
@@ -1104,7 +1112,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch {}
+      } catch { }
     },
     transferOrderToTable: (orderId, newTableId) => {
       set((state) => ({
@@ -1165,7 +1173,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
             position: ToastPosition.BOTTOM,
           }
         );
-      } catch {}
+      } catch { }
     },
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);

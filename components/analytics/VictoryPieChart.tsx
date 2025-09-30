@@ -1,9 +1,16 @@
-import { Canvas, Rect, useFont } from "@shopify/react-native-skia";
-import React, { useMemo } from "react";
+import { Skia, useFont } from "@shopify/react-native-skia";
+import React, { useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { Pie, PolarChart, useChartTransformState } from "victory-native";
+import { Gesture } from 'react-native-gesture-handler';
+import {
+    runOnJS,
+    useSharedValue,
+    withSpring
+} from 'react-native-reanimated';
+import { useChartTransformState } from "victory-native";
 import Inter from "../../assets/fonts/Inter-Medium.ttf";
-import { PieChartCustomLabel } from "./pie-chart-custom-label";
+import InteractivePieChart from "./InteractivePieChart";
+
 function generateRandomColor(): string {
     // Generating a random number between 0 and 0xFFFFFF
     const randomColor = Math.floor(Math.random() * 0xffffff);
@@ -11,7 +18,6 @@ function generateRandomColor(): string {
     return `#${randomColor.toString(16).padStart(6, "0")}`;
 }
 
-import { Skia } from '@shopify/react-native-skia';
 
 export const createArcPath = (args: {
     startAngle: number;
@@ -36,8 +42,11 @@ export const createArcPath = (args: {
     );
     return path;
 };
-export default function VictoryPieChart({ data }: { data: any[] }) {
 
+export default function VictoryPieChart({ data }: { data: any[] }) {
+    const [selectedSlice, setSelectedSlice] = useState<number | null>(null);
+    const [tooltipVisible, setTooltipVisible] = useState(false);
+    const [tooltipData, setTooltipData] = useState<{ x: number; y: number; data: any } | null>(null);
 
     if (!data || data.length === 0) {
         return (
@@ -52,6 +61,9 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
         value: item.value,
         color: generateRandomColor(),
         label: item.label,
+        valueType: item.valueType || 'value', // 'revenue', 'items', 'orders', etc.
+        unit: item.unit || '', // '$', 'items', 'orders', etc.
+        description: item.description || '', // Additional context
     }));
 
     const font = useFont(Inter as any, 14);
@@ -67,6 +79,69 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
 
     // Adjust radius to maintain same visible SIZE
     const RADIUS = SIZE / 2;
+
+    // Animation values
+    const animationProgress = useSharedValue(0);
+    const selectedSliceValue = useSharedValue<number | null>(null);
+
+    // Start animation on mount
+    React.useEffect(() => {
+        animationProgress.value = withSpring(1, {
+            damping: 15,
+            stiffness: 100,
+        });
+    }, []);
+
+    // Handle touch events
+    const handleTouch = (x: number, y: number) => {
+        const dx = x - CENTER;
+        const dy = y - CENTER;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Check if point is within radius bounds
+        if (distance < RADIUS - BASE_STROKE_WIDTH / 2 || distance > RADIUS + BASE_STROKE_WIDTH / 2) {
+            return;
+        }
+
+        // Calculate angle of the point
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        if (angle < 0) angle += 360;
+
+        // Find which slice contains this angle
+        let currentAngle = -90;
+        for (let i = 0; i < transformedData.length; i++) {
+            const proportion = transformedData[i].value / totalValue;
+            const sweepAngle = proportion * 360;
+            const startAngle = currentAngle;
+            const endAngle = currentAngle + sweepAngle - GAP;
+
+            if (angle >= startAngle && angle <= endAngle) {
+                const newSelectedSlice = selectedSlice === i ? null : i;
+                setSelectedSlice(newSelectedSlice);
+                selectedSliceValue.value = newSelectedSlice;
+
+                if (newSelectedSlice !== null) {
+                    setTooltipData({
+                        x: x,
+                        y: y,
+                        data: transformedData[i],
+                    });
+                    setTooltipVisible(true);
+                } else {
+                    setTooltipVisible(false);
+                }
+                break;
+            }
+
+            currentAngle += sweepAngle;
+        }
+    };
+
+    // Gesture handler
+    const gesture = Gesture.Tap()
+        .onEnd((event) => {
+            runOnJS(handleTouch)(event.x, event.y);
+        });
 
     const pieChartSlices = useMemo(() => {
         let currentAngle = -90; // Start from top
@@ -94,53 +169,70 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
     return (
         <View
             style={{
-                height: 300,
                 width: "100%",
             }}
         >
-            <PolarChart
+            {/* <GestureDetector gesture={gesture}>
+                <PolarChart
+                    data={transformedData}
+                    colorKey={"color"}
+                    valueKey={"value"}
+                    labelKey={"label"}
+                >
+                    <Pie.Chart innerRadius="50%">
+                        {({ slice }) => {
+                            return (
+                                <>
+                                    <Pie.Slice animate={{ type: "spring" }}>
+                                        <Pie.Label radiusOffset={0.6}>
+                                            {(position) => (
+                                                <PieChartCustomLabel
+                                                    position={position}
+                                                    slice={slice}
+                                                    font={font}
+                                                />
+                                            )}
+                                        </Pie.Label>
+                                    </Pie.Slice>
+
+                                    <Pie.SliceAngularInset
+                                        angularInset={{
+                                            angularStrokeWidth: 4,
+                                            angularStrokeColor: '#fafafa',
+                                        }}
+                                    />
+                                </>
+                            );
+                        }}
+                    </Pie.Chart>
+                </PolarChart>
+            </GestureDetector> */}
+
+            <InteractivePieChart
                 data={transformedData}
-                colorKey={"color"}
-                valueKey={"value"}
-                labelKey={"label"}
-            >
-                <Pie.Chart innerRadius="50%">
-                    {({ slice }) => {
-                        return (
-                            <>
-                                <Pie.Slice animate={{ type: "spring" }}>
-                                    <Pie.Label radiusOffset={0.6}>
-                                        {(position) => (
-                                            <PieChartCustomLabel
-                                                position={position}
-                                                slice={slice}
-                                                font={font}
-                                            />
-                                        )}
-                                    </Pie.Label>
-                                </Pie.Slice>
+                onSlicePress={(index, data) => {
+                    console.log('Pie slice pressed:', { index, data });
+                }}
+            />
 
-                                <Pie.SliceAngularInset
-                                    angularInset={{
-                                        angularStrokeWidth: 4,
-                                        angularStrokeColor: '#fafafa',
-                                    }}
-                                />
-                            </>
-                        );
-                    }}
-                </Pie.Chart>
-            </PolarChart>
-
-            <View style={{ flexDirection: "row", alignSelf: "center", marginTop: 5 }}>
+            {/* <View style={{ flexDirection: "row", alignSelf: "center", marginTop: 5 }}>
                 {transformedData.map((d, index) => {
+                    const isSelected = selectedSlice === index;
                     return (
-                        <View
+                        <TouchableOpacity
                             key={index}
+                            onPress={() => {
+                                const newSelectedSlice = selectedSlice === index ? null : index;
+                                setSelectedSlice(newSelectedSlice);
+                                selectedSliceValue.value = newSelectedSlice;
+                            }}
                             style={{
                                 marginRight: 8,
                                 flexDirection: "row",
                                 alignItems: "center",
+                                padding: 4,
+                                borderRadius: 8,
+                                backgroundColor: isSelected ? '#374151' : 'transparent',
                             }}
                         >
                             <Canvas style={{ height: 12, width: 12, marginRight: 4 }}>
@@ -149,11 +241,34 @@ export default function VictoryPieChart({ data }: { data: any[] }) {
                                     color={d.color}
                                 />
                             </Canvas>
-                            <Text className="text-white">{d.label}</Text>
-                        </View>
+                            <Text className={`text-white ${isSelected ? 'font-semibold' : ''}`}>
+                                {d.label}
+                            </Text>
+                        </TouchableOpacity>
                     );
                 })}
-            </View>
+            </View> */}
+
+            {/* Tooltip for selected slice */}
+            {selectedSlice !== null && tooltipVisible && tooltipData && (
+                <View
+                    className="absolute bg-gray-800 border border-gray-600 rounded-lg p-3 shadow-lg"
+                    style={{
+                        left: Math.min(tooltipData.x, 300),
+                        top: Math.max(tooltipData.y - 80, 10),
+                        zIndex: 1000,
+                        maxWidth: 200,
+                    }}
+                >
+                    <Text className="text-white font-semibold text-base">{tooltipData.data.label}</Text>
+                    <Text className="text-gray-300 text-sm mt-1">
+                        Value: {tooltipData.data.value.toLocaleString()}
+                    </Text>
+                    <Text className="text-gray-300 text-sm">
+                        Percentage: {((tooltipData.data.value / totalValue) * 100).toFixed(1)}%
+                    </Text>
+                </View>
+            )}
         </View >
     );
 }

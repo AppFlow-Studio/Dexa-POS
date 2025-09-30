@@ -7,7 +7,7 @@ import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Link, useRouter } from "expo-router";
 import { Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { FlatList, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const PurchaseOrderRow: React.FC<{
   item: PurchaseOrder;
@@ -176,7 +176,7 @@ const PurchaseOrdersScreen = () => {
   ];
 
   return (
-    <View className="flex-1">
+    <ScrollView bounces={false}  className="flex-1 flex-grow">
       {/* Header with Tab Bar */}
       <View className="mb-4">
         <View className="flex-row justify-between items-center mb-4">
@@ -231,12 +231,12 @@ const PurchaseOrdersScreen = () => {
       {activeTab === "purchase-orders" && (
         <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
           <View className="p-4 border-b border-gray-700">
-            <View className="gap-3">
-              <View>
+            <View className="gap-3 flex-row w-full  justify-between">
+              <View className="w-[70%]">
                 <Text className="text-gray-300 mb-1">Search (PO, Vendor, Employee, Status)</Text>
                 <TextInput value={query} onChangeText={setQuery} placeholder="e.g., PO-2025, Alice, Draft" placeholderTextColor="#9CA3AF" className="bg-[#212121] h-16 border border-gray-700 rounded-lg px-3 py-3 text-white" />
               </View>
-              <View>
+              <View className="w-[30%] " >
                 <Text className="text-gray-300 mb-1">Date Range</Text>
                 <DateRangePicker
                   startDate={startDate}
@@ -245,6 +245,7 @@ const PurchaseOrdersScreen = () => {
                     setStartDate(start);
                     setEndDate(end);
                   }}
+                  className="w-full h-16"
                   placeholder="Select date range for POs"
                 />
               </View>
@@ -301,14 +302,14 @@ const PurchaseOrdersScreen = () => {
         <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
           {externalExpenses.length > 0 ? (
             <View className="p-6">
-              <View className="bg-[#212121] border border-gray-600 rounded-lg p-4 mt-4">
+              {/* <View className="bg-[#212121] border border-gray-600 rounded-lg p-4 mt-4">
                 <View className="flex-row justify-between items-center">
                   <Text className="text-white font-bold text-lg">Total External Expenses</Text>
                   <Text className="text-green-400 font-bold text-xl">
                     ${externalExpenses.reduce((sum, expense) => sum + expense.totalAmount, 0).toFixed(2)}
                   </Text>
                 </View>
-              </View>
+              </View> */}
               <FlatList
                 data={externalExpenses}
                 keyExtractor={(item) => item.id}
@@ -413,7 +414,7 @@ const PurchaseOrdersScreen = () => {
         variant="destructive"
       />
 
-    </View>
+    </ScrollView>
   );
 };
 

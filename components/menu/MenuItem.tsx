@@ -67,26 +67,30 @@ const MenuItem: React.FC<MenuItemProps> = ({
       onPress={handlePress}
       className={`w-[23%] rounded-[20px] ${item.availability === false ? "opacity-50" : ""} mb-2 bg-[#303030] border border-gray-600`}
     >
-      <View className="flex-col items-center gap-3 overflow-hidden rounded-lg">
-        {imageSource ? (
-          <Image
-            source={imageSource}
-            className="w-full h-48 object-cover rounded-lg "
-          />
-        ) : (
-          <View className="w-full h-48 rounded-xl  items-center justify-center ">
-            <Utensils color="#9ca3af" size={48} />
+      <View className="flex-col items-center gap-1 overflow-hidden rounded-lg">
+        <View className=" relative w-full h-32">
+          {imageSource ? (
+            <Image
+              source={imageSource}
+              className="w-full h-32 object-cover rounded-lg "
+            />
+          ) : (
+            <View className="w-full h-32 rounded-xl  items-center justify-center ">
+              <Utensils color="#9ca3af" size={32} />
+            </View>
+          )}
+          <View className="absolute bottom-2 right-2">
+            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
+              <Settings color="#60A5FA" size={20} className="" />
+            )}
           </View>
-        )}
+        </View>
         <View className="h-[1px] bg-blue-400 self-center w-[90%]" />
-        <View className="w-full pb-4 px-4">
+        <View className="w-full pb-2 px-4">
           <View className="flex-row items-center justify-between">
-            <Text className="text-2xl font-bold text-white mt-3 flex-1">
+            <Text className="text-xl font-bold text-white mt-3 flex-1">
               {item.name}
             </Text>
-            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
-              <Settings color="#60A5FA" size={24} className="ml-2" />
-            )}
           </View>
           <View className="flex-row items-baseline mt-1">
             {(() => {
@@ -104,12 +108,12 @@ const MenuItem: React.FC<MenuItemProps> = ({
               return (
                 <>
                   <Text
-                    className={`text-2xl font-semibold ${hasCustomPricing ? "text-yellow-400" : "text-white"}`}
+                    className={`text-xl font-semibold ${hasCustomPricing ? "text-yellow-400" : "text-white"}`}
                   >
                     ${displayPrice.toFixed(2)}
                   </Text>
                   {hasCustomPricing && (
-                    <Text className="text-xl text-gray-500 ml-2 line-through">
+                    <Text className="text-lg text-gray-500 ml-2 line-through">
                       ${item.price.toFixed(2)}
                     </Text>
                   )}

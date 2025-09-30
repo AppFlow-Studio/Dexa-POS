@@ -64,6 +64,7 @@ export interface AnalyticsState {
     fetchReportData: (config: { type?: string; customConfig?: CustomReportConfig }) => void;
     saveCustomReport: (config: Omit<CustomReportConfig, 'id' | 'createdAt'>) => void;
     deleteCustomReport: (id: string) => void;
+    generateCustomReport: (config: CustomReportConfig, salesData: SaleEvent[]) => ReportData;
     clearError: () => void;
     resetFilters: () => void;
     forceRefresh: () => void;
@@ -71,6 +72,71 @@ export interface AnalyticsState {
 
 // Initialize with mock data
 const initialSalesData = generateMockSalesData(30);
+
+// Helper functions for category data generation
+function generateCategoryRevenueData(salesData: SaleEvent[]) {
+    const categoryRevenue = new Map<string, number>();
+
+    salesData.forEach(sale => {
+        const category = sale.category || 'Uncategorized';
+        const revenue = sale.salePrice * sale.quantitySold;
+        categoryRevenue.set(category, (categoryRevenue.get(category) || 0) + revenue);
+    });
+
+    return Array.from(categoryRevenue.entries()).map(([category, revenue]) => ({
+        label: category,
+        value: revenue,
+        valueType: 'revenue',
+        unit: '$',
+        description: `Revenue from ${category} items`,
+        color: `hsl(${Math.random() * 360}, 70%, 50%)`
+    }));
+}
+
+function generateCategoryItemsData(salesData: SaleEvent[]) {
+    const categoryItems = new Map<string, number>();
+
+    salesData.forEach(sale => {
+        const category = sale.category || 'Uncategorized';
+        categoryItems.set(category, (categoryItems.get(category) || 0) + sale.quantitySold);
+    });
+
+    return Array.from(categoryItems.entries()).map(([category, items]) => ({
+        label: category,
+        value: items,
+        valueType: 'items',
+        unit: 'items',
+        description: `Number of ${category} items sold`,
+        color: `hsl(${Math.random() * 360}, 70%, 50%)`
+    }));
+}
+
+function generateCategoryPerformanceData(salesData: SaleEvent[]) {
+    const categoryData = new Map<string, { revenue: number; items: number; orders: number }>();
+
+    salesData.forEach(sale => {
+        const category = sale.category || 'Uncategorized';
+        const existing = categoryData.get(category) || { revenue: 0, items: 0, orders: 0 };
+        categoryData.set(category, {
+            revenue: existing.revenue + (sale.salePrice * sale.quantitySold),
+            items: existing.items + sale.quantitySold,
+            orders: existing.orders + 1
+        });
+    });
+
+    return Array.from(categoryData.entries()).map(([category, data]) => ({
+        label: category,
+        value: data.revenue,
+        valueType: 'revenue',
+        unit: '$',
+        description: `${data.items} items sold, ${data.orders} orders`,
+        color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+        additionalData: {
+            items: data.items,
+            orders: data.orders
+        }
+    }));
+}
 
 const defaultFilters: Filters = {
     dateRange: {
@@ -87,7 +153,23 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
     isLoading: false,
     error: null,
     filters: defaultFilters,
+    generateCustomReport(config: CustomReportConfig, salesData: SaleEvent[]): ReportData {
+        // Ensure dateRange is valid before passing to calculateAllMetrics
+        const dateRange = config.filters.dateRange?.start && config.filters.dateRange?.end
+            ? config.filters.dateRange
+            : undefined;
 
+        const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, dateRange);
+
+        return {
+            title: getSmartDateRangeTitle(config.name, salesTrends),
+            kpis,
+            inventoryAnalysis,
+            salesTrends,
+            chartData: formatCustomChartData(salesData, config),
+            tableData: formatCustomTableData(salesData, config)
+        };
+    },
     // Actions
     addSaleEvent: (event: SaleEvent[]) => {
         console.log('📈 Analytics Store: Adding sale events:', event);
@@ -117,7 +199,6 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
                     dateRange: { start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), end: tomorrow }
                 };
             }
-
             return {
                 salesData: newSalesData,
                 filters: updatedFilters
@@ -182,7 +263,7 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
             } else if (config.customConfig) {
                 // Custom report
                 console.log('📊 Analytics Store: Generating custom report with config:', config.customConfig);
-                reportData = generateCustomReport(config.customConfig, salesData);
+                reportData = useAnalyticsStore.getState().generateCustomReport(config.customConfig, salesData);
                 console.log('📊 Analytics Store: Generated custom report data:', {
                     title: reportData.title,
                     chartDataLength: reportData.chartData?.length,
@@ -234,7 +315,8 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
     forceRefresh: () => {
         console.log('🔄 Analytics Store: Force refreshing...');
         get().fetchReportData({ type: 'overview' });
-    }
+    },
+
 }));
 
 // Helper function to generate smart date range titles
@@ -332,28 +414,47 @@ function generatePreBuiltReport(type: string, salesData: SaleEvent[], filters: F
                 tableData: formatPaymentTableData(salesData)
             };
 
+        case 'revenue-by-category': {
+            const categoryRevenueData = generateCategoryRevenueData(salesData);
+            return {
+                title: getSmartDateRangeTitle('Revenue by Category', salesTrends),
+                kpis,
+                inventoryAnalysis,
+                salesTrends,
+                chartData: categoryRevenueData,
+                tableData: formatCategoryTableData(categoryRevenueData)
+            };
+        }
+
+        case 'items-sold-by-category': {
+            const categoryItemsData = generateCategoryItemsData(salesData);
+            return {
+                title: getSmartDateRangeTitle('Items Sold by Category', salesTrends),
+                kpis,
+                inventoryAnalysis,
+                salesTrends,
+                chartData: categoryItemsData,
+                tableData: formatCategoryItemsTableData(categoryItemsData)
+            };
+        }
+
+        case 'category-performance': {
+            const categoryPerformanceData = generateCategoryPerformanceData(salesData);
+            return {
+                title: getSmartDateRangeTitle('Category Performance', salesTrends),
+                kpis,
+                inventoryAnalysis,
+                salesTrends,
+                chartData: categoryPerformanceData,
+                tableData: formatCategoryPerformanceTableData(categoryPerformanceData)
+            };
+        }
+
         default:
             throw new Error(`Unknown report type: ${type}`);
     }
 }
 
-function generateCustomReport(config: CustomReportConfig, salesData: SaleEvent[]): ReportData {
-    // Ensure dateRange is valid before passing to calculateAllMetrics
-    const dateRange = config.filters.dateRange?.start && config.filters.dateRange?.end
-        ? config.filters.dateRange
-        : undefined;
-
-    const { kpis, inventoryAnalysis, salesTrends } = calculateAllMetrics(salesData, dateRange);
-
-    return {
-        title: getSmartDateRangeTitle(config.name, salesTrends),
-        kpis,
-        inventoryAnalysis,
-        salesTrends,
-        chartData: formatCustomChartData(salesData, config),
-        tableData: formatCustomTableData(salesData, config)
-    };
-}
 
 // Chart data formatting functions
 function formatChartData(trends: SalesTrend[], metric: keyof SalesTrend) {
@@ -649,6 +750,42 @@ function formatCustomTableData(salesData: SaleEvent[], config: CustomReportConfi
     console.log('📊 Custom Report: Generated table:', { headers, rows: rows.slice(0, 3) });
 
     return { headers, rows };
+}
+
+// Table formatting functions for new category reports
+function formatCategoryTableData(data: any[]) {
+    return {
+        headers: ['Category', 'Revenue', 'Percentage'],
+        rows: data.map(item => [
+            item.label,
+            `$${item.value.toFixed(2)}`,
+            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
+        ])
+    };
+}
+
+function formatCategoryItemsTableData(data: any[]) {
+    return {
+        headers: ['Category', 'Items Sold', 'Percentage'],
+        rows: data.map(item => [
+            item.label,
+            item.value.toString(),
+            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
+        ])
+    };
+}
+
+function formatCategoryPerformanceTableData(data: any[]) {
+    return {
+        headers: ['Category', 'Revenue', 'Items Sold', 'Orders', 'Percentage'],
+        rows: data.map(item => [
+            item.label,
+            `$${item.value.toFixed(2)}`,
+            item.additionalData?.items?.toString() || '0',
+            item.additionalData?.orders?.toString() || '0',
+            `${((item.value / data.reduce((sum, d) => sum + d.value, 0)) * 100).toFixed(1)}%`
+        ])
+    };
 }
 
 // Initialize the store with default data

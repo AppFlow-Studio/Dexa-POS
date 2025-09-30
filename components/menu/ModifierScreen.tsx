@@ -27,6 +27,7 @@ const ModifierScreen = () => {
   const {
     addItemToActiveOrder,
     updateItemInActiveOrder,
+    removeItemFromActiveOrder,
     confirmDraftItem,
     generateCartItemId,
   } = useOrderStore();
@@ -35,6 +36,79 @@ const ModifierScreen = () => {
     menuItems,
     modifierGroups: allModifierGroups,
   } = useMenuStore();
+  if (cartItem?.kitchen_status === "sent") {
+    return (
+      <View className="flex-1 bg-[#212121]">
+        {/* Header */}
+        <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#212121]">
+          <TouchableOpacity onPress={close} className="flex-row items-center">
+            <ArrowLeft color="#9CA3AF" size={24} />
+            <Text className="text-2xl font-medium text-white ml-2">
+              Back to Bill
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Content */}
+        <View className="flex-1 items-center justify-center p-8 w-full">
+          <View className="items-center w-full">
+            {/* Icon */}
+            {/* <View className="w-24 h-24 bg-orange-600 rounded-full items-center justify-center mb-6">
+              <Text className="text-4xl">🍳</Text>
+            </View> */}
+
+            {/* Title */}
+            <Text className="text-3xl font-bold text-white text-center mb-4">
+              Item Already Sent
+            </Text>
+
+            {/* Description */}
+            <Text className="text-xl text-gray-400 text-center mb-6 leading-relaxed">
+              This item has already been sent to the kitchen and cannot be
+              modified.
+            </Text>
+
+            {/* Item Details */}
+            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-6 w-full border border-gray-600">
+              <View className="flex-row items-center justify-center w-full gap-4 mb-4">
+                <Image
+                  source={require("@/assets/images/classic_burger.png")}
+                  className="w-16 h-16 rounded-lg"
+                />
+                <View className="flex-1">
+                  <Text className="text-2xl font-semibold text-white">
+                    {cartItem.name}
+                  </Text>
+                  <Text className="text-lg text-gray-400">
+                    Quantity: {cartItem.quantity}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Status Badge */}
+              {/* <View className="flex-row items-center justify-center">
+                <View className="bg-orange-600 px-4 py-2 rounded-full">
+                  <Text className="text-lg font-semibold text-white">
+                    🍳 Sent to Kitchen
+                  </Text>
+                </View>
+              </View> */}
+            </View>
+
+            {/* Action Button */}
+            <TouchableOpacity
+              onPress={close}
+              className="mt-8 bg-blue-600 px-8 py-4 rounded-xl"
+            >
+              <Text className="text-xl font-semibold text-white">
+                Back to Bill
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
@@ -71,6 +145,7 @@ const ModifierScreen = () => {
       : menuItem;
   const isFullscreen = mode === "fullscreen";
   // Get the correct price for the current item based on category
+
   const getCurrentItemPrice = useCallback(
     (item: any) => {
       if (!item) return 0;
@@ -82,7 +157,6 @@ const ModifierScreen = () => {
           categoryId
         );
       }
-
       // Otherwise use the default price
       return item.price || 0;
     },
@@ -177,29 +251,51 @@ const ModifierScreen = () => {
 
       // Add draft item to cart when opening for new items (not edit mode)
       if (mode !== "edit" && !cartItem) {
-        const itemPrice = getCurrentItemPrice(currentItem);
-        const draftItem = {
-          id: generateCartItemId(
-            currentItem.id,
-            { modifiers: [], notes: "" },
-            true
-          ),
-          menuItemId: currentItem.id,
-          name: currentItem.name,
-          quantity: 1,
-          originalPrice: itemPrice,
-          price: itemPrice,
-          image: currentItem.image,
-          isDraft: true,
-          customizations: {
-            modifiers: [],
-            notes: "",
-          },
-          availableDiscount: currentItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-        };
-        addItemToActiveOrder(draftItem);
+        // Check if there's already an existing item with the same menuItemId and empty customizations
+        const { activeOrderId, orders } = useOrderStore.getState();
+        const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+        const existingItem = activeOrder?.items.find((item) => {
+          if (item.menuItemId !== currentItem.id) return false;
+          if (item.isDraft) return false; // Don't match other draft items
+
+          // Check if customizations are empty (no modifiers, no notes)
+          const hasModifiers =
+            item.customizations.modifiers &&
+            item.customizations.modifiers.length > 0;
+          const hasNotes =
+            item.customizations.notes &&
+            item.customizations.notes.trim() !== "";
+
+          return !hasModifiers && !hasNotes;
+        });
+
+        // Only create draft item if no existing item with same customizations
+        if (!existingItem) {
+          const itemPrice = getCurrentItemPrice(currentItem);
+          const draftItem = {
+            id: generateCartItemId(
+              currentItem.id,
+              { modifiers: [], notes: "" },
+              true
+            ),
+            menuItemId: currentItem.id,
+            name: currentItem.name,
+            quantity: 1,
+            originalPrice: itemPrice,
+            price: itemPrice,
+            image: currentItem.image,
+            isDraft: true,
+            customizations: {
+              modifiers: [],
+              notes: "",
+            },
+            availableDiscount: currentItem.availableDiscount,
+            appliedDiscount: null,
+            paidQuantity: 0,
+          };
+          addItemToActiveOrder(draftItem);
+        }
       }
     }
   }, [isOpen, currentItem, mode, cartItem]);
@@ -217,6 +313,7 @@ const ModifierScreen = () => {
 
       if (draftItem) {
         // Convert modifier selections to the format expected by the order system
+        console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
               ([categoryId, selections]) => {
@@ -428,24 +525,120 @@ const ModifierScreen = () => {
       // --- ADD NEW ITEM TO CART ---
       const { activeOrderId, orders } = useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find(
-        (item) => item.isDraft && item.menuItemId === baseItem.id
-      );
 
-      if (draftItem) {
-        // Confirm the existing draft item
-        const confirmedItem = {
-          ...draftItem,
-          id: generateCartItemId(baseItem.id, finalCustomizations), // Generate final ID
-          quantity,
-          price: total / Math.max(1, quantity),
-          isDraft: false,
-          customizations: finalCustomizations,
-        };
-        updateItemInActiveOrder(confirmedItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
-        });
+      // Get current course from coursing store
+      const coursingState =
+        require("@/stores/useCoursingStore").useCoursingStore.getState();
+      const currentCourse =
+        coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
+
+      // Look for existing item (draft or confirmed) with same menuItemId, customizations, AND course
+      const existingItem = activeOrder?.items.find((item) => {
+        if (item.menuItemId !== baseItem.id) return false;
+
+        // Check if they're in the same course
+        const existingItemCourse =
+          coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ??
+          1;
+        if (existingItemCourse !== currentCourse) return false;
+
+        // Check if customizations match
+        const itemCustomizations = item.customizations;
+        const currentCustomizations = finalCustomizations;
+
+        // Compare modifiers
+        const itemModifiers = itemCustomizations.modifiers || [];
+        const currentModifiers = currentCustomizations.modifiers || [];
+
+        if (itemModifiers.length !== currentModifiers.length) return false;
+
+        // Check each modifier category
+        for (let i = 0; i < itemModifiers.length; i++) {
+          const itemMod = itemModifiers[i];
+          const currentMod = currentModifiers[i];
+
+          if (itemMod.categoryId !== currentMod.categoryId) return false;
+          if (itemMod.options.length !== currentMod.options.length)
+            return false;
+
+          // Check each option
+          for (let j = 0; j < itemMod.options.length; j++) {
+            if (itemMod.options[j].id !== currentMod.options[j].id)
+              return false;
+          }
+        }
+
+        // Compare notes
+        const itemNotes = (itemCustomizations.notes || "").trim();
+        const currentNotes = (currentCustomizations.notes || "").trim();
+        if (itemNotes !== currentNotes) return false;
+
+        return true;
+      });
+
+      if (existingItem) {
+        // First, remove any draft items for this menu item to prevent orphaned drafts
+        const draftItems = activeOrder?.items.filter(
+          (item) => item.isDraft && item.menuItemId === baseItem.id
+        );
+
+        if (draftItems && draftItems.length > 0) {
+          draftItems.forEach((draftItem) => {
+            removeItemFromActiveOrder(draftItem.id);
+          });
+        }
+
+        if (existingItem.isDraft) {
+          // Remove the draft item and add the confirmed item
+          console.log(
+            "draftItem found, removing and adding confirmed item",
+            existingItem
+          );
+
+          // Then add the confirmed item
+          const confirmedItem = {
+            id: generateCartItemId(baseItem.id, finalCustomizations),
+            menuItemId: baseItem.id,
+            name: baseItem.name,
+            quantity,
+            originalPrice: baseItem.price,
+            price: total / Math.max(1, quantity),
+            image: baseItem.image,
+            customizations: finalCustomizations,
+            availableDiscount: baseItem.availableDiscount,
+            appliedDiscount: null,
+            paidQuantity: 0,
+            isDraft: false,
+          };
+
+          addItemToActiveOrder(confirmedItem);
+          console.log("confirmedItem added", confirmedItem);
+          toast.success(`Added ${baseItem.name}`, {
+            position: ToastPosition.BOTTOM,
+          });
+        } else {
+          // Update existing confirmed item (aggregate quantities)
+          console.log(
+            "existingItem found, aggregating quantities:",
+            existingItem
+          );
+          const updatedItem = {
+            ...existingItem,
+            quantity: existingItem.quantity + quantity,
+            price: total / Math.max(1, quantity), // Update price to reflect new total
+            isDraft: false,
+            customizations: finalCustomizations,
+          };
+
+          updateItemInActiveOrder(updatedItem);
+          console.log("existingItem updated", updatedItem);
+          toast.success(
+            `Added ${baseItem.name} (${updatedItem.quantity} total)`,
+            {
+              position: ToastPosition.BOTTOM,
+            }
+          );
+        }
       } else {
         // Or add a completely new item if no draft was found
         const newItem = {
@@ -462,6 +655,7 @@ const ModifierScreen = () => {
           paidQuantity: 0,
           isDraft: false,
         };
+        console.log("newItem", newItem);
         addItemToActiveOrder(newItem);
         toast.success(`Added ${baseItem.name}`, {
           position: ToastPosition.BOTTOM,
@@ -497,12 +691,17 @@ const ModifierScreen = () => {
       const { activeOrderId, orders, removeItemFromActiveOrder } =
         useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+
+      // Find any draft items for this menu item
+      const draftItems = activeOrder?.items.filter(
+        (item) => item.isDraft && item.menuItemId === currentItem.id
       );
 
-      if (draftItem) {
-        removeItemFromActiveOrder(draftItem.id);
+      // Remove all draft items for this menu item
+      if (draftItems && draftItems.length > 0) {
+        draftItems.forEach((draftItem) => {
+          removeItemFromActiveOrder(draftItem.id);
+        });
       }
     }
     close();

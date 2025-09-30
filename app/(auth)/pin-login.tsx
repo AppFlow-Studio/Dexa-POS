@@ -6,8 +6,8 @@ import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Link, useRouter } from "expo-router";
 import { Clock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
-
+import { Button, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
+const MockEmployees = [{ "address": "1388 West Ave, Chelsea", "country": "Canada", "dob": "2/5/1967", "fullName": "Philippe Ennis", "gender": "male", "id": "emp_1759078476073_0", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/men/33.jpg", "shiftStatus": "clocked_out" }, { "address": "7860 Pecan Acres Ln, Hobart", "country": "Australia", "dob": "12/12/1969", "fullName": "Richard Holland", "gender": "male", "id": "emp_1759078476073_1", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/men/40.jpg", "shiftStatus": "clocked_out" }, { "address": "298 Grand Marais Ave, St. George", "country": "Canada", "dob": "10/22/1981", "fullName": "Zackary Young", "gender": "male", "id": "emp_1759078476073_2", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/men/28.jpg", "shiftStatus": "clocked_out" }, { "address": "6730 Avondale Ave, Tweed", "country": "Australia", "dob": "1/12/1949", "fullName": "Rafael Boyd", "gender": "male", "id": "emp_1759078476073_3", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/men/8.jpg", "shiftStatus": "clocked_out" }, { "address": "4625 20th Ave, Beaumont", "country": "Canada", "dob": "1/9/1955", "fullName": "Alice Gagné", "gender": "female", "id": "emp_1759078476073_4", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/women/48.jpg", "shiftStatus": "clocked_out" }, { "address": "4431 Regent Ave, Cochrane", "country": "Canada", "dob": "3/6/1976", "fullName": "Vincent Macdonald", "gender": "male", "id": "emp_1759078476073_5", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/men/1.jpg", "shiftStatus": "clocked_out" }, { "address": "4291 St. Catherine St, Bath", "country": "Canada", "dob": "12/22/1951", "fullName": "Hannah Mitchell", "gender": "female", "id": "emp_1759078476073_6", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/women/90.jpg", "shiftStatus": "clocked_out" }, { "address": "9794 Frederick Ave, Inverness", "country": "Canada", "dob": "4/13/1950", "fullName": "Alicia Côté", "gender": "female", "id": "emp_1759078476073_7", "pin": "1234", "profilePictureUrl": "https://randomuser.me/api/portraits/women/15.jpg", "shiftStatus": "clocked_out" }]
 const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
@@ -32,7 +32,7 @@ const PinLoginScreen = () => {
 
   React.useEffect(() => {
     loadMockEmployees(8);
-  }, []);
+  }, [employees]);
 
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
@@ -129,14 +129,17 @@ const PinLoginScreen = () => {
   };
 
   return (
-    <View className="w-full m-auto">
-      <Text className="text-4xl font-medium text-white text-center mb-8">
+    <ScrollView contentContainerStyle={{ flexGrow: 1 }} className="w-full m-auto">
+      {/* <Text className="text-4xl font-medium text-white text-center mb-8">
         Get Started
-      </Text>
+      </Text> */}
 
-      <Text className="text-xl font-semibold text-white mb-2">Select Your Profile</Text>
+      <View className=" justify-between items-center w-full mb-2">
+        <Text className="text-xl font-semibold text-white mb-2">Select Your Profile {employees?.length}</Text>
+        {/* <Button title="Load Mock Employees" onPress={() => loadMockEmployees(8)} variant="outline" /> */}
+      </View>
       <ScrollView horizontal className="mb-4" showsHorizontalScrollIndicator={false}>
-        {employees.map((e) => (
+        {employees?.map((e) => (
           <TouchableOpacity key={e.id} onPress={() => setSelectedEmployeeId(e.id)} className={`mr-4 items-center ${selectedEmployeeId === e.id ? 'opacity-100' : 'opacity-50'}`}>
             <Image source={e.profilePictureUrl ? { uri: e.profilePictureUrl } : require("@/assets/images/tom_hardy.jpg")} className="w-20 h-20 rounded-full" />
             <Text className="text-white mt-2">{e.fullName}</Text>
@@ -222,7 +225,7 @@ const PinLoginScreen = () => {
           </View>
         </DialogContent>
       </Dialog>
-    </View>
+    </ScrollView>
   );
 };
 

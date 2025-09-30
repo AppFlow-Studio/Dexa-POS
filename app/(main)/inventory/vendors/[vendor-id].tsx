@@ -1,11 +1,13 @@
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { POLineItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, { BottomSheetBackdrop, BottomSheetFlatList, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Link, useLocalSearchParams } from "expo-router";
-import { Plus, Search } from "lucide-react-native";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
+import { Edit3, Plus, Search, Trash2 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { TextInput } from "react-native-gesture-handler";
 
 const StatCard = ({ label, value }: { label: string; value: string | number }) => (
     <View className="flex-1 bg-[#303030] border border-gray-700 rounded-2xl p-4 mr-3">
@@ -16,6 +18,7 @@ const StatCard = ({ label, value }: { label: string; value: string | number }) =
 
 const VendorDetailsScreen = () => {
     const params = useLocalSearchParams();
+    const router = useRouter();
     const rawId = (params as any).vendorId || (params as any)["vendor-id"];
     const vendorId = Array.isArray(rawId) ? rawId[0] : rawId;
     const [activeTab, setActiveTab] = useState<'purchase-orders' | 'associated-items'>('purchase-orders');
@@ -32,7 +35,10 @@ const VendorDetailsScreen = () => {
         () => inventoryItems.filter((item) => item.vendorId === vendorId),
         [inventoryItems, vendorId]
     );
-
+    const getItemName = (inventoryItemId: string) => {
+        const item = inventoryItems.find((i) => i.id === inventoryItemId);
+        return item?.name || "Item";
+    };
     const stats = useMemo(() => {
         const totalPOs = vendorPOs.length;
         const received = vendorPOs.filter((po) => po.status === "Awaiting Payment").length;
@@ -53,6 +59,14 @@ const VendorDetailsScreen = () => {
     // Bottom sheet refs and search states
     const poSearchRef = useRef<BottomSheetMethods>(null);
     const itemSearchRef = useRef<BottomSheetMethods>(null);
+    const createPOSheetRef = useRef<BottomSheetMethods>(null);
+    const poBuilderSheetRef = useRef<BottomSheetMethods>(null);
+
+    // PO Builder state
+    const [poLineItems, setPoLineItems] = useState<POLineItem[]>([]);
+    const [selectedTemplatePo, setSelectedTemplatePo] = useState<any>(null);
+    const [isEditingItem, setIsEditingItem] = useState<string | null>(null);
+    const [editingQuantity, setEditingQuantity] = useState<string>("");
     const [poSearchText, setPoSearchText] = useState("");
     const [itemSearchText, setItemSearchText] = useState("");
     const [poStartDate, setPoStartDate] = useState("");
@@ -83,6 +97,87 @@ const VendorDetailsScreen = () => {
             return name.includes(q) || category.includes(q);
         });
     }, [itemSearchText, associatedItems]);
+
+    // PO Builder functions
+    const openPOBuilder = (templatePo?: any) => {
+        setSelectedTemplatePo(templatePo);
+        if (templatePo) {
+            setPoLineItems(templatePo.items);
+        } else {
+            setPoLineItems([]);
+        }
+        createPOSheetRef.current?.close();
+        poBuilderSheetRef.current?.snapToIndex?.(0);
+    };
+
+    const addItemToPO = (item: any) => {
+        const existingIndex = poLineItems.findIndex(li => li.inventoryItemId === item.id);
+        if (existingIndex >= 0) {
+            const updated = [...poLineItems];
+            updated[existingIndex] = { ...updated[existingIndex], quantity: updated[existingIndex].quantity + 1 };
+            setPoLineItems(updated);
+        } else {
+            const newLineItem: POLineItem = {
+                inventoryItemId: item.id,
+                quantity: 1,
+                cost: item.cost,
+            };
+            setPoLineItems([...poLineItems, newLineItem]);
+        }
+    };
+
+    const removeItemFromPO = (inventoryItemId: string) => {
+        setPoLineItems(prev => prev.filter(li => li.inventoryItemId !== inventoryItemId));
+    };
+
+    const startEditItem = (inventoryItemId: string, currentQuantity: number) => {
+        setIsEditingItem(inventoryItemId);
+        setEditingQuantity(currentQuantity.toString());
+    };
+
+    const saveEditItem = () => {
+        if (!isEditingItem) return;
+        const newQuantity = parseInt(editingQuantity) || 0;
+        if (newQuantity <= 0) {
+            removeItemFromPO(isEditingItem);
+        } else {
+            setPoLineItems(prev => prev.map(li =>
+                li.inventoryItemId === isEditingItem
+                    ? { ...li, quantity: newQuantity }
+                    : li
+            ));
+        }
+        setIsEditingItem(null);
+        setEditingQuantity("");
+    };
+
+    const cancelEditItem = () => {
+        setIsEditingItem(null);
+        setEditingQuantity("");
+    };
+
+    const createPurchaseOrder = async (status: "Draft" | "Pending Delivery") => {
+        if (poLineItems.length === 0) {
+            Alert.alert("No Items", "Please add at least one item to the purchase order.");
+            return;
+        }
+
+        try {
+            const { createPurchaseOrder } = useInventoryStore.getState();
+            await createPurchaseOrder({
+                vendorId: vendorId!,
+                status,
+                items: poLineItems,
+            });
+
+            Alert.alert("Success", `Purchase order ${status === "Draft" ? "saved as draft" : "submitted"} successfully!`);
+            setPoLineItems([]);
+            setSelectedTemplatePo(null);
+            poBuilderSheetRef.current?.close();
+        } catch (error) {
+            Alert.alert("Error", "Failed to create purchase order. Please try again.");
+        }
+    };
 
     if (!vendor) {
         return (
@@ -179,7 +274,7 @@ const VendorDetailsScreen = () => {
                                     <TouchableOpacity className="border border-gray-700 rounded-lg p-2" onPress={() => poSearchRef.current?.snapToIndex?.(1)}>
                                         <Search className="bg-gray-700" size={24} color={'#9CA3AF'} />
                                     </TouchableOpacity>
-                                    <TouchableOpacity className="flex-row items-center gap-2 justify-center w-fit bg-blue-500 rounded-lg px-4 py-2">
+                                    <TouchableOpacity className="flex-row items-center gap-2 justify-center w-fit bg-blue-500 rounded-lg px-4 py-2" onPress={() => createPOSheetRef.current?.snapToIndex?.(0)}>
                                         <Plus className="text-white bg-white" size={24} color={'white'} />
                                         <Text className="text-white">Create Purchase</Text>
                                     </TouchableOpacity>
@@ -394,6 +489,231 @@ const VendorDetailsScreen = () => {
                     }
                     enableFooterMarginAdjustment={true}
                 />
+            </BottomSheet>
+
+            {/* Create Purchase Bottom Sheet (vendor preselected + templates) */}
+            <BottomSheet
+                ref={createPOSheetRef as any}
+                index={-1}
+                snapPoints={["60%", "90%"]}
+                enablePanDownToClose
+                backgroundStyle={{ backgroundColor: "#303030" }}
+                handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+                backdropComponent={(props) => (
+                    <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+                )}
+            >
+                <View className="px-6 py-4 border-b border-gray-700">
+                    <Text className="text-white text-2xl font-bold">Create Purchase</Text>
+                    <Text className="text-gray-300 mt-1">Vendor: <Text className="text-white font-semibold">{vendor?.name}</Text></Text>
+                </View>
+                <View className="px-6 py-4 gap-3">
+                    <TouchableOpacity
+                        className="bg-blue-600 border border-blue-500 rounded-lg px-4 py-3 items-center"
+                        onPress={() => openPOBuilder()}
+                    >
+                        <Text className="text-white text-lg font-semibold">Start New Purchase</Text>
+                    </TouchableOpacity>
+
+                    <View className="mt-2">
+                        <View className="flex-row justify-between items-center mb-2">
+                            <Text className="text-white text-xl font-semibold">Use Past Order as Template</Text>
+                            <Text className="text-gray-400">{vendorPOs.length} available</Text>
+                        </View>
+                        <BottomSheetFlatList
+                            data={vendorPOs}
+                            keyExtractor={(po) => po.id}
+                            renderItem={({ item: po }) => (
+                                <View className="border border-gray-700 rounded-lg mb-3 p-3">
+                                    <View className="flex-row justify-between items-center">
+                                        <View className="flex-1 pr-3">
+                                            <Text className="text-white text-lg font-semibold">{po.poNumber}</Text>
+                                            <Text className="text-gray-400 text-sm mt-0.5">{po.status} • {new Date(po.createdAt).toLocaleString()}</Text>
+                                            <View className="mt-2 flex-row flex-wrap gap-2">
+                                                {po.items.map((li, idx) => (
+                                                    <View
+                                                        key={`${po.id}_${idx}`}
+                                                        className="px-2 py-1 rounded-full bg-[#2a2a2a] border border-gray-700"
+                                                    >
+                                                        <Text className="text-[11px] text-gray-200">
+                                                            {getItemName(li.inventoryItemId)} x{li.quantity}
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                                {/* {remaining > 0 && (
+                                                    <View className="px-2 py-1 rounded-full bg-[#2a2a2a] border border-gray-700">
+                                                        <Text className="text-[11px] text-gray-300">
+                                                            +{remaining} more
+                                                        </Text>
+                                                    </View>
+                                                )} */}
+                                            </View>
+                                            <Text className="text-gray-400 text-sm mt-0.5">Lines: {po.items.length}</Text>
+                                        </View>
+                                        <TouchableOpacity
+                                            className="bg-[#3b82f6] px-3 py-2 rounded-lg"
+                                            onPress={() => openPOBuilder(po)}
+                                        >
+                                            <Text className="text-white font-semibold">Use Template</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+                            ListEmptyComponent={
+                                <View className="items-center justify-center py-6">
+                                    <Text className="text-gray-400">No past orders found for this vendor.</Text>
+                                </View>
+                            }
+                            contentContainerStyle={{ paddingBottom: 24 }}
+                        />
+                    </View>
+                </View>
+            </BottomSheet>
+
+            {/* PO Builder BottomSheet */}
+            <BottomSheet
+                ref={poBuilderSheetRef as any}
+                index={-1}
+                snapPoints={["70%", "95%"]}
+                enablePanDownToClose
+                backgroundStyle={{ backgroundColor: "#303030" }}
+                handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+                backdropComponent={(props) => (
+                    <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} opacity={0.7} />
+                )}
+            >
+                <View className="px-6 py-4 border-b border-gray-700 w-full">
+                    <View className="flex flex-row gap-2  justify-between">
+                        <View className="flex flex-col gap-2">
+                            <Text className="text-white text-2xl font-bold">Build Purchase Order</Text>
+                            <Text className="text-gray-300 mt-1">Vendor: <Text className="text-white font-semibold">{vendor?.name}</Text></Text>
+                            {selectedTemplatePo && (
+                                <Text className="text-blue-300 mt-1">Template: {selectedTemplatePo.poNumber}</Text>
+                            )}
+                        </View>
+
+                        {/* Action Buttons */}
+                        <View className="flex-row gap-3 mb-6 w-1/2">
+                            <TouchableOpacity
+                                onPress={() => createPurchaseOrder("Draft")}
+                                className="w-1/2 bg-gray-600 justify-center border border-gray-500 rounded-lg px-4 py-3 items-center"
+                            >
+                                <Text className="text-white text-lg font-semibold">Save as Draft</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                onPress={() => createPurchaseOrder("Pending Delivery")}
+                                className="w-1/2 bg-blue-600 border justify-center border-blue-500 rounded-lg px-4 py-3 items-center"
+                            >
+                                <Text className="text-white text-lg font-semibold">Submit Order</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                    </View>
+                </View>
+
+                <ScrollView className="flex-1 px-6 py-4">
+                    {/* Current Items */}
+                    <View className="mb-6">
+                        <Text className="text-white text-xl font-semibold mb-3">Items ({poLineItems.length})</Text>
+                        {poLineItems.length === 0 ? (
+                            <View className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-6 items-center">
+                                <Text className="text-gray-400">No items added yet</Text>
+                            </View>
+                        ) : (
+                            <View className="gap-1">
+                                {poLineItems.map((lineItem) => {
+                                    const item = inventoryItems.find(i => i.id === lineItem.inventoryItemId);
+                                    const isEditing = isEditingItem === lineItem.inventoryItemId;
+
+                                    return (
+                                        <View key={lineItem.inventoryItemId} className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-4">
+                                            <View className="flex-row justify-between items-center">
+                                                <View className="flex-1 pr-3">
+                                                    <Text className="text-white text-lg font-semibold">{item?.name || "Unknown Item"}</Text>
+                                                    <Text className="text-gray-400 text-sm">${lineItem.cost.toFixed(2)} per {item?.unit}</Text>
+                                                </View>
+                                                <View className="flex-row items-center gap-3">
+                                                    {isEditing ? (
+                                                        <>
+                                                            <TextInput
+                                                                value={editingQuantity}
+                                                                onChangeText={setEditingQuantity}
+                                                                keyboardType="number-pad"
+                                                                className="bg-[#1a1a1a] border border-gray-600 rounded px-3 py-2 text-white text-center w-16"
+                                                            />
+                                                            <TouchableOpacity onPress={saveEditItem} className="bg-green-600 px-3 py-2 rounded">
+                                                                <Text className="text-white text-sm">Save</Text>
+                                                            </TouchableOpacity>
+                                                            <TouchableOpacity onPress={cancelEditItem} className="bg-gray-600 px-3 py-2 rounded">
+                                                                <Text className="text-white text-sm">Cancel</Text>
+                                                            </TouchableOpacity>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Text className="text-white text-lg">Qty: {lineItem.quantity}</Text>
+                                                            <TouchableOpacity onPress={() => startEditItem(lineItem.inventoryItemId, lineItem.quantity)} className="p-2">
+                                                                <Edit3 size={16} color="#9CA3AF" />
+                                                            </TouchableOpacity>
+                                                            <TouchableOpacity onPress={() => removeItemFromPO(lineItem.inventoryItemId)} className="p-2">
+                                                                <Trash2 size={16} color="#EF4444" />
+                                                            </TouchableOpacity>
+                                                        </>
+                                                    )}
+                                                </View>
+                                            </View>
+                                            <Text className="text-white text-right mt-2">
+                                                Total: ${(lineItem.quantity * lineItem.cost).toFixed(2)}
+                                            </Text>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Add Items */}
+                    <View className="mb-6">
+                        <Text className="text-white text-xl font-semibold mb-3">Add Items</Text>
+                        <View className="flex-row items-center gap-2 mb-3">
+                            <Search color="#9CA3AF" size={18} />
+                            <TextInput
+                                value={itemSearchText}
+                                onChangeText={setItemSearchText}
+                                placeholder="Search items..."
+                                className="flex-1 bg-[#2a2a2a] scroll-m-20 border border-gray-700 rounded-lg px-3 py-2 text-white"
+                                placeholderTextColor="#9CA3AF"
+
+                            />
+                        </View>
+                        <BottomSheetFlatList
+                            data={filteredItems}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    onPress={() => addItemToPO(item)}
+                                    className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-3 mb-2"
+                                >
+                                    <View className="flex-row justify-between items-center">
+                                        <View className="flex-1 pr-3">
+                                            <Text className="text-white text-lg font-semibold">{item.name}</Text>
+                                            <Text className="text-gray-400 text-sm">{item.category} • ${item.cost.toFixed(2)} per {item.unit}</Text>
+                                        </View>
+                                        <View className="bg-blue-600 px-3 py-2 rounded">
+                                            <Text className="text-white text-sm">Add</Text>
+                                        </View>
+                                    </View>
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={
+                                <View className="items-center justify-center py-6">
+                                    <Text className="text-gray-400">No items found</Text>
+                                </View>
+                            }
+                        />
+                    </View>
+
+
+                </ScrollView>
             </BottomSheet>
         </>
     );

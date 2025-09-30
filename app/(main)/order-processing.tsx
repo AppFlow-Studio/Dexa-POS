@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 
 const OrderProcessing = () => {
   const {
@@ -137,7 +137,7 @@ const OrderProcessing = () => {
 
           {/* Show order badges when accordion is closed */}
           {!isAccordionOpen && filteredOrders.length > 0 && (
-            <View className="mt-4 flex-row flex-wrap gap-3">
+            <ScrollView horizontal className="mt-4 h-fit overflow-x-auto max-h-16" contentContainerClassName="h-fit flex-row gap-x-2">
               {filteredOrders.map((order) => (
                 <OrderBadge
                   key={order.id}
@@ -147,7 +147,7 @@ const OrderProcessing = () => {
                   onRetrieve={() => handleRetrieve(order.id)}
                 />
               ))}
-            </View>
+            </ScrollView>
           )}
 
           {/* --- Menu Section --- */}

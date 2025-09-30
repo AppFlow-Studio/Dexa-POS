@@ -222,29 +222,29 @@ const OrderDetails: React.FC = () => {
   };
 
   return (
-    <View className="pb-4 px-6 bg-[#212121] overflow-hidden ">
+    <View className=" px-6 bg-[#212121] overflow-hidden ">
       {/* Header */}
       <View className="flex-row flex items-center justify-center my-2 w-full gap-x-4">
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Text className="text-white font-semibold text-2xl mb-2">
+          <Text className="text-white font-semibold text-xl mb-2">
             Customer
           </Text>
           <TouchableOpacity
             onPress={openSheet} // 3. Trigger the bottom sheet
-            className="flex-row items-center p-4 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-20"
+            className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
           >
             {activeOrder?.customer_name ? (
               <>
                 <User color="#A5A5B5" size={24} />
                 <View className="ml-3 flex-1">
                   <Text
-                    className="text-2xl font-semibold text-white"
+                    className="text-2xl font-semibold text-white overflow-ellipsis"
                     numberOfLines={1}
                   >
                     {activeOrder.customer_name}
                   </Text>
                   {activeOrder.customer_phone && (
-                    <Text className="text-xl text-gray-400">
+                    <Text className="text-base text-gray-400">
                       {activeOrder.customer_phone}
                     </Text>
                   )}
@@ -254,20 +254,20 @@ const OrderDetails: React.FC = () => {
             ) : (
               <>
                 <Plus color="#9CA3AF" size={24} />
-                <Text className="text-2xl font-semibold text-gray-300 ml-3">
-                  Add Customer to Order
+                <Text className="text-xl font-semibold text-gray-300 ml-3">
+                  Add Customer
                 </Text>
               </>
             )}
           </TouchableOpacity>
         </View>
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-2xl mb-2">
+          <Label className="text-white font-semibold text-xl mb-2">
             Order Type
           </Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
-            className="w-full flex-row items-center justify-between p-4 border border-background-400 rounded-lg bg-[#303030] h-20"
+            className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-[#303030] h-12"
             onPress={openDrawer}
           >
             <Text className="text-xl font-semibold text-white">

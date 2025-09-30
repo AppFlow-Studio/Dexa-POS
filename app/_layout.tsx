@@ -57,6 +57,19 @@ export default function RootLayout() {
     hasMounted.current = true;
   }, []);
 
+  // useEffect(() => {
+  //   // iOS: Smooth animations
+  //   if (Platform.OS === "ios") {
+  //     Keyboard.addListener("keyboardWillShow", keyboardWillShow);
+  //     Keyboard.addListener("keyboardWillHide", keyboardWillHide);
+  //   }
+  //   // Android: Immediate response
+  //   else {
+  //     Keyboard.addListener("keyboardDidShow", keyboardDidShow);
+  //     Keyboard.addListener("keyboardDidHide", keyboardDidHide);
+  //   }
+  // }, []);
+
   if (!isColorSchemeLoaded) {
     return null;
   }
@@ -65,12 +78,11 @@ export default function RootLayout() {
     <GestureHandlerRootView>
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <StatusBar style={"dark"} />
+          <StatusBar style={"dark"} translucent />
           <Stack
             screenOptions={{ headerShown: false }}
-            initialRouteName="(main)"
+            initialRouteName="(auth)"
           />
-          {/* Remove after testing */}
           <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />

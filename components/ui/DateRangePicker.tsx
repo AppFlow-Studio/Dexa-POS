@@ -143,7 +143,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 onRequestClose={() => setIsModalOpen(false)}
             >
                 <View className="flex-1 bg-black/50 justify-center items-center px-4">
-                    <View className="bg-[#303030] rounded-2xl p-6 w-full max-w-sm">
+                    <View className="bg-[#303030] rounded-2xl p-6 w-full max-w-3xl">
                         {/* Header */}
                         <View className="flex-row items-center justify-between mb-6">
                             <Text className="text-2xl font-bold text-white">Select Date Range</Text>
@@ -181,7 +181,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                                         <TouchableOpacity
                                             key={index}
                                             onPress={() => handleDateSelect(dateStr)}
-                                            className={`w-[14.28%] h-10 items-center justify-center ${isSelected
+                                            className={`w-[14.28%] h-10 aspect-square items-center justify-center ${isSelected
                                                 ? 'bg-blue-600 rounded-full'
                                                 : isInRange
                                                     ? 'bg-blue-600/30'

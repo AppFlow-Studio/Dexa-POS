@@ -28,6 +28,8 @@ interface EmployeeState {
     signOut: () => void;
 }
 
+
+
 export const useEmployeeStore = create<EmployeeState>((set, get) => ({
     employees: [],
     activeEmployeeId: null,
@@ -40,6 +42,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
         const state = get();
         if (state.employees.length > 0) return; // already loaded
         set({ isLoading: true, error: null });
+
         try {
             const resp = await fetch(`https://randomuser.me/api/?results=${count}&nat=us,ca,gb,au`);
             const data = await resp.json();

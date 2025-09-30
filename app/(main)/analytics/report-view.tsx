@@ -18,7 +18,7 @@ const ReportViewScreen = () => {
         fetchReportData,
         clearError
     } = useAnalyticsStore();
-
+   
     // Helper function to generate smart date range titles for charts
     const getChartTitle = (baseTitle: string) => {
         if (!currentReportData?.salesTrends || currentReportData.salesTrends.length === 0) {

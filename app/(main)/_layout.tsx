@@ -9,16 +9,17 @@ export default function MainLayout() {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
+      className="flex-1"
     >
       <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
-        <StatusBar style={"light"} />
+        <StatusBar style={"light"} translucent />
 
         <View className="flex-1 flex-row">
           {/* The Sidebar is now a self-contained component that handles its own state */}
           {/* <Sidebar /> */}
           {/* <ModifierSidebar /> */}
           <View className="flex-1 flex-col">
-            <View className="p-6">
+            <View className="p-2 px-4">
               <Header />
             </View>
             <Slot />
