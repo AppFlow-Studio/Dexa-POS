@@ -66,7 +66,7 @@ const BillSection = ({
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
   const handleOpenMoreOptions = () => {
-    moreOptionsSheetRef.current?.snapToIndex(0);
+    moreOptionsSheetRef.current?.expand();
   };
 
   const handlePayClick = () => {
@@ -87,7 +87,8 @@ const BillSection = ({
 
   if (!activeOrderId)
     return (
-      <View className="w-1/3 items-center justify-center bg-[#212121] p-6 ">
+
+      <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
         <Text className="text-xl font-semibold text-white mb-4">
           No Active Order
         </Text>
@@ -108,13 +109,18 @@ const BillSection = ({
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
 
-      <View className="flex flex-row bg-[#212121] p-3 justify-between">
+
+      <View className="flex flex-row bg-[#212121] px-6 justify-between">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-4 py-2 bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || newItemsCount === 0 ? "opacity-50" : ""}`}
-            style={{ elevation: 2 }}
-            disabled={!activeOrder || newItemsCount === 0}
+            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
+            style={{ elevation: 2}} // Set fixed height to match discount button
+            disabled={
+              !activeOrder ||
+              activeOrder.items.length === 0 ||
+              activeOrder.order_status !== "Building"
+            }
             onPress={() => {
               if (activeOrder?.order_type === "Dine In" && selectedTable) {
                 assignOrderToTable(activeOrderId, selectedTable.id);
@@ -128,21 +134,23 @@ const BillSection = ({
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-base">
-              Send to Kitchen ({newItemsCount})
+
+              Send to Kitchen ({activeOrder?.items.length})
             </Text>
-            <Send size={20} color="#9CA3AF" />
+            <Send size={18} color="#9CA3AF" />
           </TouchableOpacity>
         )}
       </View>
 
-      <View className="h-[1px] w-[90%] self-center bg-gray-600 " />
+      <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
 
       {showPlaymentActions && (
-        <View className="py-3 px-3 bg-[#212121]">
-          <View className="flex-row gap-3">
+
+        <View className="py-3 px-4 bg-[#212121]">
+          <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="flex-1 py-3 bg-[#303030] rounded-xl border border-gray-600"
+              className="flex-1 py-2 bg-[#303030] rounded-xl border border-gray-600"
             >
               <Text className="text-center text-xl font-bold text-white">
                 More
@@ -150,24 +158,15 @@ const BillSection = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
-              disabled={
-                !activeOrder ||
-                activeOrder.items.length === 0 ||
-                activeOrder.items.some((item) => item.isDraft)
-              }
-              className={`flex-1 py-3 rounded-xl ${
-                !activeOrder ||
-                activeOrder.items.length === 0 ||
-                activeOrder.items.some((item) => item.isDraft)
+              disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft) }
+              className={`flex-1 py-2 rounded-xl ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                   ? "bg-gray-500"
                   : "bg-blue-600"
               }`}
             >
               <Text
-                className={`text-center text-xl font-bold ${
-                  !activeOrder ||
-                  activeOrder.items.length === 0 ||
-                  activeOrder.items.some((item) => item.isDraft)
+
+                className={`text-center text-xl font-bold ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                     ? "text-gray-400"
                     : "text-white"
                 }`}

@@ -2,7 +2,7 @@ import { topItemsData } from "@/lib/mockData";
 import { RoundedRect, useFont } from "@shopify/react-native-skia";
 import React, { useEffect } from "react";
 import { Text, View } from "react-native";
-import { CartesianChart } from "victory-native";
+// import { CartesianChart } from "victory-native";
 
 // Assumed font path. Adjust to your project structure.
 import {
@@ -64,7 +64,7 @@ const TopItemsBarChart = () => {
     <View className="bg-[#303030] p-4 rounded-lg shadow border border-background-400">
       {/* Chart container */}
       <View className="h-[250px]">
-        <CartesianChart
+        {/* <CartesianChart
           data={processedData}
           xKey="quantity"
           yKeys={["category"]}
@@ -86,7 +86,6 @@ const TopItemsBarChart = () => {
             },
           ]}
         >
-          {/* 👇 This is the fix: Manually render each bar as a RoundedRect */}
           {({ points, chartBounds }) => {
             // Calculate the height for each bar based on available space
             const bandHeight =
@@ -103,7 +102,7 @@ const TopItemsBarChart = () => {
               />
             ));
           }}
-        </CartesianChart>
+        </CartesianChart> */}
       </View>
       {/* Axis Title */}
       <Text className="text-center text-xl text-white mt-2">Quantity Sold</Text>

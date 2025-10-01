@@ -28,6 +28,7 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
         <View
           className="flex-row items-center justify-between p-1.5 pl-3 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
           style={{ elevation: 2, height: 44 }}
+
         >
           <View className="flex-row items-center">
             <Text className="text-base font-bold text-blue-400">

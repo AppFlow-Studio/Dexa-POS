@@ -10,13 +10,12 @@ import {
     useFont,
     vec
 } from "@shopify/react-native-skia";
-import React from "react";
 import {
     Text,
     View
 } from "react-native";
 import { SharedValue, useDerivedValue } from "react-native-reanimated";
-import { CartesianChart, ChartBounds, PointsArray, useAreaPath, useChartPressState, useLinePath } from "victory-native";
+// import { CartesianChart, ChartBounds, PointsArray, useAreaPath, useChartPressState, useLinePath } from "victory-native";
 import Inter from "../../assets/fonts/Inter-Medium.ttf";
 
 
@@ -29,7 +28,7 @@ export default function VictoryNativeSalesTrendChart() {
         clearError
     } = useAnalyticsStore();
     const font = useFont(Inter as any, 14);
-    const { state, isActive } = useChartPressState({ x: 0, y: { revenue: 0 } });
+    // const { state, isActive } = useChartPressState({ x: 0, y: { revenue: 0 } });
 
     const formattedData = currentReportData?.chartData?.map((item: any) => ({
         date: item.date || item.name || 'N/A',
@@ -62,7 +61,7 @@ export default function VictoryNativeSalesTrendChart() {
 
     return (
         <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 p-4">
-            <CartesianChart
+            {/* <CartesianChart
                 data={formattedData}
                 domainPadding={{ left: 20, right: 20, top: 20, bottom: 20 }}
                 xKey="date"
@@ -106,119 +105,119 @@ export default function VictoryNativeSalesTrendChart() {
                         />
                     </>
                 )}
-            </CartesianChart>
+            </CartesianChart> */}
         </View >
     );
 }
 
 
-const StockArea = ({
-    colorPrefix,
-    points,
-    isWindowActive,
-    isDeltaPositive,
-    startX,
-    endX,
-    left,
-    right,
-    top,
-    bottom,
-}: {
-    colorPrefix: "dark" | "light";
-    points: PointsArray;
-    isWindowActive: boolean;
-    isDeltaPositive?: SharedValue<boolean>;
-    startX: SharedValue<number>;
-    endX: SharedValue<number>;
-} & ChartBounds) => {
-    const { path: areaPath } = useAreaPath(points, bottom, {
-        curveType: "natural"
-    });
-    const { path: linePath } = useLinePath(points, {
-        curveType: "natural"
-    });
+// const StockArea = ({
+//     colorPrefix,
+//     points,
+//     isWindowActive,
+//     isDeltaPositive,
+//     startX,
+//     endX,
+//     left,
+//     right,
+//     top,
+//     bottom,
+// }: {
+//     colorPrefix: "dark" | "light";
+//     points: PointsArray;
+//     isWindowActive: boolean;
+//     isDeltaPositive?: SharedValue<boolean>;
+//     startX: SharedValue<number>;
+//     endX: SharedValue<number>;
+// } & ChartBounds) => {
+//     const { path: areaPath } = useAreaPath(points, bottom, {
+//         curveType: "natural"
+//     });
+//     const { path: linePath } = useLinePath(points, {
+//         curveType: "natural"
+//     });
 
-    const backgroundClip = useDerivedValue(() => {
-        const path = Skia.Path.Make();
+//     const backgroundClip = useDerivedValue(() => {
+//         const path = Skia.Path.Make();
 
-        if (isWindowActive) {
-            path.addRect(Skia.XYWHRect(left, top, startX.value - left, bottom - top));
-            path.addRect(
-                Skia.XYWHRect(endX.value, top, right - endX.value, bottom - top),
-            );
-        } else {
-            path.addRect(Skia.XYWHRect(left, top, right - left, bottom - top));
-        }
+//         if (isWindowActive) {
+//             path.addRect(Skia.XYWHRect(left, top, startX.value - left, bottom - top));
+//             path.addRect(
+//                 Skia.XYWHRect(endX.value, top, right - endX.value, bottom - top),
+//             );
+//         } else {
+//             path.addRect(Skia.XYWHRect(left, top, right - left, bottom - top));
+//         }
 
-        return path;
-    });
+//         return path;
+//     });
 
-    const windowClip = useDerivedValue(() => {
-        if (!isWindowActive) return Skia.Path.Make();
+//     const windowClip = useDerivedValue(() => {
+//         if (!isWindowActive) return Skia.Path.Make();
 
-        const path = Skia.Path.Make();
-        path.addRect(
-            Skia.XYWHRect(startX.value, top, endX.value - startX.value, bottom - top),
-        );
-        return path;
-    });
+//         const path = Skia.Path.Make();
+//         path.addRect(
+//             Skia.XYWHRect(startX.value, top, endX.value - startX.value, bottom - top),
+//         );
+//         return path;
+//     });
 
 
-    return (
-        <>
-            {/* Base */}
-            <Group clip={backgroundClip} opacity={isWindowActive ? 0.3 : 1}>
-                <Path path={areaPath} style="fill">
-                    <LinearGradient
-                        start={vec(0, 0)}
-                        end={vec(top, bottom)}
-                        colors={
-                            ["#60a5fa", "#60a5fa33"]
-                        }
-                    />
-                </Path>
-                <Path
-                    path={linePath}
-                    style="stroke"
-                    strokeWidth={2}
-                    color={
-                        "#60a5fa"
-                    }
-                />
-            </Group>
-            {/* Clipped window */}
-            {isWindowActive && (
-                <Group clip={windowClip}>
-                    <Path path={areaPath} style="fill">
-                        <LinearGradient
-                            start={vec(0, 0)}
-                            end={vec(top, bottom)}
-                            colors={
-                                !isWindowActive
-                                    ? ["#60a5fa", "#60a5fa33"]
-                                    : isDeltaPositive?.value
-                                        ? [
-                                            "#60a5fa",
-                                            "#60a5fa33",
-                                        ]
-                                        : [
-                                            "#60a5fa",
-                                            "#60a5fa33",
-                                        ]
-                            }
-                        />
-                    </Path>
-                    <Path
-                        path={linePath}
-                        style="stroke"
-                        strokeWidth={2}
-                        color={"#60a5fa"}
-                    />
-                </Group>
-            )}
-        </>
-    );
-};
+//     return (
+//         <>
+//             {/* Base */}
+//             <Group clip={backgroundClip} opacity={isWindowActive ? 0.3 : 1}>
+//                 <Path path={areaPath} style="fill">
+//                     <LinearGradient
+//                         start={vec(0, 0)}
+//                         end={vec(top, bottom)}
+//                         colors={
+//                             ["#60a5fa", "#60a5fa33"]
+//                         }
+//                     />
+//                 </Path>
+//                 <Path
+//                     path={linePath}
+//                     style="stroke"
+//                     strokeWidth={2}
+//                     color={
+//                         "#60a5fa"
+//                     }
+//                 />
+//             </Group>
+//             {/* Clipped window */}
+//             {isWindowActive && (
+//                 <Group clip={windowClip}>
+//                     <Path path={areaPath} style="fill">
+//                         <LinearGradient
+//                             start={vec(0, 0)}
+//                             end={vec(top, bottom)}
+//                             colors={
+//                                 !isWindowActive
+//                                     ? ["#60a5fa", "#60a5fa33"]
+//                                     : isDeltaPositive?.value
+//                                         ? [
+//                                             "#60a5fa",
+//                                             "#60a5fa33",
+//                                         ]
+//                                         : [
+//                                             "#60a5fa",
+//                                             "#60a5fa33",
+//                                         ]
+//                             }
+//                         />
+//                     </Path>
+//                     <Path
+//                         path={linePath}
+//                         style="stroke"
+//                         strokeWidth={2}
+//                         color={"#60a5fa"}
+//                     />
+//                 </Group>
+//             )}
+//         </>
+//     );
+// };
 
 const ActiveValueIndicator = ({
     xPosition,

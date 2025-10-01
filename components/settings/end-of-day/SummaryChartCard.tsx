@@ -1,5 +1,5 @@
-// import React from "react";
-// import { Text, View } from "react-native";
+import React from "react";
+import { Text, View } from "react-native";
 // import { Pie, PolarChart } from "victory-native";
 
 // interface ChartData {
@@ -28,43 +28,43 @@
 //     }));
 //   }, [data, colorScale]);
 
-//   return (
-//     <View className="bg-white p-6 rounded-2xl border border-gray-200">
-//       <Text className="text-xl font-bold text-gray-800">{title}</Text>
-//       <View className="flex-row items-center mt-4">
-//         {/* Chart Container - adjusted for new compact size */}
-//         <View className="w-24 h-24">
-//           {/* The clipping container for the semi-circle effect */}
-//           <View className="w-48 h-48 absolute -left-12 -top-12">
-//             <PolarChart
-//               data={transformedData}
-//               valueKey="value"
-//               labelKey="label"
-//               colorKey="color"
-//             >
-//               {/* 👇 The main fix is here: adjusting the angles */}
-//               <Pie.Chart
-//                 innerRadius="75%"
-//                 startAngle={-150} // Start from the bottom-left
-//                 circleSweepDegrees={120} // Create a smaller 120-degree arc
-//               >
-//                 {() => (
-//                   <>
-//                     <Pie.Slice />
-//                     <Pie.SliceAngularInset
-//                       angularInset={{
-//                         angularStrokeWidth: 4,
-//                         angularStrokeColor: "white",
-//                       }}
-//                     />
-//                   </>
-//                 )}
-//               </Pie.Chart>
-//             </PolarChart>
+  return (
+    <View className="bg-white p-6 rounded-2xl border border-gray-200">
+      <Text className="text-xl font-bold text-gray-800">{title}</Text>
+      <View className="flex-row items-center mt-4">
+        {/* Chart Container - adjusted for new compact size */}
+        <View className="w-24 h-24">
 
-//             {/* The central label has been removed as it's not in the new design */}
-//           </View>
-//         </View>
+          <View className="w-48 h-48 absolute -left-12 -top-12">
+            {/* <PolarChart
+              data={transformedData}
+              valueKey="value"
+              labelKey="label"
+              colorKey="color"
+            >
+
+              <Pie.Chart
+                innerRadius="75%"
+                startAngle={-150} // Start from the bottom-left
+                circleSweepDegrees={120} // Create a smaller 120-degree arc
+              >
+                {() => (
+                  <>
+                    <Pie.Slice />
+                    <Pie.SliceAngularInset
+                      angularInset={{
+                        angularStrokeWidth: 4,
+                        angularStrokeColor: "white",
+                      }}
+                    />
+                  </>
+                )}
+              </Pie.Chart>
+            </PolarChart> */}
+
+
+          </View>
+        </View>
 
 //         {/* Legend */}
 //         <View className="flex-1 ml-6 space-y-2">
@@ -83,9 +83,9 @@
 //             </View>
 //           ))}
 //         </View>
-//       </View>
-//     </View>
-//   );
-// };
+       </View>
+    </View>
+  );
+ };
 
-// export default SummaryChartCard;
+export default SummaryChartCard;

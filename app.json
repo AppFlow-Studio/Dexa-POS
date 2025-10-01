@@ -4,7 +4,7 @@
     "slug": "dexa-pos",
     "version": "1.0.1",
     "orientation": "landscape",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/dexalogo.png",
     "scheme": "dexapos",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,7 +14,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/dexalogo.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,

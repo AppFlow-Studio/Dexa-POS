@@ -67,32 +67,32 @@ const MenuItem: React.FC<MenuItemProps> = ({
       onPress={handlePress}
       className={`w-[23%] rounded-[20px] ${item.availability === false ? "opacity-50" : ""} mb-2 bg-[#303030] border border-gray-600`}
     >
-      <View className="flex-col items-center gap-1 overflow-hidden rounded-lg">
-        <View className=" relative w-full h-32">
+      <View className="flex-col items-center gap-1 overflow-hidden rounded-lg flex-1 ">
+        <View className=" relative w-full h-24 flex-1 ">
           {imageSource ? (
             <Image
               source={imageSource}
-              className="w-full h-32 object-cover rounded-lg "
+              className="w-full h-24 object-cover rounded-lg "
             />
           ) : (
-            <View className="w-full h-32 rounded-xl  items-center justify-center ">
-              <Utensils color="#9ca3af" size={32} />
+            <View className="w-full h-24 rounded-xl  items-center justify-center ">
+              <Utensils color="#9ca3af" size={24} />
             </View>
           )}
           <View className="absolute bottom-2 right-2">
             {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
-              <Settings color="#60A5FA" size={20} className="" />
+              <Settings color="#60A5FA" size={24} className="" />
             )}
           </View>
         </View>
-        <View className="h-[1px] bg-blue-400 self-center w-[90%]" />
-        <View className="w-full pb-2 px-4">
+        <View className="h-[1px] bg-blue-400  self-center w-[90%]" />
+        <View className="w-full px-4 flex-1 pb-1 h-full justify-end" >
           <View className="flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-white mt-3 flex-1">
+            <Text className="text-lg font-bold text-white mt-3 flex-1">
               {item.name}
             </Text>
           </View>
-          <View className="flex-row items-baseline mt-1">
+          <View className="flex-row  items-baseline">
             {(() => {
               // Get the correct price for this category
               const displayPrice =

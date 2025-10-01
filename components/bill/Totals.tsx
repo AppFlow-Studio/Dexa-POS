@@ -18,8 +18,8 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
   const voucher = 0.0;
 
   return (
-    <View className="px-4 py-2 bg-[#212121]">
-      <View className="space-y-1.5">
+    <View className="px-6 py-1 bg-[#212121]">
+      <View className="space-y-1">
         <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
@@ -51,9 +51,10 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
         </View>
       </View>
 
-      <View className="border-t border-dashed border-gray-600 mt-2 pt-2 flex-row justify-between items-center">
-        <Text className="text-xl font-bold text-white">Total</Text>
-        <Text className="text-xl font-bold text-white">
+
+      <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
+        <Text className="text-lg font-bold text-white">Total</Text>
+        <Text className="text-lg font-bold text-white">
           ${activeOrderTotal.toFixed(2)}
         </Text>
       </View>
