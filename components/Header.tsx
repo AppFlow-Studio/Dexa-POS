@@ -167,14 +167,14 @@ const Header = () => {
               onPress={handleBackPress}
               className="p-2 mr-3 bg-gray-100 rounded-lg"
             >
-              <ArrowLeft color="#1f2937" size={20} />
+              <ArrowLeft color="#1f2937" size={20}  />
             </TouchableOpacity>
           )}
           <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <TouchableOpacity className="flex-row items-center cursor-pointer">
+          <DropdownMenuTrigger asChild >
+            <TouchableOpacity className="flex-row items-center  cursor-pointer">
               <Image
                 source={
                   activeEmployeeId
@@ -196,7 +196,7 @@ const Header = () => {
                         ?.fullName || "Employee"
                     : "Guest"}
                 </Text>
-                <Text className="text-lg text-gray-300">
+                <Text className="text-lg text-white">
                   {activeEmployeeId ? "Signed In" : "Not Signed In"}
                 </Text>
               </View>
@@ -207,20 +207,20 @@ const Header = () => {
             <DropdownMenuItem
               onPress={() => router.push("/settings/basic/my-profile")}
             >
-              <User className="mr-2 h-5 w-5 text-gray-300" />
+              <User className="mr-2 h-5 w-5 text-white" color="white" />
               <Text className="text-lg text-white">My Profile</Text>
             </DropdownMenuItem>
             <DropdownMenuItem
               onPress={handleStartBreak}
               disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
             >
-              <Coffee className="mr-2 h-5 w-5 text-gray-300" />
+              <Coffee className="mr-2 h-5 w-5 text-white " color="white" />
               <Text className="text-lg text-white">
                 {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
-              <LogOut className="mr-2 h-5 w-5 text-gray-300" />
+              <LogOut className="mr-2 h-5 w-5 text-white"  color="white"/>
               <Text className="text-lg text-white">Switch Account</Text>
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-gray-600" />
@@ -240,7 +240,7 @@ const Header = () => {
                 router.replace("/pin-login");
               }}
             >
-              <LogOut className="mr-2 h-5 w-5 text-red-500" />
+              <LogOut className="mr-2 h-5 w-5 text-red-500" color="red" />
               <Text className="text-lg text-red-400">Logout</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
