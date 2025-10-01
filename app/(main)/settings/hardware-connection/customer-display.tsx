@@ -49,8 +49,8 @@ const CustomerDisplayScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="Hardware & Connection"
@@ -59,13 +59,13 @@ const CustomerDisplayScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
           {/* Main content area */}
           <ScrollView>
-            <View className="flex-1 gap-y-6">
+            <View className="flex-1 gap-y-4">
               {/* Enable/Disable Card */}
-              <View className="bg-[#212121] flex-row justify-between items-center p-6 rounded-2xl border border-gray-600">
-                <Text className="text-3xl font-bold text-white">
+              <View className="bg-[#212121] flex-row justify-between items-center p-4 rounded-2xl border border-gray-600">
+                <Text className="text-2xl font-bold text-white">
                   Enable customer display
                 </Text>
                 <Switch
@@ -73,13 +73,13 @@ const CustomerDisplayScreen = () => {
                   onValueChange={setIsEnabled}
                   trackColor={{ false: "#DCDCDC", true: "#31A961" }}
                   thumbColor={"#ffffff"}
-                  style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
+                  style={{ transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }] }}
                 />
               </View>
 
               {/* Idle Screen Options */}
-              <SettingsCard title="Select what to show when the screen is idle">
-                <View className="gap-y-4">
+              <SettingsCard title="Idle Screen Options">
+                <View className="gap-y-3">
                   <RadioButton
                     label="Show Store Logo"
                     isSelected={idleOption === "logo"}
@@ -94,8 +94,8 @@ const CustomerDisplayScreen = () => {
               </SettingsCard>
 
               {/* Transaction Screen Options */}
-              <SettingsCard title="Select what to show during a transaction">
-                <View className="gap-y-4">
+              <SettingsCard title="Transaction Screen Options">
+                <View className="gap-y-3">
                   <RadioButton
                     label="Show Item List"
                     isSelected={transactionOption === "itemList"}
@@ -111,14 +111,14 @@ const CustomerDisplayScreen = () => {
             </View>
           </ScrollView>
           {/* Footer */}
-          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
-            <TouchableOpacity className="px-6 py-3 border border-gray-500 rounded-lg">
-              <Text className="text-2xl font-bold text-gray-300">
-                Connect a New Terminal
+          <View className="flex-row justify-start gap-2 pt-3 border-t border-gray-600">
+            <TouchableOpacity className="px-4 py-2 border border-gray-500 rounded-lg">
+              <Text className="text-xl font-bold text-gray-300">
+                Connect Terminal
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="text-2xl font-bold text-white">Save</Text>
+            <TouchableOpacity className="px-6 py-2 bg-blue-500 rounded-lg">
+              <Text className="text-xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

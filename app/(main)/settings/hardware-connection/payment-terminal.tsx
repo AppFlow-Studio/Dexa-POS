@@ -14,44 +14,50 @@ import React, { useState } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
 
 const TerminalRow = ({ terminal, onToggle, onEdit, onRemove }: any) => (
-  <View className="flex-row items-center p-6 bg-[#212121] border border-gray-600 rounded-2xl">
+  <View className="flex-row items-center p-4 bg-[#212121] border border-gray-600 rounded-2xl">
     <Switch
       value={terminal.isEnabled}
       onValueChange={() => onToggle(terminal.id)}
       trackColor={{ false: "#DCDCDC", true: "#31A961" }}
       thumbColor={"#ffffff"}
-      style={{ transform: [{ scaleX: 1.5 }, { scaleY: 1.5 }] }}
+      style={{ transform: [{ scaleX: 1.2 }, { scaleY: 1.2 }] }}
     />
-    <View className="ml-4 flex-row gap-4">
-      <Text className="font-bold text-2xl text-white">{terminal.name}</Text>
+    <View className="ml-3 flex-row gap-3 items-center">
+      <Text className="font-bold text-xl text-white">{terminal.name}</Text>
       <View
-        className={`flex-row items-center mt-1 rounded-full px-3 py-1 ${terminal.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"}`}
+        className={`flex-row items-center mt-1 rounded-full px-2 py-0.5 ${
+          terminal.status === "Connected" ? "bg-green-500/20" : "bg-gray-600"
+        }`}
       >
         <View
-          className={`w-3 h-3 rounded-full mr-2 ${terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"}`}
+          className={`w-2.5 h-2.5 rounded-full mr-1.5 ${
+            terminal.status === "Connected" ? "bg-green-500" : "bg-gray-400"
+          }`}
         />
         <Text
-          className={`font-semibold text-xl ${terminal.status === "Connected" ? "text-green-400" : "text-gray-300"}`}
+          className={`font-semibold text-lg ${
+            terminal.status === "Connected" ? "text-green-400" : "text-gray-300"
+          }`}
         >
           {terminal.status}
         </Text>
       </View>
     </View>
-    <View className="ml-auto flex-row items-center gap-3">
-      <Text className="text-xl font-semibold text-gray-300">
-        Battery Level: {terminal.batteryLevel}%
+    <View className="ml-auto flex-row items-center gap-2">
+      <Text className="text-lg font-semibold text-gray-300">
+        Battery: {terminal.batteryLevel}%
       </Text>
       <TouchableOpacity
         onPress={onEdit}
-        className="py-3 px-6 border border-gray-500 rounded-xl"
+        className="py-2 px-4 border border-gray-500 rounded-xl"
       >
-        <Text className="text-xl font-bold text-gray-300">Edit Terminal</Text>
+        <Text className="text-lg font-bold text-gray-300">Edit</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onRemove}
-        className="p-4 border border-gray-500 rounded-full"
+        className="p-3 border border-gray-500 rounded-full"
       >
-        <Trash2 color="#9CA3AF" size={24} />
+        <Trash2 color="#9CA3AF" size={20} />
       </TouchableOpacity>
     </View>
   </View>
@@ -107,8 +113,8 @@ const PaymentTerminalScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="Hardware & Connection"
@@ -117,8 +123,8 @@ const PaymentTerminalScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
-          <View className="flex-1 gap-y-4">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
+          <View className="flex-1 gap-y-3">
             {terminals.map((terminal) => (
               <TerminalRow
                 key={terminal.id}
@@ -132,17 +138,17 @@ const PaymentTerminalScreen = () => {
             ))}
           </View>
 
-          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
+          <View className="flex-row justify-start gap-2 pt-3 border-t border-gray-600">
             <TouchableOpacity
               onPress={() => setConnectModalOpen(true)}
-              className="px-6 py-3 border border-gray-500 rounded-lg"
+              className="px-4 py-2 border border-gray-500 rounded-lg"
             >
-              <Text className="text-2xl font-bold text-gray-300">
-                Connect a New Terminal
+              <Text className="text-xl font-bold text-gray-300">
+                Connect Terminal
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="text-2xl font-bold text-white">Save</Text>
+            <TouchableOpacity className="px-6 py-2 bg-blue-500 rounded-lg">
+              <Text className="text-xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -103,15 +103,15 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#212121] border-gray-700 w-[700px]">
+      <DialogContent className="bg-[#212121] border-gray-700 w-[600px]">
         <DialogHeader>
-          <DialogTitle className="text-white text-3xl">
+          <DialogTitle className="text-white text-2xl">
             {initialData ? "Edit Schedule Rule" : "Add Schedule Rule"}
           </DialogTitle>
         </DialogHeader>
-        <View className="py-6 gap-y-6">
+        <View className="py-4 gap-y-4">
           <View>
-            <Text className="text-gray-300 mb-2 text-2xl font-semibold">
+            <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
               Rule Name
             </Text>
             <TextInput
@@ -119,24 +119,30 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
               onChangeText={setName}
               placeholder="e.g., Happy Hour"
               placeholderTextColor="#6B7280"
-              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-white text-2xl h-20"
+              className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 text-white text-lg h-16"
             />
           </View>
           <View>
-            <Text className="text-gray-300 mb-2 text-2xl font-semibold">
+            <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
               Active Days
             </Text>
-            <View className="flex-row flex-wrap gap-3">
+            <View className="flex-row flex-wrap gap-2">
               {DAY_ORDER.map((d) => {
                 const active = days.includes(d);
                 return (
                   <TouchableOpacity
                     key={d}
                     onPress={() => toggleDay(d)}
-                    className={`px-6 py-4 rounded-lg border ${active ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-600"}`}
+                    className={`px-4 py-3 rounded-lg border ${
+                      active
+                        ? "bg-blue-600 border-blue-500"
+                        : "bg-[#303030] border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-2xl font-semibold ${active ? "text-white" : "text-gray-300"}`}
+                      className={`text-xl font-semibold ${
+                        active ? "text-white" : "text-gray-300"
+                      }`}
                     >
                       {d}
                     </Text>
@@ -145,36 +151,38 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
               })}
             </View>
           </View>
-          <View className="flex-row gap-4">
+          <View className="flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-gray-300 mb-2 text-2xl font-semibold">
+              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
                 Start Time
               </Text>
               <TimeField value={startTime} onChange={setStartTime} />
             </View>
             <View className="flex-1">
-              <Text className="text-gray-300 mb-2 text-2xl font-semibold">
+              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
                 End Time
               </Text>
               <TimeField value={endTime} onChange={setEndTime} />
             </View>
           </View>
-          {error && <Text className="text-red-400 mt-2 text-xl">{error}</Text>}
+          {error && (
+            <Text className="text-red-400 mt-1.5 text-lg">{error}</Text>
+          )}
         </View>
-        <View className="flex-row gap-4 mt-4 pt-6 border-t border-gray-700">
+        <View className="flex-row gap-3 mt-3 pt-4 border-t border-gray-700">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 px-4 py-4 rounded-lg bg-[#303030] border border-gray-600"
+            className="flex-1 px-3 py-3 rounded-lg bg-[#303030] border border-gray-600"
           >
-            <Text className="text-white text-center text-2xl font-bold">
+            <Text className="text-white text-center text-xl font-bold">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="flex-1 px-4 py-4 rounded-lg bg-blue-600"
+            className="flex-1 px-3 py-3 rounded-lg bg-blue-600"
           >
-            <Text className="text-white text-center text-2xl font-bold">
+            <Text className="text-white text-center text-xl font-bold">
               Save
             </Text>
           </TouchableOpacity>

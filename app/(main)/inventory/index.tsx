@@ -48,42 +48,43 @@ const InventoryCatalogRow: React.FC<{
   const vendor = vendors.find((v) => v.id === item.vendorId);
   return (
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row items-center p-6 border-b border-gray-700">
-        <Text className="w-[20%] text-2xl font-semibold text-white">
+      <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-700">
+        <Text className="w-[20%] text-xl font-semibold text-white">
           {item.name}
         </Text>
-        {/* <Text className="w-[15%] text-2xl text-gray-300">{item.category}</Text> */}
         <View className="w-[20%]">
           <Text
-            className={`text-2xl font-semibold ${isLowStock ? "text-red-400" : "text-white"}`}
+            className={`text-xl font-semibold ${
+              isLowStock ? "text-red-400" : "text-white"
+            }`}
           >
             {item?.stockQuantity?.toFixed(0)} {item.unit}
           </Text>
         </View>
-        <Text className="w-[15%] text-2xl text-gray-300">
+        <Text className="w-[15%] text-xl text-gray-300">
           {item.reorderThreshold} {item.unit}
         </Text>
-        <Text className="w-[15%] text-2xl text-gray-300">
+        <Text className="w-[15%] text-xl text-gray-300">
           ${item.cost.toFixed(2)}
         </Text>
-        <Text className="w-[18%] text-2xl text-gray-300">
+        <Text className="w-[18%] text-xl text-gray-300">
           {vendor?.name || "Unknown"}
         </Text>
         <View className="w-[5%] items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-2">
-                <MoreHorizontal size={24} color="#9CA3AF" />
+                <MoreHorizontal size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-6 w-6" color="#9CA3AF" />
-                <Text className="text-xl text-white">Edit Item</Text>
+                <Edit className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Text className="text-lg text-white">Edit Item</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-6 w-6 text-red-400" color="#F87171" />
-                <Text className="text-xl text-red-400">Delete Item</Text>
+                <Trash2 className="mr-2 h-5 w-5" color="#F87171" />
+                <Text className="text-lg text-red-400">Delete Item</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -358,37 +359,38 @@ const InventoryScreen = () => {
     setBulkInventoryReorderThreshold("");
   };
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
   return (
     <BottomSheetModalProvider>
       <View className="flex-1">
         {lowStockItems.length > 0 && (
-          <View className="mb-6 p-6 bg-red-900/30 border border-red-500 rounded-xl">
-            <View className="flex-row items-center mb-3">
-              <AlertTriangle color="#F87171" size={24} />
-              <Text className="text-3xl font-bold text-red-400 ml-2">
+          <View className="mb-4 p-4 bg-red-900/30 border border-red-500 rounded-xl">
+            <View className="flex-row items-center mb-2">
+              <AlertTriangle color="#F87171" size={20} />
+              <Text className="text-2xl font-bold text-red-400 ml-1.5">
                 Low Stock Alerts
               </Text>
             </View>
-            <View className="gap-y-2">
+            <View className="gap-y-1.5">
               {lowStockItems.map((item) => (
                 <View
                   key={item.id}
-                  className="flex-row justify-between p-3 bg-red-800/20 rounded-md"
+                  className="flex-row justify-between p-2 bg-red-800/20 rounded-md"
                 >
-                  <Text className="text-2xl text-white font-medium">
+                  <Text className="text-xl text-white font-medium">
                     {item.name}
                   </Text>
-                  <Text className="text-xl text-red-300">
+                  <Text className="text-lg text-red-300">
                     Stock: {item.stockQuantity} (Threshold:{" "}
                     {item.reorderThreshold})
                   </Text>
@@ -397,51 +399,44 @@ const InventoryScreen = () => {
             </View>
             <TouchableOpacity
               onPress={() => router.push("/inventory/purchase-orders/create")}
-              className="mt-4 py-3 px-6 bg-blue-600 self-start rounded-lg"
+              className="mt-3 py-2 px-4 bg-blue-600 self-start rounded-lg"
             >
-              <Text className="text-2xl text-white font-semibold">
-                Create Purchase Order
+              <Text className="text-xl text-white font-semibold">
+                Create PO
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <View className="flex-row justify-between items-center mb-4">
-          {/* <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4 w-[450px]">
-          <Search color="#9CA3AF" size={24} />
-          <TextInput
-            placeholder="Search by item name..."
-            placeholderTextColor="#9CA3AF"
-            className="ml-3 text-2xl text-white flex-1"
-          />
-        </View> */}
-          {/* <TouchableOpacity
-          onPress={handleOpenAddModal}
-          className="py-4 px-6 bg-blue-600 rounded-lg flex-row items-center"
-        >
-          <Plus color="white" size={24} className="mr-2" />
-          <Text className="text-2xl font-bold text-white">Add New Item</Text>
-        </TouchableOpacity> */}
-        </View>
-
-        {/* Top Tab Bar */}
-        <View className="mb-4 flex-row gap-3">
+        <View className="mb-3 flex-row gap-2">
           <TouchableOpacity
             onPress={() => setActiveTab("menu")}
-            className={`px-4 py-2 rounded-lg border ${activeTab === "menu" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-700"}`}
+            className={`px-3 py-1.5 rounded-lg border ${
+              activeTab === "menu"
+                ? "bg-blue-600 border-blue-500"
+                : "bg-[#303030] border-gray-700"
+            }`}
           >
             <Text
-              className={`text-xl font-semibold ${activeTab === "menu" ? "text-white" : "text-gray-300"}`}
+              className={`text-lg font-semibold ${
+                activeTab === "menu" ? "text-white" : "text-gray-300"
+              }`}
             >
               Menu Items
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab("inventory")}
-            className={`px-4 py-2 rounded-lg border ${activeTab === "inventory" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-700"}`}
+            className={`px-3 py-1.5 rounded-lg border ${
+              activeTab === "inventory"
+                ? "bg-blue-600 border-blue-500"
+                : "bg-[#303030] border-gray-700"
+            }`}
           >
             <Text
-              className={`text-xl font-semibold ${activeTab === "inventory" ? "text-white" : "text-gray-300"}`}
+              className={`text-lg font-semibold ${
+                activeTab === "inventory" ? "text-white" : "text-gray-300"
+              }`}
             >
               Inventory Items
             </Text>
@@ -449,70 +444,56 @@ const InventoryScreen = () => {
         </View>
 
         <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-          <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
+          <View className="flex-row py-2 px-3 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
             {(activeTab === "inventory"
               ? TABLE_HEADERS_INVENTORY
               : TABLE_HEADERS_MENU
             ).map((header) => (
               <Text
                 key={header}
-                className={`font-bold text-xl text-gray-400 ${
+                className={`font-bold text-lg text-gray-400 ${
                   activeTab === "inventory"
                     ? header === "Name"
                       ? "w-[20%]"
                       : header === "Vendor"
-                        ? "w-fit"
-                        : header === "In Stock"
-                          ? "w-[20%]"
-                          : header === "Reorder Point"
-                            ? "w-[15%]"
-                            : header === "Category" || header === "Cost"
-                              ? "w-[15%]"
-                              : "w-[5%]"
+                      ? "w-fit"
+                      : header === "In Stock"
+                      ? "w-[20%]"
+                      : header === "Reorder Point"
+                      ? "w-[15%]"
+                      : "w-[15%]"
                     : header === "Select"
-                      ? "w-[6%]"
-                      : header === "Name"
-                        ? "w-[22%]"
-                        : header === "Price"
-                          ? "w-[12%]"
-                          : header === "Stock"
-                            ? "w-[12%]"
-                            : header === "Reorder Point"
-                              ? "w-[22%]"
-                              : "w-[12%]"
+                    ? "w-[6%]"
+                    : header === "Name"
+                    ? "w-[22%]"
+                    : "w-[12%]"
                 }`}
               >
                 {header === "Select" ? (
                   <TouchableOpacity
                     onPress={toggleSelectAllMenu}
-                    className="h-6 w-6 items-center justify-center border border-gray-600 rounded"
+                    className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
                   >
-                    {isAllSelected ? <Check color="#fff" size={16} /> : null}
+                    <>{isAllSelected && <Check color="#fff" size={12} />}</>
                   </TouchableOpacity>
                 ) : (
                   header
                 )}
               </Text>
             ))}
-            <View className="flex-row items-center flex-1 justify-end gap-x-6">
+            <View className="flex-row items-center flex-1 justify-end gap-x-4">
               <TouchableOpacity
                 onPress={openSearchSheet}
-                className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4 "
+                className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
               >
-                <Search color="#9CA3AF" size={20} />
-                {/* <TextInput
-                placeholder="Search by item name..."
-                placeholderTextColor="#9CA3AF"
-                className="ml-3 text-2xl text-white flex-1"
-              /> */}
+                <Search color="#9CA3AF" size={18} />
               </TouchableOpacity>
               {activeTab === "inventory" && (
                 <TouchableOpacity
                   onPress={() => addItemSheetRef.current?.expand()}
-                  className="py-4 px-6 w-1/2 bg-blue-600 rounded-lg flex-row items-center justify-center"
+                  className="py-2 px-4 bg-blue-600 rounded-lg flex-row items-center justify-center"
                 >
-                  <Plus color="white" size={20} className="mr-2" />
-                  {/* <Text className="text-2xl font-bold text-white">Add New Item</Text> */}
+                  <Plus color="white" size={18} className="mr-1.5" />
                 </TouchableOpacity>
               )}
             </View>
@@ -534,53 +515,54 @@ const InventoryScreen = () => {
               data={menuItems}
               keyExtractor={(item) => item.name}
               renderItem={({ item }) => {
-                const categories = Array.isArray(item.category)
-                  ? item.category
-                  : item.category
-                    ? [item.category]
-                    : [];
                 const isSelected = selectedMenuIds.includes(item.id);
                 return (
                   <Link href={`/inventory/menu-items/${item.id}`} asChild>
-                    <TouchableOpacity className="flex-row items-center px-6 py-6 border-b border-gray-700">
+                    <TouchableOpacity className="flex-row items-center px-4 py-3 border-b border-gray-700">
                       <View className="w-[6%]">
                         <TouchableOpacity
                           onPress={() => toggleSelectMenuItem(item.id)}
-                          className={`h-6 w-6 items-center justify-center border rounded ${isSelected ? "bg-blue-600 border-blue-500" : "border-gray-600"}`}
+                          className={`h-5 w-5 items-center justify-center border rounded ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-500"
+                              : "border-gray-600"
+                          }`}
                         >
-                          {isSelected ? <Check color="#fff" size={16} /> : null}
+                          <>{isSelected && <Check color="#fff" size={12} />}</>
                         </TouchableOpacity>
                       </View>
                       <View className="w-[22%] flex-row items-center">
-                        <Text className="text-white text-2xl flex-1">
+                        <Text className="text-white text-xl flex-1">
                           {item.name}
                         </Text>
                       </View>
-                      <Text className="text-gray-300 text-2xl w-[12%]">
+                      <Text className="text-gray-300 text-xl w-[12%]">
                         ${item.price.toFixed(2)}
                       </Text>
-                      <View className="w-[12%] flex-row items-center justify-between">
+                      <View className="w-[12%] flex-row items-center">
                         <Text
-                          className={`text-2xl ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                          className={`text-xl ${
+                            typeof item.stockQuantity === "number" &&
+                            typeof item.reorderThreshold === "number" &&
+                            item.stockQuantity <= item.reorderThreshold
+                              ? "text-red-400"
+                              : "text-gray-300"
+                          }`}
                         >
                           {typeof item.stockQuantity === "number"
                             ? item.stockQuantity
                             : "—"}
                         </Text>
-                        {(item.availability === false ||
-                          (typeof item.stockQuantity === "number" &&
-                            typeof item.reorderThreshold === "number" &&
-                            item.stockQuantity <= item.reorderThreshold)) && (
-                          <AlertTriangle
-                            color="#EF4444"
-                            size={20}
-                            className="ml-2"
-                          />
-                        )}
                       </View>
-                      <View className="w-[22%] items-start flex ">
+                      <View className="w-[22%]">
                         <Text
-                          className={`text-2xl w-[60%] text-center ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                          className={`text-xl w-[60%] text-center ${
+                            typeof item.stockQuantity === "number" &&
+                            typeof item.reorderThreshold === "number" &&
+                            item.stockQuantity <= item.reorderThreshold
+                              ? "text-red-400"
+                              : "text-gray-300"
+                          }`}
                         >
                           {typeof item.reorderThreshold === "number"
                             ? `${item.reorderThreshold}`
@@ -589,43 +571,46 @@ const InventoryScreen = () => {
                       </View>
                       <View className="w-[12%]">
                         <Text
-                          className={`text-2xl px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}
+                          className={`text-lg px-1.5 py-0.5 rounded self-start ${
+                            item.availability !== false
+                              ? "bg-green-600 text-green-50"
+                              : "bg-red-600 text-red-50"
+                          }`}
                         >
-                          {item.availability !== false
-                            ? "Available"
-                            : "Unavailable"}
+                          {item.availability !== false ? "On" : "Off"}
                         </Text>
                       </View>
-
                       <View className="w-[12%] items-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <TouchableOpacity className="p-2">
-                              <MoreHorizontal color="#9CA3AF" size={20} />
+                            <TouchableOpacity className="p-1.5">
+                              <MoreHorizontal color="#9CA3AF" size={18} />
                             </TouchableOpacity>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent className="bg-[#303030] border-gray-700">
                             <DropdownMenuItem
                               onPress={() => handleToggleAvailability(item)}
-                              className="flex-row items-center p-3"
+                              className="flex-row items-center p-2"
                             >
-                              {item.availability !== false ? (
-                                <EyeOff color="#9CA3AF" size={16} />
-                              ) : (
-                                <Eye color="#9CA3AF" size={16} />
-                              )}
-                              <Text className="text-white ml-2">
+                              <>
+                                {item.availability !== false ? (
+                                  <EyeOff color="#9CA3AF" size={14} />
+                                ) : (
+                                  <Eye color="#9CA3AF" size={14} />
+                                )}
+                              </>
+                              <Text className="text-white ml-1.5 text-sm">
                                 {item.availability !== false
-                                  ? "Make Unavailable"
-                                  : "Make Available"}
+                                  ? "Make Off"
+                                  : "Make On"}
                               </Text>
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onPress={() => handleOpenStockModal(item)}
-                              className="flex-row items-center p-3"
+                              className="flex-row items-center p-2"
                             >
-                              <Edit color="#9CA3AF" size={16} />
-                              <Text className="text-white ml-2">
+                              <Edit color="#9CA3AF" size={14} />
+                              <Text className="text-white ml-1.5 text-sm">
                                 Update Stock
                               </Text>
                             </DropdownMenuItem>
@@ -640,42 +625,43 @@ const InventoryScreen = () => {
           )}
         </View>
 
-        {/* Bulk actions toolbar for menu selection */}
         {activeTab === "menu" && selectedMenuIds.length > 0 && (
-          <View className="mt-3 p-4 bg-[#303030] border border-gray-700 rounded-xl flex-row items-center justify-between">
-            <Text className="text-white text-lg">
+          <View className="mt-2 p-3 bg-[#303030] border border-gray-700 rounded-xl flex-row items-center justify-between">
+            <Text className="text-white text-base">
               Selected: {selectedMenuIds.length}
             </Text>
-            <View className="flex-row gap-3">
+            <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(true)}
-                className="px-4 py-3 bg-green-600 rounded-lg"
+                className="px-3 py-2 bg-green-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">
-                  Set Available
+                <Text className="text-white text-base font-semibold">
+                  Set On
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleBulkSetAvailability(false)}
-                className="px-4 py-3 bg-yellow-600 rounded-lg"
+                className="px-3 py-2 bg-yellow-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">
-                  Set Unavailable
+                <Text className="text-white text-base font-semibold">
+                  Set Off
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleOpenBulkStockModal}
-                className="px-4 py-3 bg-blue-600 rounded-lg"
+                className="px-3 py-2 bg-blue-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">
+                <Text className="text-white text-base font-semibold">
                   Update Stock
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={clearSelection}
-                className="px-4 py-3 bg-gray-600 rounded-lg"
+                className="px-3 py-2 bg-gray-600 rounded-lg"
               >
-                <Text className="text-white text-lg font-semibold">Clear</Text>
+                <Text className="text-white text-base font-semibold">
+                  Clear
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -688,72 +674,65 @@ const InventoryScreen = () => {
           vendors={vendors}
           initialData={selectedItem}
         />
-
         <ConfirmationModal
           isOpen={isDeleteConfirmOpen}
           onClose={() => setDeleteConfirmOpen(false)}
           onConfirm={handleConfirmDelete}
-          title="Delete Inventory Item"
-          description={`Are you sure you want to permanently delete "${selectedItem?.name}"? This action cannot be undone.`}
+          title="Delete Item"
+          description={`Delete "${selectedItem?.name}"?`}
           confirmText="Delete"
           variant="destructive"
         />
 
-        {/* Stock Update Modal */}
         <Modal
           visible={isStockModalOpen}
           transparent
           animationType="fade"
           onRequestClose={handleCloseStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-6 w-full max-w-md">
-              <Text className="text-2xl font-bold text-white mb-4">
+          <View className="flex-1 bg-black/50 justify-center items-center px-4">
+            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <Text className="text-xl font-bold text-white mb-3">
                 Update Stock - {selectedMenuItem?.name}
               </Text>
-
-              <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-3">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Stock Quantity
                 </Text>
                 <TextInput
                   value={stockQuantity}
                   onChangeText={setStockQuantity}
-                  placeholder="Enter stock quantity"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter quantity"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-
-              <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-4">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Reorder Threshold
                 </Text>
                 <TextInput
                   value={reorderThreshold}
                   onChangeText={setReorderThreshold}
-                  placeholder="Enter reorder threshold"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="Enter threshold"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-
-              <View className="flex-row gap-3">
+              <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleCloseStockModal}
-                  className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Cancel
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveStock}
-                  className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Save
                   </Text>
                 </TouchableOpacity>
@@ -762,58 +741,55 @@ const InventoryScreen = () => {
           </View>
         </Modal>
 
-        {/* Bulk Inventory Stock Update Modal */}
         <Modal
           visible={isBulkInventoryStockModalOpen}
           transparent
           animationType="fade"
           onRequestClose={handleCloseBulkInventoryStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-6 w-full max-w-md">
-              <Text className="text-2xl font-bold text-white mb-4">
-                Update Inventory Stock ({selectedInventoryIds.length} items)
+          <View className="flex-1 bg-black/50 justify-center items-center px-4">
+            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <Text className="text-xl font-bold text-white mb-3">
+                Update Stock ({selectedInventoryIds.length} items)
               </Text>
-              <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-3">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Stock Quantity
                 </Text>
                 <TextInput
                   value={bulkInventoryStockQuantity}
                   onChangeText={setBulkInventoryStockQuantity}
-                  placeholder="Enter stock quantity (optional)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="(Optional)"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-              <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-4">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Reorder Threshold
                 </Text>
                 <TextInput
                   value={bulkInventoryReorderThreshold}
                   onChangeText={setBulkInventoryReorderThreshold}
-                  placeholder="Enter reorder threshold (optional)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="(Optional)"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-              <View className="flex-row gap-3">
+              <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleCloseBulkInventoryStockModal}
-                  className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Cancel
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveBulkInventoryStock}
-                  className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Save
                   </Text>
                 </TouchableOpacity>
@@ -822,58 +798,55 @@ const InventoryScreen = () => {
           </View>
         </Modal>
 
-        {/* Bulk Stock Update Modal */}
         <Modal
           visible={isBulkStockModalOpen}
           transparent
           animationType="fade"
           onRequestClose={handleCloseBulkStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-6">
-            <View className="bg-[#303030] rounded-xl p-6 w-full max-w-md">
-              <Text className="text-2xl font-bold text-white mb-4">
+          <View className="flex-1 bg-black/50 justify-center items-center px-4">
+            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+              <Text className="text-xl font-bold text-white mb-3">
                 Update Stock ({selectedMenuIds.length} items)
               </Text>
-              <View className="mb-4">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-3">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Stock Quantity
                 </Text>
                 <TextInput
                   value={bulkStockQuantity}
                   onChangeText={setBulkStockQuantity}
-                  placeholder="Enter stock quantity (optional)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="(Optional)"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-              <View className="mb-6">
-                <Text className="text-lg text-gray-300 mb-2">
+              <View className="mb-4">
+                <Text className="text-base text-gray-300 mb-1.5">
                   Reorder Threshold
                 </Text>
                 <TextInput
                   value={bulkReorderThreshold}
                   onChangeText={setBulkReorderThreshold}
-                  placeholder="Enter reorder threshold (optional)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholder="(Optional)"
                   keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-white text-lg h-20"
+                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
                 />
               </View>
-              <View className="flex-row gap-3">
+              <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleCloseBulkStockModal}
-                  className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Cancel
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveBulkStock}
-                  className="flex-1 py-3 px-4 bg-blue-600 rounded-lg"
+                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold text-center">
+                  <Text className="text-white text-base font-semibold text-center">
                     Save
                   </Text>
                 </TouchableOpacity>
@@ -882,9 +855,7 @@ const InventoryScreen = () => {
           </View>
         </Modal>
 
-        {/* Menu Search Bottom Sheet */}
         <BottomSheet
-          enablePanDownToClose={true}
           index={-1}
           ref={menuSearchSheetRef}
           snapPoints={snapPoints}
@@ -892,98 +863,108 @@ const InventoryScreen = () => {
           handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
           backdropComponent={renderBackdrop}
         >
-          <View className="px-4 pb-2 flex-1 h-full">
+          <View className="px-3 pb-1 flex-1 h-full">
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search menu items..."
-              placeholderTextColor="#9CA3AF"
-              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg h-20"
+              placeholder="Search menu..."
+              className="bg-[#212121] border border-gray-700 rounded-lg px-3 py-2 text-white text-base h-16"
             />
           </View>
           <BottomSheetFlatList
             data={filteredMenu}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
-              const categories = Array.isArray(item.category)
-                ? item.category
-                : item.category
-                  ? [item.category]
-                  : [];
               const isSelected = selectedMenuIds.includes(item.id);
               return (
-                <View className="flex-row items-center px-4 py-3 border-b border-gray-700">
+                <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700">
                   <View className="w-[6%]">
                     <TouchableOpacity
                       onPress={() => toggleSelectMenuItem(item.id)}
-                      className={`h-6 w-6 items-center justify-center border rounded ${isSelected ? "bg-blue-600 border-blue-500" : "border-gray-600"}`}
+                      className={`h-5 w-5 items-center justify-center border rounded ${
+                        isSelected
+                          ? "bg-blue-600 border-blue-500"
+                          : "border-gray-600"
+                      }`}
                     >
-                      {isSelected ? <Check color="#fff" size={16} /> : null}
+                      <>{isSelected && <Check color="#fff" size={12} />}</>
                     </TouchableOpacity>
                   </View>
                   <Text
-                    className="text-white text-lg w-[22%]"
+                    className="text-white text-base w-[22%]"
                     numberOfLines={1}
                   >
                     {item.name}
                   </Text>
                   <Text
-                    className="text-gray-300 text-lg w-[22%]"
+                    className="text-gray-300 text-base w-[22%]"
                     numberOfLines={1}
                   >
-                    {categories.join(", ") || "—"}
+                    {(Array.isArray(item.category)
+                      ? item.category
+                      : [item.category]
+                    ).join(", ")}
                   </Text>
-                  <Text className="text-gray-300 text-lg w-[12%]">
+                  <Text className="text-gray-300 text-base w-[12%]">
                     ${item.price.toFixed(2)}
                   </Text>
                   <Text
-                    className={`text-lg w-[12%] ${typeof item.stockQuantity === "number" && typeof item.reorderThreshold === "number" && item.stockQuantity <= item.reorderThreshold ? "text-red-400" : "text-gray-300"}`}
+                    className={`text-base w-[12%] ${
+                      typeof item.stockQuantity === "number" &&
+                      typeof item.reorderThreshold === "number" &&
+                      item.stockQuantity <= item.reorderThreshold
+                        ? "text-red-400"
+                        : "text-gray-300"
+                    }`}
                   >
                     {typeof item.stockQuantity === "number"
                       ? item.stockQuantity
                       : "—"}
-                    {typeof item.reorderThreshold === "number"
-                      ? ` / ${item.reorderThreshold}`
-                      : ""}
                   </Text>
                   <View className="w-[14%]">
                     <Text
-                      className={`text-xs px-2 py-1 rounded self-start ${item.availability !== false ? "bg-green-600 text-green-50" : "bg-red-600 text-red-50"}`}
+                      className={`text-[10px] px-1.5 py-0.5 rounded self-start ${
+                        item.availability !== false
+                          ? "bg-green-600 text-green-50"
+                          : "bg-red-600 text-red-50"
+                      }`}
                     >
-                      {item.availability !== false
-                        ? "Available"
-                        : "Unavailable"}
+                      {item.availability !== false ? "On" : "Off"}
                     </Text>
                   </View>
                   <View className="w-[12%] items-end">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <TouchableOpacity className="p-2">
-                          <MoreHorizontal color="#9CA3AF" size={18} />
+                        <TouchableOpacity className="p-1.5">
+                          <MoreHorizontal color="#9CA3AF" size={16} />
                         </TouchableOpacity>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="bg-[#303030] border-gray-700">
                         <DropdownMenuItem
                           onPress={() => handleToggleAvailability(item)}
-                          className="flex-row items-center p-3"
+                          className="flex-row items-center p-2"
                         >
-                          {item.availability !== false ? (
-                            <EyeOff color="#9CA3AF" size={16} />
-                          ) : (
-                            <Eye color="#9CA3AF" size={16} />
-                          )}
-                          <Text className="text-white ml-2">
+                          <>
+                            {item.availability !== false ? (
+                              <EyeOff color="#9CA3AF" size={14} />
+                            ) : (
+                              <Eye color="#9CA3AF" size={14} />
+                            )}
+                          </>
+                          <Text className="text-white ml-1.5 text-sm">
                             {item.availability !== false
-                              ? "Make Unavailable"
-                              : "Make Available"}
+                              ? "Make Off"
+                              : "Make On"}
                           </Text>
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onPress={() => handleOpenStockModal(item)}
-                          className="flex-row items-center p-3"
+                          className="flex-row items-center p-2"
                         >
-                          <Edit color="#9CA3AF" size={16} />
-                          <Text className="text-white ml-2">Update Stock</Text>
+                          <Edit color="#9CA3AF" size={14} />
+                          <Text className="text-white ml-1.5 text-sm">
+                            Update Stock
+                          </Text>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -993,55 +974,57 @@ const InventoryScreen = () => {
             }}
           />
         </BottomSheet>
-        {/* Guided Add Item Flow */}
         <AddInventoryItemSheet ref={addItemSheetRef} />
-        {/* Inventory Search Bottom Sheet */}
         <BottomSheet
           ref={invSearchSheetRef}
           index={-1}
           snapPoints={snapPoints}
-          enablePanDownToClose={true}
           backgroundStyle={{ backgroundColor: "#303030" }}
           handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
           backdropComponent={renderBackdrop}
         >
-          <View className="px-4 pb-2 flex-1 h-full">
+          <View className="px-3 pb-1 flex-1 h-full">
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search inventory items..."
-              placeholderTextColor="#9CA3AF"
-              className="bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 text-white text-lg h-20"
+              placeholder="Search inventory..."
+              className="bg-[#212121] border border-gray-700 rounded-lg px-3 py-2 text-white text-base h-16"
             />
           </View>
           <BottomSheetFlatList
             data={filteredInventory}
             keyExtractor={(item) => item.id}
             ListHeaderComponent={() => (
-              <View className="flex-row items-center px-4 py-2 border-b border-gray-700">
+              <View className="flex-row items-center px-3 py-1.5 border-b border-gray-700">
                 <View className="w-[6%]">
                   <TouchableOpacity
                     onPress={toggleSelectAllInventory}
-                    className="h-6 w-6 items-center justify-center border border-gray-600 rounded"
+                    className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
                   >
-                    {isAllInventorySelected ? (
-                      <Check color="#fff" size={16} />
-                    ) : null}
+                    <>
+                      {isAllInventorySelected && (
+                        <Check color="#fff" size={12} />
+                      )}
+                    </>
                   </TouchableOpacity>
                 </View>
-                <Text className="text-gray-400 text-sm">Select All</Text>
+                <Text className="text-gray-400 text-xs">Select All</Text>
               </View>
             )}
             renderItem={({ item }) => {
               const isSelected = selectedInventoryIds.includes(item.id);
               return (
-                <View className="flex-row items-center px-4 py-3 border-b border-gray-700">
+                <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700">
                   <View className="w-[6%]">
                     <TouchableOpacity
                       onPress={() => toggleSelectInventoryItem(item.id)}
-                      className={`h-6 w-6 items-center justify-center border rounded ${isSelected ? "bg-blue-600 border-blue-500" : "border-gray-600"}`}
+                      className={`h-5 w-5 items-center justify-center border rounded ${
+                        isSelected
+                          ? "bg-blue-600 border-blue-500"
+                          : "border-gray-600"
+                      }`}
                     >
-                      {isSelected ? <Check color="#fff" size={16} /> : null}
+                      <>{isSelected && <Check color="#fff" size={12} />}</>
                     </TouchableOpacity>
                   </View>
                   <View className="flex-1">
@@ -1058,26 +1041,25 @@ const InventoryScreen = () => {
               );
             }}
           />
-
           {selectedInventoryIds.length > 0 && (
-            <View className="p-4 border-t border-gray-700 bg-[#303030]">
-              <Text className="text-white mb-2">
+            <View className="p-3 border-t border-gray-700 bg-[#303030]">
+              <Text className="text-white text-sm mb-1.5">
                 Selected: {selectedInventoryIds.length}
               </Text>
-              <View className="flex-row gap-3">
+              <View className="flex-row gap-2">
                 <TouchableOpacity
                   onPress={handleOpenBulkInventoryStockModal}
-                  className="px-4 py-3 bg-blue-600 rounded-lg"
+                  className="px-3 py-2 bg-blue-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold">
-                    Bulk Update Stock
+                  <Text className="text-white text-base font-semibold">
+                    Bulk Update
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={clearInventorySelection}
-                  className="px-4 py-3 bg-gray-600 rounded-lg"
+                  className="px-3 py-2 bg-gray-600 rounded-lg"
                 >
-                  <Text className="text-white text-lg font-semibold">
+                  <Text className="text-white text-base font-semibold">
                     Clear
                   </Text>
                 </TouchableOpacity>

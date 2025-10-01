@@ -89,17 +89,17 @@ const PreviousOrdersScreen = () => {
   };
 
   return (
-    <View className="flex-1 p-6 bg-[#212121]">
+    <View className="flex-1 p-4 bg-[#212121]">
       {/* Toolbar */}
-      <View className="flex-row items-center justify-between mb-6">
-        <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-4 w-[450px]">
-          <Search color="#9CA3AF" size={24} />
+      <View className="flex-row items-center justify-between mb-4">
+        <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
+          <Search color="#9CA3AF" size={20} />
           <TextInput
-            placeholder="Search Order ID or Customer Name..."
+            placeholder="Search Order ID or Customer..."
             placeholderTextColor="#9CA3AF"
             value={searchText}
             onChangeText={setSearchText}
-            className="ml-3 text-2xl px-6 py-4 h-20 flex-1 text-white"
+            className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
@@ -108,22 +108,22 @@ const PreviousOrdersScreen = () => {
       {/* Table */}
       <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
         {/* Table Header */}
-        <View className="flex-row p-6 border-b border-gray-700">
+        <View className="flex-row p-4 border-b border-gray-700">
           {TABLE_HEADERS.map((header, index) => (
             <Text
               key={header}
-              className="font-bold text-xl text-gray-400"
+              className="font-bold text-lg text-gray-400"
               style={{
                 width:
                   header === "Order Notes"
                     ? "12%"
                     : header === "Customer"
-                      ? "12%"
-                      : header === ""
-                        ? "5%"
-                        : header === "Items"
-                          ? "7%"
-                          : "9%",
+                    ? "12%"
+                    : header === ""
+                    ? "5%"
+                    : header === "Items"
+                    ? "7%"
+                    : "9%",
               }}
             >
               {header}
@@ -143,8 +143,8 @@ const PreviousOrdersScreen = () => {
             />
           )}
           ListEmptyComponent={
-            <View className="items-center justify-center py-10">
-              <Text className="text-2xl text-gray-500">
+            <View className="items-center justify-center py-8">
+              <Text className="text-xl text-gray-500">
                 No orders found for this date.
               </Text>
             </View>

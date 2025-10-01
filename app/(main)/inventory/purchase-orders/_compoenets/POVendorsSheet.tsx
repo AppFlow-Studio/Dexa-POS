@@ -48,14 +48,14 @@ const VendorRow = ({
 
   if (!vendor) return null;
   return (
-    <View className="border-b border-gray-700 py-4">
+    <View className="border-b border-gray-700 py-3">
       <View className="flex-row items-center justify-between">
-        <View className="flex-1 pr-3">
-          <Text className="text-white text-lg font-semibold">
+        <View className="flex-1 pr-2">
+          <Text className="text-white text-base font-semibold">
             {vendor.name}{" "}
           </Text>
           {!!vendor.description && (
-            <Text className="text-gray-400 text-sm mt-1">
+            <Text className="text-gray-400 text-xs mt-0.5">
               {vendor.description}
             </Text>
           )}
@@ -63,16 +63,18 @@ const VendorRow = ({
         {onSelectVendor && (
           <TouchableOpacity
             onPress={() => onSelectVendor(vendorId)}
-            className="px-3 py-1.5 h-12 flex-row items-center justify-center rounded-lg bg-blue-500"
+            className="px-2 py-1 h-10 flex-row items-center justify-center rounded-lg bg-blue-500"
           >
-            <Text className="text-white text-xs font-bold">Select Vendor</Text>
+            <Text className="text-white text-[10px] font-bold">Select</Text>
           </TouchableOpacity>
         )}
       </View>
-      <View className="mt-3 bg-[#212121] border border-gray-700 rounded-xl p-3">
-        <Text className="text-white font-semibold mb-2">Recent POs</Text>
+      <View className="mt-2 bg-[#212121] border border-gray-700 rounded-xl p-2">
+        <Text className="text-white font-semibold mb-1.5 text-sm">
+          Recent POs
+        </Text>
         {vendorPOs.length === 0 ? (
-          <Text className="text-gray-400">No recent POs</Text>
+          <Text className="text-gray-400 text-sm">No recent POs</Text>
         ) : (
           vendorPOs.map((po) => {
             const preview = po.items.slice(0, 6);
@@ -80,46 +82,46 @@ const VendorRow = ({
             return (
               <View
                 key={po.id}
-                className="py-3 border-t border-gray-800 first:border-t-0"
+                className="py-2 border-t border-gray-800 first:border-t-0"
               >
                 <View className="flex-row items-center justify-between">
-                  <View className="flex-1 pr-3">
-                    <Text className="text-white font-medium">
+                  <View className="flex-1 pr-2">
+                    <Text className="text-white font-medium text-sm">
                       {po.poNumber}
                     </Text>
-                    <Text className="text-gray-500 text-xs">
+                    <Text className="text-gray-500 text-[10px]">
                       {new Date(po.createdAt).toLocaleDateString()} •{" "}
                       {po.status}
                     </Text>
                   </View>
-                  <View className="flex-row items-center gap-3">
-                    <Text className="text-white font-semibold">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-white font-semibold text-sm">
                       {formatAmount(po.id)}
                     </Text>
                     <TouchableOpacity
                       onPress={() => onUseTemplate(po.id)}
-                      className="px-3 py-1.5 h-12 flex-row items-center justify-center rounded-lg bg-blue-500"
+                      className="px-2 py-1 h-10 flex-row items-center justify-center rounded-lg bg-blue-500"
                     >
-                      <Text className="text-white text-xs font-bold">
-                        Use Template
+                      <Text className="text-white text-[10px] font-bold">
+                        Use
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
-                <View className="mt-2 flex-row flex-wrap gap-2">
+                <View className="mt-1.5 flex-row flex-wrap gap-1.5">
                   {preview.map((li, idx) => (
                     <View
                       key={`${po.id}_${idx}`}
-                      className="px-2 py-1 rounded-full bg-[#2a2a2a] border border-gray-700"
+                      className="px-1.5 py-0.5 rounded-full bg-[#2a2a2a] border border-gray-700"
                     >
-                      <Text className="text-[11px] text-gray-200">
+                      <Text className="text-[10px] text-gray-200">
                         {getItemName(li.inventoryItemId)} x{li.quantity}
                       </Text>
                     </View>
                   ))}
                   {remaining > 0 && (
-                    <View className="px-2 py-1 rounded-full bg-[#2a2a2a] border border-gray-700">
-                      <Text className="text-[11px] text-gray-300">
+                    <View className="px-1.5 py-0.5 rounded-full bg-[#2a2a2a] border border-gray-700">
+                      <Text className="text-[10px] text-gray-300">
                         +{remaining} more
                       </Text>
                     </View>
@@ -166,24 +168,24 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
         backgroundStyle={{ backgroundColor: "#303030" }}
         handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
       >
-        <View className="px-4 pb-2">
-          <Text className="text-white text-lg font-bold mb-2">
+        <View className="px-3 pb-1.5">
+          <Text className="text-white text-base font-bold mb-1.5">
             Select Vendor
           </Text>
-          <View className="bg-[#212121] border border-gray-700 rounded-xl px-3 py-2">
+          <View className="bg-[#212121] border border-gray-700 rounded-xl px-2 py-1.5">
             <TextInput
               placeholder="Search vendors..."
               placeholderTextColor="#9CA3AF"
               value={query}
               onChangeText={setQuery}
-              className="text-white h-20"
+              className="text-white h-16 text-base"
             />
           </View>
         </View>
         <BottomSheetFlatList
           data={filteredVendors}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
           renderItem={({ item }) => (
             <VendorRow
               vendorId={item.id}

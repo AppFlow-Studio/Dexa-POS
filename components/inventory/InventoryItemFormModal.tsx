@@ -122,55 +122,55 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[600px]">
+      <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
         <DialogHeader>
-          <DialogTitle className="text-white text-3xl">
+          <DialogTitle className="text-white text-2xl">
             {initialData ? "Edit" : "Add New"} Inventory Item
           </DialogTitle>
         </DialogHeader>
-        <View className="py-4 gap-y-4">
-          <View className="flex-row gap-4">
+        <View className="py-3 gap-y-3">
+          <View className="flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Item Name
               </Text>
               <TextInput
                 value={name}
                 onChangeText={setName}
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
               />
             </View>
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Category
               </Text>
               <TextInput
                 value={category}
                 onChangeText={setCategory}
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
               />
             </View>
           </View>
-          <View className="flex-row gap-4">
+          <View className="flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Stock Quantity
               </Text>
               <TextInput
                 value={stockQuantity}
                 onChangeText={setStockQuantity}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
               />
             </View>
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Unit
               </Text>
               <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger className="w-full p-4 min-h-16 bg-[#212121] border border-gray-600 rounded-lg">
+                <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
                   <SelectValue
-                    className="text-2xl text-white"
+                    className="text-lg text-white"
                     placeholder="Select a unit..."
                   />
                 </SelectTrigger>
@@ -182,7 +182,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                         label={opt.label}
                         value={opt.value}
                       >
-                        <Text className="text-2xl">{opt.label}</Text>
+                        <Text className="text-lg">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -190,38 +190,38 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               </Select>
             </View>
           </View>
-          <View className="flex-row gap-4">
+          <View className="flex-row gap-3">
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Reorder Threshold
               </Text>
               <TextInput
                 value={reorderThreshold}
                 onChangeText={setReorderThreshold}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
               />
             </View>
             <View className="flex-1">
-              <Text className="text-xl text-gray-300 font-medium mb-2">
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
                 Cost Per Unit
               </Text>
               <TextInput
                 value={cost}
                 onChangeText={setCost}
                 keyboardType="numeric"
-                className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
               />
             </View>
           </View>
           <View>
-            <Text className="text-xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-1.5">
               Default Vendor
             </Text>
             <Select value={vendorId} onValueChange={setVendorId}>
-              <SelectTrigger className="w-full p-4 bg-[#212121] min-h-16 border border-gray-600 rounded-lg">
+              <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
                 <SelectValue
-                  className="text-2xl text-white"
+                  className="text-lg text-white"
                   placeholder="Select a vendor..."
                 />
               </SelectTrigger>
@@ -233,7 +233,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
                       label={opt.label}
                       value={opt.value}
                     >
-                      <Text className="text-2xl">{opt.label}</Text>
+                      <Text className="text-lg">{opt.label}</Text>
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -241,20 +241,20 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
             </Select>
           </View>
         </View>
-        <DialogFooter className="flex-row gap-3">
+        <DialogFooter className="flex-row gap-2">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-gray-300">
+            <Text className="text-center text-lg font-bold text-gray-300">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="flex-1 py-4 bg-blue-600 rounded-lg"
+            className="flex-1 py-3 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Save Item
             </Text>
           </TouchableOpacity>

@@ -34,9 +34,9 @@ const OnHandReport = () => {
 
   return (
     <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-      <View className="flex-row p-6 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+      <View className="flex-row p-4 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
         {headers.map((h) => (
-          <Text key={h} className="w-1/6 font-bold text-xl text-gray-400">
+          <Text key={h} className="w-1/6 font-bold text-lg text-gray-400">
             {h}
           </Text>
         ))}
@@ -45,19 +45,17 @@ const OnHandReport = () => {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View className="flex-row items-center p-6 border-b border-gray-700">
-            <Text className="w-1/6 text-2xl text-white">{item.name}</Text>
-            <Text className="w-1/6 text-2xl text-gray-300">
-              {item.category}
-            </Text>
-            <Text className="w-1/6 text-2xl text-white">
+          <View className="flex-row items-center p-4 border-b border-gray-700">
+            <Text className="w-1/6 text-xl text-white">{item.name}</Text>
+            <Text className="w-1/6 text-xl text-gray-300">{item.category}</Text>
+            <Text className="w-1/6 text-xl text-white">
               {item.stockQuantity}
             </Text>
-            <Text className="w-1/6 text-2xl text-gray-300">{item.unit}</Text>
-            <Text className="w-1/6 text-2xl text-gray-300">
+            <Text className="w-1/6 text-xl text-gray-300">{item.unit}</Text>
+            <Text className="w-1/6 text-xl text-gray-300">
               ${item.cost.toFixed(2)}
             </Text>
-            <Text className="w-1/6 text-2xl text-white font-semibold">
+            <Text className="w-1/6 text-xl text-white font-semibold">
               ${(item.stockQuantity * item.cost).toFixed(2)}
             </Text>
           </View>
@@ -85,9 +83,9 @@ const LowStockReport = () => {
 
   return (
     <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-      <View className="flex-row p-6 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
+      <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b border-gray-700">
         {headers.map((h) => (
-          <Text key={h} className="w-1/5 font-bold text-xl text-gray-400">
+          <Text key={h} className="w-1/5 font-bold text-lg text-gray-400">
             {h}
           </Text>
         ))}
@@ -96,25 +94,21 @@ const LowStockReport = () => {
         data={lowStockItems}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View className="flex-row items-center p-6 border-b border-gray-700">
-            <Text className="w-1/5 text-2xl text-white">{item.name}</Text>
-            <Text className="w-1/5 text-2xl text-gray-300">
-              {item.category}
-            </Text>
-            <Text className="w-1/5 text-2xl text-red-400 font-bold">
+          <View className="flex-row items-center p-2 border-b border-gray-700">
+            <Text className="w-1/5 text-lg text-white">{item.name}</Text>
+            <Text className="w-1/5 text-lg text-gray-300">{item.category}</Text>
+            <Text className="w-1/5 text-lg text-red-400 font-bold">
               {item.stockQuantity}
             </Text>
-            <Text className="w-1/5 text-2xl text-gray-300">
+            <Text className="w-1/5 text-lg text-gray-300">
               {item.reorderThreshold}
             </Text>
-            <Text className="w-1/5 text-2xl text-gray-300">
-              {item.vendorId}
-            </Text>
+            <Text className="w-1/5 text-lg text-gray-300">{item.vendorId}</Text>
           </View>
         )}
         ListEmptyComponent={
-          <View className="p-8 items-center">
-            <Text className="text-xl text-gray-400">
+          <View className="p-4 items-center">
+            <Text className="text-lg text-gray-400">
               No items are currently low on stock.
             </Text>
           </View>
@@ -126,8 +120,8 @@ const LowStockReport = () => {
 
 const PlaceholderReport = ({ title }: { title: string }) => (
   <View className="flex-1 justify-center items-center bg-[#303030] border border-gray-700 rounded-xl">
-    <Text className="text-3xl text-gray-500">{title}</Text>
-    <Text className="text-2xl text-gray-600 mt-2">(Coming Soon)</Text>
+    <Text className="text-xl text-gray-500">{title}</Text>
+    <Text className="text-lg text-gray-600 mt-2">(Coming Soon)</Text>
   </View>
 );
 
@@ -156,7 +150,7 @@ const ReportsScreen = () => {
   return (
     <View className="flex-1">
       <View className="mb-4">
-        <Text className="text-2xl font-semibold text-white mb-2">
+        <Text className="text-lg font-semibold text-white mb-2">
           Select a Report
         </Text>
         <View className="flex-row flex-wrap gap-2">
@@ -166,10 +160,16 @@ const ReportsScreen = () => {
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
-                className={`py-3 px-6 rounded-lg ${isActive ? "bg-blue-600" : "bg-[#303030] border border-gray-700"}`}
+                className={`py-2 px-4 rounded-lg ${
+                  isActive
+                    ? "bg-blue-600"
+                    : "bg-[#303030] border border-gray-700"
+                }`}
               >
                 <Text
-                  className={`font-semibold text-xl ${isActive ? "text-white" : "text-gray-300"}`}
+                  className={`font-semibold text-lg ${
+                    isActive ? "text-white" : "text-gray-300"
+                  }`}
                 >
                   {tab}
                 </Text>

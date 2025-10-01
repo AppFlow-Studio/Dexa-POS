@@ -14,16 +14,16 @@ const SecurityDetailRow = ({
   actionText: string;
   onActionPress: () => void;
 }) => (
-  <View className="flex-row items-center justify-between py-4 border-b border-gray-700">
+  <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
     <View>
-      <Text className="text-xl text-gray-300 mb-1">{label}</Text>
-      <Text className="text-2xl font-semibold text-white">{value}</Text>
+      <Text className="text-lg text-gray-300 mb-0.5">{label}</Text>
+      <Text className="text-xl font-semibold text-white">{value}</Text>
     </View>
     <TouchableOpacity
       onPress={onActionPress}
-      className="py-3 px-6 border border-gray-600 rounded-lg bg-[#212121]"
+      className="py-2 px-4 border border-gray-600 rounded-lg bg-[#212121]"
     >
-      <Text className="font-bold text-xl text-gray-300">{actionText}</Text>
+      <Text className="font-bold text-lg text-gray-300">{actionText}</Text>
     </TouchableOpacity>
   </View>
 );

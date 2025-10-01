@@ -14,9 +14,9 @@ const TABLE_HEADERS = [
 ];
 
 const HistoryTableHeader = () => (
-  <View className="flex-row p-6 bg-[#303030] rounded-t-xl border-b border-gray-700">
+  <View className="flex-row p-4 bg-[#303030] rounded-t-xl border-b border-gray-700">
     {TABLE_HEADERS.map((header) => (
-      <Text key={header} className="flex-1 font-bold text-xl text-gray-300">
+      <Text key={header} className="flex-1 font-bold text-lg text-gray-300">
         {header}
       </Text>
     ))}
@@ -24,22 +24,22 @@ const HistoryTableHeader = () => (
 );
 
 const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
-  <View className="flex-row p-6 border-b border-gray-700">
+  <View className="flex-row p-4 border-b border-gray-700">
     <View className="flex-1">
-      <Text className="text-lg text-gray-400">{item.date}</Text>
-      <Text className="font-semibold text-xl text-white">{item.clockIn}</Text>
+      <Text className="text-base text-gray-400">{item.date}</Text>
+      <Text className="font-semibold text-lg text-white">{item.clockIn}</Text>
     </View>
     {item.breakInitiated !== "N/A" ? (
       <>
         <View className="flex-1">
-          <Text className="text-lg text-primary-400">{item.date}</Text>
-          <Text className="font-semibold text-xl text-primary-400">
+          <Text className="text-base text-primary-400">{item.date}</Text>
+          <Text className="font-semibold text-lg text-primary-400">
             {item.breakInitiated}
           </Text>
         </View>
         <View className="flex-1">
-          <Text className="text-lg text-primary-400">{item.date}</Text>
-          <Text className="font-semibold text-xl text-primary-400">
+          <Text className="text-base text-primary-400">{item.date}</Text>
+          <Text className="font-semibold text-lg text-primary-400">
             {item.breakEnded}
           </Text>
         </View>
@@ -47,24 +47,20 @@ const HistoryTableRow = ({ item }: { item: ShiftHistoryEntry }) => (
     ) : (
       <>
         <View className="flex-1 items-start justify-start">
-          <Text className="text-lg text-gray-500 italic">
-            No break initiated
-          </Text>
+          <Text className="text-base text-gray-500 italic">No break</Text>
         </View>
         <View className="flex-1 items-start justify-start">
-          <Text className="text-lg text-gray-500 italic">
-            No break initiated
-          </Text>
+          <Text className="text-base text-gray-500 italic">No break</Text>
         </View>
       </>
     )}
     <View className="flex-1">
-      <Text className="text-lg text-gray-400">{item.date}</Text>
-      <Text className="font-semibold text-xl text-white">{item.clockOut}</Text>
+      <Text className="text-base text-gray-400">{item.date}</Text>
+      <Text className="font-semibold text-lg text-white">{item.clockOut}</Text>
     </View>
     <View className="flex-1">
-      <Text className="text-lg text-gray-400 invisible">Duration</Text>
-      <Text className="font-semibold text-xl text-white">{item.duration}</Text>
+      <Text className="text-base text-gray-400 invisible">Duration</Text>
+      <Text className="font-semibold text-lg text-white">{item.duration}</Text>
     </View>
   </View>
 );

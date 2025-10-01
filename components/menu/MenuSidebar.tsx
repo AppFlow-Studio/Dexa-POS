@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
@@ -135,111 +134,127 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   };
 
   return (
-    <View className="w-[400px] border-r border-gray-700 h-full bg-[#303030]">
+    <View className="w-96 border-r border-gray-700 h-full bg-[#303030]">
       {/* Header */}
-      <View className="p-6  flex-row items-center justify-between">
-        <Text className="text-3xl font-bold text-white">Menu Management</Text>
+      <View className="p-4 flex-row items-center justify-between">
+        <Text className="text-2xl font-bold text-white">Menu Management</Text>
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={openSearch}
-            className="p-3 bg-gray-700 rounded-lg"
+            className="p-2 bg-gray-700 rounded-lg"
           >
-            <Search size={24} color="#9CA3AF" />
+            <Search size={20} color="#9CA3AF" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAddPress}
-            className="p-3 bg-blue-600 rounded-lg"
+            className="p-2 bg-blue-600 rounded-lg"
           >
-            <Plus size={24} color="white" />
+            <Plus size={20} color="white" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Search */}
-      {/* <View className="p-6 border-b border-gray-700">
-        <View className="flex-row items-center bg-[#212121] rounded-lg px-4 py-3">
-          <Search size={24} color="#9CA3AF" />
-          <TextInput
-            className="flex-1 ml-3 text-2xl text-white"
-            placeholder="Search items..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={handleSearchChange}
-          />
-        </View>
-      </View> */}
-
       {/* Sidebar Tabs */}
-      <View className="flex-1 flex flex-col gap-y-4">
-        <Button
-          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "menus" ? "bg-blue-600/20 border-blue-500" : ""}`}
+      <View className="flex-1 flex flex-col">
+        <TouchableOpacity
+          className={`p-4 border-b border-gray-700 ${
+            activeTab === "menus"
+              ? "bg-blue-600/20 border-l-4 border-blue-500 pl-3"
+              : ""
+          }`}
           onPress={() => handleTabPress("menus")}
         >
           <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl font-medium ${activeTab === "menus" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-xl font-medium ${
+                activeTab === "menus" ? "text-blue-400" : "text-gray-300"
+              }`}
             >
               Menus ({menus.length})
             </Text>
-            <ChevronRight size={24} color="#9CA3AF" />
+            <ChevronRight size={20} color="#9CA3AF" />
           </View>
-        </Button>
+        </TouchableOpacity>
 
-        <Button
-          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "categories" ? "bg-blue-600/20 border-blue-500" : ""}`}
+        <TouchableOpacity
+          className={`p-4 border-b border-gray-700 ${
+            activeTab === "categories"
+              ? "bg-blue-600/20 border-l-4 border-blue-500 pl-3"
+              : ""
+          }`}
           onPress={() => handleTabPress("categories")}
         >
-          <View className="flex-row items-center justify-between overflow-visible p-2 h-fit w-fit">
+          <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl h-fit w-fit overflow-visible font-medium ${activeTab === "categories" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-xl font-medium ${
+                activeTab === "categories" ? "text-blue-400" : "text-gray-300"
+              }`}
             >
               Categories ({categories.length})
             </Text>
-            <ChevronRight size={24} color="#9CA3AF" />
+            <ChevronRight size={20} color="#9CA3AF" />
           </View>
-        </Button>
+        </TouchableOpacity>
 
-        <Button
-          className={`p-6  border-b border-gray-700 ${activeTab === "items" ? "bg-blue-600/20 border-blue-500" : ""}`}
+        <TouchableOpacity
+          className={`p-4 border-b border-gray-700 ${
+            activeTab === "items"
+              ? "bg-blue-600/20 border-l-4 border-blue-500 pl-3"
+              : ""
+          }`}
           onPress={() => handleTabPress("items")}
         >
-          <View className="flex-row items-center justify-between overflow-visible p-2 h-fit w-fit">
+          <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl h-fit w-fit overflow-visible font-medium  ${activeTab === "items" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-xl font-medium ${
+                activeTab === "items" ? "text-blue-400" : "text-gray-300"
+              }`}
             >
               Items ({menuItems.length})
             </Text>
-            <ChevronRight size={24} color="#9CA3AF" />
+            <ChevronRight size={20} color="#9CA3AF" />
           </View>
-        </Button>
+        </TouchableOpacity>
 
-        <Button
-          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "modifiers" ? "bg-blue-600/20 border-blue-500" : ""}`}
+        <TouchableOpacity
+          className={`p-4 border-b border-gray-700 ${
+            activeTab === "modifiers"
+              ? "bg-blue-600/20 border-l-4 border-blue-500 pl-3"
+              : ""
+          }`}
           onPress={() => handleTabPress("modifiers")}
         >
           <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl h-fit w-fit overflow-visible font-medium ${activeTab === "modifiers" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-xl font-medium ${
+                activeTab === "modifiers" ? "text-blue-400" : "text-gray-300"
+              }`}
             >
               Modifiers ({modifierGroups.length})
             </Text>
-            <ChevronRight size={24} color="#9CA3AF" />
+            <ChevronRight size={20} color="#9CA3AF" />
           </View>
-        </Button>
+        </TouchableOpacity>
 
-        <Button
-          className={`px-6 pb-12  border-b border-gray-700 ${activeTab === "schedules" ? "bg-blue-600/20 border-blue-500" : ""}`}
+        <TouchableOpacity
+          className={`p-4 border-b border-gray-700 ${
+            activeTab === "schedules"
+              ? "bg-blue-600/20 border-l-4 border-blue-500 pl-3"
+              : ""
+          }`}
           onPress={() => handleTabPress("schedules")}
         >
           <View className="flex-row items-center justify-between">
             <Text
-              className={`text-2xl font-medium ${activeTab === "schedules" ? "text-blue-400" : "text-gray-300"}`}
+              className={`text-xl font-medium ${
+                activeTab === "schedules" ? "text-blue-400" : "text-gray-300"
+              }`}
             >
               Schedules
             </Text>
-            <ChevronRight size={24} color="#9CA3AF" />
+            <ChevronRight size={20} color="#9CA3AF" />
           </View>
-        </Button>
+        </TouchableOpacity>
       </View>
     </View>
   );

@@ -54,8 +54,8 @@ const ReceiptAndTippingRulesScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="Store Operation"
@@ -64,37 +64,37 @@ const ReceiptAndTippingRulesScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
           {/* Main Content Area */}
-          <View className="flex-1 gap-y-6">
+          <View className="flex-1 gap-y-4">
             {/* Tipping Settings */}
-            <View className="bg-[#212121] p-6 pt-3 rounded-2xl border border-gray-600">
+            <View className="bg-[#212121] p-4 pt-3 rounded-2xl border border-gray-600">
               <SettingsHeader
                 title="Enable Tipping"
                 value={isTippingEnabled}
                 onValueChange={setTippingEnabled}
               />
-              <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+              <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
                 {isTippingEnabled && (
-                  <View className="flex-row gap-4">
+                  <View className="flex-row gap-3">
                     <TextInput
                       value={tip1}
                       onChangeText={setTip1}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip2}
                       onChangeText={setTip2}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />
                     <TextInput
                       value={tip3}
                       onChangeText={setTip3}
-                      className="flex-1 p-4 bg-[#212121] rounded-lg text-2xl font-semibold text-white border border-gray-600 h-20"
+                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
                       keyboardType="numeric"
                       placeholderTextColor="#9CA3AF"
                     />
@@ -105,7 +105,7 @@ const ReceiptAndTippingRulesScreen = () => {
 
             {/* Receipt Printing Settings */}
             <SettingsCard title="Automatic Receipt Printing">
-              <View className="gap-y-4">
+              <View className="gap-y-3">
                 <RadioButton
                   label="Always Print Receipt"
                   isSelected={receiptOption === "alwaysPrint"}
@@ -117,7 +117,7 @@ const ReceiptAndTippingRulesScreen = () => {
                   onPress={() => setReceiptOption("alwaysAsk")}
                 />
                 <RadioButton
-                  label="Never Print Receipt (Email Only)"
+                  label="Never Print (Email Only)"
                   isSelected={receiptOption === "neverPrint"}
                   onPress={() => setReceiptOption("neverPrint")}
                 />
@@ -126,9 +126,9 @@ const ReceiptAndTippingRulesScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start pt-4 border-t border-gray-600">
-            <TouchableOpacity className="px-8 py-4 bg-blue-500 rounded-lg">
-              <Text className="text-2xl font-bold text-white">Save</Text>
+          <View className="flex-row justify-start pt-3 border-t border-gray-600">
+            <TouchableOpacity className="px-6 py-3 bg-blue-500 rounded-lg">
+              <Text className="text-xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

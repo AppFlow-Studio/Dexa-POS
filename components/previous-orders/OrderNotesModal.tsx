@@ -11,27 +11,29 @@ interface OrderNotesModalProps {
 }
 
 const ModifierItem = ({ item }: { item: CartItem }) => (
-  <View className="border-b border-gray-700 pb-4">
+  <View className="border-b border-gray-700 pb-3">
     <View className="flex-row justify-between items-center">
-      <Text className="text-2xl font-bold text-white">{item.name}</Text>
-      <Text className="font-semibold text-xl text-gray-300">
+      <Text className="text-xl font-bold text-white">{item.name}</Text>
+      <Text className="font-semibold text-lg text-gray-300">
         {item.quantity} PCs
       </Text>
     </View>
 
     {item.customizations?.modifiers &&
       item.customizations.modifiers.length > 0 && (
-        <View className="mt-2">
+        <View className="mt-1.5">
           {item.customizations.modifiers.map((mod, index) => (
             <View key={index} className="mt-1">
-              <Text className="font-bold text-lg text-gray-400">
+              <Text className="font-bold text-base text-gray-400">
                 {mod.categoryName}:
               </Text>
-              <Text className="text-lg text-gray-300 ml-2">
+              <Text className="text-base text-gray-300 ml-1.5">
                 {mod.options
                   .map(
                     (opt) =>
-                      `${opt.name}${opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""}`
+                      `${opt.name}${
+                        opt.price > 0 ? ` (+$${opt.price.toFixed(2)})` : ""
+                      }`
                   )
                   .join(", ")}
               </Text>
@@ -41,10 +43,10 @@ const ModifierItem = ({ item }: { item: CartItem }) => (
       )}
 
     {item.customizations?.notes && (
-      <View className="mt-2">
-        <Text className="font-bold text-lg text-gray-400 mb-1">Notes:</Text>
-        <View className="p-3 bg-[#212121] border border-gray-700 rounded-lg">
-          <Text className="text-lg text-gray-300 italic">
+      <View className="mt-1.5">
+        <Text className="font-bold text-base text-gray-400 mb-1">Notes:</Text>
+        <View className="p-2 bg-[#212121] border border-gray-700 rounded-lg">
+          <Text className="text-base text-gray-300 italic">
             {item.customizations.notes}
           </Text>
         </View>
@@ -62,21 +64,21 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl w-full p-0 rounded-2xl bg-[#303030] border-gray-700">
-        <DialogHeader className="flex-row justify-between items-center p-6 border-b border-gray-700">
-          <DialogTitle className="text-3xl font-bold text-white">
+      <DialogContent className="max-w-xl w-full p-0 rounded-2xl bg-[#303030] border-gray-700">
+        <DialogHeader className="flex-row justify-between items-center p-4 border-b border-gray-700">
+          <DialogTitle className="text-2xl font-bold text-white">
             Order Notes & Modifiers
           </DialogTitle>
           <TouchableOpacity onPress={onClose} className="p-2">
-            <X color="#9CA3AF" size={24} />
+            <X color="#9CA3AF" size={20} />
           </TouchableOpacity>
         </DialogHeader>
-        <View className="p-6">
-          <Text className="text-xl font-semibold text-gray-400 mb-4">
+        <View className="p-4">
+          <Text className="text-lg font-semibold text-gray-400 mb-3">
             Order #{order.orderId} - Total ${order.total.toFixed(2)}
           </Text>
           <ScrollView className="max-h-[60vh]">
-            <View className="space-y-4">
+            <View className="space-y-3">
               {order.items.map((item) => (
                 <ModifierItem key={item.id} item={item} />
               ))}

@@ -22,16 +22,16 @@ const ViewProfileModal = ({
   if (!employee) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[390px] bg-white p-6 rounded-2xl items-center">
+    <Dialog open={isOpen} onOpen-Change={onClose}>
+      <DialogContent className="w-[360px] bg-white p-4 rounded-2xl items-center">
         <Image
           source={require("@/assets/images/tom_hardy.jpg")}
-          className="w-32 h-32 rounded-2xl mb-4"
+          className="w-28 h-28 rounded-2xl mb-3"
         />
-        <Text className="text-2xl font-bold">{employee.name}</Text>
-        <Text className="text-gray-500">ID: {employee.profile.id}</Text>
+        <Text className="text-xl font-bold">{employee.name}</Text>
+        <Text className="text-gray-500 text-sm">ID: {employee.profile.id}</Text>
 
-        <View className="w-full my-6 gap-y-4 border border-background-400 p-4 rounded-xl">
+        <View className="w-full my-4 gap-y-3 border border-background-400 p-3 rounded-xl">
           <View className="flex-row justify-between">
             <DetailRow label="Date of birth" value={employee.profile.dob} />
             <DetailRow label="Role" value={employee.profile.role} />
@@ -43,8 +43,8 @@ const ViewProfileModal = ({
           <View className="flex-row justify-between">
             <DetailRow label="Address" value={employee.profile.address} />
           </View>
-          <TouchableOpacity className="w-full py-3 bg-red-500 rounded-lg items-center">
-            <Text className="font-bold text-white">Clock out</Text>
+          <TouchableOpacity className="w-full py-2 bg-red-500 rounded-lg items-center">
+            <Text className="font-bold text-white text-base">Clock out</Text>
           </TouchableOpacity>
         </View>
       </DialogContent>

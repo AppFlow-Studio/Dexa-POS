@@ -43,8 +43,12 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
     const currentSweep = sweepAngle * progress.value;
     const startRad = startAngle * (Math.PI / 180);
     const endRad = (startAngle + currentSweep) * (Math.PI / 180);
-    return `M ${center + radius * Math.cos(startRad)} ${center + radius * Math.sin(startRad)}
-            A ${radius} ${radius} 0 ${currentSweep > 180 ? 1 : 0} 1 ${center + radius * Math.cos(endRad)} ${center + radius * Math.sin(endRad)}`;
+    return `M ${center + radius * Math.cos(startRad)} ${
+      center + radius * Math.sin(startRad)
+    }
+            A ${radius} ${radius} 0 ${currentSweep > 180 ? 1 : 0} 1 ${
+      center + radius * Math.cos(endRad)
+    } ${center + radius * Math.sin(endRad)}`;
   });
 
   // Animate the color of the arc
@@ -72,8 +76,8 @@ const TotalVoidsCard = () => {
   }, [progress]);
 
   // --- Chart Calculations ---
-  const size = 150;
-  const strokeWidth = 15;
+  const size = 120;
+  const strokeWidth = 12;
   const center = size / 2;
   const radii = [
     center - strokeWidth * 0.5,
@@ -94,7 +98,7 @@ const TotalVoidsCard = () => {
   };
 
   return (
-    <View className="bg-white p-6 rounded-2xl border border-gray-200">
+    <View className="p-4 rounded-2xl">
       <View className="flex-row items-center">
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
@@ -120,7 +124,7 @@ const TotalVoidsCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 gap-y-3">
+        <View className="flex-1 ml-4 gap-y-2">
           {totalVoidsData.map((item) => (
             <LegendRow
               key={item.label}
