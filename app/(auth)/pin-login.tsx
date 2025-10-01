@@ -7,7 +7,6 @@ import { Link, useRouter } from "expo-router";
 import { Clock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Button, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 const MockEmployees = [
   {
     address: "1388 West Ave, Chelsea",
@@ -301,12 +300,12 @@ const PinLoginScreen = () => {
         ))}
       </ScrollView>
 
-      <Text className="text-lg font-semibold text-white mb-2">
+      <Text className="text-md font-semibold text-white mb-2">
         ENTER YOUR PASSCODE
       </Text>
       <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-      <View className="mt-4">
+      <View className="">
         <PinNumpad onKeyPress={handleKeyPress} />
       </View>
 

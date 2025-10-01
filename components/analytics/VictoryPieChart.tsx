@@ -64,13 +64,13 @@
 //         unit: item.unit || '', // '$', 'items', 'orders', etc.
 //         description: item.description || '', // Additional context
 //     }));
-    if (!data || data.length === 0) {
-        return (
-            <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
-                <Text className="text-gray-400 text-lg">No data available</Text>
-            </View>
-        );
-    }
+    // if (!data || data.length === 0) {
+    //     return (
+    //         <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
+    //             <Text className="text-gray-400 text-lg">No data available</Text>
+    //         </View>
+    //     );
+    // }
     // const { state } = useChartTransformState();
 
 //     const font = useFont(Inter as any, 14);
