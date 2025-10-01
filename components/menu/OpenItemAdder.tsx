@@ -136,21 +136,21 @@ const OpenItemAdder = () => {
     ];
 
     return (
-      <View className="gap-3">
+      <View className="gap-2">
         {numpadButtons.map((row, rowIndex) => (
-          <View key={rowIndex} className="flex-row gap-3">
+          <View key={rowIndex} className="flex-row gap-2">
             {row.map((button) => (
               <TouchableOpacity
                 key={button}
                 onPress={() => handlePriceInput(button)}
-                className={`flex-1 h-20 rounded-lg items-center justify-center ${
+                className={`flex-1 h-14 rounded-lg items-center justify-center ${
                   button === "backspace"
                     ? "bg-red-600"
                     : "bg-[#303030] border border-gray-600"
                 }`}
               >
                 <Text
-                  className={`text-3xl font-bold ${
+                  className={`text-2xl font-bold ${
                     button === "backspace" ? "text-white" : "text-white"
                   }`}
                 >
@@ -162,24 +162,24 @@ const OpenItemAdder = () => {
         ))}
         <TouchableOpacity
           onPress={() => handlePriceInput("clear")}
-          className="h-16 bg-gray-600 rounded-lg items-center justify-center"
+          className="h-14 bg-gray-600 rounded-lg items-center justify-center"
         >
-          <Text className="text-xl font-medium text-white">Clear</Text>
+          <Text className="text-lg font-medium text-white">Clear</Text>
         </TouchableOpacity>
       </View>
     );
   };
-  return (
-    <ScrollView className="flex-1 bg-[#212121] py-6">
-      <Text className="text-3xl font-bold text-white mb-3">Add Open Item</Text>
 
-      {/* Item Name Input */}
-      <View className="mb-6">
-        <Text className="text-2xl font-semibold text-white mb-3">
+  return (
+    <ScrollView className="flex-1 bg-[#212121] py-4">
+      <Text className="text-2xl font-bold text-white mb-4">Add Open Item</Text>
+
+      <View className="mb-4">
+        <Text className="text-xl font-semibold text-white mb-2">
           Open Item Name
         </Text>
         <TextInput
-          className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
+          className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
           value={openItemName}
           onChangeText={setOpenItemName}
           placeholder="Enter item name (default: Custom)"
@@ -187,30 +187,27 @@ const OpenItemAdder = () => {
         />
       </View>
 
-      {/* Price Display */}
-      <View className="mb-6">
-        <Text className="text-2xl font-semibold text-white mb-3">
+      <View className="mb-4">
+        <Text className="text-xl font-semibold text-white mb-2">
           Open Item Price
         </Text>
-        <View className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-5 items-center">
-          <Text className="text-4xl font-bold text-white">${priceDisplay}</Text>
+        <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-4 items-center">
+          <Text className="text-3xl font-bold text-white">${priceDisplay}</Text>
         </View>
       </View>
 
-      {/* Numpad */}
-      <View className="mb-6">
-        <Text className="text-2xl font-semibold text-white mb-3">
+      <View className="mb-4">
+        <Text className="text-xl font-semibold text-white mb-2">
           Enter Price
         </Text>
         {renderNumpad()}
       </View>
 
-      {/* Add Button */}
       <TouchableOpacity
         onPress={handleAddOpenItem}
-        className="bg-blue-600 rounded-lg py-4 items-center mb-10"
+        className="bg-blue-600 rounded-lg py-4 items-center mb-6"
       >
-        <Text className="text-2xl font-bold text-white">Add Item</Text>
+        <Text className="text-xl font-bold text-white">Add Item</Text>
       </TouchableOpacity>
     </ScrollView>
   );

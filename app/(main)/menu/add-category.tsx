@@ -5,7 +5,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
-  BottomSheetTextInput
+  BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
 import {
@@ -27,7 +27,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
@@ -241,39 +241,41 @@ const AddCategoryScreen: React.FC = () => {
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-3 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={20} color="#9CA3AF" />
-          <Text className="text-white font-medium ml-2">Back to Menu</Text>
+          <ArrowLeft size={18} color="#9CA3AF" />
+          <Text className="text-white font-medium ml-1.5 text-sm">
+            Back to Menu
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleSave}
           disabled={isSaving}
-          className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
+          className="flex-row items-center bg-blue-600 px-3 py-1.5 rounded-lg"
         >
-          <Save size={16} color="white" />
-          <Text className="text-white font-medium ml-2">
+          <Save size={14} color="white" />
+          <Text className="text-white font-medium ml-1.5 text-sm">
             {isSaving ? "Saving..." : "Save Category"}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1 p-6">
-        <Text className="text-2xl font-bold text-white mb-6">
+      <ScrollView className="flex-1 p-4">
+        <Text className="text-xl font-bold text-white mb-4">
           Add New Category
         </Text>
 
         {/* Category Name Input */}
-        <View className="mb-6">
-          <Text className="text-lg font-semibold text-white mb-4">
+        <View className="mb-4">
+          <Text className="text-base font-semibold text-white mb-2">
             Category Name
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-white h-20"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 text-white h-16 text-base"
             placeholder="e.g., Appetizers, Main Course, Desserts"
             placeholderTextColor="#9CA3AF"
             value={categoryName}
@@ -283,109 +285,81 @@ const AddCategoryScreen: React.FC = () => {
         </View>
 
         {/* Available Items */}
-        <View className="mb-6">
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="text-2xl font-semibold text-white">
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-xl font-semibold text-white">
               Select Items
             </Text>
-            <View className="flex-row items-center gap-3">
-              <Text className="text-xl text-gray-400">
+            <View className="flex-row items-center gap-2">
+              <Text className="text-lg text-gray-400">
                 {selectedItems.length} of {availableItems.length} selected
               </Text>
               <TouchableOpacity
                 onPress={() => quickSearchSheetRef.current?.expand()}
-                className="p-3 rounded-lg bg-[#212121] border border-gray-600"
+                className="p-2 rounded-lg bg-[#212121] border border-gray-600"
                 accessibilityLabel="Quick search items"
               >
-                <Search size={22} color="#9CA3AF" />
+                <Search size={18} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
           </View>
 
           {availableItems.length === 0 ? (
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
-              <Utensils size={48} color="#9CA3AF" />
-              <Text className="text-gray-400 text-center mt-4">
+            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+              <Utensils size={36} color="#9CA3AF" />
+              <Text className="text-gray-400 text-center mt-3 text-sm">
                 No menu items found.
               </Text>
-              <Text className="text-gray-500 text-center text-sm mt-2">
+              <Text className="text-gray-500 text-center text-xs mt-1">
                 Create some menu items first to add them to categories.
               </Text>
             </View>
           ) : (
-            <View className="gap-3 flex flex-row flex-wrap">
+            <View className="gap-2.5 flex flex-row flex-wrap">
               {availableItems.map((item) => {
                 const isSelected = selectedItems.includes(item.id);
                 return (
                   <TouchableOpacity
                     key={item.id}
                     onPress={() => toggleItemSelection(item.id)}
-                    className={`bg-[#303030] rounded-lg w-[32%] border p-4 ${isSelected
-                      ? "border-blue-500 bg-blue-900/20"
-                      : "border-gray-700"
-                      }`}
+                    className={`bg-[#303030] rounded-lg w-[32.5%] border p-3 ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-900/20"
+                        : "border-gray-700"
+                    }`}
                   >
-                    <View className="flex-row items-center gap-4">
-                      {/* Item Image */}
+                    <View className="flex-row items-center gap-3">
                       <View className="flex=col gap-2">
-                        <View className="h-24 aspect-square rounded-lg border border-gray-600 overflow-hidden">
+                        <View className="h-20 aspect-square rounded-lg border border-gray-600 overflow-hidden">
                           {getImageSource(item.image) ? (
                             <Image
                               source={
                                 typeof getImageSource(item.image) === "string"
                                   ? MENU_IMAGE_MAP[
-                                  item.image as keyof typeof MENU_IMAGE_MAP
-                                  ]
+                                      item.image as keyof typeof MENU_IMAGE_MAP
+                                    ]
                                   : getImageSource(item.image)
                               }
                               className="w-full h-full object-cover"
                             />
                           ) : (
                             <View className="w-full h-full bg-gray-600 items-center justify-center">
-                              <Utensils color="#9ca3af" size={24} />
+                              <Utensils color="#9ca3af" size={20} />
                             </View>
                           )}
                         </View>
-                        {/* Show existing categories */}
-                        {/* {Array.isArray(item.category) &&
-                          item.category.length > 0 && (
-                            <View className="flex-row flex-wrap gap-1 mt-2">
-                              {item.category.map(
-                                (cat: string, index: number) => (
-                                  <View
-                                    key={index}
-                                    className="bg-gray-600/30 border border-gray-500 px-2 py-1 rounded"
-                                  >
-                                    <Text className="text-xs text-gray-300">
-                                      {cat}
-                                    </Text>
-                                  </View>
-                                )
-                              )}
-                            </View>
-                          )} */}
                       </View>
 
-                      {/* Item Details */}
                       <View className="flex-1">
-                        <Text className="text-white font-medium text-lg">
+                        <Text className="text-white font-medium text-base">
                           {item.name}
                         </Text>
-                        {/* {item.description && (
-                          <Text className="text-gray-400 text-sm mt-1">
-                            {item.description.length > 20
-                              ? item.description.substring(0, 20) + "..."
-                              : item.description}
-                          </Text>
-                        )} */}
-
-                        {/* Price Display */}
                         <View className="flex-row items-center gap-2 mt-1">
-                          <Text className="text-blue-400 font-semibold">
+                          <Text className="text-blue-400 font-semibold text-sm">
                             ${item.price.toFixed(2)}
                           </Text>
                           {categoryName.trim() && (
-                            <Text className="text-yellow-400 text-xs">
+                            <Text className="text-yellow-400 text-[10px]">
                               (Will be: $
                               {customPricingRules[item.id]
                                 ? customPricingRules[item.id].toFixed(2)
@@ -395,63 +369,64 @@ const AddCategoryScreen: React.FC = () => {
                           )}
                         </View>
 
-                        {/* Custom Pricing Rules */}
                         {customPricingRules[item.id] && (
-                          <View className="mt-2">
-                            <View className="flex-row items-center gap-2">
-                              <View className="bg-yellow-900/30 border border-yellow-500 px-2 py-1 rounded">
-                                <Text className="text-yellow-400 text-xs">
+                          <View className="mt-1.5">
+                            <View className="flex-row items-center gap-1.5">
+                              <View className="bg-yellow-900/30 border border-yellow-500 px-1.5 py-0.5 rounded">
+                                <Text className="text-yellow-400 text-[10px]">
                                   ${customPricingRules[item.id].toFixed(2)}
                                 </Text>
                               </View>
                               <TouchableOpacity
                                 onPress={() => handleEditCustomPricing(item.id)}
-                                className="p-1 flex items-center justify-center bg-blue-600 rounded"
+                                className="p-0.5 flex items-center justify-center bg-blue-600 rounded"
                               >
-                                <Save size={24} color="white" />
+                                <Save size={16} color="white" />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() =>
                                   handleRemoveCustomPricing(item.id)
                                 }
-                                className="p-1 flex items-center justify-center bg-red-600 rounded"
+                                className="p-0.5 flex items-center justify-center bg-red-600 rounded"
                               >
-                                <X size={24} color="white" />
+                                <X size={16} color="white" />
                               </TouchableOpacity>
                             </View>
                           </View>
                         )}
 
-                        {/* Add Custom Pricing Button */}
                         {categoryName.trim() &&
                           !customPricingRules[item.id] && (
                             <TouchableOpacity
                               onPress={() => handleAddCustomPricing(item.id)}
-                              className="flex-row items-center gap-1 mt-2 bg-yellow-900/30 border border-yellow-500 px-2 py-1 rounded self-start"
+                              className="flex-row items-center gap-1 mt-1.5 bg-yellow-900/30 border border-yellow-500 px-1.5 py-0.5 rounded self-start"
                             >
-                              <DollarSign size={12} color="#FBBF24" />
-                              <Text className="text-yellow-400 text-xs">
+                              <DollarSign size={10} color="#FBBF24" />
+                              <Text className="text-yellow-400 text-[10px]">
                                 Set Custom Price
                               </Text>
                             </TouchableOpacity>
                           )}
 
-                        {/* New Pricing Input */}
                         {newPricing?.itemId === item.id && (
-                          <View className="flex-col items-center gap-2 mt-2">
-                            <View className="flex-row items-center gap-2">
+                          <View className="flex-col items-center gap-1.5 mt-1.5">
+                            <View className="flex-row items-center gap-1.5">
                               <TouchableOpacity
                                 onPress={() => {
-                                  const current = parseFloat(newPricingText.replace(",", "."));
-                                  const next = isNaN(current) ? 0 : Math.max(0, current - 0.25);
+                                  const current = parseFloat(
+                                    newPricingText.replace(",", ".")
+                                  );
+                                  const next = isNaN(current)
+                                    ? 0
+                                    : Math.max(0, current - 0.25);
                                   setNewPricingText(next.toFixed(2));
                                 }}
-                                className="p-1"
+                                className="p-0.5"
                               >
-                                <Minus size={14} color="#9CA3AF" />
+                                <Minus size={12} color="#9CA3AF" />
                               </TouchableOpacity>
                               <TextInput
-                                className="flex-1 bg-[#212121] border border-gray-600 rounded px-2 py-1 text-white text-center h-20"
+                                className="flex-1 bg-[#212121] border border-gray-600 rounded px-1.5 py-0.5 text-white text-center h-16 text-sm"
                                 value={newPricingText}
                                 onChangeText={(text) => setNewPricingText(text)}
                                 keyboardType="decimal-pad"
@@ -460,43 +435,48 @@ const AddCategoryScreen: React.FC = () => {
                               />
                               <TouchableOpacity
                                 onPress={() => {
-                                  const current = parseFloat(newPricingText.replace(",", "."));
-                                  const next = isNaN(current) ? 0 : current + 0.25;
+                                  const current = parseFloat(
+                                    newPricingText.replace(",", ".")
+                                  );
+                                  const next = isNaN(current)
+                                    ? 0
+                                    : current + 0.25;
                                   setNewPricingText(next.toFixed(2));
                                 }}
-                                className="p-1"
+                                className="p-0.5"
                               >
-                                <Plus size={14} color="#9CA3AF" />
+                                <Plus size={12} color="#9CA3AF" />
                               </TouchableOpacity>
                             </View>
-
-                            <View className="flex-row items-center gap-2">
+                            <View className="flex-row items-center gap-1.5">
                               <TouchableOpacity
                                 onPress={handleSaveCustomPricing}
-                                className="p-1 flex items-center justify-center bg-green-600 rounded"
+                                className="p-0.5 flex items-center justify-center bg-green-600 rounded"
                               >
-                                <Save size={24} color="white" />
+                                <Save size={18} color="white" />
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onPress={() => { setNewPricing(null); setNewPricingText(""); }}
-                                className="p-1 flex items-center justify-center bg-gray-600 rounded"
+                                onPress={() => {
+                                  setNewPricing(null);
+                                  setNewPricingText("");
+                                }}
+                                className="p-0.5 flex items-center justify-center bg-gray-600 rounded"
                               >
-                                <X size={24} color="white" />
+                                <X size={18} color="white" />
                               </TouchableOpacity>
                             </View>
-
                           </View>
                         )}
                       </View>
 
-                      {/* Selection Indicator */}
                       <View
-                        className={`w-6 h-6 rounded-full border-2 items-center justify-center ${isSelected
-                          ? "bg-blue-600 border-blue-600"
-                          : "border-gray-500"
-                          }`}
+                        className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
+                          isSelected
+                            ? "bg-blue-600 border-blue-600"
+                            : "border-gray-500"
+                        }`}
                       >
-                        {isSelected && <Check size={16} color="white" />}
+                        {isSelected && <Check size={12} color="white" />}
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -506,14 +486,13 @@ const AddCategoryScreen: React.FC = () => {
           )}
         </View>
 
-        {/* Selected Items Summary */}
         {selectedItems.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-lg font-semibold text-white mb-4">
+          <View className="mb-4">
+            <Text className="text-base font-semibold text-white mb-2">
               Selected Items ({selectedItems.length})
             </Text>
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
-              <View className="flex-row flex-wrap gap-2">
+            <View className="bg-[#303030] border border-gray-600 rounded-lg p-3">
+              <View className="flex-row flex-wrap gap-1.5">
                 {selectedItems.map((itemId) => {
                   const item = availableItems.find(
                     (i: MenuItemType) => i.id === itemId
@@ -521,16 +500,16 @@ const AddCategoryScreen: React.FC = () => {
                   return item ? (
                     <View
                       key={itemId}
-                      className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
+                      className="flex-row items-center bg-blue-600/20 border border-blue-500 px-2 py-1.5 rounded-lg"
                     >
-                      <Text className="text-blue-400 text-sm font-medium">
+                      <Text className="text-blue-400 text-xs font-medium">
                         {item.name}
                       </Text>
                       <TouchableOpacity
                         onPress={() => toggleItemSelection(itemId)}
-                        className="ml-2"
+                        className="ml-1.5"
                       >
-                        <X size={14} color="#60A5FA" />
+                        <X size={12} color="#60A5FA" />
                       </TouchableOpacity>
                     </View>
                   ) : null;
@@ -540,14 +519,13 @@ const AddCategoryScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Custom Pricing Summary */}
         {Object.keys(customPricingRules).length > 0 && (
-          <View className="mb-6">
-            <Text className="text-lg font-semibold text-white mb-4">
+          <View className="mb-4">
+            <Text className="text-base font-semibold text-white mb-2">
               Custom Pricing Rules ({Object.keys(customPricingRules).length})
             </Text>
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
-              <View className="gap-2">
+            <View className="bg-[#303030] border border-gray-600 rounded-lg p-3">
+              <View className="gap-1.5">
                 {Object.entries(customPricingRules).map(([itemId, price]) => {
                   const item = availableItems.find(
                     (i: MenuItemType) => i.id === itemId
@@ -555,28 +533,22 @@ const AddCategoryScreen: React.FC = () => {
                   return item ? (
                     <View
                       key={itemId}
-                      className="flex-row items-center justify-between bg-yellow-900/20 border border-yellow-500 px-3 py-2 rounded-lg"
+                      className="flex-row items-center justify-between bg-yellow-900/20 border border-yellow-500 px-2 py-1.5 rounded-lg"
                     >
                       <View className="flex-1">
-                        <Text className="text-yellow-400 text-sm font-medium">
+                        <Text className="text-yellow-400 text-xs font-medium">
                           {item.name}
                         </Text>
-                        <Text className="text-gray-400 text-xs">
+                        <Text className="text-gray-400 text-[10px]">
                           ${item.price.toFixed(2)} → ${price.toFixed(2)}
                         </Text>
                       </View>
-                      <View className="flex-row items-center gap-2">
-                        {/* <TouchableOpacity
-                          onPress={() => handleEditCustomPricing(itemId)}
-                          className="p-1 bg-blue-600 rounded"
-                        >
-                          <Save size={24} color="white" />
-                        </TouchableOpacity> */}
+                      <View className="flex-row items-center gap-1.5">
                         <TouchableOpacity
                           onPress={() => handleRemoveCustomPricing(itemId)}
-                          className="p-1 bg-red-600 rounded"
+                          className="p-0.5 bg-red-600 rounded"
                         >
-                          <X size={24} color="white" />
+                          <X size={18} color="white" />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -588,57 +560,51 @@ const AddCategoryScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Confirmation Modal */}
-      <Dialog
-        open={showConfirmation}
-        onOpenChange={setShowConfirmation}
-      >
-        <DialogContent className="w-[500px]">
-          <View className="bg-[#303030] rounded-2xl p-6 w-full  border border-gray-600">
-            {/* Header */}
-            <View className="items-center mb-6">
-              <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-4">
-                <Save size={32} color="#60A5FA" />
+      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+        <DialogContent className="w-[450px]">
+          <View className="bg-[#303030] rounded-2xl p-4 w-full border border-gray-600">
+            <View className="items-center mb-4">
+              <View className="w-14 h-14 bg-blue-600/20 rounded-full items-center justify-center mb-3">
+                <Save size={28} color="#60A5FA" />
               </View>
-              <Text className="text-xl font-bold text-white text-center">
+              <Text className="text-lg font-bold text-white text-center">
                 Create Category?
               </Text>
-              <Text className="text-gray-400 text-center mt-2">
+              <Text className="text-gray-400 text-center mt-1 text-sm">
                 Create "{categoryName}" with {selectedItems.length} items?
               </Text>
             </View>
 
-            {/* Category Preview */}
-            <View className="bg-[#212121] rounded-lg p-4 mb-6">
-              <Text className="text-white font-medium mb-2">
+            <View className="bg-[#212121] rounded-lg p-3 mb-4">
+              <Text className="text-white font-medium mb-1 text-sm">
                 {categoryName}
               </Text>
-              <Text className="text-gray-400 text-sm mb-2">
+              <Text className="text-gray-400 text-xs mb-1">
                 {selectedItems.length} items will be added to this category
               </Text>
               {Object.keys(customPricingRules).length > 0 && (
-                <Text className="text-yellow-400 text-sm">
+                <Text className="text-yellow-400 text-xs">
                   {Object.keys(customPricingRules).length} custom pricing rules
                   will be applied
                 </Text>
               )}
             </View>
 
-            {/* Action Buttons */}
-            <View className="flex-row gap-3">
+            <View className="flex-row gap-2">
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-2.5 items-center"
               >
-                <Text className="text-gray-300 font-medium">Cancel</Text>
+                <Text className="text-gray-300 font-medium text-sm">
+                  Cancel
+                </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
-                className="flex-1 bg-blue-600 rounded-lg py-3 items-center"
+                className="flex-1 bg-blue-600 rounded-lg py-2.5 items-center"
               >
-                <Text className="text-white font-medium">
+                <Text className="text-white font-medium text-sm">
                   {isSaving ? "Creating..." : "Create Category"}
                 </Text>
               </TouchableOpacity>
@@ -647,7 +613,6 @@ const AddCategoryScreen: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Quick Search Bottom Sheet */}
       <BottomSheet
         ref={quickSearchSheetRef}
         index={-1}
@@ -663,75 +628,81 @@ const AddCategoryScreen: React.FC = () => {
         backgroundStyle={{ backgroundColor: "#212121" }}
         handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
       >
-        <View className="p-4 border-b border-gray-700">
-          <Text className="text-white text-2xl font-bold">Add Items</Text>
-          <Text className="text-gray-400 text-lg mt-1">
+        <View className="p-3 border-b border-gray-700">
+          <Text className="text-white text-xl font-bold">Add Items</Text>
+          <Text className="text-gray-400 text-base mt-1">
             Quickly search and toggle items for this category
           </Text>
         </View>
-        <View className="p-4">
+        <View className="p-3">
           <BottomSheetTextInput
             value={quickSearchQuery}
             onChangeText={setQuickSearchQuery}
             placeholder="Search items..."
             placeholderTextColor="#9CA3AF"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-xl"
+            className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-3 py-2 text-white text-base"
           />
         </View>
         <BottomSheetFlatList
           data={filteredItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
           renderItem={({ item }) => {
             const isSelected = selectedItems.includes(item.id);
             return (
               <TouchableOpacity
                 onPress={() => toggleItemSelection(item.id)}
-                className={`flex-row items-center justify-between bg-[#303030] border rounded-lg px-4 py-3 mb-3 ${isSelected ? "border-blue-500 bg-blue-900/20" : "border-gray-700"
-                  }`}
+                className={`flex-row items-center justify-between bg-[#303030] border rounded-lg px-3 py-2.5 mb-2 ${
+                  isSelected
+                    ? "border-blue-500 bg-blue-900/20"
+                    : "border-gray-700"
+                }`}
               >
-                <View className="flex-row items-center gap-3 flex-1">
-                  <View className="w-12 h-12 rounded border border-gray-600 overflow-hidden">
+                <View className="flex-row items-center gap-2.5 flex-1">
+                  <View className="w-10 h-10 rounded border border-gray-600 overflow-hidden">
                     {getImageSource(item.image) ? (
                       <Image
                         source={
                           typeof getImageSource(item.image) === "string"
                             ? MENU_IMAGE_MAP[
-                            item.image as keyof typeof MENU_IMAGE_MAP
-                            ]
+                                item.image as keyof typeof MENU_IMAGE_MAP
+                              ]
                             : getImageSource(item.image)
                         }
                         className="w-full h-full object-cover"
                       />
                     ) : (
                       <View className="w-full h-full bg-gray-600 items-center justify-center">
-                        <Utensils color="#9ca3af" size={18} />
+                        <Utensils color="#9ca3af" size={16} />
                       </View>
                     )}
                   </View>
-                  <View className="flex-1 pr-3">
-                    <Text className="text-white text-xl" numberOfLines={1}>
+                  <View className="flex-1 pr-2">
+                    <Text className="text-white text-base" numberOfLines={1}>
                       {item.name}
                     </Text>
                     {!!item.description && (
-                      <Text className="text-gray-400" numberOfLines={1}>
+                      <Text className="text-gray-400 text-sm" numberOfLines={1}>
                         {item.description}
                       </Text>
                     )}
                   </View>
                 </View>
                 <View
-                  className={`w-7 h-7 rounded-full border-2 items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-500"
-                    }`}
+                  className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
+                    isSelected
+                      ? "bg-blue-600 border-blue-600"
+                      : "border-gray-500"
+                  }`}
                 >
-                  {isSelected && <Check size={16} color="white" />}
+                  {isSelected && <Check size={14} color="white" />}
                 </View>
               </TouchableOpacity>
             );
           }}
           ListEmptyComponent={
-            <View className="items-center justify-center p-10">
-              <Text className="text-xl text-gray-400">No items found.</Text>
+            <View className="items-center justify-center p-8">
+              <Text className="text-lg text-gray-400">No items found.</Text>
             </View>
           }
         />

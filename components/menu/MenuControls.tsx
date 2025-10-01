@@ -72,15 +72,14 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
   return (
     <View className="flex-row justify-between items-start gap-4">
-      {/* Left Section: All Tabs */}
-      <View className="bg-[#303030] w-full rounded-2xl flex-shrink flex flex-row items-center justify-between">
-        {/* Category Pills Container */}
-        <View className="flex-1  flex-row items-center gap-2">
+      <View className="bg-[#303030] w-full p-1.5 rounded-xl flex-shrink flex flex-row items-center justify-between">
+        <View className="flex-1 flex-row items-center gap-2">
           <ScrollView
             horizontal
-            className=" p-3 rounded-full w-fit bg-[#303030] "
+            showsHorizontalScrollIndicator={false}
+            contentContainerClassName="gap-x-2"
           >
-            {categories?.map((tab, index) => {
+            {categories?.map((tab) => {
               const catObj = storeCategories.find((c) => c.name === tab);
               const isScheduled =
                 catObj?.schedules && catObj.schedules.length > 0;
@@ -92,47 +91,52 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
               const isAvailable = isNormallyAvailable || hasOverride;
               const dotColor = isAvailable ? "#10B981" : "#EF4444";
-              const isDisabled = !isAvailable;
+
+              const handlePress = () => {
+                if (isAvailable) {
+                  onCategoryChange(tab);
+                } else {
+                  requestPinOverride({
+                    type: "select_category",
+                    payload: { categoryName: tab },
+                  });
+                }
+              };
 
               return (
-                <View key={tab} className="w-fit flex-row items-center">
-                  <TouchableOpacity
-                    onPress={() => !isDisabled && onCategoryChange(tab)}
-                    className={`py-2 px-3 rounded-full flex-row items-center gap-2 ${
+                <TouchableOpacity
+                  key={tab}
+                  onPress={handlePress}
+                  className={`py-2 px-4 rounded-lg flex-row items-center gap-2 ${
+                    activeCategory === tab
+                      ? "bg-[#212121]"
+                      : !isAvailable
+                        ? "bg-gray-700 opacity-60"
+                        : "bg-transparent"
+                  }`}
+                >
+                  <View
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: dotColor }}
+                  />
+                  <Text
+                    className={`font-semibold text-lg ${
                       activeCategory === tab
-                        ? "border border-accent-300 bg-accent-100"
-                        : isDisabled
-                          ? "border border-gray-600 bg-gray-700 opacity-60"
-                          : "border border-transparent"
+                        ? "text-blue-400"
+                        : !isAvailable
+                          ? "text-gray-400"
+                          : "text-gray-200"
                     }`}
                   >
-                    {/* Availability dot */}
-                    <View
-                      className="w-3.5 h-3.5 rounded-full"
-                      style={{ backgroundColor: dotColor }}
+                    {tab}
+                  </Text>
+                  {isScheduled && !isNormallyAvailable && (
+                    <Clock
+                      size={14}
+                      color={hasOverride ? "#60A5FA" : "#9CA3AF"}
                     />
-                    <Text
-                      className={`font-semibold text-2xl ${
-                        activeCategory === tab
-                          ? "text-accent-400"
-                          : isDisabled
-                            ? "text-gray-400"
-                            : "text-accent-100"
-                      }`}
-                    >
-                      {tab}
-                    </Text>
-                    {isScheduled && !isNormallyAvailable && (
-                      <Clock
-                        size={16}
-                        color={hasOverride ? "#60A5FA" : "#9CA3AF"}
-                      />
-                    )}
-                  </TouchableOpacity>
-                  <View
-                    className={`${index !== categories.length - 1 ? "border-r border-gray-400 h-[50%] mx-3" : ""}`}
-                  />
-                </View>
+                  )}
+                </TouchableOpacity>
               );
             })}
           </ScrollView>

@@ -80,8 +80,8 @@ const PrinterSettingsScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="Hardware & Connection"
@@ -90,8 +90,8 @@ const PrinterSettingsScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
-          <View className="flex-1 gap-y-4">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
+          <View className="flex-1 gap-y-3">
             {printers.map((printer) => (
               <PrinterRow
                 key={printer.id}
@@ -104,19 +104,17 @@ const PrinterSettingsScreen = () => {
           </View>
 
           {/* Footer */}
-          <View className="flex-row justify-start gap-3 pt-4 border-t border-gray-600">
+          <View className="flex-row justify-start gap-2 pt-3 border-t border-gray-600">
             <TouchableOpacity
               onPress={() => setAddModalOpen(true)}
-              className="px-6 py-3 border border-gray-500 rounded-lg"
+              className="px-4 py-2 border border-gray-500 rounded-lg"
             >
-              <Text className="text-2xl font-bold text-gray-300">
-                Add New Printer
+              <Text className="text-xl font-bold text-gray-300">
+                Add Printer
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity className="px-8 py-3 bg-blue-500 rounded-lg">
-              <Text className="text-2xl font-bold text-white">
-                Save Changes
-              </Text>
+            <TouchableOpacity className="px-6 py-2 bg-blue-500 rounded-lg">
+              <Text className="text-xl font-bold text-white">Save</Text>
             </TouchableOpacity>
           </View>
         </View>

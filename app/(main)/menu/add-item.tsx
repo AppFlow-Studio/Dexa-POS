@@ -334,37 +334,38 @@ const AddMenuItemScreen: React.FC = () => {
 
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
-    () => (backdropProps: any) => (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (backdropProps: any) =>
+      (
+        <BottomSheetBackdrop
+          {...backdropProps}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-3 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={24} color="#9CA3AF" />
-          <Text className="text-2xl text-white font-medium ml-2">
+          <ArrowLeft size={20} color="#9CA3AF" />
+          <Text className="text-xl text-white font-medium ml-1.5">
             Back to Menu
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleSave}
-          className="flex-row items-center bg-blue-600 px-6 py-3 rounded-lg"
+          className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
         >
-          <Save size={24} color="white" />
-          <Text className="text-2xl text-white font-medium ml-2">
+          <Save size={20} color="white" />
+          <Text className="text-xl text-white font-medium ml-1.5">
             Save Item
           </Text>
         </TouchableOpacity>
@@ -372,24 +373,24 @@ const AddMenuItemScreen: React.FC = () => {
 
       <View className="flex-1 flex-row">
         {/* Form Section - Left Side */}
-        <ScrollView className="flex-1 p-6 bg-[#212121]">
-          <Text className="text-3xl font-bold text-white mb-6">
+        <ScrollView className="flex-1 p-4 bg-[#212121]">
+          <Text className="text-2xl font-bold text-white mb-4">
             Add New Menu Item
           </Text>
 
           {/* Basic Information */}
-          <View className="mb-6">
-            <Text className="text-2xl font-semibold text-white mb-4">
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-3">
               Basic Information
             </Text>
 
             {/* Name */}
-            <View className="mb-4">
-              <Text className="text-xl text-white font-medium mb-2">
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
                 Name *
               </Text>
               <TextInput
-                className={`bg-[#303030] border rounded-lg px-6 py-4 text-2xl h-20 text-white ${
+                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${
                   errors.name ? "border-red-500" : "border-gray-600"
                 }`}
                 placeholder="Enter item name"
@@ -400,17 +401,19 @@ const AddMenuItemScreen: React.FC = () => {
                 }
               />
               {errors.name && (
-                <Text className="text-xl text-red-400 mt-1">{errors.name}</Text>
+                <Text className="text-base text-red-400 mt-1">
+                  {errors.name}
+                </Text>
               )}
             </View>
 
             {/* Description */}
-            <View className="mb-4">
-              <Text className="text-xl text-white font-medium mb-2">
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
                 Description
               </Text>
               <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 h-20 text-2xl text-white"
+                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 h-16 text-lg text-white"
                 placeholder="Enter item description"
                 placeholderTextColor="#9CA3AF"
                 value={formData.description}
@@ -423,34 +426,32 @@ const AddMenuItemScreen: React.FC = () => {
             </View>
 
             {/* Image */}
-            <View className="mb-4">
-              <Text className="text-xl text-white font-medium mb-2">
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
                 Item Image
               </Text>
 
-              {/* Image Preview */}
               {getImageSource() && (
-                <View className="mb-3 relative">
+                <View className="mb-2 relative">
                   <Image
                     source={getImageSource()}
-                    className="w-full h-48 rounded-lg object-cover"
+                    className="w-full h-40 rounded-lg object-cover"
                   />
                   <TouchableOpacity
                     onPress={removeImage}
-                    className="absolute top-2 right-2 bg-red-600 rounded-full p-2"
+                    className="absolute top-1.5 right-1.5 bg-red-600 rounded-full p-1.5"
                   >
-                    <X size={24} color="white" />
+                    <X size={18} color="white" />
                   </TouchableOpacity>
                 </View>
               )}
 
-              {/* Image Picker Button */}
               <TouchableOpacity
                 onPress={pickImage}
-                className="flex-row items-center justify-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-4"
+                className="flex-row items-center justify-center bg-[#303030] border border-gray-600 rounded-lg px-4 py-3"
               >
-                <Camera size={24} color="#9CA3AF" />
-                <Text className="text-2xl text-white ml-2">
+                <Camera size={20} color="#9CA3AF" />
+                <Text className="text-lg text-white ml-2">
                   {getImageSource() ? "Change Image" : "Pick Image"}
                 </Text>
               </TouchableOpacity>
@@ -458,20 +459,19 @@ const AddMenuItemScreen: React.FC = () => {
           </View>
 
           {/* Pricing */}
-          <View className="mb-6">
-            <Text className="text-2xl font-semibold text-white mb-4">
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-3">
               Pricing
             </Text>
 
-            {/* Regular Price */}
-            <View className="mb-4">
-              <Text className="text-xl text-white font-medium mb-2">
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
                 Price *
               </Text>
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-4">
-                <Text className="text-2xl text-white">Price *</Text>
+              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4">
+                <Text className="text-lg text-white">$</Text>
                 <TextInput
-                  className="flex-1 ml-2 text-2xl h-20 text-white"
+                  className="flex-1 ml-2 text-lg h-16 text-white"
                   placeholder="0.00"
                   placeholderTextColor="#9CA3AF"
                   value={formData.price}
@@ -482,21 +482,20 @@ const AddMenuItemScreen: React.FC = () => {
                 />
               </View>
               {errors.price && (
-                <Text className="text-xl text-red-400 mt-1">
+                <Text className="text-base text-red-400 mt-1">
                   {errors.price}
                 </Text>
               )}
             </View>
 
-            {/* Cash Price */}
-            <View className="mb-4">
-              <Text className="text-xl text-white font-medium mb-2">
+            <View className="mb-3">
+              <Text className="text-lg text-white font-medium mb-1.5">
                 Cash Price (Optional)
               </Text>
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-6 py-4">
-                <Text className="text-2xl text-white"></Text>
+              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4">
+                <Text className="text-lg text-white">$</Text>
                 <TextInput
-                  className="flex-1 ml-2 text-2xl text-white h-20"
+                  className="flex-1 ml-2 text-lg text-white h-16"
                   placeholder="0.00"
                   placeholderTextColor="#9CA3AF"
                   value={formData.cashPrice}
@@ -507,7 +506,7 @@ const AddMenuItemScreen: React.FC = () => {
                 />
               </View>
               {errors.cashPrice && (
-                <Text className="text-xl text-red-400 mt-1">
+                <Text className="text-base text-red-400 mt-1">
                   {errors.cashPrice}
                 </Text>
               )}
@@ -515,52 +514,52 @@ const AddMenuItemScreen: React.FC = () => {
           </View>
 
           {/* Categories */}
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-2xl font-semibold text-white">
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-xl font-semibold text-white">
                 Categories
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/menu/add-category")}
-                className="flex-row items-center bg-green-600 px-4 py-2 rounded-lg"
+                className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
               >
-                <Plus size={24} color="white" />
-                <Text className="text-xl text-white font-medium ml-1">
+                <Plus size={18} color="white" />
+                <Text className="text-base text-white font-medium ml-1">
                   Add Category
                 </Text>
               </TouchableOpacity>
             </View>
 
             {availableCategories.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
-                <Text className="text-2xl text-gray-400 text-center mb-3">
+              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+                <Text className="text-xl text-gray-400 text-center mb-2">
                   No categories available. Create one to continue.
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.push("/menu/add-category")}
-                  className="flex-row items-center bg-blue-600 px-6 py-3 rounded-lg"
+                  className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
                 >
-                  <Plus size={24} color="white" />
-                  <Text className="text-2xl text-white font-medium ml-2">
+                  <Plus size={20} color="white" />
+                  <Text className="text-xl text-white font-medium ml-1.5">
                     Create Category
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <View className="flex-row flex-wrap gap-3">
+                <View className="flex-row flex-wrap gap-2">
                   {availableCategories.map((category) => (
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => toggleCategory(category.name)}
-                      className={`px-6 py-4 rounded-lg border ${
+                      className={`px-4 py-3 rounded-lg border ${
                         formData.categories.includes(category.name)
                           ? "bg-blue-600 border-blue-500"
                           : "bg-[#303030] border-gray-600"
                       }`}
                     >
                       <Text
-                        className={`text-xl font-medium ${
+                        className={`text-lg font-medium ${
                           formData.categories.includes(category.name)
                             ? "text-white"
                             : "text-gray-300"
@@ -573,24 +572,24 @@ const AddMenuItemScreen: React.FC = () => {
                 </View>
 
                 {formData.categories.length > 0 && (
-                  <View className="mt-4">
-                    <Text className="text-xl text-gray-400 mb-2">
+                  <View className="mt-3">
+                    <Text className="text-lg text-gray-400 mb-1.5">
                       Selected Categories:
                     </Text>
-                    <View className="flex-row flex-wrap gap-2">
+                    <View className="flex-row flex-wrap gap-1.5">
                       {formData.categories.map((categoryName, index) => (
                         <View
                           key={index}
-                          className="flex-row items-center bg-blue-600/20 border border-blue-500 px-4 py-3 rounded-lg"
+                          className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
                         >
-                          <Text className="text-xl text-blue-400 font-medium">
+                          <Text className="text-lg text-blue-400 font-medium">
                             {categoryName}
                           </Text>
                           <TouchableOpacity
                             onPress={() => toggleCategory(categoryName)}
-                            className="ml-2"
+                            className="ml-1.5"
                           >
-                            <X size={18} color="#60A5FA" />
+                            <X size={16} color="#60A5FA" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -599,7 +598,7 @@ const AddMenuItemScreen: React.FC = () => {
                 )}
 
                 {errors.categories && (
-                  <Text className="text-xl text-red-400 mt-2">
+                  <Text className="text-base text-red-400 mt-1.5">
                     {errors.categories}
                   </Text>
                 )}
@@ -608,55 +607,53 @@ const AddMenuItemScreen: React.FC = () => {
           </View>
 
           {/* Modifier Groups */}
-
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-2xl font-semibold text-white">
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-xl font-semibold text-white">
                 Modifier Groups
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/menu/add-modifier")}
-                className="flex-row items-center bg-green-600 px-4 py-2 rounded-lg"
+                className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
               >
-                <Plus size={24} color="white" />
-                <Text className="text-xl text-white font-medium ml-1">
+                <Plus size={18} color="white" />
+                <Text className="text-base text-white font-medium ml-1">
                   Add Modifier
                 </Text>
               </TouchableOpacity>
             </View>
 
             {modifierGroups.length === 0 ? (
-              <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
-                <Text className="text-2xl text-gray-400 text-center mb-3">
-                  No modifier groups available. Create one to add customization
-                  options.
+              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+                <Text className="text-xl text-gray-400 text-center mb-2">
+                  No modifier groups available.
                 </Text>
                 <TouchableOpacity
                   onPress={() => router.push("/menu/add-modifier")}
-                  className="flex-row items-center bg-blue-600 px-6 py-3 rounded-lg"
+                  className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
                 >
-                  <Plus size={24} color="white" />
-                  <Text className="text-2xl text-white font-medium ml-2">
+                  <Plus size={20} color="white" />
+                  <Text className="text-xl text-white font-medium ml-1.5">
                     Create Modifier Group
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <View className="flex-row flex-wrap gap-3">
+                <View className="flex-row flex-wrap gap-2">
                   {modifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}
                       onPress={() => toggleModifier(modifier.id)}
-                      className={`px-6 py-4 h-20 rounded-lg border ${
+                      className={`px-4 py-3 h-16 rounded-lg border ${
                         formData.modifiers.includes(modifier.id)
                           ? "bg-green-600 border-green-500"
                           : "bg-[#303030] border-gray-600"
                       }`}
                     >
-                      <View className="flex-row items-center gap-2">
+                      <View className="flex-row items-center gap-1.5">
                         <Text
-                          className={`text-xl font-medium ${
+                          className={`text-lg font-medium ${
                             formData.modifiers.includes(modifier.id)
                               ? "text-white"
                               : "text-gray-300"
@@ -665,10 +662,34 @@ const AddMenuItemScreen: React.FC = () => {
                           {modifier.name}
                         </Text>
                         <View
-                          className={`px-3 py-2 rounded-full ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? "bg-red-900 border border-red-500" : "bg-red-900/30 border border-red-500"}` : `${formData.modifiers.includes(modifier.id) ? "bg-blue-900 border border-blue-500" : "bg-blue-900/30 border border-blue-500"}`}`}
+                          className={`px-2.5 py-1.5 rounded-full ${
+                            modifier.type === "required"
+                              ? `${
+                                  formData.modifiers.includes(modifier.id)
+                                    ? "bg-red-900 border border-red-500"
+                                    : "bg-red-900/30 border border-red-500"
+                                }`
+                              : `${
+                                  formData.modifiers.includes(modifier.id)
+                                    ? "bg-blue-900 border border-blue-500"
+                                    : "bg-blue-900/30 border border-blue-500"
+                                }`
+                          }`}
                         >
                           <Text
-                            className={`text-lg ${modifier.type === "required" ? `${formData.modifiers.includes(modifier.id) ? "text-red-100" : "text-red-400"}` : `${formData.modifiers.includes(modifier.id) ? "text-blue-100" : "text-blue-400"}`}`}
+                            className={`text-base ${
+                              modifier.type === "required"
+                                ? `${
+                                    formData.modifiers.includes(modifier.id)
+                                      ? "text-red-100"
+                                      : "text-red-400"
+                                  }`
+                                : `${
+                                    formData.modifiers.includes(modifier.id)
+                                      ? "text-blue-100"
+                                      : "text-blue-400"
+                                  }`
+                            }`}
                           >
                             {modifier.type}
                           </Text>
@@ -679,11 +700,11 @@ const AddMenuItemScreen: React.FC = () => {
                 </View>
 
                 {formData.modifiers.length > 0 && (
-                  <View className="mt-4">
-                    <Text className="text-xl text-gray-400 mb-2">
+                  <View className="mt-3">
+                    <Text className="text-lg text-gray-400 mb-1.5">
                       Selected Modifier Groups:
                     </Text>
-                    <View className="flex-row flex-wrap gap-2">
+                    <View className="flex-row flex-wrap gap-1.5">
                       {formData.modifiers.map((modifierId, index) => {
                         const modifier = modifierGroups.find(
                           (m) => m.id === modifierId
@@ -691,16 +712,16 @@ const AddMenuItemScreen: React.FC = () => {
                         return (
                           <View
                             key={index}
-                            className="flex-row items-center bg-blue-600/20 border border-blue-500 px-4 py-3 rounded-lg"
+                            className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
                           >
-                            <Text className="text-xl text-blue-400 font-medium">
+                            <Text className="text-lg text-blue-400 font-medium">
                               {modifier?.name}
                             </Text>
                             <TouchableOpacity
                               onPress={() => toggleModifier(modifierId)}
-                              className="ml-2"
+                              className="ml-1.5"
                             >
-                              <X size={18} color="#60A5FA" />
+                              <X size={16} color="#60A5FA" />
                             </TouchableOpacity>
                           </View>
                         );
@@ -713,36 +734,36 @@ const AddMenuItemScreen: React.FC = () => {
           </View>
 
           {/* Recipe / Inventory Components */}
-          <View className="mb-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-2xl font-semibold text-white">
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-xl font-semibold text-white">
                 Recipe / Components
               </Text>
             </View>
 
             {recipeItems.length === 0 ? (
-              <View className="bg-gray-800 rounded-lg p-6 items-center">
-                <Text className="text-gray-400 text-center mb-2">
+              <View className="bg-gray-800 rounded-lg p-4 items-center">
+                <Text className="text-gray-400 text-center mb-1.5 text-base">
                   No recipe items defined
                 </Text>
-                <Text className="text-gray-500 text-sm text-center mb-4">
-                  Add inventory items to create a recipe for this menu item
+                <Text className="text-gray-500 text-xs text-center mb-3">
+                  Add inventory items to create a recipe
                 </Text>
                 <TouchableOpacity
                   onPress={openInventorySelection}
-                  className="bg-blue-600 px-4 py-2 rounded-lg flex-row items-center"
+                  className="bg-blue-600 px-3 py-1.5 rounded-lg flex-row items-center"
                 >
-                  <Plus color="white" size={16} />
-                  <Text className="text-white ml-2 font-semibold">
+                  <Plus color="white" size={14} />
+                  <Text className="text-white ml-1.5 font-semibold text-sm">
                     Add Recipe Item
                   </Text>
                 </TouchableOpacity>
               </View>
             ) : (
-              <View className="gap-y-3">
+              <View className="gap-y-2">
                 {recipeItems.map((recipeItem, index) => (
-                  <View key={index} className="bg-gray-800 rounded-lg p-4">
-                    <View className="flex-row items-center gap-3">
+                  <View key={index} className="bg-gray-800 rounded-lg p-3">
+                    <View className="flex-row items-center gap-2">
                       <TouchableOpacity
                         className="flex-1"
                         onPress={() => {
@@ -750,20 +771,20 @@ const AddMenuItemScreen: React.FC = () => {
                           openInventorySelection();
                         }}
                       >
-                        <View className="opacity-100">
-                          <Text className="font-semibold text-white">
+                        <View>
+                          <Text className="font-semibold text-white text-base">
                             {getInventoryItemName(recipeItem.inventoryItemId)}
                           </Text>
-                          <Text className="text-sm text-gray-400">
+                          <Text className="text-xs text-gray-400">
                             {getInventoryItemUnit(recipeItem.inventoryItemId)}
                           </Text>
-                          <Text className="text-blue-400 text-xs mt-1">
+                          <Text className="text-blue-400 text-[10px] mt-0.5">
                             Tap to change item
                           </Text>
                         </View>
                       </TouchableOpacity>
 
-                      <View className="w-24">
+                      <View className="w-20">
                         <View>
                           <TextInput
                             value={recipeItem.quantity.toString()}
@@ -771,11 +792,11 @@ const AddMenuItemScreen: React.FC = () => {
                               updateRecipeItemQuantity(index, text)
                             }
                             keyboardType="numeric"
-                            className="bg-[#212121] border border-gray-600 text-white p-2 rounded text-center h-20"
+                            className="bg-[#212121] border border-gray-600 text-white p-1.5 rounded text-center h-16 text-sm"
                             placeholder="0"
                             placeholderTextColor="#9CA3AF"
                           />
-                          <Text className="text-gray-400 text-xs text-center mt-1">
+                          <Text className="text-gray-400 text-[10px] text-center mt-0.5">
                             Quantity
                           </Text>
                         </View>
@@ -783,9 +804,9 @@ const AddMenuItemScreen: React.FC = () => {
 
                       <TouchableOpacity
                         onPress={() => removeRecipeItem(index)}
-                        className="bg-red-600 p-2 rounded-lg"
+                        className="bg-red-600 p-1.5 rounded-lg"
                       >
-                        <X color="white" size={16} />
+                        <X color="white" size={14} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -793,10 +814,10 @@ const AddMenuItemScreen: React.FC = () => {
 
                 <TouchableOpacity
                   onPress={openInventorySelection}
-                  className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-4 items-center"
+                  className="bg-gray-700 border-2 border-dashed border-gray-500 rounded-lg p-3 items-center"
                 >
-                  <Plus color="#9CA3AF" size={24} />
-                  <Text className="text-gray-400 mt-2 font-semibold">
+                  <Plus color="#9CA3AF" size={20} />
+                  <Text className="text-gray-400 mt-1.5 font-semibold text-sm">
                     Add Recipe Item
                   </Text>
                 </TouchableOpacity>
@@ -805,8 +826,8 @@ const AddMenuItemScreen: React.FC = () => {
           </View>
 
           {/* Availability */}
-          <View className="mb-6">
-            <Text className="text-2xl font-semibold text-white mb-4">
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-3">
               Availability
             </Text>
             <TouchableOpacity
@@ -816,24 +837,24 @@ const AddMenuItemScreen: React.FC = () => {
                   availability: !prev.availability,
                 }))
               }
-              className={`flex-row items-center justify-between p-6 rounded-lg border ${
+              className={`flex-row items-center justify-between p-4 rounded-lg border ${
                 formData.availability
                   ? "bg-green-900/30 border-green-500"
                   : "bg-red-900/30 border-red-500"
               }`}
             >
-              <Text className="text-2xl text-white font-medium">
+              <Text className="text-xl text-white font-medium">
                 {formData.availability ? "Available" : "Unavailable"}
               </Text>
               <View
-                className={`w-8 h-8 rounded-full border-2 ${
+                className={`w-7 h-7 rounded-full border-2 ${
                   formData.availability
                     ? "bg-green-500 border-green-500"
                     : "bg-transparent border-red-500"
                 }`}
               >
                 {formData.availability && (
-                  <View className="w-3 h-3 bg-white rounded-full m-1" />
+                  <View className="w-2.5 h-2.5 bg-white rounded-full m-1" />
                 )}
               </View>
             </TouchableOpacity>
@@ -841,40 +862,38 @@ const AddMenuItemScreen: React.FC = () => {
         </ScrollView>
 
         {/* Preview Section - Right Side */}
-        <View className="w-96 border-l border-gray-700 bg-[#303030] p-6">
-          <Text className="text-2xl font-semibold text-white mb-4">
-            Preview
-          </Text>
+        <View className="w-80 border-l border-gray-700 bg-[#303030] p-4">
+          <Text className="text-xl font-semibold text-white mb-3">Preview</Text>
 
           <View className="items-center">
-            <View className="w-[320px] rounded-[20px] mb-3 bg-[#303030] border border-gray-600">
-              <View className="flex-col items-center gap-2 overflow-hidden rounded-lg">
+            <View className="w-full rounded-2xl mb-2 bg-[#303030] border border-gray-600">
+              <View className="flex-col items-center gap-1.5 overflow-hidden rounded-lg">
                 {getImageSource() ? (
                   <Image
                     source={getImageSource()}
-                    className="w-full h-48 object-cover rounded-lg"
+                    className="w-full h-40 object-cover rounded-lg"
                   />
                 ) : (
-                  <View className="w-full h-48 rounded-xl items-center justify-center">
-                    <Utensils color="#9ca3af" size={48} />
+                  <View className="w-full h-40 rounded-xl items-center justify-center">
+                    <Utensils color="#9ca3af" size={36} />
                   </View>
                 )}
-                <View className="w-full px-4 pb-4">
+                <View className="w-full px-3 pb-3">
                   <View className="flex-row items-center justify-between">
-                    <Text className="text-2xl font-bold text-white mt-3 flex-1">
+                    <Text className="text-xl font-bold text-white mt-2 flex-1">
                       {formData.name || "Item Name"}
                     </Text>
                   </View>
-                  <View className="flex-row items-baseline mt-1">
-                    <Text className="text-2xl font-semibold text-white">
+                  <View className="flex-row items-baseline mt-0.5">
+                    <Text className="text-xl font-semibold text-white">
                       $
                       {formData.price
                         ? parseFloat(formData.price).toFixed(2)
                         : "0.00"}
                     </Text>
                     {formData.cashPrice && (
-                      <Text className="text-lg text-gray-300 ml-2">
-                        Cash Price: ${parseFloat(formData.cashPrice).toFixed(2)}
+                      <Text className="text-base text-gray-300 ml-1.5">
+                        Cash: ${parseFloat(formData.cashPrice).toFixed(2)}
                       </Text>
                     )}
                   </View>
@@ -882,48 +901,47 @@ const AddMenuItemScreen: React.FC = () => {
               </View>
             </View>
 
-            {/* Additional Preview Info */}
-            <View className="w-full mt-4 gap-y-3">
-              <View className="bg-[#212121] p-4 rounded-lg">
-                <Text className="text-xl text-gray-400">Categories</Text>
+            <View className="w-full mt-3 gap-y-2">
+              <View className="bg-[#212121] p-3 rounded-lg">
+                <Text className="text-lg text-gray-400">Categories</Text>
                 {formData.categories.length > 0 ? (
-                  <View className="flex-row flex-wrap gap-2 mt-1">
+                  <View className="flex-row flex-wrap gap-1.5 mt-1">
                     {formData.categories.map((category, index) => (
                       <View
                         key={index}
-                        className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded"
+                        className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded"
                       >
-                        <Text className="text-lg text-blue-400">
+                        <Text className="text-base text-blue-400">
                           {category}
                         </Text>
                       </View>
                     ))}
                   </View>
                 ) : (
-                  <Text className="text-xl text-gray-500 mt-1">
-                    No categories selected
+                  <Text className="text-lg text-gray-500 mt-1">
+                    No categories
                   </Text>
                 )}
               </View>
 
-              <View className="bg-[#212121] p-4 rounded-lg">
-                <Text className="text-xl text-gray-400">Available For</Text>
-                <View className="flex-row flex-wrap gap-2 mt-1">
+              <View className="bg-[#212121] p-3 rounded-lg">
+                <Text className="text-lg text-gray-400">Available For</Text>
+                <View className="flex-row flex-wrap gap-1.5 mt-1">
                   {formData.meal.map((meal, index) => (
                     <View
                       key={index}
-                      className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded"
+                      className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded"
                     >
-                      <Text className="text-lg text-blue-400">{meal}</Text>
+                      <Text className="text-base text-blue-400">{meal}</Text>
                     </View>
                   ))}
                 </View>
               </View>
 
               {formData.modifiers.length > 0 && (
-                <View className="bg-[#212121] p-4 rounded-lg">
-                  <Text className="text-xl text-gray-400">Modifier Groups</Text>
-                  <View className="flex-row flex-wrap gap-2 mt-1">
+                <View className="bg-[#212121] p-3 rounded-lg">
+                  <Text className="text-lg text-gray-400">Modifiers</Text>
+                  <View className="flex-row flex-wrap gap-1.5 mt-1">
                     {formData.modifiers.map((modifierId, index) => {
                       const modifier = modifierGroups.find(
                         (m) => m.id === modifierId
@@ -931,9 +949,9 @@ const AddMenuItemScreen: React.FC = () => {
                       return (
                         <View
                           key={index}
-                          className="bg-green-900/30 border border-green-500 px-3 py-2 rounded"
+                          className="bg-green-900/30 border border-green-500 px-2.5 py-1.5 rounded"
                         >
-                          <Text className="text-lg text-green-400">
+                          <Text className="text-base text-green-400">
                             {modifier?.name}
                           </Text>
                         </View>
@@ -944,18 +962,18 @@ const AddMenuItemScreen: React.FC = () => {
               )}
 
               {formData.description && (
-                <View className="bg-[#212121] p-4 rounded-lg">
-                  <Text className="text-xl text-gray-400">Description</Text>
-                  <Text className="text-2xl text-white mt-1">
+                <View className="bg-[#212121] p-3 rounded-lg">
+                  <Text className="text-lg text-gray-400">Description</Text>
+                  <Text className="text-xl text-white mt-1">
                     {formData.description}
                   </Text>
                 </View>
               )}
 
-              <View className="bg-[#212121] p-4 rounded-lg">
-                <Text className="text-xl text-gray-400">Status</Text>
+              <View className="bg-[#212121] p-3 rounded-lg">
+                <Text className="text-lg text-gray-400">Status</Text>
                 <Text
-                  className={`text-2xl font-medium ${
+                  className={`text-xl font-medium ${
                     formData.availability ? "text-green-400" : "text-red-400"
                   }`}
                 >
@@ -967,78 +985,72 @@ const AddMenuItemScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Styled Confirmation Modal */}
       <Modal
         visible={showConfirmation}
         transparent={true}
         animationType="fade"
         onRequestClose={() => setShowConfirmation(false)}
       >
-        <View className="flex-1 bg-black/50 items-center justify-center p-6">
-          <View className="bg-[#303030] rounded-2xl p-6 w-full max-w-lg border border-gray-600">
-            {/* Header */}
-            <View className="items-center mb-6">
-              <View className="w-20 h-20 bg-blue-600/20 rounded-full items-center justify-center mb-4">
-                <Save size={40} color="#60A5FA" />
+        <View className="flex-1 bg-black/50 items-center justify-center p-4">
+          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+            <View className="items-center mb-4">
+              <View className="w-16 h-16 bg-blue-600/20 rounded-full items-center justify-center mb-3">
+                <Save size={32} color="#60A5FA" />
               </View>
-              <Text className="text-3xl font-bold text-white text-center">
+              <Text className="text-2xl font-bold text-white text-center">
                 Save Menu Item?
               </Text>
-              <Text className="text-2xl text-gray-400 text-center mt-2">
-                Are you sure you want to add "{formData.name || "this item"}" to
-                the menu?
+              <Text className="text-xl text-gray-400 text-center mt-1.5">
+                Add "{formData.name || "this item"}" to menu?
               </Text>
             </View>
 
-            {/* Item Preview */}
-            <View className="bg-[#212121] rounded-lg p-6 mb-6">
-              <View className="flex-row items-center gap-4">
+            <View className="bg-[#212121] rounded-lg p-4 mb-4">
+              <View className="flex-row items-center gap-3">
                 {getImageSource() ? (
                   <Image
                     source={getImageSource()}
-                    className="w-16 h-16 rounded-lg object-cover"
+                    className="w-14 h-14 rounded-lg object-cover"
                   />
                 ) : (
-                  <View className="w-16 h-16 rounded-lg bg-gray-600 items-center justify-center">
-                    <Utensils color="#9ca3af" size={24} />
+                  <View className="w-14 h-14 rounded-lg bg-gray-600 items-center justify-center">
+                    <Utensils color="#9ca3af" size={20} />
                   </View>
                 )}
                 <View className="flex-1">
-                  <Text className="text-2xl text-white font-medium">
+                  <Text className="text-xl text-white font-medium">
                     {formData.name || "Item Name"}
                   </Text>
-                  <Text className="text-xl text-gray-400">
+                  <Text className="text-lg text-gray-400">
                     {formData.categories.length > 0
                       ? formData.categories.join(", ")
                       : "No categories"}{" "}
                     • ${formData.price || "0.00"}
                   </Text>
                   {formData.modifiers.length > 0 && (
-                    <Text className="text-lg text-green-400 mt-1">
-                      {formData.modifiers.length} modifier group(s) selected
+                    <Text className="text-base text-green-400 mt-0.5">
+                      {formData.modifiers.length} modifier(s)
                     </Text>
                   )}
                 </View>
               </View>
             </View>
 
-            {/* Action Buttons */}
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirmation(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-4 items-center"
+                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
               >
-                <Text className="text-2xl text-gray-300 font-medium">
+                <Text className="text-xl text-gray-300 font-medium">
                   Cancel
                 </Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
-                className="flex-1 bg-blue-600 rounded-lg py-4 items-center"
+                className="flex-1 bg-blue-600 rounded-lg py-3 items-center"
               >
-                <Text className="text-2xl text-white font-medium">
+                <Text className="text-xl text-white font-medium">
                   {isSaving ? "Saving..." : "Save Item"}
                 </Text>
               </TouchableOpacity>
@@ -1062,7 +1074,6 @@ const AddMenuItemScreen: React.FC = () => {
         }}
       />
 
-      {/* Inventory Selection Bottom Sheet */}
       <BottomSheet
         ref={inventorySelectionSheetRef}
         index={-1}
@@ -1073,15 +1084,15 @@ const AddMenuItemScreen: React.FC = () => {
         backdropComponent={renderInventoryBackdrop}
       >
         <View className="flex-1">
-          <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
+          <View className="flex-row items-center justify-between p-3 border-b border-gray-700">
             <View className="flex-1">
-              <Text className="text-xl font-bold text-white">
+              <Text className="text-lg font-bold text-white">
                 {editingRecipeItemIndex !== null
-                  ? "Replace Inventory Item"
-                  : "Select Inventory Item"}
+                  ? "Replace Item"
+                  : "Select Item"}
               </Text>
               {editingRecipeItemIndex !== null && (
-                <Text className="text-blue-400 text-sm mt-1">
+                <Text className="text-blue-400 text-xs mt-0.5">
                   Choose a new item to replace the current one
                 </Text>
               )}
@@ -1092,27 +1103,25 @@ const AddMenuItemScreen: React.FC = () => {
                 inventorySelectionSheetRef.current?.close();
               }}
             >
-              <X color="#9CA3AF" size={24} />
+              <X color="#9CA3AF" size={20} />
             </TouchableOpacity>
           </View>
 
-          {/* Search Bar */}
-          <View className="p-4 border-b border-gray-700">
-            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2">
+          <View className="p-3 border-b border-gray-700">
+            <View className="flex-row items-center bg-[#212121] rounded-lg px-2.5 py-1.5">
               <TextInput
                 value={inventorySearchQuery}
                 onChangeText={(text) => setInventorySearchQuery(text.trim())}
-                placeholder="Search inventory items..."
+                placeholder="Search inventory..."
                 placeholderTextColor="#9CA3AF"
-                className="flex-1 text-white ml-3 h-20"
+                className="flex-1 text-white ml-2 h-16 text-base"
               />
             </View>
           </View>
 
-          {/* Inventory Items List */}
           {filteredInventoryItems.length === 0 ? (
-            <View className="flex-1 justify-center items-center p-8">
-              <Text className="text-gray-400 text-lg text-center">
+            <View className="flex-1 justify-center items-center p-6">
+              <Text className="text-gray-400 text-base text-center">
                 {inventorySearchQuery
                   ? "No items found"
                   : "No inventory items available"}
@@ -1136,34 +1145,34 @@ const AddMenuItemScreen: React.FC = () => {
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
-                    className={`p-4 border-b border-gray-700 ${
+                    className={`p-3 border-b border-gray-700 ${
                       isCurrentlyEditing
                         ? "bg-blue-900 border-blue-600"
                         : isAlreadyInRecipe
-                          ? "bg-gray-800 opacity-50"
-                          : "bg-transparent"
+                        ? "bg-gray-800 opacity-50"
+                        : "bg-transparent"
                     }`}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
                         <Text
-                          className={`font-semibold ${
+                          className={`font-semibold text-base ${
                             isCurrentlyEditing
                               ? "text-blue-300"
                               : isAlreadyInRecipe
-                                ? "text-gray-500"
-                                : "text-white"
+                              ? "text-gray-500"
+                              : "text-white"
                           }`}
                         >
                           {inventoryItem.name}
                         </Text>
                         <Text
-                          className={`text-sm ${
+                          className={`text-xs ${
                             isCurrentlyEditing
                               ? "text-blue-400"
                               : isAlreadyInRecipe
-                                ? "text-gray-600"
-                                : "text-gray-400"
+                              ? "text-gray-600"
+                              : "text-gray-400"
                           }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $
@@ -1171,21 +1180,23 @@ const AddMenuItemScreen: React.FC = () => {
                         </Text>
                       </View>
                       {isCurrentlyEditing ? (
-                        <View className="bg-blue-600 px-2 py-1 rounded">
-                          <Text className="text-white text-xs">
-                            Currently Selected
+                        <View className="bg-blue-600 px-1.5 py-0.5 rounded">
+                          <Text className="text-white text-[10px]">
+                            Selected
                           </Text>
                         </View>
                       ) : isAlreadyInRecipe ? (
-                        <View className="bg-gray-600 px-2 py-1 rounded">
-                          <Text className="text-gray-300 text-xs">Added</Text>
+                        <View className="bg-gray-600 px-1.5 py-0.5 rounded">
+                          <Text className="text-gray-300 text-[10px]">
+                            Added
+                          </Text>
                         </View>
                       ) : null}
                     </View>
                   </TouchableOpacity>
                 );
               }}
-              contentContainerStyle={{ paddingBottom: 20 }}
+              contentContainerStyle={{ paddingBottom: 16 }}
             />
           )}
         </View>

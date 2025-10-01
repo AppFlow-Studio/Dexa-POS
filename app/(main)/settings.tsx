@@ -136,69 +136,73 @@ const SettingsScreen: React.FC = () => {
   ];
 
   return (
-    <View className="w-full h-full flex-1 bg-[#212121]">
-      <View className="flex-1 p-6 w-full h-full">
-        {/* Global Menu Scheduling Toggle */}
-        <View className="mb-6 bg-[#303030] border border-gray-600 rounded-2xl p-4">
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-2xl font-semibold text-white">
-                Menu Scheduling
-              </Text>
-              <Text className="text-lg text-gray-300">
-                Enable time-based visibility for menus and categories
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => setMenuSchedulingEnabled(!isMenuSchedulingEnabled)}
-              className={`px-4 py-3 rounded-lg border ${isMenuSchedulingEnabled ? "bg-green-900/30 border-green-500" : "bg-red-900/30 border-red-500"}`}
+    <View className="flex-1 p-4 bg-[#212121]">
+      <View className="mb-4 bg-[#303030] border border-gray-600 rounded-2xl p-3">
+        <View className="flex-row items-center justify-between">
+          <View>
+            <Text className="text-xl font-semibold text-white">
+              Menu Scheduling
+            </Text>
+            <Text className="text-base text-gray-300">
+              Time-based visibility for menus
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setMenuSchedulingEnabled(!isMenuSchedulingEnabled)}
+            className={`px-3 py-2 rounded-lg border ${
+              isMenuSchedulingEnabled
+                ? "bg-green-900/30 border-green-500"
+                : "bg-red-900/30 border-red-500"
+            }`}
+          >
+            <Text
+              className={`text-lg ${
+                isMenuSchedulingEnabled ? "text-green-400" : "text-red-400"
+              }`}
             >
-              <Text className={`text-xl ${isMenuSchedulingEnabled ? "text-green-400" : "text-red-400"}`}>
-                {isMenuSchedulingEnabled ? "Enabled" : "Disabled"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        {/* Main Categories */}
-        <View className="mb-8 h-full w-full justify-center items-center flex">
-          <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
-            {settingsCategories.map((category) => (
-              <View
-                key={category.id}
-                className="w-1/3 h-1/4"
-                style={{ marginBottom: 16 }}
-              >
-                <SettingsCard
-                  icon={category.icon}
-                  title={category.title}
-                  subtitle={category.subtitle}
-                  onPress={() => {
-                    if (category.isLocked) {
-                      handleLockedAccess(category.route);
-                    } else {
-                      router.push(category.route as any);
-                    }
-                  }}
-                  isLocked={category.isLocked}
-                  onLockPress={() => handleLockedAccess(category.route)}
-                />
-              </View>
-            ))}
-          </View>
+              {isMenuSchedulingEnabled ? "Enabled" : "Disabled"}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Manager PIN Dialog */}
+      <View className="mb-6 h-full w-full justify-center items-center flex">
+        <View className="flex-row flex-wrap gap-3 w-full h-full items-center justify-center">
+          {settingsCategories.map((category) => (
+            <View
+              key={category.id}
+              className="w-1/3 h-1/4"
+              style={{ marginBottom: 12 }}
+            >
+              <SettingsCard
+                icon={category.icon}
+                title={category.title}
+                subtitle={category.subtitle}
+                onPress={() => {
+                  if (category.isLocked) {
+                    handleLockedAccess(category.route);
+                  } else {
+                    router.push(category.route as any);
+                  }
+                }}
+                isLocked={category.isLocked}
+                onLockPress={() => handleLockedAccess(category.route)}
+              />
+            </View>
+          ))}
+        </View>
+      </View>
+
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600">
           <DialogHeader>
-            <DialogTitle className="text-center text-2xl font-semibold text-white">
-              Manager Access Required
+            <DialogTitle className="text-center text-xl font-semibold text-white">
+              Manager Access
             </DialogTitle>
           </DialogHeader>
-          <View className="py-4">
-            <Text className="text-center text-xl text-gray-300 mb-6">
-              Enter your manager PIN to access this feature
+          <View className="py-3">
+            <Text className="text-center text-lg text-gray-300 mb-4">
+              Enter PIN to access
             </Text>
             <PinDisplay pinLength={currentPin.length} maxLength={4} />
             <PinNumpad
@@ -207,11 +211,8 @@ const SettingsScreen: React.FC = () => {
                   if (currentPin.length < 4) {
                     const newPin = currentPin + input.toString();
                     setCurrentPin(newPin);
-                    // Auto-submit when PIN is complete
                     if (newPin.length === 4) {
-                      setTimeout(() => {
-                        handlePinSubmit();
-                      }, 100);
+                      setTimeout(() => handlePinSubmit(), 100);
                     }
                   }
                 } else if (input === "clear") {
@@ -226,9 +227,9 @@ const SettingsScreen: React.FC = () => {
                 setPinDialogOpen(false);
                 handlePinSubmit();
               }}
-              className="p-4 bg-blue-500 rounded-full w-[80%] self-center mt-6"
+              className="p-3 bg-blue-500 rounded-full w-[80%] self-center mt-4"
             >
-              <Text className="text-center text-xl text-white">Enter</Text>
+              <Text className="text-center text-lg text-white">Enter</Text>
             </TouchableOpacity>
           </View>
         </DialogContent>

@@ -290,8 +290,8 @@ const SplitPaymentView = () => {
     switch (splitOption) {
       case "Split Evenly":
         return (
-          <View className="mt-6">
-            <Text className="text-2xl font-semibold text-gray-300 mb-3">
+          <View className="mt-4">
+            <Text className="text-lg font-semibold text-gray-300 mb-2">
               Number of People:
             </Text>
             <View className="flex-row gap-3">
@@ -299,10 +299,10 @@ const SplitPaymentView = () => {
                 <TouchableOpacity
                   key={num}
                   onPress={() => setNumberOfPeople(num)}
-                  className={`w-16 h-16 rounded-lg border items-center justify-center ${numberOfPeople === num ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                  className={`w-14 h-14 rounded-lg border items-center justify-center ${numberOfPeople === num ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
                 >
                   <Text
-                    className={`text-2xl font-semibold ${numberOfPeople === num ? "text-blue-400" : "text-gray-300"}`}
+                    className={`text-xl font-semibold ${numberOfPeople === num ? "text-blue-400" : "text-gray-300"}`}
                   >
                     {num}
                   </Text>
@@ -316,15 +316,15 @@ const SplitPaymentView = () => {
           (item) => unassignedQuantities[item.id] > 0
         );
         return (
-          <View className="mt-6 gap-y-4">
+          <View className="mt-4 gap-y-3">
             <View>
-              <Text className="text-2xl font-semibold text-gray-300 mb-3">
+              <Text className="text-lg font-semibold text-gray-300 mb-2">
                 Unassigned Items
               </Text>
               {unassignedItemsToDisplay.length > 0 ? (
                 unassignedItemsToDisplay.map((item) => (
-                  <View key={item.id} className="p-3 border-b border-gray-700">
-                    <Text className="text-2xl font-semibold text-white">
+                  <View key={item.id} className="p-2 border-b border-gray-700">
+                    <Text className="text-lg font-semibold text-white">
                       {item.name} (Unassigned: {unassignedQuantities[item.id]})
                     </Text>
                     <View className="flex-row gap-2 mt-2">
@@ -332,9 +332,9 @@ const SplitPaymentView = () => {
                         <TouchableOpacity
                           key={split.id}
                           onPress={() => handleAssignItem(item, split.id)}
-                          className="py-2 px-3 bg-gray-600 rounded-md"
+                          className="py-1 px-2 bg-gray-600 rounded-md"
                         >
-                          <Text className="text-xl font-bold text-white">
+                          <Text className="text-base font-bold text-white">
                             +1 to Split {split.id}
                           </Text>
                         </TouchableOpacity>
@@ -343,19 +343,19 @@ const SplitPaymentView = () => {
                   </View>
                 ))
               ) : (
-                <Text className="text-xl text-gray-500">
+                <Text className="text-lg text-gray-500">
                   All items have been assigned.
                 </Text>
               )}
             </View>
-            <View className="gap-y-4">
+            <View className="gap-y-3">
               {splits.map((split) => (
                 <View
                   key={split.id}
-                  className="p-4 bg-[#212121] border border-gray-700 rounded-lg"
+                  className="p-3 bg-[#212121] border border-gray-700 rounded-lg"
                 >
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-2xl font-bold text-blue-400 mb-2">
+                    <Text className="text-xl font-bold text-blue-400 mb-2">
                       Split {split.id} - ${split.amount.toFixed(2)}
                     </Text>
                     {splits.length > 1 && (
@@ -363,7 +363,7 @@ const SplitPaymentView = () => {
                         onPress={() => handleRemoveSplit(split)}
                         className="p-2 bg-red-900/30 rounded-full"
                       >
-                        <Minus color="#ef4444" size={24} />
+                        <Minus color="#ef4444" size={20} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -372,13 +372,13 @@ const SplitPaymentView = () => {
                       key={splitItem.cartItem.id}
                       className="flex-row justify-between items-center"
                     >
-                      <Text className="text-2xl text-gray-300">
+                      <Text className="text-lg text-gray-300">
                         {splitItem.cartItem.name} (x{splitItem.quantity})
                       </Text>
                       <TouchableOpacity
                         onPress={() => handleUnassignItem(splitItem, split.id)}
                       >
-                        <Text className="text-xl text-red-500 font-semibold">
+                        <Text className="text-base text-red-500 font-semibold">
                           Unassign All
                         </Text>
                       </TouchableOpacity>
@@ -389,9 +389,9 @@ const SplitPaymentView = () => {
             </View>
             <TouchableOpacity
               onPress={handleAddSplit}
-              className="py-3 border border-dashed border-gray-500 rounded-lg items-center"
+              className="py-2 border border-dashed border-gray-500 rounded-lg items-center"
             >
-              <Text className="text-2xl font-bold text-gray-400">
+              <Text className="text-lg font-bold text-gray-400">
                 + Add Another Split
               </Text>
             </TouchableOpacity>
@@ -399,22 +399,22 @@ const SplitPaymentView = () => {
         );
       case "Custom Amount":
         return (
-          <View className="mt-6 gap-y-4">
-            <Text className="text-2xl font-semibold text-gray-300 mb-2">
+          <View className="mt-4 gap-y-3">
+            <Text className="text-lg font-semibold text-gray-300 mb-1">
               Enter amount for each split:
             </Text>
             {splits.map((split, index) => (
               <View
                 key={split.id}
-                className="flex-row items-center justify-between p-4 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center justify-between p-3 bg-[#212121] border border-gray-700 rounded-lg"
               >
-                <Text className="text-2xl font-bold text-blue-400 w-28">
+                <Text className="text-xl font-bold text-blue-400 w-24">
                   Split {index + 1}
                 </Text>
                 <View className="flex-1 flex-row items-center bg-[#303030] rounded-md px-2 border border-gray-600">
-                  <Text className="font-bold text-2xl text-gray-400">$</Text>
+                  <Text className="font-bold text-xl text-gray-400">$</Text>
                   <TextInput
-                    className="flex-1 p-3 text-2xl font-semibold text-right text-white h-20"
+                    className="flex-1 p-2 text-xl font-semibold text-right text-white h-16"
                     value={split.amount > 0 ? split.amount.toString() : ""}
                     onChangeText={(text) =>
                       handleCustomAmountChange(split.id, text)
@@ -429,7 +429,7 @@ const SplitPaymentView = () => {
                     onPress={() => handleRemoveSplit(split)}
                     className="p-2 ml-2"
                   >
-                    <Minus color="#ef4444" size={24} />
+                    <Minus color="#ef4444" size={20} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -437,9 +437,9 @@ const SplitPaymentView = () => {
             {remainingBalance > 0.005 && (
               <TouchableOpacity
                 onPress={handleAddSplitInCustomMode}
-                className="py-3 border border-dashed border-gray-500 rounded-lg items-center"
+                className="py-2 border border-dashed border-gray-500 rounded-lg items-center"
               >
-                <Text className="text-2xl font-bold text-gray-400">
+                <Text className="text-lg font-bold text-gray-400">
                   + Add Split for Remaining ${remainingBalance.toFixed(2)}
                 </Text>
               </TouchableOpacity>
@@ -450,34 +450,34 @@ const SplitPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[600px]">
+    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
       {/* Dark Header */}
-      <View className="p-8">
-        <Text className="text-3xl text-white font-bold text-center">
+      <View className="p-4">
+        <Text className="text-2xl text-white font-bold text-center">
           Split Payment
         </Text>
       </View>
 
       {/* Dark Content */}
-      <View className="p-8 bg-[#303030] rounded-b-2xl">
+      <View className="p-4 bg-[#303030] rounded-b-2xl">
         <ScrollView
           className="max-h-[800px]"
           showsVerticalScrollIndicator={false}
         >
           {/* Total */}
-          <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-6">
-            <Text className="text-3xl font-bold text-white">Total</Text>
-            <Text className="text-3xl font-bold text-white">
+          <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">
+            <Text className="text-2xl font-bold text-white">Total</Text>
+            <Text className="text-2xl font-bold text-white">
               ${activeOrderOutstandingTotal.toFixed(2)}
             </Text>
           </View>
 
           {/* Split Options */}
           <View>
-            <Text className="text-2xl font-semibold text-gray-300 mb-3">
+            <Text className="text-lg font-semibold text-gray-300 mb-2">
               Split Options
             </Text>
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               {(
                 [
                   "Split Evenly",
@@ -490,10 +490,10 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt)}
-                    className={`flex-1 py-4 rounded-xl border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                    className={`flex-1 py-3 rounded-xl border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
                   >
                     <Text
-                      className={`text-xl font-semibold text-center ${isSelected ? "text-blue-400" : "text-gray-300"}`}
+                      className={`text-lg font-semibold text-center ${isSelected ? "text-blue-400" : "text-gray-300"}`}
                     >
                       {opt}
                     </Text>
@@ -506,37 +506,37 @@ const SplitPaymentView = () => {
           {renderSplitContent()}
 
           {/* Split Details */}
-          <View className="mt-6 gap-y-4">
+          <View className="mt-4 gap-y-3">
             {splits.map((split) => (
               <View
                 key={split.id}
-                className="flex-row items-center p-3 bg-[#212121] border border-gray-700 rounded-lg"
+                className="flex-row items-center p-2 bg-[#212121] border border-gray-700 rounded-lg"
               >
-                <Text className="text-2xl font-semibold text-white w-32">
+                <Text className="text-xl font-semibold text-white w-28">
                   Split {split.id}:
                 </Text>
                 <View className="flex-1">
-                  <Text className="text-2xl font-bold text-white text-right">
+                  <Text className="text-xl font-bold text-white text-right">
                     ${split.amount.toFixed(2)}
                   </Text>
                 </View>
-                <View className="flex-row gap-3 items-center ml-6">
+                <View className="flex-row gap-3 items-center ml-4">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-3 px-6 rounded-lg border ${split.paymentType === "Card" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
                   >
                     <Text
-                      className={`text-xl font-semibold ${split.paymentType === "Card" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${split.paymentType === "Card" ? "text-white" : "text-gray-300"}`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-3 px-6 rounded-lg border ${split.paymentType === "Cash" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Cash" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
                   >
                     <Text
-                      className={`text-xl font-semibold ${split.paymentType === "Cash" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${split.paymentType === "Cash" ? "text-white" : "text-gray-300"}`}
                     >
                       Cash
                     </Text>
@@ -548,32 +548,32 @@ const SplitPaymentView = () => {
 
           {/* Remaining Balance */}
           <View
-            className={`flex-row justify-between items-center mt-6 p-4 rounded-lg ${Math.abs(remainingBalance) < 0.01 ? "bg-green-900/30" : "bg-red-900/30"}`}
+            className={`flex-row justify-between items-center mt-4 p-3 rounded-lg ${Math.abs(remainingBalance) < 0.01 ? "bg-green-900/30" : "bg-red-900/30"}`}
           >
-            <Text className="text-2xl font-semibold text-white">
+            <Text className="text-lg font-semibold text-white">
               Remaining Balance
             </Text>
             <Text
-              className={`text-3xl font-bold ${Math.abs(remainingBalance) < 0.01 ? "text-green-400" : "text-red-400"}`}
+              className={`text-2xl font-bold ${Math.abs(remainingBalance) < 0.01 ? "text-green-400" : "text-red-400"}`}
             >
               ${remainingBalance.toFixed(2)}
             </Text>
           </View>
 
           {/* Actions */}
-          <View className="flex-row gap-4 mt-6 border-t border-gray-700 pt-6">
+          <View className="flex-row gap-4 mt-4 border-t border-gray-700 pt-4">
             <TouchableOpacity
               onPress={close}
-              className="flex-1 py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
+              className="flex-1 py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
             >
-              <Text className="text-2xl font-bold text-white">Cancel</Text>
+              <Text className="text-lg font-bold text-white">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleNext}
               disabled={Math.abs(remainingBalance) > 0.01}
-              className={`flex-1 py-4 rounded-xl items-center ${Math.abs(remainingBalance) > 0.01 ? "bg-gray-500" : "bg-blue-600"}`}
+              className={`flex-1 py-3 rounded-xl items-center ${Math.abs(remainingBalance) > 0.01 ? "bg-gray-500" : "bg-blue-600"}`}
             >
-              <Text className="text-2xl font-bold text-white">
+              <Text className="text-lg font-bold text-white">
                 Confirm & Pay
               </Text>
             </TouchableOpacity>

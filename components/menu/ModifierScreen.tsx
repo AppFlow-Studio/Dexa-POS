@@ -36,75 +36,56 @@ const ModifierScreen = () => {
     menuItems,
     modifierGroups: allModifierGroups,
   } = useMenuStore();
-  if (
-    cartItem?.kitchen_status === "sent"
-  ) {
+  if (cartItem?.kitchen_status === "sent") {
     return (
       <View className="flex-1 bg-[#212121]">
         {/* Header */}
-        <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#212121]">
-          <TouchableOpacity
-            onPress={close}
-            className="flex-row items-center"
-          >
-            <ArrowLeft color="#9CA3AF" size={24} />
-            <Text className="text-2xl font-medium text-white ml-2">
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
+          <TouchableOpacity onPress={close} className="flex-row items-center">
+            <ArrowLeft color="#9CA3AF" size={20} />
+            <Text className="text-xl font-medium text-white ml-1.5">
               Back to Bill
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* Content */}
-        <View className="flex-1 items-center justify-center p-8 w-full">
+        <View className="flex-1 items-center justify-center p-6 w-full">
           <View className="items-center w-full">
-            {/* Icon */}
-            {/* <View className="w-24 h-24 bg-orange-600 rounded-full items-center justify-center mb-6">
-              <Text className="text-4xl">🍳</Text>
-            </View> */}
-
             {/* Title */}
-            <Text className="text-3xl font-bold text-white text-center mb-4">
+            <Text className="text-2xl font-bold text-white text-center mb-3">
               Item Already Sent
             </Text>
 
             {/* Description */}
-            <Text className="text-xl text-gray-400 text-center mb-6 leading-relaxed">
-              This item has already been sent to the kitchen and cannot be modified.
+            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">
+              This item has been sent to the kitchen and cannot be modified.
             </Text>
 
             {/* Item Details */}
-            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-6 w-full border border-gray-600">
-              <View className="flex-row items-center justify-center w-full gap-4 mb-4">
+            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-4 w-full border border-gray-600">
+              <View className="flex-row items-center justify-center w-full gap-3 mb-3">
                 <Image
                   source={require("@/assets/images/classic_burger.png")}
-                  className="w-16 h-16 rounded-lg"
+                  className="w-14 h-14 rounded-lg"
                 />
                 <View className="flex-1">
-                  <Text className="text-2xl font-semibold text-white">
+                  <Text className="text-xl font-semibold text-white">
                     {cartItem.name}
                   </Text>
-                  <Text className="text-lg text-gray-400">
+                  <Text className="text-base text-gray-400">
                     Quantity: {cartItem.quantity}
                   </Text>
                 </View>
               </View>
-
-              {/* Status Badge */}
-              {/* <View className="flex-row items-center justify-center">
-                <View className="bg-orange-600 px-4 py-2 rounded-full">
-                  <Text className="text-lg font-semibold text-white">
-                    🍳 Sent to Kitchen
-                  </Text>
-                </View>
-              </View> */}
             </View>
 
             {/* Action Button */}
             <TouchableOpacity
               onPress={close}
-              className="mt-8 bg-blue-600 px-8 py-4 rounded-xl"
+              className="mt-6 bg-blue-600 px-6 py-3 rounded-xl"
             >
-              <Text className="text-xl font-semibold text-white">
+              <Text className="text-lg font-semibold text-white">
                 Back to Bill
               </Text>
             </TouchableOpacity>
@@ -264,8 +245,12 @@ const ModifierScreen = () => {
           if (item.isDraft) return false; // Don't match other draft items
 
           // Check if customizations are empty (no modifiers, no notes)
-          const hasModifiers = item.customizations.modifiers && item.customizations.modifiers.length > 0;
-          const hasNotes = item.customizations.notes && item.customizations.notes.trim() !== '';
+          const hasModifiers =
+            item.customizations.modifiers &&
+            item.customizations.modifiers.length > 0;
+          const hasNotes =
+            item.customizations.notes &&
+            item.customizations.notes.trim() !== "";
 
           return !hasModifiers && !hasNotes;
         });
@@ -316,30 +301,30 @@ const ModifierScreen = () => {
         console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-            ([categoryId, selections]) => {
-              const category = menuItemForModifiers.modifiers?.find(
-                (cat) => cat.id === categoryId
-              );
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId, _]) => {
-                  const option = category?.options.find(
-                    (opt) => opt.id === optionId
-                  );
-                  return {
-                    id: optionId,
-                    name: option?.name || "",
-                    price: option?.price || 0,
-                  };
-                });
+              ([categoryId, selections]) => {
+                const category = menuItemForModifiers.modifiers?.find(
+                  (cat) => cat.id === categoryId
+                );
+                const selectedOptions = Object.entries(selections)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([optionId, _]) => {
+                    const option = category?.options.find(
+                      (opt) => opt.id === optionId
+                    );
+                    return {
+                      id: optionId,
+                      name: option?.name || "",
+                      price: option?.price || 0,
+                    };
+                  });
 
-              return {
-                categoryId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            }
-          )
+                return {
+                  categoryId,
+                  categoryName: category?.name || "",
+                  options: selectedOptions,
+                };
+              }
+            )
           : [];
 
         // Calculate total price
@@ -477,28 +462,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-        const category = menuItemForModifiers.modifiers?.find(
-          (cat) => cat.id === categoryId
-        );
-        const selectedOptions = Object.entries(selections)
-          .filter(([_, isSelected]) => isSelected)
-          .map(([optionId, _]) => {
-            const option = category?.options.find(
-              (opt) => opt.id === optionId
-            );
-            return {
-              id: optionId,
-              name: option?.name || "",
-              price: option?.price || 0,
-            };
-          });
+          const category = menuItemForModifiers.modifiers?.find(
+            (cat) => cat.id === categoryId
+          );
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId, _]) => {
+              const option = category?.options.find(
+                (opt) => opt.id === optionId
+              );
+              return {
+                id: optionId,
+                name: option?.name || "",
+                price: option?.price || 0,
+              };
+            });
 
-        return {
-          categoryId,
-          categoryName: category?.name || "",
-          options: selectedOptions,
-        };
-      })
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
       : [];
 
     const finalCustomizations = {
@@ -527,15 +512,19 @@ const ModifierScreen = () => {
       const activeOrder = orders.find((o) => o.id === activeOrderId);
 
       // Get current course from coursing store
-      const coursingState = require("@/stores/useCoursingStore").useCoursingStore.getState();
-      const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
+      const coursingState =
+        require("@/stores/useCoursingStore").useCoursingStore.getState();
+      const currentCourse =
+        coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
       // Look for existing item (draft or confirmed) with same menuItemId, customizations, AND course
       const existingItem = activeOrder?.items.find((item) => {
         if (item.menuItemId !== baseItem.id) return false;
 
         // Check if they're in the same course
-        const existingItemCourse = coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ?? 1;
+        const existingItemCourse =
+          coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ??
+          1;
         if (existingItemCourse !== currentCourse) return false;
 
         // Check if customizations match
@@ -554,17 +543,19 @@ const ModifierScreen = () => {
           const currentMod = currentModifiers[i];
 
           if (itemMod.categoryId !== currentMod.categoryId) return false;
-          if (itemMod.options.length !== currentMod.options.length) return false;
+          if (itemMod.options.length !== currentMod.options.length)
+            return false;
 
           // Check each option
           for (let j = 0; j < itemMod.options.length; j++) {
-            if (itemMod.options[j].id !== currentMod.options[j].id) return false;
+            if (itemMod.options[j].id !== currentMod.options[j].id)
+              return false;
           }
         }
 
         // Compare notes
-        const itemNotes = (itemCustomizations.notes || '').trim();
-        const currentNotes = (currentCustomizations.notes || '').trim();
+        const itemNotes = (itemCustomizations.notes || "").trim();
+        const currentNotes = (currentCustomizations.notes || "").trim();
         if (itemNotes !== currentNotes) return false;
 
         return true;
@@ -572,19 +563,22 @@ const ModifierScreen = () => {
 
       if (existingItem) {
         // First, remove any draft items for this menu item to prevent orphaned drafts
-        const draftItems = activeOrder?.items.filter((item) =>
-          item.isDraft && item.menuItemId === baseItem.id
+        const draftItems = activeOrder?.items.filter(
+          (item) => item.isDraft && item.menuItemId === baseItem.id
         );
 
         if (draftItems && draftItems.length > 0) {
-          draftItems.forEach(draftItem => {
+          draftItems.forEach((draftItem) => {
             removeItemFromActiveOrder(draftItem.id);
           });
         }
 
         if (existingItem.isDraft) {
           // Remove the draft item and add the confirmed item
-          console.log("draftItem found, removing and adding confirmed item", existingItem);
+          console.log(
+            "draftItem found, removing and adding confirmed item",
+            existingItem
+          );
 
           // Then add the confirmed item
           const confirmedItem = {
@@ -609,7 +603,10 @@ const ModifierScreen = () => {
           });
         } else {
           // Update existing confirmed item (aggregate quantities)
-          console.log("existingItem found, aggregating quantities:", existingItem);
+          console.log(
+            "existingItem found, aggregating quantities:",
+            existingItem
+          );
           const updatedItem = {
             ...existingItem,
             quantity: existingItem.quantity + quantity,
@@ -620,9 +617,12 @@ const ModifierScreen = () => {
 
           updateItemInActiveOrder(updatedItem);
           console.log("existingItem updated", updatedItem);
-          toast.success(`Added ${baseItem.name} (${updatedItem.quantity} total)`, {
-            position: ToastPosition.BOTTOM,
-          });
+          toast.success(
+            `Added ${baseItem.name} (${updatedItem.quantity} total)`,
+            {
+              position: ToastPosition.BOTTOM,
+            }
+          );
         }
       } else {
         // Or add a completely new item if no draft was found
@@ -678,13 +678,13 @@ const ModifierScreen = () => {
       const activeOrder = orders.find((o) => o.id === activeOrderId);
 
       // Find any draft items for this menu item
-      const draftItems = activeOrder?.items.filter((item) =>
-        item.isDraft && item.menuItemId === currentItem.id
+      const draftItems = activeOrder?.items.filter(
+        (item) => item.isDraft && item.menuItemId === currentItem.id
       );
 
       // Remove all draft items for this menu item
       if (draftItems && draftItems.length > 0) {
-        draftItems.forEach(draftItem => {
+        draftItems.forEach((draftItem) => {
           removeItemFromActiveOrder(draftItem.id);
         });
       }
@@ -701,52 +701,51 @@ const ModifierScreen = () => {
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
-      <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#212121]">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
         <TouchableOpacity
           onPress={handleCancel}
           className="flex-row items-center"
         >
-          <ArrowLeft color="#9CA3AF" size={24} />
-          <Text className="text-2xl font-medium text-white ml-2">
+          <ArrowLeft color="#9CA3AF" size={20} />
+          <Text className="text-xl font-medium text-white ml-1.5">
             {mode === "edit" || (mode === "fullscreen" && cartItem)
               ? "Back to Bill"
               : "Back to Menu"}
           </Text>
         </TouchableOpacity>
-
-        <View className="flex-row items-center gap-4">
+        <View className="flex-row items-center gap-3">
           <TouchableOpacity
             onPress={handleCancel}
-            className="p-3 rounded-full bg-red-600"
+            className="p-2 rounded-full bg-red-600"
           >
-            <X color="white" size={24} />
+            <X color="white" size={20} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="p-3 rounded-full gap-x-2 flex-row items-center justify-center bg-green-500"
+            className="p-2 rounded-full gap-x-1.5 flex-row items-center justify-center bg-green-500"
           >
-            <Text className="text-white text-xl font-semibold">Done</Text>
-            <Check color="#FFFFFF" size={24} />
+            <Text className="text-white text-lg font-semibold">Done</Text>
+            <Check color="#FFFFFF" size={20} />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* Item Header */}
-        <View className="p-6 border-b border-gray-700">
-          <View className="flex-row items-center gap-4">
+        <View className="p-4 border-b border-gray-700">
+          <View className="flex-row items-center gap-3">
             <Image
               source={require("@/assets/images/classic_burger.png")}
-              className="w-24 h-24 rounded-lg"
+              className="w-20 h-20 rounded-lg"
             />
             <View className="flex-1">
-              <Text className="text-3xl font-bold text-white">
+              <Text className="text-2xl font-bold text-white">
                 {currentItem.name}
               </Text>
-              <Text className="text-xl text-gray-400 mt-1">
+              <Text className="text-lg text-gray-400 mt-0.5">
                 {menuItemForModifiers?.description}
               </Text>
-              <Text className="text-2xl font-semibold text-blue-400 mt-2">
+              <Text className="text-xl font-semibold text-blue-400 mt-1">
                 Base ${getCurrentItemPrice(currentItem).toFixed(2)}
               </Text>
             </View>
@@ -756,85 +755,76 @@ const ModifierScreen = () => {
         {/* Modifier Groups */}
         {menuItemForModifiers?.modifiers &&
           menuItemForModifiers.modifiers.length > 0 && (
-            <View className="p-6">
-              <Text className="text-3xl font-bold text-white mb-4">
-                Modifier Options
+            <View className="p-4">
+              <Text className="text-2xl font-bold text-white mb-3">
+                Options
               </Text>
-
-              {/* Modifier Category Cards */}
-              <View className="flex-row flex-wrap gap-4 mb-6">
+              <View className="flex-row flex-wrap gap-3 mb-4">
                 {menuItemForModifiers.modifiers.map((category) => {
                   const hasSelection = Object.values(
                     modifierSelections[category.id] || {}
                   ).some(Boolean);
                   const isActive = activeCategory === category.id;
-
                   return (
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-4 rounded-xl border-2 min-w-[160px] ${isActive
-                        ? "bg-blue-600 border-blue-400"
-                        : hasSelection
+                      className={`p-3 rounded-xl border-2 min-w-[140px] ${
+                        isActive
+                          ? "bg-blue-600 border-blue-400"
+                          : hasSelection
                           ? "bg-green-600 border-green-400"
                           : "bg-[#303030] border-gray-600"
-                        }`}
+                      }`}
                     >
-                      <View className="flex-row items-center justify-between mb-2">
-                        <Text
-                          className={`font-semibold text-xl ${isActive ? "text-white" : "text-white"
-                            }`}
-                        >
+                      <View className="flex-row items-center justify-between mb-1.5">
+                        <Text className="font-semibold text-lg text-white">
                           {category.name}
                         </Text>
                         {hasSelection && (
                           <Check
                             color={isActive ? "#FFFFFF" : "#10B981"}
-                            size={24}
+                            size={20}
                           />
                         )}
                       </View>
                       <Text
-                        className={`text-lg ${category.type === "required"
-                          ? "text-red-400"
-                          : "text-gray-400"
-                          }`}
+                        className={`text-base ${
+                          category.type === "required"
+                            ? "text-red-400"
+                            : "text-gray-400"
+                        }`}
                       >
-                        {category.type === "required" ? "Required" : "Optional"}
+                        {category.type}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              {/* Active Category Options */}
               {currentCategory && (
-                <View className="mb-6">
-                  <View className="flex-row items-center justify-between mb-4">
-                    <Text className="text-2xl font-semibold text-white">
+                <View className="mb-4">
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text className="text-xl font-semibold text-white">
                       {currentCategory.name}
                     </Text>
-                    <View className="flex-row items-center gap-3">
-                      <Text className="text-xl text-red-400">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-lg text-red-400">
                         {currentCategory.type === "required"
                           ? "Required"
                           : "Optional"}
                       </Text>
-                      <Text className="text-xl text-gray-400">
-                        {currentCategory.selectionType === "single"
-                          ? "Single select"
-                          : "Multiple select"}
+                      <Text className="text-lg text-gray-400">
+                        {currentCategory.selectionType}
                       </Text>
                     </View>
                   </View>
-
-                  <View className="flex-row flex-wrap gap-4">
+                  <View className="flex-row flex-wrap gap-3">
                     {currentCategory.options.map((option) => {
                       const isSelected =
                         modifierSelections[currentCategory.id]?.[option.id] ||
                         false;
                       const isUnavailable = option.isAvailable === false;
-
                       return (
                         <TouchableOpacity
                           key={option.id}
@@ -842,28 +832,31 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-6 rounded-xl border-2 min-w-[140px] ${isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : isUnavailable
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-400"
+                              : isUnavailable
                               ? "bg-[#1a1a1a] border-gray-700"
                               : "bg-[#303030] border-gray-600"
-                            }`}
+                          }`}
                         >
                           <Text
-                            className={`text-2xl font-medium text-center ${isSelected
-                              ? "text-white"
-                              : isUnavailable
+                            className={`text-xl font-medium text-center ${
+                              isSelected
+                                ? "text-white"
+                                : isUnavailable
                                 ? "text-gray-500"
                                 : "text-white"
-                              }`}
+                            }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-xl text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
-                                }`}
+                              className={`text-lg text-center mt-1 ${
+                                isSelected ? "text-blue-200" : "text-blue-400"
+                              }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>
@@ -877,90 +870,83 @@ const ModifierScreen = () => {
             </View>
           )}
 
-        {/* Quantity */}
-        <View className="p-6 border-b border-gray-700">
-          <Text className="text-2xl font-semibold text-white mb-4">
+        <View className="p-4 border-y border-gray-700">
+          <Text className="text-xl font-semibold text-white mb-3">
             Quantity
           </Text>
           <View className="flex-row items-center justify-center">
             <TouchableOpacity
               disabled={isReadOnly}
               onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="p-4 border border-gray-600 rounded-full bg-[#303030]"
+              className="p-3 border border-gray-600 rounded-full bg-[#303030]"
             >
-              <Minus color="#9CA3AF" size={24} />
+              <Minus color="#9CA3AF" size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
               onPress={handleQuantityPress}
-              className="mx-16 w-16"
+              className="mx-12 w-14"
             >
-              <Text className="text-4xl border rounded-lg p-2 border-gray-600 font-bold text-white text-center">
+              <Text className="text-3xl border rounded-lg p-1 border-gray-600 font-bold text-white text-center">
                 {quantity}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
               onPress={() => setQuantity((q) => q + 1)}
-              className="p-4 bg-blue-500 rounded-full"
+              className="p-3 bg-blue-500 rounded-full"
             >
-              <Plus color="#FFFFFF" size={24} />
+              <Plus color="#FFFFFF" size={20} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Notes */}
-        <View className="p-6 border-b border-gray-700">
-          <Text className="text-2xl font-semibold text-white mb-4">
-            Notes (optional)
-          </Text>
+        <View className="p-4 border-b border-gray-700">
+          <Text className="text-xl font-semibold text-white mb-3">Notes</Text>
           <TextInput
             editable={!isReadOnly}
             value={notes}
             onChangeText={setNotes}
-            placeholder="No onions, cut in half..."
-            placeholderTextColor="#9CA3AF"
+            placeholder="No onions..."
             multiline
             maxLength={80}
-            className="px-6 py-4 border border-gray-600 rounded-lg bg-[#303030] min-h-[100px] text-2xl text-white"
+            className="px-4 py-3 border border-gray-600 rounded-lg bg-[#303030] min-h-[80px] text-xl text-white"
+            placeholderTextColor={"#6B7280"}
           />
-          <Text className="text-lg text-gray-400 mt-2 text-right">
+          <Text className="text-base text-gray-400 mt-1.5 text-right">
             {notes.length}/80
           </Text>
         </View>
 
-        {/* Allergens */}
         {menuItemForModifiers?.allergens &&
           menuItemForModifiers.allergens.length > 0 && (
-            <View className="p-6 border-b border-gray-700">
-              <Text className="text-2xl font-semibold text-white mb-4">
+            <View className="p-4 border-b border-gray-700">
+              <Text className="text-xl font-semibold text-white mb-3">
                 Allergens
               </Text>
-              <View className="flex-row flex-wrap gap-3">
+              <View className="flex-row flex-wrap gap-2">
                 {menuItemForModifiers.allergens.map((allergen) => (
                   <View
                     key={allergen}
-                    className="px-4 py-3 bg-red-900 rounded-full"
+                    className="px-3 py-2 bg-red-900 rounded-full"
                   >
-                    <Text className="text-xl text-red-300">{allergen}</Text>
+                    <Text className="text-lg text-red-300">{allergen}</Text>
                   </View>
                 ))}
               </View>
             </View>
           )}
 
-        {/* Total */}
-        <View className="p-6">
-          <View className="flex-row justify-between items-center bg-[#303030] p-6 rounded-lg">
-            <Text className="text-3xl font-semibold text-white">Total</Text>
-            <Text className="text-4xl font-bold text-white">
+        <View className="p-4">
+          <View className="flex-row justify-between items-center bg-[#303030] p-4 rounded-lg">
+            <Text className="text-2xl font-semibold text-white">Total</Text>
+            <Text className="text-3xl font-bold text-white">
               ${total.toFixed(2)}
             </Text>
           </View>
         </View>
       </ScrollView>
 
-      {/* Quantity Input Modal */}
       <Modal
         visible={isQuantityModalOpen}
         transparent
@@ -968,33 +954,31 @@ const ModifierScreen = () => {
         onRequestClose={handleQuantityCancel}
       >
         <View className="flex-1 bg-black/50 justify-center items-center">
-          <View className="bg-[#303030] rounded-xl p-6 w-80 border border-gray-600">
-            <Text className="text-2xl font-semibold text-white mb-4 text-center">
+          <View className="bg-[#303030] rounded-xl p-4 w-72 border border-gray-600">
+            <Text className="text-xl font-semibold text-white mb-3 text-center">
               Enter Quantity
             </Text>
             <TextInput
               value={quantityInput}
               onChangeText={setQuantityInput}
-              placeholder="Quantity"
-              placeholderTextColor="#9CA3AF"
               keyboardType="numeric"
               autoFocus
-              className="p-4 border border-gray-600 rounded-lg bg-[#212121] text-2xl text-white text-center mb-6 h-20"
+              className="p-3 border border-gray-600 rounded-lg bg-[#212121] text-xl text-white text-center mb-4 h-16"
             />
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={handleQuantityCancel}
-                className="flex-1 py-4 px-6 bg-gray-600 rounded-lg"
+                className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
               >
-                <Text className="text-xl font-semibold text-white text-center">
+                <Text className="text-lg font-semibold text-white text-center">
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleQuantitySubmit}
-                className="flex-1 py-4 px-6 bg-blue-500 rounded-lg"
+                className="flex-1 py-3 px-4 bg-blue-500 rounded-lg"
               >
-                <Text className="text-xl font-semibold text-white text-center">
+                <Text className="text-lg font-semibold text-white text-center">
                   Set
                 </Text>
               </TouchableOpacity>

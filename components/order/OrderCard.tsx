@@ -33,32 +33,31 @@ const OrderCard: React.FC<OrderCardProps> = ({
         ? "text-yellow-700"
         : "text-red-700";
   const isUnpaid = order.paid_status !== "Paid";
-
   return (
-    <View className="bg-[#303030] p-4 rounded-2xl border border-gray-700 w-80 mr-4">
+    <View className="bg-[#303030] p-3 rounded-2xl border border-gray-700 w-72 mr-4">
       <View className="flex-row items-center gap-2">
         <View className={`px-3 py-1 rounded-full self-start ${statusBg}`}>
-          <Text className={`text-lg font-bold ${statusText}`}>
+          <Text className={`text-base font-bold ${statusText}`}>
             {order.order_status}
           </Text>
         </View>
         <View className={`px-3 py-1 rounded-full self-start ${paidBg}`}>
-          <Text className={`text-lg font-bold ${paidText}`}>
+          <Text className={`text-base font-bold ${paidText}`}>
             {order.paid_status}
           </Text>
         </View>
       </View>
-      <Text className="text-2xl font-bold text-white mt-2">
+      <Text className="text-xl font-bold text-white mt-2">
         {order.customer_name || "Walk-In"} #{order.id.slice(-5)}
       </Text>
       <View className="flex-row justify-between mt-2">
-        <Text className="text-xl text-gray-400 ">
+        <Text className="text-lg text-gray-400 ">
           {order.order_type}
           {order.service_location_id && (
             <> • Table {order.service_location_id}</>
           )}
         </Text>
-        <Text className="text-xl text-gray-400">
+        <Text className="text-lg text-gray-400">
           {new Date(order.opened_at).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
@@ -68,18 +67,18 @@ const OrderCard: React.FC<OrderCardProps> = ({
       <View className="flex-row justify-between items-center mt-4">
         <TouchableOpacity
           onPress={onViewItems}
-          className="flex-row items-center justify-center p-3 rounded-xl border border-gray-600 bg-[#212121]"
+          className="flex-row items-center justify-center py-2 px-3 rounded-xl border border-gray-600 bg-[#212121]"
         >
-          <Text className="font-semibold text-white text-lg mr-1">
+          <Text className="font-semibold text-white text-base mr-1">
             View Items
           </Text>
-          <ArrowUpRight color="#FFFFFF" size={20} />
+          <ArrowUpRight color="#FFFFFF" size={18} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={onComplete}
-          className="px-5 py-3 bg-blue-600 rounded-xl flex-1 ml-2"
+          className="px-4 py-2 bg-blue-600 rounded-xl flex-1 ml-2"
         >
-          <Text className="text-white font-bold text-center text-lg">
+          <Text className="text-white font-bold text-center text-base">
             Complete
           </Text>
         </TouchableOpacity>
@@ -88,9 +87,9 @@ const OrderCard: React.FC<OrderCardProps> = ({
         <View className="mt-2">
           <TouchableOpacity
             onPress={onRetrieve}
-            className="px-5 py-2.5 bg-blue-600 rounded-xl"
+            className="px-4 py-2 bg-blue-600 rounded-xl"
           >
-            <Text className="text-white font-bold text-center">
+            <Text className="text-white font-bold text-center text-base">
               Retrieve to Pay
             </Text>
           </TouchableOpacity>

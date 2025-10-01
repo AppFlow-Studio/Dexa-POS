@@ -40,8 +40,8 @@ const ResetApplicationScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="System & Support"
@@ -50,30 +50,30 @@ const ResetApplicationScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
           {/* Main Content Card */}
-          <View className="p-6">
-            <View className="flex-row gap-4">
+          <View className="p-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setModalType("clearCache")}
-                className="py-3 px-6 border border-gray-500 rounded-lg"
+                className="py-2 px-4 border border-gray-500 rounded-lg"
               >
-                <Text className="text-2xl font-bold text-gray-300">
+                <Text className="text-xl font-bold text-gray-300">
                   Clear Cache
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setModalType("resetApp")}
-                className="py-3 px-6 bg-red-500 rounded-lg"
+                className="py-2 px-4 bg-red-500 rounded-lg"
               >
-                <Text className="text-2xl font-bold text-white">
+                <Text className="text-xl font-bold text-white">
                   Reset Application
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* The empty space */}
-            <View className="h-96" />
+            <View className="h-80" />
           </View>
         </View>
       </View>
@@ -88,7 +88,7 @@ const ResetApplicationScreen = () => {
         title="Clear Cache"
         description="Are you sure you want to clear cache?"
         confirmText="Yes"
-        variant="default" // This is the default, blue button
+        variant="default"
       />
 
       {/* Reset Application Modal */}
@@ -99,7 +99,7 @@ const ResetApplicationScreen = () => {
         title="Reset Application"
         description="This will log you out and delete all local data. You will need to sync again."
         confirmText="Delete"
-        variant="destructive" // This will make the button red
+        variant="destructive"
       />
     </View>
   );

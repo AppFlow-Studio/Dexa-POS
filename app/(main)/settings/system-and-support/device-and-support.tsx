@@ -12,16 +12,22 @@ const HardwareStatusRow = ({
   device: string;
   isConnected: boolean;
 }) => (
-  <View className="flex-row justify-between items-center bg-[#212121] p-6 rounded-2xl border border-gray-600">
-    <Text className="text-2xl text-white">{device}</Text>
+  <View className="flex-row justify-between items-center bg-[#212121] p-4 rounded-2xl border border-gray-600">
+    <Text className="text-xl text-white">{device}</Text>
     <View
-      className={`flex-row items-center px-3 py-2 rounded-3xl ${isConnected ? "bg-green-500/20" : "bg-gray-600"}`}
+      className={`flex-row items-center px-2 py-1 rounded-3xl ${
+        isConnected ? "bg-green-500/20" : "bg-gray-600"
+      }`}
     >
       <View
-        className={`w-3 h-3 rounded-full mr-2 ${isConnected ? "bg-green-500" : "bg-gray-400"}`}
+        className={`w-2.5 h-2.5 rounded-full mr-1.5 ${
+          isConnected ? "bg-green-500" : "bg-gray-400"
+        }`}
       />
       <Text
-        className={`font-semibold text-xl ${isConnected ? "text-green-400" : "text-gray-300"}`}
+        className={`font-semibold text-lg ${
+          isConnected ? "text-green-400" : "text-gray-300"
+        }`}
       >
         {isConnected ? "Connected" : "Disconnected"}
       </Text>
@@ -62,8 +68,8 @@ const DeviceAndSupportScreen = () => {
   ];
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         {/* Sidebar */}
         <SettingsSidebar
           title="System & Support"
@@ -72,11 +78,11 @@ const DeviceAndSupportScreen = () => {
         />
 
         {/* Main Content */}
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
           <ScrollView showsVerticalScrollIndicator={false}>
-            <View className="flex-1 gap-y-6">
+            <View className="flex-1 gap-y-4">
               {/* Device Information Section */}
-              <View className="gap-y-4">
+              <View className="gap-y-3">
                 <InfoField label="Device Name" value={deviceInfo.name} />
                 <InfoField label="App Version" value={deviceInfo.appVersion} />
                 <InfoField label="Device ID" value={deviceInfo.deviceId} />
@@ -84,11 +90,11 @@ const DeviceAndSupportScreen = () => {
               </View>
 
               {/* Hardware Status Section */}
-              <View className="border border-gray-600 p-6 rounded-2xl">
-                <Text className="text-3xl font-bold text-white mb-4">
+              <View className="border border-gray-600 p-4 rounded-2xl">
+                <Text className="text-2xl font-bold text-white mb-3">
                   Hardware Status
                 </Text>
-                <View className="gap-y-4">
+                <View className="gap-y-3">
                   <HardwareStatusRow
                     device="Reciept Printer"
                     isConnected={hardwareStatus.receiptPrinter}

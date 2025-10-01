@@ -22,12 +22,13 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
   };
 
   return (
-    <View className=" bg-[#212121]">
+    <View className="bg-[#212121]">
       {appliedDiscount ? (
         // If a discount IS applied, show the discount label and a remove button
         <View
-          className="flex-row items-center justify-between p-1 py-2 pl-4 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
-          style={{ elevation: 2, height: 50 }}
+          className="flex-row items-center justify-between p-1.5 pl-3 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
+          style={{ elevation: 2, height: 44 }}
+
         >
           <View className="flex-row items-center">
             <Text className="text-base font-bold text-blue-400">
@@ -36,9 +37,9 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
           </View>
           <TouchableOpacity
             onPress={handleRemoveDiscount}
-            className="p-2 bg-blue-600/30 rounded-full"
+            className="p-1.5 bg-blue-600/30 rounded-full"
           >
-            <X color="#60A5FA" size={24} />
+            <X color="#60A5FA" size={20} />
           </TouchableOpacity>
         </View>
       ) : (
@@ -46,13 +47,13 @@ const DiscountSection: React.FC<DiscountSectionProps> = ({
         <TouchableOpacity
           onPress={onOpenDiscounts}
           className="flex-row items-center"
-          style={{ elevation: 2, height: 50 }}
+          style={{ elevation: 2, height: 44 }}
         >
           <View className="bg-[#303030] border border-gray-600 rounded-xl flex-row py-1 px-2 items-center">
-            <View className="p-1 rounded-md mr-1">
-              <Tag color="#9CA3AF" size={18} />
+            <View className="p-1.5 rounded-md mr-1.5">
+              <Tag color="#9CA3AF" size={20} />
             </View>
-            <Text className="font-bold text-lg text-gray-300">Discounts</Text>
+            <Text className="font-bold text-base text-gray-300">Discounts</Text>
           </View>
         </TouchableOpacity>
       )}

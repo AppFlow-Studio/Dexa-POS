@@ -183,20 +183,24 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-[700px] max-h-[90vh] bg-white rounded-2xl">
-        <DialogHeader className="p-6 rounded-t-[36px]">
+      <DialogContent className="w-[600px] max-h-[90vh] bg-white rounded-2xl">
+        <DialogHeader className="p-4 rounded-t-2xl">
           <DialogTitle className="font-bold text-gray-800">
-            <Text className="text-3xl">Process Refund</Text>
+            <Text className="text-2xl">Process Refund</Text>
           </DialogTitle>
-          <View className="flex-row items-center justify-between mt-2">
-            <Text className="text-xl text-gray-600">
+          <View className="flex-row items-center justify-between mt-1.5">
+            <Text className="text-lg text-gray-600">
               Order #{order.orderId} - ${order.total.toFixed(2)}
             </Text>
             <View
-              className={`px-3 py-2 rounded-full ${getStatusColor(order.paymentStatus)}`}
+              className={`px-2 py-1 rounded-full ${getStatusColor(
+                order.paymentStatus
+              )}`}
             >
               <Text
-                className={`font-semibold text-lg ${getStatusColor(order.paymentStatus)}`}
+                className={`font-semibold text-base ${getStatusColor(
+                  order.paymentStatus
+                )}`}
               >
                 {order.paymentStatus}
               </Text>
@@ -205,72 +209,70 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
         </DialogHeader>
 
         <ScrollView>
-          {/* Refund Type Selection */}
-          <View className="mb-6 px-6">
-            <Text className="text-2xl font-semibold text-gray-800 mb-3">
+          <View className="mb-4 px-4">
+            <Text className="text-xl font-semibold text-gray-800 mb-2">
               Refund Type
             </Text>
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setRefundType("full")}
                 disabled={!canDoFullRefund}
-                className={`flex-1 py-4 px-6 rounded-lg border-2 ${
+                className={`flex-1 py-3 px-4 rounded-lg border-2 ${
                   refundType === "full"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-300"
                 }`}
               >
                 <Text
-                  className={`font-semibold text-center text-2xl ${
+                  className={`font-semibold text-center text-xl ${
                     refundType === "full" ? "text-blue-600" : "text-gray-600"
                   }`}
                 >
                   Full Refund
                 </Text>
-                <Text className="text-lg text-center text-gray-500 mt-1">
+                <Text className="text-base text-center text-gray-500 mt-0.5">
                   ${order.total.toFixed(2)}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setRefundType("partial")}
-                className={`flex-1 py-4 px-6 rounded-lg border-2 ${
+                className={`flex-1 py-3 px-4 rounded-lg border-2 ${
                   refundType === "partial"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-300"
                 }`}
               >
                 <Text
-                  className={`font-semibold text-center text-2xl ${
+                  className={`font-semibold text-center text-xl ${
                     refundType === "partial" ? "text-blue-600" : "text-gray-600"
                   }`}
                 >
-                  Partial Refund
+                  Partial
                 </Text>
-                <Text className="text-lg text-center text-gray-500 mt-1">
+                <Text className="text-base text-center text-gray-500 mt-0.5">
                   Select Items
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Payment Method */}
-          <View className="mb-6 px-6">
-            <Text className="text-2xl font-semibold text-gray-800 mb-3">
-              Refund Method
+          <View className="mb-4 px-4">
+            <Text className="text-xl font-semibold text-gray-800 mb-2">
+              Method
             </Text>
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               {(["Card", "Cash"] as PaymentType[]).map((method) => (
                 <TouchableOpacity
                   key={method}
                   onPress={() => setPaymentMethod(method)}
-                  className={`flex-1 py-4 px-6 rounded-lg border-2 ${
+                  className={`flex-1 py-3 px-4 rounded-lg border-2 ${
                     paymentMethod === method
                       ? "border-blue-500 bg-blue-50"
                       : "border-gray-300"
                   }`}
                 >
                   <Text
-                    className={`font-semibold text-center text-2xl ${
+                    className={`font-semibold text-center text-xl ${
                       paymentMethod === method
                         ? "text-blue-600"
                         : "text-gray-600"
@@ -283,111 +285,84 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
             </View>
           </View>
 
-          {/* Full Refund Section */}
           {refundType === "full" && (
-            <View className="mb-6 px-6">
-              <Text className="text-2xl font-semibold text-gray-800 mb-3">
-                Reason for Refund
+            <View className="mb-4 px-4">
+              <Text className="text-xl font-semibold text-gray-800 mb-2">
+                Reason
               </Text>
               <TextInput
                 value={reason}
                 onChangeText={setReason}
-                placeholder="Enter reason for refund (e.g., Customer dissatisfied, Order error, Item returned)..."
+                placeholder="Reason for refund..."
                 multiline
-                numberOfLines={3}
-                className="w-full p-4 border border-gray-300 rounded-lg text-lg text-gray-800 h-20"
+                className="w-full p-3 border border-gray-300 rounded-lg text-base text-gray-800 h-16"
               />
             </View>
           )}
 
-          {/* Partial Refund Section */}
           {refundType === "partial" && (
-            <View className="mb-6">
-              <Text className="text-lg font-semibold text-gray-800 mb-3">
-                Select Items to Refund
+            <View className="mb-4">
+              <Text className="text-lg font-semibold text-gray-800 mb-2 px-4">
+                Select Items
               </Text>
-              <ScrollView className="max-h-[70vh]">
+              <ScrollView className="max-h-[60vh]">
                 {refundableItems.map((item) => {
                   const isSelected = selectedItems.some(
                     (selected) => selected.itemId === item.id
                   );
-                  const selectedQuantity = getSelectedItemQuantity(item.id);
-                  const selectedReason = getSelectedItemReason(item.id);
-                  // Calculate the actual remaining quantity for this item
-                  const maxRefundableQty =
-                    item.quantity - (item.refundedQuantity || 0);
-
                   return (
                     <View
                       key={item.id}
-                      className="mb-4 p-6 border border-gray-200 rounded-lg"
+                      className="mb-3 p-4 border border-gray-200 rounded-lg mx-4"
                     >
-                      <View className="flex-row items-center justify-between mb-2">
-                        <Text className="font-semibold text-gray-800 text-xl">
+                      <View className="flex-row items-center justify-between mb-1.5">
+                        <Text className="font-semibold text-gray-800 text-lg">
                           {item.name}
                         </Text>
-                        <Text className="text-gray-600 text-xl">
-                          ${item.price.toFixed(2)} each
+                        <Text className="text-gray-600 text-lg">
+                          ${item.price.toFixed(2)}
                         </Text>
                       </View>
-
-                      <View className="flex-row items-center justify-between mb-2">
-                        <Text className="text-gray-600 text-xl">
-                          Quantity: {item.quantity} (Refunded:{" "}
-                          {item.refundedQuantity || 0})
+                      <View className="flex-row items-center justify-between mb-1.5">
+                        <Text className="text-gray-600 text-lg">
+                          Qty: {item.quantity}
                         </Text>
                         <TouchableOpacity
                           onPress={() => toggleItemSelection(item)}
-                          className={`p-2 rounded-lg ${
+                          className={`p-1.5 rounded-lg ${
                             isSelected ? "bg-gray-200" : "bg-blue-500"
                           }`}
                         >
                           {isSelected ? (
-                            <X color="gray" size={20} />
+                            <X color="gray" size={18} />
                           ) : (
-                            <Check color="white" size={20} />
+                            <Check color="white" size={18} />
                           )}
                         </TouchableOpacity>
                       </View>
-
                       {isSelected && (
-                        <View className="space-y-2">
-                          <View className="flex-row items-center gap-2">
-                            <Text className="text-xl text-gray-600">
-                              Refund Qty:
-                            </Text>
+                        <View className="space-y-1.5">
+                          <View className="flex-row items-center gap-1.5">
+                            <Text className="text-lg text-gray-600">Qty:</Text>
                             <TextInput
-                              value={selectedQuantity.toString()}
-                              onChangeText={(text) => {
-                                const qty = parseInt(text) || 0;
-                                if (qty > item.quantity) {
-                                  toast.error(
-                                    "Quantity cannot be greater than item quantity",
-                                    {
-                                      duration: 3000,
-                                      position: ToastPosition.BOTTOM,
-                                    }
-                                  );
-                                }
-                                if (qty >= 0 && qty <= item.quantity) {
-                                  updateItemQuantity(item.id, qty);
-                                }
-                              }}
+                              value={getSelectedItemQuantity(
+                                item.id
+                              ).toString()}
+                              onChangeText={(t) =>
+                                updateItemQuantity(item.id, parseInt(t) || 0)
+                              }
                               keyboardType="numeric"
-                              className="flex-1 p-3 border border-gray-300 rounded text-center text-xl h-20"
+                              className="flex-1 p-2 border border-gray-300 rounded text-center text-lg h-16"
                             />
-                            <Text className="text-xl text-gray-600">
+                            <Text className="text-lg text-gray-600">
                               / {item.quantity}
                             </Text>
                           </View>
-
                           <TextInput
-                            value={selectedReason}
-                            onChangeText={(text) =>
-                              updateItemReason(item.id, text)
-                            }
-                            placeholder="Reason for this item..."
-                            className="w-full p-3 border border-gray-300 rounded text-lg h-20"
+                            value={getSelectedItemReason(item.id)}
+                            onChangeText={(t) => updateItemReason(item.id, t)}
+                            placeholder="Reason..."
+                            className="w-full p-2 border border-gray-300 rounded text-base h-16"
                           />
                         </View>
                       )}
@@ -398,39 +373,37 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
             </View>
           )}
 
-          {/* Refund Summary */}
-          <View className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <Text className="text-2xl font-semibold text-gray-800 mb-2">
-              Refund Summary
+          <View className="mb-4 p-3 bg-gray-50 rounded-lg mx-4">
+            <Text className="text-xl font-semibold text-gray-800 mb-1.5">
+              Summary
             </Text>
             <View className="flex-row justify-between">
-              <Text className="text-xl text-gray-600">Original Total:</Text>
-              <Text className="text-xl font-semibold text-gray-800">
+              <Text className="text-lg text-gray-600">Original:</Text>
+              <Text className="text-lg font-semibold text-gray-800">
                 {order.total.toFixed(2)}
               </Text>
             </View>
             <View className="flex-row justify-between">
-              <Text className="text-xl text-gray-600">Refund Amount:</Text>
-              <Text className="font-semibold text-red-600 text-2xl">
+              <Text className="text-lg text-gray-600">Refund:</Text>
+              <Text className="font-semibold text-red-600 text-xl">
                 ${calculateRefundAmount().toFixed(2)}
               </Text>
             </View>
-            <View className="flex-row justify-between border-t border-gray-300 pt-2 mt-2">
-              <Text className="text-xl text-gray-600">Remaining:</Text>
-              <Text className="font-semibold text-xl">
+            <View className="flex-row justify-between border-t border-gray-300 pt-1 mt-1">
+              <Text className="text-lg text-gray-600">Remaining:</Text>
+              <Text className="font-semibold text-lg">
                 ${(order.total - calculateRefundAmount()).toFixed(2)}
               </Text>
             </View>
           </View>
         </ScrollView>
 
-        {/* Action Buttons */}
-        <View className="flex-row gap-4 pt-4 border-t border-gray-200">
+        <View className="flex-row gap-3 pt-3 border-t border-gray-200 px-4 pb-4">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 border border-gray-300 rounded-lg"
+            className="flex-1 py-3 border border-gray-300 rounded-lg"
           >
-            <Text className="font-bold text-2xl text-gray-700 text-center">
+            <Text className="font-bold text-xl text-gray-700 text-center">
               Cancel
             </Text>
           </TouchableOpacity>
@@ -438,9 +411,9 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
             onPress={
               refundType === "full" ? handleFullRefund : handlePartialRefund
             }
-            className="flex-1 py-4 bg-red-500 rounded-lg"
+            className="flex-1 py-3 bg-red-500 rounded-lg"
           >
-            <Text className="font-bold text-white text-2xl text-center">
+            <Text className="font-bold text-white text-xl text-center">
               Process Refund
             </Text>
           </TouchableOpacity>

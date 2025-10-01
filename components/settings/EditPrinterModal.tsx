@@ -69,47 +69,53 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] max-w-md">
+      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-[#11111A] max-w-sm">
         {/* Dark Header */}
-        <View className="p-4 pb-0 rounded-t-[36px]">
-          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
+        <View className="p-3 pb-0 rounded-t-3xl">
+          <DialogTitle className="text-[#F1F1F1] text-xl font-bold text-center">
             Edit Printer
           </DialogTitle>
         </View>
 
         {/* White Content */}
-        <View className="p-6 rounded-[36px] bg-background-100 space-y-4">
+        <View className="p-4 rounded-3xl bg-background-100 space-y-3">
           <View>
-            <Text className="font-bold mb-2 text-accent-500">Item Name</Text>
+            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+              Item Name
+            </Text>
             <TextInput
               value={itemName}
               onChangeText={setItemName}
               placeholder="Printer Name"
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
+              className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
             />
           </View>
 
           <View>
-            <Text className="font-bold mb-2 text-accent-500">Printer ID</Text>
+            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+              Printer ID
+            </Text>
             <TextInput
               value={printerId}
               onChangeText={setPrinterId}
               placeholder="Printer ID"
-              className="p-3 bg-gray-100 rounded-lg text-base text-accent-500 h-20"
+              className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
               editable={false}
             />
           </View>
 
           <View>
-            <Text className="font-bold mb-2 text-accent-500">Status</Text>
+            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+              Status
+            </Text>
             <Select
               value={status}
               onValueChange={(option) => option && setStatus(option)}
             >
-              <SelectTrigger className="w-full p-3 bg-gray-100 rounded-lg flex-row justify-between items-center">
+              <SelectTrigger className="w-full p-2 bg-gray-100 rounded-lg flex-row justify-between items-center">
                 <SelectValue
                   placeholder="Select status..."
-                  className="text-base text-accent-500"
+                  className="text-sm text-accent-500"
                 />
               </SelectTrigger>
               <SelectContent insets={contentInsets}>
@@ -120,7 +126,7 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
                       label={opt.label}
                       value={opt.value}
                     >
-                      {opt.label}
+                      <Text className="text-sm">{opt.label}</Text>
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -128,12 +134,14 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
             </Select>
           </View>
           {/* Footer with Button */}
-          <DialogFooter className="pt-6 border-t border-gray-200">
+          <DialogFooter className="pt-4 border-t border-gray-200">
             <TouchableOpacity
               onPress={handleSaveChanges}
-              className="w-full py-3 bg-primary-400 rounded-lg"
+              className="w-full py-2 bg-primary-400 rounded-lg"
             >
-              <Text className="font-bold text-white text-center">Done</Text>
+              <Text className="font-bold text-white text-center text-base">
+                Done
+              </Text>
             </TouchableOpacity>
           </DialogFooter>
         </View>

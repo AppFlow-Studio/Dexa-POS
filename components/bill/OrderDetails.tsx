@@ -255,7 +255,7 @@ const OrderDetails: React.FC = () => {
               <>
                 <Plus color="#9CA3AF" size={24} />
                 <Text className="text-xl font-semibold text-gray-300 ml-3">
-                  Add Customer 
+                  Add Customer
                 </Text>
               </>
             )}

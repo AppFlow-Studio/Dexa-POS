@@ -17,37 +17,37 @@ const ManagerApprovalModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="min-w-[550px] p-0 rounded-2xl overflow-hidden bg-white">
-        <View className="p-6 w-full">
+      <DialogContent className="min-w-[480px] p-0 rounded-2xl overflow-hidden bg-white">
+        <View className="p-4 w-full">
           <DialogTitle className="">
-            <Text className="text-accent-500  font-bold text-center text-3xl">
+            <Text className="text-accent-500 font-bold text-center text-2xl">
               Manager Approval Required
             </Text>
           </DialogTitle>
         </View>
-        <View className="bg-white p-6 w-full">
-          <Text className="text-2xl font-semibold text-gray-600 mb-2">
+        <View className="bg-white p-4 w-full">
+          <Text className="text-xl font-semibold text-gray-600 mb-1.5">
             Enter your pin (Manager Only)
           </Text>
           <PinDisplay pinLength={pin.length} maxLength={4} />
           <PinNumpad onKeyPress={() => {}} />
-          <TouchableOpacity className="self-end my-4">
-            <Text className="font-semibold text-primary-400 text-xl">
+          <TouchableOpacity className="self-end my-3">
+            <Text className="font-semibold text-primary-400 text-lg">
               Forgot Pin
             </Text>
           </TouchableOpacity>
-          <View className="flex-row space-x-3 border-t border-gray-200 pt-6">
+          <View className="flex-row space-x-2 border-t border-gray-200 pt-4">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-4 border border-gray-300 rounded-lg items-center"
+              className="flex-1 py-3 border border-gray-300 rounded-lg items-center"
             >
-              <Text className="font-bold text-gray-700 text-2xl">Cancel</Text>
+              <Text className="font-bold text-gray-700 text-xl">Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onApprove}
-              className="flex-1 py-4 bg-primary-400 rounded-lg items-center"
+              className="flex-1 py-3 bg-primary-400 rounded-lg items-center"
             >
-              <Text className="font-bold text-white text-2xl">Approve</Text>
+              <Text className="font-bold text-white text-xl">Approve</Text>
             </TouchableOpacity>
           </View>
         </View>

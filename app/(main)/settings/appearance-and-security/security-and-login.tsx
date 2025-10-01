@@ -43,17 +43,17 @@ const SecurityAndLoginScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-1 gap-y-6">
-        <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+    <View className="flex-1 p-4 bg-[#212121]">
+      <View className="flex-1 gap-y-4">
+        <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
           <SettingsHeader
             title="End Screen Lock"
             value={isScreenLockEnabled}
             onValueChange={setScreenLockEnabled}
           />
           {isScreenLockEnabled && (
-            <View className="mt-4 bg-[#212121] p-6 rounded-lg flex-row items-center gap-4">
-              <Text className="text-2xl font-semibold text-white mb-2">
+            <View className="mt-3 bg-[#212121] p-4 rounded-lg flex-row items-center gap-3">
+              <Text className="text-xl font-semibold text-white mb-2">
                 Lock After
               </Text>
               <Select
@@ -61,10 +61,10 @@ const SecurityAndLoginScreen = () => {
                 onValueChange={(option) => option && setLockAfter(option)}
                 className="flex-1"
               >
-                <SelectTrigger className="flex-grow p-4 bg-[#303030] rounded-lg flex-row items-center border-gray-600">
+                <SelectTrigger className="flex-grow p-3 bg-[#303030] rounded-lg flex-row items-center border-gray-600">
                   <SelectValue
-                    placeholder="Select time..."
-                    className="text-2xl text-white h-8"
+                    placeholder="Select..."
+                    className="text-xl text-white h-7"
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
@@ -75,7 +75,7 @@ const SecurityAndLoginScreen = () => {
                         label={opt.label}
                         value={opt.value}
                       >
-                        <Text className="text-2xl text-white">{opt.label}</Text>
+                        <Text className="text-xl text-white">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -85,32 +85,29 @@ const SecurityAndLoginScreen = () => {
           )}
         </View>
 
-        {/* Switch User Card */}
-        <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+        <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
           <SettingsHeader
             title="Switch User"
             value={isSwitchUserEnabled}
             onValueChange={setSwitchUserEnabled}
           />
           {isSwitchUserEnabled && (
-            <View className="mt-4 flex-row justify-between items-center p-6 bg-[#212121] rounded-lg">
+            <View className="mt-3 flex-row justify-between items-center p-4 bg-[#212121] rounded-lg">
               <View className="flex-row items-center">
                 <Image
                   source={require("@/assets/images/tom_hardy.jpg")}
-                  className="w-12 h-12 rounded-full"
+                  className="w-10 h-10 rounded-full"
                 />
-                <Text className="text-2xl font-bold text-white ml-3">
+                <Text className="text-xl font-bold text-white ml-2">
                   Jessica
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setSwitchModalOpen(true)}
-                className="flex-row items-center gap-2 py-3 px-6 border border-gray-500 rounded-lg"
+                className="flex-row items-center gap-1.5 py-2 px-4 border border-gray-500 rounded-lg"
               >
-                <LogOut color="#9CA3AF" size={24} />
-                <Text className="text-2xl font-bold text-gray-300">
-                  Switch Account
-                </Text>
+                <LogOut color="#9CA3AF" size={20} />
+                <Text className="text-xl font-bold text-gray-300">Switch</Text>
               </TouchableOpacity>
             </View>
           )}

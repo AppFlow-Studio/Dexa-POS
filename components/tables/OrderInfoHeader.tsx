@@ -1,4 +1,3 @@
-// /components/tables/OrderInfoHeader.tsx
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronDown, Minus, Plus } from "lucide-react-native";
@@ -7,11 +6,11 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const FormInput = ({ label, value, onChangeText, ...props }: any) => (
   <View className="flex-1">
-    <Text className="text-base font-semibold text-white mb-2">{label}</Text>
+    <Text className="text-sm font-semibold text-white mb-1.5">{label}</Text>
     <TextInput
       value={value}
       onChangeText={onChangeText}
-      className="py-3 px-4 bg-[#303030] rounded-xl text-lg text-white border border-gray-600 h-20"
+      className="py-2 px-3 bg-[#303030] rounded-xl text-base text-white border border-gray-600 h-16"
       {...props}
     />
   </View>
@@ -92,41 +91,43 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
     return (
       <TouchableOpacity
         onPress={() => setIsExpanded(true)}
-        className="flex-row items-center p-4 bg-[#303030] rounded-lg border border-gray-600"
+        className="flex-row items-center p-3 bg-[#303030] rounded-lg border border-gray-600"
       >
-        <Text className="font-semibold text-white">
-          Table: <Text className="font-normal">{getTableDisplayName()}</Text>
+        <Text className="font-semibold text-white text-sm">
+          Table:{" "}
+          <Text className="font-normal text-sm">{getTableDisplayName()}</Text>
         </Text>
-        <Text className="mx-4 text-gray-400">|</Text>
-        <Text className="font-semibold text-white">
-          Guests: <Text className="font-normal">{activeOrder.guest_count}</Text>
+        <Text className="mx-2 text-gray-400">|</Text>
+        <Text className="font-semibold text-white text-sm">
+          Guests:{" "}
+          <Text className="font-normal text-sm">{activeOrder.guest_count}</Text>
         </Text>
-        <Text className="mx-4 text-gray-400">|</Text>
-        <Text className="font-semibold text-white">
+        <Text className="mx-2 text-gray-400">|</Text>
+        <Text className="font-semibold text-white text-sm">
           Customer:{" "}
-          <Text className="font-normal">
+          <Text className="font-normal text-sm">
             {activeOrder.customer_name || "Walk-In"}
           </Text>
         </Text>
         {duration && (
           <>
-            <Text className="mx-4 text-gray-400">|</Text>
-            <Text className="font-semibold text-white">
-              Duration: <Text className="font-normal">{duration}</Text>
+            <Text className="mx-2 text-gray-400">|</Text>
+            <Text className="font-semibold text-white text-sm">
+              Duration: <Text className="font-normal text-sm">{duration}</Text>
             </Text>
           </>
         )}
         <View className="ml-auto">
-          <ChevronDown color="white" size={24} />
+          <ChevronDown color="white" size={20} />
         </View>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View className="p-4 bg-[#303030] rounded-lg border border-gray-600">
-      <View className="space-y-4">
-        <View className="flex-row gap-4">
+    <View className="p-3 bg-[#303030] rounded-lg border border-gray-600">
+      <View className="space-y-3">
+        <View className="flex-row gap-3">
           <FormInput
             label="Server/Employee Name"
             value={serverName}
@@ -140,50 +141,51 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
             placeholderTextColor="#9CA3AF"
           />
         </View>
-        <View className="flex-row gap-4">
+        <View className="flex-row gap-3">
           <View className="flex-1">
-            <Text className="text-base font-semibold text-white mb-2">
+            <Text className="text-sm font-semibold text-white mb-1.5">
               Table Info
             </Text>
-            <View className="py-3 px-4 bg-gray-600 rounded-xl border border-gray-500 h-20 justify-center">
-              <Text className="text-lg text-gray-300">
+            <View className="py-2 px-3 bg-gray-600 rounded-xl border border-gray-500 h-16 justify-center">
+              <Text className="text-base text-gray-300">
                 {getTableDisplayName()}
               </Text>
             </View>
           </View>
           <View className="flex-1">
-            <Text className="text-base font-semibold text-white mb-2">
+            <Text className="text-sm font-semibold text-white mb-1.5">
               Guests
             </Text>
-            <View className="flex-row items-center justify-between p-2 pl-4 bg-[#212121] rounded-xl border border-gray-600 h-20">
+            <View className="flex-row items-center justify-between p-1.5 pl-3 bg-[#212121] rounded-xl border border-gray-600 h-16">
               <Text className="text-sm text-white">Number of people</Text>
               <View className="flex-row items-center gap-2 bg-[#303030] p-1 rounded-full border border-gray-700">
                 <TouchableOpacity
                   onPress={() => handleGuestCountChange(numberOfGuests - 1)}
-                  className="p-1.5"
+                  className="p-1"
                 >
-                  <Minus color="#9CA3AF" size={16} />
+                  <Minus color="#9CA3AF" size={14} />
                 </TouchableOpacity>
-                <Text className="text-lg font-bold text-white w-6 text-center">
+                <Text className="text-base font-bold text-white w-5 text-center">
                   {numberOfGuests}
                 </Text>
                 <TouchableOpacity
                   onPress={() => handleGuestCountChange(numberOfGuests + 1)}
-                  className="p-1.5 bg-blue-500 rounded-full"
+                  className="p-1 bg-blue-500 rounded-full"
                 >
-                  <Plus color="#FFFFFF" size={16} />
+                  <Plus color="#FFFFFF" size={14} />
                 </TouchableOpacity>
               </View>
             </View>
           </View>
-          {/* --- THIS IS THE NEWLY ADDED BLOCK --- */}
           {duration && (
             <View className="flex-1">
-              <Text className="text-base font-semibold text-white mb-2">
+              <Text className="text-sm font-semibold text-white mb-1.5">
                 Duration
               </Text>
-              <View className="py-3 px-4 bg-gray-600 rounded-xl border border-gray-500 h-20 justify-center">
-                <Text className="text-lg font-bold text-white">{duration}</Text>
+              <View className="py-2 px-3 bg-gray-600 rounded-xl border border-gray-500 h-16 justify-center">
+                <Text className="text-base font-bold text-white">
+                  {duration}
+                </Text>
               </View>
             </View>
           )}
@@ -191,12 +193,12 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
       </View>
       <TouchableOpacity
         onPress={() => setIsExpanded(false)}
-        className="items-center mt-4"
+        className="items-center mt-3"
       >
         <ChevronDown
           style={{ transform: [{ rotate: "180deg" }] }}
           color="white"
-          size={24}
+          size={20}
         />
       </TouchableOpacity>
     </View>

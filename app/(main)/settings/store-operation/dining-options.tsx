@@ -64,28 +64,27 @@ const DiningOptionsScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      <View className="flex-row gap-6 h-full w-full">
+    <View className="flex-1 bg-[#212121] p-4">
+      <View className="flex-row gap-4 h-full w-full">
         <SettingsSidebar
           title="Store Operation"
           subsections={storeOperationSubsections}
           currentRoute="/settings/store-operation/dining-options"
         />
-        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-6">
-          <Text className="text-3xl font-bold text-white mb-2">
+        <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
+          <Text className="text-2xl font-bold text-white mb-1">
             Dining Options
           </Text>
-          <Text className="text-xl text-gray-400 mb-6">
+          <Text className="text-lg text-gray-400 mb-4">
             Configure rules for table seating and duration.
           </Text>
 
-          <View className="bg-[#212121] p-6 rounded-lg border border-gray-700">
-            <Text className="text-2xl font-semibold text-white mb-3">
+          <View className="bg-[#212121] p-4 rounded-lg border border-gray-700">
+            <Text className="text-xl font-semibold text-white mb-2">
               Default Sitting Time
             </Text>
-            <Text className="text-lg text-gray-400 mb-4">
-              Set a time limit in minutes. Tables in use longer than this will
-              be highlighted.
+            <Text className="text-base text-gray-400 mb-3">
+              Set a time limit in minutes. Overdue tables will be highlighted.
             </Text>
             <TextInput
               value={timeInput}
@@ -93,14 +92,14 @@ const DiningOptionsScreen = () => {
               keyboardType="number-pad"
               placeholder="e.g., 60"
               placeholderTextColor="#9CA3AF"
-              className="w-full p-4 border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="w-full p-3 border border-gray-600 rounded-lg text-lg text-white h-16"
             />
           </View>
           <TouchableOpacity
             onPress={handleSave}
-            className="mt-6 py-4 px-8 bg-blue-600 rounded-lg self-start"
+            className="mt-4 py-3 px-6 bg-blue-600 rounded-lg self-start"
           >
-            <Text className="text-2xl font-bold text-white">Save Changes</Text>
+            <Text className="text-xl font-bold text-white">Save Changes</Text>
           </TouchableOpacity>
         </View>
       </View>

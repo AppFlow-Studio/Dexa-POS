@@ -87,22 +87,21 @@ const BillItem: React.FC<BillItemProps> = ({
     item.customizations.notes;
   return (
     <View className="rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
-      {/* Delete Button - Positioned absolutely but behind the content */}
       {isEditable && (
         <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
           <TouchableOpacity
             onPress={handleDelete}
             className="w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center"
           >
-            <Trash2 color="white" size={24} />
+            <Trash2 color="white" size={20} />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Main Content - This will slide to reveal the delete button */}
       <GestureDetector gesture={pan}>
         <Animated.View style={animatedStyle} className="bg-[#303030] z-20">
           <TouchableOpacity onPress={handleNotesPress} activeOpacity={0.9}>
+
             <View className="flex-row items-center py-2 px-2">
               <View className="flex-1">
                 <View className="flex-row items-center">
@@ -116,7 +115,6 @@ const BillItem: React.FC<BillItemProps> = ({
                       </Text>
                     </View>
                   )}
-                  {/* Kitchen Status Badge */}
                   {item.kitchen_status && (
                     <View className={`ml-2 px-2 py-1 rounded-full ${item.kitchen_status === "new"
                       ? "bg-green-900/30 border border-green-500"
@@ -170,7 +168,6 @@ const BillItem: React.FC<BillItemProps> = ({
             </View>
           </TouchableOpacity>
 
-          {/* Animated Modifiers Dropdown */}
           {hasModifiers && (
             <Animated.View className={`overflow-hidden `}>
               <View className="px-2 border-t border-gray-600">
@@ -209,18 +206,18 @@ const BillItem: React.FC<BillItemProps> = ({
                                   </View>
                                 );
                               })}
-                            </View>
+
+                          </View>
                           )}
                         </View>
                       ))}
                     </View>
                   )}
 
-                {/* Notes */}
                 {item.customizations.notes && (
-                  <View className="py-2">
-                    <Text className="text-xl text-gray-300 mb-1">Notes:</Text>
-                    <Text className="text-xl text-gray-200 ml-2 italic">
+                  <View className="py-1">
+                    <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
+                    <Text className="text-lg text-gray-200 ml-2 italic">
                       {item.customizations.notes}
                     </Text>
                   </View>

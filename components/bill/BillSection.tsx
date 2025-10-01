@@ -57,8 +57,8 @@ const BillSection = ({
   const cart = activeOrder?.items || [];
 
   // Count new items that haven't been sent to kitchen yet
-  const newItemsCount = cart.filter(item =>
-    item.kitchen_status === "new" || !item.kitchen_status
+  const newItemsCount = cart.filter(
+    (item) => item.kitchen_status === "new" || !item.kitchen_status
   ).length;
 
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
@@ -87,12 +87,13 @@ const BillSection = ({
 
   if (!activeOrderId)
     return (
+
       <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
         <Text className="text-xl font-semibold text-white mb-4">
           No Active Order
         </Text>
         <TouchableOpacity
-          className="px-6 py-3 bg-blue-600 rounded-full shadow-md active:opacity-80"
+          className="px-6 py-3 bg-blue-600 rounded-lg shadow-md active:opacity-80"
           onPress={() => {
             startNewOrder();
           }}
@@ -103,11 +104,11 @@ const BillSection = ({
         </TouchableOpacity>
       </View>
     );
-
   return (
     <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
+
 
       <View className="flex flex-row bg-[#212121] px-6 justify-between">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
@@ -133,6 +134,7 @@ const BillSection = ({
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-base">
+
               Send to Kitchen ({activeOrder?.items.length})
             </Text>
             <Send size={18} color="#9CA3AF" />
@@ -143,6 +145,7 @@ const BillSection = ({
       <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
 
       {showPlaymentActions && (
+
         <View className="py-3 px-4 bg-[#212121]">
           <View className="flex-row gap-4">
             <TouchableOpacity
@@ -159,13 +162,14 @@ const BillSection = ({
               className={`flex-1 py-2 rounded-xl ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                   ? "bg-gray-500"
                   : "bg-blue-600"
-                }`}
+              }`}
             >
               <Text
+
                 className={`text-center text-xl font-bold ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
                     ? "text-gray-400"
                     : "text-white"
-                  }`}
+                }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

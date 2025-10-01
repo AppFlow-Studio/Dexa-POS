@@ -40,30 +40,32 @@ const CheckRow = ({
     Voided: "bg-red-100 text-red-800",
   };
   return (
-    <View className="flex-row items-center p-6 border-b border-background-400">
-      <Text className="w-[10%] text-2xl font-semibold text-gray-600">
+    <View className="flex-row items-center p-4 border-b border-background-400">
+      <Text className="w-[10%] text-xl font-semibold text-gray-600">
         {check.serialNo}
       </Text>
-      <Text className="w-[15%] text-2xl font-semibold text-gray-600">
+      <Text className="w-[15%] text-xl font-semibold text-gray-600">
         {check.checkNo}
       </Text>
-      <Text className="w-[20%] text-2xl font-semibold text-gray-800">
+      <Text className="w-[20%] text-xl font-semibold text-gray-800">
         {check.payee}
       </Text>
-      <Text className="w-[15%] text-2xl font-semibold text-gray-600">
+      <Text className="w-[15%] text-xl font-semibold text-gray-600">
         ${check.amount.toFixed(2)}
       </Text>
       <View className="w-[20%]">
-        <Text className="text-2xl font-semibold text-gray-800">
+        <Text className="text-xl font-semibold text-gray-800">
           {check.dateIssued}
         </Text>
-        <Text className="text-xl text-gray-500">{check.timeIssued}</Text>
+        <Text className="text-lg text-gray-500">{check.timeIssued}</Text>
       </View>
       <View className="w-[15%]">
         <View
-          className={`px-3 py-2 rounded-full self-start ${statusClasses[check.status]}`}
+          className={`px-2 py-1 rounded-full self-start ${
+            statusClasses[check.status]
+          }`}
         >
-          <Text className={`font-bold text-xl ${statusClasses[check.status]}`}>
+          <Text className={`font-bold text-lg ${statusClasses[check.status]}`}>
             {check.status}
           </Text>
         </View>
@@ -72,21 +74,21 @@ const CheckRow = ({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="p-2">
-              <MoreHorizontal size={24} color="#6b7280" />
+              <MoreHorizontal size={20} color="#6b7280" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48">
             <DropdownMenuItem onPress={() => onAction("view")}>
-              <FileText className="mr-2 h-6 w-6" />
-              <Text className="text-2xl">View Details</Text>
+              <FileText className="mr-2 h-5 w-5" />
+              <Text className="text-xl">View Details</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => onAction("view")}>
-              <Printer className="mr-2 h-6 w-6" />
-              <Text className="text-2xl">Print</Text>
+              <Printer className="mr-2 h-5 w-5" />
+              <Text className="text-xl">Print</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => onAction("delete")}>
-              <Trash2 className="mr-2 h-6 w-6 text-red-500" />
-              <Text className="text-2xl text-red-500">Delete</Text>
+              <Trash2 className="mr-2 h-5 w-5 text-red-500" />
+              <Text className="text-xl text-red-500">Delete</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -110,14 +112,14 @@ const ChecksScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-100 p-6">
+    <View className="flex-1 bg-background-100 p-4">
       {/* Toolbar */}
-      <View className="flex-row justify-between items-center mb-4">
-        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-4 w-[400px]">
-          <Search color="#6b7280" size={24} />
+      <View className="flex-row justify-between items-center mb-3">
+        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 w-[400px]">
+          <Search color="#6b7280" size={20} />
           <TextInput
             placeholder="Search by Check Number or Payee"
-            className="ml-3 text-2xl flex-1 h-20"
+            className="ml-2 text-xl flex-1 h-16"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
@@ -125,7 +127,7 @@ const ChecksScreen = () => {
 
       {/* Table */}
       <View className="flex-1">
-        <View className="flex-row p-6 rounded-t-xl border-b border-background-400">
+        <View className="flex-row p-4 rounded-t-xl border-b border-background-400">
           {[
             "# Serial No",
             "# Check No",
@@ -137,7 +139,19 @@ const ChecksScreen = () => {
           ].map((h) => (
             <Text
               key={h}
-              className={`font-bold text-xl text-gray-500 ${h === "Payee" ? "w-[20%]" : h === "Date Issued" ? "w-[20%]" : h === "Amount" || h === "Payment Status" ? "w-[15%]" : h === "# Serial No" ? "w-[10%]" : h === "# Check No" ? "w-[15%]" : "w-[5%]"}`}
+              className={`font-bold text-lg text-gray-500 ${
+                h === "Payee"
+                  ? "w-[20%]"
+                  : h === "Date Issued"
+                  ? "w-[20%]"
+                  : h === "Amount" || h === "Payment Status"
+                  ? "w-[15%]"
+                  : h === "# Serial No"
+                  ? "w-[10%]"
+                  : h === "# Check No"
+                  ? "w-[15%]"
+                  : "w-[5%]"
+              }`}
             >
               {h}
             </Text>
@@ -156,12 +170,12 @@ const ChecksScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end items-center mt-4 gap-2">
-        <TouchableOpacity className="p-3 rounded-full">
-          <ChevronLeft size={24} />
+      <View className="flex-row justify-end items-center mt-3 gap-1.5">
+        <TouchableOpacity className="p-2 rounded-full">
+          <ChevronLeft size={20} />
         </TouchableOpacity>
-        <TouchableOpacity className="p-3 rounded-full bg-primary-400">
-          <ChevronRight color="white" size={24} />
+        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
+          <ChevronRight color="white" size={20} />
         </TouchableOpacity>
       </View>
 

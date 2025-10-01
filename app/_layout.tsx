@@ -20,10 +20,9 @@ import {
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as React from "react";
-import { Keyboard, Platform } from "react-native";
+import { Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useEffect } from "react";
 
 const LIGHT_THEME: Theme = {
   ...DefaultTheme,
@@ -36,7 +35,7 @@ const DARK_THEME: Theme = {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary
+  ErrorBoundary,
 } from "expo-router";
 
 export default function RootLayout() {
@@ -84,7 +83,7 @@ export default function RootLayout() {
             screenOptions={{ headerShown: false }}
             initialRouteName="(auth)"
           />
-           <PortalHost />
+          <PortalHost />
           <SearchBottomSheet />
           <PaymentModal />
           <ItemCustomizationDialog />

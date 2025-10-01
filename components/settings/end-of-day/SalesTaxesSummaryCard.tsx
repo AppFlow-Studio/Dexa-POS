@@ -44,8 +44,12 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
     const startRad = startAngle * (Math.PI / 180);
     const endRad = (startAngle + currentSweep) * (Math.PI / 180);
 
-    return `M ${center.x + innerRadius * Math.cos(startRad)} ${center.y + innerRadius * Math.sin(startRad)}
-            A ${innerRadius} ${innerRadius} 0 0 1 ${center.x + innerRadius * Math.cos(endRad)} ${center.y + innerRadius * Math.sin(endRad)}`;
+    return `M ${center.x + innerRadius * Math.cos(startRad)} ${
+      center.y + innerRadius * Math.sin(startRad)
+    }
+            A ${innerRadius} ${innerRadius} 0 0 1 ${
+      center.x + innerRadius * Math.cos(endRad)
+    } ${center.y + innerRadius * Math.sin(endRad)}`;
   });
 
   const animatedColor = useDerivedValue(() => {
@@ -70,8 +74,8 @@ const SalesTaxesSummaryCard = () => {
     progress.value = withTiming(1, { duration: 1200 });
   }, [progress]);
 
-  const strokeWidth = 20;
-  const radius = 80;
+  const strokeWidth = 16;
+  const radius = 70;
   const innerRadius = radius - strokeWidth;
   const size = radius * 2;
   const center = { x: radius, y: radius };
@@ -90,7 +94,7 @@ const SalesTaxesSummaryCard = () => {
     <View>
       <View className="flex-row items-center">
         {/* Chart Container */}
-        <View className="w-48 h-24 relative">
+        <View className="w-40 h-20 relative">
           <Canvas
             style={{
               width: size,
@@ -115,16 +119,16 @@ const SalesTaxesSummaryCard = () => {
           </Canvas>
 
           {/* Center Label */}
-          <View className="absolute top-10 left-0 right-0 bottom-0 flex items-center justify-start pt-2">
-            <Text className="text-sm text-gray-300">Total Sales</Text>
-            <Text className="text-2xl font-bold text-white">
+          <View className="absolute top-8 left-0 right-0 bottom-0 flex items-center justify-start pt-1">
+            <Text className="text-xs text-gray-300">Total Sales</Text>
+            <Text className="text-xl font-bold text-white">
               ${totalValue.toFixed(2)}
             </Text>
           </View>
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 gap-y-3">
+        <View className="flex-1 ml-4 gap-y-2">
           {salesTaxesData.map((item) => (
             <LegendRow
               key={item.label}

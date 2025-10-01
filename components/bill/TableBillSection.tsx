@@ -88,21 +88,22 @@ const TableBillSection = ({
         {showOrderDetails && <OrderDetails />}
 
         {/* Coursing Summary */}
-        <ScrollView horizontal={true} className="max-h-20">
+        <ScrollView horizontal={true} className="max-h-16">
           {Object.keys(courseSummary).length > 0 && (
-            <View className="px-4 py-3 border-b border-gray-700">
+            <View className="px-3 py-2 border-b border-gray-700">
               <View className="flex-row flex-wrap gap-2">
                 {Object.entries(courseSummary)
                   .sort(([a], [b]) => Number(a) - Number(b))
                   .map(([course, count]) => {
                     const sent = !!sentCourses?.[Number(course)];
                     const isActive = Number(course) === (currentCourse ?? 0);
-  
+
                     // Get items in this course to check their kitchen status
                     const itemsInCourse = cart.filter(
-                      (item) => (itemCourseMap?.[item.id] ?? 1) === Number(course)
+                      (item) =>
+                        (itemCourseMap?.[item.id] ?? 1) === Number(course)
                     );
-  
+
                     // Check if all items in course are sent to kitchen
                     const allItemsSent =
                       itemsInCourse.length > 0 &&
@@ -112,18 +113,18 @@ const TableBillSection = ({
                           item.kitchen_status === "ready" ||
                           item.kitchen_status === "served"
                       );
-  
+
                     // Check if any items are ready
                     const anyItemsReady = itemsInCourse.some(
                       (item) =>
                         item.kitchen_status === "ready" ||
                         item.kitchen_status === "served"
                     );
-  
+
                     return (
                       <View
                         key={course}
-                        className={`px-3 py-2 rounded-full flex-row items-center gap-2 ${
+                        className={`px-2.5 py-1.5 rounded-full flex-row items-center gap-2 ${
                           sent || allItemsSent
                             ? "bg-green-900/30 border border-green-500"
                             : anyItemsReady
@@ -134,7 +135,7 @@ const TableBillSection = ({
                         }`}
                       >
                         <View
-                          className={`w-3 h-3 rounded-full ${
+                          className={`w-2.5 h-2.5 rounded-full ${
                             sent || allItemsSent
                               ? "bg-green-500"
                               : anyItemsReady
@@ -142,19 +143,19 @@ const TableBillSection = ({
                                 : "bg-gray-500"
                           }`}
                         />
-                        <Text className="text-xl font-semibold text-white">
+                        <Text className="text-base font-semibold text-white">
                           Course {course}
                         </Text>
                         <View className="w-1" />
-                        <Text className="text-xl font-semibold text-gray-300">
+                        <Text className="text-base font-semibold text-gray-300">
                           x{count}
                         </Text>
                         {sent || allItemsSent ? (
-                          <Text className="text-xl font-bold text-green-400 ml-2">
+                          <Text className="text-base font-bold text-green-400 ml-1.5">
                             Sent
                           </Text>
                         ) : anyItemsReady ? (
-                          <Text className="text-xl font-bold text-yellow-400 ml-2">
+                          <Text className="text-base font-bold text-yellow-400 ml-1.5">
                             In Progress
                           </Text>
                         ) : (
@@ -162,7 +163,7 @@ const TableBillSection = ({
                             onPress={() =>
                               onSelectCourse && onSelectCourse(Number(course))
                             }
-                            className="text-xl font-bold text-blue-400 ml-2"
+                            className="text-base font-bold text-blue-400 ml-1.5"
                           >
                             Select
                           </Text>

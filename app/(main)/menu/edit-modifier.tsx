@@ -202,15 +202,13 @@ const EditModifierScreen: React.FC = () => {
 
   if (!existing) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-6">
-        <Text className="text-2xl text-white">
-          Modifier not found or not editable.
-        </Text>
+      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+        <Text className="text-xl text-white">Modifier not found.</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-4 px-6 py-3 bg-[#303030] rounded border border-gray-600"
+          className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
         >
-          <Text className="text-xl text-gray-300">Go Back</Text>
+          <Text className="text-lg text-gray-300">Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -218,32 +216,32 @@ const EditModifierScreen: React.FC = () => {
 
   return (
     <KeyboardAvoidingView className="flex-1 bg-[#212121]" behavior="padding">
-      <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={24} color="#9CA3AF" />
-          <Text className="text-2xl text-white font-medium ml-2">Back</Text>
+          <ArrowLeft size={20} color="#9CA3AF" />
+          <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
         </TouchableOpacity>
-        <View className="flex-row gap-3">
+        <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={handleDelete}
-            className="px-6 py-3 rounded-lg border border-red-500 bg-red-900/30"
+            className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
           >
             <View className="flex-row items-center">
-              <Trash2 size={24} color="#EF4444" />
-              <Text className="text-2xl text-red-400 ml-2">Delete</Text>
+              <Trash2 size={20} color="#EF4444" />
+              <Text className="text-xl text-red-400 ml-1.5">Delete</Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className="px-6 py-3 rounded-lg bg-blue-600"
+            className="px-4 py-2 rounded-lg bg-blue-600"
           >
             <View className="flex-row items-center">
-              <Save size={24} color="#fff" />
-              <Text className="text-2xl text-white ml-2">
+              <Save size={20} color="#fff" />
+              <Text className="text-xl text-white ml-1.5">
                 {isSaving ? "Saving..." : "Save"}
               </Text>
             </View>
@@ -251,38 +249,43 @@ const EditModifierScreen: React.FC = () => {
         </View>
       </View>
 
-      <ScrollView className="flex-1 p-6 pb-12">
-        <Text className="text-3xl font-bold text-white mb-6">
+      <ScrollView className="flex-1 p-4 pb-8">
+        <Text className="text-2xl font-bold text-white mb-4">
           Edit Modifier Group
         </Text>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             value={formData.name}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, name: text }))
             }
             placeholder="Modifier name"
-            placeholderTextColor="#9CA3AF"
           />
           {errors.name && (
-            <Text className="text-xl text-red-400 mt-1">{errors.name}</Text>
+            <Text className="text-base text-red-400 mt-1">{errors.name}</Text>
           )}
         </View>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">Type</Text>
-          <View className="flex-row gap-4">
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">Type</Text>
+          <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={() =>
                 setFormData((prev) => ({ ...prev, type: "optional" }))
               }
-              className={`flex-1 px-6 py-4 rounded-lg border ${formData.type === "optional" ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-600"}`}
+              className={`flex-1 px-4 py-3 rounded-lg border ${
+                formData.type === "optional"
+                  ? "bg-blue-600 border-blue-500"
+                  : "bg-[#303030] border-gray-600"
+              }`}
             >
               <Text
-                className={`text-2xl text-center ${formData.type === "optional" ? "text-white" : "text-gray-300"}`}
+                className={`text-xl text-center ${
+                  formData.type === "optional" ? "text-white" : "text-gray-300"
+                }`}
               >
                 Optional
               </Text>
@@ -291,14 +294,14 @@ const EditModifierScreen: React.FC = () => {
               onPress={() =>
                 setFormData((prev) => ({ ...prev, type: "required" }))
               }
-              className={`flex-1 px-6 py-4 rounded-lg border ${
+              className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.type === "required"
                   ? "bg-red-600 border-red-500"
                   : "bg-[#303030] border-gray-600"
               }`}
             >
               <Text
-                className={`text-2xl font-medium text-center ${
+                className={`text-xl font-medium text-center ${
                   formData.type === "required" ? "text-white" : "text-gray-300"
                 }`}
               >
@@ -308,23 +311,27 @@ const EditModifierScreen: React.FC = () => {
           </View>
         </View>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">
-            Selection Type
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
+            Selection
           </Text>
-          <View className="flex-row gap-4">
+          <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={() =>
                 setFormData((prev) => ({ ...prev, selectionType: "single" }))
               }
-              className={`flex-1 px-6 py-4 rounded-lg border ${
+              className={`flex-1 px-4 py-3 rounded-lg border ${
                 formData.selectionType === "single"
                   ? "bg-green-600 border-green-500"
                   : "bg-[#303030] border-gray-600"
               }`}
             >
               <Text
-                className={`text-2xl text-center ${formData.selectionType === "single" ? "text-white" : "text-gray-300"}`}
+                className={`text-xl text-center ${
+                  formData.selectionType === "single"
+                    ? "text-white"
+                    : "text-gray-300"
+                }`}
               >
                 Single
               </Text>
@@ -333,10 +340,18 @@ const EditModifierScreen: React.FC = () => {
               onPress={() =>
                 setFormData((prev) => ({ ...prev, selectionType: "multiple" }))
               }
-              className={`flex-1 px-6 py-4 rounded-lg border ${formData.selectionType === "multiple" ? "bg-green-600 border-green-500" : "bg-[#303030] border-gray-600"}`}
+              className={`flex-1 px-4 py-3 rounded-lg border ${
+                formData.selectionType === "multiple"
+                  ? "bg-green-600 border-green-500"
+                  : "bg-[#303030] border-gray-600"
+              }`}
             >
               <Text
-                className={`text-2xl text-center ${formData.selectionType === "multiple" ? "text-white" : "text-gray-300"}`}
+                className={`text-xl text-center ${
+                  formData.selectionType === "multiple"
+                    ? "text-white"
+                    : "text-gray-300"
+                }`}
               >
                 Multiple
               </Text>
@@ -345,12 +360,12 @@ const EditModifierScreen: React.FC = () => {
         </View>
 
         {formData.selectionType === "multiple" && (
-          <View className="mb-6">
-            <Text className="text-2xl font-semibold text-white mb-3">
-              Max Selections (optional)
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Max Selections
             </Text>
             <TextInput
-              className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
+              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
               keyboardType="numeric"
               value={formData.maxSelections?.toString() || ""}
               onChangeText={(text) =>
@@ -359,84 +374,76 @@ const EditModifierScreen: React.FC = () => {
                   maxSelections: text ? parseInt(text) : undefined,
                 }))
               }
-              placeholder="Leave empty for unlimited"
-              placeholderTextColor="#9CA3AF"
+              placeholder="Unlimited"
             />
           </View>
         )}
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
             Description
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
-            placeholder="e.g., Choose up to 3 toppings"
-            placeholderTextColor="#9CA3AF"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+            placeholder="Optional description"
             value={formData.description}
             onChangeText={(text) =>
               setFormData((prev) => ({ ...prev, description: text }))
             }
             multiline
-            numberOfLines={2}
           />
         </View>
 
-        <View className="mb-12">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-2xl font-semibold text-white">Options</Text>
+        <View className="mb-8">
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-xl font-semibold text-white">Options</Text>
             <TouchableOpacity
               onPress={addOption}
-              className="flex-row items-center bg-green-600 px-4 py-3 rounded-lg"
+              className="flex-row items-center bg-green-600 px-3 py-2 rounded-lg"
             >
-              <Plus size={24} color="#fff" />
-              <Text className="text-xl text-white ml-2">Add Option</Text>
+              <Plus size={20} color="#fff" />
+              <Text className="text-lg text-white ml-1.5">Add</Text>
             </TouchableOpacity>
           </View>
           {formData.options.length === 0 ? (
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-6 items-center">
-              <Text className="text-xl text-gray-400">No options yet.</Text>
+            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+              <Text className="text-lg text-gray-400">No options yet.</Text>
             </View>
           ) : (
-            <View className="gap-3">
+            <View className="gap-2">
               {formData.options.map((option, index) => (
                 <View
                   key={option.id}
-                  className="bg-[#303030] border border-gray-600 rounded-lg p-6"
+                  className="bg-[#303030] border border-gray-600 rounded-lg p-4"
                 >
-                  <View className="flex-row items-center justify-between mb-3">
-                    <Text className="text-2xl text-white font-medium">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-xl text-white font-medium">
                       Option {index + 1}
                     </Text>
                     <TouchableOpacity
                       onPress={() => removeOption(index)}
-                      className="p-2"
+                      className="p-1.5"
                     >
-                      <Trash2 size={24} color="#EF4444" />
+                      <Trash2 size={20} color="#EF4444" />
                     </TouchableOpacity>
                   </View>
-
-                  <View className="flex-row gap-4">
+                  <View className="flex-row gap-3">
                     <View className="flex-1">
-                      <Text className="text-xl text-gray-300 mb-2">
-                        Option Name
-                      </Text>
+                      <Text className="text-lg text-gray-300 mb-1.5">Name</Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
-                        placeholder="e.g., Large, Extra Cheese"
-                        placeholderTextColor="#9CA3AF"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         value={option.name}
                         onChangeText={(text) =>
                           updateOption(index, "name", text)
                         }
                       />
                     </View>
-                    <View className="w-32">
-                      <Text className="text-xl text-gray-300 mb-2">Price</Text>
+                    <View className="w-28">
+                      <Text className="text-lg text-gray-300 mb-1.5">
+                        Price
+                      </Text>
                       <TextInput
-                        className="bg-[#212121] border border-gray-600 rounded-lg px-4 py-3 text-2xl text-white h-20"
-                        placeholder="0.00"
-                        placeholderTextColor="#9CA3AF"
+                        className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-xl text-white h-16"
                         value={option.price.toString()}
                         onChangeText={(text) =>
                           updateOption(index, "price", parseFloat(text) || 0)
@@ -445,12 +452,10 @@ const EditModifierScreen: React.FC = () => {
                       />
                     </View>
                   </View>
-
-                  {/* --- THIS IS THE CORRECTED PART --- */}
-                  <View className="mt-4">
+                  <View className="mt-3">
                     <TouchableOpacity
                       onPress={() => toggleDefaultOption(index)}
-                      className={`flex-row items-center justify-between p-4 rounded-lg border ${
+                      className={`flex-row items-center p-3 rounded-lg border ${
                         option.isDefault
                           ? "bg-green-600/20 border-green-500"
                           : "bg-[#212121] border-gray-600"
@@ -458,33 +463,36 @@ const EditModifierScreen: React.FC = () => {
                     >
                       <View className="flex-row items-center">
                         <View
-                          className={`w-6 h-6 rounded border-2 mr-4 items-center justify-center ${
+                          className={`w-5 h-5 rounded border-2 mr-3 items-center justify-center ${
                             option.isDefault
                               ? "bg-green-600 border-green-600"
                               : "border-gray-400"
                           }`}
                         >
                           {option.isDefault && (
-                            <View className="w-3 h-3 bg-white rounded-full" />
+                            <View className="w-2 h-2 bg-white rounded-full" />
                           )}
                         </View>
-                        <View>
-                          <Text
-                            className={`text-xl font-medium ${option.isDefault ? "text-green-400" : "text-gray-300"}`}
-                          >
-                            Default Selection
-                          </Text>
-                        </View>
+                        <Text
+                          className={`text-lg font-medium ${
+                            option.isDefault
+                              ? "text-green-400"
+                              : "text-gray-300"
+                          }`}
+                        >
+                          Default
+                        </Text>
                       </View>
                     </TouchableOpacity>
                   </View>
-                  {/* --- END OF CORRECTION --- */}
                 </View>
               ))}
             </View>
           )}
           {errors.options && (
-            <Text className="text-xl text-red-400 mt-2">{errors.options}</Text>
+            <Text className="text-base text-red-400 mt-1.5">
+              {errors.options}
+            </Text>
           )}
         </View>
       </ScrollView>
@@ -495,27 +503,27 @@ const EditModifierScreen: React.FC = () => {
         animationType="fade"
         onRequestClose={() => setShowConfirm(false)}
       >
-        <View className="flex-1 bg-black/50 items-center justify-center p-6">
-          <View className="bg-[#303030] rounded-2xl p-6 w-full max-w-lg border border-gray-600">
-            <Text className="text-3xl text-white font-bold mb-2">
+        <View className="flex-1 bg-black/50 items-center justify-center p-4">
+          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+            <Text className="text-2xl text-white font-bold mb-1.5">
               Save changes?
             </Text>
-            <Text className="text-2xl text-gray-400 mb-4">
-              Update "{formData.name}" with {formData.options.length} option(s)?
+            <Text className="text-xl text-gray-400 mb-3">
+              Update "{formData.name}"?
             </Text>
-            <View className="flex-row gap-4">
+            <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => setShowConfirm(false)}
-                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-4 items-center"
+                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
               >
-                <Text className="text-2xl text-gray-300">Cancel</Text>
+                <Text className="text-xl text-gray-300">Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={confirmSave}
                 disabled={isSaving}
-                className="flex-1 bg-blue-600 rounded-lg py-4 items-center"
+                className="flex-1 bg-blue-600 rounded-lg py-3 items-center"
               >
-                <Text className="text-2xl text-white">
+                <Text className="text-xl text-white">
                   {isSaving ? "Saving..." : "Save"}
                 </Text>
               </TouchableOpacity>

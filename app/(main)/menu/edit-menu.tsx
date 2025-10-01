@@ -113,13 +113,13 @@ const EditMenuScreen: React.FC = () => {
 
   if (!existing) {
     return (
-      <View className="flex-1 bg-[#212121] items-center justify-center p-6">
-        <Text className="text-2xl text-white">Menu not found.</Text>
+      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+        <Text className="text-xl text-white">Menu not found.</Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-4 px-6 py-3 bg-[#303030] rounded border border-gray-600"
+          className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
         >
-          <Text className="text-xl text-gray-300">Go Back</Text>
+          <Text className="text-lg text-gray-300">Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -127,37 +127,37 @@ const EditMenuScreen: React.FC = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="flex-row items-center justify-between p-6 border-b border-gray-700 bg-[#303030]">
+      <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center"
         >
-          <ArrowLeft size={24} color="#9CA3AF" />
-          <Text className="text-2xl text-white font-medium ml-2">Back</Text>
+          <ArrowLeft size={20} color="#9CA3AF" />
+          <Text className="text-xl text-white font-medium ml-1.5">Back</Text>
         </TouchableOpacity>
-        <View className="flex-row gap-3">
+        <View className="flex-row gap-2">
           <TouchableOpacity
             onPress={handleDelete}
-            className="px-6 py-3 rounded-lg border border-red-500 bg-red-900/30"
+            className="px-4 py-2 rounded-lg border border-red-500 bg-red-900/30"
           >
-            <Text className="text-2xl text-red-400">Delete</Text>
+            <Text className="text-xl text-red-400">Delete</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="px-6 py-3 rounded-lg bg-blue-600"
+            className="px-4 py-2 rounded-lg bg-blue-600"
           >
-            <Text className="text-2xl text-white">Save</Text>
+            <Text className="text-xl text-white">Save</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView className="flex-1 p-6">
-        <Text className="text-3xl font-bold text-white mb-6">Edit Menu</Text>
+      <ScrollView className="flex-1 p-4">
+        <Text className="text-2xl font-bold text-white mb-4">Edit Menu</Text>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">Name</Text>
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">Name</Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             value={name}
             onChangeText={setName}
             placeholder="Menu name"
@@ -165,12 +165,12 @@ const EditMenuScreen: React.FC = () => {
           />
         </View>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
             Description
           </Text>
           <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-6 py-4 text-2xl text-white h-20"
+            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
             value={description}
             onChangeText={setDescription}
             placeholder="Optional description"
@@ -178,21 +178,27 @@ const EditMenuScreen: React.FC = () => {
           />
         </View>
 
-        <View className="mb-6">
-          <Text className="text-2xl font-semibold text-white mb-3">
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
             Categories
           </Text>
-          <View className="flex-row flex-wrap gap-3">
+          <View className="flex-row flex-wrap gap-2">
             {allCategoryNames.map((cat) => {
               const selected = selectedCategories.includes(cat);
               return (
                 <TouchableOpacity
                   key={cat}
                   onPress={() => toggleCategory(cat)}
-                  className={`px-4 py-3 rounded-lg border ${selected ? "bg-blue-600 border-blue-500" : "bg-[#303030] border-gray-600"}`}
+                  className={`px-3 py-2 rounded-lg border ${
+                    selected
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-[#303030] border-gray-600"
+                  }`}
                 >
                   <Text
-                    className={`text-xl ${selected ? "text-white" : "text-gray-300"}`}
+                    className={`text-lg ${
+                      selected ? "text-white" : "text-gray-300"
+                    }`}
                   >
                     {cat}
                   </Text>
@@ -201,7 +207,7 @@ const EditMenuScreen: React.FC = () => {
             })}
           </View>
           {selectedCategories.length > 0 && (
-            <View className="mt-4 gap-4">
+            <View className="mt-3 gap-3">
               {selectedCategories
                 .sort((a, b) => a.localeCompare(b))
                 .map((cat) => {
@@ -219,39 +225,39 @@ const EditMenuScreen: React.FC = () => {
                             [cat]: !isExpanded,
                           }))
                         }
-                        className="flex-row items-center justify-between p-4"
+                        className="flex-row items-center justify-between p-3"
                       >
-                        <View className="flex-row items-center gap-3">
-                          <Text className="text-2xl text-white font-medium">
+                        <View className="flex-row items-center gap-2">
+                          <Text className="text-xl text-white font-medium">
                             {cat}
                           </Text>
-                          <View className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded-full">
-                            <Text className="text-xl text-blue-400">
+                          <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded-full">
+                            <Text className="text-lg text-blue-400">
                               {items.length} items
                             </Text>
                           </View>
                         </View>
-                        <Text className="text-xl text-gray-300">
+                        <Text className="text-lg text-gray-300">
                           {isExpanded ? "Hide" : "Show"}
                         </Text>
                       </TouchableOpacity>
                       {isExpanded && (
-                        <View className="border-t border-gray-700 p-4 gap-3">
+                        <View className="border-t border-gray-700 p-3 gap-2">
                           {items.length === 0 ? (
-                            <Text className="text-xl text-gray-400">
+                            <Text className="text-lg text-gray-400">
                               No items in this category.
                             </Text>
                           ) : (
-                            <View className="gap-3 flex flex-row flex-wrap">
+                            <View className="gap-2 flex flex-row flex-wrap">
                               {items.map((item) => (
                                 <View
                                   key={item.id}
-                                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-4 py-3 mr-2 mb-2"
+                                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
                                 >
-                                  <Text className="text-xl text-white">
+                                  <Text className="text-lg text-white">
                                     {item.name}
                                   </Text>
-                                  <Text className="text-xl text-gray-300 ml-3">
+                                  <Text className="text-lg text-gray-300 ml-2">
                                     ${item.price.toFixed(2)}
                                   </Text>
                                 </View>
@@ -267,17 +273,23 @@ const EditMenuScreen: React.FC = () => {
           )}
         </View>
 
-        <View className="mb-6">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-2xl font-semibold text-white">Schedules</Text>
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-xl font-semibold text-white">Schedules</Text>
             <TouchableOpacity
               onPress={() => setIsActive(!isActive)}
-              className={`px-4 py-3 rounded-lg border ${isActive ? "bg-green-900/30 border-green-500" : "bg-red-900/30 border-red-500"}`}
+              className={`px-3 py-2 rounded-lg border ${
+                isActive
+                  ? "bg-green-900/30 border-green-500"
+                  : "bg-red-900/30 border-red-500"
+              }`}
             >
               <Text
-                className={`text-xl ${isActive ? "text-green-400" : "text-red-400"}`}
+                className={`text-lg ${
+                  isActive ? "text-green-400" : "text-red-400"
+                }`}
               >
-                {isActive ? "Master: Enabled" : "Master: Disabled"}
+                {isActive ? "Master: On" : "Master: Off"}
               </Text>
             </TouchableOpacity>
           </View>

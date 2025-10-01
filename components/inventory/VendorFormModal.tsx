@@ -59,78 +59,78 @@ const VendorFormModal: React.FC<VendorFormModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-white text-3xl">
+          <DialogTitle className="text-white text-xl">
             {initialData ? "Edit" : "Add New"} Vendor
           </DialogTitle>
         </DialogHeader>
         <View className="py-4 gap-y-4">
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-2">
               Vendor Name
             </Text>
             <TextInput
               value={name}
               onChangeText={setName}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
             />
           </View>
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-2">
               Contact Person
             </Text>
             <TextInput
               value={contactPerson}
               onChangeText={setContactPerson}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
             />
           </View>
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-2">
               Email Address
             </Text>
             <TextInput
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
             />
           </View>
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-2">
               Phone Number
             </Text>
             <TextInput
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
             />
           </View>
           <View>
-            <Text className="text-xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-2">
               Description
             </Text>
             <TextInput
               value={desc}
               onChangeText={setDesc}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-2 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white"
             />
           </View>
         </View>
         <DialogFooter className="flex-row gap-3">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-2 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-gray-300">
+            <Text className="text-center text-lg font-bold text-gray-300">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="flex-1 py-4 bg-blue-600 rounded-lg"
+            className="flex-1 py-2 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Save Vendor
             </Text>
           </TouchableOpacity>

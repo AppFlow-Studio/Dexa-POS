@@ -51,6 +51,7 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
         </View>
       </View>
 
+
       <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
         <Text className="text-lg font-bold text-white">Total</Text>
         <Text className="text-lg font-bold text-white">

@@ -40,6 +40,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   return (
     <View className="flex-1 bg-[#212121]">
+
       <View className=" px-6 h-full">
         <View className="flex flex-row items-center justify-between">
           <View className="flex-col items-start justify-start gap-1">
@@ -48,10 +49,9 @@ const BillSummary: React.FC<BillSummaryProps> = ({
             </View>
             <Text className="text-xs text-gray-300">{activeOrderId}</Text>
           </View>
-          <Text className="text-xl text-gray-300">{cart.length} Items</Text>
+          <Text className="text-lg text-gray-300">{cart.length} Items</Text>
         </View>
         <View className="flex-1 h-full w-full">
-          {/* 3. Assign the ref to the ScrollView */}
           <ScrollView
             ref={scrollViewRef}
             showsVerticalScrollIndicator={true}
@@ -151,7 +151,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                             return (
                               <View
                                 key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-2 ${highlight ? "border border-blue-500" : ""}`}
+                                className={`rounded-xl mb-1.5 ${highlight ? "border border-blue-500" : ""}`}
                               >
                                 <BillItem
                                   item={item}
@@ -171,7 +171,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
               })()
             ) : (
               <View className="h-full items-center justify-center">
-                <Text className="text-2xl text-gray-400">Cart is empty.</Text>
+                <Text className="text-xl text-gray-400">Cart is empty.</Text>
               </View>
             )}
           </ScrollView>

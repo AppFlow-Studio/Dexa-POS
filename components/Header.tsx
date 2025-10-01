@@ -80,7 +80,12 @@ const Header = () => {
   const title = generateTitleFromPath(pathname);
 
   const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
-  const { employees, activeEmployeeId, clockOut: empClockOut, signOut } = useEmployeeStore();
+  const {
+    employees,
+    activeEmployeeId,
+    clockOut: empClockOut,
+    signOut,
+  } = useEmployeeStore();
   const [activeModal, setActiveModal] = useState<
     "switchAccount" | "break" | "breakEnded" | null
   >(null);
@@ -99,7 +104,8 @@ const Header = () => {
     pathname === "/settings" ||
     pathname === "/settings/floor-plan" ||
     pathname.startsWith("/analytics") ||
-    pathname.startsWith("/analytics-dashboard") && pathname.split("/").length > 2 ||
+    (pathname.startsWith("/analytics-dashboard") &&
+      pathname.split("/").length > 2) ||
     (pathname.startsWith("/menu/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/inventory/") && pathname.split("/").length > 2) ||
     (pathname.startsWith("/online-orders/") &&
@@ -140,7 +146,11 @@ const Header = () => {
 
   const handleBackPress = () => {
     // If we are anywhere inside the inventory section, always go back to the main menu.
-    if ((pathname.startsWith("/inventory") && !pathname.includes("/purchase-orders/")) || pathname.startsWith("/settings")) {
+    if (
+      (pathname.startsWith("/inventory") &&
+        !pathname.includes("/purchase-orders/")) ||
+      pathname.startsWith("/settings")
+    ) {
       router.push("/home");
     } else {
       // Otherwise, use the default back behavior.
@@ -155,60 +165,83 @@ const Header = () => {
           {showBackButton && (
             <TouchableOpacity
               onPress={handleBackPress}
-              className="p-3 mr-4 bg-gray-100 rounded-lg"
+              className="p-2 mr-3 bg-gray-100 rounded-lg"
             >
-              <ArrowLeft color="#1f2937" size={24} />
+              <ArrowLeft color="#1f2937" size={20} />
             </TouchableOpacity>
           )}
-          <Text className="text-3xl font-bold text-white">{title}</Text>
+          <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center cursor-pointer">
               <Image
-                source={activeEmployeeId ? (employees.find(e => e.id === activeEmployeeId)?.profilePictureUrl ? { uri: employees.find(e => e.id === activeEmployeeId)!.profilePictureUrl! } : require("@/assets/images/tom_hardy.jpg")) : require("@/assets/images/tom_hardy.jpg")}
-                className="w-12 h-12 rounded-full"
+                source={
+                  activeEmployeeId
+                    ? employees.find((e) => e.id === activeEmployeeId)
+                        ?.profilePictureUrl
+                      ? {
+                          uri: employees.find((e) => e.id === activeEmployeeId)!
+                            .profilePictureUrl!,
+                        }
+                      : require("@/assets/images/tom_hardy.jpg")
+                    : require("@/assets/images/tom_hardy.jpg")
+                }
+                className="w-10 h-10 rounded-full"
               />
-              <View className="ml-3">
-                <Text className="text-2xl font-semibold text-white">
-                  {activeEmployeeId ? (employees.find(e => e.id === activeEmployeeId)?.fullName || 'Employee') : 'Guest'}
+              <View className="ml-2">
+                <Text className="text-xl font-semibold text-white">
+                  {activeEmployeeId
+                    ? employees.find((e) => e.id === activeEmployeeId)
+                        ?.fullName || "Employee"
+                    : "Guest"}
                 </Text>
-                <Text className="text-xl text-white">{activeEmployeeId ? 'Signed In' : 'Not Signed In'}</Text>
+                <Text className="text-lg text-gray-300">
+                  {activeEmployeeId ? "Signed In" : "Not Signed In"}
+                </Text>
               </View>
-              <ChevronDown color="white" size={24} className="ml-2" />
+              <ChevronDown color="white" size={20} className="ml-2" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56">
+          <DropdownMenuContent className="w-56 bg-[#303030] border-gray-700">
             <DropdownMenuItem
               onPress={() => router.push("/settings/basic/my-profile")}
             >
-              <User className="mr-2 h-6 w-6" />
-              <Text className="text-2xl">My Profile</Text>
+              <User className="mr-2 h-5 w-5 text-gray-300" />
+              <Text className="text-lg text-white">My Profile</Text>
             </DropdownMenuItem>
             <DropdownMenuItem
               onPress={handleStartBreak}
               disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
             >
-              <Coffee className="mr-2 h-6 w-6" />
-              <Text className="text-2xl">
+              <Coffee className="mr-2 h-5 w-5 text-gray-300" />
+              <Text className="text-lg text-white">
                 {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
-              <LogOut className="mr-2 h-6 w-6" />
-              <Text className="text-2xl">Switch Account</Text>
+              <LogOut className="mr-2 h-5 w-5 text-gray-300" />
+              <Text className="text-lg text-white">Switch Account</Text>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onPress={() => {
-              if (activeEmployeeId) {
-                try { empClockOut(activeEmployeeId); } catch { }
-                try { useTimeclockStore.getState().clockOut(); } catch { }
-                try { signOut(); } catch { }
-              }
-              router.replace('/pin-login');
-            }}>
-              <LogOut className="mr-2 h-6 w-6 text-red-500" />
-              <Text className="text-2xl text-red-500">Logout</Text>
+            <DropdownMenuSeparator className="bg-gray-600" />
+            <DropdownMenuItem
+              onPress={() => {
+                if (activeEmployeeId) {
+                  try {
+                    empClockOut(activeEmployeeId);
+                  } catch {}
+                  try {
+                    useTimeclockStore.getState().clockOut();
+                  } catch {}
+                  try {
+                    signOut();
+                  } catch {}
+                }
+                router.replace("/pin-login");
+              }}
+            >
+              <LogOut className="mr-2 h-5 w-5 text-red-500" />
+              <Text className="text-lg text-red-400">Logout</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

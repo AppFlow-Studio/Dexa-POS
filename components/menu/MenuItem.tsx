@@ -91,7 +91,6 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Text className="text-lg font-bold text-white mt-3 flex-1">
               {item.name}
             </Text>
-
           </View>
           <View className="flex-row  items-baseline">
             {(() => {

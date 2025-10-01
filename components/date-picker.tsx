@@ -17,10 +17,10 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <TouchableOpacity className="flex-row items-center p-4 gap-3 mr-20">
-          <Text className="text-2xl font-semibold text-gray-300">Date:</Text>
-          <CalendarIcon color="#9CA3AF" size={24} />
-          <Text className="text-2xl font-semibold text-gray-300">
+        <TouchableOpacity className="flex-row items-center p-3 gap-2 mr-20">
+          <Text className="text-xl font-semibold text-gray-300">Date:</Text>
+          <CalendarIcon color="#9CA3AF" size={20} />
+          <Text className="text-xl font-semibold text-gray-300">
             {date.toLocaleDateString("en-US", {
               month: "2-digit",
               day: "2-digit",
@@ -49,9 +49,9 @@ const DatePicker: React.FC<DatePickerProps> = ({ date, onDateChange }) => {
             arrowColor: "#60A5FA",
             monthTextColor: "#FFFFFF",
             textMonthFontWeight: "bold",
-            textDayFontSize: 20,
-            textMonthFontSize: 24,
-            textDayHeaderFontSize: 18,
+            textDayFontSize: 16,
+            textMonthFontSize: 20,
+            textDayHeaderFontSize: 14,
           }}
         />
       </PopoverContent>

@@ -134,31 +134,33 @@ const TablesScreen = () => {
     <View className="flex-1 bg-[#212121] px-2 py-1">
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* --- Left Panel: Tables List --- */}
-        <View className="w-96 bg-[#212121] border-r border-gray-700">
-          <View className="p-6 border-b border-gray-700">
-            <Text className="text-3xl font-bold text-white">Tables List</Text>
+        <View className="w-80 bg-[#212121] border-r border-gray-700">
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-2xl font-bold text-white">Tables List</Text>
           </View>
           <FlatList
             data={filteredTables.filter(
               (table) => table.status !== "Not in Service"
             )}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <TableListItem table={item} handleTablePress={handleTablePress} />}
+            renderItem={({ item }) => (
+              <TableListItem table={item} handleTablePress={handleTablePress} />
+            )}
           />
         </View>
 
         {/* --- Right Panel: Floor Plan --- */}
-        <View className="flex-1 p-6">
+        <View className="flex-1 p-4">
           {/* Layout/Room Tabs */}
-          <View className="flex-row items-center bg-[#303030] border border-gray-600 p-2 rounded-xl mb-4 self-start">
+          <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl mb-3 self-start">
             {layouts.map((layout) => (
               <TouchableOpacity
                 key={layout.id}
                 onPress={() => setActiveLayout(layout.id)}
-                className={`py-3 px-6 rounded-lg ${activeLayoutId === layout.id ? "bg-[#212121]" : ""}`}
+                className={`py-2 px-4 rounded-lg ${activeLayoutId === layout.id ? "bg-[#212121]" : ""}`}
               >
                 <Text
-                  className={`text-xl font-semibold ${activeLayoutId === layout.id ? "text-blue-400" : "text-gray-300"}`}
+                  className={`text-lg font-semibold ${activeLayoutId === layout.id ? "text-blue-400" : "text-gray-300"}`}
                 >
                   {layout.name}
                 </Text>
@@ -167,15 +169,15 @@ const TablesScreen = () => {
           </View>
 
           {/* Toolbar */}
-          <View className="flex-row items-end gap-3 w-full justify-end mb-4">
-            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4 flex-1 max-w-sm">
-              <Search color="#9CA3AF" size={24} />
+          <View className="flex-row items-end gap-2 w-full justify-end mb-3">
+            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 flex-1 max-w-sm">
+              <Search color="#9CA3AF" size={20} />
               <TextInput
                 placeholder="Search table name..."
                 placeholderTextColor="#9CA3AF"
                 value={searchText}
                 onChangeText={setSearchText}
-                className="ml-3 text-2xl h-20 flex-1 text-white"
+                className="ml-2 text-lg h-16 flex-1 text-white"
               />
             </View>
             {/* <ReusableSelect
@@ -188,28 +190,28 @@ const TablesScreen = () => {
             /> */}
             <TouchableOpacity
               onPress={() => router.push(`/(main)/tables/floor-plan` as Href)}
-              className="py-4 px-6 h-20 flex-row items-center justify-center rounded-lg bg-blue-500 "
+              className="py-3 px-5 h-16 flex-row items-center justify-center rounded-lg bg-blue-500 "
             >
-              <Text className="text-2xl font-bold text-white">Edit Layout</Text>
+              <Text className="text-lg font-bold text-white">Edit Layout</Text>
             </TouchableOpacity>
           </View>
 
           <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 ">
             {/* Legend */}
-            <View className="flex-row items-center gap-6 my-4 ml-4">
+            <View className="flex-row items-center gap-4 my-3 ml-3">
               <View className="flex-row items-center gap-2">
                 <View className="w-4 h-4 rounded-full bg-green-500" />
-                <Text className="text-xl font-semibold text-white">
+                <Text className="text-lg font-semibold text-white">
                   Available
                 </Text>
               </View>
               <View className="flex-row items-center gap-2">
                 <View className="w-4 h-4 rounded-full bg-blue-500" />
-                <Text className="text-xl font-semibold text-white">In Use</Text>
+                <Text className="text-lg font-semibold text-white">In Use</Text>
               </View>
               <View className="flex-row items-center gap-2">
                 <View className="w-4 h-4 rounded-full bg-red-500" />
-                <Text className="text-xl font-semibold text-white">
+                <Text className="text-lg font-semibold text-white">
                   Needs Cleaning
                 </Text>
               </View>

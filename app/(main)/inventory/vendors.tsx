@@ -36,30 +36,30 @@ const VendorRow: React.FC<{
 }> = ({ item, onEdit, onDelete }) => {
   return (
     <Link href={`/inventory/vendors/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row w-full flex items-center p-6 border-b border-gray-700">
-        <Text className="w-[20%] text-2xl font-semibold text-white">
+      <TouchableOpacity className="flex-row w-full flex items-center p-2 border-b border-gray-700">
+        <Text className="w-[20%] text-lg font-semibold text-white">
           {item.name}
         </Text>
-        <Text className="w-[15%] text-2xl text-gray-300">
+        <Text className="w-[15%] text-lg text-gray-300">
           {item.contactPerson}
         </Text>
-        <Text className="w-[30%] text-2xl text-gray-300">{item.email}</Text>
-        <Text className="w-[20%] text-2xl text-gray-300">{item.phone}</Text>
+        <Text className="w-[30%] text-lg text-gray-300">{item.email}</Text>
+        <Text className="w-[20%] text-lg text-gray-300">{item.phone}</Text>
         <View className="w-[10%] items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-2">
-                <MoreHorizontal size={24} color="#9CA3AF" />
+                <MoreHorizontal size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
               <DropdownMenuItem onPress={onEdit}>
-                <Edit className="mr-2 h-6 w-6" color="#9CA3AF" />
-                <Text className="text-xl text-white">Edit Vendor</Text>
+                <Edit className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Text className="text-base text-white">Edit Vendor</Text>
               </DropdownMenuItem>
               <DropdownMenuItem onPress={onDelete}>
-                <Trash2 className="mr-2 h-6 w-6 text-red-400" color="#F87171" />
-                <Text className="text-xl text-red-400">Delete Vendor</Text>
+                <Trash2 className="mr-2 h-5 w-5 text-red-400" color="#F87171" />
+                <Text className="text-base text-red-400">Delete Vendor</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -134,11 +134,21 @@ const VendorScreen = () => {
   return (
     <View className="flex-1">
       <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-        <View className="flex-row py-3 px-3 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
+        <View className="flex-row p-2 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
           {TABLE_HEADERS.map((header) => (
             <Text
               key={header}
-              className={`font-bold text-xl text-gray-400 ${header === "Vendor Name" ? "w-[20%]" : header === "Contact Person" ? "w-[15%]" : header === "Email" ? "w-[30%]" : header === "Phone" ? "w-[15%]" : "w-[0%]"}`}
+              className={`font-bold text-lg text-gray-400 ${
+                header === "Vendor Name"
+                  ? "w-[20%]"
+                  : header === "Contact Person"
+                  ? "w-[15%]"
+                  : header === "Email"
+                  ? "w-[30%]"
+                  : header === "Phone"
+                  ? "w-[15%]"
+                  : "w-[0%]"
+              }`}
             >
               {header}
             </Text>
@@ -149,16 +159,16 @@ const VendorScreen = () => {
                 setIsSearchOpen(true);
                 setTimeout(() => sheetRef.current?.expand(), 0);
               }}
-              className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-4"
+              className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
             >
               <Search color="#9CA3AF" size={20} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleOpenAddModal}
-              className="py-4 px-6 w-1/3 bg-blue-600 rounded-lg flex-row items-center justify-center"
+              className="py-2 px-4 w-1/3 bg-blue-600 rounded-lg flex-row items-center justify-center"
             >
               <Plus color="white" size={20} className="mr-2" />
-              {/* <Text className="text-2xl font-bold text-white">Add New Item</Text> */}
+              {/* <Text className="text-lg font-bold text-white">Add New Item</Text> */}
             </TouchableOpacity>
           </View>
         </View>
@@ -209,15 +219,15 @@ const VendorScreen = () => {
           />
         )}
       >
-        <View className="p-4 border-b border-gray-700">
-          <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-2 border border-gray-600">
+        <View className="p-2 border-b border-gray-700">
+          <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-1 border border-gray-600">
             <Search color="#9CA3AF" size={20} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholder="Search vendors..."
               placeholderTextColor="#9CA3AF"
-              className="flex-1 text-white ml-3 px-6 py-4 text-xl h-20"
+              className="flex-1 text-white ml-3 p-2 text-lg"
             />
           </View>
         </View>
@@ -231,11 +241,11 @@ const VendorScreen = () => {
                 setIsSearchOpen(false);
                 router.push(`/inventory/vendors/${item.id}`);
               }}
-              className="p-4 border-b border-gray-700"
+              className="p-2 border-b border-gray-700"
             >
               <View className="flex-row items-center justify-between">
                 <View className="flex-1">
-                  <Text className="text-white text-xl font-semibold">
+                  <Text className="text-white text-lg font-semibold">
                     {item.name}
                   </Text>
                   <Text className="text-gray-400 text-sm">

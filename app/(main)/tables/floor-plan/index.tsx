@@ -49,12 +49,12 @@ const LayoutNameModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
+      <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
         <DialogHeader>
-          <DialogTitle className="text-white text-3xl">{title}</DialogTitle>
+          <DialogTitle className="text-white text-2xl">{title}</DialogTitle>
         </DialogHeader>
-        <View className="py-4">
-          <Text className="text-2xl text-gray-300 font-medium mb-2">
+        <View className="py-3">
+          <Text className="text-lg text-gray-300 font-medium mb-1.5">
             Room Name
           </Text>
           <TextInput
@@ -62,24 +62,24 @@ const LayoutNameModal = ({
             onChangeText={setName}
             placeholder="e.g., Main Dining, Patio"
             placeholderTextColor="#9CA3AF"
-            className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+            className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
             autoFocus
           />
         </View>
-        <DialogFooter className="flex-row gap-3">
+        <DialogFooter className="flex-row gap-2">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-gray-300">
+            <Text className="text-center text-lg font-bold text-gray-300">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="flex-1 py-4 bg-blue-600 rounded-lg"
+            className="flex-1 py-3 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Save
             </Text>
           </TouchableOpacity>
@@ -120,15 +120,15 @@ const FloorPlanManagementScreen = () => {
   };
 
   return (
-    <View className="flex-1 p-6 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-6">
-        <Text className="text-3xl font-bold text-white"></Text>
+    <View className="flex-1 p-4 bg-[#212121]">
+      <View className="flex-row justify-between items-center mb-4">
+        <Text className="text-2xl font-bold text-white">Manage Rooms</Text>
         <TouchableOpacity
           onPress={() => setAddModalOpen(true)}
-          className="py-4 px-6 bg-blue-600 rounded-lg flex-row items-center"
+          className="py-3 px-5 bg-blue-600 rounded-lg flex-row items-center"
         >
-          <Plus color="white" size={24} className="mr-2" />
-          <Text className="text-2xl font-bold text-white">Add New Room</Text>
+          <Plus color="white" size={20} className="mr-2" />
+          <Text className="text-lg font-bold text-white">Add New Room</Text>
         </TouchableOpacity>
       </View>
 
@@ -140,26 +140,26 @@ const FloorPlanManagementScreen = () => {
             onPress={() =>
               router.push(`/tables/edit-layout?layoutId=${item.id}` as Href)
             }
-            className="flex-row items-center p-6 bg-[#303030] border border-gray-700 rounded-xl mb-4"
+            className="flex-row items-center p-4 bg-[#303030] border border-gray-700 rounded-xl mb-3"
           >
             <View className="flex-1">
-              <Text className="text-2xl underline font-semibold text-white">
+              <Text className="text-xl underline font-semibold text-white">
                 {item.name}
               </Text>
-              <Text className="text-xl text-gray-400 mt-1">
+              <Text className="text-lg text-gray-400 mt-1">
                 {item.tables.length} tables
               </Text>
             </View>
-            <View className="flex-row items-center gap-3">
+            <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={(e) => {
                   e.stopPropagation(); // Prevent navigating
                   setSelectedLayout(item);
                   setEditModalOpen(true);
                 }}
-                className="p-3 bg-[#212121] rounded-lg border border-gray-600"
+                className="p-2 bg-[#212121] rounded-lg border border-gray-600"
               >
-                <Edit size={24} color="#9CA3AF" />
+                <Edit size={20} color="#9CA3AF" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={(e) => {
@@ -167,17 +167,17 @@ const FloorPlanManagementScreen = () => {
                   setSelectedLayout(item);
                   setDeleteModalOpen(true);
                 }}
-                className="p-3 bg-red-900/30 rounded-lg border border-red-500"
+                className="p-2 bg-red-900/30 rounded-lg border border-red-500"
               >
-                <Trash2 size={24} color="#F87171" />
+                <Trash2 size={20} color="#F87171" />
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <View className="items-center justify-center p-10">
-            <Text className="text-2xl text-gray-500">No layouts found.</Text>
-            <Text className="text-xl text-gray-600 mt-2">
+          <View className="items-center justify-center p-8">
+            <Text className="text-xl text-gray-500">No layouts found.</Text>
+            <Text className="text-lg text-gray-600 mt-2">
               Click "Add New Room" to get started.
             </Text>
           </View>

@@ -2,31 +2,31 @@ import React from "react";
 import { Text, View } from "react-native";
 // import { Pie, PolarChart } from "victory-native";
 
-interface ChartData {
-  x: string;
-  y: number;
-}
+// interface ChartData {
+//   x: string;
+//   y: number;
+// }
 
-interface SummaryChartCardProps {
-  title: string;
-  data: ChartData[];
-  colorScale: string[];
-  totalLabel: string; // This prop is no longer visually used but kept for API consistency
-  totalValue: string; // This prop is no longer visually used but kept for API consistency
-}
+// interface SummaryChartCardProps {
+//   title: string;
+//   data: ChartData[];
+//   colorScale: string[];
+//   totalLabel: string; // This prop is no longer visually used but kept for API consistency
+//   totalValue: string; // This prop is no longer visually used but kept for API consistency
+// }
 
-const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
-  title,
-  data,
-  colorScale,
-}) => {
-  const transformedData = React.useMemo(() => {
-    return data.map((item, index) => ({
-      label: item.x,
-      value: item.y,
-      color: colorScale[index % colorScale.length],
-    }));
-  }, [data, colorScale]);
+// const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
+//   title,
+//   data,
+//   colorScale,
+// }) => {
+//   const transformedData = React.useMemo(() => {
+//     return data.map((item, index) => ({
+//       label: item.x,
+//       value: item.y,
+//       color: colorScale[index % colorScale.length],
+//     }));
+//   }, [data, colorScale]);
 
   return (
     <View className="bg-white p-6 rounded-2xl border border-gray-200">
@@ -66,26 +66,26 @@ const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
           </View>
         </View>
 
-        {/* Legend */}
-        <View className="flex-1 ml-6 space-y-2">
-          {data.map((item, index) => (
-            <View key={index} className="flex-row items-center">
-              <View
-                className="w-3 h-3 rounded-full mr-2"
-                style={{
-                  backgroundColor: colorScale[index % colorScale.length],
-                }}
-              />
-              <Text className="text-gray-600">{item.x}</Text>
-              <Text className="ml-auto font-semibold text-gray-800">
-                ${item.y.toFixed(2)}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
+//         {/* Legend */}
+//         <View className="flex-1 ml-6 space-y-2">
+//           {data.map((item, index) => (
+//             <View key={index} className="flex-row items-center">
+//               <View
+//                 className="w-3 h-3 rounded-full mr-2"
+//                 style={{
+//                   backgroundColor: colorScale[index % colorScale.length],
+//                 }}
+//               />
+//               <Text className="text-gray-600">{item.x}</Text>
+//               <Text className="ml-auto font-semibold text-gray-800">
+//                 ${item.y.toFixed(2)}
+//               </Text>
+//             </View>
+//           ))}
+//         </View>
+       </View>
     </View>
   );
-};
+ };
 
 export default SummaryChartCard;

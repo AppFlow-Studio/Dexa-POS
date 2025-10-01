@@ -30,34 +30,36 @@ const ResetPinScreen = () => {
 
   return (
     <View className="w-full">
-      <Text className="text-4xl font-bold text-gray-800 text-center mb-8">
+      <Text className="text-3xl font-bold text-white text-center mb-6">
         Reset Pin
       </Text>
 
       <View className="mb-4">
-        <Text className="text-xl font-semibold text-gray-600 mb-2">
+        <Text className="text-lg font-semibold text-gray-300 mb-2">
           Enter new pin
         </Text>
         <TextInput
           value={newPin}
           onChangeText={setNewPin}
-          className="w-full px-6 py-4 h-20 bg-white border border-gray-200 rounded-lg text-2xl"
+          className="w-full p-4 h-16 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white"
           placeholder="••••"
+          placeholderTextColor="#6B7280"
           keyboardType="number-pad"
           secureTextEntry
-          maxLength={6} // Example max length
+          maxLength={6}
         />
       </View>
 
       <View className="mb-6">
-        <Text className="text-xl font-semibold text-gray-600 mb-2">
+        <Text className="text-lg font-semibold text-gray-300 mb-2">
           Confirm new pin
         </Text>
         <TextInput
           value={confirmPin}
           onChangeText={setConfirmPin}
-          className="w-full p-6 bg-white border border-gray-200 rounded-lg text-2xl"
+          className="w-full p-4 h-16 bg-[#303030] border border-gray-600 rounded-lg text-xl text-white"
           placeholder="••••"
+          placeholderTextColor="#6B7280"
           keyboardType="number-pad"
           secureTextEntry
           maxLength={6}
@@ -66,9 +68,9 @@ const ResetPinScreen = () => {
 
       <TouchableOpacity
         onPress={handleReset}
-        className="w-full p-6 bg-primary-400 rounded-lg items-center"
+        className="w-full p-4 bg-blue-600 rounded-lg items-center"
       >
-        <Text className="text-white text-2xl font-bold">Reset</Text>
+        <Text className="text-white text-xl font-bold">Reset</Text>
       </TouchableOpacity>
     </View>
   );

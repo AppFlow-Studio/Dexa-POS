@@ -18,10 +18,10 @@ const PinButton = ({
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-40 h-20 bg-[#212121] border border-gray-700 rounded-xl items-center justify-center"
+    className="w-32 h-16 bg-[#212121] border border-gray-700 rounded-xl items-center justify-center"
   >
     {typeof value === "string" ? (
-      <Text className="text-3xl font-bold text-white">{value}</Text>
+      <Text className="text-2xl font-bold text-white">{value}</Text>
     ) : (
       value
     )}
@@ -29,12 +29,10 @@ const PinButton = ({
 );
 
 const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
-  // We now call onKeyPress directly without the haptic feedback
   const handlePress = (input: NumpadInput) => {
     onKeyPress(input);
   };
 
-  // Define the layout of the numpad buttons
   const numpadLayout = [
     "1",
     "2",
@@ -45,16 +43,13 @@ const PinNumpad: React.FC<PinNumpadProps> = ({ onKeyPress }) => {
     "7",
     "8",
     "9",
-    { icon: <X color="white" size={24} />, action: "clear" },
+    { icon: <X color="white" size={20} />, action: "clear" },
     "0",
-    {
-      icon: <Delete color="white" size={24} />,
-      action: "backspace",
-    },
+    { icon: <Delete color="white" size={20} />, action: "backspace" },
   ];
 
   return (
-    <View className="flex-row flex-wrap justify-center gap-5">
+    <View className="flex-row flex-wrap justify-center gap-4 max-w-[460px] mx-auto">
       {numpadLayout.map((item, index) => {
         if (typeof item === "string") {
           return (

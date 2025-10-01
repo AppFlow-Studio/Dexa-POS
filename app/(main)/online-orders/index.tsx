@@ -6,12 +6,7 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Href, Link } from "expo-router";
 import { Search, Table } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import {
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View
-} from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 
 const PARTNERS = ["All", "Door Dash", "grubhub", "Uber-Eats", "Food Panda"];
@@ -45,27 +40,27 @@ const OnlineOrdersScreen = () => {
     );
 
     // Group by status
-    return filtered.reduce(
-      (acc, order) => {
-        if (!acc[order.status]) {
-          acc[order.status] = [];
-        }
-        acc[order.status].push(order);
-        return acc;
-      },
-      {} as Record<string, typeof MOCK_ONLINE_ORDERS>
-    );
+    return filtered.reduce((acc, order) => {
+      if (!acc[order.status]) {
+        acc[order.status] = [];
+      }
+      acc[order.status].push(order);
+      return acc;
+    }, {} as Record<string, typeof MOCK_ONLINE_ORDERS>);
   }, [orders, activePartner]);
 
   const filteredForSearch = useMemo(() => {
     return orders.filter((order) => {
       const matchesCustomer = searchCustomer
-        ? order.customerName.toLowerCase().includes(searchCustomer.toLowerCase())
+        ? order.customerName
+            .toLowerCase()
+            .includes(searchCustomer.toLowerCase())
         : true;
       const matchesOrderId = searchOrderId
         ? order.id.toLowerCase().includes(searchOrderId.toLowerCase())
         : true;
-      const matchesPartner = searchPartner === "All" || order.deliveryPartner === searchPartner;
+      const matchesPartner =
+        searchPartner === "All" || order.deliveryPartner === searchPartner;
       return matchesCustomer && matchesOrderId && matchesPartner;
     });
   }, [orders, searchCustomer, searchOrderId, searchPartner]);
@@ -74,46 +69,44 @@ const OnlineOrdersScreen = () => {
   const closeSearchSheet = () => bottomSheetRef.current?.close();
 
   return (
-    <View className="flex-1 px-6 bg-[#212121]">
-      {/* Toolbar */}
-
-      <View className="flex-row items-center justify-between my-4">
-        <View className="flex-row items-center justify-end gap-x-4">
+    <View className="flex-1 px-4 bg-[#212121]">
+      <View className="flex-row items-center justify-between my-3">
+        <View className="flex-row items-center justify-end gap-x-3">
           <TouchableOpacity
             onPress={openSearchSheet}
             activeOpacity={0.8}
-            className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-fit"
+            className="flex-row items-center bg-[#303030] rounded-xl border border-gray-600 p-3"
           >
-            <Search color="#9CA3AF" size={24} />
+            <Search color="#9CA3AF" size={20} />
           </TouchableOpacity>
-          <Link href='/order-processing' asChild>
-            <TouchableOpacity
-              className="flex-row items-center bg-[#303030] rounded-2xl border border-gray-600 p-4 w-fit"
-            >
-              <Table color="#9CA3AF" size={24} />
+          <Link href="/order-processing" asChild>
+            <TouchableOpacity className="flex-row items-center bg-[#303030] rounded-xl border border-gray-600 p-3">
+              <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
           </Link>
         </View>
-        <View className="flex-row items-center bg-[#303030] border border-gray-600 p-2 rounded-xl">
+        <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl">
           {PARTNERS.map((partner) => (
             <TouchableOpacity
               key={partner}
               onPress={() => setActivePartner(partner)}
-              className={`py-3 px-6 rounded-lg ${activePartner === partner ? "bg-[#212121]" : ""}`}
+              className={`py-2 px-4 rounded-lg ${
+                activePartner === partner ? "bg-[#212121]" : ""
+              }`}
             >
               <Text
-                className={`text-xl font-semibold ${activePartner === partner ? "text-blue-400" : "text-gray-300"}`}
+                className={`text-lg font-semibold ${
+                  activePartner === partner ? "text-blue-400" : "text-gray-300"
+                }`}
               >
                 {partner}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
-      {/* Kanban Board */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         {COLUMNS.map((col) => (
           <KanbanColumn
@@ -124,55 +117,59 @@ const OnlineOrdersScreen = () => {
           />
         ))}
       </ScrollView>
-      {/* Search Bottom Sheet */}
+
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
         snapPoints={snapPoints}
-        enablePanDownToClose
         backgroundStyle={{ backgroundColor: "#2b2b2b" }}
         handleIndicatorStyle={{ backgroundColor: "#555" }}
       >
-        <BottomSheetScrollView contentContainerStyle={{ padding: 16 }}>
-          <Text className="text-white text-xl font-bold mb-4">Search Online Orders</Text>
-
-          <View className="gap-y-3 mb-4">
-            <View className="bg-[#303030] border border-gray-600 rounded-xl px-4">
-              <Text className="text-gray-400 mt-3 mb-1">Customer Name</Text>
+        <BottomSheetScrollView contentContainerStyle={{ padding: 12 }}>
+          <Text className="text-white text-lg font-bold mb-3">
+            Search Online Orders
+          </Text>
+          <View className="gap-y-2 mb-3">
+            <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+              <Text className="text-gray-400 mt-2 mb-1 text-sm">
+                Customer Name
+              </Text>
               <TextInput
                 value={searchCustomer}
                 onChangeText={setSearchCustomer}
                 placeholder="e.g. John Smith"
-                placeholderTextColor="#9CA3AF"
-                className="text-white text-lg py-3"
+                className="text-white text-base py-2"
               />
             </View>
-
-            <View className="bg-[#303030] border border-gray-600 rounded-xl px-4">
-              <Text className="text-gray-400 mt-3 mb-1">Order ID</Text>
+            <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+              <Text className="text-gray-400 mt-2 mb-1 text-sm">Order ID</Text>
               <TextInput
                 value={searchOrderId}
                 onChangeText={setSearchOrderId}
                 placeholder="#45654"
-                placeholderTextColor="#9CA3AF"
-                className="text-white text-lg py-3"
-                autoCapitalize="none"
+                className="text-white text-base py-2"
               />
             </View>
-
             <View>
-              <Text className="text-gray-400 mb-2">Delivery Service</Text>
-              <View className="flex-row flex-wrap gap-2">
+              <Text className="text-gray-400 mb-1.5 text-sm">Service</Text>
+              <View className="flex-row flex-wrap gap-1.5">
                 {PARTNERS.map((partner) => (
                   <TouchableOpacity
                     key={`filter_${partner}`}
                     onPress={() => setSearchPartner(partner)}
-                    className={`px-3 py-2 rounded-lg border ${searchPartner === partner
-                      ? "bg-blue-900/30 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
-                      }`}
+                    className={`px-2 py-1.5 rounded-lg border ${
+                      searchPartner === partner
+                        ? "bg-blue-900/30 border-blue-500"
+                        : "bg-[#303030] border-gray-600"
+                    }`}
                   >
-                    <Text className={`${searchPartner === partner ? "text-blue-400" : "text-gray-300"}`}>
+                    <Text
+                      className={`text-sm ${
+                        searchPartner === partner
+                          ? "text-blue-400"
+                          : "text-gray-300"
+                      }`}
+                    >
                       {partner}
                     </Text>
                   </TouchableOpacity>
@@ -181,63 +178,80 @@ const OnlineOrdersScreen = () => {
             </View>
           </View>
 
-          {/* Results */}
-          <View className="mt-2">
-            <Text className="text-gray-300 mb-3">Results ({filteredForSearch.length})</Text>
-            <View className="gap-y-3">
+          <View className="mt-1.5">
+            <Text className="text-gray-300 mb-2 text-sm">
+              Results ({filteredForSearch.length})
+            </Text>
+            <View className="gap-y-2">
               {filteredForSearch.map((order) => (
-                <View key={order.id} className="bg-[#303030] border border-gray-600 rounded-xl p-4">
-                  <View className="flex-row justify-between items-start mb-3">
+                <View
+                  key={order.id}
+                  className="bg-[#303030] border border-gray-600 rounded-xl p-3"
+                >
+                  <View className="flex-row justify-between items-start mb-2">
                     <View>
-                      <Text className="text-white text-base font-semibold">{order.id}</Text>
-                      <Text className="text-gray-300">{order.customerName} • {order.deliveryPartner}</Text>
-                      <Text className="text-gray-400 text-xs mt-1">Status: {order.status}</Text>
+                      <Text className="text-white text-sm font-semibold">
+                        {order.id}
+                      </Text>
+                      <Text className="text-gray-300 text-xs">
+                        {order.customerName} • {order.deliveryPartner}
+                      </Text>
+                      <Text className="text-gray-400 text-[10px] mt-0.5">
+                        Status: {order.status}
+                      </Text>
                     </View>
-                    <Text className="text-white font-semibold">${order.total.toFixed(2)}</Text>
+                    <Text className="text-white font-semibold text-sm">
+                      ${order.total.toFixed(2)}
+                    </Text>
                   </View>
-
-                  <View className="flex-row flex-wrap gap-2">
+                  <View className="flex-row flex-wrap gap-1.5">
                     <TouchableOpacity
-                      onPress={() => updateOrderStatus(order.id, "Confirmed/In-Process")}
-                      className="px-3 py-2 rounded-lg bg-green-600/20 border border-green-500/40"
+                      onPress={() =>
+                        updateOrderStatus(order.id, "Confirmed/In-Process")
+                      }
+                      className="px-2 py-1.5 rounded-lg bg-green-600/20 border border-green-500/40"
                     >
-                      <Text className="text-green-400">Accept</Text>
+                      <Text className="text-green-400 text-xs">Accept</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       onPress={() => rejectOrder(order.id)}
-                      className="px-3 py-2 rounded-lg bg-red-600/20 border border-red-500/40"
+                      className="px-2 py-1.5 rounded-lg bg-red-600/20 border border-red-500/40"
                     >
-                      <Text className="text-red-400">Reject</Text>
+                      <Text className="text-red-400 text-xs">Reject</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
-                      onPress={() => updateOrderStatus(order.id, "Ready to Dispatch")}
-                      className="px-3 py-2 rounded-lg bg-purple-600/20 border border-purple-500/40"
+                      onPress={() =>
+                        updateOrderStatus(order.id, "Ready to Dispatch")
+                      }
+                      className="px-2 py-1.5 rounded-lg bg-purple-600/20 border border-purple-500/40"
                     >
-                      <Text className="text-purple-300">Mark Ready</Text>
+                      <Text className="text-purple-300 text-xs">Ready</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       onPress={() => updateOrderStatus(order.id, "Dispatched")}
-                      className="px-3 py-2 rounded-lg bg-blue-600/20 border border-blue-500/40"
+                      className="px-2 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
                     >
-                      <Text className="text-blue-300">Mark Dispatched</Text>
+                      <Text className="text-blue-300 text-xs">Dispatched</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity
                       onPress={() => archiveOrder(order.id)}
-                      className="px-3 py-2 rounded-lg bg-gray-600/20 border border-gray-500/40"
+                      className="px-2 py-1.5 rounded-lg bg-gray-600/20 border border-gray-500/40"
                     >
-                      <Text className="text-gray-300">Archive</Text>
+                      <Text className="text-gray-300 text-xs">Archive</Text>
                     </TouchableOpacity>
-
-                    <Link href={`/online-orders/${order.id.replace("#", "")}` as Href} asChild>
+                    <Link
+                      href={
+                        `/online-orders/${order.id.replace("#", "")}` as Href
+                      }
+                      asChild
+                    >
                       <TouchableOpacity
-                        onPress={() => { closeSearchSheet(); }}
-                        className="px-3 py-2 rounded-lg bg-[#1f2937] border border-gray-600"
+                        onPress={() => {
+                          closeSearchSheet();
+                        }}
+                        className="px-2 py-1.5 rounded-lg bg-[#1f2937] border border-gray-600"
                       >
-                        <Text className="text-white">View Details</Text>
+                        <Text className="text-white text-xs">Details</Text>
                       </TouchableOpacity>
                     </Link>
                   </View>

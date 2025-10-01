@@ -15,9 +15,9 @@ const LegendRow = ({
         className="w-2.5 h-2.5 rounded-full mr-3"
         style={{ backgroundColor: color }}
       />
-      <Text className="text-gray-600 text-sm">{label}</Text>
+      <Text className="text-gray-100 text-sm">{label}</Text>
     </View>
-    <Text className="font-semibold text-gray-800 text-sm">
+    <Text className="font-semibold text-gray-300 text-sm">
       ${value.toFixed(2)}
     </Text>
   </View>

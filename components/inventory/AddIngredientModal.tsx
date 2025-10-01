@@ -66,22 +66,21 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#303030] border-gray-700 w-[500px]">
+      <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
         <DialogHeader>
-          <DialogTitle className="text-3xl text-white">
+          <DialogTitle className="text-2xl text-white">
             Add Ingredient
           </DialogTitle>
         </DialogHeader>
-        <View className="py-4 gap-y-4">
+        <View className="py-3 gap-y-3">
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-1.5">
               Inventory Item
             </Text>
-            {/* --- MODIFIED: The onValueChange now correctly receives the full option object --- */}
             <Select value={selectedItem} onValueChange={setSelectedItem}>
-              <SelectTrigger className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg">
+              <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
                 <SelectValue
-                  className="text-2xl text-white"
+                  className="text-lg text-white"
                   placeholder="Select an item..."
                 />
               </SelectTrigger>
@@ -92,9 +91,9 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
                       <SelectItem
                         key={opt.value}
                         label={opt.label}
-                        value={opt.value} // Pass the whole object
+                        value={opt.value}
                       >
-                        <Text className="text-2xl">{opt.label}</Text>
+                        <Text className="text-lg">{opt.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -103,31 +102,31 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
             </Select>
           </View>
           <View>
-            <Text className="text-2xl text-gray-300 font-medium mb-2">
+            <Text className="text-lg text-gray-300 font-medium mb-1.5">
               Quantity
             </Text>
             <TextInput
               value={quantity}
               onChangeText={setQuantity}
               keyboardType="numeric"
-              className="p-4 bg-[#212121] border border-gray-600 rounded-lg text-2xl text-white h-20"
+              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
             />
           </View>
         </View>
-        <DialogFooter className="flex-row gap-3">
+        <DialogFooter className="flex-row gap-2">
           <TouchableOpacity
             onPress={onClose}
-            className="flex-1 py-4 bg-[#212121] border border-gray-600 rounded-lg"
+            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-gray-300">
+            <Text className="text-center text-lg font-bold text-gray-300">
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAdd}
-            className="flex-1 py-4 bg-blue-600 rounded-lg"
+            className="flex-1 py-3 bg-blue-600 rounded-lg"
           >
-            <Text className="text-center text-2xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Add
             </Text>
           </TouchableOpacity>

@@ -36,38 +36,42 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
     <Link href={orderPath as Href} asChild>
       <TouchableOpacity
         activeOpacity={0.7}
-        className="flex-row items-center p-6 border-b border-gray-700"
+        className="flex-row items-center p-4 border-b border-gray-700"
       >
         <Text
           style={{ width: "9%" }}
-          className="text-lg font-semibold text-gray-300 px-2"
+          className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.serialNo}
         </Text>
-        <View style={{ width: "9%" }} className="px-2">
-          <Text className="text-xl text-white font-semibold">
+        <View style={{ width: "9%" }} className="px-1.5">
+          <Text className="text-lg text-white font-semibold">
             {order.orderDate}
           </Text>
-          <Text className="text-lg text-gray-400">{order.orderTime}</Text>
+          <Text className="text-base text-gray-400">{order.orderTime}</Text>
         </View>
         <Text
           style={{ width: "9%" }}
-          className="text-lg font-semibold text-gray-300 px-2"
+          className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.orderId}
         </Text>
         <Text
           style={{ width: "12%" }}
-          className="text-lg font-semibold text-white px-2"
+          className="text-base font-semibold text-white px-1.5"
         >
           {order.customer}
         </Text>
-        <View style={{ width: "9%" }} className="px-2">
+        <View style={{ width: "9%" }} className="px-1.5">
           <View
-            className={`px-3 py-2 rounded-full self-start ${statusClasses[order.paymentStatus]}`}
+            className={`px-2 py-1 rounded-full self-start ${
+              statusClasses[order.paymentStatus]
+            }`}
           >
             <Text
-              className={`font-bold text-lg ${statusClasses[order.paymentStatus]}`}
+              className={`font-bold text-base ${
+                statusClasses[order.paymentStatus]
+              }`}
             >
               {order.paymentStatus}
             </Text>
@@ -75,28 +79,28 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         </View>
         <Text
           style={{ width: "9%" }}
-          className="text-lg font-semibold text-gray-300 px-2"
+          className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.server}
         </Text>
         <Text
           style={{ width: "7%" }}
-          className="text-lg font-semibold text-gray-300 text-center px-2"
+          className="text-base font-semibold text-gray-300 text-center px-1.5"
         >
           {order.itemCount}
         </Text>
         <Text
           style={{ width: "9%" }}
-          className="text-lg font-semibold text-gray-300 px-2"
+          className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.type}
         </Text>
         <View style={{ width: "9%" }}>
-          <Text className="text-lg font-bold text-white px-2">
+          <Text className="text-base font-bold text-white px-1.5">
             ${order.total.toFixed(2)}
           </Text>
           {order.refundedAmount != null && order.refundedAmount > 0 && (
-            <Text className="text-lg text-red-400">
+            <Text className="text-base text-red-400">
               -${order.refundedAmount.toFixed(2)}
             </Text>
           )}
@@ -107,10 +111,10 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         >
           <TouchableOpacity
             onPress={() => onViewNotes(order)}
-            className="flex-row items-center justify-center gap-1 bg-blue-900/30 border border-blue-500 py-3 px-3 rounded-lg self-start"
+            className="flex-row items-center justify-center gap-1 bg-blue-900/30 border border-blue-500 py-2 px-2 rounded-lg self-start"
           >
-            <Text className="font-bold text-xl text-blue-400">Notes</Text>
-            <Pencil size={20} color="#60A5FA" />
+            <Text className="font-bold text-base text-blue-400">Notes</Text>
+            <Pencil size={18} color="#60A5FA" />
           </TouchableOpacity>
         </View>
         <View style={{ width: "5%" }} className="items-end">
@@ -125,22 +129,22 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
                 onTouchStart={(e) => e.stopPropagation()}
                 onPress={() => onViewNotes(order)}
               >
-                <Pencil className="mr-2 h-6 w-6" color="#9CA3AF" />
-                <Text className="text-2xl text-white">View Modifiers</Text>
+                <Pencil className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Text className="text-xl text-white">View Modifiers</Text>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onTouchStart={(e) => e.stopPropagation()}
                 onPress={() => onPrint(order)}
               >
-                <Printer className="mr-2 h-6 w-6" color="#9CA3AF" />
-                <Text className="text-2xl text-white">Print Receipt</Text>
+                <Printer className="mr-2 h-5 w-5" color="#9CA3AF" />
+                <Text className="text-xl text-white">Print Receipt</Text>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onTouchStart={(e) => e.stopPropagation()}
                 onPress={() => onDelete(order)}
               >
-                <Trash2 className="mr-2 h-6 w-6 text-red-400" color="#F87171" />
-                <Text className="text-2xl text-red-400">Delete</Text>
+                <Trash2 className="mr-2 h-5 w-5" color="#F87171" />
+                <Text className="text-xl text-red-400">Delete</Text>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

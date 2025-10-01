@@ -41,59 +41,59 @@ const CardPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[600px]">
+    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
       {/* Dark Header */}
-      <View className="p-8">
-        <Text className="text-3xl text-white font-bold text-center">
+      <View className="p-4">
+        <Text className="text-2xl text-white font-bold text-center">
           Card Payment
         </Text>
-        <Text className="text-2xl text-blue-400 font-semibold mt-2 text-center">
+        <Text className="text-xl text-blue-400 font-semibold mt-2 text-center">
           Please use payment terminal
         </Text>
       </View>
 
       {/* Dark Content */}
-      <View className="p-8 bg-[#303030] rounded-b-2xl">
+      <View className="p-4 bg-[#303030] rounded-b-2xl">
         {/* Totals Summary */}
-        <View className="gap-y-3 mb-4">
+        <View className="gap-y-2 mb-4">
           <View className="flex-row justify-between">
-            <Text className="text-2xl text-gray-300">Subtotal</Text>
-            <Text className="text-2xl text-white">
+            <Text className="text-lg text-gray-300">Subtotal</Text>
+            <Text className="text-lg text-white">
               ${activeOrderOutstandingSubtotal.toFixed(2)}
             </Text>
           </View>
           {activeOrderDiscount > 0 && (
             <View className="flex-row justify-between">
-              <Text className="text-2xl text-green-400">Discount</Text>
-              <Text className="text-2xl text-green-400">
+              <Text className="text-lg text-green-400">Discount</Text>
+              <Text className="text-lg text-green-400">
                 -${activeOrderDiscount.toFixed(2)}
               </Text>
             </View>
           )}
           <View className="flex-row justify-between">
-            <Text className="text-2xl text-gray-300">Tax</Text>
-            <Text className="text-2xl text-white">
+            <Text className="text-lg text-gray-300">Tax</Text>
+            <Text className="text-lg text-white">
               ${activeOrderOutstandingTax.toFixed(2)}
             </Text>
           </View>
         </View>
 
         {/* Total */}
-        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-6">
-          <Text className="text-3xl font-bold text-white">Total</Text>
-          <Text className="text-3xl font-bold text-white">
+        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">
+          <Text className="text-2xl font-bold text-white">Total</Text>
+          <Text className="text-2xl font-bold text-white">
             ${activeOrderOutstandingTotal.toFixed(2)}
           </Text>
         </View>
 
         {/* Payment Status */}
-        <View className="flex-row justify-between items-center mb-6">
-          <Text className="text-2xl text-gray-300">Payment Status</Text>
+        <View className="flex-row justify-between items-center mb-4">
+          <Text className="text-lg text-gray-300">Payment Status</Text>
           <View
-            className={`px-4 py-2 rounded-full ${status === "processing" ? "bg-yellow-500/20" : status === "rejected" ? "bg-red-500/20" : "bg-green-500/20"}`}
+            className={`px-3 py-1 rounded-full ${status === "processing" ? "bg-yellow-500/20" : status === "rejected" ? "bg-red-500/20" : "bg-green-500/20"}`}
           >
             <Text
-              className={`text-2xl font-semibold capitalize ${status === "processing" ? "text-yellow-400" : status === "rejected" ? "text-red-400" : "text-green-400"}`}
+              className={`text-lg font-semibold capitalize ${status === "processing" ? "text-yellow-400" : status === "rejected" ? "text-red-400" : "text-green-400"}`}
             >
               {status}
             </Text>
@@ -101,12 +101,12 @@ const CardPaymentView = () => {
         </View>
 
         {/* Buttons */}
-        <View className="border-t border-gray-700 pt-6">
+        <View className="border-t border-gray-700 pt-4">
           <TouchableOpacity
             onPress={close}
-            className="w-full py-4 bg-[#303030] border border-gray-600 rounded-xl items-center"
+            className="w-full py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
           >
-            <Text className="text-2xl font-bold text-white text-center">
+            <Text className="text-lg font-bold text-white text-center">
               Cancel Payment
             </Text>
           </TouchableOpacity>

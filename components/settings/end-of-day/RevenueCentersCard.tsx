@@ -42,8 +42,12 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
     const currentSweep = sweepAngle * progress.value;
     const startRad = startAngle * (Math.PI / 180);
     const endRad = (startAngle + currentSweep) * (Math.PI / 180);
-    return `M ${center + radius * Math.cos(startRad)} ${center + radius * Math.sin(startRad)}
-            A ${radius} ${radius} 0 ${currentSweep > 180 ? 1 : 0} 1 ${center + radius * Math.cos(endRad)} ${center + radius * Math.sin(endRad)}`;
+    return `M ${center + radius * Math.cos(startRad)} ${
+      center + radius * Math.sin(startRad)
+    }
+            A ${radius} ${radius} 0 ${currentSweep > 180 ? 1 : 0} 1 ${
+      center + radius * Math.cos(endRad)
+    } ${center + radius * Math.sin(endRad)}`;
   });
 
   // Animate the color of the arc
@@ -64,40 +68,42 @@ const AnimatedArc: FC<AnimatedArcProps> = ({
 
 // --- Main Card Component ---
 const RevenueCentersCard = () => {
-  // --- 3. Animation Setup ---
   const progress = useSharedValue(0);
   useEffect(() => {
     progress.value = withTiming(1, { duration: 1200 });
   }, [progress]);
 
-  // --- Chart Calculations ---
-  const size = 150;
-  const strokeWidth = 15;
+  const size = 120;
+  const strokeWidth = 12;
   const center = size / 2;
-  const radii = [center - strokeWidth / 2, center - strokeWidth * 2]; // Radii for outer and inner rings
+  const radii = [center - strokeWidth / 2, center - strokeWidth * 2];
 
   const maxValue = Math.max(...revenueCentersData.map((item) => item.value));
-  const totalAngle = 270; // The arc will span 270 degrees
-  const startAngle = -225; // Start from the bottom-left
+  const totalAngle = 270;
+  const startAngle = -225;
 
-  const trackPath = `M ${center + radii[0] * Math.cos(startAngle * (Math.PI / 180))} ${center + radii[0] * Math.sin(startAngle * (Math.PI / 180))}
-                   A ${radii[0]} ${radii[0]} 0 1 1 ${center + radii[0] * Math.cos((startAngle + totalAngle) * (Math.PI / 180))} ${center + radii[0] * Math.sin((startAngle + totalAngle) * (Math.PI / 180))}`;
+  const trackPath = `M ${
+    center + radii[0] * Math.cos(startAngle * (Math.PI / 180))
+  } ${center + radii[0] * Math.sin(startAngle * (Math.PI / 180))}
+                   A ${radii[0]} ${radii[0]} 0 1 1 ${
+    center + radii[0] * Math.cos((startAngle + totalAngle) * (Math.PI / 180))
+  } ${
+    center + radii[0] * Math.sin((startAngle + totalAngle) * (Math.PI / 180))
+  }`;
 
   return (
-    <View className="bg-white">
+    <View>
       <View className="flex-row items-center">
         {/* Chart Container */}
         <View style={{ width: size, height: size }}>
           <Canvas style={{ flex: 1 }}>
-            {/* Background Track */}
             <Path
               path={trackPath}
-              color="#f3f4f6" // gray-100
+              color="#e5e7eb" // A slightly darker gray for better visibility if needed
               style="stroke"
               strokeWidth={strokeWidth}
               strokeCap="round"
             />
-            {/* 4. Render the Animated Arcs */}
             {revenueCentersData.map((item, index) => {
               const sweepAngle = (item.value / maxValue) * totalAngle;
               return (
@@ -117,7 +123,7 @@ const RevenueCentersCard = () => {
         </View>
 
         {/* Legend */}
-        <View className="flex-1 ml-6 gap-y-3">
+        <View className="flex-1 ml-4 gap-y-2">
           {revenueCentersData.map((item) => (
             <LegendRow
               key={item.label}
@@ -131,5 +137,4 @@ const RevenueCentersCard = () => {
     </View>
   );
 };
-
 export default RevenueCentersCard;
