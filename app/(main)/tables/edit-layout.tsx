@@ -3,7 +3,7 @@ import DraggableTable from "@/components/tables/DraggableTable";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Link as LinkIcon, Plus, X } from "lucide-react-native";
+import { Link as LinkIcon, X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler"; // Import Gesture Handler
@@ -12,6 +12,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated"; // Import Animated components
 import Svg, { Line } from "react-native-svg";
+import AddTableButton from "./AddTableButton";
 
 const LayoutEditorScreen = () => {
   const router = useRouter();
@@ -144,13 +145,6 @@ const LayoutEditorScreen = () => {
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={() => setAddModalOpen(true)}
-            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500 text-white"
-          >
-            <Plus size={20} color="white" className="mr-1" />
-            <Text className="text-lg font-bold text-white">Add Table</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => router.back()}
             className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"
           >
@@ -205,6 +199,7 @@ const LayoutEditorScreen = () => {
           </Animated.View>
         </View>
       </GestureDetector>
+      <AddTableButton onPress={() => setAddModalOpen(true)} />
 
       <AddTableModal
         isOpen={isAddModalOpen}

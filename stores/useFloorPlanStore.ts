@@ -54,6 +54,60 @@ const initialLayouts: Layout[] = [
   },
 ];
 
+const findNextAvailablePosition = (
+  existingTables: TableType[],
+  newTableDimensions: { width: number; height: number }
+): { x: number; y: number } => {
+  const GRID_SIZE = 40;
+  const PADDING = 20; // Extra space between tables
+  const CANVAS_WIDTH = 1200; // Assumed width of the floor plan area
+
+  // Start scanning from the top-left
+  for (let y = GRID_SIZE; y < 800; y += GRID_SIZE) {
+    for (let x = GRID_SIZE; x < CANVAS_WIDTH; x += GRID_SIZE) {
+      const candidateRect = {
+        x,
+        y,
+        width: newTableDimensions.width,
+        height: newTableDimensions.height,
+      };
+
+      let isOverlapping = false;
+      for (const table of existingTables) {
+        const shapeInfo = Object.values(TABLE_SHAPES).find(
+          (shape) => shape.component === table.component
+        );
+        if (!shapeInfo) continue;
+
+        const existingRect = {
+          x: table.x - PADDING,
+          y: table.y - PADDING,
+          width: shapeInfo.width + PADDING * 2,
+          height: shapeInfo.height + PADDING * 2,
+        };
+
+        // Basic AABB collision detection
+        if (
+          candidateRect.x < existingRect.x + existingRect.width &&
+          candidateRect.x + candidateRect.width > existingRect.x &&
+          candidateRect.y < existingRect.y + existingRect.height &&
+          candidateRect.y + candidateRect.height > existingRect.y
+        ) {
+          isOverlapping = true;
+          break; // This position is occupied, try the next one
+        }
+      }
+
+      if (!isOverlapping) {
+        // Found an empty spot
+        return { x, y };
+      }
+    }
+  }
+  // Fallback if no space is found (or canvas is full)
+  return { x: 50, y: 50 };
+};
+
 export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
   layouts: initialLayouts,
   activeLayoutId: initialLayouts[0]?.id || null,
@@ -97,14 +151,23 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const shape = TABLE_SHAPES[tableData.shapeId];
     if (!shape) return;
 
+    const activeLayout = get().layouts.find((l) => l.id === layoutId);
+    if (!activeLayout) return;
+
+    // *** SMART PLACEMENT LOGIC ***
+    const newPosition = findNextAvailablePosition(activeLayout.tables, {
+      width: shape.width,
+      height: shape.height,
+    });
+
     const newTable: TableType = {
       id: `${layoutId}_table_${Date.now()}`,
       name: tableData.name,
       capacity: shape.capacity,
       component: shape.component,
       status: "Available",
-      x: 50,
-      y: 50,
+      x: newPosition.x, // Use the calculated position
+      y: newPosition.y, // Use the calculated position
       rotation: 0,
       order: null,
       type: "table",

@@ -6,7 +6,6 @@ import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Link, useRouter } from "expo-router";
 import { Clock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Button, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 const MockEmployees = [
   {
@@ -281,7 +280,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             key={e.id}
             onPress={() => setSelectedEmployeeId(e.id)}
-            className={`mr-3 items-center ${selectedEmployeeId === e.id ? "opacity-100" : "opacity-50"}`}
+            className={`mr-3 items-center ${
+              selectedEmployeeId === e.id ? "opacity-100" : "opacity-50"
+            }`}
           >
             <Image
               source={
@@ -293,7 +294,11 @@ const PinLoginScreen = () => {
             />
             <Text className="text-white text-sm mt-2">{e.fullName}</Text>
             <Text
-              className={`text-xs mt-1 ${e.shiftStatus === "clocked_in" ? "text-green-400" : "text-gray-400"}`}
+              className={`text-xs mt-1 ${
+                e.shiftStatus === "clocked_in"
+                  ? "text-green-400"
+                  : "text-gray-400"
+              }`}
             >
               {e.shiftStatus === "clocked_in" ? "Clocked In" : "Clocked Out"}
             </Text>
@@ -351,12 +356,18 @@ const PinLoginScreen = () => {
                 dialog.variant === "success"
                   ? "#059669"
                   : dialog.variant === "warning"
-                    ? "#F59E0B"
-                    : "#EF4444",
+                  ? "#F59E0B"
+                  : "#EF4444",
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success" ? "text-green-400" : dialog.variant === "warning" ? "text-yellow-400" : "text-red-400"}`}
+              className={`text-2xl font-semibold mb-2 ${
+                dialog.variant === "success"
+                  ? "text-green-400"
+                  : dialog.variant === "warning"
+                  ? "text-yellow-400"
+                  : "text-red-400"
+              }`}
             >
               {dialog.title}
             </Text>
@@ -369,8 +380,8 @@ const PinLoginScreen = () => {
                   dialog.variant === "success"
                     ? "#065F46"
                     : dialog.variant === "warning"
-                      ? "#92400E"
-                      : "#7F1D1D",
+                    ? "#92400E"
+                    : "#7F1D1D",
               }}
             >
               <Text className="text-white text-lg font-medium">OK</Text>

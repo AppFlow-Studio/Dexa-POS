@@ -8,16 +8,22 @@ export const TABLE_SHAPES = {
     label: "2-Seater Square",
     component: TableSquare2Chair,
     capacity: 2,
+    width: 79,
+    height: 97,
   },
   "square-4": {
     label: "4-Seater Square",
     component: TableSquare4Chair,
     capacity: 4,
+    width: 97,
+    height: 97,
   },
   "square-8": {
     label: "8-Seater Long",
     component: TableSquare8Chair,
     capacity: 8,
+    width: 208,
+    height: 97,
   },
   // ... add more shapes here in the future
 };

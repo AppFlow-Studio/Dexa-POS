@@ -5,6 +5,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   LayoutChangeEvent,
   StyleSheet,
   TouchableOpacity,
@@ -14,6 +15,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import Svg, { Line } from "react-native-svg";
 import DraggableTable from "./DraggableTable";
@@ -54,15 +56,19 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });
   const [contentDims, setContentDims] = useState({ width: 0, height: 0 });
 
+  const [isLoading, setIsLoading] = useState(true);
+
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const savedTranslateX = useSharedValue(0);
   const savedTranslateY = useSharedValue(0);
+  const opacity = useSharedValue(0);
 
   // 1. Calculate the bounding box of the tables
   useEffect(() => {
+    setIsLoading(true);
     if (tables.length > 0) {
       let maxX = 0;
       let maxY = 0;
@@ -78,6 +84,9 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
         }
       });
       setContentDims({ width: maxX, height: maxY });
+    } else {
+      setContentDims({ width: 0, height: 0 });
+      setIsLoading(false); // No tables, no need to load
     }
   }, [tables]);
 
@@ -99,6 +108,13 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       savedTranslateX.value = initialTranslateX;
       translateY.value = initialTranslateY;
       savedTranslateY.value = initialTranslateY;
+
+      setIsLoading(false);
+      opacity.value = withTiming(1);
+    } else if (containerDims.width > 0) {
+      // Handle case with no tables
+      setIsLoading(false);
+      opacity.value = withTiming(1);
     }
   }, [containerDims, contentDims]);
 
@@ -141,6 +157,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       onLayout={onLayout}
       className={`flex-1 relative overflow-hidden ${className}`}
     >
+      {isLoading && (
+        <View
+          style={StyleSheet.absoluteFill}
+          className="items-center justify-center bg-[#212121] z-30"
+        >
+          <ActivityIndicator size="large" color="#60A5FA" />
+        </View>
+      )}
       <View className="absolute top-2 left-2 flex flex-col z-20 gap-y-2">
         <TouchableOpacity
           onPress={() => {
