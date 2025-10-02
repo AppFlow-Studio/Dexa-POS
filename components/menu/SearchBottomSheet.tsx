@@ -85,7 +85,7 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       </BottomSheetView>
 
       {/* Results List */}
-      <View className="mt-4">
+      <View className="mt-14">
         <FlatList
           data={searchResults}
           keyExtractor={(item, index) => index.toString()}
