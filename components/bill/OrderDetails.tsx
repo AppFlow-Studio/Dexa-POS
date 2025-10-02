@@ -226,9 +226,7 @@ const OrderDetails: React.FC = () => {
       {/* Header */}
       <View className="flex-row flex items-center justify-center w-full gap-x-4">
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
-          <Label className="text-white font-semibold text-xl">
-            Customer
-          </Label>
+          <Label className="text-white font-semibold text-xl">Customer</Label>
           <TouchableOpacity
             onPress={openSheet} // 3. Trigger the bottom sheet
             className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
@@ -238,13 +236,13 @@ const OrderDetails: React.FC = () => {
                 <User color="#A5A5B5" size={24} />
                 <View className="ml-3 flex-1">
                   <Text
-                    className="text-2xl font-semibold text-white overflow-ellipsis"
+                    className="text-xl font-semibold text-white overflow-ellipsis"
                     numberOfLines={1}
                   >
                     {activeOrder.customer_name}
                   </Text>
                   {activeOrder.customer_phone && (
-                    <Text className="text-base text-gray-400">
+                    <Text className="text-sm text-gray-400">
                       {activeOrder.customer_phone}
                     </Text>
                   )}
@@ -262,9 +260,7 @@ const OrderDetails: React.FC = () => {
           </TouchableOpacity>
         </View>
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-2">
-          <Label className="text-white font-semibold text-xl">
-            Order Type
-          </Label>
+          <Label className="text-white font-semibold text-xl">Order Type</Label>
           {/* --- Order Type Button --- */}
           <TouchableOpacity
             className="w-full flex-row items-center justify-between p-2 border border-background-400 rounded-lg bg-[#303030] h-12"

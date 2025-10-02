@@ -89,14 +89,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
     order.paid_status === "Paid"
       ? "bg-green-600/20"
       : order.paid_status === "Pending"
-        ? "bg-yellow-600/20"
-        : "bg-red-600/20";
+      ? "bg-yellow-600/20"
+      : "bg-red-600/20";
   const paidText =
     order.paid_status === "Paid"
       ? "text-green-400"
       : order.paid_status === "Pending"
-        ? "text-yellow-400"
-        : "text-red-400";
+      ? "text-yellow-400"
+      : "text-red-400";
 
   return (
     <View className="bg-[#303030] p-3 rounded-lg border border-gray-700 mb-2">
@@ -265,7 +265,7 @@ const PreviousOrdersSection = () => {
       </View>
 
       <FlatList
-        data={filteredOrders}
+        data={filteredOrders.slice().reverse()}
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         className="flex-1"

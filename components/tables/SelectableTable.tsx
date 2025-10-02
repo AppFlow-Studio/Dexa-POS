@@ -132,14 +132,18 @@ const SelectableTable: React.FC<SelectableTableProps> = ({
 
           {/* Table Number */}
           <Text
-            className={`font-bold text-xl ${isSelected ? "text-white" : "text-gray-800"}`}
+            className={`font-bold text-xl ${
+              isSelected ? "text-white" : "text-gray-800"
+            }`}
           >
             {table.name}
           </Text>
 
           {/* Capacity */}
           <Text
-            className={`text-lg text-center ${isSelected ? "text-blue-200" : "text-gray-500"}`}
+            className={`text-lg text-center ${
+              isSelected ? "text-blue-200" : "text-gray-500"
+            }`}
           >
             Capacity: {table.capacity}
           </Text>

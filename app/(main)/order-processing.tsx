@@ -119,7 +119,7 @@ const OrderProcessing = () => {
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
+                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center h-8 w-8">
                       <Text className="text-base font-bold text-white">
                         {filteredOrders.length}
                       </Text>
@@ -140,15 +140,18 @@ const OrderProcessing = () => {
               contentContainerClassName="flex-row gap-x-2"
               showsHorizontalScrollIndicator={false}
             >
-              {filteredOrders.map((order) => (
-                <OrderBadge
-                  key={order.id}
-                  order={order}
-                  onMarkReady={() => handleMarkReady(order)}
-                  onViewItems={() => handleViewItems(order.id)}
-                  onRetrieve={() => handleRetrieve(order.id)}
-                />
-              ))}
+              {filteredOrders
+                .slice()
+                .reverse()
+                .map((order) => (
+                  <OrderBadge
+                    key={order.id}
+                    order={order}
+                    onMarkReady={() => handleMarkReady(order)}
+                    onViewItems={() => handleViewItems(order.id)}
+                    onRetrieve={() => handleRetrieve(order.id)}
+                  />
+                ))}
             </ScrollView>
           )}
 

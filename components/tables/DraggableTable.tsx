@@ -265,7 +265,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           />
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
-              className="text-white font-bold text-base text-center"
+              className={`text-base text-center font-bold ${
+                table.type === "table" ? "text-white" : "text-[#757575]"
+              }`}
               numberOfLines={1}
             >
               {displayName}

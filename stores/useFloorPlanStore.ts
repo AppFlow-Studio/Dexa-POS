@@ -21,6 +21,11 @@ interface FloorPlanState {
 
   // Table Actions (now require layoutId)
   addTable: (layoutId: string, tableData: NewTableData) => void;
+  addMultipleTables: (
+    layoutId: string,
+    items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
+  ) => void;
+
   updateTablePosition: (
     layoutId: string,
     tableId: string,
@@ -124,6 +129,50 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: [...state.layouts, newLayout],
     }));
   },
+  addMultipleTables: (layoutId, items) => {
+    let layout = get().layouts.find((l) => l.id === layoutId);
+    if (!layout) return;
+
+    let tablesToAdd: TableType[] = [];
+    let tempTables = [...layout.tables];
+
+    items.forEach((item) => {
+      // This line will now be type-safe because TypeScript knows
+      // item.shapeId is a valid key of TABLE_SHAPES.
+      const shape = TABLE_SHAPES[item.shapeId];
+      if (!shape) return;
+
+      for (let i = 0; i < item.quantity; i++) {
+        const newPosition = findNextAvailablePosition(tempTables, {
+          width: shape.width,
+          height: shape.height,
+        });
+
+        const newTable: TableType = {
+          id: `${layoutId}_table_${Date.now()}_${i}`,
+          name: `${shape.label.split("-")[0]} ${
+            layout.tables.length + tablesToAdd.length + 1
+          }`,
+          capacity: shape.capacity,
+          component: shape.component,
+          status: "Available",
+          x: newPosition.x,
+          y: newPosition.y,
+          rotation: 0,
+          order: null,
+          type: shape.type,
+        };
+        tablesToAdd.push(newTable);
+        tempTables.push(newTable);
+      }
+    });
+
+    set((state) => ({
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId ? { ...l, tables: [...l.tables, ...tablesToAdd] } : l
+      ),
+    }));
+  },
 
   updateLayoutName: (layoutId, newName) => {
     set((state) => ({
@@ -165,12 +214,12 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       name: tableData.name,
       capacity: shape.capacity,
       component: shape.component,
-      status: "Available",
+      status: shape.type === "table" ? "Available" : "Not in Service",
       x: newPosition.x, // Use the calculated position
       y: newPosition.y, // Use the calculated position
       rotation: 0,
       order: null,
-      type: "table",
+      type: shape.type,
     };
 
     set((state) => ({

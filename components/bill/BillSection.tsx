@@ -87,7 +87,6 @@ const BillSection = ({
 
   if (!activeOrderId)
     return (
-
       <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
         <Text className="text-xl font-semibold text-white mb-4">
           No Active Order
@@ -109,13 +108,18 @@ const BillSection = ({
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
 
-
-      <View className="flex flex-row bg-[#212121] px-6 justify-between">
+      <View className="flex flex-row bg-[#212121] px-6 pb-2 justify-between">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${!activeOrder || activeOrder.items.length === 0 || activeOrder.order_status !== "Building" ? "opacity-50" : ""}`}
-            style={{ elevation: 2}} // Set fixed height to match discount button
+            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${
+              !activeOrder ||
+              activeOrder.items.length === 0 ||
+              activeOrder.order_status !== "Building"
+                ? "opacity-50"
+                : ""
+            }`}
+            style={{ elevation: 2 }} // Set fixed height to match discount button
             disabled={
               !activeOrder ||
               activeOrder.items.length === 0 ||
@@ -134,7 +138,6 @@ const BillSection = ({
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-base">
-
               Send to Kitchen ({activeOrder?.items.length})
             </Text>
             <Send size={18} color="#9CA3AF" />
@@ -145,7 +148,6 @@ const BillSection = ({
       <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
 
       {showPlaymentActions && (
-
         <View className="py-3 px-4 bg-[#212121]">
           <View className="flex-row gap-4">
             <TouchableOpacity
@@ -158,15 +160,24 @@ const BillSection = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
-              disabled={!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft) }
-              className={`flex-1 py-2 rounded-xl ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
+              disabled={
+                !activeOrder ||
+                activeOrder.items.length === 0 ||
+                activeOrder.items.some((item) => item.isDraft)
+              }
+              className={`flex-1 py-2 rounded-xl ${
+                !activeOrder ||
+                activeOrder.items.length === 0 ||
+                activeOrder.items.some((item) => item.isDraft)
                   ? "bg-gray-500"
                   : "bg-blue-600"
               }`}
             >
               <Text
-
-                className={`text-center text-xl font-bold ${!activeOrder || activeOrder.items.length === 0 || activeOrder.items.some(item => item.isDraft)
+                className={`text-center text-xl font-bold ${
+                  !activeOrder ||
+                  activeOrder.items.length === 0 ||
+                  activeOrder.items.some((item) => item.isDraft)
                     ? "text-gray-400"
                     : "text-white"
                 }`}
