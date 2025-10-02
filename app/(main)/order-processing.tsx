@@ -86,8 +86,8 @@ const OrderProcessing = () => {
     // First, mark the order as ready
     markAllItemsAsReady(order.id);
 
-    // Then, check if it's a Take Away order and archive it
-    if (order.order_type === "Take Away") {
+    // Then, check if it's a Takeaway order and archive it
+    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
       // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);
@@ -104,7 +104,7 @@ const OrderProcessing = () => {
       <View className="flex-1 flex-row">
         <BillSection />
 
-        <View className="flex-1 p-4 pt-0 bg-[#212121]">
+        <View className="flex-1 p-4 pl-0 pt-0 bg-[#212121]">
           <Accordion
             type="single"
             collapsible
@@ -119,7 +119,7 @@ const OrderProcessing = () => {
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center h-8 w-8">
+                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center">
                       <Text className="text-base font-bold text-white">
                         {filteredOrders.length}
                       </Text>

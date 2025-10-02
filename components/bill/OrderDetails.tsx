@@ -22,7 +22,7 @@ type SelectOption = { label: string; value: string };
 // Static options for the Order Type dropdown
 // const ORDER_TYPE_OPTIONS: SelectOption[] = [
 //   { label: "Dine In", value: "Dine In" },
-//   { label: "Take Away", value: "Take Away" },
+//   { label: "Takeaway", value: "Takeaway" },
 //   { label: "Delivery", value: "Delivery" },
 // ];
 
@@ -43,7 +43,7 @@ const OrderDetails: React.FC = () => {
   const { openSheet } = useCustomerSheetStore();
   // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const currentOrderType = activeOrder?.order_type || "Take Away";
+  const currentOrderType = activeOrder?.order_type || "Takeaway";
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(

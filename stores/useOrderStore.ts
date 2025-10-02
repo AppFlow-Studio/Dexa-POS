@@ -392,7 +392,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         customer_name: "",
         check_status: "Opened",
         paid_status: "Unpaid",
-        order_type: details?.tableId ? "Dine In" : "Take Away",
+        order_type: details?.tableId ? "Dine In" : "Takeaway",
         items: [],
         opened_at: new Date().toISOString(),
         guest_count: details?.guestCount || 1,
@@ -437,7 +437,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         // Check if they're in the same course
         const existingItemCourse =
           coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
-          cartItem.id
+            cartItem.id
           ] ?? 1;
 
         return existingItemCourse === currentCourse;
@@ -542,11 +542,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === updatedItem.id ? updatedItem : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === updatedItem.id ? updatedItem : i
+                ),
+              }
             : o
         ),
       }));
@@ -661,11 +661,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === activeOrderId
             ? {
-              ...o,
-              items: o.items.map((i) =>
-                i.id === itemId ? { ...i, isDraft: false } : i
-              ),
-            }
+                ...o,
+                items: o.items.map((i) =>
+                  i.id === itemId ? { ...i, isDraft: false } : i
+                ),
+              }
             : o
         ),
       }));
@@ -776,11 +776,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const updatedOrders = orders.map((o) =>
         o.id === activeOrderId
           ? {
-            ...o,
-            service_location_id: tableId,
-            order_type: "Dine In" as const,
-            order_status: "Preparing" as const,
-          }
+              ...o,
+              service_location_id: tableId,
+              order_type: "Dine In" as const,
+              order_status: "Preparing" as const,
+            }
           : o
       );
 
@@ -879,13 +879,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orders: state.orders.map((o) =>
           o.id === orderId
             ? {
-              ...o,
-              paid_status: "Paid",
-              check_status: "Closed",
-              total_amount: total, // Save the correct final total
-              total_tax: tax,
-              total_discount: activeOrderDiscount, // Save the discount amount
-            }
+                ...o,
+                paid_status: "Paid",
+                check_status: "Closed",
+                total_amount: total, // Save the correct final total
+                total_tax: tax,
+                total_discount: activeOrderDiscount, // Save the discount amount
+              }
             : o
         ),
       }));
@@ -986,8 +986,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
         }),
       }));
 
-      // if (order?.order_type === "Take Away") {
-      //   //if order type is take away then add it archive after ready
+      // if (order?.order_type === "Takeaway") {
+      //   //if order type is takeaway then add it archive after ready
       //   get().archiveOrder(orderId);
       // }
     },
@@ -1112,7 +1112,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           duration: 2500,
           position: ToastPosition.BOTTOM,
         });
-      } catch { }
+      } catch {}
     },
     transferOrderToTable: (orderId, newTableId) => {
       set((state) => ({
@@ -1167,13 +1167,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       try {
         toast.success(
-          `${newItems.length} item${newItems.length > 1 ? "s" : ""} sent to kitchen`,
+          `${newItems.length} item${
+            newItems.length > 1 ? "s" : ""
+          } sent to kitchen`,
           {
             duration: 2500,
             position: ToastPosition.BOTTOM,
           }
         );
-      } catch { }
+      } catch {}
     },
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);

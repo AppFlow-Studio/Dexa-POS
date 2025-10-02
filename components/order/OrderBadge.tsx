@@ -59,7 +59,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
   return (
     <Tooltip onOpenChange={setShowTooltip}>
       <TooltipTrigger
-        className={`flex-row items-center px-3 py-2 rounded-full border`}
+        className={`flex-row items-center px-3 py-2 rounded-lg border`}
         style={{
           backgroundColor: colors.bg,
           borderColor: colors.border,
