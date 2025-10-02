@@ -87,6 +87,7 @@ const BillSection = ({
 
   if (!activeOrderId)
     return (
+
       <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
         <Text className="text-xl font-semibold text-white mb-4">
           No Active Order
@@ -107,8 +108,7 @@ const BillSection = ({
     <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
-
-      <View className="flex flex-row bg-[#212121] px-6 pb-2 justify-between">
+      <View className="flex flex-row bg-[#212121] px-6 justify-between">
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
@@ -138,6 +138,7 @@ const BillSection = ({
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-base">
+
               Send to Kitchen ({activeOrder?.items.length})
             </Text>
             <Send size={18} color="#9CA3AF" />
@@ -148,6 +149,7 @@ const BillSection = ({
       <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
 
       {showPlaymentActions && (
+
         <View className="py-3 px-4 bg-[#212121]">
           <View className="flex-row gap-4">
             <TouchableOpacity

@@ -104,7 +104,7 @@ const OrderProcessing = () => {
       <View className="flex-1 flex-row">
         <BillSection />
 
-        <View className="flex-1 p-4 pl-0 pt-0 bg-[#212121]">
+        <View className="flex-1 p-4 pt-0 bg-[#212121]">
           <Accordion
             type="single"
             collapsible
@@ -119,7 +119,7 @@ const OrderProcessing = () => {
                     Order Line
                   </Text>
                   {filteredOrders?.length > 0 && (
-                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center">
+                    <Badge className="ml-2 bg-blue-600 rounded-md justify-center items-center p-1 h-8 w-8">
                       <Text className="text-base font-bold text-white">
                         {filteredOrders.length}
                       </Text>
@@ -140,18 +140,16 @@ const OrderProcessing = () => {
               contentContainerClassName="flex-row gap-x-2"
               showsHorizontalScrollIndicator={false}
             >
-              {filteredOrders
-                .slice()
-                .reverse()
-                .map((order) => (
-                  <OrderBadge
-                    key={order.id}
-                    order={order}
-                    onMarkReady={() => handleMarkReady(order)}
-                    onViewItems={() => handleViewItems(order.id)}
-                    onRetrieve={() => handleRetrieve(order.id)}
-                  />
-                ))}
+
+              {filteredOrders.map((order) => (
+                <OrderBadge
+                  key={order.id}
+                  order={order}
+                  onMarkReady={() => handleMarkReady(order)}
+                  onViewItems={() => handleViewItems(order.id)}
+                  onRetrieve={() => handleRetrieve(order.id)}
+                />
+              ))}
             </ScrollView>
           )}
 

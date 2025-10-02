@@ -172,15 +172,23 @@ const LayoutEditorScreen = () => {
 
   if (!activeLayout) {
     return (
-      <Text className="text-white text-center text-lg mt-10">
-        Layout not found.
-      </Text>
+      <View className="flex-1 bg-[#212121] items-center justify-center">
+        <Text className="text-xl text-white">
+          Loading Layout or Layout Not Found...
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mt-4 p-3 bg-blue-600 rounded-lg"
+        >
+          <Text className="text-white text-base">Go Back</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="bg-[#303030] p-4 flex-row justify-between items-center z-10">
+      <View className="bg-[#303030] p-4 flex-row justify-between items-center">
         <Text className="text-2xl font-bold text-white">
           {activeLayout.name}
         </Text>
@@ -203,6 +211,13 @@ const LayoutEditorScreen = () => {
               <Text className="text-lg font-bold text-white">Unmerge</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            onPress={() => setAddModalOpen(true)}
+            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500 text-white"
+          >
+            <Plus size={20} color="white" className="mr-1" />
+            <Text className="text-lg font-bold text-white">Add Table</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.back()}
             className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"

@@ -46,6 +46,7 @@ const ReadOnlyBillItem: React.FC<ReadOnlyBillItemProps> = ({
                   className="flex-row items-center ml-2 px-2 py-0.5 bg-gray-700 border border-gray-500 rounded-3xl"
                   onPress={handleItemPress}
                 >
+
                   <Text className="text-base font-semibold text-gray-300 mr-1">
                     Details
                   </Text>

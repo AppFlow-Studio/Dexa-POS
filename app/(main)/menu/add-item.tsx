@@ -15,6 +15,7 @@ import {
   Camera,
   Plus,
   Save,
+  Search,
   Utensils,
   X,
 } from "lucide-react-native";
@@ -86,6 +87,7 @@ const AddMenuItemScreen: React.FC = () => {
   const inventorySelectionSheetRef = React.useRef<BottomSheet>(null);
   const inventorySnapPoints = useMemo(() => ["70%"], []);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+  const [modifierSearch, setModifierSearch] = useState("");
 
   const { inventoryItems } = useInventoryStore();
 
@@ -295,6 +297,17 @@ const AddMenuItemScreen: React.FC = () => {
     );
   }, [inventorySearchQuery, inventoryItems]);
 
+  // Filter modifier groups based on search (name or description)
+  const filteredModifierGroups = useMemo(() => {
+    if (!modifierSearch.trim()) return modifierGroups;
+    const query = modifierSearch.toLowerCase();
+    return modifierGroups.filter((m) => {
+      const nameMatch = m.name.toLowerCase().includes(query);
+      const descMatch = (m.description || "").toLowerCase().includes(query);
+      return nameMatch || descMatch;
+    });
+  }, [modifierSearch, modifierGroups]);
+
   // Open inventory selection sheet
   const openInventorySelection = () => {
     setInventorySearchQuery("");
@@ -335,14 +348,15 @@ const AddMenuItemScreen: React.FC = () => {
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) =>
-      (
-        <BottomSheetBackdrop
-          {...backdropProps}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+
+    (
+      <BottomSheetBackdrop
+        {...backdropProps}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
 
@@ -390,9 +404,9 @@ const AddMenuItemScreen: React.FC = () => {
                 Name *
               </Text>
               <TextInput
-                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${
-                  errors.name ? "border-red-500" : "border-gray-600"
-                }`}
+
+                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${errors.name ? "border-red-500" : "border-gray-600"
+                  }`}
                 placeholder="Enter item name"
                 placeholderTextColor="#9CA3AF"
                 value={formData.name}
@@ -564,6 +578,7 @@ const AddMenuItemScreen: React.FC = () => {
                             ? "text-white"
                             : "text-gray-300"
                         }`}
+
                       >
                         {category.name}
                       </Text>
@@ -612,15 +627,40 @@ const AddMenuItemScreen: React.FC = () => {
               <Text className="text-xl font-semibold text-white">
                 Modifier Groups
               </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/menu/add-modifier")}
-                className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
-              >
-                <Plus size={18} color="white" />
-                <Text className="text-base text-white font-medium ml-1">
-                  Add Modifier
-                </Text>
-              </TouchableOpacity>
+              <View className="flex w-fit flex-row items-stretch justify-center gap-x-2">
+                <View className="w-fit flex-row items-center justify-between gap-x-2 bg-gray-600 rounded-lg">
+                  <View className="w-fit flex-row items-center justify-start gap-x-2">
+                    <View className="items-center pl-2 py-1.5 rounded-lg">
+                      <Search size={18} color="white" />
+                    </View>
+                    <TextInput
+                      value={modifierSearch}
+                      onChangeText={setModifierSearch}
+                      placeholder="Search..."
+                      placeholderTextColor="#9CA3AF"
+                      className="text-white h-10 w-[50%] text-sm 600 rounded-lg px-3 py-1.5"
+                    />
+                  </View>
+                  <TouchableOpacity
+                    className="flex-row items-center px-3 py-1.5 rounded-lg"
+                    onPress={() => setModifierSearch("")}
+                  >
+                    <X size={18} color="white" />
+                    <Text className="text-base text-white font-medium ml-1">
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  onPress={() => router.push("/menu/add-modifier")}
+                  className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
+                >
+                  <Plus size={18} color="white" />
+                  <Text className="text-base text-white font-medium ml-1">
+                    Add
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {modifierGroups.length === 0 ? (
@@ -641,55 +681,48 @@ const AddMenuItemScreen: React.FC = () => {
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
-                  {modifierGroups.map((modifier) => (
+
+                  {filteredModifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}
                       onPress={() => toggleModifier(modifier.id)}
-                      className={`px-4 py-3 h-16 rounded-lg border ${
-                        formData.modifiers.includes(modifier.id)
-                          ? "bg-green-600 border-green-500"
-                          : "bg-[#303030] border-gray-600"
-                      }`}
+                      className={`px-4 py-3 h-16 rounded-lg border ${formData.modifiers.includes(modifier.id)
+                        ? "bg-green-600 border-green-500"
+                        : "bg-[#303030] border-gray-600"
+                        }`}
                     >
                       <View className="flex-row items-center gap-1.5">
                         <Text
-                          className={`text-lg font-medium ${
-                            formData.modifiers.includes(modifier.id)
-                              ? "text-white"
-                              : "text-gray-300"
-                          }`}
+                          className={`text-lg font-medium ${formData.modifiers.includes(modifier.id)
+                            ? "text-white"
+                            : "text-gray-300"
+                            }`}
                         >
                           {modifier.name}
                         </Text>
                         <View
-                          className={`px-2.5 py-1.5 rounded-full ${
-                            modifier.type === "required"
-                              ? `${
-                                  formData.modifiers.includes(modifier.id)
-                                    ? "bg-red-900 border border-red-500"
-                                    : "bg-red-900/30 border border-red-500"
-                                }`
-                              : `${
-                                  formData.modifiers.includes(modifier.id)
-                                    ? "bg-blue-900 border border-blue-500"
-                                    : "bg-blue-900/30 border border-blue-500"
-                                }`
-                          }`}
+                          className={`px-2.5 py-1.5 rounded-full ${modifier.type === "required"
+                            ? `${formData.modifiers.includes(modifier.id)
+                              ? "bg-red-900 border border-red-500"
+                              : "bg-red-900/30 border border-red-500"
+                            }`
+                            : `${formData.modifiers.includes(modifier.id)
+                              ? "bg-blue-900 border border-blue-500"
+                              : "bg-blue-900/30 border border-blue-500"
+                            }`
+                            }`}
                         >
                           <Text
-                            className={`text-base ${
-                              modifier.type === "required"
-                                ? `${
-                                    formData.modifiers.includes(modifier.id)
-                                      ? "text-red-100"
-                                      : "text-red-400"
-                                  }`
-                                : `${
-                                    formData.modifiers.includes(modifier.id)
-                                      ? "text-blue-100"
-                                      : "text-blue-400"
-                                  }`
-                            }`}
+                            className={`text-base ${modifier.type === "required"
+                              ? `${formData.modifiers.includes(modifier.id)
+                                ? "text-red-100"
+                                : "text-red-400"
+                              }`
+                              : `${formData.modifiers.includes(modifier.id)
+                                ? "text-blue-100"
+                                : "text-blue-400"
+                              }`
+                              }`}
                           >
                             {modifier.type}
                           </Text>
@@ -837,21 +870,20 @@ const AddMenuItemScreen: React.FC = () => {
                   availability: !prev.availability,
                 }))
               }
-              className={`flex-row items-center justify-between p-4 rounded-lg border ${
-                formData.availability
-                  ? "bg-green-900/30 border-green-500"
-                  : "bg-red-900/30 border-red-500"
-              }`}
+
+              className={`flex-row items-center justify-between p-4 rounded-lg border ${formData.availability
+                ? "bg-green-900/30 border-green-500"
+                : "bg-red-900/30 border-red-500"
+                }`}
             >
               <Text className="text-xl text-white font-medium">
                 {formData.availability ? "Available" : "Unavailable"}
               </Text>
               <View
-                className={`w-7 h-7 rounded-full border-2 ${
-                  formData.availability
-                    ? "bg-green-500 border-green-500"
-                    : "bg-transparent border-red-500"
-                }`}
+                className={`w-7 h-7 rounded-full border-2 ${formData.availability
+                  ? "bg-green-500 border-green-500"
+                  : "bg-transparent border-red-500"
+                  }`}
               >
                 {formData.availability && (
                   <View className="w-2.5 h-2.5 bg-white rounded-full m-1" />
@@ -973,9 +1005,9 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="bg-[#212121] p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Status</Text>
                 <Text
-                  className={`text-xl font-medium ${
-                    formData.availability ? "text-green-400" : "text-red-400"
-                  }`}
+
+                  className={`text-xl font-medium ${formData.availability ? "text-green-400" : "text-red-400"
+                    }`}
                 >
                   {formData.availability ? "Available" : "Unavailable"}
                 </Text>
@@ -1139,30 +1171,28 @@ const AddMenuItemScreen: React.FC = () => {
                 const isCurrentlyEditing =
                   editingRecipeItemIndex !== null &&
                   recipeItems[editingRecipeItemIndex]?.inventoryItemId ===
-                    inventoryItem.id;
+                  inventoryItem.id;
 
                 return (
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
-                    className={`p-3 border-b border-gray-700 ${
-                      isCurrentlyEditing
-                        ? "bg-blue-900 border-blue-600"
-                        : isAlreadyInRecipe
+                    className={`p-3 border-b border-gray-700 ${isCurrentlyEditing
+                      ? "bg-blue-900 border-blue-600"
+                      : isAlreadyInRecipe
                         ? "bg-gray-800 opacity-50"
                         : "bg-transparent"
-                    }`}
+                      }`}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
                         <Text
-                          className={`font-semibold text-base ${
-                            isCurrentlyEditing
-                              ? "text-blue-300"
-                              : isAlreadyInRecipe
+                          className={`font-semibold text-base ${isCurrentlyEditing
+                            ? "text-blue-300"
+                            : isAlreadyInRecipe
                               ? "text-gray-500"
                               : "text-white"
-                          }`}
+                            }`}
                         >
                           {inventoryItem.name}
                         </Text>
@@ -1174,6 +1204,12 @@ const AddMenuItemScreen: React.FC = () => {
                               ? "text-gray-600"
                               : "text-gray-400"
                           }`}
+                          className={`text-xs ${isCurrentlyEditing
+                            ? "text-blue-400"
+                            : isAlreadyInRecipe
+                              ? "text-gray-600"
+                              : "text-gray-400"
+                            }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $
                           {inventoryItem.cost.toFixed(2)}

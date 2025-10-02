@@ -304,7 +304,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           <View className="h-[1px] bg-gray-700 w-full mx-auto" />
 
           {(currentOrderType === "Delivery" ||
-            currentOrderType === "Takeaway") && (
+            currentOrderType === "Take Away") && (
             <View className="mt-4">
               <Text className="text-white font-semibold text-2xl mb-3">
                 Customer Information

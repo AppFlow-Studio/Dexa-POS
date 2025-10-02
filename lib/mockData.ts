@@ -886,7 +886,22 @@ export const ALL_MODIFIER_GROUPS: ModifierCategory[] = [
 
   // Ice Cream Modifiers
   ...iceCreamModifiers,
-];
+].map((group) => {
+  if (group?.type === "required" && Array.isArray(group.options)) {
+    const hasDefault = group.options.some((o: any) => o?.isDefault);
+    // Ensure exactly one default when none is present:
+    if (!hasDefault && group.options.length > 0) {
+      return {
+        ...group,
+        options: group.options.map((opt: any, idx: number) => ({
+          ...opt,
+          isDefault: idx === 0,
+        })),
+      } as ModifierCategory;
+    }
+  }
+  return group;
+});
 
 export const MOCK_VENDORS: Vendor[] = [
   {

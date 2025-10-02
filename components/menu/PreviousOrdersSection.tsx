@@ -98,6 +98,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
       ? "text-yellow-400"
       : "text-red-400";
 
+
   return (
     <View className="bg-[#303030] p-3 rounded-lg border border-gray-700 mb-2">
       <View className="flex-row items-center justify-between">

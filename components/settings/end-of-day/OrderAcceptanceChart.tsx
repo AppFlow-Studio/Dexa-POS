@@ -11,6 +11,7 @@ import Animated, {
 // import { Area, CartesianChart, Line, useChartPressState } from "victory-native";
 
 // import { View } from "react-native";
+
 // import inter from "../../../assets/fonts/Inter-Medium.ttf";
 
 // // --- Mock Data ---
@@ -28,7 +29,7 @@ import Animated, {
 // const COLORS = { dineIn: "#3b82f6", takeout: "#f97316" };
 
 const OrderAcceptanceChart = () => {
-  const font = useFont(inter as any, 12);
+  // const font = useFont(inter as any, 12);
   // const { state, isActive } = useChartPressState({
   //   x: 0,
   //   y: { dineIn: 0, takeout: 0 },
@@ -46,7 +47,7 @@ const OrderAcceptanceChart = () => {
 
   return (
     <View className="h-[300px] overflow-hidden">
-      <Animated.View style={[{ height: 300 }, animatedStyle]}>
+      <Animated.View style={[{ height: 300 }]}>
         {/* <CartesianChart
           data={orderAcceptanceData}
           xKey="hour"

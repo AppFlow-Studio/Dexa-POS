@@ -440,6 +440,9 @@ const CreateExternalExpenseScreen = () => {
               <Text className="text-white text-base mb-1.5">Store Name</Text>
               <TextInput
                 value={storeName}
+
+                placeholderTextColor="#9CA3AF"
+
                 onChangeText={setStoreName}
                 placeholder="e.g., Fresh Market"
                 className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
@@ -452,6 +455,8 @@ const CreateExternalExpenseScreen = () => {
                 onChangeText={setStoreLocation}
                 placeholder="e.g., 123 Main St"
                 className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                 placeholderTextColor="#9CA3AF"
+
               />
             </View>
           </View>
@@ -464,6 +469,8 @@ const CreateExternalExpenseScreen = () => {
           <TextInput
             value={expenseNotes}
             onChangeText={setExpenseNotes}
+
+            placeholderTextColor="#9CA3AF"
             placeholder="e.g., Vendor delay"
             multiline
             className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 min-h-[80px]"

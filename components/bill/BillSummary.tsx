@@ -40,6 +40,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   return (
     <View className="flex-1 bg-[#212121]">
+
       <View className=" px-6 h-full">
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-col items-start justify-start">
@@ -184,6 +185,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                 className={`rounded-xl mb-1.5 ${
                                   highlight ? "border border-blue-500" : ""
                                 }`}
+
                               >
                                 <BillItem
                                   item={item}
