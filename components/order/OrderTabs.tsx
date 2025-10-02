@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 // Define types for props
-type TabName = "All" | "Dine In" | "Take Away" | "Delivery";
+type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
 
 interface Tab {
   name: TabName;
@@ -19,7 +19,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
   const TABS: Tab[] = [
     { name: "All", count: totalOrder },
     { name: "Dine In" },
-    { name: "Take Away" },
+    { name: "Takeaway" },
     { name: "Delivery" },
   ];
 

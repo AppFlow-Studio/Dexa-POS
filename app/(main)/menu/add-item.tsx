@@ -348,6 +348,7 @@ const AddMenuItemScreen: React.FC = () => {
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) =>
+
     (
       <BottomSheetBackdrop
         {...backdropProps}
@@ -403,6 +404,7 @@ const AddMenuItemScreen: React.FC = () => {
                 Name *
               </Text>
               <TextInput
+
                 className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${errors.name ? "border-red-500" : "border-gray-600"
                   }`}
                 placeholder="Enter item name"
@@ -564,16 +566,19 @@ const AddMenuItemScreen: React.FC = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => toggleCategory(category.name)}
-                      className={`px-4 py-3 rounded-lg border ${formData.categories.includes(category.name)
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`px-4 py-3 rounded-lg border ${
+                        formData.categories.includes(category.name)
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <Text
-                        className={`text-lg font-medium ${formData.categories.includes(category.name)
-                          ? "text-white"
-                          : "text-gray-300"
-                          }`}
+                        className={`text-lg font-medium ${
+                          formData.categories.includes(category.name)
+                            ? "text-white"
+                            : "text-gray-300"
+                        }`}
+
                       >
                         {category.name}
                       </Text>
@@ -676,6 +681,7 @@ const AddMenuItemScreen: React.FC = () => {
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
+
                   {filteredModifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}
@@ -864,6 +870,7 @@ const AddMenuItemScreen: React.FC = () => {
                   availability: !prev.availability,
                 }))
               }
+
               className={`flex-row items-center justify-between p-4 rounded-lg border ${formData.availability
                 ? "bg-green-900/30 border-green-500"
                 : "bg-red-900/30 border-red-500"
@@ -998,6 +1005,7 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="bg-[#212121] p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Status</Text>
                 <Text
+
                   className={`text-xl font-medium ${formData.availability ? "text-green-400" : "text-red-400"
                     }`}
                 >
@@ -1189,6 +1197,13 @@ const AddMenuItemScreen: React.FC = () => {
                           {inventoryItem.name}
                         </Text>
                         <Text
+                          className={`text-xs ${
+                            isCurrentlyEditing
+                              ? "text-blue-400"
+                              : isAlreadyInRecipe
+                              ? "text-gray-600"
+                              : "text-gray-400"
+                          }`}
                           className={`text-xs ${isCurrentlyEditing
                             ? "text-blue-400"
                             : isAlreadyInRecipe

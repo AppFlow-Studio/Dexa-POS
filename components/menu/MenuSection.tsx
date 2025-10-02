@@ -91,7 +91,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   // Get current order type
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const currentOrderType = activeOrder?.order_type || "Take Away";
+  const currentOrderType = activeOrder?.order_type || "Takeaway";
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
       updateActiveOrderDetails({ order_type: orderType as any });
@@ -195,7 +195,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   return (
     <>
       <View className="mt-4 flex-1 bg-[#212121]">
-        <View className="flex flex-row items-center justify-between pb-3 px-4">
+]        <View className="flex flex-row items-center justify-between pb-3">
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
             <TouchableOpacity
@@ -208,14 +208,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <Text className="text-blue-400 font-semibold text-base">
                 {typeof currentOrderType === "string"
                   ? currentOrderType
-                  : (currentOrderType as any)?.label || "Take Away"}
+                  : (currentOrderType as any)?.label || "Takeaway"}
               </Text>
             </TouchableOpacity>
           </View>
           <View className="flex-1 flex-row justify-end items-center gap-x-2">
             <TouchableOpacity
               onPress={() => setActiveTab("Menu")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Menu"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -227,7 +231,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab("Open Item")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Open Item" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Open Item"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <PackagePlus color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -241,7 +249,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
             <TouchableOpacity
               onPress={() => setActiveTab("Orders")}
-              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders" ? "border-2 border-blue-400" : "border border-gray-600"}`}
+              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
+                activeTab == "Orders"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <Logs color="#9CA3AF" size={20} />
               <Text className="text-gray-300 ml-2 text-base">Orders</Text>
@@ -284,8 +296,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                           activeMeal === menu.name
                             ? "bg-blue-600 border-blue-400"
                             : !isAvailable
-                              ? "bg-gray-700 border-gray-600 opacity-60"
-                              : "bg-[#303030] border-gray-600"
+                            ? "bg-gray-700 border-gray-600 opacity-60"
+                            : "bg-[#303030] border-gray-600"
                         }`}
                       >
                         <View className="flex-row justify-between items-center">
@@ -334,7 +346,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        <View className="flex-1 px-4">
+        <View className="flex-1">
           {activeTab === "Menu" && (
             <MenuControls
               activeMeal={activeMeal}

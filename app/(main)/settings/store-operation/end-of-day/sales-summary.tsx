@@ -1,5 +1,5 @@
 // import OrderAcceptanceChart from "@/components/settings/end-of-day/OrderAcceptanceChart";
-import TotalItemsSoldChart from "@/components/settings/end-of-day/TotalItemsSoldChart";
+//import TotalItemsSoldChart from "@/components/settings/end-of-day/TotalItemsSoldChart";
 import { Briefcase, DollarSign, FileText } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -74,7 +74,7 @@ const SalesSummaryScreen = () => {
           </DashboardCard>
 
           <DashboardCard title="Total Items Sold" className="flex-1">
-            <TotalItemsSoldChart />
+            {/*<TotalItemsSoldChart />*/}
           </DashboardCard>
         </View>
       </ScrollView>

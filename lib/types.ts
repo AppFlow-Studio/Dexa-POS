@@ -131,7 +131,7 @@ export interface Order {
   id: string;
   customerName: string;
   status: "Ready" | "Preparing";
-  type: "Dine In" | "Take Away" | "Delivery";
+  type: "Dine In" | "Takeaway" | "Delivery";
   table: number;
   time: string;
 }
@@ -340,7 +340,7 @@ export type PaymentStatus =
   | "In Progress"
   | "Refunded"
   | "Partially Refunded";
-export type OrderType = "Dine In" | "Take Away" | "Delivery";
+export type OrderType = "Dine In" | "Takeaway" | "Delivery";
 
 export interface PreviousOrder {
   serialNo: string;
@@ -470,7 +470,7 @@ export interface OrderProfile {
   check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
-  order_type?: "Dine In" | "Take Away" | "Delivery";
+  order_type?: "Dine In" | "Takeaway" | "Delivery";
 
   // Payment status for the order
   paid_status: "Paid" | "Pending" | "Unpaid";

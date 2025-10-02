@@ -2,18 +2,18 @@ import React from "react";
 import { Text, View } from "react-native";
 // import { Pie, PolarChart } from "victory-native";
 
-interface ChartData {
-  x: string;
-  y: number;
-}
+// interface ChartData {
+//   x: string;
+//   y: number;
+// }
 
-interface SummaryChartCardProps {
-  title: string;
-  data: ChartData[];
-  colorScale: string[];
-  totalLabel: string; // This prop is no longer visually used but kept for API consistency
-  totalValue: string; // This prop is no longer visually used but kept for API consistency
-}
+// interface SummaryChartCardProps {
+//   title: string;
+//   data: ChartData[];
+//   colorScale: string[];
+//   totalLabel: string; // This prop is no longer visually used but kept for API consistency
+//   totalValue: string; // This prop is no longer visually used but kept for API consistency
+// }
 
 const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
   title,
@@ -66,6 +66,7 @@ const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
           </View>
         </View>
 
+
         {/* Legend */}
         {/* <View className="flex-1 ml-6 space-y-2">
           {data.map((item, index) => (
@@ -86,6 +87,6 @@ const SummaryChartCard: React.FC<SummaryChartCardProps> = ({
       </View>
     </View>
   );
-};
+ };
 
 export default SummaryChartCard;

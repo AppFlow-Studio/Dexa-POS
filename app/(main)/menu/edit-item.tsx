@@ -449,6 +449,7 @@ const EditMenuItemScreen: React.FC = () => {
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) =>
+
     (
       <BottomSheetBackdrop
         {...backdropProps}
@@ -627,7 +628,6 @@ const EditMenuItemScreen: React.FC = () => {
                 <Text className="text-xl font-semibold text-white">
                   Modifiers
                 </Text>
-
                 <View className="flex w-fit flex-row items-stretch justify-center gap-x-2">
                   <View className="w-fit flex-row items-center justify-between gap-x-2 bg-gray-600   rounded-lg">
                     <View className="w-fit flex-row items-center justify-start gap-x-2">
@@ -952,6 +952,13 @@ const EditMenuItemScreen: React.FC = () => {
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
                         <Text
+                          className={`font-semibold text-base ${
+                            isCurrentlyEditing
+                              ? "text-blue-300"
+                              : isAlreadyInRecipe
+                              ? "text-gray-500"
+                              : "text-white"
+                          }`}
                           className={`font-semibold text-base ${isCurrentlyEditing
                             ? "text-blue-300"
                             : isAlreadyInRecipe
@@ -962,6 +969,14 @@ const EditMenuItemScreen: React.FC = () => {
                           {inventoryItem.name}
                         </Text>
                         <Text
+                          className={`text-xs ${
+                            isCurrentlyEditing
+                              ? "text-blue-400"
+                              : isAlreadyInRecipe
+                              ? "text-gray-600"
+                              : "text-gray-400"
+                          }`}
+
                           className={`text-xs ${isCurrentlyEditing
                             ? "text-blue-400"
                             : isAlreadyInRecipe

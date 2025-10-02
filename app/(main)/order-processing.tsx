@@ -86,8 +86,8 @@ const OrderProcessing = () => {
     // First, mark the order as ready
     markAllItemsAsReady(order.id);
 
-    // Then, check if it's a Take Away order and archive it
-    if (order.order_type === "Take Away") {
+    // Then, check if it's a Takeaway order and archive it
+    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
       // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);
@@ -140,6 +140,7 @@ const OrderProcessing = () => {
               contentContainerClassName="flex-row gap-x-2"
               showsHorizontalScrollIndicator={false}
             >
+
               {filteredOrders.map((order) => (
                 <OrderBadge
                   key={order.id}

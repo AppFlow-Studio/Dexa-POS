@@ -57,7 +57,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
   const orderTypes = [
     { value: "Dine In", label: "Dine In" },
-    { value: "Take Away", label: "Take Away" },
+    { value: "Takeaway", label: "Takeaway" },
     { value: "Delivery", label: "Delivery" },
   ];
 

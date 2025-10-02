@@ -10,7 +10,8 @@ import Animated, {
 } from "react-native-reanimated";
 // import { Area, CartesianChart, Line, useChartPressState } from "victory-native";
 
-import { View } from "react-native";
+// import { View } from "react-native";
+
 // import inter from "../../../assets/fonts/Inter-Medium.ttf";
 
 // // --- Mock Data ---

@@ -80,6 +80,7 @@ const PaymentSuccessView = () => {
       markOrderAsPaid,
       startNewOrder,
       setActiveOrder,
+      archiveOrder,
     } = useOrderStore.getState();
     // decrementStockFromSale(items);
 
@@ -136,6 +137,16 @@ const PaymentSuccessView = () => {
     if (activeOrderId) {
       updateOrderStatus(activeOrderId, "Preparing");
     }
+
+    if (
+      activeOrder?.order_type === "Takeaway" &&
+      activeOrder.order_status === "Ready"
+    ) {
+      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
+      setTimeout(() => {
+        archiveOrder(activeOrder?.id);
+      }, 500); // 0.5 second delay
+    }
     close();
   };
 
@@ -157,7 +168,16 @@ const PaymentSuccessView = () => {
       (item.customizations.modifiers &&
         item.customizations.modifiers.length > 0) ||
       item.customizations.notes
-        ? `${item.name}${item.customizations.notes ? ` (${item.customizations.notes})` : ""}${item.customizations.modifiers && item.customizations.modifiers.length > 0 ? ` [${item.customizations.modifiers.map((m) => m.categoryName).join(", ")}]` : ""}`
+        ? `${item.name}${
+            item.customizations.notes ? ` (${item.customizations.notes})` : ""
+          }${
+            item.customizations.modifiers &&
+            item.customizations.modifiers.length > 0
+              ? ` [${item.customizations.modifiers
+                  .map((m) => m.categoryName)
+                  .join(", ")}]`
+              : ""
+          }`
         : item.name,
   }));
 
