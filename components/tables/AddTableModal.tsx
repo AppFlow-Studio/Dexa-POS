@@ -123,47 +123,48 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
           <View>
             <Text className="text-base font-medium text-gray-300 mb-2">
               Object Name
-        <View className="gap-y-3 py-3">
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Table Name
             </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g., T-24 or Main Bar"
-              placeholderTextColor="#6B7280"
-              className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
-
-            />
-          </View>
-
-          {/* Shape Selection Section with Vertical Scroll */}
-          <View>
-            <Text className="text-base font-medium text-gray-300 mb-2">
-              Select Shape
-            </Text>
-            <ScrollView style={{ maxHeight: 290 }}>
-              <View className="flex-row flex-wrap gap-4 justify-center">
-                {SHAPE_OPTIONS.map(
-                  ({ id, label, component: ShapeComponent }) => (
-                    <ShapeButton
-                      key={id}
-                      id={id}
-                      label={label}
-                      ShapeComponent={ShapeComponent}
-                      isSelected={selectedShapeId === id}
-                      onPress={() =>
-                        setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
-                      }
-                    />
-                  )
-                )}
+            <View className="gap-y-3 py-3">
+              <View>
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Table Name
+                </Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g., T-24 or Main Bar"
+                  placeholderTextColor="#6B7280"
+                  className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
+                />
               </View>
-            </ScrollView>
+
+              {/* Shape Selection Section with Vertical Scroll */}
+              <View>
+                <Text className="text-base font-medium text-gray-300 mb-2">
+                  Select Shape
+                </Text>
+                <ScrollView style={{ maxHeight: 290 }}>
+                  <View className="flex-row flex-wrap gap-4 justify-center">
+                    {SHAPE_OPTIONS.map(
+                      ({ id, label, component: ShapeComponent }) => (
+                        <ShapeButton
+                          key={id}
+                          id={id}
+                          label={label}
+                          ShapeComponent={ShapeComponent}
+                          isSelected={selectedShapeId === id}
+                          onPress={() =>
+                            setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
+                          }
+                        />
+                      )
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
           </View>
         </View>
-
         <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
           <TouchableOpacity
             onPress={onClose}

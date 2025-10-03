@@ -1,9 +1,11 @@
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -47,6 +49,22 @@ const AddModifierScreen: React.FC = () => {
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    // Check if the form is different from its initial state
+    const isPristine =
+      !formData.name.trim() &&
+      !formData.description?.trim() &&
+      formData.options.length === 0;
+    setHasChanges(!isPristine);
+  }, [formData]);
 
   // Handle form validation
   const validateForm = (): boolean => {
@@ -122,8 +140,10 @@ const AddModifierScreen: React.FC = () => {
       // Save to store
       addModifierGroup(modifierGroupData);
 
-      // Simulate a small delay for better UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      hasSavedRef.current = true;
+      setHasChanges(false);
+
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Short delay for state update
 
       const tab =
         typeof params.returnTab === "string" ? params.returnTab : undefined;
@@ -136,26 +156,6 @@ const AddModifierScreen: React.FC = () => {
       Alert.alert("Error", "Failed to save modifier group. Please try again.");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  // Handle back navigation
-  const handleBack = () => {
-    if (formData.name.trim() || formData.options.length > 0) {
-      Alert.alert(
-        "Unsaved Changes",
-        "You have unsaved changes. Are you sure you want to go back?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    } else {
-      router.back();
     }
   };
 
@@ -224,7 +224,7 @@ const AddModifierScreen: React.FC = () => {
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
-          onPress={handleBack}
+          onPress={() => router.back()}
           className="flex-row items-center"
         >
           <ArrowLeft size={20} color="#9CA3AF" />
@@ -625,6 +625,11 @@ const AddModifierScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </KeyboardAvoidingView>
   );
 };

@@ -1,5 +1,7 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -19,7 +21,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -65,6 +67,9 @@ const AddMenuItemScreen: React.FC = () => {
   const [errors, setErrors] = useState<Partial<MenuItemFormData>>({});
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+
   // Get available categories from store
   const availableCategories = categories
     .filter((cat) => cat.isActive)
@@ -90,6 +95,23 @@ const AddMenuItemScreen: React.FC = () => {
   const [modifierSearch, setModifierSearch] = useState("");
 
   const { inventoryItems } = useInventoryStore();
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    const isPristine =
+      !formData.name.trim() &&
+      !formData.description.trim() &&
+      !formData.price.trim() &&
+      !formData.cashPrice.trim() &&
+      formData.categories.length === 0 &&
+      formData.modifiers.length === 0 &&
+      recipeItems.length === 0 &&
+      !formData.image;
+
+    setHasChanges(!isPristine);
+  }, [formData, recipeItems]);
 
   // Validation
   const validateForm = (): boolean => {
@@ -195,10 +217,14 @@ const AddMenuItemScreen: React.FC = () => {
 
       addMenuItem(newMenuItem);
 
-      // Simulate a small delay for better UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Mark as saved to allow navigation
+      hasSavedRef.current = true;
+      setHasChanges(false);
 
-      router.back();
+      // Navigate back
+      if (router.canGoBack()) {
+        router.back();
+      }
     } catch (error) {
       Alert.alert("Error", "Failed to save menu item. Please try again.");
     } finally {
@@ -348,15 +374,14 @@ const AddMenuItemScreen: React.FC = () => {
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) =>
-
-    (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+      (
+        <BottomSheetBackdrop
+          {...backdropProps}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
@@ -404,9 +429,9 @@ const AddMenuItemScreen: React.FC = () => {
                 Name *
               </Text>
               <TextInput
-
-                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${errors.name ? "border-red-500" : "border-gray-600"
-                  }`}
+                className={`bg-[#303030] border rounded-lg px-4 py-3 text-lg h-16 text-white ${
+                  errors.name ? "border-red-500" : "border-gray-600"
+                }`}
                 placeholder="Enter item name"
                 placeholderTextColor="#9CA3AF"
                 value={formData.name}
@@ -578,7 +603,6 @@ const AddMenuItemScreen: React.FC = () => {
                             ? "text-white"
                             : "text-gray-300"
                         }`}
-
                       >
                         {category.name}
                       </Text>
@@ -681,48 +705,55 @@ const AddMenuItemScreen: React.FC = () => {
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
-
                   {filteredModifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}
                       onPress={() => toggleModifier(modifier.id)}
-                      className={`px-4 py-3 h-16 rounded-lg border ${formData.modifiers.includes(modifier.id)
-                        ? "bg-green-600 border-green-500"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`px-4 py-3 h-16 rounded-lg border ${
+                        formData.modifiers.includes(modifier.id)
+                          ? "bg-green-600 border-green-500"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <View className="flex-row items-center gap-1.5">
                         <Text
-                          className={`text-lg font-medium ${formData.modifiers.includes(modifier.id)
-                            ? "text-white"
-                            : "text-gray-300"
-                            }`}
+                          className={`text-lg font-medium ${
+                            formData.modifiers.includes(modifier.id)
+                              ? "text-white"
+                              : "text-gray-300"
+                          }`}
                         >
                           {modifier.name}
                         </Text>
                         <View
-                          className={`px-2.5 py-1.5 rounded-full ${modifier.type === "required"
-                            ? `${formData.modifiers.includes(modifier.id)
-                              ? "bg-red-900 border border-red-500"
-                              : "bg-red-900/30 border border-red-500"
-                            }`
-                            : `${formData.modifiers.includes(modifier.id)
-                              ? "bg-blue-900 border border-blue-500"
-                              : "bg-blue-900/30 border border-blue-500"
-                            }`
-                            }`}
+                          className={`px-2.5 py-1.5 rounded-full ${
+                            modifier.type === "required"
+                              ? `${
+                                  formData.modifiers.includes(modifier.id)
+                                    ? "bg-red-900 border border-red-500"
+                                    : "bg-red-900/30 border border-red-500"
+                                }`
+                              : `${
+                                  formData.modifiers.includes(modifier.id)
+                                    ? "bg-blue-900 border border-blue-500"
+                                    : "bg-blue-900/30 border border-blue-500"
+                                }`
+                          }`}
                         >
                           <Text
-                            className={`text-base ${modifier.type === "required"
-                              ? `${formData.modifiers.includes(modifier.id)
-                                ? "text-red-100"
-                                : "text-red-400"
-                              }`
-                              : `${formData.modifiers.includes(modifier.id)
-                                ? "text-blue-100"
-                                : "text-blue-400"
-                              }`
-                              }`}
+                            className={`text-base ${
+                              modifier.type === "required"
+                                ? `${
+                                    formData.modifiers.includes(modifier.id)
+                                      ? "text-red-100"
+                                      : "text-red-400"
+                                  }`
+                                : `${
+                                    formData.modifiers.includes(modifier.id)
+                                      ? "text-blue-100"
+                                      : "text-blue-400"
+                                  }`
+                            }`}
                           >
                             {modifier.type}
                           </Text>
@@ -870,20 +901,21 @@ const AddMenuItemScreen: React.FC = () => {
                   availability: !prev.availability,
                 }))
               }
-
-              className={`flex-row items-center justify-between p-4 rounded-lg border ${formData.availability
-                ? "bg-green-900/30 border-green-500"
-                : "bg-red-900/30 border-red-500"
-                }`}
+              className={`flex-row items-center justify-between p-4 rounded-lg border ${
+                formData.availability
+                  ? "bg-green-900/30 border-green-500"
+                  : "bg-red-900/30 border-red-500"
+              }`}
             >
               <Text className="text-xl text-white font-medium">
                 {formData.availability ? "Available" : "Unavailable"}
               </Text>
               <View
-                className={`w-7 h-7 rounded-full border-2 ${formData.availability
-                  ? "bg-green-500 border-green-500"
-                  : "bg-transparent border-red-500"
-                  }`}
+                className={`w-7 h-7 rounded-full border-2 ${
+                  formData.availability
+                    ? "bg-green-500 border-green-500"
+                    : "bg-transparent border-red-500"
+                }`}
               >
                 {formData.availability && (
                   <View className="w-2.5 h-2.5 bg-white rounded-full m-1" />
@@ -1005,9 +1037,9 @@ const AddMenuItemScreen: React.FC = () => {
               <View className="bg-[#212121] p-3 rounded-lg">
                 <Text className="text-lg text-gray-400">Status</Text>
                 <Text
-
-                  className={`text-xl font-medium ${formData.availability ? "text-green-400" : "text-red-400"
-                    }`}
+                  className={`text-xl font-medium ${
+                    formData.availability ? "text-green-400" : "text-red-400"
+                  }`}
                 >
                   {formData.availability ? "Available" : "Unavailable"}
                 </Text>
@@ -1171,28 +1203,30 @@ const AddMenuItemScreen: React.FC = () => {
                 const isCurrentlyEditing =
                   editingRecipeItemIndex !== null &&
                   recipeItems[editingRecipeItemIndex]?.inventoryItemId ===
-                  inventoryItem.id;
+                    inventoryItem.id;
 
                 return (
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
-                    className={`p-3 border-b border-gray-700 ${isCurrentlyEditing
-                      ? "bg-blue-900 border-blue-600"
-                      : isAlreadyInRecipe
+                    className={`p-3 border-b border-gray-700 ${
+                      isCurrentlyEditing
+                        ? "bg-blue-900 border-blue-600"
+                        : isAlreadyInRecipe
                         ? "bg-gray-800 opacity-50"
                         : "bg-transparent"
-                      }`}
+                    }`}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
                         <Text
-                          className={`font-semibold text-base ${isCurrentlyEditing
-                            ? "text-blue-300"
-                            : isAlreadyInRecipe
+                          className={`font-semibold text-base ${
+                            isCurrentlyEditing
+                              ? "text-blue-300"
+                              : isAlreadyInRecipe
                               ? "text-gray-500"
                               : "text-white"
-                            }`}
+                          }`}
                         >
                           {inventoryItem.name}
                         </Text>
@@ -1204,12 +1238,6 @@ const AddMenuItemScreen: React.FC = () => {
                               ? "text-gray-600"
                               : "text-gray-400"
                           }`}
-                          className={`text-xs ${isCurrentlyEditing
-                            ? "text-blue-400"
-                            : isAlreadyInRecipe
-                              ? "text-gray-600"
-                              : "text-gray-400"
-                            }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $
                           {inventoryItem.cost.toFixed(2)}
@@ -1237,6 +1265,11 @@ const AddMenuItemScreen: React.FC = () => {
           )}
         </View>
       </BottomSheet>
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
 };

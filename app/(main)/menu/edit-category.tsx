@@ -1,6 +1,8 @@
 import CategoryAddScheduleSheet from "@/components/menu/CategoryAddScheduleSheet";
-import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
+import ScheduleEditSheet from "@/components/menu/ScheduleEditSheet";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { CustomPricing, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -24,7 +26,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -120,6 +122,36 @@ const EditCategoryScreen: React.FC = () => {
   const editSheetRef = useRef<BottomSheet>(null);
   const [editingRule, setEditingRule] = useState<any>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    if (!existing) return;
+    const initialItemIds = menuItems
+      .filter((item) =>
+        (Array.isArray(item.category)
+          ? item.category
+          : [item.category]
+        ).includes(existing.name)
+      )
+      .map((i) => i.id);
+
+    const nameChanged = existing.name !== name;
+    const activeChanged = existing.isActive !== isActive;
+    const schedulesChanged =
+      JSON.stringify(existing.schedules ?? []) !== JSON.stringify(schedules);
+    const itemsChanged =
+      JSON.stringify(initialItemIds.sort()) !==
+      JSON.stringify(selectedItemIds.sort());
+
+    setHasChanges(
+      nameChanged || activeChanged || schedulesChanged || itemsChanged
+    );
+  }, [name, isActive, schedules, selectedItemIds, existing, menuItems]);
+
   const openEditSchedule = (rule: any, index: number) => {
     setEditingRule(rule);
     setEditingIndex(index);
@@ -230,9 +262,13 @@ const EditCategoryScreen: React.FC = () => {
     selectedItemIds
       .filter((id) => !beforeItemIds.includes(id))
       .forEach((id) => addItemToCategory(id, name.trim()));
+    hasSavedRef.current = true;
+    setHasChanges(false);
 
-    await new Promise((r) => setTimeout(r, 400));
-    router.replace({ pathname: "/menu", params: { tab: "categories" } });
+    await new Promise((r) => setTimeout(r, 100));
+    if (router.canGoBack()) {
+      router.replace({ pathname: "/menu", params: { tab: "categories" } });
+    }
   };
 
   const handleDelete = () => {
@@ -737,6 +773,11 @@ const EditCategoryScreen: React.FC = () => {
           }
         />
       </BottomSheet>
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
 };

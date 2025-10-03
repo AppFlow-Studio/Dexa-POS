@@ -1,10 +1,12 @@
 import ScheduleEditor from "@/components/menu/ScheduleEditor";
 import ScheduleRuleModal from "@/components/menu/ScheduleRuleModal";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { Schedule } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   ScrollView,
@@ -41,6 +43,33 @@ const EditMenuScreen: React.FC = () => {
     "id" | "isActive"
   > | null>(null);
   const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    if (!existing) return;
+    const nameChanged = existing.name !== name;
+    const descChanged = existing.description !== description;
+    const activeChanged = existing.isActive !== isActive;
+    const catsChanged =
+      JSON.stringify(existing.categories.sort()) !==
+      JSON.stringify(selectedCategories.sort());
+    const schedulesChanged =
+      JSON.stringify(existing.schedules) !== JSON.stringify(schedules);
+
+    setHasChanges(
+      nameChanged ||
+        descChanged ||
+        activeChanged ||
+        catsChanged ||
+        schedulesChanged
+    );
+  }, [name, description, isActive, selectedCategories, schedules, existing]);
+
   const handleAddPress = () => {
     setEditingRule(null);
     setEditingRuleIndex(null);
@@ -79,12 +108,13 @@ const EditMenuScreen: React.FC = () => {
     );
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!existing) return;
     if (!name.trim()) {
       Alert.alert("Validation", "Name is required");
       return;
     }
+
     updateMenu(existing.id, {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -92,8 +122,14 @@ const EditMenuScreen: React.FC = () => {
       categories: selectedCategories,
       schedules,
     });
-    await new Promise((r) => setTimeout(r, 400));
-    router.replace({ pathname: "/menu", params: { tab: "menus" } });
+    hasSavedRef.current = true;
+
+    // Use a timeout to ensure state propagation before navigation
+    setTimeout(() => {
+      if (router.canGoBack()) {
+        router.replace({ pathname: "/menu", params: { tab: "menus" } });
+      }
+    }, 100);
   };
 
   const handleDelete = () => {
@@ -308,6 +344,11 @@ const EditMenuScreen: React.FC = () => {
         onSave={handleSaveSchedule}
         initialData={editingRule}
         existingSchedules={schedules}
+      />
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
       />
     </View>
   );

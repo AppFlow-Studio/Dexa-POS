@@ -1,3 +1,5 @@
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router } from "expo-router";
 import {
@@ -10,7 +12,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -49,6 +51,21 @@ const AddMenuScreen: React.FC = () => {
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    const isPristine =
+      !menuName.trim() &&
+      !menuDescription.trim() &&
+      selectedCategories.length === 0;
+    setHasChanges(!isPristine);
+  }, [menuName, menuDescription, selectedCategories]);
 
   // Get available categories (only active ones)
   const availableCategories = categories
@@ -101,7 +118,6 @@ const AddMenuScreen: React.FC = () => {
     setShowConfirmation(false);
 
     try {
-      // Create the menu
       addMenu({
         name: menuName.trim(),
         description: menuDescription.trim() || undefined,
@@ -109,10 +125,14 @@ const AddMenuScreen: React.FC = () => {
         categories: selectedCategories,
       });
 
-      // Simulate a small delay for better UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Mark as saved to allow navigation
+      hasSavedRef.current = true;
+      setHasChanges(false);
 
-      router.back();
+      // Navigate back
+      if (router.canGoBack()) {
+        router.back();
+      }
     } catch (error) {
       Alert.alert("Error", "Failed to save menu. Please try again.");
     } finally {
@@ -484,6 +504,11 @@ const AddMenuScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
 };

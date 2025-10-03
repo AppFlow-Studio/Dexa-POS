@@ -1,6 +1,8 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
-import { CustomPricing, MenuItemType } from "@/lib/types";
+import { MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -19,7 +21,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -29,6 +31,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
   if (image && image.length > 200) {
@@ -44,24 +47,13 @@ const getImageSource = (image: string | undefined) => {
 };
 
 const AddCategoryScreen: React.FC = () => {
-  const {
-    menuItems,
-    addCategory,
-    addItemToCategory,
-    addCustomPricing,
-    updateCustomPricing,
-    deleteCustomPricing,
-    toggleCustomPricingActive,
-  } = useMenuStore();
+  const { menuItems, addCategory, addItemToCategory, addCustomPricing } =
+    useMenuStore();
 
   const [categoryName, setCategoryName] = useState("");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [editingPricing, setEditingPricing] = useState<{
-    itemId: string;
-    pricing: CustomPricing;
-  } | null>(null);
   const [newPricing, setNewPricing] = useState<{
     itemId: string;
     price: number;
@@ -70,12 +62,30 @@ const AddCategoryScreen: React.FC = () => {
   const [customPricingRules, setCustomPricingRules] = useState<{
     [itemId: string]: number;
   }>({});
+  const [hasChanges, setHasChanges] = useState(false);
 
-  // Get all items (since items can now be in multiple categories)
+  // Use a ref to track if we've saved successfully
+  const hasSavedRef = useRef(false);
+
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
+
+  useEffect(() => {
+    const isPristine =
+      !categoryName.trim() &&
+      selectedItems.length === 0 &&
+      Object.keys(customPricingRules).length === 0;
+    setHasChanges(!isPristine);
+  }, [categoryName, selectedItems, customPricingRules]);
+
+  // Get all items
   const availableItems = menuItems;
+
   // Bottom sheet for quick search & select items
   const quickSearchSheetRef = useRef<BottomSheet>(null);
   const [quickSearchQuery, setQuickSearchQuery] = useState("");
+
   const filteredItems = useMemo(() => {
     const q = quickSearchQuery.trim().toLowerCase();
     if (!q) return availableItems;
@@ -85,6 +95,7 @@ const AddCategoryScreen: React.FC = () => {
         i.description?.toLowerCase().includes(q)
     );
   }, [availableItems, quickSearchQuery]);
+
   // Handle item selection
   const toggleItemSelection = (itemId: string) => {
     setSelectedItems((prev) =>
@@ -134,37 +145,6 @@ const AddCategoryScreen: React.FC = () => {
     }
   };
 
-  const handleUpdateCustomPricing = () => {
-    if (!editingPricing) return;
-
-    updateCustomPricing(editingPricing.itemId, editingPricing.pricing.id, {
-      price: editingPricing.pricing.price,
-    });
-    setEditingPricing(null);
-  };
-
-  const handleDeleteCustomPricing = (itemId: string, pricingId: string) => {
-    Alert.alert(
-      "Delete Custom Pricing",
-      "Are you sure you want to delete this custom pricing?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteCustomPricing(itemId, pricingId),
-        },
-      ]
-    );
-  };
-
-  const handleToggleCustomPricingActive = (
-    itemId: string,
-    pricingId: string
-  ) => {
-    toggleCustomPricingActive(itemId, pricingId);
-  };
-
   // Handle form validation
   const validateForm = (): boolean => {
     if (!categoryName.trim()) {
@@ -188,12 +168,12 @@ const AddCategoryScreen: React.FC = () => {
     setShowConfirmation(true);
   };
 
-  const confirmSave = async () => {
+  const confirmSave = () => {
     setIsSaving(true);
     setShowConfirmation(false);
 
     try {
-      // Create the category
+      // Perform all the synchronous store updates
       const newOrder =
         Math.max(
           ...useMenuStore.getState().categories.map((cat) => cat.order),
@@ -204,15 +184,10 @@ const AddCategoryScreen: React.FC = () => {
         isActive: true,
         order: newOrder,
       };
-
       addCategory(newCategory);
-
-      // Add selected items to this category
       selectedItems.forEach((itemId) => {
         addItemToCategory(itemId, categoryName.trim());
       });
-
-      // Add custom pricing for items that have it
       const createdCategory = useMenuStore
         .getState()
         .categories.find((cat) => cat.name === categoryName.trim());
@@ -227,12 +202,17 @@ const AddCategoryScreen: React.FC = () => {
         });
       }
 
-      // Simulate a small delay for better UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Mark as saved and reset states
+      hasSavedRef.current = true;
+      setHasChanges(false);
 
-      router.back();
+      // Navigate back immediately after successful save
+      if (router.canGoBack()) {
+        router.back();
+      }
     } catch (error) {
       Alert.alert("Error", "Failed to save category. Please try again.");
+      console.error("Save error:", error);
     } finally {
       setIsSaving(false);
     }
@@ -560,6 +540,7 @@ const AddCategoryScreen: React.FC = () => {
         )}
       </ScrollView>
 
+      {/* Confirmation Dialog */}
       <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
         <DialogContent className="w-[450px]">
           <View className="bg-[#303030] rounded-2xl p-4 w-full border border-gray-600">
@@ -613,6 +594,7 @@ const AddCategoryScreen: React.FC = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Bottom Sheet */}
       <BottomSheet
         ref={quickSearchSheetRef}
         index={-1}
@@ -707,6 +689,13 @@ const AddCategoryScreen: React.FC = () => {
           }
         />
       </BottomSheet>
+
+      {/* Unsaved Changes Dialog */}
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
 };
