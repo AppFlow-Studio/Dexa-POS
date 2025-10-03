@@ -1,28 +1,7 @@
 import { ComponentType } from "react";
 
 // --- INVENTORY TYPES ---
-export type InventoryUnit =
-  | "pcs"
-  | "g"
-  | "kg"
-  | "oz"
-  | "lbs"
-  | "ml"
-  | "l"
-  | "bottle"
-  | "bag"
-  | "lb"
-  | "head"
-  | "can"
-  | "container"
-  | "bunch"
-  | "box"
-  | "jar"
-  | "qt"
-  | "gal"
-  | "loaf"
-  | "pint"
-  | "pkg";
+export type InventoryUnit = "bottle" | "pcs" | "lbs" | "bag" | "qt";
 
 export interface Vendor {
   id: string;

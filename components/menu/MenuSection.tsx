@@ -195,7 +195,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   return (
     <>
       <View className="mt-4 flex-1 bg-[#212121]">
-]        <View className="flex flex-row items-center justify-between pb-3">
+        <View className="flex flex-row items-center justify-between pb-3">
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
             <TouchableOpacity

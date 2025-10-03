@@ -145,17 +145,33 @@ const Header = () => {
   };
 
   const handleBackPress = () => {
-    // If we are anywhere inside the inventory section, always go back to the main menu.
+    // Split the path to analyze its structure
+    const pathParts = pathname.split("/").filter(Boolean);
+
+    // Case 1: Handle Inventory navigation
     if (
-      (pathname.startsWith("/inventory") &&
-        !pathname.includes("/purchase-orders/")) ||
-      pathname.startsWith("/settings")
+      pathname.startsWith("/inventory") &&
+      !pathname.includes("/purchase-orders/")
     ) {
       router.push("/home");
-    } else {
-      // Otherwise, use the default back behavior.
-      router.back();
+      return;
     }
+
+    // Case 2: Handle Settings navigation
+    if (pathname.startsWith("/settings")) {
+      // If we are deep inside settings (e.g., /settings/basic/store-info)
+      if (pathParts.length > 2) {
+        // Go to the main settings page
+        router.push("/settings");
+      } else {
+        // If we are already on the main /settings page, go home
+        router.push("/home");
+      }
+      return;
+    }
+
+    // Default Case: For all other pages, use the standard back behavior
+    router.back();
   };
 
   return (
@@ -167,13 +183,13 @@ const Header = () => {
               onPress={handleBackPress}
               className="p-2 mr-3 bg-gray-100 rounded-lg"
             >
-              <ArrowLeft color="#1f2937" size={20}  />
+              <ArrowLeft color="#1f2937" size={20} />
             </TouchableOpacity>
           )}
           <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild >
+          <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center  cursor-pointer">
               <Image
                 source={
@@ -220,7 +236,7 @@ const Header = () => {
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
-              <LogOut className="mr-2 h-5 w-5 text-white"  color="white"/>
+              <LogOut className="mr-2 h-5 w-5 text-white" color="white" />
               <Text className="text-lg text-white">Switch Account</Text>
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-gray-600" />
