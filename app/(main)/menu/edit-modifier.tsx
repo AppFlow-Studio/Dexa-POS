@@ -1,9 +1,11 @@
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -54,19 +56,37 @@ const EditModifierScreen: React.FC = () => {
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [originalFormData, setOriginalFormData] =
+    useState<ModifierFormData | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const hasSavedRef = useRef(false);
+
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
 
   useEffect(() => {
     if (existing) {
-      setFormData({
+      const initialData = {
         name: existing.name,
         type: existing.type,
         selectionType: existing.selectionType,
         maxSelections: existing.maxSelections,
         description: existing.description || "",
         options: existing.options || [],
-      });
+      };
+      setFormData(initialData);
+      setOriginalFormData(initialData); // Store the initial state for comparison
     }
   }, [existing]);
+
+  useEffect(() => {
+    if (originalFormData) {
+      const changed =
+        JSON.stringify(formData) !== JSON.stringify(originalFormData);
+      setHasChanges(changed);
+    }
+  }, [formData, originalFormData]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -134,7 +154,11 @@ const EditModifierScreen: React.FC = () => {
         description: formData.description?.trim() || undefined,
         options: formData.options.map((o) => ({ ...o, name: o.name.trim() })),
       });
-      await new Promise((r) => setTimeout(r, 400));
+      hasSavedRef.current = true;
+      setHasChanges(false);
+
+      router.back();
+
       router.back();
     } finally {
       setIsSaving(false);
@@ -531,6 +555,11 @@ const EditModifierScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </KeyboardAvoidingView>
   );
 };

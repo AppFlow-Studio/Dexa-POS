@@ -104,7 +104,7 @@ const OrderProcessing = () => {
       <View className="flex-1 flex-row">
         <BillSection />
 
-        <View className="flex-1 p-4 pt-0 bg-[#212121]">
+        <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
           <Accordion
             type="single"
             collapsible

@@ -47,15 +47,17 @@ const ShapeButton = ({
   <TouchableOpacity
     key={id}
     onPress={onPress}
-    className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${isSelected
-      ? "border-blue-500 bg-blue-500/10"
-      : "border-gray-700 bg-[#212121]"
-      }`}
+    className={`p-3 border-2 rounded-xl items-center justify-center w-[250px] h-[130px] ${
+      isSelected
+        ? "border-blue-500 bg-blue-500/10"
+        : "border-gray-700 bg-[#212121]"
+    }`}
   >
     <ShapeComponent color={isSelected ? "#3b82f6" : "#9CA3AF"} height={60} />
     <Text
-      className={`mt-2 font-semibold text-sm text-center ${isSelected ? "text-blue-400" : "text-gray-400"
-        }`}
+      className={`mt-2 font-semibold text-sm text-center ${
+        isSelected ? "text-blue-400" : "text-gray-400"
+      }`}
       numberOfLines={1}
     >
       {label}
@@ -117,51 +119,52 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
         </DialogHeader>
 
         <View className="gap-y-6 py-4">
-          <Text className="text-base font-medium text-gray-300 mb-2">
-            Object Name
-          </Text>
-          <View className="gap-y-3 py-3">
-            <View>
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Table Name
-              </Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="e.g., T-24 or Main Bar"
-                placeholderTextColor="#6B7280"
-                className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
+          {/* Name Input Section */}
+          <View>
+            <Text className="text-base font-medium text-gray-300 mb-2">
+              Object Name
+            </Text>
+            <View className="gap-y-3 py-3">
+              <View>
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Table Name
+                </Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g., T-24 or Main Bar"
+                  placeholderTextColor="#6B7280"
+                  className="p-4 bg-[#1e1e1e] border border-gray-600 rounded-lg text-lg text-white h-14"
+                />
+              </View>
 
-              />
-            </View>
-
-            {/* Shape Selection Section with Vertical Scroll */}
-            <View>
-              <Text className="text-base font-medium text-gray-300 mb-2">
-                Select Shape
-              </Text>
-              <ScrollView style={{ maxHeight: 290 }}>
-                <View className="flex-row flex-wrap gap-4 justify-center">
-                  {SHAPE_OPTIONS.map(
-                    ({ id, label, component: ShapeComponent }) => (
-                      <ShapeButton
-                        key={id}
-                        id={id}
-                        label={label}
-                        ShapeComponent={ShapeComponent}
-                        isSelected={selectedShapeId === id}
-                        onPress={() =>
-                          setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
-                        }
-                      />
-                    )
-                  )}
-                </View>
-              </ScrollView>
+              {/* Shape Selection Section with Vertical Scroll */}
+              <View>
+                <Text className="text-base font-medium text-gray-300 mb-2">
+                  Select Shape
+                </Text>
+                <ScrollView style={{ maxHeight: 290 }}>
+                  <View className="flex-row flex-wrap gap-4 justify-center">
+                    {SHAPE_OPTIONS.map(
+                      ({ id, label, component: ShapeComponent }) => (
+                        <ShapeButton
+                          key={id}
+                          id={id}
+                          label={label}
+                          ShapeComponent={ShapeComponent}
+                          isSelected={selectedShapeId === id}
+                          onPress={() =>
+                            setSelectedShapeId(id as keyof typeof TABLE_SHAPES)
+                          }
+                        />
+                      )
+                    )}
+                  </View>
+                </ScrollView>
+              </View>
             </View>
           </View>
         </View>
-
         <DialogFooter className="flex-row gap-4 pt-4 border-t border-gray-700">
           <TouchableOpacity
             onPress={onClose}

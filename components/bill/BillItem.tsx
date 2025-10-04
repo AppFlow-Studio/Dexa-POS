@@ -58,7 +58,6 @@ const BillItem: React.FC<BillItemProps> = ({
     .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
     .failOffsetY([-20, 20]); // Fail if vertical movement exceeds 20px
 
-
   const handleDelete = () => {
     if (activeOrderId) {
       removeItemFromActiveOrder(item.id);
@@ -101,7 +100,6 @@ const BillItem: React.FC<BillItemProps> = ({
       <GestureDetector gesture={pan}>
         <Animated.View style={animatedStyle} className="bg-[#303030] z-20">
           <TouchableOpacity onPress={handleNotesPress} activeOpacity={0.9}>
-
             <View className="flex-row items-center py-2 px-2">
               <View className="flex-1">
                 <View className="flex-row items-center">
@@ -115,35 +113,38 @@ const BillItem: React.FC<BillItemProps> = ({
                       </Text>
                     </View>
                   )}
-                  {item.kitchen_status && (
-                    <View className={`ml-2 px-2 py-1 rounded-full ${item.kitchen_status === "new"
-                      ? "bg-green-900/30 border border-green-500"
-                      : item.kitchen_status === "sent"
-                        ? "bg-blue-900/30 border border-blue-500"
-                        : item.kitchen_status === "ready"
+                  {item.kitchen_status && item.kitchen_status !== "new" && (
+                    <View
+                      className={`ml-2 px-2 py-1 rounded-full ${
+                        item.kitchen_status === "sent"
+                          ? "bg-blue-900/30 border border-blue-500"
+                          : item.kitchen_status === "ready"
                           ? "bg-orange-900/30 border border-orange-500"
                           : "bg-gray-900/30 border border-gray-500"
-                      }`}>
-                      <Text className={`text-xs font-medium ${item.kitchen_status === "new"
-                        ? "text-green-400"
-                        : item.kitchen_status === "sent"
-                          ? "text-blue-400"
-                          : item.kitchen_status === "ready"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-medium ${
+                          item.kitchen_status === "sent"
+                            ? "text-blue-400"
+                            : item.kitchen_status === "ready"
                             ? "text-orange-400"
                             : "text-gray-400"
-                        }`}>
-                        {item.kitchen_status === "new" ? "New" :
-                          item.kitchen_status === "sent" ? "Sent" :
-                            item.kitchen_status === "ready" ? "Ready" :
-                              item.kitchen_status}
+                        }`}
+                      >
+                        {item.kitchen_status === "sent"
+                          ? "Sent"
+                          : item.kitchen_status === "ready"
+                          ? "Ready"
+                          : item.kitchen_status}
                       </Text>
                     </View>
                   )}
-                  <Text className="text-base ml-4 text-gray-300">x {item.quantity}</Text>
-
+                  <Text className="text-base ml-4 text-gray-300">
+                    x {item.quantity}
+                  </Text>
                 </View>
                 <View className="flex-row items-center">
-
                   {/* {!item.isDraft && (
                     <TouchableOpacity
                       className="flex-row items-center ml-3 px-3 py-1 bg-blue-900/30 border border-blue-500 rounded-3xl"
@@ -206,8 +207,7 @@ const BillItem: React.FC<BillItemProps> = ({
                                   </View>
                                 );
                               })}
-
-                          </View>
+                            </View>
                           )}
                         </View>
                       ))}

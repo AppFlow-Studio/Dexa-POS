@@ -1,5 +1,7 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
@@ -21,7 +23,7 @@ import {
   Utensils,
   X,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
@@ -71,6 +73,9 @@ const EditMenuItemScreen: React.FC = () => {
   });
 
   const [errors, setErrors] = useState<Partial<MenuItemFormData>>({});
+  const [originalFormData, setOriginalFormData] =
+    useState<MenuItemFormData | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -88,19 +93,23 @@ const EditMenuItemScreen: React.FC = () => {
   const inventorySnapPoints = useMemo(() => ["70%"], []);
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
   const [modifierSearch, setModifierSearch] = useState("");
+
+  const hasSavedRef = useRef(false);
+
   const { inventoryItems } = useInventoryStore();
+  const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
+    hasChanges && !hasSavedRef.current
+  );
 
   // Get available categories from store
   const availableCategories = categories
     .filter((cat) => cat.isActive)
     .sort((a, b) => a.order - b.order);
 
-
-
   // Initialize form data when item is found
   useEffect(() => {
     if (itemToEdit) {
-      setFormData({
+      const initialData = {
         name: itemToEdit.name,
         description: itemToEdit.description || "",
         price: itemToEdit.price.toString(),
@@ -110,16 +119,23 @@ const EditMenuItemScreen: React.FC = () => {
           : [itemToEdit.category],
         meal: itemToEdit.meal,
         image: itemToEdit.image || "",
-        imageBase64:
-          itemToEdit.image && itemToEdit.image.length > 200
-            ? itemToEdit.image
-            : undefined,
+        imageBase64: undefined, // Don't load full base64 initially for performance
         availability: itemToEdit.availability !== false,
         modifiers: itemToEdit.modifierGroupIds || [],
         recipe: itemToEdit.recipe || [],
-      });
+      };
+      setFormData(initialData);
+      setOriginalFormData(initialData);
     }
   }, [itemToEdit]);
+
+  useEffect(() => {
+    if (originalFormData) {
+      const changed =
+        JSON.stringify(formData) !== JSON.stringify(originalFormData);
+      setHasChanges(changed);
+    }
+  }, [formData, originalFormData]);
 
   // Handle form validation
   const validateForm = (): boolean => {
@@ -233,10 +249,10 @@ const EditMenuItemScreen: React.FC = () => {
 
       updateMenuItem(itemToEdit.id, updatedMenuItem);
 
-      // Simulate a small delay for better UX
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      router.back();
+      hasSavedRef.current = true;
+      if (router.canGoBack()) {
+        router.back();
+      }
     } catch (error) {
       Alert.alert("Error", "Failed to update item. Please try again.");
     } finally {
@@ -449,15 +465,14 @@ const EditMenuItemScreen: React.FC = () => {
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
     () => (backdropProps: any) =>
-
-    (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+      (
+        <BottomSheetBackdrop
+          {...backdropProps}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
@@ -475,7 +490,7 @@ const EditMenuItemScreen: React.FC = () => {
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#303030]">
         <TouchableOpacity
-          onPress={handleBack}
+          onPress={() => router.back()}
           className="flex-row items-center"
         >
           <ArrowLeft size={20} color="#9CA3AF" />
@@ -605,16 +620,18 @@ const EditMenuItemScreen: React.FC = () => {
                   <TouchableOpacity
                     key={category.id}
                     onPress={() => toggleCategory(category.name)}
-                    className={`px-4 py-3 rounded-lg border ${formData.categories.includes(category.name)
-                      ? "bg-blue-600 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
-                      }`}
+                    className={`px-4 py-3 rounded-lg border ${
+                      formData.categories.includes(category.name)
+                        ? "bg-blue-600 border-blue-500"
+                        : "bg-[#303030] border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-medium ${formData.categories.includes(category.name)
-                        ? "text-white"
-                        : "text-gray-300"
-                        }`}
+                      className={`text-lg font-medium ${
+                        formData.categories.includes(category.name)
+                          ? "text-white"
+                          : "text-gray-300"
+                      }`}
                     >
                       {category.name}
                     </Text>
@@ -631,9 +648,7 @@ const EditMenuItemScreen: React.FC = () => {
                 <View className="flex w-fit flex-row items-stretch justify-center gap-x-2">
                   <View className="w-fit flex-row items-center justify-between gap-x-2 bg-gray-600   rounded-lg">
                     <View className="w-fit flex-row items-center justify-start gap-x-2">
-                      <View
-                        className="items-center pl-2 py-1.5 rounded-lg"
-                      >
+                      <View className="items-center pl-2 py-1.5 rounded-lg">
                         <Search size={18} color="white" />
                       </View>
                       <TextInput
@@ -644,7 +659,13 @@ const EditMenuItemScreen: React.FC = () => {
                         className="text-white h-10 w-[50%] text-sm 600 rounded-lg px-3 py-1.5"
                       />
                     </View>
-                    <TouchableOpacity className="flex-row items-center px-3 py-1.5 rounded-lg" onPress={() => { setModifierSearch(""); setExpandedModifiers({}); }}>
+                    <TouchableOpacity
+                      className="flex-row items-center px-3 py-1.5 rounded-lg"
+                      onPress={() => {
+                        setModifierSearch("");
+                        setExpandedModifiers({});
+                      }}
+                    >
                       <X size={18} color="white" />
                       <Text className="text-base text-white font-medium ml-1">
                         Cancel
@@ -669,10 +690,11 @@ const EditMenuItemScreen: React.FC = () => {
                   return (
                     <View
                       key={modifier.id}
-                      className={`rounded-lg border ${selected
-                        ? "bg-blue-600/10 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`rounded-lg border ${
+                        selected
+                          ? "bg-blue-600/10 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <View className="flex-row items-center justify-between p-4">
                         <TouchableOpacity
@@ -680,21 +702,28 @@ const EditMenuItemScreen: React.FC = () => {
                           className="flex-row items-center gap-2 flex-1"
                         >
                           <Text
-                            className={`text-xl font-medium ${selected ? "text-white" : "text-gray-300"
-                              }`}
+                            className={`text-xl font-medium ${
+                              selected ? "text-white" : "text-gray-300"
+                            }`}
                           >
                             {modifier.name}
                           </Text>
-                          <Text className={`px-2.5 py-1.5 rounded-full ${modifier.type === "required"
-                            ? "bg-red-900 border border-red-500 text-white"
-                            : "bg-blue-900 border border-blue-500 text-white"
+                          <Text
+                            className={`px-2.5 py-1.5 rounded-full ${
+                              modifier.type === "required"
+                                ? "bg-red-900 border border-red-500 text-white"
+                                : "bg-blue-900 border border-blue-500 text-white"
                             }`}
                           >
                             {modifier.type}
                           </Text>
-                          <Text className={`px-2.5 py-1.5 rounded-full bg-gray-600 text-white`}
+                          <Text
+                            className={`px-2.5 py-1.5 rounded-full bg-gray-600 text-white`}
                           >
-                            {modifier.selectionType} {modifier.maxSelections ? `• Max ${modifier.maxSelections}` : ""}
+                            {modifier.selectionType}{" "}
+                            {modifier.maxSelections
+                              ? `• Max ${modifier.maxSelections}`
+                              : ""}
                           </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -710,11 +739,31 @@ const EditMenuItemScreen: React.FC = () => {
                       </View>
                       {expanded && (
                         <View className="px-4 pb-4 gap-y-2">
-                          <Text className="text-base text-gray-400">Options</Text>
+                          <Text className="text-base text-gray-400">
+                            Options
+                          </Text>
                           {modifier.options.map((option) => (
-                            <View key={option.id} className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-[#303030] p-2">
-                              <Text className="text-base text-gray-400">{option.name} <Text className="text-sm">{option.isDefault ? "(Default)" : ""}</Text></Text>
-                              <Text className={`text-base ${option.price > 0 ? "text-green-400" : "text-gray-400"}`}>{option.price > 0 ? `+${option.price.toFixed(2)}` : "$0.00"}</Text>
+                            <View
+                              key={option.id}
+                              className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-[#303030] p-2"
+                            >
+                              <Text className="text-base text-gray-400">
+                                {option.name}{" "}
+                                <Text className="text-sm">
+                                  {option.isDefault ? "(Default)" : ""}
+                                </Text>
+                              </Text>
+                              <Text
+                                className={`text-base ${
+                                  option.price > 0
+                                    ? "text-green-400"
+                                    : "text-gray-400"
+                                }`}
+                              >
+                                {option.price > 0
+                                  ? `+${option.price.toFixed(2)}`
+                                  : "$0.00"}
+                              </Text>
                             </View>
                           ))}
                         </View>
@@ -751,10 +800,11 @@ const EditMenuItemScreen: React.FC = () => {
                     availability: !prev.availability,
                   }))
                 }
-                className={`px-4 py-3 rounded-lg border ${formData.availability
-                  ? "bg-green-600 border-green-500"
-                  : "bg-red-600 border-red-500"
-                  }`}
+                className={`px-4 py-3 rounded-lg border ${
+                  formData.availability
+                    ? "bg-green-600 border-green-500"
+                    : "bg-red-600 border-red-500"
+                }`}
               >
                 <Text className="text-lg text-white font-medium">
                   {formData.availability ? "Available" : "Unavailable"}
@@ -775,8 +825,8 @@ const EditMenuItemScreen: React.FC = () => {
                     source={
                       typeof getImageSource(formData.image) === "string"
                         ? MENU_IMAGE_MAP[
-                        formData.image as keyof typeof MENU_IMAGE_MAP
-                        ]
+                            formData.image as keyof typeof MENU_IMAGE_MAP
+                          ]
                         : getImageSource(formData.image)
                     }
                     className="w-full h-full object-cover"
@@ -936,18 +986,19 @@ const EditMenuItemScreen: React.FC = () => {
                 const isCurrentlyEditing =
                   editingRecipeItemIndex !== null &&
                   formData.recipe[editingRecipeItemIndex]?.inventoryItemId ===
-                  inventoryItem.id;
+                    inventoryItem.id;
 
                 return (
                   <TouchableOpacity
                     onPress={() => selectInventoryItem(inventoryItem.id)}
                     disabled={isAlreadyInRecipe && !isCurrentlyEditing}
-                    className={`p-3 border-b border-gray-700 ${isCurrentlyEditing
-                      ? "bg-blue-900 border-blue-600"
-                      : isAlreadyInRecipe
+                    className={`p-3 border-b border-gray-700 ${
+                      isCurrentlyEditing
+                        ? "bg-blue-900 border-blue-600"
+                        : isAlreadyInRecipe
                         ? "bg-gray-800 opacity-50"
                         : "bg-transparent"
-                      }`}
+                    }`}
                   >
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1">
@@ -959,12 +1010,6 @@ const EditMenuItemScreen: React.FC = () => {
                               ? "text-gray-500"
                               : "text-white"
                           }`}
-                          className={`font-semibold text-base ${isCurrentlyEditing
-                            ? "text-blue-300"
-                            : isAlreadyInRecipe
-                              ? "text-gray-500"
-                              : "text-white"
-                            }`}
                         >
                           {inventoryItem.name}
                         </Text>
@@ -976,13 +1021,6 @@ const EditMenuItemScreen: React.FC = () => {
                               ? "text-gray-600"
                               : "text-gray-400"
                           }`}
-
-                          className={`text-xs ${isCurrentlyEditing
-                            ? "text-blue-400"
-                            : isAlreadyInRecipe
-                              ? "text-gray-600"
-                              : "text-gray-400"
-                            }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $
                           {inventoryItem.cost.toFixed(2)}
@@ -1010,8 +1048,11 @@ const EditMenuItemScreen: React.FC = () => {
           )}
         </View>
       </BottomSheet>
-
-
+      <UnsavedChangesDialog
+        isOpen={isDialogVisible}
+        onCancel={handleCancel}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
 };
