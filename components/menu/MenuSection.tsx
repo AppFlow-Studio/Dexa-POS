@@ -274,7 +274,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
                 <DialogHeader>
                   <DialogTitle className="text-white text-center">
-                    Select Menu
+                    <Text>Select Menu</Text>
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView

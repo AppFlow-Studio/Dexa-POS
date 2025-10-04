@@ -705,6 +705,7 @@ const AddMenuItemScreen: React.FC = () => {
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
+
                   {filteredModifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}

@@ -143,16 +143,14 @@ const OpenItemAdder = () => {
               <TouchableOpacity
                 key={button}
                 onPress={() => handlePriceInput(button)}
-                className={`flex-1 h-14 rounded-lg items-center justify-center ${
-                  button === "backspace"
+                className={`flex-1 h-14 rounded-lg items-center justify-center ${button === "backspace"
                     ? "bg-red-600"
                     : "bg-[#303030] border border-gray-600"
-                }`}
+                  }`}
               >
                 <Text
-                  className={`text-2xl font-bold ${
-                    button === "backspace" ? "text-white" : "text-white"
-                  }`}
+                  className={`text-2xl font-bold ${button === "backspace" ? "text-white" : "text-white"
+                    }`}
                 >
                   {button === "backspace" ? "⌫" : button}
                 </Text>
@@ -160,12 +158,20 @@ const OpenItemAdder = () => {
             ))}
           </View>
         ))}
-        <TouchableOpacity
-          onPress={() => handlePriceInput("clear")}
-          className="h-14 bg-gray-600 rounded-lg items-center justify-center"
-        >
-          <Text className="text-lg font-medium text-white">Clear</Text>
-        </TouchableOpacity>
+        <View className="flex flex-row justify-between gap-x-2 w-full">
+          <TouchableOpacity
+            onPress={() => handlePriceInput("clear")}
+            className="h-14 bg-gray-600 w-1/2 rounded-lg items-center justify-center"
+          >
+            <Text className="text-lg font-medium text-white">Clear</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleAddOpenItem}
+            className="bg-blue-600 w-1/2 rounded-lg items-center justify-center"
+          >
+            <Text className="text-xl  font-bold text-white">Add Item</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -203,12 +209,12 @@ const OpenItemAdder = () => {
         {renderNumpad()}
       </View>
 
-      <TouchableOpacity
+      {/* <TouchableOpacity
         onPress={handleAddOpenItem}
         className="bg-blue-600 rounded-lg py-4 items-center mb-6"
       >
         <Text className="text-xl font-bold text-white">Add Item</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
     </ScrollView>
   );
 };

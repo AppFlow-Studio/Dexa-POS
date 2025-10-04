@@ -140,6 +140,7 @@ const OrderProcessing = () => {
               contentContainerClassName="flex-row gap-x-2"
               showsHorizontalScrollIndicator={false}
             >
+
               {filteredOrders.map((order) => (
                 <OrderBadge
                   key={order.id}
