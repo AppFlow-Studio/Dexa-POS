@@ -35,37 +35,37 @@ const CheckRow = ({
   onAction: (action: "view" | "delete") => void;
 }) => {
   const statusClasses: Record<string, string> = {
-    Pending: "bg-orange-100 text-orange-800",
-    Cleared: "bg-green-100 text-green-800",
-    Voided: "bg-red-100 text-red-800",
+    Pending: "bg-orange-900/30 text-orange-400 border",
+    Cleared: "bg-green-900/30 text-green-400 border",
+    Voided: "bg-red-900/30 text-red-400 border",
   };
+  const statusClass =
+    statusClasses[check.status] ||
+    "bg-gray-700 text-gray-300 border border-gray-600";
+
   return (
-    <View className="flex-row items-center p-4 border-b border-background-400">
-      <Text className="w-[10%] text-xl font-semibold text-gray-600">
+    <View className="flex-row items-center p-4 border-b border-gray-700 bg-[#212121]">
+      <Text className="w-[10%] text-lg font-semibold text-gray-300">
         {check.serialNo}
       </Text>
-      <Text className="w-[15%] text-xl font-semibold text-gray-600">
+      <Text className="w-[15%] text-lg font-semibold text-gray-300">
         {check.checkNo}
       </Text>
-      <Text className="w-[20%] text-xl font-semibold text-gray-800">
+      <Text className="w-[20%] text-lg font-semibold text-white">
         {check.payee}
       </Text>
-      <Text className="w-[15%] text-xl font-semibold text-gray-600">
+      <Text className="w-[15%] text-lg font-semibold text-gray-300">
         ${check.amount.toFixed(2)}
       </Text>
       <View className="w-[20%]">
-        <Text className="text-xl font-semibold text-gray-800">
+        <Text className="text-lg font-semibold text-white">
           {check.dateIssued}
         </Text>
-        <Text className="text-lg text-gray-500">{check.timeIssued}</Text>
+        <Text className="text-base text-gray-400">{check.timeIssued}</Text>
       </View>
       <View className="w-[15%]">
-        <View
-          className={`px-2 py-1 rounded-full self-start ${
-            statusClasses[check.status]
-          }`}
-        >
-          <Text className={`font-bold text-lg ${statusClasses[check.status]}`}>
+        <View className={`px-2 py-1 rounded-full self-start ${statusClass}`}>
+          <Text className={`font-bold text-sm ${statusClass}`}>
             {check.status}
           </Text>
         </View>
@@ -73,22 +73,22 @@ const CheckRow = ({
       <View className="w-[5%] items-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity className="p-2">
-              <MoreHorizontal size={20} color="#6b7280" />
+            <TouchableOpacity className="p-2 rounded-md hover:bg-gray-700">
+              <MoreHorizontal size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48">
+          <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
             <DropdownMenuItem onPress={() => onAction("view")}>
-              <FileText className="mr-2 h-5 w-5" />
-              <Text className="text-xl">View Details</Text>
+              <FileText className="mr-2 h-5 w-5 text-gray-300" />
+              <Text className="text-lg text-gray-300">View Details</Text>
             </DropdownMenuItem>
-            <DropdownMenuItem onPress={() => onAction("view")}>
-              <Printer className="mr-2 h-5 w-5" />
-              <Text className="text-xl">Print</Text>
+            <DropdownMenuItem onPress={() => alert("Printing...")}>
+              <Printer className="mr-2 h-5 w-5 text-gray-300" />
+              <Text className="text-lg text-gray-300">Print</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => onAction("delete")}>
-              <Trash2 className="mr-2 h-5 w-5 text-red-500" />
-              <Text className="text-xl text-red-500">Delete</Text>
+              <Trash2 className="mr-2 h-5 w-5 text-red-400" />
+              <Text className="text-lg text-red-400">Delete</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -112,22 +112,23 @@ const ChecksScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-background-100 p-4">
+    <View className="flex-1 bg-[#212121] p-4">
       {/* Toolbar */}
-      <View className="flex-row justify-between items-center mb-3">
-        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 w-[400px]">
-          <Search color="#6b7280" size={20} />
+      <View className="flex-row justify-between items-center mb-4">
+        <View className="flex-row items-center bg-[#303030] rounded-lg border border-gray-600 px-3 w-[400px]">
+          <Search color="#9CA3AF" size={20} />
           <TextInput
             placeholder="Search by Check Number or Payee"
-            className="ml-2 text-xl flex-1 h-16"
+            placeholderTextColor="#9CA3AF"
+            className="ml-2 text-lg text-white flex-1 h-12"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Table */}
-      <View className="flex-1">
-        <View className="flex-row p-4 rounded-t-xl border-b border-background-400">
+      <View className="flex-1 rounded-xl overflow-hidden border border-gray-700">
+        <View className="flex-row p-4 bg-[#303030] border-b border-gray-700">
           {[
             "# Serial No",
             "# Check No",
@@ -139,7 +140,7 @@ const ChecksScreen = () => {
           ].map((h) => (
             <Text
               key={h}
-              className={`font-bold text-lg text-gray-500 ${
+              className={`font-bold text-base text-gray-400 ${
                 h === "Payee"
                   ? "w-[20%]"
                   : h === "Date Issued"
@@ -170,11 +171,11 @@ const ChecksScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end items-center mt-3 gap-1.5">
-        <TouchableOpacity className="p-2 rounded-full">
-          <ChevronLeft size={20} />
+      <View className="flex-row justify-end items-center mt-4 gap-2">
+        <TouchableOpacity className="p-2 border border-gray-600 rounded-full">
+          <ChevronLeft color="#9CA3AF" size={20} />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
+        <TouchableOpacity className="p-2 rounded-full bg-blue-600">
           <ChevronRight color="white" size={20} />
         </TouchableOpacity>
       </View>

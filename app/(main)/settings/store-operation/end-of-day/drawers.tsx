@@ -25,66 +25,64 @@ import {
 // Reusable Row Component for the Drawer List
 const DrawerRow = ({ drawer }: { drawer: DrawerSummary }) => {
   const statusClasses: Record<string, string> = {
-    Open: "bg-orange-100 text-orange-800",
-    Closed: "bg-green-100 text-green-800",
-    Cleared: "bg-blue-100 text-blue-800",
+    Open: "bg-orange-900/30 text-orange-400 ",
+    Closed: "bg-green-900/30 text-green-400 ",
+    Cleared: "bg-blue-900/30 text-blue-400 ",
   };
+  const statusClass =
+    statusClasses[drawer.status] ||
+    "bg-gray-700 text-gray-300 border border-gray-600";
+
   return (
-    <View className="flex-row items-center p-3 border-b border-background-400">
+    <View className="flex-row items-center p-3 border-b border-gray-700 bg-[#212121]">
       <View className="w-[11%]">
-        <View
-          className={`px-1.5 py-0.5 rounded-full self-start ${
-            statusClasses[drawer.status]
-          }`}
-        >
-          <Text
-            className={`font-bold text-[10px] ${statusClasses[drawer.status]}`}
-          >
+        <View className={`px-2 py-1 rounded-full self-start ${statusClass}`}>
+          <Text className={`font-bold text-xs ${statusClass}`}>
             {drawer.status}
           </Text>
         </View>
       </View>
-      <Text className="w-[11%] font-semibold text-gray-800 text-sm">
+      <Text className="w-[11%] font-semibold text-white text-base">
         {drawer.cashier}
       </Text>
-      <Text className="w-[12%] font-semibold text-gray-600 text-sm">
+      <Text className="w-[12%] font-semibold text-gray-300 text-base">
         {drawer.drawerName}
       </Text>
-      <Text className="w-[11%] font-semibold text-gray-600 text-sm">
+      <Text className="w-[11%] font-semibold text-gray-300 text-base">
         ${drawer.startingCash.toFixed(2)}
       </Text>
-      <Text className="w-[11%] font-semibold text-gray-600 text-sm">
+      <Text className="w-[11%] font-semibold text-gray-300 text-base">
         ${drawer.expectedCash.toFixed(2)}
       </Text>
-      <Text className="w-[11%] font-semibold text-gray-600 text-sm">
+      <Text className="w-[11%] font-semibold text-gray-300 text-base">
         {drawer.actualCash !== null
           ? `$${drawer.actualCash.toFixed(2)}`
           : "(Not counted)"}
       </Text>
-      <Text className="w-[11%] font-semibold text-gray-600 text-sm">
+      <Text className="w-[11%] font-semibold text-gray-300 text-base">
         {drawer.difference !== null
           ? `$${drawer.difference.toFixed(2)}`
           : "(N/A)"}
       </Text>
       <View className="w-[12%]">
-        <Text className="font-semibold text-gray-800 text-sm">
+        <Text className="font-semibold text-white text-base">
           {drawer.dateIssued}
         </Text>
-        <Text className="text-xs text-gray-500">{drawer.timeIssued}</Text>
+        <Text className="text-sm text-gray-400">{drawer.timeIssued}</Text>
       </View>
       <View className="w-[10%] items-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity className="p-1.5">
-              <MoreHorizontal color="#6b7280" />
+            <TouchableOpacity className="p-1.5 rounded-md hover:bg-gray-700">
+              <MoreHorizontal color="#9CA3AF" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48">
+          <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
             <DropdownMenuItem onPress={() => alert("Closing Drawer...")}>
-              <Text className="text-sm">Close Drawer</Text>
+              <Text className="text-lg text-gray-300">Close Drawer</Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => alert("Deleting Drawer...")}>
-              <Text className="text-red-500 text-sm">Delete</Text>
+              <Text className="text-red-400 text-lg">Delete</Text>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -97,22 +95,23 @@ const DrawerSummaryScreen = () => {
   const [selectedDate, setSelectedDate] = React.useState(new Date());
 
   return (
-    <View className="flex-1 bg-background-100 p-4">
+    <View className="flex-1 bg-[#212121] p-4">
       {/* Toolbar */}
-      <View className="flex-row justify-between items-center mb-3">
-        <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-2 w-[300px]">
-          <Search color="#6b7280" size={18} />
+      <View className="flex-row justify-between items-center mb-4">
+        <View className="flex-row items-center bg-[#303030] rounded-lg border border-gray-600 px-3 w-[300px]">
+          <Search color="#9CA3AF" size={20} />
           <TextInput
             placeholder="Search..."
-            className="ml-1.5 text-sm flex-1 h-16"
+            placeholderTextColor="#9CA3AF"
+            className="ml-2 text-lg text-white flex-1 h-12"
           />
         </View>
         <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
       </View>
 
       {/* Table */}
-      <View className="flex-1 rounded-xl">
-        <View className="flex-row p-3 rounded-t-xl border-b border-background-400">
+      <View className="flex-1 rounded-xl overflow-hidden border border-gray-700">
+        <View className="flex-row p-4 bg-[#303030] border-b border-gray-700">
           {[
             "Status",
             "Cashier",
@@ -126,7 +125,7 @@ const DrawerSummaryScreen = () => {
           ].map((h) => (
             <Text
               key={h}
-              className={`font-bold text-xs text-gray-500 ${
+              className={`font-bold text-base text-gray-400 ${
                 h.includes("Name")
                   ? "w-[12%]"
                   : h === "Date Issued"
@@ -148,11 +147,11 @@ const DrawerSummaryScreen = () => {
       </View>
 
       {/* Footer */}
-      <View className="flex-row justify-end items-center mt-3 gap-2">
-        <TouchableOpacity className="p-2 rounded-full">
-          <ChevronLeft size={20} />
+      <View className="flex-row justify-end items-center mt-4 gap-2">
+        <TouchableOpacity className="p-2 border border-gray-600 rounded-full">
+          <ChevronLeft color="#9CA3AF" size={20} />
         </TouchableOpacity>
-        <TouchableOpacity className="p-2 rounded-full bg-primary-400">
+        <TouchableOpacity className="p-2 rounded-full bg-blue-600">
           <ChevronRight color="white" size={20} />
         </TouchableOpacity>
       </View>

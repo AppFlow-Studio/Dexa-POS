@@ -17,9 +17,9 @@ const DetailRow = ({
   label: string;
   value: string | number;
 }) => (
-  <View className="flex-row justify-between items-center py-2 border-b border-dashed border-gray-200">
-    <Text className="text-2xl text-accent-500">{label}</Text>
-    <Text className="text-2xl font-semibold text-accent-500">{value}</Text>
+  <View className="flex-row justify-between items-center py-3 border-b border-dashed border-gray-700">
+    <Text className="text-lg text-gray-300">{label}</Text>
+    <Text className="text-lg font-semibold text-white">{value}</Text>
   </View>
 );
 
@@ -36,69 +36,67 @@ const CheckDetailsModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] w-[550px] max-h-[95%]">
-        {/* Dark Header */}
-        <View className="p-6 rounded-t-[36px]">
-          <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
+      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border border-gray-700 w-[550px] max-h-[90vh]">
+        {/* Header */}
+        <View className="p-6 border-b border-gray-700">
+          <DialogTitle className="text-white text-2xl font-bold text-center">
             Check Details
           </DialogTitle>
         </View>
 
-        {/* White Content */}
-        <ScrollView>
-          <View className="p-6 rounded-[36px] bg-background-100 gap-y-4">
+        {/* Content */}
+        <ScrollView contentContainerStyle={{ padding: 24 }}>
+          <View className="gap-y-4">
             <DetailRow label="Check Number" value={check.checkNo} />
             <DetailRow label="Status" value={check.status} />
             <DetailRow label="Payee" value={check.payee} />
             <DetailRow label="Date Issued" value={check.dateIssued} />
 
-            <View className="pt-4 border-t border-dashed border-gray-300">
-              <DetailRow
-                label="Total Items"
-                value={`${check.items.length} Items`}
-              />
+            {/* Items Section */}
+            <View className="pt-4 mt-2 border-t border-gray-700">
+              <Text className="text-xl font-bold text-white mb-2">
+                Items ({check.items.length})
+              </Text>
               {check.items.map((item, index) => (
                 <DetailRow
                   key={index}
                   label={item.name}
-                  value={`${item.price.toFixed(2)}`}
+                  value={`$${item.price.toFixed(2)}`}
                 />
               ))}
             </View>
 
-            <View className="pt-4 border-t border-dashed border-gray-300">
+            {/* Totals Section */}
+            <View className="pt-4 mt-2 border-t border-gray-700">
               <DetailRow
                 label="Subtotal"
-                value={`${check.subtotal.toFixed(2)}`}
+                value={`$${check.subtotal.toFixed(2)}`}
               />
-              <DetailRow label="Tax" value={`${check.tax.toFixed(2)}`} />
-              <DetailRow label="Tips" value={`${check.tips.toFixed(2)}`} />
+              <DetailRow label="Tax" value={`$${check.tax.toFixed(2)}`} />
+              <DetailRow label="Tips" value={`$${check.tips.toFixed(2)}`} />
             </View>
 
-            <View className="flex-row justify-between items-center pt-4 border-t border-dashed border-gray-300">
-              <Text className="text-3xl font-bold text-accent-500">Total</Text>
-              <Text className="text-3xl font-bold text-accent-500">
+            {/* Grand Total */}
+            <View className="flex-row justify-between items-center pt-4 mt-2 border-t border-gray-700">
+              <Text className="text-2xl font-bold text-white">Total</Text>
+              <Text className="text-2xl font-bold text-white">
                 ${check.total.toFixed(2)}
               </Text>
             </View>
-
-            {/* Footer with Buttons */}
-            <DialogFooter className="p-6 flex-row gap-4 border-t border-gray-200">
-              <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-4 border border-gray-300 rounded-lg">
-                <Mail color="#4b5563" size={24} />
-                <Text className="text-2xl font-bold text-gray-700">
-                  Send Email
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-4 bg-primary-400 rounded-lg">
-                <Printer color="#FFFFFF" size={24} />
-                <Text className="text-2xl font-bold text-white">
-                  Print Receipt
-                </Text>
-              </TouchableOpacity>
-            </DialogFooter>
           </View>
         </ScrollView>
+
+        {/* Footer with Buttons */}
+        <DialogFooter className="p-6 flex-row gap-4 border-t border-gray-700 bg-[#212121] rounded-b-2xl">
+          <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-600 rounded-lg">
+            <Mail color="#9CA3AF" size={20} />
+            <Text className="text-lg font-bold text-gray-300">Send Email</Text>
+          </TouchableOpacity>
+          <TouchableOpacity className="flex-1 flex-row justify-center items-center gap-2 py-3 bg-blue-600 rounded-lg">
+            <Printer color="#FFFFFF" size={20} />
+            <Text className="text-lg font-bold text-white">Print Receipt</Text>
+          </TouchableOpacity>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
