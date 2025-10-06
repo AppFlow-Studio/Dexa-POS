@@ -23,49 +23,45 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   const categoryDetails = categories.find((c) => c.name === categoryName);
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-6 mb-4">
+    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
       <View className="flex-row justify-between items-center">
         <TouchableOpacity
           onPress={() => onToggleExpand(categoryName)}
-          className="flex-row items-center gap-3 flex-1"
+          className="flex-row items-center gap-2 flex-1"
         >
-          <Text className="font-medium text-white text-3xl">
-            {categoryName}
-          </Text>
-          <View className="bg-blue-900/30 border border-blue-500 px-3 py-2 rounded">
-            <Text className="text-xl text-blue-400">
+          <Text className="font-medium text-white text-xl">{categoryName}</Text>
+          <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
+            <Text className="text-sm text-blue-400">
               {categoryItems.length} items
             </Text>
           </View>
         </TouchableOpacity>
 
-        <View className="flex-row items-center gap-3">
-          {/* This button now calls the onEdit prop */}
+        <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={onEdit}
-            className="p-3 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-[#212121] rounded border border-gray-600"
           >
-            <Settings size={24} color="#9CA3AF" />
+            <Settings size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Expanded content remains the same */}
       {isExpanded && (
-        <View className="mt-4 gap-3">
+        <View className="mt-3 gap-2">
           {categoryItems.length === 0 ? (
-            <Text className="text-xl text-gray-400">
+            <Text className="text-base text-gray-400">
               No items in this category.
             </Text>
           ) : (
-            <View className="gap-3 flex flex-row flex-wrap">
+            <View className="gap-2 flex flex-row flex-wrap">
               {categoryItems.map((item: MenuItemType) => (
                 <View
                   key={item.id}
-                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-4 py-3"
+                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-md px-3 py-2"
                 >
-                  <Text className="text-xl text-white">{item.name}</Text>
-                  <Text className="text-xl text-gray-300 ml-3">
+                  <Text className="text-base text-white">{item.name}</Text>
+                  <Text className="text-base text-gray-300 ml-2">
                     $
                     {categoryDetails
                       ? getItemPriceForCategory(

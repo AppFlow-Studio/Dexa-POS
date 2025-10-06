@@ -1,3 +1,4 @@
+import MenuHeader from "@/components/menu/MenuHeader";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { Menu, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -9,7 +10,6 @@ import {
   Eye,
   EyeOff,
   GripVertical,
-  Plus,
   Settings,
   Trash2,
   Utensils,
@@ -150,10 +150,18 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
               {menu.name}
             </Text>
             <View
-              className={`px-2.5 py-1.5 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+              className={`px-2.5 py-1.5 rounded-full ${
+                menu.isActive && menu.isAvailableNow
+                  ? "bg-green-900/30 border border-green-500"
+                  : "bg-red-900/30 border border-red-500"
+              }`}
             >
               <Text
-                className={`text-lg font-medium ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
+                className={`text-lg font-medium ${
+                  menu.isActive && menu.isAvailableNow
+                    ? "text-green-400"
+                    : "text-red-400"
+                }`}
               >
                 {menu.isActive
                   ? menu.isAvailableNow
@@ -284,10 +292,16 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
           <GripVertical size={20} color="#6B7280" />
           <Text className="text-gray-200 text-xl">{category.name}</Text>
           <View
-            className={`px-2.5 py-1.5 rounded-full ${category.isActive ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+            className={`px-2.5 py-1.5 rounded-full ${
+              category.isActive
+                ? "bg-green-900/30 border border-green-500"
+                : "bg-red-900/30 border border-red-500"
+            }`}
           >
             <Text
-              className={`text-lg ${category.isActive ? "text-green-400" : "text-red-400"}`}
+              className={`text-lg ${
+                category.isActive ? "text-green-400" : "text-red-400"
+              }`}
             >
               {category.isActive ? "Available Now" : "Unavailable"}
             </Text>
@@ -464,18 +478,11 @@ const MenuPage: React.FC = () => {
 
   const renderMenusContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">Menus</Text>
-        <TouchableOpacity
-          onPress={handleAddMenu}
-          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
-        >
-          <Plus size={20} color="white" />
-          <Text className="text-lg text-white font-medium ml-1.5">
-            Add Menu
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <MenuHeader
+        title={`Menus (${menus.length})`}
+        onAddPress={handleAddMenu}
+        addButtonLabel="Add Menu"
+      />
 
       <ScrollView className="flex-1" nestedScrollEnabled={true}>
         <View className="gap-3">
@@ -507,18 +514,11 @@ const MenuPage: React.FC = () => {
 
   const renderCategoriesContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">Categories</Text>
-        <TouchableOpacity
-          onPress={handleAddCategory}
-          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
-        >
-          <Plus size={20} color="white" />
-          <Text className="text-lg text-white font-medium ml-1.5">
-            Add Category
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <MenuHeader
+        title={`Categories (${storeCategories.length})`}
+        onAddPress={handleAddCategory}
+        addButtonLabel="Add Category"
+      />
 
       <ScrollView className="flex-1">
         <View className="gap-3">
@@ -621,7 +621,11 @@ const MenuPage: React.FC = () => {
                               </View>
                               <View className="flex-row items-center gap-2 ml-2">
                                 <Text
-                                  className={`text-lg ${hasCustomPricing ? "text-yellow-400" : "text-gray-300"}`}
+                                  className={`text-lg ${
+                                    hasCustomPricing
+                                      ? "text-yellow-400"
+                                      : "text-gray-300"
+                                  }`}
                                 >
                                   ${categoryPrice.toFixed(2)}
                                 </Text>
@@ -648,20 +652,11 @@ const MenuPage: React.FC = () => {
 
   const renderItemsContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">
-          Menu Items ({filteredItems.length})
-        </Text>
-        <TouchableOpacity
-          onPress={handleAddItem}
-          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
-        >
-          <Plus size={20} color="white" />
-          <Text className="text-lg text-white font-medium ml-1.5">
-            Add Item
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <MenuHeader
+        title={`Menu Items (${filteredItems.length})`}
+        onAddPress={handleAddItem}
+        addButtonLabel="Add Item"
+      />
 
       {filteredItems.length === 0 ? (
         <View className="flex-1 items-center justify-center">
@@ -693,18 +688,11 @@ const MenuPage: React.FC = () => {
 
   const renderModifiersContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">Modifier Groups</Text>
-        <TouchableOpacity
-          onPress={() => router.push("/menu/add-modifier")}
-          className="flex-row items-center bg-blue-600 px-5 py-2.5 rounded-lg"
-        >
-          <Plus size={20} color="white" />
-          <Text className="text-lg text-white font-medium ml-1.5">
-            Add Modifier Group
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <MenuHeader
+        title={`Modifier Groups (${uniqueModifierGroups.length})`}
+        onAddPress={() => router.push("/menu/add-modifier")}
+        addButtonLabel="Add Modifier"
+      />
 
       <ScrollView className="flex-1">
         <View className="gap-3">
@@ -719,10 +707,18 @@ const MenuPage: React.FC = () => {
                     {modifierGroup.name}
                   </Text>
                   <View
-                    className={`px-3 py-1.5 rounded-full ${modifierGroup.type === "required" ? "bg-red-900/30 border border-red-500" : "bg-blue-900/30 border border-blue-500"}`}
+                    className={`px-3 py-1.5 rounded-full ${
+                      modifierGroup.type === "required"
+                        ? "bg-red-900/30 border border-red-500"
+                        : "bg-blue-900/30 border border-blue-500"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-medium ${modifierGroup.type === "required" ? "text-red-400" : "text-blue-400"}`}
+                      className={`text-lg font-medium ${
+                        modifierGroup.type === "required"
+                          ? "text-red-400"
+                          : "text-blue-400"
+                      }`}
                     >
                       {modifierGroup.type === "required"
                         ? "Required"
@@ -824,10 +820,18 @@ const MenuPage: React.FC = () => {
                         </View>
                       </View>
                       <View
-                        className={`px-2.5 py-1.5 rounded-full ${item.availability !== false ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+                        className={`px-2.5 py-1.5 rounded-full ${
+                          item.availability !== false
+                            ? "bg-green-900/30 border border-green-500"
+                            : "bg-red-900/30 border border-red-500"
+                        }`}
                       >
                         <Text
-                          className={`text-base ${item.availability !== false ? "text-green-400" : "text-red-400"}`}
+                          className={`text-base ${
+                            item.availability !== false
+                              ? "text-green-400"
+                              : "text-red-400"
+                          }`}
                         >
                           {item.availability !== false
                             ? "Available"
@@ -860,20 +864,30 @@ const MenuPage: React.FC = () => {
         <View className="flex-row bg-[#303030] border border-gray-600 rounded-lg p-1">
           <TouchableOpacity
             onPress={() => setScheduleViewType("menus")}
-            className={`px-4 py-2 rounded-md ${scheduleViewType === "menus" ? "bg-blue-600" : ""}`}
+            className={`px-4 py-2 rounded-md ${
+              scheduleViewType === "menus" ? "bg-blue-600" : ""
+            }`}
           >
             <Text
-              className={`text-lg font-medium ${scheduleViewType === "menus" ? "text-white" : "text-gray-300"}`}
+              className={`text-lg font-medium ${
+                scheduleViewType === "menus" ? "text-white" : "text-gray-300"
+              }`}
             >
               Menus
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setScheduleViewType("categories")}
-            className={`px-4 py-2 rounded-md ${scheduleViewType === "categories" ? "bg-blue-600" : ""}`}
+            className={`px-4 py-2 rounded-md ${
+              scheduleViewType === "categories" ? "bg-blue-600" : ""
+            }`}
           >
             <Text
-              className={`text-lg font-medium ${scheduleViewType === "categories" ? "text-white" : "text-gray-300"}`}
+              className={`text-lg font-medium ${
+                scheduleViewType === "categories"
+                  ? "text-white"
+                  : "text-gray-300"
+              }`}
             >
               Categories
             </Text>
@@ -893,10 +907,18 @@ const MenuPage: React.FC = () => {
                       {menu.name}
                     </Text>
                     <View
-                      className={`px-2.5 py-1.5 rounded-full ${menu.isActive && menu.isAvailableNow ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+                      className={`px-2.5 py-1.5 rounded-full ${
+                        menu.isActive && menu.isAvailableNow
+                          ? "bg-green-900/30 border border-green-500"
+                          : "bg-red-900/30 border border-red-500"
+                      }`}
                     >
                       <Text
-                        className={`text-lg ${menu.isActive && menu.isAvailableNow ? "text-green-400" : "text-red-400"}`}
+                        className={`text-lg ${
+                          menu.isActive && menu.isAvailableNow
+                            ? "text-green-400"
+                            : "text-red-400"
+                        }`}
                       >
                         {menu.isActive
                           ? menu.isAvailableNow
@@ -951,10 +973,20 @@ const MenuPage: React.FC = () => {
                       {category.name}
                     </Text>
                     <View
-                      className={`px-2.5 py-1.5 rounded-full ${category.isActive && isCategoryAvailableNow(category.name) ? "bg-green-900/30 border border-green-500" : "bg-red-900/30 border border-red-500"}`}
+                      className={`px-2.5 py-1.5 rounded-full ${
+                        category.isActive &&
+                        isCategoryAvailableNow(category.name)
+                          ? "bg-green-900/30 border border-green-500"
+                          : "bg-red-900/30 border border-red-500"
+                      }`}
                     >
                       <Text
-                        className={`text-lg ${category.isActive && isCategoryAvailableNow(category.name) ? "text-green-400" : "text-red-400"}`}
+                        className={`text-lg ${
+                          category.isActive &&
+                          isCategoryAvailableNow(category.name)
+                            ? "text-green-400"
+                            : "text-red-400"
+                        }`}
                       >
                         {category.isActive
                           ? isCategoryAvailableNow(category.name)

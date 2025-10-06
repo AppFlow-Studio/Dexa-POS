@@ -18,20 +18,20 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
   const { toggleMenuCategoryActive } = useMenuStore();
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-6 mb-4">
-      <View className="flex-row items-center justify-between mb-2">
-        <View className="flex-row items-center gap-3">
-          <GripVertical size={24} color="#9CA3AF" />
-          <Text className="text-3xl font-semibold text-white">{menu.name}</Text>
+    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center gap-2">
+          <GripVertical size={20} color="#9CA3AF" />
+          <Text className="text-xl font-semibold text-white">{menu.name}</Text>
           <View
-            className={`px-3 py-2 rounded-full ${
+            className={`px-2.5 py-1 rounded-full ${
               menu.isActive && menu.isAvailableNow
                 ? "bg-green-900/30 border border-green-500"
                 : "bg-red-900/30 border border-red-500"
             }`}
           >
             <Text
-              className={`text-xl font-medium ${
+              className={`text-sm font-medium ${
                 menu.isActive && menu.isAvailableNow
                   ? "text-green-400"
                   : "text-red-400"
@@ -46,23 +46,23 @@ export const DraggableMenu: React.FC<DraggableMenuProps> = ({
           </View>
         </View>
 
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={() => onToggleActive(menu.id)}
-            className="p-3 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-[#212121] rounded border border-gray-600"
           >
             {menu.isActive ? (
-              <Eye size={24} color="#10B981" />
+              <Eye size={20} color="#10B981" />
             ) : (
-              <EyeOff size={24} color="#EF4444" />
+              <EyeOff size={20} color="#EF4444" />
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={onEdit}
-            className="p-3 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-[#212121] rounded border border-gray-600"
           >
-            <Settings size={24} color="#9CA3AF" />
+            <Settings size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
       </View>

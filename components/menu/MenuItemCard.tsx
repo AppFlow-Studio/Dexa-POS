@@ -41,9 +41,9 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
   return (
     // Main container is now a row
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 w-full flex-row items-center">
-      {/* Image Section */}
-      <View className="w-24 h-24 rounded-lg border border-gray-600 overflow-hidden">
+    <View className="bg-[#303030] rounded-lg border border-gray-700 p-3 w-full flex-row items-center">
+      {/* Image Section - smaller image */}
+      <View className="w-16 h-16 rounded-md border border-gray-600 overflow-hidden">
         {imageSource ? (
           <Image
             source={imageSource}
@@ -52,28 +52,26 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
           />
         ) : (
           <View className="w-full h-full bg-gray-700 items-center justify-center">
-            <Utensils color="#9ca3af" size={32} />
+            <Utensils color="#9ca3af" size={24} />
           </View>
         )}
       </View>
 
-      {/* Info Section (Takes remaining space) */}
-      <View className="flex-1 ml-4">
-        <Text className="text-2xl font-semibold text-white" numberOfLines={1}>
+      {/* Info Section - reduced margins and font sizes */}
+      <View className="flex-1 ml-3">
+        <Text className="text-lg font-semibold text-white" numberOfLines={1}>
           {item.name}
         </Text>
-        <Text className="text-xl text-gray-400 mt-1">
+        <Text className="text-base text-gray-400">
           ${item.price.toFixed(2)}
         </Text>
         <View
-          className={`px-3 py-1 mt-2 rounded-full self-start ${
-            isAvailable
-              ? "bg-green-900/30 border border-green-500"
-              : "bg-red-900/30 border-red-500"
+          className={`px-2 py-0.5 mt-1.5 rounded-full self-start ${
+            isAvailable ? "bg-green-900/30" : "bg-red-900/30"
           }`}
         >
           <Text
-            className={`text-base font-medium ${
+            className={`text-xs font-medium ${
               isAvailable ? "text-green-400" : "text-red-400"
             }`}
           >
@@ -82,23 +80,23 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
         </View>
       </View>
 
-      {/* Actions Section */}
-      <View className="flex-row items-center gap-2">
+      {/* Actions Section - smaller icons and less padding */}
+      <View className="flex-row items-center gap-0">
         <TouchableOpacity
           onPress={() => onToggleAvailability(item.id)}
-          className="p-3"
+          className="p-2"
         >
           {isAvailable ? (
-            <EyeOff size={24} color="#9CA3AF" />
+            <EyeOff size={20} color="#9CA3AF" />
           ) : (
-            <Eye size={24} color="#9CA3AF" />
+            <Eye size={20} color="#9CA3AF" />
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onEdit(item)} className="p-3">
-          <Settings size={24} color="#9CA3AF" />
+        <TouchableOpacity onPress={() => onEdit(item)} className="p-2">
+          <Settings size={20} color="#9CA3AF" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onDelete(item.id)} className="p-3">
-          <Trash2 size={24} color="#EF4444" />
+        <TouchableOpacity onPress={() => onDelete(item.id)} className="p-2">
+          <Trash2 size={20} color="#EF4444" />
         </TouchableOpacity>
       </View>
     </View>

@@ -13,21 +13,21 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
   onEdit,
 }) => {
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-6 mb-4">
-      <View className="flex-row items-center justify-between mb-4">
-        <View className="flex-row items-center gap-3">
-          <Text className="text-3xl font-semibold text-white">
+    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center gap-2">
+          <Text className="text-xl font-semibold text-white">
             {modifierGroup.name}
           </Text>
           <View
-            className={`px-4 py-2 rounded-full ${
+            className={`px-2.5 py-1 rounded-full ${
               modifierGroup.type === "required"
                 ? "bg-red-900/30 border border-red-500"
                 : "bg-blue-900/30 border border-blue-500"
             }`}
           >
             <Text
-              className={`text-xl font-medium ${
+              className={`text-sm font-medium ${
                 modifierGroup.type === "required"
                   ? "text-red-400"
                   : "text-blue-400"
@@ -36,20 +36,19 @@ export const ModifierGroupCard: React.FC<ModifierGroupCardProps> = ({
               {modifierGroup.type === "required" ? "Required" : "Optional"}
             </Text>
           </View>
-          <View className="bg-gray-600/30 border border-gray-500 px-4 py-2 rounded-full">
-            <Text className="text-xl text-gray-300">
+          <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1 rounded-full">
+            <Text className="text-sm text-gray-300">
               {modifierGroup.selectionType === "single" ? "Single" : "Multiple"}
             </Text>
           </View>
         </View>
 
-        <View className="flex-row items-center gap-2">
-          {/* This button now calls the onEdit prop */}
+        <View className="flex-row items-center">
           <TouchableOpacity
             onPress={onEdit}
-            className="p-3 bg-[#212121] rounded border border-gray-600"
+            className="p-2 bg-[#212121] rounded border border-gray-600"
           >
-            <Settings size={24} color="#9CA3AF" />
+            <Settings size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>
       </View>

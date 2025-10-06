@@ -1,7 +1,6 @@
-import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { router, usePathname } from "expo-router";
-import { ChevronRight, Plus, Search } from "lucide-react-native";
+import { ChevronRight, Plus } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -21,7 +20,6 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   activeTab: externalActiveTab,
   onTabChange,
 }) => {
-  const { openSearch } = useMenuManagementSearchStore();
   const {
     menuItems,
     categories: storeCategories,
@@ -139,12 +137,6 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
       <View className="p-4 flex-row items-center justify-between">
         <Text className="text-2xl font-bold text-white">Menu Management</Text>
         <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={openSearch}
-            className="p-2 bg-gray-700 rounded-lg"
-          >
-            <Search size={20} color="#9CA3AF" />
-          </TouchableOpacity>
           <TouchableOpacity
             onPress={handleAddPress}
             className="p-2 bg-blue-600 rounded-lg"

@@ -127,6 +127,21 @@ const OpenItemAdder = () => {
     setPriceDisplay("0.00");
   };
 
+  const NumpadButton: React.FC<{
+    value: string;
+    onPress: () => void;
+    isDestructive?: boolean;
+  }> = ({ value, onPress, isDestructive }) => (
+    <TouchableOpacity
+      onPress={onPress}
+      className={`flex-1 h-12 rounded-lg items-center justify-center ${
+        isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
+      }`}
+    >
+      <Text className="text-xl font-bold text-white">{value}</Text>
+    </TouchableOpacity>
+  );
+
   const renderNumpad = () => {
     const numpadButtons = [
       ["1", "2", "3"],
@@ -139,22 +154,15 @@ const OpenItemAdder = () => {
       <View className="gap-2">
         {numpadButtons.map((row, rowIndex) => (
           <View key={rowIndex} className="flex-row gap-2">
-            {row.map((button) => (
-              <TouchableOpacity
-                key={button}
-                onPress={() => handlePriceInput(button)}
-                className={`flex-1 h-14 rounded-lg items-center justify-center ${button === "backspace"
-                    ? "bg-red-600"
-                    : "bg-[#303030] border border-gray-600"
-                  }`}
-              >
-                <Text
-                  className={`text-2xl font-bold ${button === "backspace" ? "text-white" : "text-white"
-                    }`}
-                >
-                  {button === "backspace" ? "⌫" : button}
-                </Text>
-              </TouchableOpacity>
+            {row.map((btn) => (
+              <NumpadButton
+                key={btn}
+                value={btn}
+                onPress={() =>
+                  handlePriceInput(btn === "⌫" ? "backspace" : btn)
+                }
+                isDestructive={btn === "⌫"}
+              />
             ))}
           </View>
         ))}
@@ -178,8 +186,6 @@ const OpenItemAdder = () => {
 
   return (
     <ScrollView className="flex-1 bg-[#212121] py-4">
-      <Text className="text-2xl font-bold text-white mb-4">Add Open Item</Text>
-
       <View className="mb-4">
         <Text className="text-xl font-semibold text-white mb-2">
           Open Item Name
@@ -197,7 +203,7 @@ const OpenItemAdder = () => {
         <Text className="text-xl font-semibold text-white mb-2">
           Open Item Price
         </Text>
-        <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-4 items-center">
+        <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 items-center">
           <Text className="text-3xl font-bold text-white">${priceDisplay}</Text>
         </View>
       </View>
