@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import CheckDetailsModal from "@/components/settings/end-of-day/CheckDetailsModal";
 import {
   DropdownMenu,
@@ -100,7 +100,10 @@ const CheckRow = ({
 const ChecksScreen = () => {
   const [isDetailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<Check | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   const handleRowAction = (check: Check, action: "view" | "delete") => {
     setSelectedCheck(check);
@@ -123,7 +126,7 @@ const ChecksScreen = () => {
             className="ml-2 text-lg text-white flex-1 h-12"
           />
         </View>
-        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
       {/* Table */}

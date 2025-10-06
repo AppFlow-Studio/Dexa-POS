@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import PaymentDetailsCard from "@/components/settings/end-of-day/PaymentDetailsCard";
 import RevenueCentersCard from "@/components/settings/end-of-day/RevenueCentersCard";
 import SalesTaxesSummaryCard from "@/components/settings/end-of-day/SalesTaxesSummaryCard";
@@ -72,7 +72,10 @@ const EndOfDayReportScreen = () => {
     "statement"
   );
   const [isModalOpen, setModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   const storeOperationSubsections = [
     {
@@ -314,9 +317,9 @@ const EndOfDayReportScreen = () => {
           <View className="w-[58%] gap-y-3 bg-[#303030] p-4 rounded-2xl border border-gray-600">
             <TouchableOpacity className="flex-row items-center justify-end">
               <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg">
-                <DatePicker
-                  date={selectedDate}
-                  onDateChange={setSelectedDate}
+                <DateRangePicker
+                  range={dateRange}
+                  onRangeChange={setDateRange}
                 />
               </View>
             </TouchableOpacity>

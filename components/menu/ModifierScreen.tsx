@@ -722,9 +722,9 @@ const ModifierScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
-            className="p-2 rounded-full gap-x-1.5 flex-row items-center justify-center bg-green-500"
+            className="p-2 px-4 rounded-lg gap-x-1.5 flex-row items-center justify-center bg-green-500"
           >
-            <Text className="text-white text-lg font-semibold">Done</Text>
+            <Text className="text-white text-xl font-semibold">Done</Text>
             <Check color="#FFFFFF" size={20} />
           </TouchableOpacity>
         </View>

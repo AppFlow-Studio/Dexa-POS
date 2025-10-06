@@ -188,6 +188,7 @@ const PinLoginScreen = () => {
         );
       } else {
         showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+        setPin("");
       }
       return;
     }
@@ -284,7 +285,6 @@ const PinLoginScreen = () => {
             className={`mr-3 items-center ${
               selectedEmployeeId === e.id ? "opacity-100" : "opacity-50"
             }`}
-
           >
             <Image
               source={
@@ -301,7 +301,6 @@ const PinLoginScreen = () => {
                   ? "text-green-400"
                   : "text-gray-400"
               }`}
-
             >
               {e.shiftStatus === "clocked_in" ? "Clocked In" : "Clocked Out"}
             </Text>
@@ -309,18 +308,16 @@ const PinLoginScreen = () => {
         ))}
       </ScrollView>
 
-
       <Text className="text-md font-semibold text-white mb-2">
         ENTER YOUR PASSCODE
       </Text>
       <PinDisplay pinLength={pin.length} maxLength={MAX_PIN_LENGTH} />
 
-      <View className="mt-4">
-
+      <View className="w-full">
         <PinNumpad onKeyPress={handleKeyPress} />
       </View>
 
-      <View className="flex-row gap-4 mt-6">
+      <View className="flex-row gap-4 mt-4">
         <TouchableOpacity
           onPress={handleLogin}
           className="flex-1 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center"
@@ -340,7 +337,6 @@ const PinLoginScreen = () => {
           <Text className="text-green-400 text-lg font-bold">CLOCK OUT</Text>
         </TouchableOpacity>
       </View>
-
       <Link href="/timeclock" asChild>
         <TouchableOpacity className="self-center bg-[#2D2D2D] border border-gray-700 rounded-xl p-4 mt-6 flex-row items-center gap-2">
           <Text className="text-lg font-semibold text-white">

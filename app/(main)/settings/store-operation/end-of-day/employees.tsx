@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import ManagerApprovalModal from "@/components/settings/end-of-day/ManagerApprovalModal";
 import ViewProfileModal from "@/components/settings/end-of-day/ViewProfileModal";
 import {
@@ -119,7 +119,10 @@ const ViewEmployeesScreen = () => {
   >(null);
   const [selectedEmployee, setSelectedEmployee] =
     useState<EmployeeShift | null>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   const handleRowAction = (
     employee: EmployeeShift,
@@ -151,7 +154,7 @@ const ViewEmployeesScreen = () => {
             className="ml-2 text-xl flex-1 h-16"
           />
         </View>
-        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
       {/* Table */}

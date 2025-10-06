@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ import {
   MoreHorizontal,
   Search,
 } from "lucide-react-native";
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   FlatList,
   Text,
@@ -92,7 +92,62 @@ const DrawerRow = ({ drawer }: { drawer: DrawerSummary }) => {
 };
 
 const DrawerSummaryScreen = () => {
-  const [selectedDate, setSelectedDate] = React.useState(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date("2024-10-15"),
+    to: new Date("2024-10-16"),
+  });
+  const [searchText, setSearchText] = useState("");
+
+  const filteredSummaries = useMemo(() => {
+    let summaries = [...MOCK_DRAWER_SUMMARIES];
+
+    // --- LOGIC ADDED to filter by date range ---
+    if (dateRange.from) {
+      const startDate = new Date(dateRange.from);
+      startDate.setUTCHours(0, 0, 0, 0);
+      const endDate = dateRange.to
+        ? new Date(dateRange.to)
+        : new Date(dateRange.from);
+      endDate.setUTCHours(23, 59, 59, 999);
+
+      summaries = summaries.filter((summary) => {
+        const dateString = summary.dateIssued;
+        const months = {
+          Jan: 0,
+          Feb: 1,
+          Mar: 2,
+          Apr: 3,
+          May: 4,
+          Jun: 5,
+          Jul: 6,
+          Aug: 7,
+          Sep: 8,
+          Oct: 9,
+          Nov: 10,
+          Dec: 11,
+        };
+
+        const parts = dateString.replace(",", "").split(" ");
+        const month = months[parts[0] as keyof typeof months];
+        const day = parseInt(parts[1]);
+        const year = parseInt(parts[2]);
+
+        const summaryDate = new Date(year, month, day);
+        return summaryDate >= startDate && summaryDate <= endDate;
+      });
+    }
+
+    if (searchText.trim()) {
+      const lowerQuery = searchText.toLowerCase();
+      summaries = summaries.filter(
+        (summary) =>
+          summary.cashier.toLowerCase().includes(lowerQuery) ||
+          summary.drawerName.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    return summaries;
+  }, [searchText, dateRange]);
 
   return (
     <View className="flex-1 bg-[#212121] p-4">
@@ -106,7 +161,7 @@ const DrawerSummaryScreen = () => {
             className="ml-2 text-lg text-white flex-1 h-12"
           />
         </View>
-        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
       {/* Table */}
@@ -140,7 +195,7 @@ const DrawerSummaryScreen = () => {
           ))}
         </View>
         <FlatList
-          data={MOCK_DRAWER_SUMMARIES}
+          data={filteredSummaries}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <DrawerRow drawer={item} />}
         />
