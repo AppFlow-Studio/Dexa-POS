@@ -458,7 +458,7 @@ export interface OrderProfile {
   items: CartItem[];
 
   // Timestamps for tracking order lifecycle
-  opened_at: string; // ISO String format is recommended
+  opened_at: string | null; // ISO String format is recommended
   closed_at?: string; // Optional, set when the order is closed
 
   // Final calculated values, set upon closing the order

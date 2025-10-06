@@ -90,7 +90,7 @@ const TableBillSection = ({
         {/* Coursing Summary */}
         <ScrollView horizontal={true} className="max-h-16">
           {Object.keys(courseSummary).length > 0 && (
-            <View className="px-3 py-2 border-b border-gray-700">
+            <View className="px-3 py-2 border-b border-gray-700 flex-row items-center justify-between">
               <View className="flex-row flex-wrap gap-2">
                 {Object.entries(courseSummary)
                   .sort(([a], [b]) => Number(a) - Number(b))
@@ -124,23 +124,23 @@ const TableBillSection = ({
                     return (
                       <View
                         key={course}
-                        className={`px-2.5 py-1.5 rounded-full flex-row items-center gap-2 ${
+                        className={`px-2.5 py-1.5 rounded-lg flex-row items-center gap-2 ${
                           sent || allItemsSent
                             ? "bg-green-900/30 border border-green-500"
                             : anyItemsReady
-                              ? "bg-yellow-900/30 border border-yellow-500"
-                              : isActive
-                                ? "bg-blue-900/30 border border-blue-500"
-                                : "bg-[#212121] border border-gray-700"
+                            ? "bg-yellow-900/30 border border-yellow-500"
+                            : isActive
+                            ? "bg-blue-900/30 border border-blue-500"
+                            : "bg-[#212121] border border-gray-700"
                         }`}
                       >
                         <View
-                          className={`w-2.5 h-2.5 rounded-full ${
+                          className={`w-2.5 h-2.5 rounded-lg ${
                             sent || allItemsSent
                               ? "bg-green-500"
                               : anyItemsReady
-                                ? "bg-yellow-500"
-                                : "bg-gray-500"
+                              ? "bg-yellow-500"
+                              : "bg-gray-500"
                           }`}
                         />
                         <Text className="text-base font-semibold text-white">

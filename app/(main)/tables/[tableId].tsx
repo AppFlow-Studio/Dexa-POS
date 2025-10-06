@@ -91,7 +91,7 @@ const UpdateTableScreen = () => {
     }
 
     const timer = setInterval(() => {
-      const startTime = new Date(activeOrder.opened_at);
+      const startTime = new Date(activeOrder.opened_at!);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -219,7 +219,9 @@ const UpdateTableScreen = () => {
       activeOrder.items.map((i) => i.id)
     );
     toast.success(
-      `Course ${nextCourse - 1} created. New items will be Course ${nextCourse}.`,
+      `Course ${
+        nextCourse - 1
+      } created. New items will be Course ${nextCourse}.`,
       { duration: 2500, position: ToastPosition.BOTTOM }
     );
   };
@@ -246,6 +248,10 @@ const UpdateTableScreen = () => {
         position: ToastPosition.BOTTOM,
       });
       return;
+    }
+
+    if (!activeOrder.opened_at) {
+      updateActiveOrderDetails({ opened_at: new Date().toISOString() });
     }
 
     // Update items in the course to "sent" status
@@ -349,7 +355,9 @@ const UpdateTableScreen = () => {
     archiveOrder(activeOrderId);
     router.back();
     toast.success(
-      `Table(s) ${tablesToClean.map((id) => allTables.find((t) => t.id === id)?.name).join(", ")} marked for cleaning.`,
+      `Table(s) ${tablesToClean
+        .map((id) => allTables.find((t) => t.id === id)?.name)
+        .join(", ")} marked for cleaning.`,
       {
         duration: 3000,
         position: ToastPosition.BOTTOM,
@@ -500,10 +508,14 @@ const UpdateTableScreen = () => {
                     </Text>
                     <View className="flex-row items-center gap-2 mt-1">
                       <View
-                        className={`px-1.5 py-0.5 rounded-full ${isReady ? "bg-green-600" : "bg-yellow-600"}`}
+                        className={`px-1.5 py-0.5 rounded-full ${
+                          isReady ? "bg-green-600" : "bg-yellow-600"
+                        }`}
                       >
                         <Text
-                          className={`text-[9px] font-semibold ${isReady ? "text-green-100" : "text-yellow-100"}`}
+                          className={`text-[9px] font-semibold ${
+                            isReady ? "text-green-100" : "text-yellow-100"
+                          }`}
                         >
                           {isReady ? "Ready" : "Preparing"}
                         </Text>
@@ -555,12 +567,12 @@ const UpdateTableScreen = () => {
         {activeOrder && (
           <View className="flex-row items-center gap-2">
             <View
-              className={`px-1.5 py-0.5 rounded-full ${
+              className={`px-1.5 py-0.5 rounded-md ${
                 activeOrder.paid_status === "Paid"
                   ? "bg-green-600"
                   : activeOrder.paid_status === "Pending"
-                    ? "bg-yellow-600"
-                    : "bg-red-600"
+                  ? "bg-yellow-600"
+                  : "bg-red-600"
               }`}
             >
               <Text
@@ -568,18 +580,26 @@ const UpdateTableScreen = () => {
                   activeOrder.paid_status === "Paid"
                     ? "text-green-100"
                     : activeOrder.paid_status === "Pending"
-                      ? "text-yellow-100"
-                      : "text-red-100"
+                    ? "text-yellow-100"
+                    : "text-red-100"
                 }`}
               >
                 {activeOrder.paid_status}
               </Text>
             </View>
             <View
-              className={`px-1.5 py-0.5 rounded-full ${activeOrder.check_status === "Opened" ? "bg-purple-600" : "bg-gray-600"}`}
+              className={`px-1.5 py-0.5 rounded-md ${
+                activeOrder.check_status === "Opened"
+                  ? "bg-purple-600"
+                  : "bg-gray-600"
+              }`}
             >
               <Text
-                className={`text-[11px] font-semibold ${activeOrder.check_status === "Opened" ? "text-purple-100" : "text-gray-100"}`}
+                className={`text-[11px] font-semibold ${
+                  activeOrder.check_status === "Opened"
+                    ? "text-purple-100"
+                    : "text-gray-100"
+                }`}
               >
                 {activeOrder.check_status}
               </Text>
@@ -631,7 +651,9 @@ const UpdateTableScreen = () => {
                 <TouchableOpacity
                   onPress={handlePay}
                   disabled={activeOrder?.items.length === 0}
-                  className={`px-6 py-2 rounded-lg bg-blue-500 ${activeOrder?.items.length === 0 ? "bg-gray-600" : ""}`}
+                  className={`px-6 py-2 rounded-lg bg-blue-500 ${
+                    activeOrder?.items.length === 0 ? "bg-gray-600" : ""
+                  }`}
                 >
                   <Text className="font-semibold text-white text-base">
                     Pay
@@ -640,7 +662,9 @@ const UpdateTableScreen = () => {
                 <TouchableOpacity
                   onPress={handleCloseCheck}
                   disabled={activeOrder?.items.length === 0}
-                  className={`px-6 py-2 rounded-lg border border-gray-600 bg-[#303030] ${activeOrder?.items.length === 0 ? "bg-gray-600" : ""}`}
+                  className={`px-6 py-2 rounded-lg border border-gray-600 bg-[#303030] ${
+                    activeOrder?.items.length === 0 ? "bg-gray-600" : ""
+                  }`}
                 >
                   <Text className="font-semibold text-white text-base">
                     Close Check

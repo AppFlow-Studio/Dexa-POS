@@ -394,7 +394,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         paid_status: "Unpaid",
         order_type: details?.tableId ? "Dine In" : "Takeaway",
         items: [],
-        opened_at: new Date().toISOString(),
+        opened_at: null,
         guest_count: details?.guestCount || 1,
       };
       set((state) => ({ orders: [...state.orders, newOrder] }));
@@ -1037,11 +1037,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // Find the earliest start time from all orders being merged
       const earliestStartTime = ordersToMerge.reduce(
         (earliest, currentOrder) => {
-          const currentOpenTime = new Date(currentOrder.opened_at).getTime();
-          return currentOpenTime < earliest ? currentOpenTime : earliest;
+          // 1. Check if opened_at is a valid string before parsing
+          if (currentOrder.opened_at) {
+            const currentOpenTime = new Date(currentOrder.opened_at).getTime();
+            // Only update if the current time is earlier
+            if (currentOpenTime < earliest) {
+              return currentOpenTime;
+            }
+          }
+          // 2. If opened_at is null or not earlier, keep the existing earliest time
+          return earliest;
         },
-        new Date().getTime()
-      ); // Initialize with current time as a fallback
+        new Date().getTime() // Initialize with the current time
+      );
+
       // Create a new order object with all necessary properties
       const newMergedOrderData = {
         id: `order_${Date.now()}`,
@@ -1080,6 +1089,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       const updatedOrders = orders.map((o) => {
         if (o.id !== activeOrderId) return o;
+        const startTime = o.opened_at ? o.opened_at : new Date().toISOString();
         const updatedItems = o.items.map((item) => ({
           ...item,
           item_status: "Preparing" as const,
@@ -1091,6 +1101,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           check_status: "Opened" as const,
           paid_status: o.paid_status === "Paid" ? "Paid" : "Unpaid",
           order_type: o.order_type,
+          opened_at: startTime,
         } as OrderProfile;
       });
 
