@@ -18,6 +18,25 @@ const OrderLineSection: React.FC = () => {
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
+  const visibleOrders = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.items.length > 0 &&
+        o.order_status !== "Closed" &&
+        o.order_status !== "Building" &&
+        (o.order_status === "Preparing" || o.paid_status !== "Paid")
+    );
+  }, [orders]);
+
+  const orderCounts = useMemo(() => {
+    return {
+      All: visibleOrders.length,
+      "Dine In": visibleOrders.filter((o) => o.order_type === "Dine In").length,
+      Takeaway: visibleOrders.filter((o) => o.order_type === "Takeaway").length,
+      Delivery: visibleOrders.filter((o) => o.order_type === "Delivery").length,
+    };
+  }, [visibleOrders]);
+
   const totalOrder = orders.filter(
     (o) =>
       (o.order_type !== "Dine In" &&
@@ -32,25 +51,11 @@ const OrderLineSection: React.FC = () => {
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
-    // Only show orders that have items sent to kitchen
-    const visibleOrders = orders.filter(
-      (o) =>
-        (o.order_type !== "Dine In" &&
-          // Condition 1: Must be in Preparing state
-          o.order_status === "Preparing" &&
-          // Condition 2: Must have one or more items
-          o.items.length > 0) ||
-        (o.paid_status === "Unpaid" &&
-          o.order_status !== "Closed" &&
-          o.order_status !== "Building" &&
-          o.items.length > 0)
-    );
-
     if (activeTab === "All") {
       return visibleOrders;
     }
     return visibleOrders.filter((o) => o.order_type === activeTab);
-  }, [orders, activeTab]);
+  }, [visibleOrders, activeTab]);
 
   // Ref to control the FlatList for scrolling
   const flatListRef = useRef<FlatList>(null);
@@ -105,7 +110,8 @@ const OrderLineSection: React.FC = () => {
   return (
     <View>
       <View className="flex-row justify-between items-center">
-        <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder} />
+        <OrderTabs onTabChange={handleTabChange} counts={orderCounts} />
+
         <View className="flex-row items-center gap-2">
           <TouchableOpacity
             onPress={scrollBackward}

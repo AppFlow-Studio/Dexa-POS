@@ -24,11 +24,24 @@ const StatusIndicator = ({
   return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
 
+// Helper function to format duration
+const formatDuration = (milliseconds: number): string => {
+  if (isNaN(milliseconds) || milliseconds < 0) return "0m";
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+};
+
 const TableListItem: React.FC<{
   table: TableType;
   handleTablePress: (table: TableType) => void;
 }> = ({ table, handleTablePress }) => {
   const [isOvertime, setIsOvertime] = useState(false);
+  const [duration, setDuration] = useState("");
 
   // Get the full list of orders from the store
   const { orders } = useOrderStore();
@@ -70,20 +83,23 @@ const TableListItem: React.FC<{
   useEffect(() => {
     if (table.status !== "In Use" || !activeOrderForThisTable?.opened_at) {
       setIsOvertime(false);
+      setDuration("");
       return;
     }
 
-    const checkOvertime = () => {
+    const updateTimer = () => {
       if (!activeOrderForThisTable?.opened_at) return;
       const startTime = new Date(activeOrderForThisTable.opened_at);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
+
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
+      setDuration(formatDuration(diffMs));
     };
 
-    checkOvertime();
-    const timer = setInterval(checkOvertime, 60000);
+    updateTimer(); // Run immediately on load
+    const timer = setInterval(updateTimer, 1000); // And update every second
 
     return () => clearInterval(timer);
   }, [table.status, activeOrderForThisTable, defaultSittingTimeMinutes]);
@@ -103,34 +119,29 @@ const TableListItem: React.FC<{
       className="p-4 border-b border-gray-700"
     >
       <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
+        <View className="flex-row items-center gap-3">
           <StatusIndicator status={status} isOvertime={isOvertime} />
-          <Text className="text-xl font-semibold text-white" numberOfLines={2}>
+          <Text className="text-xl font-semibold text-white" numberOfLines={1}>
             {displayName}
           </Text>
         </View>
+        {/* Show duration on the right side if the table is in use */}
+        {status === "In Use" && duration && (
+          <Text className="text-lg font-medium text-gray-300">{duration}</Text>
+        )}
       </View>
-      {/* Display the order details from the active order */}
-      <View className="flex-col items-start my-1">
-        {/* Display the total only if an active order exists for this table */}
-        {status === "In Use" && activeOrderForThisTable && (
-          <Text className="text-xl font-bold text-white">
+
+      {/* Show guest count and total below the name */}
+      {status === "In Use" && activeOrderForThisTable && (
+        <View className="mt-2 pl-6">
+          <Text className="text-base text-gray-400">
+            {activeOrderForThisTable.guest_count || 1} Guests
+          </Text>
+          <Text className="text-lg font-bold text-white mt-1">
             ${orderTotal.toFixed(2)}
           </Text>
-        )}
-        {status === "In Use" && activeOrderForThisTable && (
-          <Text className="text-sm text-white mt-1">
-            Order {activeOrderForThisTable.id.slice(-5)}
-            {`\n`}
-            <Text className="text-lg text-white">
-              {activeOrderForThisTable.customer_name || ""}
-            </Text>
-            {activeOrderForThisTable?.check_status === "Closed" && (
-              <Text className="text-red-600 font-semibold"> (Closed)</Text>
-            )}
-          </Text>
-        )}
-      </View>
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
