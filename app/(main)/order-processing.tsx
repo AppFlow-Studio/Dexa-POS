@@ -140,16 +140,18 @@ const OrderProcessing = () => {
               contentContainerClassName="flex-row gap-x-2"
               showsHorizontalScrollIndicator={false}
             >
-
-              {filteredOrders.map((order) => (
-                <OrderBadge
-                  key={order.id}
-                  order={order}
-                  onMarkReady={() => handleMarkReady(order)}
-                  onViewItems={() => handleViewItems(order.id)}
-                  onRetrieve={() => handleRetrieve(order.id)}
-                />
-              ))}
+              {filteredOrders
+                .slice()
+                .reverse()
+                .map((order) => (
+                  <OrderBadge
+                    key={order.id}
+                    order={order}
+                    onMarkReady={() => handleMarkReady(order)}
+                    onViewItems={() => handleViewItems(order.id)}
+                    onRetrieve={() => handleRetrieve(order.id)}
+                  />
+                ))}
             </ScrollView>
           )}
 

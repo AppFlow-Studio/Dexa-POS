@@ -19,9 +19,15 @@ const formatDuration = (milliseconds: number): string => {
 
 const ProfileCard = () => {
   const { employees, activeEmployeeId } = useEmployeeStore();
-  const activeEmployee = employees.find((e) => e.id === activeEmployeeId) || employees.find(e => e.shiftStatus === 'clocked_in');
+  const activeEmployee =
+    employees.find((e) => e.id === activeEmployeeId) ||
+    employees.find((e) => e.shiftStatus === "clocked_in");
   const user = activeEmployee
-    ? { fullName: activeEmployee.fullName, employeeId: activeEmployee.id, profileImageUrl: activeEmployee.profilePictureUrl }
+    ? {
+        fullName: activeEmployee.fullName,
+        employeeId: activeEmployee.id,
+        profileImageUrl: activeEmployee.profilePictureUrl,
+      }
     : MOCK_USER_PROFILE;
 
   // 2. Get the live timeclock state and actions from the store
@@ -48,26 +54,28 @@ const ProfileCard = () => {
   const renderShiftStatus = () => {
     if (status === "clockedIn" || status === "onBreak") {
       return (
-        <View className="w-full mt-4 p-4 border border-gray-200 rounded-lg">
+        <View className="w-full mt-4 p-4 bg-[#212121] border border-gray-700 rounded-lg">
           <View className="flex-row justify-between items-center">
-            <Text className="font-bold text-gray-700">Shift Status</Text>
-            <View className="px-2 py-1 bg-green-100 rounded-md">
-              <Text className="font-bold text-xs text-green-800">
-                • Clock In
+            <Text className="font-bold text-gray-400 text-base">
+              Shift Status
+            </Text>
+            <View className="px-2 py-1 bg-green-900/30 border border-green-500 rounded-md">
+              <Text className="font-bold text-xs text-green-400">
+                ● Clocked In
               </Text>
             </View>
           </View>
           <View className="mt-3 space-y-2">
             <View className="flex-row items-center">
-              <Timer color="#6b7280" size={16} />
-              <Text className="ml-2 text-gray-600">
+              <Timer color="#9CA3AF" size={16} />
+              <Text className="ml-2 text-gray-300 text-base">
                 Duration : {shiftDuration}
               </Text>
             </View>
             <View className="flex-row items-center">
-              <Clock color="#6b7280" size={16} />
-              <Text className="ml-2 text-gray-600">
-                Clock in at :
+              <Clock color="#9CA3AF" size={16} />
+              <Text className="ml-2 text-gray-300 text-base">
+                Clock in at :{" "}
                 {currentShift?.clockInTime?.toLocaleTimeString([], {
                   hour: "2-digit",
                   minute: "2-digit",
@@ -77,9 +85,9 @@ const ProfileCard = () => {
           </View>
           <TouchableOpacity
             onPress={clockOut}
-            className="w-full mt-4 py-2.5 bg-red-500 rounded-lg items-center"
+            className="w-full mt-4 py-2.5 bg-red-600 rounded-lg items-center"
           >
-            <Text className="font-bold text-white">Clock Out</Text>
+            <Text className="font-bold text-white text-base">Clock Out</Text>
           </TouchableOpacity>
         </View>
       );
@@ -89,7 +97,7 @@ const ProfileCard = () => {
       <View className="w-full mt-4 p-4 items-center">
         <TouchableOpacity
           onPress={clockIn}
-          className="w-full py-3 bg-primary-400 rounded-lg items-center"
+          className="w-full py-3 bg-blue-600 rounded-lg items-center"
         >
           <Text className="font-bold text-white text-lg">Clock In</Text>
         </TouchableOpacity>
@@ -98,15 +106,17 @@ const ProfileCard = () => {
   };
 
   return (
-    <View className="w-80 p-4 rounded-2xl items-center bg-white border border-gray-200">
+    <View className="w-80 p-4 rounded-2xl items-center bg-[#303030] border border-gray-700">
       <Image
-        source={user.profileImageUrl ? { uri: user.profileImageUrl } : require("@/assets/images/tom_hardy.jpg")}
+        source={
+          user.profileImageUrl
+            ? { uri: user.profileImageUrl }
+            : require("@/assets/images/tom_hardy.jpg")
+        }
         className="w-24 h-24 rounded-2xl"
       />
-      <Text className="text-xl font-bold text-gray-800 mt-4">
-        {user.fullName}
-      </Text>
-      <Text className="text-sm text-gray-500">{user.employeeId}</Text>
+      <Text className="text-xl font-bold text-white mt-4">{user.fullName}</Text>
+      <Text className="text-sm text-gray-400">{user.employeeId}</Text>
       {renderShiftStatus()}
     </View>
   );

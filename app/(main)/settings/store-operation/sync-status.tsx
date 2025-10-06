@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import OfflineOrderRow from "@/components/settings/sync-status/OfflineOrderRow";
 import { MOCK_OFFLINE_ORDERS } from "@/lib/mockData";
@@ -30,7 +30,10 @@ const TABLE_HEADERS = [
 ];
 
 const SyncStatusScreen = () => {
-  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   const storeOperationSubsections = [
     {
@@ -104,11 +107,12 @@ const SyncStatusScreen = () => {
                   <TextInput
                     placeholder="Search Order"
                     className="ml-2 text-lg flex-1 text-white h-12"
+                    placeholderTextColor="#9CA3AF"
                   />
                 </View>
-                <DatePicker
-                  date={selectedDate}
-                  onDateChange={setSelectedDate}
+                <DateRangePicker
+                  range={dateRange}
+                  onRangeChange={setDateRange}
                 />
               </View>
 

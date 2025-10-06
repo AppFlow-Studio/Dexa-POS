@@ -2,6 +2,7 @@ import { CartItem } from "@/lib/types";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Send } from "lucide-react-native";
 import React, { useRef, useState } from "react";
@@ -55,6 +56,7 @@ const BillSection = ({
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
+  const hasDraftItems = cart.some((item) => item.isDraft);
 
   // Count new items that haven't been sent to kitchen yet
   const newItemsCount = cart.filter(
@@ -70,7 +72,33 @@ const BillSection = ({
   };
 
   const handlePayClick = () => {
+    if (hasDraftItems) {
+      toast.error("Please confirm the item being customized before paying.", {
+        position: ToastPosition.BOTTOM,
+        duration: 4000,
+      });
+      return;
+    }
     setPaymentDialogVisible(true);
+  };
+
+  const handleSendToKitchen = () => {
+    if (hasDraftItems) {
+      toast.error("Please confirm the item being customized before sending.", {
+        position: ToastPosition.BOTTOM,
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (activeOrder?.order_type === "Dine In" && selectedTable) {
+      assignOrderToTable(activeOrderId!, selectedTable.id);
+      updateTableStatus(selectedTable.id, "In Use");
+      clearSelectedTable();
+    }
+    sendNewItemsToKitchen();
+    const newOrder = startNewOrder();
+    setActiveOrder(newOrder.id);
   };
 
   const handleClosePaymentDialog = () => {
@@ -123,18 +151,10 @@ const BillSection = ({
             disabled={
               !activeOrder ||
               activeOrder.items.length === 0 ||
-              activeOrder.order_status !== "Building"
+              activeOrder.order_status !== "Building" ||
+              hasDraftItems
             }
-            onPress={() => {
-              if (activeOrder?.order_type === "Dine In" && selectedTable) {
-                assignOrderToTable(activeOrderId, selectedTable.id);
-                updateTableStatus(selectedTable.id, "In Use");
-                clearSelectedTable();
-              }
-              sendNewItemsToKitchen();
-              const newOrder = startNewOrder();
-              setActiveOrder(newOrder.id);
-            }}
+            onPress={handleSendToKitchen}
             activeOpacity={0.85}
           >
             <Text className="text-white font-bold text-base">

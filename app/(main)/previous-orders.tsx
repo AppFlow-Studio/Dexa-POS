@@ -1,4 +1,4 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
@@ -33,7 +33,10 @@ const PreviousOrdersScreen = () => {
   const [selectedOrder, setSelectedOrder] = useState<PreviousOrder | null>(
     null
   );
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date(),
+    to: new Date(),
+  });
 
   // State for filters would go here
   const [searchText, setSearchText] = useState("");
@@ -42,17 +45,49 @@ const PreviousOrdersScreen = () => {
 
   // Get orders from the store
   const filteredOrders = useMemo(() => {
-    // Start with all orders for the selected date
-    const dateString = selectedDate.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    let orders = previousOrders.filter(
-      (order) => order.orderDate === dateString
-    );
+    console.log("previousOrders", previousOrders);
 
-    // If there is search text, further filter the date-filtered list
+    let orders = [...previousOrders];
+
+    if (dateRange.from) {
+      // 1. Create a UTC start date for comparison
+      const startDate = new Date(dateRange.from);
+      startDate.setUTCHours(0, 0, 0, 0);
+
+      // 2. Create a UTC end date for comparison
+      const endDate = dateRange.to
+        ? new Date(dateRange.to)
+        : new Date(dateRange.from);
+      endDate.setUTCHours(23, 59, 59, 999);
+
+      orders = orders.filter((order) => {
+        // Parse the date string manually
+        const dateParts = order.orderDate.split(" ");
+        const monthNames = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        const month = monthNames.indexOf(dateParts[0]);
+        const day = parseInt(dateParts[1].replace(",", ""));
+        const year = parseInt(dateParts[2]);
+
+        // Create date as UTC
+        const orderDate = new Date(Date.UTC(year, month, day));
+
+        return orderDate >= startDate && orderDate <= endDate;
+      });
+    }
+
     if (searchText.trim()) {
       const lowerQuery = searchText.toLowerCase();
       orders = orders.filter(
@@ -62,8 +97,11 @@ const PreviousOrdersScreen = () => {
       );
     }
 
-    return orders;
-  }, [previousOrders, searchText, selectedDate]);
+    return orders.sort(
+      (a, b) =>
+        new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()
+    );
+  }, [previousOrders, searchText, dateRange]);
 
   const handleOpenNotes = (order: PreviousOrder) => {
     setSelectedOrder(order);
@@ -102,7 +140,7 @@ const PreviousOrdersScreen = () => {
             className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
           />
         </View>
-        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
       {/* Table */}

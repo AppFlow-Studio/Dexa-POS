@@ -124,7 +124,7 @@ const OrderLineSection: React.FC = () => {
 
       <FlatList
         ref={flatListRef}
-        data={filteredOrders}
+        data={filteredOrders.slice().reverse()}
         keyExtractor={(item) => item.id}
         horizontal
         showsHorizontalScrollIndicator={false}

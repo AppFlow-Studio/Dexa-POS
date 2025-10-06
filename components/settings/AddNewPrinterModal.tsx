@@ -57,30 +57,31 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-3xl overflow-hidden bg-[#11111A] max-w-sm">
-        {/* Dark Header */}
-        <View className="p-3 pb-0 rounded-t-3xl">
-          <DialogTitle className="text-[#F1F1F1] text-xl font-bold text-center">
+      <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border border-gray-700 max-w-sm">
+        {/* Header */}
+        <View className="p-4 border-b border-gray-700">
+          <DialogTitle className="text-white text-xl font-bold text-center">
             Add New Printer
           </DialogTitle>
         </View>
 
-        {/* White Content */}
-        <View className="p-4 rounded-3xl bg-background-100 gap-y-3">
+        {/* Content Area */}
+        <View className="p-4 gap-y-4">
           <View>
-            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
-              Item Name
+            <Text className="font-semibold mb-1.5 text-gray-300 text-base">
+              Printer Name
             </Text>
             <TextInput
               value={itemName}
               onChangeText={setItemName}
-              placeholder="Printer Name"
-              className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
+              placeholder="e.g., Kitchen Printer"
+              placeholderTextColor="#6B7280"
+              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
             />
           </View>
 
           <View>
-            <Text className="font-bold mb-1.5 text-accent-500 text-sm">
+            <Text className="font-semibold mb-1.5 text-gray-300 text-base">
               Connection Type
             </Text>
             <Select
@@ -91,13 +92,16 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                 }
               }}
             >
-              <SelectTrigger className="w-full p-2 bg-gray-100 rounded-lg flex-row justify-between items-center">
+              <SelectTrigger className="w-full p-2 bg-[#212121] border-gray-600 rounded-lg flex-row justify-between items-center">
                 <SelectValue
-                  className="text-sm text-accent-500"
+                  className="text-sm text-white"
                   placeholder="Select..."
                 />
               </SelectTrigger>
-              <SelectContent insets={contentInsets}>
+              <SelectContent
+                insets={contentInsets}
+                className="bg-[#212121] border-gray-600"
+              >
                 <SelectGroup>
                   {CONNECTION_TYPES.map((type) => (
                     <SelectItem
@@ -105,7 +109,7 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                       label={type.label}
                       value={type.value}
                     >
-                      <Text className="text-sm">{type.label}</Text>
+                      <Text className="text-white text-lg">{type.label}</Text>
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -115,25 +119,35 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
 
           {connectionType?.value === "wifi" && (
             <View>
+              <Text className="font-semibold mb-1.5 text-gray-300 text-base">
+                IP Address
+              </Text>
               <TextInput
                 value={ipAddress}
                 onChangeText={setIpAddress}
                 placeholder="Type IP Address"
-                className="p-2 bg-gray-100 rounded-lg text-sm text-accent-500 h-16"
+                placeholderTextColor="#6B7280"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
               />
             </View>
           )}
 
           {connectionType?.value === "bluetooth" && (
             <View>
+              <Text className="font-semibold mb-1.5 text-gray-300 text-base">
+                Select Device
+              </Text>
               <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-                <SelectTrigger className="w-full p-2 bg-gray-100 rounded-lg flex-row justify-between items-center">
+                <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg h-14">
                   <SelectValue
-                    className="text-sm text-accent-500"
+                    className="text-lg text-white"
                     placeholder="Select device..."
                   />
                 </SelectTrigger>
-                <SelectContent insets={contentInsets}>
+                <SelectContent
+                  insets={contentInsets}
+                  className="bg-[#212121] border-gray-600"
+                >
                   <SelectGroup>
                     {MOCK_BLUETOOTH_DEVICES.map((device) => (
                       <SelectItem
@@ -141,7 +155,9 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                         label={device.label}
                         value={device.value}
                       >
-                        <Text className="text-sm">{device.label}</Text>
+                        <Text className="text-lg text-white">
+                          {device.label}
+                        </Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -149,14 +165,14 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
               </Select>
             </View>
           )}
-          {/* Footer with Button */}
-          <DialogFooter className="pt-4 border-t border-gray-200">
+
+          <DialogFooter className="pt-4 mt-2">
             <TouchableOpacity
               onPress={() => onAdd({})}
-              className="w-full py-2 bg-primary-400 rounded-lg"
+              className="w-full py-3 bg-blue-600 rounded-lg"
             >
-              <Text className="font-bold text-white text-center text-base">
-                Done
+              <Text className="font-bold text-white text-center text-lg">
+                Add Printer
               </Text>
             </TouchableOpacity>
           </DialogFooter>

@@ -1,6 +1,5 @@
-import DatePicker from "@/components/date-picker";
+import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import KanbanColumn from "@/components/online-orders/KanbanColumn";
-import { MOCK_ONLINE_ORDERS } from "@/lib/mockData";
 import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Href, Link } from "expo-router";
@@ -19,7 +18,10 @@ const COLUMNS = [
 
 const OnlineOrdersScreen = () => {
   const [activePartner, setActivePartner] = useState("All");
-  const [selectedDate, setSelectedDate] = useState(new Date("2021-09-19"));
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: new Date("2025-02-03"),
+    to: new Date("2025-02-03"),
+  });
   const [searchCustomer, setSearchCustomer] = useState("");
   const [searchOrderId, setSearchOrderId] = useState("");
   const [searchPartner, setSearchPartner] = useState("All");
@@ -33,21 +35,48 @@ const OnlineOrdersScreen = () => {
   const archiveOrder = useOnlineOrderStore((s) => s.archiveOrder);
 
   const groupedOrders = useMemo(() => {
-    // 3. Filter the live data from the store
-    const filtered = orders.filter(
-      (order) =>
-        activePartner === "All" || order.deliveryPartner === activePartner
-    );
+    let filtered = [...orders];
 
-    // Group by status
+    if (dateRange.from) {
+      const startDate = new Date(dateRange.from);
+      startDate.setUTCHours(0, 0, 0, 0);
+
+      const endDate = dateRange.to
+        ? new Date(dateRange.to)
+        : new Date(dateRange.from);
+      endDate.setUTCHours(23, 59, 59, 999);
+
+      filtered = filtered.filter((order) => {
+        // Parse the custom timestamp format "MM/DD/YY, HH:MM AM/PM"
+        const [datePart, timePart] = order.timestamp.split(", ");
+        const [month, day, year] = datePart.split("/").map(Number);
+        const [time, modifier] = timePart.split(" ");
+        let [hours, minutes] = time.split(":").map(Number);
+
+        // Convert to 24-hour format
+        if (modifier === "PM" && hours < 12) hours += 12;
+        if (modifier === "AM" && hours === 12) hours = 0;
+
+        // Create date (add 2000 to handle 2-digit year)
+        const orderDate = new Date(2000 + year, month - 1, day, hours, minutes);
+        return orderDate >= startDate && orderDate <= endDate;
+      });
+    }
+
+    // Filter by active partner tab
+    if (activePartner !== "All") {
+      filtered = filtered.filter(
+        (order) => order.deliveryPartner === activePartner
+      );
+    }
+
+    // Group by status for Kanban columns
     return filtered.reduce((acc, order) => {
-      if (!acc[order.status]) {
-        acc[order.status] = [];
-      }
+      if (!acc[order.status]) acc[order.status] = [];
       acc[order.status].push(order);
       return acc;
-    }, {} as Record<string, typeof MOCK_ONLINE_ORDERS>);
-  }, [orders, activePartner]);
+    }, {} as Record<string, typeof orders>);
+  }, [orders, activePartner, dateRange]);
 
   const filteredForSearch = useMemo(() => {
     return orders.filter((order) => {
@@ -104,7 +133,7 @@ const OnlineOrdersScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
-        <DatePicker date={selectedDate} onDateChange={setSelectedDate} />
+        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>

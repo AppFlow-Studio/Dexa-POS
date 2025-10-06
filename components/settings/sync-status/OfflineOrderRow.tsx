@@ -11,42 +11,45 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const OfflineOrderRow: React.FC<{ order: OfflineOrder }> = ({ order }) => {
   return (
-    <View className="flex-row items-center p-3 border-b border-background-400">
+    <View className="flex-row items-center p-4 border-b border-gray-700 bg-[#212121]">
       {/* Column widths are set to match the header */}
-      <Text className="w-1/6 font-semibold text-gray-600 text-sm">
+      <Text className="w-1/6 font-semibold text-gray-300 text-lg">
         {order.serialNo}
       </Text>
       <View className="w-1/6">
-        <Text className="font-semibold text-gray-800 text-sm">
+        <Text className="font-semibold text-white text-lg">
           {order.orderDate}
         </Text>
-        <Text className="text-xs text-gray-500">{order.orderTime}</Text>
+        <Text className="text-base text-gray-400">{order.orderTime}</Text>
       </View>
-      <Text className="w-1/6 font-semibold text-gray-600 text-sm">
+      <Text className="w-1/6 font-semibold text-gray-300 text-lg">
         {order.orderId}
       </Text>
       <View className="w-1/6">
-        <TouchableOpacity className="flex-row items-center gap-1 bg-gray-100 py-0.5 px-1.5 rounded-md self-start">
-          <Text className="font-semibold text-[10px] text-gray-600">
+        <TouchableOpacity className="flex-row items-center gap-1 bg-[#303030] border border-gray-600 py-1 px-2 rounded-md self-start">
+          <Text className="font-semibold text-sm text-gray-300">
             {order.server}
           </Text>
-          <ArrowUpRight size={10} color="#4b5563" />
+          <ArrowUpRight size={12} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
-      <Text className="w-1/6 font-bold text-gray-800 text-sm">
+      <Text className="w-1/6 font-bold text-white text-lg">
         ${order.total.toFixed(2)}
       </Text>
       <View className="w-1/6 items-end">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <TouchableOpacity className="p-1.5 rounded-md hover:bg-gray-100">
-              <MoreHorizontal size={18} color="#6b7280" />
+            <TouchableOpacity className="p-2 rounded-md hover:bg-gray-700">
+              <MoreHorizontal size={20} color="#9CA3AF" />
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-32">
+          <DropdownMenuContent className="w-32 bg-[#303030]">
             <DropdownMenuItem>
-              <Zap className="mr-1.5 h-3.5 w-3.5" color="#4b5563" />
-              <Text className="text-sm" onPress={() => alert("Sync")}>
+              <Zap className="mr-1.5 h-3.5 w-3.5 " color="#d1d5db" />
+              <Text
+                className="text-sm text-gray-300"
+                onPress={() => alert("Sync")}
+              >
                 Sync
               </Text>
             </DropdownMenuItem>
