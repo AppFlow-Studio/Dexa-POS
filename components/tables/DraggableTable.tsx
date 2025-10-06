@@ -89,7 +89,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     }
 
     const timer = setInterval(() => {
-      const startTime = new Date(orderForThisGroup.opened_at);
+      const startTime = new Date(orderForThisGroup.opened_at!);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -118,7 +118,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     }
 
     const timer = setInterval(() => {
-      const startTime = new Date(orderForThisGroup.opened_at);
+      const startTime = new Date(orderForThisGroup.opened_at!);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -233,8 +233,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         isSelected && isEditMode
           ? "#3B82F6"
           : isMerged
-            ? "#F59E0B"
-            : "transparent",
+          ? "#F59E0B"
+          : "transparent",
       borderRadius: 18,
       padding: 4,
     };

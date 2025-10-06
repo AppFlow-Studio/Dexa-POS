@@ -1,17 +1,26 @@
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useMemo } from "react";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 // Update the StatusIndicator to use the correct color scheme
-const StatusIndicator = ({ status }: { status: TableType["status"] }) => {
-  const color =
-    status === "Available"
-      ? "bg-green-500"
-      : status === "In Use"
-        ? "bg-blue-500"
-        : "bg-red-500"; // Needs Cleaning
+const StatusIndicator = ({
+  status,
+  isOvertime,
+}: {
+  status: TableType["status"];
+  isOvertime: boolean;
+}) => {
+  const color = isOvertime
+    ? "bg-yellow-500"
+    : status === "Available"
+    ? "bg-green-500"
+    : status === "In Use"
+    ? "bg-blue-500"
+    : "bg-red-500";
+
   return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
 
@@ -19,9 +28,12 @@ const TableListItem: React.FC<{
   table: TableType;
   handleTablePress: (table: TableType) => void;
 }> = ({ table, handleTablePress }) => {
+  const [isOvertime, setIsOvertime] = useState(false);
+
   // Get the full list of orders from the store
   const { orders } = useOrderStore();
   const { layouts } = useFloorPlanStore();
+  const { defaultSittingTimeMinutes } = useSettingsStore();
 
   const displayName = useMemo(() => {
     const allTables = layouts.flatMap((l) => l.tables);
@@ -55,6 +67,27 @@ const TableListItem: React.FC<{
     (o) => o.service_location_id === table.id && o.order_status !== "Voided" // Show all orders except voided ones
   );
 
+  useEffect(() => {
+    if (table.status !== "In Use" || !activeOrderForThisTable?.opened_at) {
+      setIsOvertime(false);
+      return;
+    }
+
+    const checkOvertime = () => {
+      if (!activeOrderForThisTable?.opened_at) return;
+      const startTime = new Date(activeOrderForThisTable.opened_at);
+      const now = new Date();
+      const diffMs = now.getTime() - startTime.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    };
+
+    checkOvertime();
+    const timer = setInterval(checkOvertime, 60000);
+
+    return () => clearInterval(timer);
+  }, [table.status, activeOrderForThisTable, defaultSittingTimeMinutes]);
+
   // Calculate the total for this specific order's cart
   const orderTotal =
     activeOrderForThisTable?.items.reduce(
@@ -71,7 +104,7 @@ const TableListItem: React.FC<{
     >
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
-          <StatusIndicator status={status} />
+          <StatusIndicator status={status} isOvertime={isOvertime} />
           <Text className="text-xl font-semibold text-white" numberOfLines={2}>
             {displayName}
           </Text>

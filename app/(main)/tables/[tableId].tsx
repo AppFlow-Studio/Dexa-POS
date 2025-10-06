@@ -10,7 +10,7 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AlertCircle } from "lucide-react-native";
+import { AlertCircle, XCircle } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
@@ -39,7 +39,7 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    sendNewItemsToKitchen,
+    deleteOrder,
   } = useOrderStore();
   const { setActiveTableId, clearActiveTableId } = usePaymentStore();
 
@@ -381,6 +381,14 @@ const UpdateTableScreen = () => {
     );
   }
 
+  const handleCloseEmptyOrder = () => {
+    if (activeOrder && activeOrder.items.length === 0) {
+      deleteOrder(activeOrder.id); // Remove the empty order
+      updateTableStatus(tableId as string, "Available"); // Set table back to Available
+      router.back(); // Go back to the floor plan
+    }
+  };
+
   return (
     <View className="flex-1 bg-[#212121]">
       {isOvertime && (
@@ -530,25 +538,18 @@ const UpdateTableScreen = () => {
                       </View>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    onPress={() =>
-                      updateItemStatusInActiveOrder(
-                        item.id,
-                        isReady ? "Preparing" : "Ready"
-                      )
-                    }
-                    className={`px-2 py-1.5 rounded-lg ${
-                      isReady ? "bg-yellow-500" : "bg-green-500"
-                    }`}
-                  >
-                    <Text
-                      className={`text-[11px] font-bold ${
-                        isReady ? "text-yellow-100" : "text-white"
-                      }`}
+                  {!isReady && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        updateItemStatusInActiveOrder(item.id, "Ready")
+                      }
+                      className="mt-2 px-2 py-1.5 rounded-lg bg-green-600 items-center"
                     >
-                      {isReady ? "Mark Preparing" : "Mark Ready"}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text className="text-xs font-bold text-white">
+                        Mark Ready
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })}
@@ -606,8 +607,19 @@ const UpdateTableScreen = () => {
             </View>
           </View>
         )}
-        <View className="flex-row gap-2">
-          {existingOrderForTable ? (
+        <View className="flex-row  gap-2">
+          {/* --- NEW LOGIC: Check for an empty cart first --- */}
+          {activeOrder && activeOrder.items.length === 0 && !hasPayments ? (
+            // If the cart is empty and no payments have been made, show ONLY the Close button
+            <TouchableOpacity
+              onPress={handleCloseEmptyOrder}
+              className="px-4 py-2 bg-red-600 rounded-lg flex-row items-center justify-center gap-2"
+            >
+              <XCircle size={20} color="white" />
+              <Text className="font-semibold text-white text-lg">Close</Text>
+            </TouchableOpacity>
+          ) : existingOrderForTable ? (
+            // --- YOUR EXISTING LOGIC: If the cart is NOT empty, render the normal buttons ---
             activeOrder?.check_status === "Closed" ? (
               <>
                 <TouchableOpacity
@@ -650,9 +662,9 @@ const UpdateTableScreen = () => {
               <>
                 <TouchableOpacity
                   onPress={handlePay}
-                  disabled={activeOrder?.items.length === 0}
+                  disabled={!hasAnyItems}
                   className={`px-6 py-2 rounded-lg bg-blue-500 ${
-                    activeOrder?.items.length === 0 ? "bg-gray-600" : ""
+                    !hasAnyItems ? "opacity-50" : ""
                   }`}
                 >
                   <Text className="font-semibold text-white text-base">
@@ -661,10 +673,7 @@ const UpdateTableScreen = () => {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleCloseCheck}
-                  disabled={activeOrder?.items.length === 0}
-                  className={`px-6 py-2 rounded-lg border border-gray-600 bg-[#303030] ${
-                    activeOrder?.items.length === 0 ? "bg-gray-600" : ""
-                  }`}
+                  className="px-6 py-2 rounded-lg border border-gray-600 bg-[#303030]"
                 >
                   <Text className="font-semibold text-white text-base">
                     Close Check
@@ -673,6 +682,7 @@ const UpdateTableScreen = () => {
               </>
             )
           ) : (
+            // Fallback for "Take Order" if no order exists for the table yet
             <TouchableOpacity
               className="px-6 py-2 rounded-lg bg-blue-500"
               onPress={handleAssignToTable}

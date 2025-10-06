@@ -157,10 +157,16 @@ const TablesScreen = () => {
               <TouchableOpacity
                 key={layout.id}
                 onPress={() => setActiveLayout(layout.id)}
-                className={`py-2 px-4 rounded-lg ${activeLayoutId === layout.id ? "bg-[#212121]" : ""}`}
+                className={`py-2 px-4 rounded-lg ${
+                  activeLayoutId === layout.id ? "bg-[#212121]" : ""
+                }`}
               >
                 <Text
-                  className={`text-lg font-semibold ${activeLayoutId === layout.id ? "text-blue-400" : "text-gray-300"}`}
+                  className={`text-lg font-semibold ${
+                    activeLayoutId === layout.id
+                      ? "text-blue-400"
+                      : "text-gray-300"
+                  }`}
                 >
                   {layout.name}
                 </Text>
@@ -213,6 +219,12 @@ const TablesScreen = () => {
                 <View className="w-4 h-4 rounded-full bg-red-500" />
                 <Text className="text-lg font-semibold text-white">
                   Needs Cleaning
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="w-4 h-4 rounded-full bg-yellow-500" />
+                <Text className="text-lg font-semibold text-white">
+                  Overtime
                 </Text>
               </View>
             </View>

@@ -74,6 +74,7 @@ interface OrderState {
     customizations: CartItem["customizations"],
     isDraft?: boolean
   ) => string;
+  deleteOrder: (orderId: string) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -1190,6 +1191,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);
+    },
+    deleteOrder: (orderId: string) => {
+      set((state) => ({
+        orders: state.orders.filter((o) => o.id !== orderId),
+      }));
     },
   };
 });
