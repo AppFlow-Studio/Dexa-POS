@@ -4,7 +4,7 @@ import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -36,64 +36,7 @@ const ModifierScreen = () => {
     menuItems,
     modifierGroups: allModifierGroups,
   } = useMenuStore();
-  if (cartItem?.kitchen_status === "sent") {
-    return (
-      <View className="flex-1 bg-[#212121]">
-        {/* Header */}
-        <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
-          <TouchableOpacity onPress={close} className="flex-row items-center">
-            <ArrowLeft color="#9CA3AF" size={20} />
-            <Text className="text-xl font-medium text-white ml-1.5">
-              Back to Bill
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Content */}
-        <View className="flex-1 items-center justify-center p-6 w-full">
-          <View className="items-center w-full">
-            {/* Title */}
-            <Text className="text-2xl font-bold text-white text-center mb-3">
-              Item Already Sent
-            </Text>
-
-            {/* Description */}
-            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">
-              This item has been sent to the kitchen and cannot be modified.
-            </Text>
-
-            {/* Item Details */}
-            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-4 w-full border border-gray-600">
-              <View className="flex-row items-center justify-center w-full gap-3 mb-3">
-                <Image
-                  source={require("@/assets/images/classic_burger.png")}
-                  className="w-14 h-14 rounded-lg"
-                />
-                <View className="flex-1">
-                  <Text className="text-xl font-semibold text-white">
-                    {cartItem.name}
-                  </Text>
-                  <Text className="text-base text-gray-400">
-                    Quantity: {cartItem.quantity}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Action Button */}
-            <TouchableOpacity
-              onPress={close}
-              className="mt-6 bg-blue-600 px-6 py-3 rounded-xl"
-            >
-              <Text className="text-lg font-semibold text-white">
-                Back to Bill
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }
+  // Note: do not early-return before hooks; render read-only view after hooks below if needed
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
@@ -102,6 +45,7 @@ const ModifierScreen = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [isQuantityModalOpen, setIsQuantityModalOpen] = useState(false);
   const [quantityInput, setQuantityInput] = useState("");
+  const lastDraftMenuItemIdRef = useRef<string | null>(null);
 
   const isReadOnly = mode === "view";
 
@@ -128,7 +72,7 @@ const ModifierScreen = () => {
     mode === "edit" || (mode === "fullscreen" && cartItem)
       ? cartItem
       : menuItem;
-  const isFullscreen = mode === "fullscreen";
+
   // Get the correct price for the current item based on category
 
   const getCurrentItemPrice = useCallback(
@@ -280,6 +224,8 @@ const ModifierScreen = () => {
             paidQuantity: 0,
           };
           addItemToActiveOrder(draftItem);
+          // Track last created draft's menu item for cleanup if user switches context
+          lastDraftMenuItemIdRef.current = currentItem.id;
         }
       }
     }
@@ -301,30 +247,30 @@ const ModifierScreen = () => {
         console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-              ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
-                const selectedOptions = Object.entries(selections)
-                  .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
-                    return {
-                      id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
-                    };
-                  });
+            ([categoryId, selections]) => {
+              const category = menuItemForModifiers.modifiers?.find(
+                (cat) => cat.id === categoryId
+              );
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId, _]) => {
+                  const option = category?.options.find(
+                    (opt) => opt.id === optionId
+                  );
+                  return {
+                    id: optionId,
+                    name: option?.name || "",
+                    price: option?.price || 0,
+                  };
+                });
 
-                return {
-                  categoryId,
-                  categoryName: category?.name || "",
-                  options: selectedOptions,
-                };
-              }
-            )
+              return {
+                categoryId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            }
+          )
           : [];
 
         // Calculate total price
@@ -357,6 +303,32 @@ const ModifierScreen = () => {
     mode,
     cartItem,
   ]);
+
+  // Remove any previously created draft if user navigates away to another item or enters edit mode
+  useEffect(() => {
+    const previousDraftMenuItemId = lastDraftMenuItemIdRef.current;
+    if (!previousDraftMenuItemId) return;
+
+    // If switched to edit mode for an existing cart item, or switched to a different menu item, clean up the old draft
+    const switchedToEditExisting = mode === "edit" && !!cartItem;
+    const switchedToDifferentMenuItem =
+      !!menuItem && menuItem.id !== previousDraftMenuItemId;
+
+    if (switchedToEditExisting || switchedToDifferentMenuItem) {
+      const { activeOrderId, orders, removeItemFromActiveOrder } =
+        useOrderStore.getState();
+      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const draftItems = activeOrder?.items.filter(
+        (item) => item.isDraft && item.menuItemId === previousDraftMenuItemId
+      );
+      if (draftItems && draftItems.length > 0) {
+        draftItems.forEach((draftItem) => {
+          removeItemFromActiveOrder(draftItem.id);
+        });
+      }
+      lastDraftMenuItemIdRef.current = null;
+    }
+  }, [mode, cartItem, menuItem]);
 
   // Calculate total price
   const total = useMemo(() => {
@@ -462,28 +434,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-          const category = menuItemForModifiers.modifiers?.find(
-            (cat) => cat.id === categoryId
-          );
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId, _]) => {
-              const option = category?.options.find(
-                (opt) => opt.id === optionId
-              );
-              return {
-                id: optionId,
-                name: option?.name || "",
-                price: option?.price || 0,
-              };
-            });
+        const category = menuItemForModifiers.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        const selectedOptions = Object.entries(selections)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([optionId, _]) => {
+            const option = category?.options.find(
+              (opt) => opt.id === optionId
+            );
+            return {
+              id: optionId,
+              name: option?.name || "",
+              price: option?.price || 0,
+            };
+          });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
+        return {
+          categoryId,
+          categoryName: category?.name || "",
+          options: selectedOptions,
+        };
+      })
       : [];
 
     const finalCustomizations = {
@@ -688,9 +660,44 @@ const ModifierScreen = () => {
           removeItemFromActiveOrder(draftItem.id);
         });
       }
+      // Reset tracker
+      lastDraftMenuItemIdRef.current = null;
     }
     close();
   }, [close, mode, cartItem, currentItem]);
+
+  if (cartItem?.kitchen_status === "sent") {
+    return (
+      <View className="flex-1 bg-[#212121]">
+        {/* Header */}
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
+          <TouchableOpacity onPress={close} className="flex-row items-center">
+            <ArrowLeft color="#9CA3AF" size={20} />
+            <Text className="text-xl font-medium text-white ml-1.5">Back to Bill</Text>
+          </TouchableOpacity>
+        </View>
+        {/* Content */}
+        <View className="flex-1 items-center justify-center p-6 w-full">
+          <View className="items-center w-full">
+            <Text className="text-2xl font-bold text-white text-center mb-3">Item Already Sent</Text>
+            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">This item has been sent to the kitchen and cannot be modified.</Text>
+            <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-4 w-full border border-gray-600">
+              <View className="flex-row items-center justify-center w-full gap-3 mb-3">
+                <Image source={require("@/assets/images/classic_burger.png")} className="w-14 h-14 rounded-lg" />
+                <View className="flex-1">
+                  <Text className="text-xl font-semibold text-white">{cartItem.name}</Text>
+                  <Text className="text-base text-gray-400">Quantity: {cartItem.quantity}</Text>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity onPress={close} className="mt-6 bg-blue-600 px-6 py-3 rounded-xl">
+              <Text className="text-lg font-semibold text-white">Back to Bill</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   if (!isOpen || !currentItem) return null;
 
@@ -769,13 +776,12 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-3 rounded-xl border-2 min-w-[140px] ${
-                        isActive
-                          ? "bg-blue-600 border-blue-400"
-                          : hasSelection
+                      className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
+                        ? "bg-blue-600 border-blue-400"
+                        : hasSelection
                           ? "bg-green-600 border-green-400"
                           : "bg-[#303030] border-gray-600"
-                      }`}
+                        }`}
                     >
                       <View className="flex-row items-center justify-between mb-1.5">
                         <Text className="font-semibold text-lg text-white">
@@ -789,11 +795,10 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-base ${
-                          category.type === "required"
-                            ? "text-red-400"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-base ${category.type === "required"
+                          ? "text-red-400"
+                          : "text-gray-400"
+                          }`}
                       >
                         {category.type}
                       </Text>
@@ -832,31 +837,28 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-400"
-                              : isUnavailable
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : isUnavailable
                               ? "bg-[#1a1a1a] border-gray-700"
                               : "bg-[#303030] border-gray-600"
-                          }`}
+                            }`}
                         >
                           <Text
-                            className={`text-xl font-medium text-center ${
-                              isSelected
-                                ? "text-white"
-                                : isUnavailable
+                            className={`text-xl font-medium text-center ${isSelected
+                              ? "text-white"
+                              : isUnavailable
                                 ? "text-gray-500"
                                 : "text-white"
-                            }`}
+                              }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-lg text-center mt-1 ${
-                                isSelected ? "text-blue-200" : "text-blue-400"
-                              }`}
+                              className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+                                }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>
