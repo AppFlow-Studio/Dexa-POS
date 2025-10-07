@@ -1,4 +1,5 @@
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -6,9 +7,10 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Lock, User, X } from "lucide-react-native";
+import { Lock, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 
 const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   const snapPoints = useMemo(() => ["75%"], []);
@@ -17,8 +19,23 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   const [isTaxExempt, setIsTaxExempt] = useState(false);
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
+  const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
 
   const { openSheet } = useCustomerSheetStore();
+  const { clearCart } = useOrderStore();
+
+  const handleClearCart = () => {
+    setClearCartConfirmOpen(true);
+  };
+
+  const onConfirmClearCart = () => {
+    clearCart();
+    setClearCartConfirmOpen(false); // Close the confirmation modal
+    // Close the 'More' bottom sheet
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+  };
 
   const handleApplyPromoCode = () => {
     if (promoCode.trim()) {
@@ -89,14 +106,15 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   };
 
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
@@ -123,6 +141,20 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
               className="p-2 bg-[#303030] rounded-full border border-gray-600"
             >
               <X color="#9CA3AF" size={20} />
+            </TouchableOpacity>
+          </View>
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Cart Actions
+            </Text>
+            <TouchableOpacity
+              onPress={handleClearCart}
+              className="flex-row items-center gap-x-3 w-full bg-[#303030] border border-red-700 p-3 rounded-lg"
+            >
+              <Trash2 color="#f87171" size={20} />
+              <Text className="text-lg text-red-400 font-semibold">
+                Clear Full Cart
+              </Text>
             </TouchableOpacity>
           </View>
           <View className="p-4 border-b border-gray-700">
@@ -243,6 +275,15 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
           </View>
         </View>
       </Modal>
+      <ConfirmationModal
+        isOpen={isClearCartConfirmOpen}
+        onClose={() => setClearCartConfirmOpen(false)}
+        onConfirm={onConfirmClearCart}
+        title="Clear Full Cart?"
+        description="Are you sure you want to remove all items from the current order? This action cannot be undone."
+        confirmText="Clear Cart"
+        variant="destructive" // This will make the confirm button red
+      />
     </>
   );
 });

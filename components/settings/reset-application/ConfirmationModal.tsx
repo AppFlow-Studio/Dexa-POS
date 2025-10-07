@@ -33,42 +33,39 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="p-0 rounded-[36px] overflow-hidden bg-[#11111A] w-[480px]">
-        {/* Dark Header */}
-        <View className="p-4 rounded-t-[36px]">
-          <DialogTitle className="text-[#F1F1F1] text-2xl font-bold text-center">
-            {title}
-          </DialogTitle>
-        </View>
-
-        {/* White Content */}
-        <View className="p-4 rounded-[36px] bg-background-100 items-center">
+      {/* Use a single dark background for the entire modal */}
+      <DialogContent className="p-6 rounded-2xl bg-[#303030] border border-gray-700 w-[480px]">
+        <View className="items-center">
+          {/* Use dark-theme friendly colors for the icon */}
           {isDestructive && (
-            <View className="w-16 h-16 bg-red-100 rounded-full items-center justify-center border-4 border-red-200 mb-3">
-              <AlertTriangle color="#ef4444" size={36} />
+            <View className="w-16 h-16 bg-red-900/30 rounded-full items-center justify-center border-4 border-red-500/30 mb-4">
+              <AlertTriangle color="#f87171" size={36} />
             </View>
           )}
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold text-accent-500 text-center">
-              Are you sure?
+
+          <DialogHeader className="items-center">
+            <DialogTitle className="text-2xl font-bold text-white text-center">
+              {title}
             </DialogTitle>
-            <DialogDescription className="text-center text-accent-500 mt-1 text-lg">
+            <DialogDescription className="text-center text-gray-400 mt-2 text-lg">
               {description}
             </DialogDescription>
           </DialogHeader>
-          {/* Footer with Buttons */}
-          <DialogFooter className="pt-4 flex-row gap-3 border-t border-gray-200 mt-4">
+
+          <DialogFooter className="pt-6 flex-row gap-4 w-full">
             <TouchableOpacity
               onPress={onClose}
-              className="flex-1 py-3 border border-gray-300 rounded-lg"
+              className="flex-1 py-3 border border-gray-600 rounded-lg bg-[#212121]"
             >
-              <Text className="font-bold text-lg text-gray-700 text-center">
+              <Text className="font-bold text-lg text-gray-300 text-center">
                 Cancel
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onConfirm}
-              className={`flex-1 py-3 rounded-lg ${isDestructive ? "bg-red-500" : "bg-primary-400"}`}
+              className={`flex-1 py-3 rounded-lg ${
+                isDestructive ? "bg-red-600" : "bg-blue-600"
+              }`}
             >
               <Text className="font-bold text-white text-lg text-center">
                 {confirmText}

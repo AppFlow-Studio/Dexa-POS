@@ -29,34 +29,40 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
   };
 
   return (
-    <View className="bg-[#303030] rounded-lg border border-gray-700 p-6 mb-4">
-      <View className="flex-row justify-between items-start">
+    <View className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3">
+      <View className="flex-row justify-between items-center">
         <View>
-          <Text className="text-sm font-semibold text-purple-400 mb-1">
+          <Text className="text-xs font-semibold text-purple-400 mb-0.5">
             {item.type === "menu" ? "Menu" : "Category"}
           </Text>
-          <Text className="text-3xl font-bold text-white">{item.name}</Text>
+          <Text className="text-xl font-bold text-white">{item.name}</Text>
         </View>
         <TouchableOpacity
           onPress={handleEdit}
-          className="p-3 bg-[#212121] rounded border border-gray-600"
+          className="p-2 bg-[#212121] rounded border border-gray-600"
         >
-          <Settings size={24} color="#9CA3AF" />
+          <Settings size={20} color="#9CA3AF" />
         </TouchableOpacity>
       </View>
 
-      <View className="mt-4 space-y-2">
-        {item.schedules?.map((schedule: Schedule, index: number) => (
-          <View
-            key={index}
-            className="p-3 bg-[#212121] rounded-md border border-gray-600"
-          >
-            <Text className="text-lg font-semibold text-gray-300">
-              {formatDays(schedule.days)}: {schedule.startTime} -{" "}
-              {schedule.endTime}
-            </Text>
-          </View>
-        ))}
+      <View className="mt-3 space-y-1.5">
+        {(item.schedules?.length ?? 0) === 0 ? (
+          <Text className="text-base text-gray-400 py-2">
+            Always available (no schedule rules)
+          </Text>
+        ) : (
+          item.schedules?.map((schedule: Schedule, index: number) => (
+            <View
+              key={index}
+              className="p-2 bg-[#212121] rounded-md border border-gray-600"
+            >
+              <Text className="text-base font-semibold text-gray-300">
+                {formatDays(schedule.days)}: {schedule.startTime} -{" "}
+                {schedule.endTime}
+              </Text>
+            </View>
+          ))
+        )}
       </View>
     </View>
   );

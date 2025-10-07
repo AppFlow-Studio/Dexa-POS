@@ -75,6 +75,7 @@ interface OrderState {
     isDraft?: boolean
   ) => string;
   deleteOrder: (orderId: string) => void;
+  clearCart: () => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -1196,6 +1197,23 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set((state) => ({
         orders: state.orders.filter((o) => o.id !== orderId),
       }));
+    },
+    clearCart: () => {
+      const { activeOrderId } = get();
+      if (!activeOrderId) return;
+
+      set((state) => ({
+        orders: state.orders.map(
+          (o) => (o.id === activeOrderId ? { ...o, items: [] } : o) // Set items to an empty array
+        ),
+      }));
+
+      // After clearing the cart, recalculate totals to update them to $0.00
+      recalculateTotals(activeOrderId);
+
+      toast.success("Cart has been cleared.", {
+        position: ToastPosition.BOTTOM,
+      });
     },
   };
 });

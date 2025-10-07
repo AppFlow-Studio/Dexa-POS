@@ -12,7 +12,7 @@ export interface Customer {
 }
 
 interface CustomerState {
-  customers: MOCK_CUSTOMERS;
+  customers: Customer[];
   addCustomer: (
     customer: Omit<Customer, "id" | "createdAt" | "totalOrders">
   ) => Customer;
@@ -27,6 +27,19 @@ export const useCustomerStore = create<CustomerState>()((set, get) => ({
   customers: MOCK_CUSTOMERS,
 
   addCustomer: (customerData) => {
+    const { customers } = get();
+
+    const existingCustomer = customers.find(
+      (c) => c.phoneNumber.trim() === customerData.phoneNumber.trim()
+    );
+
+    if (existingCustomer) {
+      // If a customer with the same phone number exists, throw an error.
+      throw new Error(
+        `Customer with phone number ${customerData.phoneNumber} already exists.`
+      );
+    }
+
     const newCustomer: Customer = {
       ...customerData,
       id: `customer_${Date.now()}`,

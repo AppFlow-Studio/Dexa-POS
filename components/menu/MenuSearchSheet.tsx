@@ -2,13 +2,14 @@ import { useMenuManagementSearchStore } from "@/stores/useMenuManagementSearchSt
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetFlatList,
   BottomSheetTextInput,
-  BottomSheetView
+  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { router } from "expo-router";
+import { Search } from "lucide-react-native";
 import React, { forwardRef, useEffect, useMemo, useState } from "react";
-import { Alert, Text, TextInput, View } from "react-native";
-import { FlatList } from "react-native-gesture-handler";
+import { Alert, Text, View } from "react-native";
 import { CategoryCard } from "./CategoryCard";
 import { DraggableMenu as MenuCard } from "./MenuCard";
 import { MenuItemCard } from "./MenuItemCard";
@@ -177,7 +178,7 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
       <BottomSheet
         ref={ref}
         index={-1}
-        snapPoints={["70%", "85%"]}
+        snapPoints={["85%", "90%"]}
         enablePanDownToClose
         onClose={closeSearch}
         backdropComponent={(props) => (
@@ -190,40 +191,45 @@ const MenuSearchSheet = forwardRef<BottomSheet, MenuSearchSheetProps>(
         backgroundStyle={{ backgroundColor: "#212121" }}
         handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
       >
-        <BottomSheetView className="p-4 border-b border-gray-700">
-          <Text className="text-white text-2xl font-bold">
-            Search {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
-          </Text>
-        </BottomSheetView>
-        <View className="p-4">
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder={`Search for a ${activeTab.slice(0, -1)}...`}
-            placeholderTextColor="#9CA3AF"
-            className="bg-[#303030] border border-gray-600 rounded-lg h-20 px-4 py-3 text-white text-xl"
-          />
-        </View>
-        <FlatList
-          key={activeTab}
-          data={searchResults}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          numColumns={numColumns}
-          columnWrapperStyle={
-            numColumns > 1 ? { justifyContent: "space-between" } : undefined
-          }
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
-          ListEmptyComponent={
-            <View className="items-center justify-center p-10">
-              <Text className="text-xl text-gray-400">
-                {searchQuery
-                  ? "No results found."
-                  : "Start typing to search."}
-              </Text>
+        <BottomSheetView className="flex-1">
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-white text-xl font-bold">
+              Search {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            </Text>
+          </View>
+          <View className="p-4">
+            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3">
+              <Search color="#9CA3AF" size={20} />
+              <BottomSheetTextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder={`Search for a ${activeTab.slice(0, -1)}...`}
+                placeholderTextColor="#9CA3AF"
+                className="flex-1 h-12 ml-2 text-white text-base"
+              />
             </View>
-          }
-        />
+          </View>
+          <BottomSheetFlatList
+            key={activeTab} // Using activeTab as key is smart for re-renders
+            data={searchResults}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            numColumns={numColumns}
+            columnWrapperStyle={
+              numColumns > 1 ? { justifyContent: "space-between" } : undefined
+            }
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 48 }}
+            ListEmptyComponent={
+              <View className="items-center justify-center p-10">
+                <Text className="text-lg text-gray-400">
+                  {searchQuery
+                    ? "No results found."
+                    : "Start typing to search."}
+                </Text>
+              </View>
+            }
+          />
+        </BottomSheetView>
       </BottomSheet>
     );
   }
