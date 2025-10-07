@@ -2,7 +2,7 @@ import { PreviousOrder } from "@/lib/types";
 import { Href, Link } from "expo-router";
 import { MoreHorizontal, Pencil, Printer, Trash2 } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { DimensionValue, Text, TouchableOpacity, View } from "react-native";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +24,20 @@ const statusClasses: Record<string, string> = {
   "Partially Refunded": "bg-yellow-100 text-yellow-800",
 };
 
+const columnWidths: { [key: string]: DimensionValue } = {
+  serial: "8%",
+  date: "12%",
+  orderId: "10%",
+  customer: "12%",
+  paymentStatus: "10%",
+  server: "10%",
+  items: "7%",
+  type: "10%",
+  total: "8%",
+  notes: "8%",
+  actions: "5%",
+};
+
 const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
   order,
   onViewNotes,
@@ -39,30 +53,30 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         className="flex-row items-center p-4 border-b border-gray-700"
       >
         <Text
-          style={{ width: "9%" }}
+          style={{ width: columnWidths.serial }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.serialNo}
         </Text>
-        <View style={{ width: "9%" }} className="px-1.5">
+        <View style={{ width: columnWidths.date }} className="px-1.5">
           <Text className="text-lg text-white font-semibold">
             {order.orderDate}
           </Text>
           <Text className="text-base text-gray-400">{order.orderTime}</Text>
         </View>
         <Text
-          style={{ width: "9%" }}
+          style={{ width: columnWidths.orderId }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.orderId}
         </Text>
         <Text
-          style={{ width: "12%" }}
+          style={{ width: columnWidths.customer }}
           className="text-base font-semibold text-white px-1.5"
         >
           {order.customer}
         </Text>
-        <View style={{ width: "9%" }} className="px-1.5">
+        <View style={{ width: columnWidths.paymentStatus }} className="px-1.5">
           <View
             className={`px-2 py-1 rounded-full self-start ${
               statusClasses[order.paymentStatus]
@@ -78,24 +92,24 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           </View>
         </View>
         <Text
-          style={{ width: "9%" }}
+          style={{ width: columnWidths.server }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.server}
         </Text>
         <Text
-          style={{ width: "7%" }}
+          style={{ width: columnWidths.items }}
           className="text-base font-semibold text-gray-300 text-center px-1.5"
         >
           {order.itemCount}
         </Text>
         <Text
-          style={{ width: "9%" }}
+          style={{ width: columnWidths.type }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.type}
         </Text>
-        <View style={{ width: "9%" }}>
+        <View style={{ width: columnWidths.total }}>
           <Text className="text-base font-bold text-white px-1.5">
             ${order.total.toFixed(2)}
           </Text>
@@ -106,7 +120,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           )}
         </View>
         <View
-          style={{ width: "12%" }}
+          style={{ width: columnWidths.notes }}
           onTouchStart={(e) => e.stopPropagation()}
         >
           <TouchableOpacity
@@ -117,7 +131,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
             <Pencil size={18} color="#60A5FA" />
           </TouchableOpacity>
         </View>
-        <View style={{ width: "5%" }} className="items-end">
+        <View style={{ width: columnWidths.actions }} className="items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <TouchableOpacity className="p-2">

@@ -1,5 +1,3 @@
-// /components/ui/accordion.tsx
-
 import * as AccordionPrimitive from "@rn-primitives/accordion";
 import * as React from "react";
 import { Platform, Pressable, View } from "react-native";
@@ -17,8 +15,6 @@ import Animated, {
 import { TextClassContext } from "~/components/ui/text";
 import { ChevronDown } from "~/lib/icons/ChevronDown";
 import { cn } from "~/lib/utils";
-
-// ... (Accordion, AccordionItem, and AccordionTrigger components remain unchanged)
 
 function Accordion({
   children,
@@ -95,7 +91,9 @@ function AccordionTrigger({
           >
             {children}
             <Animated.View style={chevronStyle}>
-              <ChevronDown size={24} className={"text-white shrink-0"} />
+              <View className="p-2 border border-gray-600 rounded-lg bg-[#303030]">
+                <ChevronDown size={24} className={"text-white shrink-0"} />
+              </View>
             </Animated.View>
           </Trigger>
         </AccordionPrimitive.Trigger>

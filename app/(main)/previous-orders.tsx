@@ -7,21 +7,34 @@ import { CartItem, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { DimensionValue, FlatList, Text, TextInput, View } from "react-native";
 
-const TABLE_HEADERS = [
-  "# Serial No",
-  "Order Date",
-  "Order ID",
-  "Customer",
-  "Payment Status",
-  "Server/Cashier",
-  "Items in order",
-  "Dine In/Takout",
-  "Total",
-  "Order Notes",
-  "",
+const columns: { label: string; width: DimensionValue }[] = [
+  { label: "# Serial No", width: "8%" },
+  { label: "Order Date", width: "12%" },
+  { label: "Order ID", width: "10%" },
+  { label: "Customer", width: "12%" },
+  { label: "Payment Status", width: "10%" },
+  { label: "Server/Cashier", width: "10%" },
+  { label: "Items", width: "7%" },
+  { label: "Type", width: "10%" },
+  { label: "Total", width: "8%" },
+  { label: "Notes", width: "8%" },
+  { label: "", width: "5%" },
 ];
+
+const HeaderCell = ({
+  label,
+  width,
+}: {
+  label: string;
+  width: DimensionValue;
+}) => (
+  <View style={{ width }} className="flex-row items-center justify-start pr-2">
+    <Text className="font-bold text-base text-gray-400">{label}</Text>
+    {label && <View className="w-px h-4 bg-gray-600 ml-auto" />}
+  </View>
+);
 
 const PreviousOrdersScreen = () => {
   // State for the notes modal
@@ -45,8 +58,6 @@ const PreviousOrdersScreen = () => {
 
   // Get orders from the store
   const filteredOrders = useMemo(() => {
-    console.log("previousOrders", previousOrders);
-
     let orders = [...previousOrders];
 
     if (dateRange.from) {
@@ -147,27 +158,11 @@ const PreviousOrdersScreen = () => {
       <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
         {/* Table Header */}
         <View className="flex-row p-4 border-b border-gray-700">
-          {TABLE_HEADERS.map((header, index) => (
-            <Text
-              key={header}
-              className="font-bold text-lg text-gray-400"
-              style={{
-                width:
-                  header === "Order Notes"
-                    ? "12%"
-                    : header === "Customer"
-                    ? "12%"
-                    : header === ""
-                    ? "5%"
-                    : header === "Items"
-                    ? "7%"
-                    : "9%",
-              }}
-            >
-              {header}
-            </Text>
+          {columns.map((col) => (
+            <HeaderCell key={col.label} label={col.label} width={col.width} />
           ))}
         </View>
+
         {/* Table Body */}
         <FlatList
           data={filteredOrders}

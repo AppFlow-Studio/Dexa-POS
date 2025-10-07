@@ -24,14 +24,14 @@ const OrderCard: React.FC<OrderCardProps> = ({
     order.paid_status === "Paid"
       ? "bg-green-500/20"
       : order.paid_status === "Pending"
-        ? "bg-yellow-500/20"
-        : "bg-red-500/20";
+      ? "bg-yellow-500/20"
+      : "bg-red-500/20";
   const paidText =
     order.paid_status === "Paid"
       ? "text-green-400"
       : order.paid_status === "Pending"
-        ? "text-yellow-700"
-        : "text-red-700";
+      ? "text-yellow-700"
+      : "text-red-700";
   const isUnpaid = order.paid_status !== "Paid";
   return (
     <View className="bg-[#303030] p-3 rounded-2xl border border-gray-700 w-72 mr-4">
@@ -58,7 +58,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
           )}
         </Text>
         <Text className="text-lg text-gray-400">
-          {new Date(order.opened_at).toLocaleTimeString("en-US", {
+          {new Date(order.opened_at!).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
           })}
@@ -99,4 +99,4 @@ const OrderCard: React.FC<OrderCardProps> = ({
   );
 };
 
-export default OrderCard;
+export default React.memo(OrderCard);
