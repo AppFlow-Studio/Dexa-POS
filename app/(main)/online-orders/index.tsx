@@ -3,9 +3,9 @@ import KanbanColumn from "@/components/online-orders/KanbanColumn";
 import { useOnlineOrderStore } from "@/stores/useOnlineOrderStore";
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Href, Link } from "expo-router";
-import { Search, Table } from "lucide-react-native";
+import { Search, Table, X } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 
 const PARTNERS = ["All", "Door Dash", "grubhub", "Uber-Eats", "Food Panda"];
@@ -25,6 +25,7 @@ const OnlineOrdersScreen = () => {
   const [searchCustomer, setSearchCustomer] = useState("");
   const [searchOrderId, setSearchOrderId] = useState("");
   const [searchPartner, setSearchPartner] = useState("All");
+  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
 
   const bottomSheetRef = useRef<BottomSheet>(null);
   const snapPoints = useMemo(() => ["40%", "85%"], []);
@@ -94,8 +95,49 @@ const OnlineOrdersScreen = () => {
     });
   }, [orders, searchCustomer, searchOrderId, searchPartner]);
 
+  const clearSearch = () => {
+    setSearchCustomer("");
+    setSearchOrderId("");
+    setSearchPartner("All");
+  };
+
   const openSearchSheet = () => bottomSheetRef.current?.expand();
   const closeSearchSheet = () => bottomSheetRef.current?.close();
+
+  const handleSheetClose = () => {
+    clearSearch(); // Clear state whenever the sheet closes for any reason
+  };
+
+  const renderKanbanView = () => {
+    // If a column is focused, render only that column in focused mode
+    if (focusedColumn) {
+      const col = COLUMNS.find((c) => c.title === focusedColumn);
+      if (!col) return null; // Should not happen
+
+      return (
+        <KanbanColumn
+          key={col.title}
+          title={col.title}
+          color={col.color}
+          orders={groupedOrders[col.title] || []}
+          isFocused={true}
+          onHeaderPress={() => setFocusedColumn(null)} // Header press now acts as a back button
+        />
+      );
+    }
+
+    // Otherwise, render the standard 4-column layout
+    return COLUMNS.map((col) => (
+      <KanbanColumn
+        key={col.title}
+        title={col.title}
+        color={col.color}
+        orders={groupedOrders[col.title] || []}
+        isFocused={false}
+        onHeaderPress={() => setFocusedColumn(col.title)} // Header press focuses the column
+      />
+    ));
+  };
 
   return (
     <View className="flex-1 px-4 bg-[#212121]">
@@ -136,16 +178,9 @@ const OnlineOrdersScreen = () => {
         <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {COLUMNS.map((col) => (
-          <KanbanColumn
-            key={col.title}
-            title={col.title}
-            color={col.color}
-            orders={groupedOrders[col.title] || []}
-          />
-        ))}
-      </ScrollView>
+      <View className="flex-1 flex-row gap-x-4 px-4 pb-4">
+        {renderKanbanView()}
+      </View>
 
       <BottomSheet
         ref={bottomSheetRef}
@@ -153,11 +188,18 @@ const OnlineOrdersScreen = () => {
         snapPoints={snapPoints}
         backgroundStyle={{ backgroundColor: "#2b2b2b" }}
         handleIndicatorStyle={{ backgroundColor: "#555" }}
+        onClose={handleSheetClose}
+        enablePanDownToClose
       >
         <BottomSheetScrollView contentContainerStyle={{ padding: 12 }}>
-          <Text className="text-white text-lg font-bold mb-3">
-            Search Online Orders
-          </Text>
+          <View className="flex-row justify-between items-center mb-3">
+            <Text className="text-white text-xl font-bold">
+              Search Online Orders
+            </Text>
+            <TouchableOpacity onPress={closeSearchSheet} className="p-2">
+              <X size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          </View>
           <View className="gap-y-2 mb-3">
             <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
               <Text className="text-gray-400 mt-2 mb-1 text-sm">
@@ -168,6 +210,7 @@ const OnlineOrdersScreen = () => {
                 onChangeText={setSearchCustomer}
                 placeholder="e.g. John Smith"
                 className="text-white text-base py-2"
+                placeholderTextColor={"#9CA3AF"}
               />
             </View>
             <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
@@ -177,6 +220,7 @@ const OnlineOrdersScreen = () => {
                 onChangeText={setSearchOrderId}
                 placeholder="#45654"
                 className="text-white text-base py-2"
+                placeholderTextColor={"#9CA3AF"}
               />
             </View>
             <View>

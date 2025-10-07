@@ -5,20 +5,20 @@ import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const DetailRow = ({ children }: { children: React.ReactNode }) => (
-  <View className="flex-row gap-8">{children}</View>
+  <View className="flex-row gap-x-6">{children}</View>
 );
 
 const DetailItem = ({ label, value, isTag = false, tagColor = "" }: any) => (
   <View className="flex-1">
-    <Text className="text-xl text-gray-300 mb-1">{label}</Text>
+    <Text className="text-base text-gray-400 mb-1">{label}</Text>
     {isTag ? (
-      <View className={`px-3 py-2 self-start rounded-md ${tagColor}`}>
-        <Text className={`text-2xl font-semibold capitalize ${tagColor}`}>
+      <View className={`px-2.5 py-1 self-start rounded-md ${tagColor}`}>
+        <Text className={`text-base font-semibold capitalize ${tagColor}`}>
           {value}
         </Text>
       </View>
     ) : (
-      <Text className="text-2xl font-semibold text-white">{value}</Text>
+      <Text className="text-lg font-semibold text-white">{value}</Text>
     )}
   </View>
 );
@@ -30,27 +30,34 @@ const OnlineOrderDetailsScreen = () => {
 
   if (!order) {
     return (
-      <View>
-        <Text className="text-2xl">Order not found!</Text>
+      <View className="flex-1 bg-[#212121] items-center justify-center">
+        <Text className="text-xl text-red-400">Order not found!</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="mt-4 px-4 py-2 bg-blue-600 rounded-lg"
+        >
+          <Text className="text-white text-lg">Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <ScrollView className="flex-1 bg-[#212121] p-6">
-        <Text className="text-5xl font-extrabold text-white text-center">
-          {order.id}
-        </Text>
-        <View className="flex-row justify-between items-center mx-6">
-          <Text className="text-3xl font-bold text-white mb-4">Basic Info</Text>
-          <Text className="text-xl text-gray-300">{order.timestamp}</Text>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 120 }}>
+        <View className="flex-row justify-between items-center mb-6">
+          <Text className="text-3xl font-bold text-white">
+            Order Details {order.id}
+          </Text>
+          <Text className="text-lg text-gray-400">{order.timestamp}</Text>
         </View>
 
-        {/* --- Cards with Info --- */}
-        <View className="gap-y-6">
+        <View className="gap-y-4">
           {/* Basic Info */}
-          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+            <Text className="text-xl font-bold text-white mb-3">
+              Basic Info
+            </Text>
             <View className="gap-y-4">
               <DetailRow>
                 <DetailItem
@@ -66,77 +73,59 @@ const OnlineOrderDetailsScreen = () => {
                 />
                 <DetailItem label="Email" value={order.customerDetails.email} />
               </DetailRow>
-              <DetailRow>
-                <DetailItem
-                  label="Membership Status"
-                  value="Yes"
-                  isTag
-                  tagColor="bg-green-500/20 text-green-400"
-                />
-                <DetailItem label="Membership Expiry Date" value="Lifetime" />
-              </DetailRow>
             </View>
           </View>
 
           {/* Order Info */}
-          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
+          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+            <Text className="text-xl font-bold text-white mb-3">
+              Order Info
+            </Text>
             <View className="gap-y-4">
               <DetailRow>
                 <DetailItem label="Order Placed at" value={order.timestamp} />
-                <DetailItem label="Order Due time" value="02/03/25, 06:06 PM" />
-              </DetailRow>
-              <DetailRow>
                 <DetailItem
-                  label="Dining Option"
+                  label="Delivery Partner"
                   value={order.deliveryPartner}
                 />
-                <DetailItem label="Dining Behavior" value="Takeout" />
               </DetailRow>
               <DetailRow>
                 <DetailItem
                   label="Payment Status"
                   value={order.paymentStatus}
                   isTag
-                  tagColor="bg-green-500/20 text-green-400"
+                  tagColor="bg-green-900/30 text-green-400"
                 />
                 <DetailItem
                   label="Delivery Status"
-                  value="Delivered"
+                  value={order.status}
                   isTag
-                  tagColor="bg-blue-500/20 text-blue-400"
+                  tagColor="bg-blue-900/30 text-blue-400"
                 />
-              </DetailRow>
-              <DetailRow>
-                <DetailItem label="Tab Name" value="John's Birthday" />
-                <View className="flex-1" />
               </DetailRow>
             </View>
           </View>
 
           {/* Items List */}
-          <View className="bg-[#303030] p-6 rounded-2xl border border-gray-600">
-            <Text className="text-3xl font-bold text-white mb-4">
+          <View className="bg-[#303030] p-4 rounded-xl border border-gray-700">
+            <Text className="text-xl font-bold text-white mb-3">
               Items ({order.itemCount})
             </Text>
-            <View className="gap-y-3">
+            <View className="gap-y-2">
               {order.items.map((item) => (
                 <OrderDetailItem key={item.id} item={item} />
               ))}
             </View>
           </View>
         </View>
-
-        {/* Add some gap for the floating footer */}
-        <View className="h-24" />
       </ScrollView>
 
-      {/* Footer */}
-      <View className="p-6 bg-[#303030]/80 backdrop-blur-sm border-t border-gray-600 flex-row justify-end gap-3">
-        <TouchableOpacity className="py-4 px-8 border border-gray-500 flex-1 rounded-lg items-center">
-          <Text className="text-2xl font-bold text-gray-300">Reject</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="py-4 px-8 bg-blue-500 flex-1 rounded-xl items-center">
-          <Text className="text-2xl font-bold text-white">Accept</Text>
+      <View className="p-4 bg-[#303030]/90 backdrop-blur-sm border-t border-gray-700">
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="py-3 bg-blue-600 rounded-xl items-center"
+        >
+          <Text className="text-lg font-bold text-white">Close</Text>
         </TouchableOpacity>
       </View>
     </View>

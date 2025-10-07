@@ -78,7 +78,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         </Text>
         <View style={{ width: columnWidths.paymentStatus }} className="px-1.5">
           <View
-            className={`px-2 py-1 rounded-full self-start ${
+            className={`px-3 py-1.5 rounded-md  self-start ${
               statusClasses[order.paymentStatus]
             }`}
           >

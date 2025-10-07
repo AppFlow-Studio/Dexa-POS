@@ -1,6 +1,7 @@
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
+import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 
@@ -387,6 +388,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     startNewOrder: (details) => {
+      const { activeEmployeeId, employees } = useEmployeeStore.getState();
+      const activeEmployee = employees.find(e => e.id === activeEmployeeId);
+
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: details?.tableId || null,
@@ -398,6 +402,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
         items: [],
         opened_at: null,
         guest_count: details?.guestCount || 1,
+        server_name: activeEmployee?.fullName || "Unknown",
+
       };
       set((state) => ({ orders: [...state.orders, newOrder] }));
       return newOrder;

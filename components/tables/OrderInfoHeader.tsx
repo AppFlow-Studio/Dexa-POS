@@ -45,11 +45,15 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
     return null;
   }, [layouts, activeOrder?.service_location_id]);
 
-  const [serverName, setServerName] = useState("James Cameron");
-
   const handleCustomerNameChange = (name: string) => {
     if (activeOrder) {
       updateActiveOrderDetails({ customer_name: name });
+    }
+  };
+
+  const handleServerNameChange = (name: string) => {
+    if (activeOrder) {
+      updateActiveOrderDetails({ server_name: name });
     }
   };
 
@@ -130,8 +134,8 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
         <View className="flex-row gap-3">
           <FormInput
             label="Server/Employee Name"
-            value={serverName}
-            onChangeText={setServerName}
+            value={activeOrder.server_name || "Unknown"}
+            onChangeText={handleServerNameChange}
           />
           <FormInput
             label="Customer Name"

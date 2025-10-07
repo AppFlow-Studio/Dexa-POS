@@ -88,7 +88,9 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
         {/* Body */}
         <View className="flex-row items-center my-4">
           <View
-            className={`w-12 h-12 rounded-full items-center justify-center ${partnerColors[order.deliveryPartner]}`}
+            className={`w-12 h-12 rounded-full items-center justify-center ${
+              partnerColors[order.deliveryPartner]
+            }`}
           >
             <Image
               source={PARTNER_LOGO_MAP[order.deliveryPartner]}
@@ -97,16 +99,12 @@ const OnlineOrderCard: React.FC<{ order: OnlineOrder }> = ({ order }) => {
             />
           </View>
           <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-white">
-              {order.id}
-            </Text>
+            <Text className="text-base font-bold text-white">{order.id}</Text>
             <Text className="text-base text-gray-300">
               {order.customerName}
             </Text>
           </View>
-          <Text className="text-2xl font-bold text-white">
-            ${order.total}
-          </Text>
+          <Text className="text-2xl font-bold text-white">${order.total}</Text>
         </View>
         {/* Footer */}
         <View className="mt-4">{renderFooter()}</View>
