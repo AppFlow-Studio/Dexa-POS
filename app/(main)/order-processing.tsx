@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
 
 const OrderProcessing = () => {
   const {
@@ -71,11 +71,16 @@ const OrderProcessing = () => {
           o.items.length > 0) ||
         (o.paid_status === "Unpaid" &&
           o.order_status !== "Closed" &&
-          o.order_status !== "Building")
+          o.order_status !== "Building" &&
+          o.order_status !== "Voided")
     );
 
     return kitchenOrders;
   }, [orders]);
+
+  const reversedFilteredOrders = useMemo(() => {
+    return filteredOrders.slice().reverse();
+  }, [filteredOrders]);
 
   const handleViewItems = (orderId: string) => {
     setSelectedOrderId(orderId);
@@ -133,27 +138,36 @@ const OrderProcessing = () => {
             </AccordionItem>
           </Accordion>
 
-          {!isAccordionOpen && filteredOrders.length > 0 && (
-            <ScrollView
+          {/* Always render the OrderBadge container but control visibility */}
+          <View
+            className={
+              !isAccordionOpen && filteredOrders.length > 0
+                ? "opacity-100"
+                : "opacity-0"
+            }
+            style={
+              !isAccordionOpen && filteredOrders.length > 0
+                ? { height: "auto" }
+                : { height: 0 }
+            }
+          >
+            <FlatList
               horizontal
-              className="mt-2 max-h-14"
-              contentContainerClassName="flex-row gap-x-2"
+              data={reversedFilteredOrders}
+              keyExtractor={(item) => item.id}
+              className="mt-2 max-h-16" // Adjusted height
+              contentContainerStyle={{ paddingHorizontal: 4, gap: 8 }}
               showsHorizontalScrollIndicator={false}
-            >
-              {filteredOrders
-                .slice()
-                .reverse()
-                .map((order) => (
-                  <OrderBadge
-                    key={order.id}
-                    order={order}
-                    onMarkReady={() => handleMarkReady(order)}
-                    onViewItems={() => handleViewItems(order.id)}
-                    onRetrieve={() => handleRetrieve(order.id)}
-                  />
-                ))}
-            </ScrollView>
-          )}
+              renderItem={({ item }) => (
+                <OrderBadge
+                  order={item}
+                  onMarkReady={() => handleMarkReady(item)}
+                  onViewItems={() => handleViewItems(item.id)}
+                  onRetrieve={() => handleRetrieve(item.id)}
+                />
+              )}
+            />
+          </View>
 
           <MenuSection />
         </View>

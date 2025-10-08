@@ -53,8 +53,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
     refunds: [],
 
     addOrderToHistory: (order: OrderProfile) => {
-      // Only add orders that are closed/paid/completed
-      if (order.order_status !== "Closed" && order.paid_status !== "Paid") {
+      // An order should be added to history if it has reached a final state.
+      // Final states are: Closed, Voided, or Paid.
+      const isFinalState =
+        (order.order_status === "Closed" || order.order_status === "Voided") &&
+        order.paid_status === "Paid";
+      if (!isFinalState) {
         return;
       }
 

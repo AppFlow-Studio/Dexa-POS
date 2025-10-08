@@ -60,7 +60,6 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
     <Tooltip onOpenChange={setShowTooltip}>
       <TooltipTrigger
         className={`flex-row items-center px-3 py-2 rounded-lg border`}
-
         style={{
           backgroundColor: colors.bg,
           borderColor: colors.border,
@@ -148,7 +147,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </Text>
             <Text className="text-base text-gray-400">
               Opened at{" "}
-              {new Date(order.opened_at).toLocaleTimeString("en-US", {
+              {new Date(order.opened_at!).toLocaleTimeString("en-US", {
                 hour: "2-digit",
                 minute: "2-digit",
               })}

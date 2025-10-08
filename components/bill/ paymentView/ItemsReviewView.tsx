@@ -43,6 +43,7 @@ const ItemsReviewView = () => {
             expandedItemId={expandedItemId}
             onToggleExpand={handleToggleExpand}
             isEditable={false} // Hide the Edit/Delete functionality in this view
+            showStatus={false}
           />
         ))}
       </ScrollView>

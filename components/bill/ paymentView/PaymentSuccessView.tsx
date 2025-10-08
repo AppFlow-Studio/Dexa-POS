@@ -219,7 +219,7 @@ const PaymentSuccessView = () => {
             {receiptSummary.map((item, index) => (
               <ReceiptRow
                 key={`${item.name}_${index}`}
-                label={`${item.name} x(${item.quantity})`}
+                label={`${item.name} (${item.quantity}) X`}
                 value={`${item.totalPrice.toFixed(2)}`}
               />
             ))}

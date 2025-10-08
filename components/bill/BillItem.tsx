@@ -17,6 +17,7 @@ interface BillItemProps {
   isEditable?: boolean;
   expandedItemId?: string | null;
   onToggleExpand?: (itemId: string) => void;
+  showStatus?: boolean;
 }
 
 const DELETE_BUTTON_WIDTH = 90;
@@ -26,6 +27,7 @@ const BillItem: React.FC<BillItemProps> = ({
   isEditable = false,
   expandedItemId,
   onToggleExpand,
+  showStatus = true,
 }) => {
   const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
   const { openToEdit, openToView, openFullscreenEdit } =
@@ -113,35 +115,37 @@ const BillItem: React.FC<BillItemProps> = ({
                       </Text>
                     </View>
                   )}
-                  {item.kitchen_status && item.kitchen_status !== "new" && (
-                    <View
-                      className={`ml-2 px-2 py-1 rounded-full ${
-                        item.kitchen_status === "sent"
-                          ? "bg-blue-900/30 border border-blue-500"
-                          : item.kitchen_status === "ready"
-                          ? "bg-orange-900/30 border border-orange-500"
-                          : "bg-gray-900/30 border border-gray-500"
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-medium ${
+                  {showStatus &&
+                    item.kitchen_status &&
+                    item.kitchen_status !== "new" && (
+                      <View
+                        className={`ml-2 px-2 py-1 rounded-full ${
                           item.kitchen_status === "sent"
-                            ? "text-blue-400"
+                            ? "bg-blue-900/30 border border-blue-500"
                             : item.kitchen_status === "ready"
-                            ? "text-orange-400"
-                            : "text-gray-400"
+                            ? "bg-orange-900/30 border border-orange-500"
+                            : "bg-gray-900/30 border border-gray-500"
                         }`}
                       >
-                        {item.kitchen_status === "sent"
-                          ? "Sent"
-                          : item.kitchen_status === "ready"
-                          ? "Ready"
-                          : item.kitchen_status}
-                      </Text>
-                    </View>
-                  )}
+                        <Text
+                          className={`text-xs font-medium ${
+                            item.kitchen_status === "sent"
+                              ? "text-blue-400"
+                              : item.kitchen_status === "ready"
+                              ? "text-orange-400"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          {item.kitchen_status === "sent"
+                            ? "Sent"
+                            : item.kitchen_status === "ready"
+                            ? "Ready"
+                            : item.kitchen_status}
+                        </Text>
+                      </View>
+                    )}
                   <Text className="text-base ml-4 text-gray-300">
-                    x {item.quantity}
+                    {item.quantity} X
                   </Text>
                 </View>
                 <View className="flex-row items-center">
