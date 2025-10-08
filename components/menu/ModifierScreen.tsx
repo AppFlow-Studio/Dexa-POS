@@ -4,7 +4,13 @@ import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Image,
   Modal,
@@ -195,8 +201,9 @@ const ModifierScreen = () => {
           const hasNotes =
             item.customizations.notes &&
             item.customizations.notes.trim() !== "";
+          const hasSent = item.kitchen_status === "sent";
 
-          return !hasModifiers && !hasNotes;
+          return !hasModifiers && !hasNotes && !hasSent;
         });
 
         // Only create draft item if no existing item with same customizations
@@ -244,33 +251,32 @@ const ModifierScreen = () => {
 
       if (draftItem) {
         // Convert modifier selections to the format expected by the order system
-        console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-            ([categoryId, selections]) => {
-              const category = menuItemForModifiers.modifiers?.find(
-                (cat) => cat.id === categoryId
-              );
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId, _]) => {
-                  const option = category?.options.find(
-                    (opt) => opt.id === optionId
-                  );
-                  return {
-                    id: optionId,
-                    name: option?.name || "",
-                    price: option?.price || 0,
-                  };
-                });
+              ([categoryId, selections]) => {
+                const category = menuItemForModifiers.modifiers?.find(
+                  (cat) => cat.id === categoryId
+                );
+                const selectedOptions = Object.entries(selections)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([optionId, _]) => {
+                    const option = category?.options.find(
+                      (opt) => opt.id === optionId
+                    );
+                    return {
+                      id: optionId,
+                      name: option?.name || "",
+                      price: option?.price || 0,
+                    };
+                  });
 
-              return {
-                categoryId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            }
-          )
+                return {
+                  categoryId,
+                  categoryName: category?.name || "",
+                  options: selectedOptions,
+                };
+              }
+            )
           : [];
 
         // Calculate total price
@@ -291,6 +297,8 @@ const ModifierScreen = () => {
             notes,
           },
         };
+        console.log("i am creating the problemm in useffect");
+
         updateItemInActiveOrder(updatedDraftItem);
       }
     }
@@ -434,28 +442,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-        const category = menuItemForModifiers.modifiers?.find(
-          (cat) => cat.id === categoryId
-        );
-        const selectedOptions = Object.entries(selections)
-          .filter(([_, isSelected]) => isSelected)
-          .map(([optionId, _]) => {
-            const option = category?.options.find(
-              (opt) => opt.id === optionId
-            );
-            return {
-              id: optionId,
-              name: option?.name || "",
-              price: option?.price || 0,
-            };
-          });
+          const category = menuItemForModifiers.modifiers?.find(
+            (cat) => cat.id === categoryId
+          );
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId, _]) => {
+              const option = category?.options.find(
+                (opt) => opt.id === optionId
+              );
+              return {
+                id: optionId,
+                name: option?.name || "",
+                price: option?.price || 0,
+              };
+            });
 
-        return {
-          categoryId,
-          categoryName: category?.name || "",
-          options: selectedOptions,
-        };
-      })
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
       : [];
 
     const finalCustomizations = {
@@ -474,6 +482,8 @@ const ModifierScreen = () => {
         customizations: finalCustomizations,
         isDraft: false, // Ensure it's not a draft anymore
       };
+      console.log("i am crete teh problem in handle save");
+
       updateItemInActiveOrder(updatedItem);
       toast.success(`Updated ${currentItem?.name}`, {
         position: ToastPosition.BOTTOM,
@@ -545,57 +555,25 @@ const ModifierScreen = () => {
           });
         }
 
-        if (existingItem.isDraft) {
-          // Remove the draft item and add the confirmed item
-          console.log(
-            "draftItem found, removing and adding confirmed item",
-            existingItem
-          );
+        const confirmedItem = {
+          id: generateCartItemId(baseItem.id, finalCustomizations),
+          menuItemId: baseItem.id,
+          name: baseItem.name,
+          quantity,
+          originalPrice: baseItem.price,
+          price: total / Math.max(1, quantity),
+          image: baseItem.image,
+          customizations: finalCustomizations,
+          availableDiscount: baseItem.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+          isDraft: false,
+        };
 
-          // Then add the confirmed item
-          const confirmedItem = {
-            id: generateCartItemId(baseItem.id, finalCustomizations),
-            menuItemId: baseItem.id,
-            name: baseItem.name,
-            quantity,
-            originalPrice: baseItem.price,
-            price: total / Math.max(1, quantity),
-            image: baseItem.image,
-            customizations: finalCustomizations,
-            availableDiscount: baseItem.availableDiscount,
-            appliedDiscount: null,
-            paidQuantity: 0,
-            isDraft: false,
-          };
-
-          addItemToActiveOrder(confirmedItem);
-          console.log("confirmedItem added", confirmedItem);
-          toast.success(`Added ${baseItem.name}`, {
-            position: ToastPosition.BOTTOM,
-          });
-        } else {
-          // Update existing confirmed item (aggregate quantities)
-          console.log(
-            "existingItem found, aggregating quantities:",
-            existingItem
-          );
-          const updatedItem = {
-            ...existingItem,
-            quantity: existingItem.quantity + quantity,
-            price: total / Math.max(1, quantity), // Update price to reflect new total
-            isDraft: false,
-            customizations: finalCustomizations,
-          };
-
-          updateItemInActiveOrder(updatedItem);
-          console.log("existingItem updated", updatedItem);
-          toast.success(
-            `Added ${baseItem.name} (${updatedItem.quantity} total)`,
-            {
-              position: ToastPosition.BOTTOM,
-            }
-          );
-        }
+        addItemToActiveOrder(confirmedItem);
+        toast.success(`Added ${baseItem.name}`, {
+          position: ToastPosition.BOTTOM,
+        });
       } else {
         // Or add a completely new item if no draft was found
         const newItem = {
@@ -612,7 +590,6 @@ const ModifierScreen = () => {
           paidQuantity: 0,
           isDraft: false,
         };
-        console.log("newItem", newItem);
         addItemToActiveOrder(newItem);
         toast.success(`Added ${baseItem.name}`, {
           position: ToastPosition.BOTTOM,
@@ -673,25 +650,43 @@ const ModifierScreen = () => {
         <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
           <TouchableOpacity onPress={close} className="flex-row items-center">
             <ArrowLeft color="#9CA3AF" size={20} />
-            <Text className="text-xl font-medium text-white ml-1.5">Back to Bill</Text>
+            <Text className="text-xl font-medium text-white ml-1.5">
+              Back to Bill
+            </Text>
           </TouchableOpacity>
         </View>
         {/* Content */}
         <View className="flex-1 items-center justify-center p-6 w-full">
           <View className="items-center w-full">
-            <Text className="text-2xl font-bold text-white text-center mb-3">Item Already Sent</Text>
-            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">This item has been sent to the kitchen and cannot be modified.</Text>
+            <Text className="text-2xl font-bold text-white text-center mb-3">
+              Item Already Sent
+            </Text>
+            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">
+              This item has been sent to the kitchen and cannot be modified.
+            </Text>
             <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-4 w-full border border-gray-600">
               <View className="flex-row items-center justify-center w-full gap-3 mb-3">
-                <Image source={require("@/assets/images/classic_burger.png")} className="w-14 h-14 rounded-lg" />
+                <Image
+                  source={require("@/assets/images/classic_burger.png")}
+                  className="w-14 h-14 rounded-lg"
+                />
                 <View className="flex-1">
-                  <Text className="text-xl font-semibold text-white">{cartItem.name}</Text>
-                  <Text className="text-base text-gray-400">Quantity: {cartItem.quantity}</Text>
+                  <Text className="text-xl font-semibold text-white">
+                    {cartItem.name}
+                  </Text>
+                  <Text className="text-base text-gray-400">
+                    Quantity: {cartItem.quantity}
+                  </Text>
                 </View>
               </View>
             </View>
-            <TouchableOpacity onPress={close} className="mt-6 bg-blue-600 px-6 py-3 rounded-xl">
-              <Text className="text-lg font-semibold text-white">Back to Bill</Text>
+            <TouchableOpacity
+              onPress={close}
+              className="mt-6 bg-blue-600 px-6 py-3 rounded-xl"
+            >
+              <Text className="text-lg font-semibold text-white">
+                Back to Bill
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -776,12 +771,13 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
-                        ? "bg-blue-600 border-blue-400"
-                        : hasSelection
+                      className={`p-3 rounded-xl border-2 min-w-[140px] ${
+                        isActive
+                          ? "bg-blue-600 border-blue-400"
+                          : hasSelection
                           ? "bg-green-600 border-green-400"
                           : "bg-[#303030] border-gray-600"
-                        }`}
+                      }`}
                     >
                       <View className="flex-row items-center justify-between mb-1.5">
                         <Text className="font-semibold text-lg text-white">
@@ -795,10 +791,11 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-base ${category.type === "required"
-                          ? "text-red-400"
-                          : "text-gray-400"
-                          }`}
+                        className={`text-base ${
+                          category.type === "required"
+                            ? "text-red-400"
+                            : "text-gray-400"
+                        }`}
                       >
                         {category.type}
                       </Text>
@@ -837,28 +834,31 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : isUnavailable
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-400"
+                              : isUnavailable
                               ? "bg-[#1a1a1a] border-gray-700"
                               : "bg-[#303030] border-gray-600"
-                            }`}
+                          }`}
                         >
                           <Text
-                            className={`text-xl font-medium text-center ${isSelected
-                              ? "text-white"
-                              : isUnavailable
+                            className={`text-xl font-medium text-center ${
+                              isSelected
+                                ? "text-white"
+                                : isUnavailable
                                 ? "text-gray-500"
                                 : "text-white"
-                              }`}
+                            }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
-                                }`}
+                              className={`text-lg text-center mt-1 ${
+                                isSelected ? "text-blue-200" : "text-blue-400"
+                              }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>

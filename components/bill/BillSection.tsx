@@ -141,19 +141,10 @@ const BillSection = ({
         {activeOrder && (
           <TouchableOpacity
             className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${
-              !activeOrder ||
-              activeOrder.items.length === 0 ||
-              activeOrder.order_status !== "Building"
-                ? "opacity-50"
-                : ""
+              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
             }`}
             style={{ elevation: 2 }} // Set fixed height to match discount button
-            disabled={
-              !activeOrder ||
-              activeOrder.items.length === 0 ||
-              activeOrder.order_status !== "Building" ||
-              hasDraftItems
-            }
+            disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
           >

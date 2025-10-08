@@ -22,6 +22,7 @@ const statusClasses: Record<string, string> = {
   "In Progress": "bg-orange-100 text-orange-800",
   Refunded: "bg-gray-200 text-gray-600",
   "Partially Refunded": "bg-yellow-100 text-yellow-800",
+  Unpaid: "bg-red-100 text-red-800",
 };
 
 const columnWidths: { [key: string]: DimensionValue } = {

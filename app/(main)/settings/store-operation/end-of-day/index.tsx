@@ -110,6 +110,13 @@ const EndOfDayReportScreen = () => {
       icon: <RefreshCcw color="#3b82f6" size={24} />,
       isLocked: true,
     },
+    {
+      id: "employees",
+      title: "Employee Settings",
+      subtitle: "Break and login rules",
+      route: "/settings/store-operation/employees",
+      icon: <Users color="#3b82f6" size={24} />,
+    },
   ];
 
   // Mock data for the statement

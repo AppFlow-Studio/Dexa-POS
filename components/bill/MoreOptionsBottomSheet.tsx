@@ -12,7 +12,9 @@ import React, { forwardRef, useMemo, useState } from "react";
 import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 
-const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
+const MoreOptionsComponent: React.ForwardRefRenderFunction<
+  BottomSheetMethods
+> = (props, ref) => {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -20,9 +22,19 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
+  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
   const { openSheet } = useCustomerSheetStore();
-  const { clearCart } = useOrderStore();
+
+  // FIX: Use individual selectors to prevent unnecessary re-renders
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const clearCart = useOrderStore((state) => state.clearCart);
+  const voidOrder = useOrderStore((state) => state.voidOrder);
+
+  // FIX: Get the active order directly without using orders array
+  const activeOrder = useOrderStore((state) =>
+    state.orders.find((o) => o.id === state.activeOrderId)
+  );
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true);
@@ -30,10 +42,25 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
 
   const onConfirmClearCart = () => {
     clearCart();
-    setClearCartConfirmOpen(false); // Close the confirmation modal
-    // Close the 'More' bottom sheet
+    setClearCartConfirmOpen(false);
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
+    }
+  };
+
+  const handleVoidOrderClick = () => {
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+    setTimeout(() => {
+      setVoidConfirmOpen(true);
+    }, 250);
+  };
+
+  const onConfirmVoid = () => {
+    if (activeOrderId) {
+      voidOrder(activeOrderId);
+      setVoidConfirmOpen(false);
     }
   };
 
@@ -97,9 +124,8 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
 
   const handleAddCustomer = () => {
     if (ref && "current" in ref && ref.current) {
-      ref.current.close(); // Close the 'More' sheet first
+      ref.current.close();
     }
-    // Open the customer sheet after a short delay
     setTimeout(() => {
       openSheet();
     }, 250);
@@ -117,6 +143,12 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
       ),
     []
   );
+
+  // FIX: Use optional chaining to prevent errors
+  const canVoid =
+    activeOrder &&
+    activeOrder.items?.length > 0 &&
+    activeOrder.paid_status !== "Paid";
 
   return (
     <>
@@ -155,6 +187,34 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
               <Text className="text-lg text-red-400 font-semibold">
                 Clear Full Cart
               </Text>
+            </TouchableOpacity>
+          </View>
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Order Actions
+            </Text>
+            <TouchableOpacity
+              onPress={handleVoidOrderClick}
+              disabled={!canVoid}
+              className={`flex-row items-center gap-x-3 w-full p-3 rounded-lg ${
+                canVoid
+                  ? "bg-[#303030] border border-red-700"
+                  : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+              }`}
+            >
+              <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={20} />
+              <View>
+                <Text
+                  className={`text-lg font-semibold ${
+                    canVoid ? "text-red-400" : "text-gray-500"
+                  }`}
+                >
+                  Void Order
+                </Text>
+                <Text className="text-sm text-gray-500">
+                  This action cannot be undone.
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
           <View className="p-4 border-b border-gray-700">
@@ -282,12 +342,21 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
         title="Clear Full Cart?"
         description="Are you sure you want to remove all items from the current order? This action cannot be undone."
         confirmText="Clear Cart"
-        variant="destructive" // This will make the confirm button red
+        variant="destructive"
+      />
+      <ConfirmationModal
+        isOpen={isVoidConfirmOpen}
+        onClose={() => setVoidConfirmOpen(false)}
+        onConfirm={onConfirmVoid}
+        title="Void This Order?"
+        description="Are you sure you want to void this entire order? All items will be cancelled. This action cannot be undone."
+        confirmText="Yes, Void Order"
+        variant="destructive"
       />
     </>
   );
-});
+};
 
-MoreOptionsBottomSheet.displayName = "MoreOptionsBottomSheet";
+const MoreOptionsBottomSheet = forwardRef(MoreOptionsComponent);
 
 export default MoreOptionsBottomSheet;

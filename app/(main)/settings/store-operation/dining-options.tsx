@@ -1,7 +1,13 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { Receipt, RefreshCcw, Store, Utensils } from "lucide-react-native";
+import {
+  Receipt,
+  RefreshCcw,
+  Store,
+  Users,
+  Utensils,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
@@ -44,6 +50,13 @@ const DiningOptionsScreen = () => {
       route: "/settings/store-operation/sync-status",
       icon: <RefreshCcw color="#3b82f6" size={24} />,
       isLocked: true,
+    },
+    {
+      id: "employees",
+      title: "Employee Settings",
+      subtitle: "Break and login rules",
+      route: "/settings/store-operation/employees",
+      icon: <Users color="#3b82f6" size={24} />,
     },
   ];
 

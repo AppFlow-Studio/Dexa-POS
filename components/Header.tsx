@@ -1,6 +1,8 @@
+import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { usePathname, useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -27,17 +29,39 @@ const Header = () => {
   const router = useRouter();
   const { layouts } = useFloorPlanStore();
 
-  const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
+  const {
+    startBreak,
+    getSession,
+    sessions,
+    clockOut: timeclockClockOut,
+  } = useTimeclockStore();
+
   const {
     employees,
-    activeEmployeeId,
-    clockOut: empClockOut,
+    activeEmployeeId: employeeActiveId,
     signOut,
   } = useEmployeeStore();
-  const [activeModal, setActiveModal] = useState<
-    "switchAccount" | "break" | "breakEnded" | null
-  >(null);
+  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+
   const [lastBreakSession, setLastBreakSession] = useState<any>(null);
+  // The activeEmployeeId from useEmployeeStore is the source of truth for who is "signed in"
+  const activeEmployee = useMemo(() => {
+    return employees.find((e) => e.id === employeeActiveId);
+  }, [employees, employeeActiveId]);
+
+  // Get the specific timeclock session for the signed-in employee
+  const activeSession = useMemo(() => {
+    if (!employeeActiveId) return null;
+    return getSession(employeeActiveId);
+  }, [employeeActiveId, getSession, sessions]);
+
+  const isClockedIn = !!activeSession && activeSession.status === "clockedIn";
+  const isOnBreak = !!activeSession && activeSession.status === "onBreak";
+
+  // We no longer need a separate BreakEndedModal state here, as the login flow handles it.
+  const [activeModal, setActiveModal] = useState<
+    "switchAccount" | "break" | null
+  >(null);
 
   const showBackButton =
     pathname == "/menu" ||
@@ -136,20 +160,23 @@ const Header = () => {
   }, [pathname]);
 
   const handleStartBreak = () => {
-    if (status === "clockedIn") {
+    if (isClockedIn) {
       startBreak();
-      // The timeclock store now handles the status, we just open the modal
-      setActiveModal("break");
-    } else {
-      alert("You must be clocked in to start a break.");
+
+      // If account switching is on, go to login. Otherwise, stay here.
+      if (isBreakAndSwitchEnabled) {
+        toast.success("Break started. Ready for next user.", {
+          position: ToastPosition.BOTTOM,
+        });
+      } else {
+        toast.success("Break started.", { position: ToastPosition.BOTTOM });
+        // The user is now on break, but remains on the screen.
+      }
     }
   };
 
   const handleEndBreak = () => {
-    const shiftForSession = useTimeclockStore.getState().currentShift;
-    setLastBreakSession(shiftForSession);
-    endBreak();
-    setActiveModal("breakEnded");
+    setActiveModal(null);
   };
 
   const handleReturnToClockIn = () => {
@@ -206,27 +233,18 @@ const Header = () => {
             <TouchableOpacity className="flex-row items-center  cursor-pointer">
               <Image
                 source={
-                  activeEmployeeId
-                    ? employees.find((e) => e.id === activeEmployeeId)
-                        ?.profilePictureUrl
-                      ? {
-                          uri: employees.find((e) => e.id === activeEmployeeId)!
-                            .profilePictureUrl!,
-                        }
-                      : require("@/assets/images/tom_hardy.jpg")
+                  activeEmployee?.profilePictureUrl
+                    ? { uri: activeEmployee.profilePictureUrl }
                     : require("@/assets/images/tom_hardy.jpg")
                 }
                 className="w-10 h-10 rounded-full"
               />
               <View className="ml-2">
                 <Text className="text-xl font-semibold text-white">
-                  {activeEmployeeId
-                    ? employees.find((e) => e.id === activeEmployeeId)
-                        ?.fullName || "Employee"
-                    : "Guest"}
+                  {activeEmployee?.fullName || "Guest"}
                 </Text>
                 <Text className="text-lg text-white">
-                  {activeEmployeeId ? "Signed In" : "Not Signed In"}
+                  {activeEmployee ? "Signed In" : "Not Signed In"}
                 </Text>
               </View>
               <ChevronDown color="white" size={20} className="ml-2" />
@@ -241,11 +259,12 @@ const Header = () => {
             </DropdownMenuItem>
             <DropdownMenuItem
               onPress={handleStartBreak}
-              disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
+              disabled={!isClockedIn || isOnBreak}
             >
               <Coffee className="mr-2 h-5 w-5 text-white " color="white" />
               <Text className="text-lg text-white">
-                {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
+                {" "}
+                {isOnBreak ? "On Break" : "Take Break"}
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
@@ -255,16 +274,9 @@ const Header = () => {
             <DropdownMenuSeparator className="bg-gray-600" />
             <DropdownMenuItem
               onPress={() => {
-                if (activeEmployeeId) {
-                  try {
-                    empClockOut(activeEmployeeId);
-                  } catch {}
-                  try {
-                    useTimeclockStore.getState().clockOut();
-                  } catch {}
-                  try {
-                    signOut();
-                  } catch {}
+                if (employeeActiveId) {
+                  timeclockClockOut(employeeActiveId); // Use the correct clock out function
+                  signOut(); // Sign out from the employee store
                 }
                 router.replace("/pin-login");
               }}
@@ -284,7 +296,7 @@ const Header = () => {
         onEndBreak={handleEndBreak}
       />
       <BreakEndedModal
-        isOpen={activeModal === "breakEnded"}
+        isOpen={activeModal === "break"}
         onClockIn={handleReturnToClockIn}
         shift={lastBreakSession}
       />

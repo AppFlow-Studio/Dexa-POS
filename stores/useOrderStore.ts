@@ -1,7 +1,9 @@
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
+import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
+import { useFloorPlanStore } from "./useFloorPlanStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 
@@ -77,6 +79,7 @@ interface OrderState {
   ) => string;
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
+  voidOrder: (orderId: string) => void;
 }
 
 export const useOrderStore = create<OrderState>((set, get) => {
@@ -389,7 +392,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     startNewOrder: (details) => {
       const { activeEmployeeId, employees } = useEmployeeStore.getState();
-      const activeEmployee = employees.find(e => e.id === activeEmployeeId);
+      const activeEmployee = employees.find((e) => e.id === activeEmployeeId);
 
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
@@ -403,7 +406,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         opened_at: null,
         guest_count: details?.guestCount || 1,
         server_name: activeEmployee?.fullName || "Unknown",
-
       };
       set((state) => ({ orders: [...state.orders, newOrder] }));
       return newOrder;
@@ -416,136 +418,82 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const activeOrder = orders.find((o) => o.id === activeOrderId);
       if (!activeOrder) return;
 
-      // Get the current course for this order from the coursing store
-      const coursingState =
-        require("./useCoursingStore").useCoursingStore.getState();
+      const coursingState = useCoursingStore.getState();
       const currentCourse =
         coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
-
-      // Generate composite key for the new item (without course for basic matching)
       const newItemKey = generateItemCompositeKey(
         newItem.menuItemId,
         newItem.customizations
       );
 
-      // Find an existing item in the cart that has the exact same composite key
-      // Only match items that are not drafts and are in the same course
-      const existingItemIndex = activeOrder.items.findIndex((cartItem) => {
-        // Skip draft items for aggregation
-        if (cartItem.isDraft) return false;
+      // --- THIS IS THE FINAL, CORRECTED LOGIC ---
 
-        const existingItemKey = generateItemCompositeKey(
-          cartItem.menuItemId,
-          cartItem.customizations
-        );
-
-        // Check if the composite keys match (same item + same customizations)
-        if (existingItemKey !== newItemKey) return false;
-
-        // Check if they're in the same course
+      // 1. Find a potential candidate for merging
+      const mergeCandidate = activeOrder.items.find((cartItem) => {
+        // Must be a "new" item, not a draft, and in the same course
+        if (
+          cartItem.isDraft ||
+          (cartItem.kitchen_status && cartItem.kitchen_status !== "new")
+        ) {
+          return false;
+        }
         const existingItemCourse =
           coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
             cartItem.id
           ] ?? 1;
-
-        return existingItemCourse === currentCourse;
+        if (existingItemCourse !== currentCourse) {
+          return false;
+        }
+        // Must have the exact same customizations
+        const existingItemKey = generateItemCompositeKey(
+          cartItem.menuItemId,
+          cartItem.customizations
+        );
+        return existingItemKey === newItemKey;
       });
+      console.log("mergeCandidate", mergeCandidate);
 
+      let updatedCart: CartItem[];
+
+      if (mergeCandidate) {
+        // 2. If a candidate exists, create a new cart array with the updated quantity
+        updatedCart = activeOrder.items.map((item) =>
+          item.id === mergeCandidate.id
+            ? { ...item, quantity: item.quantity + newItem.quantity }
+            : item
+        );
+      } else {
+        // 3. If no candidate, create a new item and add it to a new cart array
+        const newCartItem: CartItem = {
+          ...newItem,
+          paidQuantity: 0,
+          item_status:
+            activeOrder.order_type === "Dine In" ? "Preparing" : undefined,
+          kitchen_status: "new" as const,
+        };
+        updatedCart = [...activeOrder.items, newCartItem];
+        coursingState.setItemCourse(
+          activeOrderId,
+          newCartItem.id,
+          currentCourse
+        );
+      }
+
+      // 4. Update the state with the new cart array
       set((state) => ({
-        orders: state.orders.map((o) => {
-          if (o.id === activeOrderId) {
-            let updatedCart: CartItem[];
-
-            if (existingItemIndex > -1) {
-              // --- Item Merge Logic ---
-              // If a match is found, update the quantity of the existing item
-              updatedCart = o.items.map((item, index) => {
-                if (index === existingItemIndex) {
-                  return {
-                    ...item,
-                    quantity: item.quantity + newItem.quantity,
-                    item_status: "Preparing",
-                    // Newly added quantities are unpaid
-                    paidQuantity: item.paidQuantity || 0,
-                    // If existing item was already sent, keep it as sent
-                    // If it was new, keep it as new (new quantities are also new)
-                    kitchen_status: item.kitchen_status || "new",
-                  };
-                }
-                return item;
-              });
-            } else {
-              // --- Add New Item Logic ---
-              // For dine-in orders, set item_status to "Preparing" when assigned to table
-              // For takeaway orders, don't set item_status (whole order is managed together)
-              const shouldSetItemStatus =
-                o.order_type === "Dine In" &&
-                o.order_status !== "Building" &&
-                o.service_location_id !== null;
-
-              const newCartItem: CartItem = {
-                ...newItem,
-                paidQuantity: newItem.paidQuantity ?? 0,
-                item_status: shouldSetItemStatus
-                  ? ("Preparing" as const)
-                  : undefined,
-                kitchen_status: "new" as const,
-              };
-
-              updatedCart = [...o.items, newCartItem];
-
-              // Assign the new item to the current course
-              coursingState.setItemCourse(
-                activeOrderId,
-                newCartItem.id,
-                currentCourse
-              );
-            }
-
-            // Only sync order status for dine-in orders that are assigned to tables
-            // Don't sync for orders that are still being built or takeaway orders
-            if (
-              o.order_type === "Dine In" &&
-              o.order_status !== "Building" &&
-              o.service_location_id !== null
-            ) {
-              const allItemsReady = updatedCart.every(
-                (item) => item.item_status === "Ready"
-              );
-              const anyItemsPreparing = updatedCart.some(
-                (item) => item.item_status === "Preparing"
-              );
-
-              let newOrderStatus = o.order_status;
-              if (allItemsReady && updatedCart.length > 0) {
-                newOrderStatus = "Ready";
-              } else if (anyItemsPreparing) {
-                newOrderStatus = "Preparing";
-              }
-
-              return {
-                ...o,
-                items: updatedCart,
-                order_status: newOrderStatus,
-              };
-            }
-
-            // For orders still being built or takeaway orders, just update the cart without changing order status
-            return {
-              ...o,
-              items: updatedCart,
-            };
-          }
-          return o;
-        }),
+        orders: state.orders.map((o) =>
+          o.id === activeOrderId ? { ...o, items: updatedCart } : o
+        ),
       }));
-      recalculateTotals(activeOrderId); // Recalculate after updating the cart
+
+      recalculateTotals(activeOrderId);
     },
 
     updateItemInActiveOrder: (updatedItem) => {
       const { activeOrderId } = get();
+      console.log("thisis called");
+
       if (!activeOrderId) return;
-      console.log("updatedItem", updatedItem);
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === activeOrderId
@@ -948,7 +896,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         // Pass the updated order with totals
         const updatedOrder = {
           ...order,
-          order_status: "Closed" as const,
           closed_at: new Date().toISOString(),
           total_amount: total + tax,
           total_tax: tax,
@@ -968,36 +915,51 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       if (!order) return;
 
-      // Trigger inventory depletion when all items are marked as ready
       if (order.items.length > 0) {
         useInventoryStore.getState().decrementStockFromSale(order.items);
       }
 
-      set((state) => ({
-        orders: state.orders.map((order) => {
-          if (order.id === orderId) {
-            // Create a new items array where every item's status is "Ready"
-            const updatedItems = order.items.map((item) => ({
-              ...item,
-              item_status: "Ready" as const, // Use 'as const' for strict typing
-              kitchen_status: "ready" as const, // Update kitchen status to ready
-            }));
+      const mergedItemsMap = new Map<string, CartItem>();
 
-            // Return the order with the updated items and the overall order status also set to "Ready"
+      for (const item of order.items) {
+        // Don't process draft items
+        if (item.isDraft) continue;
+
+        const itemKey = generateItemCompositeKey(
+          item.menuItemId,
+          item.customizations
+        );
+
+        if (mergedItemsMap.has(itemKey)) {
+          // If this item already exists in our map, just update its quantity
+          const existingItem = mergedItemsMap.get(itemKey)!;
+          existingItem.quantity += item.quantity;
+        } else {
+          // If it's the first time we've seen this item, add it to the map
+          // and set its status to Ready.
+          mergedItemsMap.set(itemKey, {
+            ...item,
+            item_status: "Ready" as const,
+            kitchen_status: "ready" as const,
+          });
+        }
+      }
+
+      // Convert the map back to an array of items
+      const updatedItems = Array.from(mergedItemsMap.values());
+
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          if (o.id === orderId) {
             return {
-              ...order,
-              items: updatedItems,
+              ...o,
+              items: updatedItems, // Use the new, consolidated list
               order_status: "Ready" as const,
             };
           }
-          return order;
+          return o;
         }),
       }));
-
-      // if (order?.order_type === "Takeaway") {
-      //   //if order type is takeaway then add it archive after ready
-      //   get().archiveOrder(orderId);
-      // }
     },
 
     markAllItemsAsServed: (orderId) => {
@@ -1149,53 +1111,94 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const currentOrder = orders.find((o) => o.id === activeOrderId);
       if (!currentOrder) return;
 
-      // Filter items that are new (not yet sent to kitchen)
       const newItems = currentOrder.items.filter(
-        (item) => item.kitchen_status === "new" || !item.kitchen_status
+        (item) => !item.kitchen_status || item.kitchen_status === "new"
       );
 
       if (newItems.length === 0) return;
 
-      // Update only the new items to "sent" status
+      let cartToProcess = [...currentOrder.items];
+      const itemsToKeep: CartItem[] = [];
+      const mergedItemIds = new Set<string>();
+
+      // Iterate through each new item to see if it can be merged
+      for (const newItem of newItems) {
+        // Find a candidate for merging (must be already 'sent' and identical)
+        const mergeCandidate = cartToProcess.find((item) => {
+          if (item.id === newItem.id) return false; // Don't match self
+          if (item.kitchen_status !== "sent") return false; // Must be already sent
+
+          const key1 = generateItemCompositeKey(
+            item.menuItemId,
+            item.customizations
+          );
+          const key2 = generateItemCompositeKey(
+            newItem.menuItemId,
+            newItem.customizations
+          );
+
+          return key1 === key2;
+        });
+
+        if (mergeCandidate) {
+          // If we found a match, update its quantity in the final list
+          const existingInFinal = itemsToKeep.find(
+            (i) => i.id === mergeCandidate.id
+          );
+          if (existingInFinal) {
+            existingInFinal.quantity += newItem.quantity;
+          } else {
+            const updatedCandidate = {
+              ...mergeCandidate,
+              quantity: mergeCandidate.quantity + newItem.quantity,
+            };
+            itemsToKeep.push(updatedCandidate);
+          }
+          mergedItemIds.add(mergeCandidate.id); // Mark original as processed
+        } else {
+          // If no merge candidate, just mark this new item as 'sent' and add it
+          itemsToKeep.push({
+            ...newItem,
+            kitchen_status: "sent",
+            item_status: "Preparing",
+          });
+        }
+      }
+
+      // Add back all items that were not part of the merge logic (drafts, other sent items)
+      const finalCart = [
+        ...itemsToKeep,
+        ...cartToProcess.filter((item) => {
+          const isNew = !item.kitchen_status || item.kitchen_status === "new";
+          const wasMerged = mergedItemIds.has(item.id);
+          // Keep if it's not a new item and was not a merge target
+          return !isNew && !wasMerged;
+        }),
+      ];
+
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id === activeOrderId) {
             return {
               ...o,
-              items: o.items.map((item) => {
-                // Only update items that are new
-                if (item.kitchen_status === "new" || !item.kitchen_status) {
-                  return {
-                    ...item,
-                    kitchen_status: "sent" as const,
-                    item_status: "Preparing" as const,
-                  };
-                }
-                return item;
-              }),
-              // Update order status to Preparing if it was Building
-              order_status:
-                o.order_status === "Building"
-                  ? ("Preparing" as const)
-                  : o.order_status,
+              items: finalCart, // Use the newly constructed final cart
+              order_status: "Preparing",
             };
           }
           return o;
         }),
       }));
 
-      try {
-        toast.success(
-          `${newItems.length} item${
-            newItems.length > 1 ? "s" : ""
-          } sent to kitchen`,
-          {
-            duration: 2500,
-            position: ToastPosition.BOTTOM,
-          }
-        );
-      } catch {}
+      recalculateTotals(activeOrderId); // Recalculate totals after merging
+
+      toast.success(
+        `${newItems.length} new item${
+          newItems.length > 1 ? "s" : ""
+        } sent to kitchen.`,
+        { duration: 2500, position: ToastPosition.BOTTOM }
+      );
     },
+
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
       return generateCartItemId(menuItemId, customizations, isDraft);
     },
@@ -1220,6 +1223,51 @@ export const useOrderStore = create<OrderState>((set, get) => {
       toast.success("Cart has been cleared.", {
         position: ToastPosition.BOTTOM,
       });
+    },
+    voidOrder: (orderId: string) => {
+      const { orders, archiveOrder } = get();
+      const orderToVoid = orders.find((o) => o.id === orderId);
+
+      if (!orderToVoid) {
+        toast.error("Could not find the order to void.", {
+          position: ToastPosition.BOTTOM,
+        });
+        return;
+      }
+
+      // Update the order's status
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId
+            ? { ...o, order_status: "Voided", check_status: "Closed" }
+            : o
+        ),
+      }));
+
+      archiveOrder(orderId);
+
+      // If the order was for a table, free up the table
+      if (orderToVoid.service_location_id) {
+        useFloorPlanStore
+          .getState()
+          .updateTableStatus(orderToVoid.service_location_id, "Needs Cleaning");
+      }
+
+      toast.success(`Order #${orderId.slice(-5)} has been voided.`, {
+        position: ToastPosition.BOTTOM,
+      });
+
+      // After voiding, there is no active order to work on
+      // Find or create a new global "Building" order to set as active
+      const globalBuilding = get().orders.find(
+        (o) => o.service_location_id === null && o.order_status === "Building"
+      );
+      if (globalBuilding) {
+        get().setActiveOrder(globalBuilding.id);
+      } else {
+        const newOrder = get().startNewOrder({});
+        get().setActiveOrder(newOrder.id);
+      }
     },
   };
 });

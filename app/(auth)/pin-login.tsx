@@ -103,12 +103,7 @@ const MAX_PIN_LENGTH = 4;
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
-  const {
-    isPinClockedIn,
-    clockInWithPin,
-    clockIn: tcClockIn,
-    clockOut: tcClockOut,
-  } = useTimeclockStore();
+  const { clockIn: tcClockIn, clockOut: tcClockOut } = useTimeclockStore();
   const { employees, loadMockEmployees, clockIn, clockOut, signIn } =
     useEmployeeStore();
   const canSubmit = useMemo(() => pin.length > 0, [pin]);
@@ -175,7 +170,7 @@ const PinLoginScreen = () => {
     const emp = employees.find((e) => e.id === selectedEmployeeId);
     if (emp && emp.shiftStatus !== "clocked_in") {
       clockIn(selectedEmployeeId);
-      tcClockIn();
+      tcClockIn(selectedEmployeeId);
     }
 
     const res = signIn(selectedEmployeeId, pin);
@@ -209,7 +204,7 @@ const PinLoginScreen = () => {
     // Mark shift status only; do not navigate
     clockIn(selectedEmployeeId);
     // Also update timeclock store status so MenuItem & others see clockedIn state
-    tcClockIn();
+    tcClockIn(selectedEmployeeId);
     setPin("");
     showDialog(
       "Clocked In",
@@ -250,7 +245,7 @@ const PinLoginScreen = () => {
       return;
     }
     clockOut(selectedEmployeeId);
-    tcClockOut();
+    tcClockOut(selectedEmployeeId);
     showDialog(
       "Clocked Out Successfully",
       `Goodbye ${emp.fullName}!`,
