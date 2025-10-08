@@ -62,7 +62,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
         clockIn(emp.id);
       } catch {}
       try {
-        tcClockIn();
+        tcClockIn(emp.id);
       } catch {}
     }
     const res = signIn(selectedEmployeeId, pin);
@@ -104,7 +104,9 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
                   setPin("");
                   setError(null);
                 }}
-                className={`mr-3 items-center ${selectedEmployeeId === e.id ? "" : "opacity-60"}`}
+                className={`mr-3 items-center ${
+                  selectedEmployeeId === e.id ? "" : "opacity-60"
+                }`}
               >
                 <Image
                   source={

@@ -9,6 +9,7 @@ import {
   RefreshCcw,
   Search,
   Store,
+  Users,
   Utensils,
 } from "lucide-react-native";
 import React, { useState } from "react";
@@ -67,6 +68,13 @@ const SyncStatusScreen = () => {
       route: "/settings/store-operation/sync-status",
       icon: <RefreshCcw color="#3b82f6" size={24} />,
       isLocked: true,
+    },
+    {
+      id: "employees",
+      title: "Employee Settings",
+      subtitle: "Break and login rules",
+      route: "/settings/store-operation/employees",
+      icon: <Users color="#3b82f6" size={24} />,
     },
   ];
 

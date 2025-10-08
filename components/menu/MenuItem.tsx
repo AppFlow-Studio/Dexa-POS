@@ -5,7 +5,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Settings, Utensils } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Image,
   ImageSourcePropType,
@@ -32,30 +32,34 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
   const { openFullscreen } = useModifierSidebarStore();
   const { openToAdd } = useCustomizationStore();
-  const { status: clockStatus, showClockInWall } = useTimeclockStore();
+  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+  const isClockedIn = useMemo(() => {
+    if (!activeEmployeeId) return false;
+    const session = getSession(activeEmployeeId);
+    return session?.status === "clockedIn";
+  }, [activeEmployeeId, getSession]);
 
   // Menu items always add new items, not edit existing ones
 
   const handlePress = () => {
-    if (clockStatus !== "clockedIn") {
-      showClockInWall(); // Show the modal
-      return; // Stop execution
+    if (!isClockedIn) {
+      showClockInWall();
+      return;
     }
 
-    // Check if order is closed first
     if (onOrderClosedCheck && onOrderClosedCheck()) {
-      return; // Stop execution if order is closed
+      return;
     }
 
-    // 2. Add validation check before opening the dialog
     if (!activeOrder?.order_type) {
       toast.error("Please select an Order Type", {
         duration: 4000,
         position: ToastPosition.BOTTOM,
       });
-      return; // Stop execution
+      return;
     }
 
     openFullscreen(item, activeOrderId, categoryId);
@@ -65,7 +69,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
     <TouchableOpacity
       disabled={item.availability === false}
       onPress={handlePress}
-      className={`w-[23%] rounded-[20px] ${item.availability === false ? "opacity-50" : ""} mb-2 bg-[#303030] border border-gray-600`}
+      className={`w-[23%] rounded-[20px] ${
+        item.availability === false ? "opacity-50" : ""
+      } mb-2 bg-[#303030] border border-gray-600`}
     >
       <View className="flex-col items-center gap-1 overflow-hidden rounded-lg flex-1 ">
         <View className=" relative w-full h-24 flex-1 ">
@@ -86,7 +92,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
           </View>
         </View>
         <View className="h-[1px] bg-blue-400  self-center w-[90%]" />
-        <View className="w-full px-4 flex-1 pb-1 h-full justify-end" >
+        <View className="w-full px-4 flex-1 pb-1 h-full justify-end">
           <View className="flex-row items-center justify-between">
             <Text className="text-lg font-bold text-white mt-3 flex-1">
               {item.name}
@@ -108,7 +114,9 @@ const MenuItem: React.FC<MenuItemProps> = ({
               return (
                 <>
                   <Text
-                    className={`text-xl font-semibold ${hasCustomPricing ? "text-yellow-400" : "text-white"}`}
+                    className={`text-xl font-semibold ${
+                      hasCustomPricing ? "text-yellow-400" : "text-white"
+                    }`}
                   >
                     ${displayPrice.toFixed(2)}
                   </Text>

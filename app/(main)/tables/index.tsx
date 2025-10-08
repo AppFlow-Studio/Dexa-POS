@@ -4,6 +4,7 @@ import TableListItem from "@/components/tables/TableListItem";
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Href, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -49,6 +50,8 @@ const TablesScreen = () => {
   const [isJoinMode, setIsJoinMode] = useState(false);
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
+  const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
+
   useEffect(() => {
     if (!activeLayoutId && layouts.length > 0) {
       setActiveLayout(layouts[0].id);
@@ -77,7 +80,19 @@ const TablesScreen = () => {
     });
   }, [searchText, statusFilter, capacityFilter, activeLayout]);
 
+  const isClockedIn = useMemo(() => {
+    if (!activeEmployeeId) return false;
+    const session = getSession(activeEmployeeId);
+    return session?.status === "clockedIn";
+  }, [activeEmployeeId, getSession]);
+
   const handleTablePress = (table: TableType) => {
+    if (!isClockedIn) {
+      // Only block if not in edit mode
+      showClockInWall();
+      return; // Stop execution
+    }
+
     if (isJoinMode) {
       if (table.status === "Available") {
         toggleTableSelection(table.id);

@@ -56,7 +56,8 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       // An order should be added to history if it has reached a final state.
       // Final states are: Closed, Voided, or Paid.
       const isFinalState =
-        (order.order_status === "Closed" || order.order_status === "Voided") &&
+        order.order_status === "Closed" ||
+        order.order_status === "Voided" ||
         order.paid_status === "Paid";
       if (!isFinalState) {
         return;
@@ -83,7 +84,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           hour12: true,
         }),
         orderId: order.id,
-        paymentStatus: order.paid_status === "Paid" ? "Paid" : "In Progress",
+        paymentStatus: order.paid_status === "Paid" ? "Paid" : "Unpaid",
         customer: order.customer_name || "Walk-In Customer",
         server: order.server_name || "Unknown",
         itemCount: order.items.length,

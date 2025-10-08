@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import {
-  BarChart3,
   History,
   Home,
   Lock,
@@ -122,7 +121,7 @@ const MainMenu: React.FC = () => {
       id: "online-orders",
       icon: <ShoppingBag color="#3b82f6" size={48} />,
       title: "Online Orders",
-      subtitle: "Web & app Orders",
+      subtitle: "Web & App Orders",
       route: "/online-orders",
       isHighlighted: false,
     },
