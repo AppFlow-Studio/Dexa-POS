@@ -25,19 +25,6 @@ const statusClasses: Record<string, string> = {
   Unpaid: "bg-red-100 text-red-800",
 };
 
-const columnWidths: { [key: string]: DimensionValue } = {
-  serial: "8%",
-  date: "12%",
-  orderId: "10%",
-  customer: "12%",
-  paymentStatus: "10%",
-  server: "10%",
-  items: "7%",
-  type: "10%",
-  total: "8%",
-  notes: "8%",
-  actions: "5%",
-};
 
 const columnWidths: { [key: string]: DimensionValue } = {
   serial: "8%",
