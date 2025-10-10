@@ -14,7 +14,7 @@ import {
   Trash2,
   Utensils,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import {
   Gesture,
@@ -31,6 +31,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useMenuLayout } from "./_layout";
+
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
   if (image && image.length > 200) {
@@ -138,94 +139,83 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
   });
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View
-        style={animatedStyle}
-        className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3"
-      >
-        <View className="flex-row items-center justify-between mb-1.5">
-          <View className="flex-row items-center gap-2">
-            <GripVertical size={20} color="#9CA3AF" />
-            <Text className="text-2xl font-semibold text-white">
-              {menu.name}
-            </Text>
-            <View
-              className={`px-2.5 py-1.5 rounded-full ${
+    <Animated.View
+      style={animatedStyle}
+      className="bg-[#303030] rounded-lg border border-gray-700 p-4 mb-3"
+    >
+      <View className="flex-row items-center justify-between mb-1.5">
+        <View className="flex-row items-center gap-2">
+          <GestureDetector gesture={panGesture}>
+            <View className="p-2 cursor-grab">
+              <GripVertical size={20} color="#9CA3AF" />
+            </View>
+          </GestureDetector>
+          <Text className="text-2xl font-semibold text-white">{menu.name}</Text>
+          <View
+            className={`px-2.5 py-1.5 rounded-full ${
+              menu.isActive && menu.isAvailableNow
+                ? "bg-green-900/30 border border-green-500"
+                : "bg-red-900/30 border border-red-500"
+            }`}
+          >
+            <Text
+              className={`text-lg font-medium ${
                 menu.isActive && menu.isAvailableNow
-                  ? "bg-green-900/30 border border-green-500"
-                  : "bg-red-900/30 border border-red-500"
+                  ? "text-green-400"
+                  : "text-red-400"
               }`}
             >
-              <Text
-                className={`text-lg font-medium ${
-                  menu.isActive && menu.isAvailableNow
-                    ? "text-green-400"
-                    : "text-red-400"
-                }`}
-              >
-                {menu.isActive
-                  ? menu.isAvailableNow
-                    ? "Available Now"
-                    : "Unavailable Now"
-                  : "Inactive"}
-              </Text>
-            </View>
-          </View>
-
-          <View className="flex-row items-center gap-2">
-            {/* <TouchableOpacity
-              onPress={onSchedule}
-              className="p-2 bg-[#212121] rounded border border-gray-600"
-            >
-              <Clock size={20} color="#9CA3AF" />
-            </TouchableOpacity> */}
-
-            <TouchableOpacity
-              onPress={() => onToggleMenuActive(menu.id)}
-              className="p-2 bg-[#212121] rounded border border-gray-600"
-            >
-              {menu.isActive ? (
-                <Eye size={20} color="#10B981" />
-              ) : (
-                <EyeOff size={20} color="#EF4444" />
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={onEdit}
-              className="p-2 bg-[#212121] rounded border border-gray-600"
-            >
-              <Settings size={20} color="#9CA3AF" />
-            </TouchableOpacity>
+              {menu.isActive
+                ? menu.isAvailableNow
+                  ? "Available Now"
+                  : "Unavailable Now"
+                : "Inactive"}
+            </Text>
           </View>
         </View>
 
-        {/* Categories within menu */}
-        <View className="ml-6">
-          <Text className="text-xl font-medium text-gray-300 mb-1.5">
-            Categories ({menu.categories.length})
-          </Text>
-          <View className="gap-2">
-            {menu.categories.map((category: any, categoryIndex: number) => (
-              <DraggableMenuCategory
-                key={category.id}
-                category={category}
-                menuId={menu.id}
-                index={categoryIndex}
-                onReorder={(fromIndex, toIndex) =>
-                  onReorderCategories(menu.id, fromIndex, toIndex)
-                }
-                onToggleActive={onToggleCategoryActive}
-              />
-            ))}
-          </View>
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity
+            onPress={() => onToggleMenuActive(menu.id)}
+            className="p-2 bg-[#212121] rounded border border-gray-600"
+          >
+            {menu.isActive ? (
+              <Eye size={20} color="#10B981" />
+            ) : (
+              <EyeOff size={20} color="#EF4444" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onEdit}
+            className="p-2 bg-[#212121] rounded border border-gray-600"
+          >
+            <Settings size={20} color="#9CA3AF" />
+          </TouchableOpacity>
         </View>
-      </Animated.View>
-    </GestureDetector>
+      </View>
+      <View className="ml-6">
+        <Text className="text-xl font-medium text-gray-300 mb-1.5">
+          Categories ({menu.categories.length})
+        </Text>
+        <View className="gap-2">
+          {menu.categories.map((category: any, categoryIndex: number) => (
+            <DraggableMenuCategory
+              key={category.id}
+              category={category}
+              menuId={menu.id}
+              index={categoryIndex}
+              onReorder={(fromIndex, toIndex) =>
+                onReorderCategories(menu.id, fromIndex, toIndex)
+              }
+              onToggleActive={onToggleCategoryActive}
+            />
+          ))}
+        </View>
+      </View>
+    </Animated.View>
   );
 };
 
-// Draggable Menu Category Component
 interface DraggableMenuCategoryProps {
   category: any;
   menuId: string;
@@ -254,14 +244,14 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
       translateY.value = event.translationY;
     })
     .onEnd((event) => {
-      const itemHeight = 60; // Approximate height of each category item
+      const itemHeight = 60;
       const newIndex = Math.round(index + event.translationY / itemHeight);
 
       if (newIndex !== index && newIndex >= 0) {
         runOnJS(onReorder)(index, newIndex);
       }
 
-      translateY.value = withTiming(2);
+      translateY.value = withTiming(0);
       scale.value = withSpring(1);
       isDragging.value = false;
     });
@@ -283,45 +273,47 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
   });
 
   return (
-    <GestureDetector gesture={panGesture}>
-      <Animated.View
-        style={animatedStyle}
-        className="flex-row items-center justify-between bg-[#212121] p-4 rounded border border-gray-700"
-      >
-        <View className="flex-row items-center gap-2">
-          <GripVertical size={20} color="#6B7280" />
-          <Text className="text-gray-200 text-xl">{category.name}</Text>
-          <View
-            className={`px-2.5 py-1.5 rounded-full ${
-              category.isActive
-                ? "bg-green-900/30 border border-green-500"
-                : "bg-red-900/30 border border-red-500"
+    <Animated.View
+      style={animatedStyle}
+      className="flex-row items-center justify-between bg-[#212121] p-4 rounded border border-gray-700"
+    >
+      <View className="flex-row items-center gap-2">
+        <GestureDetector gesture={panGesture}>
+          <View className="p-2 -ml-2 cursor-grab">
+            <GripVertical size={20} color="#6B7280" />
+          </View>
+        </GestureDetector>
+        <Text className="text-gray-200 text-xl">{category.name}</Text>
+        <View
+          className={`px-2.5 py-1.5 rounded-full ${
+            category.isActive
+              ? "bg-green-900/30 border border-green-500"
+              : "bg-red-900/30 border border-red-500"
+          }`}
+        >
+          <Text
+            className={`text-lg ${
+              category.isActive ? "text-green-400" : "text-red-400"
             }`}
           >
-            <Text
-              className={`text-lg ${
-                category.isActive ? "text-green-400" : "text-red-400"
-              }`}
-            >
-              {category.isActive ? "Available Now" : "Unavailable"}
-            </Text>
-          </View>
+            {category.isActive ? "Available Now" : "Unavailable"}
+          </Text>
         </View>
+      </View>
 
-        <View className="flex-row items-center gap-2">
-          <TouchableOpacity
-            onPress={() => onToggleActive(menuId, category.id)}
-            className="p-2"
-          >
-            {category.isActive ? (
-              <Eye size={20} color="#10B981" />
-            ) : (
-              <EyeOff size={20} color="#EF4444" />
-            )}
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </GestureDetector>
+      <View className="flex-row items-center gap-2">
+        <TouchableOpacity
+          onPress={() => onToggleActive(menuId, category.id)}
+          className="p-2"
+        >
+          {category.isActive ? (
+            <Eye size={20} color="#10B981" />
+          ) : (
+            <EyeOff size={20} color="#EF4444" />
+          )}
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
   );
 };
 
@@ -343,6 +335,7 @@ const MenuPage: React.FC = () => {
     isCategoryActiveForMenu,
     updateMenu,
     getItemPriceForCategory,
+    reorderMenus,
   } = useMenuStore();
   const { activeTab, searchQuery } = useMenuLayout();
 
@@ -381,10 +374,10 @@ const MenuPage: React.FC = () => {
   }));
 
   // Periodic tick to refresh time-based availability
-  const [availabilityTick, setAvailabilityTick] = useState(0);
-  useEffect(() => {
+  const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
+  React.useEffect(() => {
     const intervalId = setInterval(() => {
-      setAvailabilityTick((t) => t + 1);
+      forceUpdate();
     }, 60_000);
     return () => clearInterval(intervalId);
   }, []);
@@ -455,10 +448,9 @@ const MenuPage: React.FC = () => {
     toggleMenuCategoryActive(menuId, categoryId);
   };
 
+  // This function now calls the store action to update the state
   const handleReorderMenus = (fromIndex: number, toIndex: number) => {
-    // For now, we'll just reorder in the display
-    // In a real implementation, you'd want to persist this order
-    console.log(`Reorder menu from ${fromIndex} to ${toIndex}`);
+    reorderMenus(fromIndex, toIndex);
   };
 
   const handleReorderMenuCategories = (

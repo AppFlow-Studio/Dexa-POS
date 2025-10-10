@@ -60,6 +60,7 @@ interface MenuState {
   updateMenu: (id: string, updates: Partial<Menu>) => void;
   deleteMenu: (id: string) => void;
   toggleMenuActive: (id: string) => void;
+  reorderMenus: (fromIndex: number, toIndex: number) => void;
   getMenuItems: (menuId: string) => MenuItemType[];
 
   // CRUD Operations for Modifier Groups
@@ -345,8 +346,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-                ? [item.category]
-                : [];
+              ? [item.category]
+              : [];
 
             // Only add if not already present
             if (!currentCategories.includes(categoryName)) {
@@ -371,8 +372,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-                ? [item.category]
-                : [];
+              ? [item.category]
+              : [];
 
             return {
               ...item,
@@ -392,8 +393,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const categories = Array.isArray(item.category)
           ? item.category
           : item.category
-            ? [item.category]
-            : [];
+          ? [item.category]
+          : [];
         return categories.includes(categoryName);
       });
     },
@@ -444,6 +445,15 @@ export const useMenuStore = create<MenuState>((set, get) => {
       console.log("Menu active status toggled:", id);
     },
 
+    reorderMenus: (fromIndex: number, toIndex: number) => {
+      set((state) => {
+        const newMenus = [...state.menus];
+        const [movedItem] = newMenus.splice(fromIndex, 1);
+        newMenus.splice(toIndex, 0, movedItem);
+        return { menus: newMenus };
+      });
+    },
+
     getMenuItems: (menuId: string): MenuItemType[] => {
       const state = useMenuStore.getState();
       const menu = state.menus.find((m) => m.id === menuId);
@@ -454,8 +464,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const itemCategories = Array.isArray(item.category)
           ? item.category
           : item.category
-            ? [item.category]
-            : [];
+          ? [item.category]
+          : [];
         return menu.categories.some((categoryName) =>
           itemCategories.includes(categoryName)
         );

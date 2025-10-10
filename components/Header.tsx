@@ -13,9 +13,8 @@ import {
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
+import SessionDock from "./SessionDock";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
-import BreakEndedModal from "./timeclock/BreakEndedModal";
-import BreakModal from "./timeclock/BreakModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +32,7 @@ const Header = () => {
     startBreak,
     getSession,
     sessions,
+    // MODIFIED: Renamed for clarity to avoid conflict with employeeStore's clockOut
     clockOut: timeclockClockOut,
   } = useTimeclockStore();
 
@@ -43,13 +43,12 @@ const Header = () => {
   } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
 
-  const [lastBreakSession, setLastBreakSession] = useState<any>(null);
-  // The activeEmployeeId from useEmployeeStore is the source of truth for who is "signed in"
+  const [activeModal, setActiveModal] = useState<"switchAccount" | null>(null);
+
   const activeEmployee = useMemo(() => {
     return employees.find((e) => e.id === employeeActiveId);
   }, [employees, employeeActiveId]);
 
-  // Get the specific timeclock session for the signed-in employee
   const activeSession = useMemo(() => {
     if (!employeeActiveId) return null;
     return getSession(employeeActiveId);
@@ -57,11 +56,6 @@ const Header = () => {
 
   const isClockedIn = !!activeSession && activeSession.status === "clockedIn";
   const isOnBreak = !!activeSession && activeSession.status === "onBreak";
-
-  // We no longer need a separate BreakEndedModal state here, as the login flow handles it.
-  const [activeModal, setActiveModal] = useState<
-    "switchAccount" | "break" | null
-  >(null);
 
   const showBackButton =
     pathname == "/menu" ||
@@ -103,7 +97,6 @@ const Header = () => {
       return "Purchase Orders";
     if (pathname.startsWith("/inventory")) return "Inventory";
 
-    // Handle dynamic online order route
     if (
       pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2
@@ -126,14 +119,13 @@ const Header = () => {
       pathname.split("/").length === 3
     ) {
       const tableId = pathname.split("/")[2];
-      // Find the table across all layouts to get its name
       for (const layout of layouts) {
         const table = layout.tables.find((t) => t.id === tableId);
         if (table) {
-          return `Tables / ${table.name}`; // Return the user-friendly name
+          return `Tables / ${table.name}`;
         }
       }
-      return "Table Details"; // Fallback if not found
+      return "Table Details";
     } else if (
       pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4
@@ -151,44 +143,33 @@ const Header = () => {
     const pathParts = pathname.split("/").filter(Boolean);
     const lastPart = pathParts[pathParts.length - 1];
 
-    if (!lastPart) return "Order Line"; // Default for safety
+    if (!lastPart) return "Order Line";
     const title = lastPart
       .replace(/-/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
     return title;
-  }, [pathname]);
+  }, [pathname, layouts]);
 
   const handleStartBreak = () => {
     if (isClockedIn) {
       startBreak();
 
-      // If account switching is on, go to login. Otherwise, stay here.
       if (isBreakAndSwitchEnabled) {
         toast.success("Break started. Ready for next user.", {
           position: ToastPosition.BOTTOM,
         });
+        signOut();
+        router.replace("/pin-login");
       } else {
         toast.success("Break started.", { position: ToastPosition.BOTTOM });
-        // The user is now on break, but remains on the screen.
       }
     }
   };
 
-  const handleEndBreak = () => {
-    setActiveModal(null);
-  };
-
-  const handleReturnToClockIn = () => {
-    setActiveModal(null);
-    setLastBreakSession(null);
-  };
-
   const handleBackPress = () => {
-    // Split the path to analyze its structure
     const pathParts = pathname.split("/").filter(Boolean);
 
-    // Case 1: Handle Inventory navigation
     if (
       pathname.startsWith("/inventory") &&
       !pathname.includes("/purchase-orders/")
@@ -197,20 +178,15 @@ const Header = () => {
       return;
     }
 
-    // Case 2: Handle Settings navigation
     if (pathname.startsWith("/settings")) {
-      // If we are deep inside settings (e.g., /settings/basic/store-info)
       if (pathParts.length > 2) {
-        // Go to the main settings page
         router.push("/settings");
       } else {
-        // If we are already on the main /settings page, go home
         router.push("/home");
       }
       return;
     }
 
-    // Default Case: For all other pages, use the standard back behavior
     router.back();
   };
 
@@ -228,6 +204,11 @@ const Header = () => {
           )}
           <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
+
+        <View className="absolute left-1/2 -translate-x-1/2">
+          <SessionDock />
+        </View>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center  cursor-pointer">
@@ -275,9 +256,9 @@ const Header = () => {
             <DropdownMenuItem
               onPress={() => {
                 if (employeeActiveId) {
-                  timeclockClockOut(employeeActiveId); // Use the correct clock out function
-                  signOut(); // Sign out from the employee store
+                  timeclockClockOut(employeeActiveId);
                 }
+                // No need to call signOut() separately, clockOut handles it.
                 router.replace("/pin-login");
               }}
             >
@@ -290,15 +271,6 @@ const Header = () => {
       <SwitchAccountModal
         isOpen={activeModal === "switchAccount"}
         onClose={() => setActiveModal(null)}
-      />
-      <BreakModal
-        isOpen={activeModal === "break"}
-        onEndBreak={handleEndBreak}
-      />
-      <BreakEndedModal
-        isOpen={activeModal === "break"}
-        onClockIn={handleReturnToClockIn}
-        shift={lastBreakSession}
       />
     </>
   );
