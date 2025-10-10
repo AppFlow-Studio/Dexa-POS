@@ -22,8 +22,6 @@ const TABLE_HEADERS = [
 ];
 
 const TimeclockScreen = () => {
-  // --- STATE FROM THE STORE ---
-  // Get all necessary state and actions from the store.
   const {
     shiftHistory,
     getSession,
@@ -31,19 +29,15 @@ const TimeclockScreen = () => {
     clockIn: tcClockIn,
     clockOut: tcClockOut,
   } = useTimeclockStore();
-  const { employees, loadMockEmployees, clockIn, clockOut, activeEmployeeId } =
+  const { employees, loadMockEmployees, clockIn, activeEmployeeId } =
     useEmployeeStore();
 
-  // --- LOCAL UI STATE ---
-  // This state is ONLY for controlling which modal is visible.
   const [activeModal, setActiveModal] = useState<"break" | "breakEnded" | null>(
     null
   );
-  // This state holds the data for the break that just ended, to pass to the modal.
   const [lastBreakSession, setLastBreakSession] = useState<ShiftSession | null>(
     null
   );
-  // PIN modal for employee clock in/out
   const [pinModal, setPinModal] = useState<{
     visible: boolean;
     employeeId: string | null;
@@ -67,47 +61,27 @@ const TimeclockScreen = () => {
       setPinModal((p) => ({ ...p, pin: "", error: undefined }));
     }
   };
-  // Collapsible employees list
   const [employeesCollapsed, setEmployeesCollapsed] = useState(false);
 
-  // --- LIFECYCLE EFFECT ---
-  // This effect opens the "Break Initiated" modal when the global status changes to 'onBreak'.
-  // useEffect(() => {
-  //   if (status === "onBreak") {
-  //     setActiveModal("break");
-  //   } else {
-  //     // If the status is no longer 'onBreak' (e.g., clocked out), ensure the modal is closed.
-  //     if (activeModal === "break") {
-  //       setActiveModal(null);
-  //     }
-  //   }
-  // }, [status]);
-
-  // Load employees once
   useEffect(() => {
     loadMockEmployees(8);
   }, []);
 
-  // --- HANDLERS ---
   const handleEndBreak = () => {
     if (!activeEmployeeId) return;
 
-    // 1. Capture the session data *before* ending the break
     const sessionForModal = getSession(activeEmployeeId);
     setLastBreakSession(sessionForModal || null);
 
-    // 2. Call the store action to end the break for the active employee
     endBreak(activeEmployeeId);
 
-    // 3. Close the break modal and navigate home
     setActiveModal(null);
     router.replace("/home");
   };
 
   const handleReturnToClockIn = () => {
-    // This is called from the "Break Ended" modal. We just need to close it.
     setActiveModal(null);
-    setLastBreakSession(null); // Clear the temporary session data
+    setLastBreakSession(null);
   };
 
   return (
@@ -284,7 +258,6 @@ const TimeclockScreen = () => {
         </View>
       </View>
 
-      {/* --- Modals --- */}
       <BreakModal
         isOpen={activeModal === "break"}
         onEndBreak={handleEndBreak}
@@ -292,7 +265,6 @@ const TimeclockScreen = () => {
       <BreakEndedModal
         isOpen={activeModal === "breakEnded"}
         onClockIn={handleReturnToClockIn}
-        // Pass the captured shift data to the modal
         shift={lastBreakSession}
       />
 
@@ -345,7 +317,6 @@ const TimeclockScreen = () => {
                       clockIn(emp.id);
                       tcClockIn(emp.id);
                     } else {
-                      clockOut(emp.id);
                       tcClockOut(emp.id);
                     }
                     setPinModal({

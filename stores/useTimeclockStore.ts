@@ -1,44 +1,34 @@
 import { ShiftHistoryEntry } from "@/lib/types";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
-import { useEmployeeSettingsStore } from "./useEmployeeSettingsStore"; // Import settings store
+import { useEmployeeSettingsStore } from "./useEmployeeSettingsStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 
-// The status for an individual employee's session
 export type SessionStatus = "clockedIn" | "onBreak";
 
-// The data for a single, active work session
 export interface ShiftSession {
   employeeId: string;
   status: SessionStatus;
   clockInTime: Date;
   breakStartTime: Date | null;
-  breakEndTime: Date | null; // Added to track break end time per session
+  breakEndTime: Date | null;
 }
 
 interface TimeclockState {
-  // Who is currently using the POS terminal. Can be null.
   activeEmployeeId: string | null;
-  // A record of all currently active sessions (clocked in or on break).
-  sessions: Record<string, ShiftSession>; // Key is employeeId
+  sessions: Record<string, ShiftSession>;
   isClockInWallOpen: boolean;
   shiftHistory: ShiftHistoryEntry[];
 
-  // --- ACTIONS ---
-  // Sets who is currently using the terminal.
+  // ACTIONS
   setActiveEmployee: (employeeId: string | null) => void;
-  // Starts a new session for an employee and makes them active.
   clockIn: (employeeId: string) => {
     ok: boolean;
     reason?: "already_in_session";
   };
-  // Puts the *active* employee on break and clears the active user.
   startBreak: () => void;
-  // Ends a break for a *specific* employee and makes them active again.
   endBreak: (employeeId: string) => void;
-  // Ends an employee's session completely.
   clockOut: (employeeId: string) => void;
-  // Helper to get the session details for any employee.
   getSession: (employeeId: string) => ShiftSession | undefined;
   showClockInWall: () => void;
   hideClockInWall: () => void;
@@ -64,7 +54,7 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       status: "clockedIn",
       clockInTime: new Date(),
       breakStartTime: null,
-      breakEndTime: null, // Initialize break end time
+      breakEndTime: null,
     };
 
     set((state) => ({
@@ -81,17 +71,15 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
 
     if (!activeEmployeeId || !sessions[activeEmployeeId]) return;
 
-    // The break action itself is always allowed.
     const updatedSession: ShiftSession = {
       ...sessions[activeEmployeeId],
       status: "onBreak",
       breakStartTime: new Date(),
-      breakEndTime: null, // Reset break end time on new break
+      breakEndTime: null,
     };
 
     set((state) => ({
       sessions: { ...state.sessions, [activeEmployeeId]: updatedSession },
-      // Conditionally log out the user ONLY if the "Switch Account" feature is enabled.
       activeEmployeeId: isBreakAndSwitchEnabled ? null : state.activeEmployeeId,
     }));
   },
@@ -101,18 +89,15 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
     const session = sessions[employeeId];
     if (!session || session.status !== "onBreak") return;
 
-    // Add logic to record break duration to history if needed
-
     set((state) => ({
       sessions: {
         ...state.sessions,
         [employeeId]: {
           ...session,
           status: "clockedIn",
-          breakEndTime: new Date(), // Set break end time
+          breakEndTime: new Date(),
         },
       },
-      // Automatically make the returning employee the active user.
       activeEmployeeId: employeeId,
     }));
 
@@ -126,19 +111,25 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
     const sessionToClose = sessions[employeeId];
     if (!sessionToClose) return;
 
+    if (sessionToClose.status === "onBreak") {
+      toast.error(
+        "Cannot clock out while on break. Please end your break first.",
+        {
+          position: ToastPosition.BOTTOM,
+        }
+      );
+      return;
+    }
+
     const clockOutTime = new Date();
     const durationMs =
       clockOutTime.getTime() - sessionToClose.clockInTime.getTime();
     const durationHours = (durationMs / (1000 * 60 * 60)).toFixed(2);
 
-    const employee = useEmployeeStore
-      .getState()
-      .employees.find((e) => e.id === employeeId);
-
     const newHistoryEntry: ShiftHistoryEntry = {
       id: `shift_${Date.now()}`,
-      date: sessionToClose.clockInTime.toLocaleDateString(), // Assuming date is part of ShiftHistoryEntry
-      role: "N/A", // EmployeeProfile does not have a 'role' property. Defaulting to "N/A" or remove if not needed.
+      date: sessionToClose.clockInTime.toLocaleDateString(),
+      role: "N/A",
       clockIn: sessionToClose.clockInTime.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
@@ -171,6 +162,14 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       activeEmployeeId:
         activeEmployeeId === employeeId ? null : activeEmployeeId,
     }));
+
+    // Cascade the clock-out action to the employee store
+    useEmployeeStore.getState().clockOut(employeeId);
+
+    // MODIFIED: If the person clocking out is the active user, also sign them out of the terminal.
+    if (activeEmployeeId === employeeId) {
+      useEmployeeStore.getState().signOut();
+    }
 
     toast.success("Clocked out successfully.", {
       position: ToastPosition.BOTTOM,

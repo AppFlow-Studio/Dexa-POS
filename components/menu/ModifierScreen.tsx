@@ -53,6 +53,10 @@ const ModifierScreen = () => {
   const [quantityInput, setQuantityInput] = useState("");
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
 
+  // Refs to track user action and draft item ID
+  const actionHandledRef = useRef(false);
+  const draftItemIdRef = useRef<string | null>(null);
+
   const isReadOnly = mode === "view";
 
   const handleQuantityPress = () => {
@@ -113,6 +117,7 @@ const ModifierScreen = () => {
 
   // Initialize form when screen opens
   useEffect(() => {
+    actionHandledRef.current = false; // Reset action tracker on open
     if (isOpen && currentItem) {
       setQuantity(
         mode === "edit" || (mode === "fullscreen" && cartItem)
@@ -231,6 +236,7 @@ const ModifierScreen = () => {
             paidQuantity: 0,
           };
           addItemToActiveOrder(draftItem);
+          draftItemIdRef.current = draftItem.id; // Store the ID of the created draft item
           // Track last created draft's menu item for cleanup if user switches context
           lastDraftMenuItemIdRef.current = currentItem.id;
         }
@@ -245,8 +251,8 @@ const ModifierScreen = () => {
       const { activeOrderId, orders, updateItemInActiveOrder } =
         useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+      const draftItem = activeOrder?.items.find(
+        (item) => item.id === draftItemIdRef.current
       );
 
       if (draftItem) {
@@ -297,7 +303,6 @@ const ModifierScreen = () => {
             notes,
           },
         };
-        console.log("i am creating the problemm in useffect");
 
         updateItemInActiveOrder(updatedDraftItem);
       }
@@ -311,6 +316,18 @@ const ModifierScreen = () => {
     mode,
     cartItem,
   ]);
+
+  // Add cleanup effect for unhandled dismounts
+  useEffect(() => {
+    return () => {
+      // This function runs when the component is about to unmount
+      if (!actionHandledRef.current && draftItemIdRef.current) {
+        // If save or cancel was NOT clicked, and we have a draft item, remove it.
+        removeItemFromActiveOrder(draftItemIdRef.current);
+        draftItemIdRef.current = null; // Clear the ref
+      }
+    };
+  }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount
 
   // Remove any previously created draft if user navigates away to another item or enters edit mode
   useEffect(() => {
@@ -410,6 +427,8 @@ const ModifierScreen = () => {
   );
 
   const handleSave = useCallback(() => {
+    // Set action handled flag
+    actionHandledRef.current = true;
     // Use the base menu item for consistent checks
     const baseItem = menuItem || menuItemForModifiers;
     if (!baseItem) return;
@@ -482,7 +501,6 @@ const ModifierScreen = () => {
         customizations: finalCustomizations,
         isDraft: false, // Ensure it's not a draft anymore
       };
-      console.log("i am crete teh problem in handle save");
 
       updateItemInActiveOrder(updatedItem);
       toast.success(`Updated ${currentItem?.name}`, {
@@ -499,102 +517,17 @@ const ModifierScreen = () => {
       const currentCourse =
         coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
-      // Look for existing item (draft or confirmed) with same menuItemId, customizations, AND course
-      const existingItem = activeOrder?.items.find((item) => {
-        if (item.menuItemId !== baseItem.id) return false;
+      const draftItem = activeOrder?.items.find(
+        (item) => item.id === draftItemIdRef.current
+      );
 
-        // Check if they're in the same course
-        const existingItemCourse =
-          coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ??
-          1;
-        if (existingItemCourse !== currentCourse) return false;
-
-        // Check if customizations match
-        const itemCustomizations = item.customizations;
-        const currentCustomizations = finalCustomizations;
-
-        // Compare modifiers
-        const itemModifiers = itemCustomizations.modifiers || [];
-        const currentModifiers = currentCustomizations.modifiers || [];
-
-        if (itemModifiers.length !== currentModifiers.length) return false;
-
-        // Check each modifier category
-        for (let i = 0; i < itemModifiers.length; i++) {
-          const itemMod = itemModifiers[i];
-          const currentMod = currentModifiers[i];
-
-          if (itemMod.categoryId !== currentMod.categoryId) return false;
-          if (itemMod.options.length !== currentMod.options.length)
-            return false;
-
-          // Check each option
-          for (let j = 0; j < itemMod.options.length; j++) {
-            if (itemMod.options[j].id !== currentMod.options[j].id)
-              return false;
-          }
-        }
-
-        // Compare notes
-        const itemNotes = (itemCustomizations.notes || "").trim();
-        const currentNotes = (currentCustomizations.notes || "").trim();
-        if (itemNotes !== currentNotes) return false;
-
-        return true;
-      });
-
-      if (existingItem) {
-        // First, remove any draft items for this menu item to prevent orphaned drafts
-        const draftItems = activeOrder?.items.filter(
-          (item) => item.isDraft && item.menuItemId === baseItem.id
-        );
-
-        if (draftItems && draftItems.length > 0) {
-          draftItems.forEach((draftItem) => {
-            removeItemFromActiveOrder(draftItem.id);
-          });
-        }
-
-        const confirmedItem = {
-          id: generateCartItemId(baseItem.id, finalCustomizations),
-          menuItemId: baseItem.id,
-          name: baseItem.name,
-          quantity,
-          originalPrice: baseItem.price,
-          price: total / Math.max(1, quantity),
-          image: baseItem.image,
-          customizations: finalCustomizations,
-          availableDiscount: baseItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-          isDraft: false,
-        };
-
-        addItemToActiveOrder(confirmedItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
-        });
-      } else {
-        // Or add a completely new item if no draft was found
-        const newItem = {
-          id: generateCartItemId(baseItem.id, finalCustomizations),
-          menuItemId: baseItem.id,
-          name: baseItem.name,
-          quantity,
-          originalPrice: baseItem.price,
-          price: total / Math.max(1, quantity),
-          image: baseItem.image,
-          customizations: finalCustomizations,
-          availableDiscount: baseItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-          isDraft: false,
-        };
-        addItemToActiveOrder(newItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
-        });
+      if (draftItem) {
+        confirmDraftItem(draftItem.id);
       }
+
+      toast.success(`Added ${baseItem.name}`, {
+        position: ToastPosition.BOTTOM,
+      });
     }
 
     close();
@@ -615,6 +548,8 @@ const ModifierScreen = () => {
   ]);
 
   const handleCancel = useCallback(() => {
+    // --- BUG FIX: Set action handled flag ---
+    actionHandledRef.current = true;
     // Remove draft item if we're in add mode (not edit mode)
     if (
       mode !== "edit" &&
