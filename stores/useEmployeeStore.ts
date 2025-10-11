@@ -151,6 +151,8 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
           : e
       ),
     }));
+    // Also update timeclock store status
+    useTimeclockStore.getState().clockIn(employeeId);
   },
 
   clockOut: (employeeId) => {
@@ -161,6 +163,8 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
           : e
       ),
     }));
+    // Also update timeclock store status
+    useTimeclockStore.getState().clockOut(employeeId);
   },
 
   signIn: (employeeId, pin) => {

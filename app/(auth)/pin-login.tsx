@@ -12,7 +12,7 @@ const MAX_PIN_LENGTH = 4;
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
-  const { signInWithPin } = useEmployeeStore();
+  const { employees, signInWithPin, clockIn, clockOut } = useEmployeeStore();
   const canSubmit = useMemo(() => pin.length === MAX_PIN_LENGTH, [pin]);
 
   const [dialog, setDialog] = useState<{
@@ -54,20 +54,81 @@ const PinLoginScreen = () => {
       );
       return;
     }
-
     const res = signInWithPin(pin);
     if (!res.ok) {
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
-      setPin(""); // Clear pin on error
+      setPin("");
       return;
     }
-
-    // On success
     setPin("");
     router.replace("/home");
   };
 
-  // REMOVED: The useEffect for auto-submitting the PIN has been removed.
+  const handleClockIn = () => {
+    if (!canSubmit) {
+      showDialog(
+        "Invalid PIN",
+        `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        "error"
+      );
+      return;
+    }
+    const employee = employees.find((e) => e.pin === pin);
+    if (!employee) {
+      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      setPin("");
+      return;
+    }
+    if (employee.shiftStatus === "clocked_in") {
+      showDialog(
+        "Already Clocked In",
+        `${employee.fullName} is already on the clock.`,
+        "warning"
+      );
+      setPin("");
+      return;
+    }
+    clockIn(employee.id);
+    showDialog(
+      "Clock In Successful",
+      `Welcome, ${employee.fullName}!`,
+      "success"
+    );
+    setPin("");
+  };
+
+  const handleClockOut = () => {
+    if (!canSubmit) {
+      showDialog(
+        "Invalid PIN",
+        `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        "error"
+      );
+      return;
+    }
+    const employee = employees.find((e) => e.pin === pin);
+    if (!employee) {
+      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      setPin("");
+      return;
+    }
+    if (employee.shiftStatus === "clocked_out") {
+      showDialog(
+        "Already Clocked Out",
+        `${employee.fullName} is already off the clock.`,
+        "warning"
+      );
+      setPin("");
+      return;
+    }
+    clockOut(employee.id);
+    showDialog(
+      "Clock Out Successful",
+      `Goodbye, ${employee.fullName}!`,
+      "success"
+    );
+    setPin("");
+  };
 
   return (
     <View className="w-full m-auto">
@@ -80,8 +141,8 @@ const PinLoginScreen = () => {
       <View className="w-full mt-4">
         <PinNumpad onKeyPress={handleKeyPress} />
       </View>
+
       <View className="flex-row gap-4 mt-6 items-stretch">
-        {/* Sign In Button */}
         <TouchableOpacity
           onPress={handleLogin}
           disabled={!canSubmit}
@@ -92,16 +153,36 @@ const PinLoginScreen = () => {
           <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
         </TouchableOpacity>
 
-        {/* Open Timeclock Button */}
-        <Link href="/timeclock" asChild>
-          <TouchableOpacity className="flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row">
-            <Text className="text-lg font-semibold text-white mr-2">
-              Open Timeclock
-            </Text>
-            <Clock color="white" size={20} />
-          </TouchableOpacity>
-        </Link>
+        <TouchableOpacity
+          onPress={handleClockIn}
+          disabled={!canSubmit}
+          className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+            !canSubmit && "opacity-50"
+          }`}
+        >
+          <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleClockOut}
+          disabled={!canSubmit}
+          className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+            !canSubmit && "opacity-50"
+          }`}
+        >
+          <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
+        </TouchableOpacity>
       </View>
+
+      <Link href="/timeclock" asChild>
+        <TouchableOpacity className="self-center mt-6 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row">
+          <Text className="text-lg font-semibold text-white mr-2">
+            Open Timeclock
+          </Text>
+          <Clock color="white" size={20} />
+        </TouchableOpacity>
+      </Link>
+
       <Dialog open={dialog.visible} onOpenChange={hideDialog}>
         <DialogContent>
           <View
