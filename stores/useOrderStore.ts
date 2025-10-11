@@ -71,6 +71,7 @@ interface OrderState {
   ) => string;
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => void;
+  sendNewItemsToKitchenForOrder: (orderId: string) => void;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
   generateCartItemId: (
     menuItemId: string,
@@ -451,7 +452,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
         );
         return existingItemKey === newItemKey;
       });
-      console.log("mergeCandidate", mergeCandidate);
 
       let updatedCart: CartItem[];
 
@@ -1004,38 +1004,37 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const oldOrderIds = ordersToMerge.map((o) => o.id);
       const primaryTableId = tableIds[0];
 
-      // Find the earliest start time from all orders being merged
+      // 1. Find the earliest start time ONLY if one already exists.
       const earliestStartTime = ordersToMerge.reduce(
-        (earliest, currentOrder) => {
-          // 1. Check if opened_at is a valid string before parsing
+        (earliest: number | null, currentOrder) => {
           if (currentOrder.opened_at) {
             const currentOpenTime = new Date(currentOrder.opened_at).getTime();
-            // Only update if the current time is earlier
-            if (currentOpenTime < earliest) {
+            // If earliest is null or current time is earlier, update.
+            if (earliest === null || currentOpenTime < earliest) {
               return currentOpenTime;
             }
           }
-          // 2. If opened_at is null or not earlier, keep the existing earliest time
           return earliest;
         },
-        new Date().getTime() // Initialize with the current time
+        null // Initialize with null
       );
 
-      // Create a new order object with all necessary properties
       const newMergedOrderData = {
         id: `order_${Date.now()}`,
         service_location_id: primaryTableId,
-        order_status: "Preparing" as const, // Start as preparing
+        order_status: "Preparing" as const,
         order_type: "Dine In" as const,
         check_status: "Opened" as const,
         paid_status: "Unpaid" as const,
         items: allItems,
-        opened_at: new Date(earliestStartTime).toISOString(),
+        // *** FIX: Conditionally set opened_at ***
+        opened_at: earliestStartTime
+          ? new Date(earliestStartTime).toISOString()
+          : null,
         customer_name: `Merged Table (${tableNames.join(", ")})`,
       };
 
       set((state) => {
-        // Remove all old orders and add the new one
         const newOrdersList = state.orders.filter(
           (o) => !oldOrderIds.includes(o.id)
         );
@@ -1044,10 +1043,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
       });
 
       const finalMergedOrderId = newMergedOrderData.id;
-      // recalculateTotals(finalMergedOrderId);
-
       return finalMergedOrderId;
     },
+
     fireActiveOrderToKitchen: () => {
       const { activeOrderId, orders } = get();
       if (!activeOrderId) return;
@@ -1197,6 +1195,58 @@ export const useOrderStore = create<OrderState>((set, get) => {
         } sent to kitchen.`,
         { duration: 2500, position: ToastPosition.BOTTOM }
       );
+    },
+
+    sendNewItemsToKitchenForOrder: (orderId: string) => {
+      set((state) => {
+        const order = state.orders.find((o) => o.id === orderId);
+        if (
+          !order ||
+          order.items.filter(
+            (item) => !item.kitchen_status || item.kitchen_status === "new"
+          ).length === 0
+        ) {
+          return state; // No new items to send, no state change
+        }
+
+        return {
+          orders: state.orders.map((o) => {
+            if (o.id === orderId) {
+              const updatedItems = o.items.map((item) => {
+                if (!item.kitchen_status || item.kitchen_status === "new") {
+                  return {
+                    ...item,
+                    kitchen_status: "sent" as const,
+                    item_status: "Preparing" as const,
+                  };
+                }
+                return item;
+              });
+
+              // Check if the timer needs to be started
+              const shouldStartTimer =
+                o.order_type === "Dine In" && !o.opened_at;
+
+              return {
+                ...o,
+                items: updatedItems,
+                order_status: "Preparing",
+                // Set opened_at timestamp if it's not already set for a Dine In order
+                opened_at: shouldStartTimer
+                  ? new Date().toISOString()
+                  : o.opened_at,
+              } as OrderProfile;
+            }
+            return o;
+          }),
+        };
+      });
+
+      // Show toast after the state update
+      toast.success("New items sent to kitchen.", {
+        duration: 2500,
+        position: ToastPosition.BOTTOM,
+      });
     },
 
     generateCartItemId: (menuItemId, customizations, isDraft = false) => {
