@@ -491,7 +491,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     updateItemInActiveOrder: (updatedItem) => {
       const { activeOrderId } = get();
-      console.log("thisis called");
 
       if (!activeOrderId) return;
       set((state) => ({
