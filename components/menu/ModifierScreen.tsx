@@ -53,6 +53,10 @@ const ModifierScreen = () => {
   const [quantityInput, setQuantityInput] = useState("");
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
 
+  // Refs to track user action and draft item ID
+  const actionHandledRef = useRef(false);
+  const draftItemIdRef = useRef<string | null>(null);
+
   const isReadOnly = mode === "view";
 
   const handleQuantityPress = () => {
@@ -113,6 +117,7 @@ const ModifierScreen = () => {
 
   // Initialize form when screen opens
   useEffect(() => {
+    actionHandledRef.current = false;
     if (isOpen && currentItem) {
       setQuantity(
         mode === "edit" || (mode === "fullscreen" && cartItem)
@@ -231,6 +236,7 @@ const ModifierScreen = () => {
             paidQuantity: 0,
           };
           addItemToActiveOrder(draftItem);
+          draftItemIdRef.current = draftItem.id;
           // Track last created draft's menu item for cleanup if user switches context
           lastDraftMenuItemIdRef.current = currentItem.id;
         }
@@ -245,8 +251,8 @@ const ModifierScreen = () => {
       const { activeOrderId, orders, updateItemInActiveOrder } =
         useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+      const draftItem = activeOrder?.items.find(
+        (item) => item.id === draftItemIdRef.current
       );
 
       if (draftItem) {
@@ -310,6 +316,18 @@ const ModifierScreen = () => {
     mode,
     cartItem,
   ]);
+
+  // Add cleanup effect for unhandled dismounts
+  useEffect(() => {
+    return () => {
+      // This function runs when the component is about to unmount
+      if (!actionHandledRef.current && draftItemIdRef.current) {
+        // If save or cancel was NOT clicked, and we have a draft item, remove it.
+        removeItemFromActiveOrder(draftItemIdRef.current);
+        draftItemIdRef.current = null; // Clear the ref
+      }
+    };
+  }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount
 
   // Remove any previously created draft if user navigates away to another item or enters edit mode
   useEffect(() => {
@@ -409,6 +427,8 @@ const ModifierScreen = () => {
   );
 
   const handleSave = useCallback(() => {
+    // Set action handled flag
+    actionHandledRef.current = true;
     // Use the base menu item for consistent checks
     const baseItem = menuItem || menuItemForModifiers;
     if (!baseItem) return;
@@ -614,6 +634,7 @@ const ModifierScreen = () => {
   ]);
 
   const handleCancel = useCallback(() => {
+    actionHandledRef.current = true;
     // Remove draft item if we're in add mode (not edit mode)
     if (
       mode !== "edit" &&
