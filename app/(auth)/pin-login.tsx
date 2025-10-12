@@ -183,6 +183,16 @@ const PinLoginScreen = () => {
         </TouchableOpacity>
       </Link>
 
+        {/* Open Timeclock Button */}
+        <Link href="/timeclock" asChild>
+          <TouchableOpacity className="flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row">
+            <Text className="text-lg font-semibold text-white mr-2">
+              Open Timeclock
+            </Text>
+            <Clock color="white" size={20} />
+          </TouchableOpacity>
+        </Link>
+      </View>
       <Dialog open={dialog.visible} onOpenChange={hideDialog}>
         <DialogContent>
           <View
