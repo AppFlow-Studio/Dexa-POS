@@ -15,12 +15,51 @@ import OrderDetails from "./OrderDetails";
 import PaymentMethodDialog from "./PaymentMethodDialog";
 import Totals from "./Totals";
 
+const TAX_RATE = 0.05; // Assuming this is your app-wide tax rate
+
 const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   const handleToggleExpand = (itemId: string) => {
     setExpandedItemId(expandedItemId === itemId ? null : itemId);
   };
+
+  const { subtotal, discount, tax, total } = React.useMemo(() => {
+    const activeOrder = useOrderStore
+      .getState()
+      .orders.find((o) => o.id === useOrderStore.getState().activeOrderId);
+
+    const sub = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+    const itemDiscountsTotal = cart.reduce((acc, item) => {
+      if (item.appliedDiscount) {
+        return (
+          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
+        );
+      }
+      return acc;
+    }, 0);
+
+    const subtotalAfterItemDiscounts = sub - itemDiscountsTotal;
+
+    let checkDiscountAmount = 0;
+    if (activeOrder?.checkDiscount) {
+      checkDiscountAmount =
+        subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
+    }
+
+    const totalDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
+    const finalSubtotal = sub - totalDiscountAmount;
+    const taxAmount = finalSubtotal * TAX_RATE;
+    const totalAmount = finalSubtotal + taxAmount;
+
+    return {
+      subtotal: sub,
+      discount: totalDiscountAmount,
+      tax: taxAmount,
+      total: totalAmount,
+    };
+  }, [cart]);
 
   return (
     <>
@@ -29,7 +68,7 @@ const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
         expandedItemId={expandedItemId}
         onToggleExpand={handleToggleExpand}
       />
-      <Totals cart={cart} />
+      <Totals subtotal={subtotal} tax={tax} discount={discount} total={total} />
     </>
   );
 };
@@ -156,11 +195,10 @@ const BillSection = ({
         )}
       </View>
 
-      <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
-
       {showPlaymentActions && (
-        <View className="py-3 px-4 bg-[#212121]">
-          <View className="flex-row gap-4">
+        <View className=" px-4 bg-[#212121]">
+          <View className="h-[0.5px] w-full self-center bg-gray-600 " />
+          <View className="flex-row gap-4 py-3">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
               className="flex-1 py-2 bg-[#303030] rounded-xl border border-gray-600"

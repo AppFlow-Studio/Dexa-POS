@@ -476,6 +476,8 @@ export interface OrderProfile {
   checkDiscount?: Discount | null;
   paymentMethod?: PaymentType; // Example usage
   payments?: { amount: number; method: PaymentType }[]; // Example usage
+  primaryOrderId?: string | null; // If part of a group, this points to the main order
+  mergedOrderIds?: string[] | null; // If this is the main order, this lists the IDs of merged orders
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

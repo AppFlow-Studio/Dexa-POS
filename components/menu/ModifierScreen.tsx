@@ -117,7 +117,7 @@ const ModifierScreen = () => {
 
   // Initialize form when screen opens
   useEffect(() => {
-    actionHandledRef.current = false; // Reset action tracker on open
+    actionHandledRef.current = false;
     if (isOpen && currentItem) {
       setQuantity(
         mode === "edit" || (mode === "fullscreen" && cartItem)
@@ -130,89 +130,52 @@ const ModifierScreen = () => {
           : ""
       );
 
-      // Initialize modifier selections
       const initialSelections: ModifierSelection = {};
       if (menuItemForModifiers?.modifiers) {
         menuItemForModifiers.modifiers.forEach((category) => {
           initialSelections[category.id] = {};
-
+          // Pre-populate selections from cartItem in edit mode
           if (
             (mode === "edit" || (mode === "fullscreen" && cartItem)) &&
             cartItem
           ) {
-            // For edit mode (both sidebar and fullscreen), restore the existing selections from the cart item
             const existingModifier = cartItem.customizations.modifiers?.find(
               (mod) => mod.categoryId === category.id
             );
-
             if (existingModifier) {
-              // Mark the existing selections as true
-              existingModifier.options.forEach((selectedOption) => {
-                initialSelections[category.id][selectedOption.id] = true;
+              existingModifier.options.forEach((opt) => {
+                initialSelections[category.id][opt.id] = true;
               });
             }
-
-            // Initialize all other options as unselected
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
           } else {
-            // For add mode, set default selections for required categories
-            if (
-              category.type === "required" &&
-              category.selectionType === "single"
-            ) {
-              // For required single selection, select the first available option
-              const firstAvailableOption = category.options.find(
-                (option) => option.isAvailable !== false
+            // Or set defaults in add mode
+            if (category.type === "required") {
+              const defaultOption = category.options.find(
+                (opt) => opt.isDefault
               );
-              if (firstAvailableOption) {
-                initialSelections[category.id][firstAvailableOption.id] = true;
+              if (defaultOption) {
+                initialSelections[category.id][defaultOption.id] = true;
               }
             }
-
-            // Initialize all other options as unselected
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
           }
         });
-
-        // Set first category as active if available
         if (menuItemForModifiers.modifiers.length > 0) {
           setActiveCategory(menuItemForModifiers.modifiers[0].id);
         }
       }
       setModifierSelections(initialSelections);
 
-      // Add draft item to cart when opening for new items (not edit mode)
-      if (mode !== "edit" && !cartItem) {
-        // Check if there's already an existing item with the same menuItemId and empty customizations
+      // --- DRAFT ITEM CREATION LOGIC ---
+      // Only create a draft item if in 'add' mode and a draft doesn't already exist.
+      if (mode !== "edit" && !cartItem && !draftItemIdRef.current) {
         const { activeOrderId, orders } = useOrderStore.getState();
         const activeOrder = orders.find((o) => o.id === activeOrderId);
+        const existingDraft = activeOrder?.items.find(
+          (item) => item.isDraft && item.menuItemId === currentItem.id
+        );
 
-        const existingItem = activeOrder?.items.find((item) => {
-          if (item.menuItemId !== currentItem.id) return false;
-          if (item.isDraft) return false; // Don't match other draft items
-
-          // Check if customizations are empty (no modifiers, no notes)
-          const hasModifiers =
-            item.customizations.modifiers &&
-            item.customizations.modifiers.length > 0;
-          const hasNotes =
-            item.customizations.notes &&
-            item.customizations.notes.trim() !== "";
-          const hasSent = item.kitchen_status === "sent";
-
-          return !hasModifiers && !hasNotes && !hasSent;
-        });
-
-        // Only create draft item if no existing item with same customizations
-        if (!existingItem) {
+        // If no existing draft for this menu item, create one.
+        if (!existingDraft) {
           const itemPrice = getCurrentItemPrice(currentItem);
           const draftItem = {
             id: generateCartItemId(
@@ -227,20 +190,21 @@ const ModifierScreen = () => {
             price: itemPrice,
             image: currentItem.image,
             isDraft: true,
-            customizations: {
-              modifiers: [],
-              notes: "",
-            },
+            customizations: { modifiers: [], notes: "" },
             availableDiscount: currentItem.availableDiscount,
             appliedDiscount: null,
             paidQuantity: 0,
           };
           addItemToActiveOrder(draftItem);
-          draftItemIdRef.current = draftItem.id; // Store the ID of the created draft item
-          // Track last created draft's menu item for cleanup if user switches context
-          lastDraftMenuItemIdRef.current = currentItem.id;
+          draftItemIdRef.current = draftItem.id; // Store the ID of the created draft item.
+        } else {
+          // If a draft already exists, use its ID.
+          draftItemIdRef.current = existingDraft.id;
         }
       }
+    } else {
+      // Clear draft ref when modal is closed
+      draftItemIdRef.current = null;
     }
   }, [isOpen, currentItem, mode, cartItem]);
 

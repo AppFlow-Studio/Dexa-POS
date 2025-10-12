@@ -124,14 +124,8 @@ const LayoutEditorScreen = () => {
   }, [layoutId]);
 
   const handleMerge = () => {
-    const selectedTableNames = selectedTableIds
-      .map((id) => tables.find((t) => t.id === id)?.name || "")
-      .filter(Boolean);
-    const newOrderId = consolidateOrdersForTables(
-      selectedTableIds,
-      selectedTableNames
-    );
-    mergeTables(selectedTableIds, newOrderId);
+    // The store now handles all order logic, so we just pass the table IDs.
+    mergeTables(selectedTableIds);
   };
 
   const handleUnmerge = () => {

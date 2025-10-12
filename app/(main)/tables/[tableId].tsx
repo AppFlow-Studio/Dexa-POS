@@ -3,6 +3,7 @@ import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
+import { OrderProfile } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -36,6 +37,7 @@ const UpdateTableScreen = () => {
     assignOrderToTable,
     updateOrderStatus,
     updateActiveOrderDetails,
+    updateItemStatusForOrder,
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
@@ -67,6 +69,41 @@ const UpdateTableScreen = () => {
       o.order_status !== "Closed" // Show all orders except voided ones
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+  const displayedOrders = useMemo(() => {
+    if (!activeOrder) return [];
+
+    // Check if the active order is part of any group (either as primary or secondary)
+    const isMerged = activeOrder.mergedOrderIds || activeOrder.primaryOrderId;
+
+    if (isMerged) {
+      // Find the true primary order for the group
+      const primaryId = activeOrder.primaryOrderId || activeOrder.id;
+      const primaryOrder = orders.find((o) => o.id === primaryId);
+
+      if (!primaryOrder) return [activeOrder]; // Fallback
+
+      // Collect all orders in the group
+      const groupIds = [
+        primaryOrder.id,
+        ...(primaryOrder.mergedOrderIds || []),
+      ];
+      return groupIds
+        .map((id) => orders.find((o) => o.id === id))
+        .filter(Boolean) as OrderProfile[];
+    }
+
+    // If it's not a merged order, just return it in an array
+    return [activeOrder];
+  }, [activeOrder, orders]);
+
+  const isMergedView = displayedOrders.length > 1;
+
+  const allDisplayedItems = useMemo(() => {
+    return displayedOrders.flatMap(
+      (order) => order.items.map((item) => ({ ...item, orderId: order.id })) // Add orderId to each item for context
+    );
+  }, [displayedOrders]);
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
@@ -210,6 +247,12 @@ const UpdateTableScreen = () => {
   const setItemCourse = (itemId: string, course: number) => {
     if (!activeOrder) return;
     coursing.setItemCourse(activeOrder.id, itemId, Math.max(1, course));
+  };
+
+  const handleSelectCourseForOrder = (orderId: string, course: number) => {
+    // Set the correct order as active before changing the course
+    setActiveOrder(orderId);
+    coursing.setCurrentCourse(orderId, course);
   };
 
   const finalizeCurrentCourse = () => {
@@ -406,7 +449,6 @@ const UpdateTableScreen = () => {
 
       <View className="flex-1 flex-row ">
         <TableBillSection
-          showOrderDetails={false}
           itemCourseMap={
             coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap
           }
@@ -414,9 +456,9 @@ const UpdateTableScreen = () => {
           currentCourse={
             coursing.getForOrder(activeOrder?.id || "")?.currentCourse
           }
-          onSelectCourse={(course: number) =>
-            activeOrder && coursing.setCurrentCourse(activeOrder.id, course)
-          }
+          onSelectCourse={handleSelectCourseForOrder}
+          orders={displayedOrders}
+          isMergedView={isMergedView}
         />
         <View className="flex-1 p-4 px-3 pt-0">
           {/* Coursing Toolbar */}
@@ -493,16 +535,16 @@ const UpdateTableScreen = () => {
       </View>
 
       {/* Per-item status tracker */}
-      {activeOrder && activeOrder.items?.length > 0 && (
+      {allDisplayedItems.length > 0 && (
         <View className="bg-[#303030] border-t border-gray-700 p-3">
           <ScrollView
             className="max-h-28 w-full "
             contentContainerStyle={{ columnGap: 16 }}
             horizontal={true}
           >
-            {activeOrder.items.map((item) => {
+            {allDisplayedItems.map((item) => {
               const isReady = (item.item_status || "Preparing") === "Ready";
-              const state = coursing.getForOrder(activeOrder?.id || "");
+              const state = coursing.getForOrder(item.orderId || "");
               const course =
                 state?.itemCourseMap?.[item.id] ?? state?.currentCourse ?? 1;
               return (
@@ -541,7 +583,7 @@ const UpdateTableScreen = () => {
                   {!isReady && (
                     <TouchableOpacity
                       onPress={() =>
-                        updateItemStatusInActiveOrder(item.id, "Ready")
+                        updateItemStatusForOrder(item.orderId, item.id, "Ready")
                       }
                       className="mt-2 px-2 py-1.5 rounded-lg bg-green-600 items-center"
                     >

@@ -41,6 +41,11 @@ interface OrderState {
     itemId: string,
     status: "Preparing" | "Ready" | "Served"
   ) => void;
+  updateItemStatusForOrder: (
+    orderId: string,
+    itemId: string,
+    status: "Preparing" | "Ready" | "Served"
+  ) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => void;
   applyDiscountToCheck: (orderId: string, discount: Discount) => void;
   removeCheckDiscount: (orderId: string) => void;
@@ -69,6 +74,8 @@ interface OrderState {
     tableIds: string[],
     tableNames: string[]
   ) => string;
+  groupOrders: (orderIds: string[]) => void; // New action
+  ungroupOrders: (primaryOrderId: string) => void; // New action
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => void;
   sendNewItemsToKitchenForOrder: (orderId: string) => void;
@@ -594,6 +601,32 @@ export const useOrderStore = create<OrderState>((set, get) => {
       });
     },
 
+    updateItemStatusForOrder: (orderId, itemId, status) => {
+      set((state) => ({
+        orders: state.orders.map((order) => {
+          if (order.id === orderId) {
+            const updatedItems = order.items.map((item) => {
+              if (item.id === itemId) {
+                const itemToUpdate = { ...item, item_status: status };
+                if (status === "Ready") itemToUpdate.kitchen_status = "ready";
+                if (status === "Served") itemToUpdate.kitchen_status = "served";
+                // Trigger inventory depletion when item is marked ready or served
+                useInventoryStore
+                  .getState()
+                  .decrementStockFromItem(itemToUpdate);
+                return itemToUpdate;
+              }
+              return item;
+            });
+            return { ...order, items: updatedItems };
+          }
+          return order;
+        }),
+      }));
+      // After updating an item, sync the parent order's overall status
+      get().syncOrderStatus(orderId);
+    },
+
     removeItemFromActiveOrder: (itemId) => {
       const { activeOrderId } = get();
       if (!activeOrderId) return;
@@ -994,55 +1027,55 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
     },
     consolidateOrdersForTables: (tableIds, tableNames) => {
-      const { orders, startNewOrder } = get();
-      const ordersToMerge = orders.filter(
-        (o) => o.service_location_id && tableIds.includes(o.service_location_id)
+      console.warn(
+        "DEPRECATED: consolidateOrdersForTables should no longer be used. Use groupOrders instead."
       );
+      // Return a dummy ID to prevent crashes in old code paths
+      return `order_${Date.now()}`;
+    },
 
-      const allItems = ordersToMerge.flatMap((o) => o.items);
-      const oldOrderIds = ordersToMerge.map((o) => o.id);
-      const primaryTableId = tableIds[0];
+    groupOrders: (orderIds: string[]) => {
+      if (orderIds.length < 2) return;
+      const primaryOrderId = orderIds[0];
+      const secondaryOrderIds = orderIds.slice(1);
 
-      // 1. Find the earliest start time ONLY if one already exists.
-      const earliestStartTime = ordersToMerge.reduce(
-        (earliest: number | null, currentOrder) => {
-          if (currentOrder.opened_at) {
-            const currentOpenTime = new Date(currentOrder.opened_at).getTime();
-            // If earliest is null or current time is earlier, update.
-            if (earliest === null || currentOpenTime < earliest) {
-              return currentOpenTime;
-            }
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          if (o.id === primaryOrderId) {
+            return {
+              ...o,
+              mergedOrderIds: secondaryOrderIds,
+              primaryOrderId: null,
+            };
           }
-          return earliest;
-        },
-        null // Initialize with null
-      );
+          if (secondaryOrderIds.includes(o.id)) {
+            return {
+              ...o,
+              primaryOrderId: primaryOrderId,
+              mergedOrderIds: null,
+            };
+          }
+          return o;
+        }),
+      }));
+    },
 
-      const newMergedOrderData = {
-        id: `order_${Date.now()}`,
-        service_location_id: primaryTableId,
-        order_status: "Preparing" as const,
-        order_type: "Dine In" as const,
-        check_status: "Opened" as const,
-        paid_status: "Unpaid" as const,
-        items: allItems,
-        // *** FIX: Conditionally set opened_at ***
-        opened_at: earliestStartTime
-          ? new Date(earliestStartTime).toISOString()
-          : null,
-        customer_name: `Merged Table (${tableNames.join(", ")})`,
-      };
+    ungroupOrders: (primaryOrderId: string) => {
+      const { orders } = get();
+      const primaryOrder = orders.find((o) => o.id === primaryOrderId);
+      if (!primaryOrder || !primaryOrder.mergedOrderIds) return;
 
-      set((state) => {
-        const newOrdersList = state.orders.filter(
-          (o) => !oldOrderIds.includes(o.id)
-        );
-        newOrdersList.push(newMergedOrderData);
-        return { orders: newOrdersList };
-      });
+      const groupOrderIds = [primaryOrderId, ...primaryOrder.mergedOrderIds];
 
-      const finalMergedOrderId = newMergedOrderData.id;
-      return finalMergedOrderId;
+      set((state) => ({
+        orders: state.orders.map((o) => {
+          if (groupOrderIds.includes(o.id)) {
+            const { primaryOrderId, mergedOrderIds, ...rest } = o;
+            return rest; // Return the order object without the merging properties
+          }
+          return o;
+        }),
+      }));
     },
 
     fireActiveOrderToKitchen: () => {

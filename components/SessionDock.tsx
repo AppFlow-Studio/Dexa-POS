@@ -10,7 +10,7 @@ const BREAK_DURATION_MIN = 30;
 
 // Countdown component for on-break users
 const BreakCountdown = ({ startTime }: { startTime: Date }) => {
-  const [displayTime, setDisplayTime] = useState("30:00");
+  const [displayTime, setDisplayTime] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
 
   useEffect(() => {

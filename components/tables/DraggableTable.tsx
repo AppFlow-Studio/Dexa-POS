@@ -240,11 +240,41 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     };
   });
 
-  const orderTotal =
-    orderForThisGroup?.items.reduce(
+  const orderTotal = useMemo(() => {
+    if (!orderForThisGroup) return 0;
+
+    // If this is a primary order of a merged group, sum totals from all grouped orders.
+    if (
+      orderForThisGroup.mergedOrderIds &&
+      orderForThisGroup.mergedOrderIds.length > 0
+    ) {
+      const allGroupOrderIds = [
+        orderForThisGroup.id,
+        ...orderForThisGroup.mergedOrderIds,
+      ];
+      const groupOrders = orders.filter((o) => allGroupOrderIds.includes(o.id));
+
+      return groupOrders.reduce((groupTotal, currentOrder) => {
+        const orderSubtotal = currentOrder.items.reduce(
+          (acc, item) => acc + item.price * item.quantity,
+          0
+        );
+        // Assuming TAX_RATE is accessible or can be imported if it's a constant
+        const TAX_RATE = 0.05;
+        const tax = orderSubtotal * TAX_RATE;
+        return groupTotal + orderSubtotal + tax;
+      }, 0);
+    }
+
+    // If it's a standalone order, calculate its total.
+    const subtotal = orderForThisGroup.items.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0
-    ) || 0;
+    );
+    const TAX_RATE = 0.05;
+    const tax = subtotal * TAX_RATE;
+    return subtotal + tax;
+  }, [orderForThisGroup, orders]);
 
   const TableComponent = table.component;
 

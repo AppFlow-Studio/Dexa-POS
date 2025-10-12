@@ -2,6 +2,7 @@ import { MOCK_TABLES } from "@/lib/mockData";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { Layout, TableStatus, TableType } from "@/lib/types";
 import { create } from "zustand";
+import { useOrderStore } from "./useOrderStore";
 
 interface NewTableData {
   name: string;
@@ -45,7 +46,7 @@ interface FloorPlanState {
 
   // Selection & Merging Actions (operate on active layout)
   toggleTableSelection: (tableId: string) => void;
-  mergeTables: (tableIds: string[], primaryOrderId: string) => string | null;
+  mergeTables: (tableIds: string[]) => string | null;
   unmergeTables: (tableId: string) => void;
   clearSelection: () => void;
 }
@@ -296,8 +297,10 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     });
   },
 
-  mergeTables: (tableIds, primaryOrderId) => {
+  mergeTables: (tableIds) => {
     const { activeLayoutId, layouts } = get();
+    const { orders, groupOrders, startNewOrder, setActiveOrder } =
+      useOrderStore.getState();
     if (!activeLayoutId || tableIds.length < 2) return null;
 
     const activeLayout = layouts.find((l) => l.id === activeLayoutId);
@@ -306,52 +309,78 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const primaryTableId = tableIds[0];
     let mergedCapacity = 0;
 
+    const ordersToMerge = orders.filter(
+      (o) => o.service_location_id && tableIds.includes(o.service_location_id)
+    );
+    const orderIdsToMerge = ordersToMerge.map((o) => o.id);
+
     const tablesToMerge = activeLayout.tables.filter((t) =>
       tableIds.includes(t.id)
     );
     const allTablesAreAvailable = tablesToMerge.every(
       (t) => t.status === "Available"
     );
-
     const newStatus: TableStatus = allTablesAreAvailable
       ? "Available"
       : "In Use";
 
-    set((state) => ({
-      layouts: state.layouts.map((layout) => {
-        if (layout.id === activeLayoutId) {
-          const updatedTables = layout.tables.map((table) => {
-            if (tableIds.includes(table.id)) {
-              mergedCapacity += table.capacity;
-              return {
-                ...table,
-                isPrimary: table.id === primaryTableId,
-                mergedWith: tableIds.filter((id) => id !== table.id),
-                status: newStatus, // *** FIX: Apply the correct status to ALL tables in the group.
-                order:
-                  table.id === primaryTableId && newStatus === "In Use"
-                    ? {
-                        id: primaryOrderId,
-                        customerName: `Group at ${table.name}`,
-                        total: 0,
-                      }
-                    : null, // Assign order only if "In Use", and only to primary.
-              };
-            }
-            return table;
-          });
-
-          // Second pass to update capacity on the primary table
-          return {
-            ...layout,
-            tables: updatedTables.map((t) =>
-              t.id === primaryTableId ? { ...t, capacity: mergedCapacity } : t
-            ),
-          };
-        }
-        return layout;
-      }),
-    }));
+    if (ordersToMerge.length <= 1) {
+      set((state) => ({
+        layouts: state.layouts.map((layout) => {
+          if (layout.id === activeLayoutId) {
+            const updatedTables = layout.tables.map((table) => {
+              if (tableIds.includes(table.id)) {
+                mergedCapacity += table.capacity;
+                return {
+                  ...table,
+                  isPrimary: table.id === primaryTableId,
+                  mergedWith: tableIds.filter((id) => id !== table.id),
+                  status: newStatus,
+                  order: newStatus === "Available" ? null : table.order,
+                };
+              }
+              return table;
+            });
+            return {
+              ...layout,
+              tables: updatedTables.map((t) =>
+                t.id === primaryTableId ? { ...t, capacity: mergedCapacity } : t
+              ),
+            };
+          }
+          return layout;
+        }),
+      }));
+    } else {
+      groupOrders(orderIdsToMerge);
+      set((state) => ({
+        layouts: state.layouts.map((layout) => {
+          if (layout.id === activeLayoutId) {
+            const updatedTables = layout.tables.map((table) => {
+              if (tableIds.includes(table.id)) {
+                mergedCapacity += table.capacity;
+                return {
+                  ...table,
+                  isPrimary: table.id === primaryTableId,
+                  mergedWith: tableIds.filter((id) => id !== table.id),
+                  status: "In Use" as TableStatus,
+                };
+              }
+              return table;
+            });
+            return {
+              ...layout,
+              tables: updatedTables.map((t) =>
+                t.id === primaryTableId ? { ...t, capacity: mergedCapacity } : t
+              ),
+            };
+          }
+          return layout;
+        }),
+      }));
+      const primaryOrder = orders.find((o) => o.id === orderIdsToMerge[0]);
+      if (primaryOrder) setActiveOrder(primaryOrder.id);
+    }
 
     get().clearSelection();
     return primaryTableId;

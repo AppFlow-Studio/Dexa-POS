@@ -1,8 +1,8 @@
 import HistoryTab from "@/components/profile/HistoryTab";
-import ProfileCard from "@/components/profile/ProfileCard";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Building2, Receipt, User } from "lucide-react-native";
 import React, { useState } from "react";
@@ -96,7 +96,9 @@ const MyProfileScreen = () => {
           {/* Content Area */}
           <View className="flex-row mt-4">
             {/* Left: Shared Profile Card */}
-            <ProfileCard />
+            <View className="w-80 mr-4">
+              <UserProfileCard employeeId={currentEmployee?.id ?? null} />
+            </View>
 
             {/* Right: Tab-Specific Content */}
             <View className="flex-1 ml-4">{renderContent()}</View>
