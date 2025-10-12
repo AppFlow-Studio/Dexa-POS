@@ -41,6 +41,8 @@ interface OrderState {
     itemId: string,
     status: "Preparing" | "Ready" | "Served"
   ) => void;
+  setOpenedAt: (orderId: string, openedAt: string) => void;
+  setClosedAt: (orderId: string, closedAt: string) => void;
   updateActiveOrderDetails: (details: Partial<OrderProfile>) => void;
   applyDiscountToCheck: (orderId: string, discount: Discount) => void;
   removeCheckDiscount: (orderId: string) => void;
@@ -908,6 +910,20 @@ export const useOrderStore = create<OrderState>((set, get) => {
       recalculateTotals(null);
 
       return tableId;
+    },
+    setOpenedAt: (orderId, openedAt) => {
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId ? { ...o, opened_at: openedAt } : o
+        ),
+      }));
+    },
+    setClosedAt: (orderId, closedAt) => {
+      set((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId ? { ...o, closed_at: closedAt } : o
+        ),
+      }));
     },
     markAllItemsAsReady: (orderId) => {
       const { orders } = get();

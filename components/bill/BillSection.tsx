@@ -37,15 +37,18 @@ const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
 const BillSection = ({
   showOrderDetails = true,
   showPlaymentActions = true,
+  moreOptionsSheetRef,
 }: {
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
+  moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
   const {
     activeOrderId,
     orders,
     activeOrderTotal,
     startNewOrder,
+    setOpenedAt,
     fireActiveOrderToKitchen,
     sendNewItemsToKitchen,
     assignOrderToTable,
@@ -65,10 +68,9 @@ const BillSection = ({
 
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
-  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
   const handleOpenMoreOptions = () => {
-    moreOptionsSheetRef.current?.expand();
+    moreOptionsSheetRef?.current?.expand();
   };
 
   const handlePayClick = () => {
@@ -83,6 +85,9 @@ const BillSection = ({
   };
 
   const handleSendToKitchen = () => {
+    if( activeOrder?.opened_at === null){
+      setOpenedAt(activeOrderId!, new Date().toISOString());
+    }
     if (hasDraftItems) {
       toast.error("Please confirm the item being customized before sending.", {
         position: ToastPosition.BOTTOM,
@@ -141,7 +146,7 @@ const BillSection = ({
         {activeOrder && (
           <TouchableOpacity
             className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+              newItemsCount === 0 || hasDraftItems ? "opacity-20" : ""
             }`}
             style={{ elevation: 2 }} // Set fixed height to match discount button
             disabled={newItemsCount === 0 || hasDraftItems}
@@ -200,7 +205,6 @@ const BillSection = ({
         </View>
       )}
 
-      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
       <PaymentMethodDialog
         isVisible={isPaymentDialogVisible}
         onClose={handleClosePaymentDialog}

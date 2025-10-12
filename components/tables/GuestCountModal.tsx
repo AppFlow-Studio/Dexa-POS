@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import GuestCountNumpad from "./GuestCountNumpad";
 
 interface GuestCountModalProps {
   isOpen: boolean;
@@ -20,6 +21,38 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
   onSubmit,
 }) => {
   const [count, setCount] = useState("1");
+
+  const handleInput = (value: string) => {
+    // Clear all
+    if (value === "clear") {
+      setCount("1");
+      return;
+    }
+
+    // Backspace behavior
+    if (value === "backspace") {
+      if (count.length <= 1) {
+        setCount("1");
+      } else {
+        setCount(count.slice(0, -1));
+      }
+      return;
+    }
+
+    // Number input 0-9
+    const isDigit = /^[0-9]$/.test(value);
+    if (isDigit) {
+      // If current count is "1" and we're adding a digit, replace it
+      if (count === "1") {
+        setCount(value);
+      } else {
+        // Limit to 3 digits max
+        if (count.length < 3) {
+          setCount(count + value);
+        }
+      }
+    }
+  };
 
   const handleSubmit = () => {
     const guestCount = parseInt(count, 10);
@@ -38,14 +71,10 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
           </DialogTitle>
         </DialogHeader>
         <View className="py-4">
-          <TextInput
-            value={count}
-            onChangeText={setCount}
-            keyboardType="number-pad"
-            className="bg-[#212121] border border-gray-600 rounded-lg text-3xl text-white text-center font-bold h-16"
-            autoFocus
-            maxLength={3}
-          />
+          <View className="bg-[#212121] border border-gray-600 rounded-lg p-4 mb-4">
+            <Text className="text-center text-4xl font-bold text-white">{count}</Text>
+          </View>
+          <GuestCountNumpad onKeyPress={handleInput} />
         </View>
         <DialogFooter className="flex-row gap-3">
           <TouchableOpacity
