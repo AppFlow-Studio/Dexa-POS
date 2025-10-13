@@ -491,7 +491,6 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     updateItemInActiveOrder: (updatedItem) => {
       const { activeOrderId } = get();
-      console.log("thisis called");
 
       if (!activeOrderId) return;
       set((state) => ({
@@ -1027,7 +1026,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         check_status: "Opened" as const,
         paid_status: "Unpaid" as const,
         items: allItems,
-        // *** FIX: Conditionally set opened_at ***
+        server_name: ordersToMerge[0]?.server_name || "Unknown",
+        guest_count: ordersToMerge.reduce(
+          (sum, o) => sum + (o.guest_count || 1),
+          0
+        ),
         opened_at: earliestStartTime
           ? new Date(earliestStartTime).toISOString()
           : null,

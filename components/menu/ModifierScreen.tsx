@@ -190,7 +190,7 @@ const ModifierScreen = () => {
       setModifierSelections(initialSelections);
 
       // Add draft item to cart when opening for new items (not edit mode)
-      if (mode !== "edit" && !cartItem) {
+      if (mode !== "edit" && !cartItem && !draftItemIdRef.current) {
         // Check if there's already an existing item with the same menuItemId and empty customizations
         const { activeOrderId, orders } = useOrderStore.getState();
         const activeOrder = orders.find((o) => o.id === activeOrderId);
@@ -211,8 +211,12 @@ const ModifierScreen = () => {
           return !hasModifiers && !hasNotes && !hasSent;
         });
 
+        const existingDraft = activeOrder?.items.find(
+          (item) => item.isDraft && item.menuItemId === currentItem.id
+        );
+
         // Only create draft item if no existing item with same customizations
-        if (!existingItem) {
+        if (!existingDraft) {
           const itemPrice = getCurrentItemPrice(currentItem);
           const draftItem = {
             id: generateCartItemId(
@@ -239,6 +243,9 @@ const ModifierScreen = () => {
           draftItemIdRef.current = draftItem.id;
           // Track last created draft's menu item for cleanup if user switches context
           lastDraftMenuItemIdRef.current = currentItem.id;
+        } else {
+          // If a draft already exists, use its ID.
+          draftItemIdRef.current = existingDraft.id;
         }
       }
     }

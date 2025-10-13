@@ -1,11 +1,9 @@
-// File: /components/tables/TableListItem.tsx
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { router } from "expo-router";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -70,7 +68,6 @@ const QuickActionButton: React.FC<{
   );
 };
 
-// Custom hook with corrected logic for non-"In Use" tables
 const useTableData = (table: TableType, activeLayoutId: string | null) => {
   const { orders } = useOrderStore();
   const { layouts } = useFloorPlanStore();
@@ -105,21 +102,22 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
         displayName: table.name,
         status: table.status,
         guestCount: order?.guest_count || 0,
-        total: order?.items.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
-        ),
+        total:
+          order?.items.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0
+          ) || 0,
         seatedTime: order?.opened_at ? new Date(order.opened_at) : null,
         server: order?.server_name || "N/A",
         orders: order ? [order] : [],
       };
     }
 
-    // Merged table logic (only runs if status is "In Use")
     const primary = table.isPrimary
       ? table
       : allTables.find((t) => t.isPrimary && t.mergedWith?.includes(table.id));
     if (!primary) return null;
+
     const groupIds = [primary.id, ...(primary.mergedWith || [])];
     const groupTables = allTables.filter((t) => groupIds.includes(t.id));
     const groupOrders = orders.filter(
@@ -164,19 +162,13 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
   }, [table, orders, allTables]);
 };
 
-// ... ExpandedView component remains the same as previous correct version ...
 const ExpandedView: React.FC<{
   tableData: NonNullable<ReturnType<typeof useTableData>>;
   onNavigateToOrder: () => void;
   onToggleExpand: () => void;
 }> = ({ tableData, onNavigateToOrder, onToggleExpand }) => {
-  const { unmergeTables, updateTableStatus } = useFloorPlanStore();
-  const {
-    sendNewItemsToKitchenForOrder,
-    voidOrder,
-    archiveOrder,
-    deleteOrder,
-  } = useOrderStore();
+  const { layouts, updateTableStatus } = useFloorPlanStore();
+  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
   const { menuItems } = useMenuStore();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
@@ -201,63 +193,70 @@ const ExpandedView: React.FC<{
     return groups;
   }, [tableData.orders, menuItems]);
 
-  const newItemsCount = tableData.orders
-    .flatMap((o) => o.items)
-    .filter(
-      (item) => !item.kitchen_status || item.kitchen_status === "new"
-    ).length;
-
-  const handleSend = () => {
-    if (newItemsCount === 0) return;
-    tableData.orders.forEach((order) => {
-      if (
-        order.items.some(
-          (item) => !item.kitchen_status || item.kitchen_status === "new"
-        )
-      ) {
-        sendNewItemsToKitchenForOrder(order.id);
-      }
-    });
-  };
-
   const handleCloseTable = () => {
-    const primaryOrder = tableData.orders[0];
-    if (!primaryOrder) {
-      router.push(`/tables/clean-table/${tableData.primaryTableId}`);
+    if (!tableData) return;
+
+    // Get all tables belonging to this group
+    const allTables = layouts.flatMap((l) => l.tables);
+    const primaryTable = allTables.find(
+      (t) => t.id === tableData.primaryTableId
+    );
+    const groupTableIds = primaryTable
+      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
+      : [tableData.primaryTableId];
+
+    if (tableData.orders.length === 0) {
+      groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+      onToggleExpand();
       return;
     }
 
-    const isPaid = primaryOrder.paid_status === "Paid";
-    const hasItems = primaryOrder.items.length > 0;
+    const allOrdersArePaid = tableData.orders.every(
+      (o) => o.paid_status === "Paid"
+    );
 
-    if (isPaid) {
-      const allItemsReady = primaryOrder.items.every(
-        (item) => item.item_status === "Ready" || item.item_status === "Served"
+    if (allOrdersArePaid) {
+      const allItemsInGroupAreReady = tableData.orders.every((order) =>
+        order.items.every(
+          (item) =>
+            item.item_status === "Ready" || item.item_status === "Served"
+        )
       );
-      if (allItemsReady) {
-        archiveOrder(primaryOrder.id);
-        updateTableStatus(tableData.primaryTableId, "Needs Cleaning");
-        toast.success(`Table ${tableData.displayName} marked for cleaning.`, {
+
+      if (allItemsInGroupAreReady) {
+        tableData.orders.forEach((order) => archiveOrder(order.id));
+        groupTableIds.forEach((id) => updateTableStatus(id, "Needs Cleaning"));
+        toast.success(`Tables ${tableData.displayName} marked for cleaning.`, {
           position: ToastPosition.BOTTOM,
         });
       } else {
-        toast.error("Cannot clear table: Not all items are ready.", {
+        toast.error("Cannot clear tables: Not all items are ready.", {
           position: ToastPosition.BOTTOM,
         });
       }
     } else {
-      if (hasItems) {
+      const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
+      if (groupHasAnyItems) {
         setVoidConfirmOpen(true);
       } else {
-        deleteOrder(primaryOrder.id);
-        updateTableStatus(tableData.primaryTableId, "Available");
+        tableData.orders.forEach((order) => deleteOrder(order.id));
+        groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
       }
     }
-    onToggleExpand();
   };
 
   const onConfirmVoid = () => {
+    if (!tableData) return;
+    const allTables = layouts.flatMap((l) => l.tables);
+    const primaryTable = allTables.find(
+      (t) => t.id === tableData.primaryTableId
+    );
+    const groupTableIds = primaryTable
+      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
+      : [tableData.primaryTableId];
+
     tableData.orders.forEach((order) => voidOrder(order.id));
+    groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
     setVoidConfirmOpen(false);
     onToggleExpand();
   };
@@ -282,61 +281,30 @@ const ExpandedView: React.FC<{
       </View>
 
       <View className="mb-4 pr-2">
-        {tableData.isMerged
-          ? tableData.orders.map((order) => (
-              <View key={order.id} className="mb-2">
-                <Text className="text-base font-semibold text-blue-400 mb-1">
-                  Table{" "}
-                  {
-                    useFloorPlanStore
-                      .getState()
-                      .layouts.flatMap((l) => l.tables)
-                      .find((t) => t.id === order.service_location_id)?.name
-                  }
+        {Object.entries(groupedItems).map(([category, { items }]) => (
+          <View key={category} className="mb-2">
+            <Text className="text-base font-semibold text-blue-400 mb-1">
+              {category}
+            </Text>
+            {items.map((item) => (
+              <View key={item.id} className="flex-row items-center ml-2">
+                <Text className="text-base text-gray-300">
+                  {item.quantity}x {item.name}
                 </Text>
-                {order.items.map((item) => (
-                  <View key={item.id} className="flex-row items-center ml-2">
-                    <Text className="text-base text-gray-300">
-                      {item.quantity}x {item.name}
-                    </Text>
-                    <View className="ml-2">
-                      {(item.item_status === "Ready" ||
-                        item.item_status === "Served") && (
-                        <CheckCircle size={14} color="#22C55E" />
-                      )}
-                      {(item.kitchen_status === "sent" ||
-                        item.item_status === "Preparing") && (
-                        <Clock size={14} color="#F59E0B" />
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ))
-          : Object.entries(groupedItems).map(([category, { items }]) => (
-              <View key={category} className="mb-2">
-                <Text className="text-base font-semibold text-blue-400 mb-1">
-                  {category}
-                </Text>
-                {items.map((item) => (
-                  <View key={item.id} className="flex-row items-center ml-2">
-                    <Text className="text-base text-gray-300">
-                      {item.quantity}x {item.name}
-                    </Text>
-                    <View className="ml-2">
-                      {(item.item_status === "Ready" ||
-                        item.item_status === "Served") && (
-                        <CheckCircle size={14} color="#22C55E" />
-                      )}
-                      {(item.kitchen_status === "sent" ||
-                        item.item_status === "Preparing") && (
-                        <Clock size={14} color="#F59E0B" />
-                      )}
-                    </View>
-                  </View>
-                ))}
+                <View className="ml-2">
+                  {(item.item_status === "Ready" ||
+                    item.item_status === "Served") && (
+                    <CheckCircle size={14} color="#22C55E" />
+                  )}
+                  {(item.kitchen_status === "sent" ||
+                    item.item_status === "Preparing") && (
+                    <Clock size={14} color="#F59E0B" />
+                  )}
+                </View>
               </View>
             ))}
+          </View>
+        ))}
         <View className="border-t border-gray-700 mt-2 pt-2 pr-2 flex-row justify-between">
           <Text className="text-base font-bold text-white">Total</Text>
           <Text className="text-base font-bold text-white">
@@ -346,23 +314,14 @@ const ExpandedView: React.FC<{
       </View>
 
       <View className="flex-row items-center gap-2">
-        <QuickActionButton label="Add Item" onPress={onNavigateToOrder} />
         <QuickActionButton
-          label={`Send (${newItemsCount})`}
-          onPress={handleSend}
-          disabled={newItemsCount === 0}
+          label="Open Table"
+          onPress={onNavigateToOrder}
           variant="primary"
         />
         <QuickActionButton label="Print Bill" onPress={() => {}} />
-        {tableData.isMerged && (
-          <QuickActionButton
-            label="Split Merge"
-            onPress={() => unmergeTables(tableData.primaryTableId)}
-            variant="destructive"
-          />
-        )}
         <QuickActionButton
-          label={tableData.isMerged ? "Close All" : "Close Table"}
+          label="Close Table"
           onPress={handleCloseTable}
           variant="destructive"
         />
@@ -386,14 +345,14 @@ const TableListItem: React.FC<{
   onToggleExpand: () => void;
   onNavigateToOrder: () => void;
   activeLayoutId: string | null;
-  handleTablePress: (table: TableType) => void; // Restoring this prop
+  handleTablePress: (table: TableType) => void;
 }> = ({
   table,
   isExpanded,
   onToggleExpand,
   onNavigateToOrder,
   activeLayoutId,
-  handleTablePress, // Consuming the prop
+  handleTablePress,
 }) => {
   const tableData = useTableData(table, activeLayoutId);
   const [isOvertime, setIsOvertime] = useState(false);
@@ -432,7 +391,7 @@ const TableListItem: React.FC<{
       className="border-b border-gray-700 overflow-hidden"
     >
       <TouchableOpacity
-        onPress={handlePress} // Use the new conditional handler
+        onPress={handlePress}
         className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
       >
         <View className="flex-row items-center justify-between">
