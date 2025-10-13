@@ -197,7 +197,6 @@ const ModifierScreen = () => {
 
         const existingItem = activeOrder?.items.find((item) => {
           if (item.menuItemId !== currentItem.id) return false;
-          if (item.isDraft) return false; // Don't match other draft items
 
           // Check if customizations are empty (no modifiers, no notes)
           const hasModifiers =
