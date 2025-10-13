@@ -1,7 +1,9 @@
 import { CartItem } from "@/lib/types";
 import { useDineInStore } from "@/stores/useDineInStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Send } from "lucide-react-native";
@@ -52,8 +54,9 @@ const BillSection = ({
     setActiveOrder,
   } = useOrderStore();
   const { selectedTable, clearSelectedTable } = useDineInStore();
+  const { activeEmployeeId } = useEmployeeStore();
+  const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { updateTableStatus } = useFloorPlanStore();
-
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
   const hasDraftItems = cart.some((item) => item.isDraft);
@@ -72,6 +75,10 @@ const BillSection = ({
   };
 
   const handlePayClick = () => {
+    if (!checkEmployeeInShift(activeEmployeeId!)) {
+      showClockInWall();
+      return;
+    }
     if (hasDraftItems) {
       toast.error("Please confirm the item being customized before paying.", {
         position: ToastPosition.BOTTOM,
@@ -83,6 +90,17 @@ const BillSection = ({
   };
 
   const handleSendToKitchen = () => {
+    if (!checkEmployeeInShift(activeEmployeeId!)) {
+      showClockInWall();
+      return;
+    }
+    if (hasDraftItems) {
+      toast.error("Please confirm the item being customized before sending.", {
+        position: ToastPosition.BOTTOM,
+        duration: 4000,
+      });
+      return;
+    }
     if (hasDraftItems) {
       toast.error("Please confirm the item being customized before sending.", {
         position: ToastPosition.BOTTOM,
@@ -140,9 +158,8 @@ const BillSection = ({
         <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
         {activeOrder && (
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
-            }`}
+            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+              }`}
             style={{ elevation: 2 }} // Set fixed height to match discount button
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
@@ -176,22 +193,20 @@ const BillSection = ({
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
               }
-              className={`flex-1 py-2 rounded-xl ${
-                !activeOrder ||
+              className={`flex-1 py-2 rounded-xl ${!activeOrder ||
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
-                  ? "bg-gray-500"
-                  : "bg-blue-600"
-              }`}
+                ? "bg-gray-500"
+                : "bg-blue-600"
+                }`}
             >
               <Text
-                className={`text-center text-xl font-bold ${
-                  !activeOrder ||
+                className={`text-center text-xl font-bold ${!activeOrder ||
                   activeOrder.items.length === 0 ||
                   activeOrder.items.some((item) => item.isDraft)
-                    ? "text-gray-400"
-                    : "text-white"
-                }`}
+                  ? "text-gray-400"
+                  : "text-white"
+                  }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

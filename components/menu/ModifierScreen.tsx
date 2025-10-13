@@ -195,6 +195,19 @@ const ModifierScreen = () => {
         const { activeOrderId, orders } = useOrderStore.getState();
         const activeOrder = orders.find((o) => o.id === activeOrderId);
 
+        // Use a deterministic draft ID so concurrent/duplicate creations refer to the same item
+        const stableDraftId = `draft_${currentItem.id}`;
+
+        // If the stable draft already exists, reuse it
+        const existingStableDraft = activeOrder?.items.find(
+          (item) => item.id === stableDraftId
+        );
+        if (existingStableDraft) {
+          draftItemIdRef.current = existingStableDraft.id;
+          lastDraftMenuItemIdRef.current = currentItem.id;
+          return;
+        }
+
         const existingItem = activeOrder?.items.find((item) => {
           if (item.menuItemId !== currentItem.id) return false;
           if (item.isDraft) return false; // Don't match other draft items
@@ -215,11 +228,7 @@ const ModifierScreen = () => {
         if (!existingItem) {
           const itemPrice = getCurrentItemPrice(currentItem);
           const draftItem = {
-            id: generateCartItemId(
-              currentItem.id,
-              { modifiers: [], notes: "" },
-              true
-            ),
+            id: stableDraftId,
             menuItemId: currentItem.id,
             name: currentItem.name,
             quantity: 1,
@@ -235,6 +244,8 @@ const ModifierScreen = () => {
             appliedDiscount: null,
             paidQuantity: 0,
           };
+          console.log("Draft Item", draftItem);
+
           addItemToActiveOrder(draftItem);
           draftItemIdRef.current = draftItem.id;
           // Track last created draft's menu item for cleanup if user switches context
@@ -259,30 +270,30 @@ const ModifierScreen = () => {
         // Convert modifier selections to the format expected by the order system
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-              ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
-                const selectedOptions = Object.entries(selections)
-                  .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
-                    return {
-                      id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
-                    };
-                  });
+            ([categoryId, selections]) => {
+              const category = menuItemForModifiers.modifiers?.find(
+                (cat) => cat.id === categoryId
+              );
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId, _]) => {
+                  const option = category?.options.find(
+                    (opt) => opt.id === optionId
+                  );
+                  return {
+                    id: optionId,
+                    name: option?.name || "",
+                    price: option?.price || 0,
+                  };
+                });
 
-                return {
-                  categoryId,
-                  categoryName: category?.name || "",
-                  options: selectedOptions,
-                };
-              }
-            )
+              return {
+                categoryId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            }
+          )
           : [];
 
         // Calculate total price
@@ -461,28 +472,28 @@ const ModifierScreen = () => {
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-          const category = menuItemForModifiers.modifiers?.find(
-            (cat) => cat.id === categoryId
-          );
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId, _]) => {
-              const option = category?.options.find(
-                (opt) => opt.id === optionId
-              );
-              return {
-                id: optionId,
-                name: option?.name || "",
-                price: option?.price || 0,
-              };
-            });
+        const category = menuItemForModifiers.modifiers?.find(
+          (cat) => cat.id === categoryId
+        );
+        const selectedOptions = Object.entries(selections)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([optionId, _]) => {
+            const option = category?.options.find(
+              (opt) => opt.id === optionId
+            );
+            return {
+              id: optionId,
+              name: option?.name || "",
+              price: option?.price || 0,
+            };
+          });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
+        return {
+          categoryId,
+          categoryName: category?.name || "",
+          options: selectedOptions,
+        };
+      })
       : [];
 
     const finalCustomizations = {
@@ -791,13 +802,12 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-3 rounded-xl border-2 min-w-[140px] ${
-                        isActive
-                          ? "bg-blue-600 border-blue-400"
-                          : hasSelection
+                      className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
+                        ? "bg-blue-600 border-blue-400"
+                        : hasSelection
                           ? "bg-green-600 border-green-400"
                           : "bg-[#303030] border-gray-600"
-                      }`}
+                        }`}
                     >
                       <View className="flex-row items-center justify-between mb-1.5">
                         <Text className="font-semibold text-lg text-white">
@@ -811,11 +821,10 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-base ${
-                          category.type === "required"
-                            ? "text-red-400"
-                            : "text-gray-400"
-                        }`}
+                        className={`text-base ${category.type === "required"
+                          ? "text-red-400"
+                          : "text-gray-400"
+                          }`}
                       >
                         {category.type}
                       </Text>
@@ -854,31 +863,28 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-400"
-                              : isUnavailable
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : isUnavailable
                               ? "bg-[#1a1a1a] border-gray-700"
                               : "bg-[#303030] border-gray-600"
-                          }`}
+                            }`}
                         >
                           <Text
-                            className={`text-xl font-medium text-center ${
-                              isSelected
-                                ? "text-white"
-                                : isUnavailable
+                            className={`text-xl font-medium text-center ${isSelected
+                              ? "text-white"
+                              : isUnavailable
                                 ? "text-gray-500"
                                 : "text-white"
-                            }`}
+                              }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-lg text-center mt-1 ${
-                                isSelected ? "text-blue-200" : "text-blue-400"
-                              }`}
+                              className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+                                }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>

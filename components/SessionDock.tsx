@@ -10,49 +10,40 @@ const BREAK_DURATION_MIN = 30;
 
 // Countdown component for on-break users
 const BreakCountdown = ({ startTime }: { startTime: Date }) => {
-  const [displayTime, setDisplayTime] = useState("30:00");
-  const [isOvertime, setIsOvertime] = useState(false);
+  // Tick state to trigger re-render every second without flashing an initial default
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    // Update immediately on mount to avoid any visible lag
+    setTick((t) => t + 1);
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const start = new Date(startTime).getTime();
-      const diff = now - start;
-      const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000;
-
-      if (diff >= breakDurationMs) {
-        setIsOvertime(true);
-        const overtime = diff - breakDurationMs;
-        const minutes = Math.floor((overtime / (1000 * 60)) % 60);
-        const seconds = Math.floor((overtime / 1000) % 60);
-        setDisplayTime(
-          `+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
-            2,
-            "0"
-          )}`
-        );
-      } else {
-        setIsOvertime(false);
-        const remaining = breakDurationMs - diff;
-        const minutes = Math.floor((remaining / 1000 / 60) % 60);
-        const seconds = Math.floor((remaining / 1000) % 60);
-        setDisplayTime(
-          `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
-            2,
-            "0"
-          )}`
-        );
-      }
+      setTick((t) => t + 1);
     }, 1000);
     return () => clearInterval(interval);
   }, [startTime]);
 
+  // Derive display on every render using current time
+  const now = Date.now();
+  const start = new Date(startTime).getTime();
+  const diff = now - start;
+  const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000;
+  const isOvertime = diff >= breakDurationMs;
+
+  let displayTime: string;
+  if (isOvertime) {
+    const overtime = diff - breakDurationMs;
+    const minutes = Math.floor((overtime / (1000 * 60)) % 60);
+    const seconds = Math.floor((overtime / 1000) % 60);
+    displayTime = `+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  } else {
+    const remaining = Math.max(0, breakDurationMs - diff);
+    const minutes = Math.floor((remaining / 1000 / 60) % 60);
+    const seconds = Math.floor((remaining / 1000) % 60);
+    displayTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
   return (
-    <Text
-      className={`text-xs font-bold ${
-        isOvertime ? "text-red-400" : "text-yellow-400"
-      }`}
-    >
+    <Text className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"}`}>
       {displayTime}
     </Text>
   );
@@ -92,13 +83,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     <>
       <TouchableOpacity
         onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${
-          isActive
-            ? "bg-blue-600 border-blue-400"
-            : isOnBreak
+        className={`flex-row items-center p-1.5 rounded-full border ${isActive
+          ? "bg-blue-600 border-blue-400"
+          : isOnBreak
             ? "bg-yellow-900/50 border-yellow-600"
             : "bg-gray-700 border-gray-600"
-        }`}
+          }`}
       >
         <Image
           source={{ uri: employee.profilePictureUrl }}
@@ -106,9 +96,8 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
         />
         <View className="mx-2">
           <Text
-            className={`font-semibold ${
-              isActive ? "text-white" : "text-gray-300"
-            }`}
+            className={`font-semibold ${isActive ? "text-white" : "text-gray-300"
+              }`}
           >
             {employee.fullName.split(" ")[0]}
           </Text>
@@ -177,12 +166,12 @@ const SessionDock = () => {
         ) : (
           <>
             {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => setSwitchModalOpen(true)}
               className="p-2 mx-1 bg-gray-600 rounded-full"
             >
               <Plus size={20} color="white" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
             <TouchableOpacity
               onPress={() => setIsExpanded(true)}
               className="p-2"
