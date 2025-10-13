@@ -39,15 +39,18 @@ const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
 const BillSection = ({
   showOrderDetails = true,
   showPlaymentActions = true,
+  moreOptionsSheetRef,
 }: {
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
+  moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
   const {
     activeOrderId,
     orders,
     activeOrderTotal,
     startNewOrder,
+    setOpenedAt,
     fireActiveOrderToKitchen,
     sendNewItemsToKitchen,
     assignOrderToTable,
@@ -68,10 +71,9 @@ const BillSection = ({
 
   const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
-  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
   const handleOpenMoreOptions = () => {
-    moreOptionsSheetRef.current?.expand();
+    moreOptionsSheetRef?.current?.expand();
   };
 
   const handlePayClick = () => {
@@ -215,7 +217,6 @@ const BillSection = ({
         </View>
       )}
 
-      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
       <PaymentMethodDialog
         isVisible={isPaymentDialogVisible}
         onClose={handleClosePaymentDialog}

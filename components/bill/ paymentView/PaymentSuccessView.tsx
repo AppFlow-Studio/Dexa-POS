@@ -76,6 +76,7 @@ const PaymentSuccessView = () => {
   const handleDone = () => {
     const {
       activeOrderId,
+      setOpenedAt,
       updateOrderStatus,
       markOrderAsPaid,
       startNewOrder,
@@ -135,6 +136,7 @@ const PaymentSuccessView = () => {
     }
 
     if (activeOrderId) {
+      setOpenedAt(activeOrderId, new Date().toISOString());
       updateOrderStatus(activeOrderId, "Preparing");
     }
 

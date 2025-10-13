@@ -746,12 +746,12 @@ const ModifierScreen = () => {
               : "Back to Menu"}
           </Text>
         </TouchableOpacity>
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-x-3">
           <TouchableOpacity
             onPress={handleCancel}
-            className="p-2 rounded-full bg-red-600"
+            className="p-2 px-4 rounded-lg bg-red-600"
           >
-            <X color="white" size={20} />
+            <X color="white" size={23} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
