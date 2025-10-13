@@ -318,7 +318,8 @@ export type PaymentStatus =
   | "Paid"
   | "In Progress"
   | "Refunded"
-  | "Partially Refunded";
+  | "Partially Refunded"
+  | "Unpaid";
 export type OrderType = "Dine In" | "Takeaway" | "Delivery";
 
 export interface PreviousOrder {
@@ -530,4 +531,33 @@ export interface EmployeeShift {
     country: string;
     address: string;
   };
+}
+
+export interface Address {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+export interface DayHours {
+  day:
+    | "Monday"
+    | "Tuesday"
+    | "Wednesday"
+    | "Thursday"
+    | "Friday"
+    | "Saturday"
+    | "Sunday";
+  open: string; // "HH:mm" format
+  close: string; // "HH:mm" format
+  enabled: boolean;
+}
+
+export interface SpecialHours {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  description: string;
+  open: string;
+  close: string;
 }

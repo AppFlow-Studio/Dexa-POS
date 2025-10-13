@@ -5,7 +5,7 @@ import BreakModal from "@/components/timeclock/BreakModal";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { Shift, useTimeclockStore } from "@/stores/useTimeclockStore"; // 1. Import the Shift type
+import { ShiftSession, useTimeclockStore } from "@/stores/useTimeclockStore";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -22,26 +22,22 @@ const TABLE_HEADERS = [
 ];
 
 const TimeclockScreen = () => {
-  // --- STATE FROM THE STORE ---
-  // Get all necessary state and actions from the store.
   const {
-    status,
     shiftHistory,
+    getSession,
     endBreak,
     clockIn: tcClockIn,
     clockOut: tcClockOut,
   } = useTimeclockStore();
-  const { employees, loadMockEmployees, clockIn, clockOut, activeEmployeeId } =
+  const { employees, loadMockEmployees, clockIn, activeEmployeeId } =
     useEmployeeStore();
 
-  // --- LOCAL UI STATE ---
-  // This state is ONLY for controlling which modal is visible.
   const [activeModal, setActiveModal] = useState<"break" | "breakEnded" | null>(
     null
   );
-  // This state holds the data for the break that just ended, to pass to the modal.
-  const [lastBreakSession, setLastBreakSession] = useState<Shift | null>(null);
-  // PIN modal for employee clock in/out
+  const [lastBreakSession, setLastBreakSession] = useState<ShiftSession | null>(
+    null
+  );
   const [pinModal, setPinModal] = useState<{
     visible: boolean;
     employeeId: string | null;
@@ -65,44 +61,27 @@ const TimeclockScreen = () => {
       setPinModal((p) => ({ ...p, pin: "", error: undefined }));
     }
   };
-  // Collapsible employees list
   const [employeesCollapsed, setEmployeesCollapsed] = useState(false);
 
-  // --- LIFECYCLE EFFECT ---
-  // This effect opens the "Break Initiated" modal when the global status changes to 'onBreak'.
-  useEffect(() => {
-    if (status === "onBreak") {
-      setActiveModal("break");
-    } else {
-      // If the status is no longer 'onBreak' (e.g., clocked out), ensure the modal is closed.
-      if (activeModal === "break") {
-        setActiveModal(null);
-      }
-    }
-  }, [status]);
-
-  // Load employees once
   useEffect(() => {
     loadMockEmployees(8);
   }, []);
 
-  // --- HANDLERS ---
   const handleEndBreak = () => {
-    // 1. Capture the current shift data *before* it's modified.
-    const shiftForSession = useTimeclockStore.getState().currentShift;
-    setLastBreakSession(shiftForSession);
+    if (!activeEmployeeId) return;
 
-    // 2. Call the store action to end the break.
-    endBreak();
+    const sessionForModal = getSession(activeEmployeeId);
+    setLastBreakSession(sessionForModal || null);
 
-    // 3. Transition from the 'break' modal to the 'breakEnded' modal.
-    setActiveModal("breakEnded");
+    endBreak(activeEmployeeId);
+
+    setActiveModal(null);
+    router.replace("/home");
   };
 
   const handleReturnToClockIn = () => {
-    // This is called from the "Break Ended" modal. We just need to close it.
     setActiveModal(null);
-    setLastBreakSession(null); // Clear the temporary session data
+    setLastBreakSession(null);
   };
 
   return (
@@ -125,7 +104,7 @@ const TimeclockScreen = () => {
         <View className="flex-row gap-4 h-full">
           {activeEmployeeId && (
             <View className="w-80">
-              <UserProfileCard />
+              <UserProfileCard employeeId={activeEmployeeId} />
             </View>
           )}
 
@@ -164,10 +143,23 @@ const TimeclockScreen = () => {
                             {emp.fullName}
                           </Text>
                           <Text
-                            className={`text-xs ${emp.shiftStatus === "clocked_in" ? "text-green-400" : "text-gray-400"}`}
+                            className={`text-xs ${
+                              emp.shiftStatus === "clocked_in"
+                                ? "text-green-400"
+                                : "text-gray-400"
+                            }`}
                           >
                             {emp.shiftStatus === "clocked_in"
-                              ? `Clocked In • ${emp.clockInAt ? new Date(emp.clockInAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}`
+                              ? `Clocked In • ${
+                                  emp.clockInAt
+                                    ? new Date(
+                                        emp.clockInAt
+                                      ).toLocaleTimeString([], {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : ""
+                                }`
                               : "Clocked Out"}
                           </Text>
                         </View>
@@ -266,7 +258,6 @@ const TimeclockScreen = () => {
         </View>
       </View>
 
-      {/* --- Modals --- */}
       <BreakModal
         isOpen={activeModal === "break"}
         onEndBreak={handleEndBreak}
@@ -274,7 +265,6 @@ const TimeclockScreen = () => {
       <BreakEndedModal
         isOpen={activeModal === "breakEnded"}
         onClockIn={handleReturnToClockIn}
-        // Pass the captured shift data to the modal
         shift={lastBreakSession}
       />
 
@@ -325,10 +315,9 @@ const TimeclockScreen = () => {
                   if (pinModal.pin === emp.pin) {
                     if (pinModal.mode === "in") {
                       clockIn(emp.id);
-                      tcClockIn();
+                      tcClockIn(emp.id);
                     } else {
-                      clockOut(emp.id);
-                      tcClockOut();
+                      tcClockOut(emp.id);
                     }
                     setPinModal({
                       visible: false,

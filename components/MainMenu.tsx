@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import {
-  BarChart3,
   History,
   Home,
   Lock,
@@ -15,6 +14,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 import PinDisplay from "./auth/PinDisplay";
 import PinNumpad from "./auth/PinNumpad";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 
 interface MenuCardProps {
   icon: React.ReactNode;
@@ -73,7 +73,6 @@ const MainMenu: React.FC = () => {
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [currentPin, setCurrentPin] = useState("");
   const [targetRoute, setTargetRoute] = useState<string | null>(null);
-
   const handleLockedAccess = (route: string) => {
     setTargetRoute(route);
     setPinDialogOpen(true);
@@ -122,7 +121,7 @@ const MainMenu: React.FC = () => {
       id: "online-orders",
       icon: <ShoppingBag color="#3b82f6" size={48} />,
       title: "Online Orders",
-      subtitle: "Web & app Orders",
+      subtitle: "Web & App Orders",
       route: "/online-orders",
       isHighlighted: false,
     },

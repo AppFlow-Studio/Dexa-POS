@@ -1,6 +1,8 @@
+import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { usePathname, useRouter } from "expo-router";
 import {
   ArrowLeft,
@@ -11,9 +13,8 @@ import {
 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
+import SessionDock from "./SessionDock";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
-import BreakEndedModal from "./timeclock/BreakEndedModal";
-import BreakModal from "./timeclock/BreakModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,17 +28,34 @@ const Header = () => {
   const router = useRouter();
   const { layouts } = useFloorPlanStore();
 
-  const { status, startBreak, endBreak, currentShift } = useTimeclockStore();
+  const {
+    startBreak,
+    getSession,
+    sessions,
+    // MODIFIED: Renamed for clarity to avoid conflict with employeeStore's clockOut
+    clockOut: timeclockClockOut,
+  } = useTimeclockStore();
+
   const {
     employees,
-    activeEmployeeId,
-    clockOut: empClockOut,
+    activeEmployeeId: employeeActiveId,
     signOut,
   } = useEmployeeStore();
-  const [activeModal, setActiveModal] = useState<
-    "switchAccount" | "break" | "breakEnded" | null
-  >(null);
-  const [lastBreakSession, setLastBreakSession] = useState<any>(null);
+  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+
+  const [activeModal, setActiveModal] = useState<"switchAccount" | null>(null);
+
+  const activeEmployee = useMemo(() => {
+    return employees.find((e) => e.id === employeeActiveId);
+  }, [employees, employeeActiveId]);
+
+  const activeSession = useMemo(() => {
+    if (!employeeActiveId) return null;
+    return getSession(employeeActiveId);
+  }, [employeeActiveId, getSession, sessions]);
+
+  const isClockedIn = !!activeSession && activeSession.status === "clockedIn";
+  const isOnBreak = !!activeSession && activeSession.status === "onBreak";
 
   const showBackButton =
     pathname == "/menu" ||
@@ -79,7 +97,6 @@ const Header = () => {
       return "Purchase Orders";
     if (pathname.startsWith("/inventory")) return "Inventory";
 
-    // Handle dynamic online order route
     if (
       pathname.startsWith("/online-orders/") &&
       pathname.split("/").length > 2
@@ -102,14 +119,13 @@ const Header = () => {
       pathname.split("/").length === 3
     ) {
       const tableId = pathname.split("/")[2];
-      // Find the table across all layouts to get its name
       for (const layout of layouts) {
         const table = layout.tables.find((t) => t.id === tableId);
         if (table) {
-          return `Tables / ${table.name}`; // Return the user-friendly name
+          return `Tables / ${table.name}`;
         }
       }
-      return "Table Details"; // Fallback if not found
+      return "Table Details";
     } else if (
       pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4
@@ -127,41 +143,33 @@ const Header = () => {
     const pathParts = pathname.split("/").filter(Boolean);
     const lastPart = pathParts[pathParts.length - 1];
 
-    if (!lastPart) return "Order Line"; // Default for safety
+    if (!lastPart) return "Order Line";
     const title = lastPart
       .replace(/-/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
     return title;
-  }, [pathname]);
+  }, [pathname, layouts]);
 
   const handleStartBreak = () => {
-    if (status === "clockedIn") {
+    if (isClockedIn) {
       startBreak();
-      // The timeclock store now handles the status, we just open the modal
-      setActiveModal("break");
-    } else {
-      alert("You must be clocked in to start a break.");
+
+      if (isBreakAndSwitchEnabled) {
+        toast.success("Break started. Ready for next user.", {
+          position: ToastPosition.BOTTOM,
+        });
+        signOut();
+        router.replace("/pin-login");
+      } else {
+        toast.success("Break started.", { position: ToastPosition.BOTTOM });
+      }
     }
   };
 
-  const handleEndBreak = () => {
-    const shiftForSession = useTimeclockStore.getState().currentShift;
-    setLastBreakSession(shiftForSession);
-    endBreak();
-    setActiveModal("breakEnded");
-  };
-
-  const handleReturnToClockIn = () => {
-    setActiveModal(null);
-    setLastBreakSession(null);
-  };
-
   const handleBackPress = () => {
-    // Split the path to analyze its structure
     const pathParts = pathname.split("/").filter(Boolean);
 
-    // Case 1: Handle Inventory navigation
     if (
       pathname.startsWith("/inventory") &&
       !pathname.includes("/purchase-orders/")
@@ -170,20 +178,15 @@ const Header = () => {
       return;
     }
 
-    // Case 2: Handle Settings navigation
     if (pathname.startsWith("/settings")) {
-      // If we are deep inside settings (e.g., /settings/basic/store-info)
       if (pathParts.length > 2) {
-        // Go to the main settings page
         router.push("/settings");
       } else {
-        // If we are already on the main /settings page, go home
         router.push("/home");
       }
       return;
     }
 
-    // Default Case: For all other pages, use the standard back behavior
     router.back();
   };
 
@@ -201,32 +204,28 @@ const Header = () => {
           )}
           <Text className="text-2xl font-bold text-white">{title}</Text>
         </View>
+
+        <View className="absolute left-1/2 -translate-x-1/2">
+          <SessionDock />
+        </View>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TouchableOpacity className="flex-row items-center  cursor-pointer">
               <Image
                 source={
-                  activeEmployeeId
-                    ? employees.find((e) => e.id === activeEmployeeId)
-                        ?.profilePictureUrl
-                      ? {
-                          uri: employees.find((e) => e.id === activeEmployeeId)!
-                            .profilePictureUrl!,
-                        }
-                      : require("@/assets/images/tom_hardy.jpg")
+                  activeEmployee?.profilePictureUrl
+                    ? { uri: activeEmployee.profilePictureUrl }
                     : require("@/assets/images/tom_hardy.jpg")
                 }
                 className="w-10 h-10 rounded-full"
               />
               <View className="ml-2">
                 <Text className="text-xl font-semibold text-white">
-                  {activeEmployeeId
-                    ? employees.find((e) => e.id === activeEmployeeId)
-                        ?.fullName || "Employee"
-                    : "Guest"}
+                  {activeEmployee?.fullName || "Guest"}
                 </Text>
                 <Text className="text-lg text-white">
-                  {activeEmployeeId ? "Signed In" : "Not Signed In"}
+                  {activeEmployee ? "Signed In" : "Not Signed In"}
                 </Text>
               </View>
               <ChevronDown color="white" size={20} className="ml-2" />
@@ -241,11 +240,12 @@ const Header = () => {
             </DropdownMenuItem>
             <DropdownMenuItem
               onPress={handleStartBreak}
-              disabled={status !== "clockedIn" || currentShift?.hasTakenBreak}
+              disabled={!isClockedIn || isOnBreak}
             >
               <Coffee className="mr-2 h-5 w-5 text-white " color="white" />
               <Text className="text-lg text-white">
-                {currentShift?.hasTakenBreak ? "Break Taken" : "Take Break"}
+                {" "}
+                {isOnBreak ? "On Break" : "Take Break"}
               </Text>
             </DropdownMenuItem>
             <DropdownMenuItem onPress={() => setActiveModal("switchAccount")}>
@@ -255,17 +255,10 @@ const Header = () => {
             <DropdownMenuSeparator className="bg-gray-600" />
             <DropdownMenuItem
               onPress={() => {
-                if (activeEmployeeId) {
-                  try {
-                    empClockOut(activeEmployeeId);
-                  } catch {}
-                  try {
-                    useTimeclockStore.getState().clockOut();
-                  } catch {}
-                  try {
-                    signOut();
-                  } catch {}
+                if (employeeActiveId) {
+                  timeclockClockOut(employeeActiveId);
                 }
+                // No need to call signOut() separately, clockOut handles it.
                 router.replace("/pin-login");
               }}
             >
@@ -278,15 +271,6 @@ const Header = () => {
       <SwitchAccountModal
         isOpen={activeModal === "switchAccount"}
         onClose={() => setActiveModal(null)}
-      />
-      <BreakModal
-        isOpen={activeModal === "break"}
-        onEndBreak={handleEndBreak}
-      />
-      <BreakEndedModal
-        isOpen={activeModal === "breakEnded"}
-        onClockIn={handleReturnToClockIn}
-        shift={lastBreakSession}
       />
     </>
   );

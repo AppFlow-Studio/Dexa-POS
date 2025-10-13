@@ -1,4 +1,5 @@
 import BillSection from "@/components/bill/BillSection";
+import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
@@ -12,7 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useEffect, useMemo, useState } from "react";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 
 const OrderProcessing = () => {
@@ -29,6 +31,7 @@ const OrderProcessing = () => {
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
   useEffect(() => {
     // Ensure there is at least one active order. If none, create/select a global Building order.
@@ -107,7 +110,7 @@ const OrderProcessing = () => {
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       <View className="flex-1 flex-row">
-        <BillSection />
+        <BillSection moreOptionsSheetRef={moreOptionsSheetRef} />
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
           <Accordion
@@ -172,6 +175,8 @@ const OrderProcessing = () => {
           <MenuSection />
         </View>
       </View>
+      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
+
 
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}

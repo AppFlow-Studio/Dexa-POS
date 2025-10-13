@@ -306,6 +306,17 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const primaryTableId = tableIds[0];
     let mergedCapacity = 0;
 
+    const tablesToMerge = activeLayout.tables.filter((t) =>
+      tableIds.includes(t.id)
+    );
+    const allTablesAreAvailable = tablesToMerge.every(
+      (t) => t.status === "Available"
+    );
+
+    const newStatus: TableStatus = allTablesAreAvailable
+      ? "Available"
+      : "In Use";
+
     set((state) => ({
       layouts: state.layouts.map((layout) => {
         if (layout.id === activeLayoutId) {
@@ -316,16 +327,15 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
                 ...table,
                 isPrimary: table.id === primaryTableId,
                 mergedWith: tableIds.filter((id) => id !== table.id),
-                status: "In Use" as TableStatus,
+                status: newStatus, // *** FIX: Apply the correct status to ALL tables in the group.
                 order:
-                  table.id === primaryTableId
+                  table.id === primaryTableId && newStatus === "In Use"
                     ? {
                         id: primaryOrderId,
-                        // Customer name can be simplified now
                         customerName: `Group at ${table.name}`,
                         total: 0,
                       }
-                    : null,
+                    : null, // Assign order only if "In Use", and only to primary.
               };
             }
             return table;

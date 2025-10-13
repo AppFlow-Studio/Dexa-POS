@@ -4,7 +4,13 @@ import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Image,
   Modal,
@@ -46,6 +52,10 @@ const ModifierScreen = () => {
   const [isQuantityModalOpen, setIsQuantityModalOpen] = useState(false);
   const [quantityInput, setQuantityInput] = useState("");
   const lastDraftMenuItemIdRef = useRef<string | null>(null);
+
+  // Refs to track user action and draft item ID
+  const actionHandledRef = useRef(false);
+  const draftItemIdRef = useRef<string | null>(null);
 
   const isReadOnly = mode === "view";
 
@@ -107,6 +117,7 @@ const ModifierScreen = () => {
 
   // Initialize form when screen opens
   useEffect(() => {
+    actionHandledRef.current = false;
     if (isOpen && currentItem) {
       setQuantity(
         mode === "edit" || (mode === "fullscreen" && cartItem)
@@ -184,6 +195,19 @@ const ModifierScreen = () => {
         const { activeOrderId, orders } = useOrderStore.getState();
         const activeOrder = orders.find((o) => o.id === activeOrderId);
 
+        // Use a deterministic draft ID so concurrent/duplicate creations refer to the same item
+        const stableDraftId = `draft_${currentItem.id}`;
+
+        // If the stable draft already exists, reuse it
+        const existingStableDraft = activeOrder?.items.find(
+          (item) => item.id === stableDraftId
+        );
+        if (existingStableDraft) {
+          draftItemIdRef.current = existingStableDraft.id;
+          lastDraftMenuItemIdRef.current = currentItem.id;
+          return;
+        }
+
         const existingItem = activeOrder?.items.find((item) => {
           if (item.menuItemId !== currentItem.id) return false;
           if (item.isDraft) return false; // Don't match other draft items
@@ -195,19 +219,16 @@ const ModifierScreen = () => {
           const hasNotes =
             item.customizations.notes &&
             item.customizations.notes.trim() !== "";
+          const hasSent = item.kitchen_status === "sent";
 
-          return !hasModifiers && !hasNotes;
+          return !hasModifiers && !hasNotes && !hasSent;
         });
 
         // Only create draft item if no existing item with same customizations
         if (!existingItem) {
           const itemPrice = getCurrentItemPrice(currentItem);
           const draftItem = {
-            id: generateCartItemId(
-              currentItem.id,
-              { modifiers: [], notes: "" },
-              true
-            ),
+            id: stableDraftId,
             menuItemId: currentItem.id,
             name: currentItem.name,
             quantity: 1,
@@ -223,7 +244,10 @@ const ModifierScreen = () => {
             appliedDiscount: null,
             paidQuantity: 0,
           };
+          console.log("Draft Item", draftItem);
+
           addItemToActiveOrder(draftItem);
+          draftItemIdRef.current = draftItem.id;
           // Track last created draft's menu item for cleanup if user switches context
           lastDraftMenuItemIdRef.current = currentItem.id;
         }
@@ -238,13 +262,12 @@ const ModifierScreen = () => {
       const { activeOrderId, orders, updateItemInActiveOrder } =
         useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
-      const draftItem = activeOrder?.items.find((item) =>
-        item.id.startsWith(`draft_${currentItem.id}_`)
+      const draftItem = activeOrder?.items.find(
+        (item) => item.id === draftItemIdRef.current
       );
 
       if (draftItem) {
         // Convert modifier selections to the format expected by the order system
-        console.log("modifierSelections", draftItem);
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
             ([categoryId, selections]) => {
@@ -291,6 +314,7 @@ const ModifierScreen = () => {
             notes,
           },
         };
+
         updateItemInActiveOrder(updatedDraftItem);
       }
     }
@@ -303,6 +327,18 @@ const ModifierScreen = () => {
     mode,
     cartItem,
   ]);
+
+  // Add cleanup effect for unhandled dismounts
+  useEffect(() => {
+    return () => {
+      // This function runs when the component is about to unmount
+      if (!actionHandledRef.current && draftItemIdRef.current) {
+        // If save or cancel was NOT clicked, and we have a draft item, remove it.
+        removeItemFromActiveOrder(draftItemIdRef.current);
+        draftItemIdRef.current = null; // Clear the ref
+      }
+    };
+  }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount
 
   // Remove any previously created draft if user navigates away to another item or enters edit mode
   useEffect(() => {
@@ -402,6 +438,8 @@ const ModifierScreen = () => {
   );
 
   const handleSave = useCallback(() => {
+    // Set action handled flag
+    actionHandledRef.current = true;
     // Use the base menu item for consistent checks
     const baseItem = menuItem || menuItemForModifiers;
     if (!baseItem) return;
@@ -474,6 +512,8 @@ const ModifierScreen = () => {
         customizations: finalCustomizations,
         isDraft: false, // Ensure it's not a draft anymore
       };
+      console.log("i am crete teh problem in handle save");
+
       updateItemInActiveOrder(updatedItem);
       toast.success(`Updated ${currentItem?.name}`, {
         position: ToastPosition.BOTTOM,
@@ -545,57 +585,25 @@ const ModifierScreen = () => {
           });
         }
 
-        if (existingItem.isDraft) {
-          // Remove the draft item and add the confirmed item
-          console.log(
-            "draftItem found, removing and adding confirmed item",
-            existingItem
-          );
+        const confirmedItem = {
+          id: generateCartItemId(baseItem.id, finalCustomizations),
+          menuItemId: baseItem.id,
+          name: baseItem.name,
+          quantity,
+          originalPrice: baseItem.price,
+          price: total / Math.max(1, quantity),
+          image: baseItem.image,
+          customizations: finalCustomizations,
+          availableDiscount: baseItem.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+          isDraft: false,
+        };
 
-          // Then add the confirmed item
-          const confirmedItem = {
-            id: generateCartItemId(baseItem.id, finalCustomizations),
-            menuItemId: baseItem.id,
-            name: baseItem.name,
-            quantity,
-            originalPrice: baseItem.price,
-            price: total / Math.max(1, quantity),
-            image: baseItem.image,
-            customizations: finalCustomizations,
-            availableDiscount: baseItem.availableDiscount,
-            appliedDiscount: null,
-            paidQuantity: 0,
-            isDraft: false,
-          };
-
-          addItemToActiveOrder(confirmedItem);
-          console.log("confirmedItem added", confirmedItem);
-          toast.success(`Added ${baseItem.name}`, {
-            position: ToastPosition.BOTTOM,
-          });
-        } else {
-          // Update existing confirmed item (aggregate quantities)
-          console.log(
-            "existingItem found, aggregating quantities:",
-            existingItem
-          );
-          const updatedItem = {
-            ...existingItem,
-            quantity: existingItem.quantity + quantity,
-            price: total / Math.max(1, quantity), // Update price to reflect new total
-            isDraft: false,
-            customizations: finalCustomizations,
-          };
-
-          updateItemInActiveOrder(updatedItem);
-          console.log("existingItem updated", updatedItem);
-          toast.success(
-            `Added ${baseItem.name} (${updatedItem.quantity} total)`,
-            {
-              position: ToastPosition.BOTTOM,
-            }
-          );
-        }
+        addItemToActiveOrder(confirmedItem);
+        toast.success(`Added ${baseItem.name}`, {
+          position: ToastPosition.BOTTOM,
+        });
       } else {
         // Or add a completely new item if no draft was found
         const newItem = {
@@ -612,7 +620,6 @@ const ModifierScreen = () => {
           paidQuantity: 0,
           isDraft: false,
         };
-        console.log("newItem", newItem);
         addItemToActiveOrder(newItem);
         toast.success(`Added ${baseItem.name}`, {
           position: ToastPosition.BOTTOM,
@@ -638,6 +645,7 @@ const ModifierScreen = () => {
   ]);
 
   const handleCancel = useCallback(() => {
+    actionHandledRef.current = true;
     // Remove draft item if we're in add mode (not edit mode)
     if (
       mode !== "edit" &&
@@ -673,25 +681,43 @@ const ModifierScreen = () => {
         <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
           <TouchableOpacity onPress={close} className="flex-row items-center">
             <ArrowLeft color="#9CA3AF" size={20} />
-            <Text className="text-xl font-medium text-white ml-1.5">Back to Bill</Text>
+            <Text className="text-xl font-medium text-white ml-1.5">
+              Back to Bill
+            </Text>
           </TouchableOpacity>
         </View>
         {/* Content */}
         <View className="flex-1 items-center justify-center p-6 w-full">
           <View className="items-center w-full">
-            <Text className="text-2xl font-bold text-white text-center mb-3">Item Already Sent</Text>
-            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">This item has been sent to the kitchen and cannot be modified.</Text>
+            <Text className="text-2xl font-bold text-white text-center mb-3">
+              Item Already Sent
+            </Text>
+            <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">
+              This item has been sent to the kitchen and cannot be modified.
+            </Text>
             <View className="bg-[#303030] flex flex-col items-center justify-center rounded-xl p-4 w-full border border-gray-600">
               <View className="flex-row items-center justify-center w-full gap-3 mb-3">
-                <Image source={require("@/assets/images/classic_burger.png")} className="w-14 h-14 rounded-lg" />
+                <Image
+                  source={require("@/assets/images/classic_burger.png")}
+                  className="w-14 h-14 rounded-lg"
+                />
                 <View className="flex-1">
-                  <Text className="text-xl font-semibold text-white">{cartItem.name}</Text>
-                  <Text className="text-base text-gray-400">Quantity: {cartItem.quantity}</Text>
+                  <Text className="text-xl font-semibold text-white">
+                    {cartItem.name}
+                  </Text>
+                  <Text className="text-base text-gray-400">
+                    Quantity: {cartItem.quantity}
+                  </Text>
                 </View>
               </View>
             </View>
-            <TouchableOpacity onPress={close} className="mt-6 bg-blue-600 px-6 py-3 rounded-xl">
-              <Text className="text-lg font-semibold text-white">Back to Bill</Text>
+            <TouchableOpacity
+              onPress={close}
+              className="mt-6 bg-blue-600 px-6 py-3 rounded-xl"
+            >
+              <Text className="text-lg font-semibold text-white">
+                Back to Bill
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -720,12 +746,12 @@ const ModifierScreen = () => {
               : "Back to Menu"}
           </Text>
         </TouchableOpacity>
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-x-3">
           <TouchableOpacity
             onPress={handleCancel}
-            className="p-2 rounded-full bg-red-600"
+            className="p-2 px-4 rounded-lg bg-red-600"
           >
-            <X color="white" size={20} />
+            <X color="white" size={23} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}

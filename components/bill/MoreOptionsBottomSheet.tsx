@@ -9,20 +9,36 @@ import BottomSheet, {
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Lock, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import PinDisplay from "../auth/PinDisplay";
+import PinNumpad from "../auth/PinNumpad";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
-const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
+const MoreOptionsComponent: React.ForwardRefRenderFunction<
+  BottomSheetMethods
+> = (props, ref) => {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [isTaxExempt, setIsTaxExempt] = useState(false);
+  const [isOpenDrawer, setIsOpenDrawer] = useState(false);
   const [showManagerPin, setShowManagerPin] = useState(false);
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
+  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
   const { openSheet } = useCustomerSheetStore();
-  const { clearCart } = useOrderStore();
+
+  // FIX: Use individual selectors to prevent unnecessary re-renders
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const clearCart = useOrderStore((state) => state.clearCart);
+  const voidOrder = useOrderStore((state) => state.voidOrder);
+
+  // FIX: Get the active order directly without using orders array
+  const activeOrder = useOrderStore((state) =>
+    state.orders.find((o) => o.id === state.activeOrderId)
+  );
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true);
@@ -30,10 +46,25 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
 
   const onConfirmClearCart = () => {
     clearCart();
-    setClearCartConfirmOpen(false); // Close the confirmation modal
-    // Close the 'More' bottom sheet
+    setClearCartConfirmOpen(false);
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
+    }
+  };
+
+  const handleVoidOrderClick = () => {
+    if (ref && "current" in ref && ref.current) {
+      ref.current.close();
+    }
+    setTimeout(() => {
+      setVoidConfirmOpen(true);
+    }, 250);
+  };
+
+  const onConfirmVoid = () => {
+    if (activeOrderId) {
+      voidOrder(activeOrderId);
+      setVoidConfirmOpen(false);
     }
   };
 
@@ -57,14 +88,28 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
 
   const handleManagerPinSubmit = () => {
     if (managerPin === "1234") {
-      setIsTaxExempt(true);
-      setShowManagerPin(false);
-      setManagerPin("");
-      toast.success("Tax exempt enabled", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
+
+      if (
+        !isOpenDrawer
+      ) {
+        setIsTaxExempt(true);
+        setShowManagerPin(false);
+        setManagerPin("");
+        toast.success("Tax exempt enabled", {
+          duration: 2000,
+          position: ToastPosition.BOTTOM,
+        });
+      } else {
+        setIsOpenDrawer(false);
+        setShowManagerPin(false);
+        setManagerPin("");
+        toast.success("Drawer opened", {
+          duration: 2000,
+          position: ToastPosition.BOTTOM,
+        });
+      }
     } else {
+      setManagerPin("");
       toast.error("Invalid PIN", {
         duration: 2000,
         position: ToastPosition.BOTTOM,
@@ -73,33 +118,33 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
   };
 
   const handleOpenDrawer = () => {
+    setIsOpenDrawer(true);
     setShowManagerPin(true);
   };
 
-  const handleManagerPinForDrawer = () => {
-    if (managerPin === "1234") {
-      toast.success("Drawer opened", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
-      setShowManagerPin(false);
-      setManagerPin("");
-      if (ref && "current" in ref && ref.current) {
-        ref.current.close();
-      }
-    } else {
-      toast.error("Invalid PIN", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
-    }
-  };
+  // const handleManagerPinForDrawer = () => {
+  //   if (managerPin === "1234") {
+  //     toast.success("Drawer opened", {
+  //       duration: 2000,
+  //       position: ToastPosition.BOTTOM,
+  //     });
+  //     setShowManagerPin(false);
+  //     setManagerPin("");
+  //     if (ref && "current" in ref && ref.current) {
+  //       ref.current.close();
+  //     }
+  //   } else {
+  //     toast.error("Invalid PIN", {
+  //       duration: 2000,
+  //       position: ToastPosition.BOTTOM,
+  //     });
+  //   }
+  // };
 
   const handleAddCustomer = () => {
     if (ref && "current" in ref && ref.current) {
-      ref.current.close(); // Close the 'More' sheet first
+      ref.current.close();
     }
-    // Open the customer sheet after a short delay
     setTimeout(() => {
       openSheet();
     }, 250);
@@ -107,16 +152,22 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
 
   const renderBackdrop = useMemo(
     () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
+
+  // FIX: Use optional chaining to prevent errors
+  const canVoid =
+    activeOrder &&
+    activeOrder.items?.length > 0 &&
+    activeOrder.paid_status !== "Paid";
 
   return (
     <>
@@ -159,6 +210,32 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
           </View>
           <View className="p-4 border-b border-gray-700">
             <Text className="text-xl font-semibold text-white mb-2">
+              Order Actions
+            </Text>
+            <TouchableOpacity
+              onPress={handleVoidOrderClick}
+              disabled={!canVoid}
+              className={`flex-row items-center gap-x-3 w-full p-3 rounded-lg ${canVoid
+                ? "bg-[#303030] border border-red-700"
+                : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+                }`}
+            >
+              <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={20} />
+              <View>
+                <Text
+                  className={`text-lg font-semibold ${canVoid ? "text-red-400" : "text-gray-500"
+                    }`}
+                >
+                  Void Order
+                </Text>
+                <Text className="text-sm text-gray-500">
+                  This action cannot be undone.
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+          <View className="p-4 border-b border-gray-700">
+            <Text className="text-xl font-semibold text-white mb-2">
               Customer
             </Text>
             <TouchableOpacity
@@ -195,11 +272,10 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
               <Text className="text-lg text-gray-400">Requires PIN</Text>
               <TouchableOpacity
                 onPress={handleTaxExemptToggle}
-                className={`w-14 h-8 rounded-full flex-row items-center p-1 ${
-                  isTaxExempt
-                    ? "bg-blue-600 justify-end"
-                    : "bg-gray-600 justify-start"
-                }`}
+                className={`w-14 h-8 rounded-full flex-row items-center p-1 ${isTaxExempt
+                  ? "bg-blue-600 justify-end"
+                  : "bg-gray-600 justify-start"
+                  }`}
               >
                 <View className="w-6 h-6 bg-white rounded-full shadow-sm" />
               </TouchableOpacity>
@@ -226,55 +302,46 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
         </BottomSheetView>
       </BottomSheet>
 
-      <Modal
-        visible={showManagerPin}
-        animationType="fade"
-        transparent={true}
-        onRequestClose={() => setShowManagerPin(false)}
+      <Dialog
+        open={showManagerPin}
+        onOpenChange={() => setShowManagerPin(false)}
       >
-        <View className="flex-1 justify-center items-center bg-black/60">
-          <View className="bg-[#303030] rounded-2xl p-6 w-96 border border-gray-700">
-            <Text className="text-2xl font-bold text-white mb-4 text-center">
-              Manager PIN Required
+        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-center text-2xl font-semibold text-white">
+              Manager Override
+            </DialogTitle>
+          </DialogHeader>
+          <View className="py-4">
+            <Text className="text-center text-lg text-gray-300 mb-4">
+              Enter Manager PIN to access this item
             </Text>
-            <TextInput
-              value={managerPin}
-              onChangeText={setManagerPin}
-              placeholder="Enter PIN"
-              secureTextEntry
-              keyboardType="numeric"
-              maxLength={4}
-              className="p-4 bg-[#212121] border border-gray-600 rounded-xl text-center text-xl font-bold mb-4 text-white h-16"
-              placeholderTextColor="#6B7280"
-            />
-            <View className="flex-row gap-4">
-              <TouchableOpacity
-                onPress={() => {
-                  setShowManagerPin(false);
+            <PinDisplay pinLength={managerPin.length} maxLength={4} />
+            <PinNumpad
+              onKeyPress={(input) => {
+                if (typeof input === "number") {
+                  if (managerPin.length < 4) {
+                    const newPin = managerPin + input.toString();
+                    setManagerPin(newPin);
+                  }
+                } else if (input === "clear") {
                   setManagerPin("");
-                }}
-                className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-xl"
-              >
-                <Text className="text-center text-xl font-bold text-gray-300">
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={
-                  isTaxExempt
-                    ? handleManagerPinSubmit
-                    : handleManagerPinForDrawer
+                } else if (input === "backspace") {
+                  setManagerPin(managerPin.slice(0, -1));
                 }
-                className="flex-1 py-3 bg-blue-600 rounded-xl"
-              >
-                <Text className="text-center text-xl font-bold text-white">
-                  Submit
-                </Text>
-              </TouchableOpacity>
-            </View>
+              }}
+            />
+            <TouchableOpacity
+              onPress={handleManagerPinSubmit}
+              className="py-3 bg-blue-600 rounded-lg w-full self-center mt-4"
+            >
+              <Text className="text-center text-lg font-bold text-white">
+                Enter
+              </Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </DialogContent>
+      </Dialog>
       <ConfirmationModal
         isOpen={isClearCartConfirmOpen}
         onClose={() => setClearCartConfirmOpen(false)}
@@ -282,12 +349,21 @@ const MoreOptionsBottomSheet = forwardRef<BottomSheetMethods>((props, ref) => {
         title="Clear Full Cart?"
         description="Are you sure you want to remove all items from the current order? This action cannot be undone."
         confirmText="Clear Cart"
-        variant="destructive" // This will make the confirm button red
+        variant="destructive"
+      />
+      <ConfirmationModal
+        isOpen={isVoidConfirmOpen}
+        onClose={() => setVoidConfirmOpen(false)}
+        onConfirm={onConfirmVoid}
+        title="Void This Order?"
+        description="Are you sure you want to void this entire order? All items will be cancelled. This action cannot be undone."
+        confirmText="Yes, Void Order"
+        variant="destructive"
       />
     </>
   );
-});
+};
 
-MoreOptionsBottomSheet.displayName = "MoreOptionsBottomSheet";
+const MoreOptionsBottomSheet = forwardRef(MoreOptionsComponent);
 
 export default MoreOptionsBottomSheet;

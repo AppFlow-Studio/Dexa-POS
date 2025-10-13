@@ -397,11 +397,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 data={dataWithSpacers}
                 keyExtractor={(item) => item.id}
                 numColumns={numColumns}
-                className="mt-4 mb-20"
+                className="mt-4 h-[95%] pb-32"
                 showsVerticalScrollIndicator={false}
                 columnWrapperStyle={{
                   justifyContent: "space-between",
-                  marginBottom: 16,
+                  marginBottom : 16
                 }}
                 ListEmptyComponent={
                   <View className="flex-1 items-center justify-center h-48">
