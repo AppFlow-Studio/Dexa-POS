@@ -420,7 +420,7 @@ const UpdateTableScreen = () => {
         />
         <View className="flex-1 p-4 px-3 pt-0">
           {/* Coursing Toolbar */}
-          <View className="bg-[#303030] border border-gray-700 rounded-2xl p-2 mb-2 flex-row items-center justify-between">
+          <View className="border-b border-gray-700 rounded-2xl p-2 mt-1 flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <Text className="text-sm font-semibold text-white">
                 Current Course
@@ -435,7 +435,7 @@ const UpdateTableScreen = () => {
             <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={finalizeCurrentCourse}
-                className="px-3 py-1.5 rounded-lg bg-green-200"
+                className="px-3 py-3 rounded-lg bg-green-200"
               >
                 <Text className="font-semibold text-green-600 text-sm">
                   New Course
@@ -448,7 +448,7 @@ const UpdateTableScreen = () => {
                       ?.currentCourse ?? 1
                   )
                 }
-                className="px-3 py-1.5 rounded-lg bg-blue-500"
+                className="px-3 py-3 rounded-lg bg-blue-500"
               >
                 <Text className="font-semibold text-white text-sm">
                   Send Course{" "}

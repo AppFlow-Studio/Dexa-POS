@@ -153,7 +153,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
               }}
             />
           </View>
-          <View className="flex-1">
+          {/* <View className="flex-1">
             <Calendar
               current={getNextMonth(new Date(currentMonth))
                 .toISOString()
@@ -181,7 +181,7 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 textMonthFontWeight: "bold",
               }}
             />
-          </View>
+          </View> */}
         </View>
         <View className="flex-row items-center justify-between p-4 border-t border-gray-700">
           <View className="flex-row gap-x-4 items-center">

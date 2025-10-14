@@ -388,7 +388,7 @@ const TableListItem: React.FC<{
   return (
     <Animated.View
       layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="border-b border-gray-700 overflow-hidden"
+      className="border-b border-gray-700 overflow-hidden "
     >
       <TouchableOpacity
         onPress={handlePress}

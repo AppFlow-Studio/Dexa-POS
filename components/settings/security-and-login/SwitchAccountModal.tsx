@@ -5,6 +5,12 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Clock } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 interface SwitchAccountModalProps {
   isOpen: boolean;
@@ -19,6 +25,9 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   const [pin, setPin] = useState("");
   const MAX_PIN_LENGTH = 4;
   const [error, setError] = useState<string | null>(null);
+
+  // Animation values for shake effect
+  const shakeX = useSharedValue(0);
 
   useEffect(() => {
     if (!isOpen) {
@@ -51,6 +60,14 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
 
     const res = signInWithPin(pin);
     if (!res.ok) {
+      // Trigger shake animation for wrong PIN
+      shakeX.value = withSequence(
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(0, { duration: 100 })
+      );
       setError("Incorrect PIN. Please try again.");
       setPin("");
       return;
@@ -61,6 +78,13 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
     onClose();
   };
 
+  // Animated style for shake effect
+  const shakeStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: shakeX.value }],
+    };
+  });
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border-gray-700">
@@ -69,7 +93,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
             Switch Account
           </DialogTitle>
         </View>
-        <View className="p-4 w-full">
+        <Animated.View style={shakeStyle} className="p-4 w-full">
           <Text className="font-semibold text-gray-300 mb-2 text-lg text-center">
             Enter PIN to Switch
           </Text>
@@ -99,7 +123,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
               <Text className="font-bold text-white text-lg">Enter</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </DialogContent>
     </Dialog>
   );

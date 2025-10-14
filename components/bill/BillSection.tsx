@@ -175,7 +175,7 @@ const BillSection = ({
         )}
       </View>
 
-      <View className="h-[0.5px] w-[90%] self-center bg-gray-600 " />
+      <View className="bg-[#212121]"><View className="h-[0.5px] w-[90%] self-center bg-gray-600" /></View>
 
       {showPlaymentActions && (
         <View className="py-3 px-4 bg-[#212121]">

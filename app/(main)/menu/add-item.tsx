@@ -452,7 +452,7 @@ const AddMenuItemScreen: React.FC = () => {
                 Description
               </Text>
               <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 h-16 text-lg text-white"
+                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 h-32 text-lg text-white"
                 placeholder="Enter item description"
                 placeholderTextColor="#9CA3AF"
                 value={formData.description}

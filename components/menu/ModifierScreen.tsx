@@ -244,7 +244,6 @@ const ModifierScreen = () => {
             appliedDiscount: null,
             paidQuantity: 0,
           };
-          console.log("Draft Item", draftItem);
 
           addItemToActiveOrder(draftItem);
           draftItemIdRef.current = draftItem.id;

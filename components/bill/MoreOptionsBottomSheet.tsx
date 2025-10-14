@@ -10,6 +10,12 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Lock, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import PinDisplay from "../auth/PinDisplay";
 import PinNumpad from "../auth/PinNumpad";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
@@ -27,6 +33,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+
+  // Animation values for shake effect
+  const shakeX = useSharedValue(0);
 
   const { openSheet } = useCustomerSheetStore();
 
@@ -109,11 +118,19 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         });
       }
     } else {
+      // Trigger shake animation for wrong PIN
+      shakeX.value = withSequence(
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(0, { duration: 100 })
+      );
       setManagerPin("");
-      toast.error("Invalid PIN", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
-      });
+      // toast.error("Invalid PIN", {
+      //   duration: 2000,
+      //   position: ToastPosition.BOTTOM,
+      // });
     }
   };
 
@@ -168,6 +185,13 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     activeOrder &&
     activeOrder.items?.length > 0 &&
     activeOrder.paid_status !== "Paid";
+
+  // Animated style for shake effect
+  const shakeStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: shakeX.value }],
+    };
+  });
 
   return (
     <>
@@ -312,7 +336,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               Manager Override
             </DialogTitle>
           </DialogHeader>
-          <View className="py-4">
+          <Animated.View style={shakeStyle} className="py-4">
             <Text className="text-center text-lg text-gray-300 mb-4">
               Enter Manager PIN to access this item
             </Text>
@@ -339,7 +363,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 Enter
               </Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </DialogContent>
       </Dialog>
       <ConfirmationModal
