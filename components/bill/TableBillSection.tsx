@@ -84,13 +84,13 @@ const TableBillSection = ({
 
   return (
     <>
-      <View className="max-w-lg bg-[#303030] flex-1">
+      <View className="max-w-lg  flex-1">
         {showOrderDetails && <OrderDetails />}
 
         {/* Coursing Summary */}
         <ScrollView horizontal={true} className="max-h-16">
           {Object.keys(courseSummary).length > 0 && (
-            <View className="px-3 py-2 border-b border-gray-700 flex-row items-center justify-between">
+            <View className="px-3 py-1  flex-row items-center justify-between">
               <View className="flex-row flex-wrap gap-2">
                 {Object.entries(courseSummary)
                   .sort(([a], [b]) => Number(a) - Number(b))

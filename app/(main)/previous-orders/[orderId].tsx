@@ -89,14 +89,14 @@ const OrderDetailsScreen = () => {
 
           <View className="my-4">
             <Text className="text-2xl font-bold text-white mb-3">Items</Text>
-            <View className="space-y-3">
+            <View className="gap-y-3">
               {order.items.map((item) => (
                 <BillItem key={item.id} item={item} isEditable={false} />
               ))}
             </View>
           </View>
 
-          <View className="space-y-1.5">
+          <View className="gap-y-1.5">
             <DetailRow label="Order ID" value={order.orderId} />
             <DetailRow label="Order Type" value={order.type} />
             <DetailRow label="Server/Cashier" value={order.server} />

@@ -2,7 +2,13 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import PinDisplay from "./PinDisplay";
 import PinNumpad from "./PinNumpad";
@@ -12,6 +18,9 @@ const ManagerPinModal = () => {
     usePinOverrideStore();
   const { addTemporaryMenuAccess, addTemporaryCategoryAccess } = useMenuStore();
   const [currentPin, setCurrentPin] = useState("");
+
+  // Animation values for shake effect
+  const shakeX = useSharedValue(0);
 
   const handlePinSubmit = () => {
     // In a real app, this would be a secure check.
@@ -26,10 +35,25 @@ const ManagerPinModal = () => {
       toast.success("Access Granted", { position: ToastPosition.BOTTOM });
       closePinModal();
     } else {
+      // Trigger shake animation for wrong PIN
+      shakeX.value = withSequence(
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(-10, { duration: 100 }),
+        withTiming(10, { duration: 100 }),
+        withTiming(0, { duration: 100 })
+      );
       toast.error("Invalid PIN", { position: ToastPosition.BOTTOM });
     }
     setCurrentPin("");
   };
+
+  // Animated style for shake effect
+  const shakeStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: shakeX.value }],
+    };
+  });
 
   return (
     <Dialog open={isPinModalOpen} onOpenChange={closePinModal}>
@@ -39,7 +63,7 @@ const ManagerPinModal = () => {
             Manager Override
           </DialogTitle>
         </DialogHeader>
-        <View className="py-4">
+        <Animated.View style={shakeStyle} className="py-4">
           <Text className="text-center text-lg text-gray-300 mb-4">
             Enter Manager PIN to access this item
           </Text>
@@ -66,7 +90,7 @@ const ManagerPinModal = () => {
               Enter
             </Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </DialogContent>
     </Dialog>
   );

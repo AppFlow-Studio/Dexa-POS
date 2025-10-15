@@ -1,58 +1,66 @@
+import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react-native";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { useRouter } from "expo-router";
+import {
+  ArrowLeftRight,
+  ChevronLeft,
+  ChevronRight,
+  Coffee,
+  LogOut,
+  Plus,
+  User,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "./ui/dropdown-menu";
 
 const BREAK_DURATION_MIN = 30;
 
 // Countdown component for on-break users
 const BreakCountdown = ({ startTime }: { startTime: Date }) => {
-  const [displayTime, setDisplayTime] = useState("30:00");
-  const [isOvertime, setIsOvertime] = useState(false);
+  // Tick state to trigger re-render every second without flashing an initial default
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
+    // Update immediately on mount to avoid any visible lag
+    setTick((t) => t + 1);
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const start = new Date(startTime).getTime();
-      const diff = now - start;
-      const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000;
-
-      if (diff >= breakDurationMs) {
-        setIsOvertime(true);
-        const overtime = diff - breakDurationMs;
-        const minutes = Math.floor((overtime / (1000 * 60)) % 60);
-        const seconds = Math.floor((overtime / 1000) % 60);
-        setDisplayTime(
-          `+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
-            2,
-            "0"
-          )}`
-        );
-      } else {
-        setIsOvertime(false);
-        const remaining = breakDurationMs - diff;
-        const minutes = Math.floor((remaining / 1000 / 60) % 60);
-        const seconds = Math.floor((remaining / 1000) % 60);
-        setDisplayTime(
-          `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
-            2,
-            "0"
-          )}`
-        );
-      }
+      setTick((t) => t + 1);
     }, 1000);
     return () => clearInterval(interval);
   }, [startTime]);
 
+  // Derive display on every render using current time
+  const now = Date.now();
+  const start = new Date(startTime).getTime();
+  const diff = now - start;
+  const breakDurationMs = BREAK_DURATION_MIN * 60 * 1000;
+  const isOvertime = diff >= breakDurationMs;
+
+  let displayTime: string;
+  if (isOvertime) {
+    const overtime = diff - breakDurationMs;
+    const minutes = Math.floor((overtime / (1000 * 60)) % 60);
+    const seconds = Math.floor((overtime / 1000) % 60);
+    displayTime = `+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  } else {
+    const remaining = Math.max(0, breakDurationMs - diff);
+    const minutes = Math.floor((remaining / 1000 / 60) % 60);
+    const seconds = Math.floor((remaining / 1000) % 60);
+    displayTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
   return (
-    <Text
-      className={`text-xs font-bold ${
-        isOvertime ? "text-red-400" : "text-yellow-400"
-      }`}
-    >
+    <Text className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"}`}>
       {displayTime}
     </Text>
   );
@@ -60,8 +68,10 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
-  const { sessions, activeEmployeeId, endBreak } = useTimeclockStore();
-  const { employees } = useEmployeeStore();
+  const { sessions, activeEmployeeId, endBreak, startBreak } = useTimeclockStore();
+  const { employees, signOut } = useEmployeeStore();
+  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+  const router = useRouter();
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
@@ -73,6 +83,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
   const isActive = activeEmployeeId === session.employeeId;
   const isOnBreak = session.status === "onBreak";
+  const isClockedIn = session.status === "clockedIn";
 
   const handlePress = () => {
     if (isActive) return;
@@ -88,28 +99,146 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     }
   };
 
+  const handleStartBreak = () => {
+    if (isClockedIn) {
+      startBreak();
+
+      if (isBreakAndSwitchEnabled) {
+        toast.success("Break started. Ready for next user.", {
+          position: ToastPosition.BOTTOM,
+        });
+        signOut();
+        router.replace("/pin-login");
+      } else {
+        toast.success("Break started.", { position: ToastPosition.BOTTOM });
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    useTimeclockStore.getState().clockOut(employee.id);
+    router.replace("/pin-login");
+  };
+
+  // For active employee, show dropdown menu
+  if (isActive) {
+    return (
+      <>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <TouchableOpacity className="flex-row items-center p-1.5 rounded-full border bg-blue-600 border-blue-400">
+              <View className="w-8 h-8 bg-blue-500 rounded-full items-center justify-center">
+                <Text className="text-white text-sm font-bold">
+                  {employee.fullName
+                    .split(' ')
+                    .map((name: string) => name.charAt(0))
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </Text>
+              </View>
+              <View className="mx-2">
+                <Text className="font-semibold text-white">
+                  {employee.fullName.split(" ")[0]}
+                </Text>
+                {isOnBreak && session.breakStartTime && (
+                  <BreakCountdown startTime={session.breakStartTime} />
+                )}
+              </View>
+            </TouchableOpacity>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-[300px] bg-[#181a1f] border border-[#2a2e35] rounded-2xl shadow-2xl">
+            {/* Header row like the design */}
+            <View className="flex-row items-center px-4 py-4">
+              <View className="w-10 h-10 bg-blue-600 rounded-full items-center justify-center mr-3">
+                <Text className="text-white font-bold">
+                  {employee.fullName
+                    .split(' ')
+                    .map((n) => n.charAt(0))
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </Text>
+              </View>
+              <Text className="text-white text-xl font-semibold flex-1" numberOfLines={1}>
+                {employee.fullName}
+              </Text>
+              <View className="bg-[#0e3a63] px-3 py-1 rounded-full">
+                <Text className="text-[#8bc1ff] text-xs font-semibold">
+                  {isOnBreak ? "On Break" : "On Duty"}
+                </Text>
+              </View>
+            </View>
+
+            {/* Items */}
+            <View className="px-4">
+              <DropdownMenuItem onPress={() => router.push('/settings/basic/my-profile')} className="py-3">
+                <User className="mr-3 h-5 w-5" color="#cbd5e1" />
+                <Text className="text-white text-base">My Profile</Text>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onPress={() => setPinModalOpen(true)} className="py-3">
+                <ArrowLeftRight className="mr-3 h-5 w-5" color="#cbd5e1" />
+                <Text className="text-white text-base">Switch Account</Text>
+              </DropdownMenuItem>
+
+              <View className="h-px bg-[#2a2e35] my-2" />
+
+              <DropdownMenuItem onPress={handleStartBreak} disabled={!isClockedIn || isOnBreak} className="py-3">
+                <Coffee className="mr-3 h-5 w-5" color="#cbd5e1" />
+                <Text className="text-white text-base">{isOnBreak ? 'On Break' : 'Start Break'}</Text>
+              </DropdownMenuItem>
+
+              <View className="h-px bg-[#2a2e35] my-2" />
+
+              <DropdownMenuItem onPress={handleLogout} className="py-3">
+                <LogOut className="mr-3 h-5 w-5" color="#ef4444" />
+                <Text className="text-red-400 text-base">Sign out</Text>
+              </DropdownMenuItem>
+            </View>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <SwitchAccountModal
+          isOpen={isPinModalOpen}
+          onClose={() => setPinModalOpen(false)}
+        />
+        <BreakEndedModal
+          isOpen={isBreakEndedModalOpen}
+          onClockIn={() => {
+            endBreak(employee.id);
+            setBreakEndedModalOpen(false);
+          }}
+          shift={session}
+        />
+      </>
+    );
+  }
+
+  // For non-active employees, show regular touchable
   return (
     <>
       <TouchableOpacity
         onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${
-          isActive
-            ? "bg-blue-600 border-blue-400"
-            : isOnBreak
-            ? "bg-yellow-900/50 border-yellow-600"
-            : "bg-gray-700 border-gray-600"
-        }`}
+        className={`flex-row items-center p-1.5 rounded-full border ${isOnBreak
+          ? "bg-yellow-900/50 border-yellow-600"
+          : "bg-gray-700 border-gray-600"
+          }`}
       >
-        <Image
-          source={{ uri: employee.profilePictureUrl }}
-          className="w-8 h-8 rounded-full"
-        />
+        <View className={`w-8 h-8 rounded-full items-center justify-center ${isOnBreak
+          ? "bg-yellow-500"
+          : "bg-gray-500"
+          }`}>
+          <Text className="text-white text-sm font-bold">
+            {employee.fullName
+              .split(' ')
+              .map((name: string) => name.charAt(0))
+              .join('')
+              .toUpperCase()
+              .slice(0, 2)}
+          </Text>
+        </View>
         <View className="mx-2">
-          <Text
-            className={`font-semibold ${
-              isActive ? "text-white" : "text-gray-300"
-            }`}
-          >
+          <Text className="font-semibold text-gray-300">
             {employee.fullName.split(" ")[0]}
           </Text>
           {isOnBreak && session.breakStartTime && (
@@ -177,12 +306,12 @@ const SessionDock = () => {
         ) : (
           <>
             {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => setSwitchModalOpen(true)}
               className="p-2 mx-1 bg-gray-600 rounded-full"
             >
               <Plus size={20} color="white" />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
             <TouchableOpacity
               onPress={() => setIsExpanded(true)}
               className="p-2"

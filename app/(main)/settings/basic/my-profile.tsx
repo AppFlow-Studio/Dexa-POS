@@ -1,8 +1,8 @@
 import HistoryTab from "@/components/profile/HistoryTab";
-import ProfileCard from "@/components/profile/ProfileCard";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Building2, Receipt, User } from "lucide-react-native";
 import React, { useState } from "react";
@@ -78,14 +78,12 @@ const MyProfileScreen = () => {
               <TouchableOpacity
                 key={tab}
                 onPress={() => setActiveTab(tab)}
-                className={`py-2 px-4 rounded-lg flex-1 ${
-                  activeTab === tab ? "bg-[#212121]" : ""
-                }`}
+                className={`py-2 px-4 rounded-lg flex-1 ${activeTab === tab ? "bg-[#212121]" : ""
+                  }`}
               >
                 <Text
-                  className={`text-xl font-semibold text-center ${
-                    activeTab === tab ? "text-blue-400" : "text-gray-300"
-                  }`}
+                  className={`text-xl font-semibold text-center ${activeTab === tab ? "text-blue-400" : "text-gray-300"
+                    }`}
                 >
                   {tab}
                 </Text>
@@ -96,7 +94,11 @@ const MyProfileScreen = () => {
           {/* Content Area */}
           <View className="flex-row mt-4">
             {/* Left: Shared Profile Card */}
-            <ProfileCard />
+            {activeEmployeeId && (
+              <View className="w-1/3">
+                <UserProfileCard employeeId={activeEmployeeId} />
+              </View>
+            )}
 
             {/* Right: Tab-Specific Content */}
             <View className="flex-1 ml-4">{renderContent()}</View>

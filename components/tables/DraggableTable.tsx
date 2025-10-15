@@ -1,3 +1,7 @@
+import {
+  registerTablePosition,
+  unregisterTablePosition,
+} from "@/lib/tablePositionRegistry";
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -60,8 +64,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       const primaryTable = table.isPrimary
         ? table
         : allTables.find(
-            (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-          );
+          (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+        );
 
       if (primaryTable) {
         return orders.find(
@@ -174,6 +178,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     translateX.value = withSpring(table.x);
     translateY.value = withSpring(table.y);
     rotation.value = withSpring(table.rotation);
+    registerTablePosition(table.id, translateX, translateY);
+    return () => unregisterTablePosition(table.id);
   }, [table]);
 
   const dragGesture = Gesture.Pan()
@@ -233,8 +239,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         isSelected && isEditMode
           ? "#3B82F6"
           : isMerged
-          ? "#F59E0B"
-          : "transparent",
+            ? "#F59E0B"
+            : "transparent",
       borderRadius: 18,
       padding: 4,
     };
@@ -246,7 +252,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       0
     ) || 0;
 
-  const TableComponent = table.component;
+  const TableComponent = table.component as any;
 
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
@@ -259,18 +265,28 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           onPress={isEditMode ? onSelect : onPress}
           activeOpacity={0.8}
         >
-          <TableComponent
-            color={table.type === "table" ? tableColor : "#E5E7EB"}
-            chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
-          />
+          {TableComponent ? (
+            <TableComponent
+              color={table.type === "table" ? tableColor : "#E5E7EB"}
+              chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
+            />
+          ) : (
+            <View
+              style={{
+                width: 100,
+                height: 100,
+                backgroundColor: table.type === "table" ? tableColor : "#E5E7EB",
+                borderRadius: 16,
+              }}
+            />
+          )}
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
-              className={`text-base text-center font-bold ${
-                table.type === "table" ? "text-white" : "text-[#757575]"
-              }`}
+              className={`text-base text-center font-bold ${table.type === "table" ? "text-white" : "text-[#757575]"
+                }`}
               numberOfLines={1}
             >
-              {displayName}
+              {displayName ? displayName : table.name}
             </Text>
 
             {table.type === "table" && table.status === "In Use" && (

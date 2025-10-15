@@ -232,16 +232,16 @@ const TimeclockScreen = () => {
                       {item.date}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
-                      {item.role}
+                      {item.role !== "N/A" ? item.role : "—"}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
                       {item.clockIn}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
-                      {item.breakInitiated}
+                      {item.breakInitiated !== "N/A" ? item.breakInitiated : "—"}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
-                      {item.breakEnded}
+                      {item.breakEnded !== "N/A" ? item.breakEnded : "—"}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
                       {item.clockOut}
@@ -273,7 +273,7 @@ const TimeclockScreen = () => {
         onOpenChange={(v) => setPinModal((prev) => ({ ...prev, visible: v }))}
       >
         <DialogContent>
-          <View className="w-96 rounded-2xl p-6 bg-[#2b2b2b] border border-gray-600">
+          <View className="w-120 rounded-2xl p-6 bg-[#2b2b2b] border border-gray-600">
             <Text className="text-white text-xl font-bold mb-4">Enter PIN</Text>
             <Text className="text-gray-300 mb-2">
               Employee:{" "}

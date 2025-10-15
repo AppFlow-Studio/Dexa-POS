@@ -129,9 +129,20 @@ const CustomerSheet: React.FC = () => {
       <BottomSheetView className="flex-1 bg-[#212121]">
         <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
           <Text className="text-2xl font-bold text-white">Assign Customer</Text>
-          <TouchableOpacity onPress={handleClose} className="p-2">
-            <X color="#9CA3AF" size={20} />
-          </TouchableOpacity>
+
+          <View className="flex-row gap-x-8 items-center justify-between">
+            <TouchableOpacity
+              onPress={handleAddNewCustomer}
+              className="w-fit py-3 px-4 bg-blue-600 rounded-xl items-center"
+            >
+              <Text className="text-lg font-bold text-white">
+                Add New Customer
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleClose} className="p-2">
+              <X color="#9CA3AF" size={24} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View className="p-4 gap-y-3">
@@ -139,7 +150,7 @@ const CustomerSheet: React.FC = () => {
           <BottomSheetTextInput
             value={name}
             onChangeText={setName}
-            placeholder="Search Customer"
+            placeholder="Customer Name"
             placeholderTextColor="#6B7280"
             className="bg-[#303030] border border-gray-600 rounded-lg h-16 px-4 py-2 text-white text-lg"
           />
@@ -199,17 +210,6 @@ const CustomerSheet: React.FC = () => {
             </Text>
           }
         />
-
-        <View className="absolute bottom-0 left-0 right-0 p-4 bg-[#212121] border-t border-gray-700">
-          <TouchableOpacity
-            onPress={handleAddNewCustomer}
-            className="w-full py-3 bg-blue-600 rounded-xl items-center"
-          >
-            <Text className="text-lg font-bold text-white">
-              Add New Customer
-            </Text>
-          </TouchableOpacity>
-        </View>
       </BottomSheetView>
     </BottomSheet>
   );

@@ -483,7 +483,7 @@ const EditMenuItemScreen: React.FC = () => {
     }));
   };
 
-  console.log(filteredModifierGroups[0]);
+  // console.log(filteredModifierGroups[0]);
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -547,7 +547,7 @@ const EditMenuItemScreen: React.FC = () => {
                 Description
               </Text>
               <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-32"
                 placeholder="Item description"
                 placeholderTextColor="#9CA3AF"
                 value={formData.description}

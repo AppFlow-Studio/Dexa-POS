@@ -154,6 +154,7 @@ const TablesScreen = () => {
               (table) =>
                 table.type === "table" && table.status !== "Not in Service"
             )}
+            contentContainerStyle={{ gap: 12 }}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TableListItem

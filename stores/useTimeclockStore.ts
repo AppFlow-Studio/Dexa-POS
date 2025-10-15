@@ -31,6 +31,7 @@ interface TimeclockState {
   clockOut: (employeeId: string) => void;
   getSession: (employeeId: string) => ShiftSession | undefined;
   showClockInWall: () => void;
+  checkEmployeeInShift: (employeeId: string) => boolean;
   hideClockInWall: () => void;
 }
 
@@ -179,4 +180,8 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
   getSession: (employeeId: string) => get().sessions[employeeId],
   showClockInWall: () => set({ isClockInWallOpen: true }),
   hideClockInWall: () => set({ isClockInWallOpen: false }),
+  checkEmployeeInShift: (employeeId: string) => {
+    const { sessions } = get();
+    return sessions[employeeId]?.status === "clockedIn";
+  },
 }));
