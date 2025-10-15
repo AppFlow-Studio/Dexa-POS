@@ -1,407 +1,187 @@
-// components/analytics/ReportChart.tsx
+import React from "react";
+import { Dimensions, Text, View } from "react-native";
+import { BarChart, LineChart } from "react-native-gifted-charts";
+import { PieChart } from "./PieChart";
 
-import React, { useRef, useState } from 'react';
-import { Dimensions, Text, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import VictoryBarChart from './VictoryBarChart';
-import VictoryLineChart from './VictoryLineChart';
-import VictoryPieChart from './VictoryPieChart';
-
-interface ChartData {
-    labels: string[];
-    datasets: {
-        data: number[];
-        color?: (opacity: number) => string;
-        strokeWidth?: number;
-    }[];
-}
-
+// --- Main ReportChart Component Types ---
 interface ReportChartProps {
-    data: any[];
-    chartType: 'bar' | 'line' | 'pie';
-    title?: string;
-    height?: number;
-    onDataPointPress?: (dataPoint: any, position: { x: number; y: number }) => void;
+  data: any[];
+  chartType: "bar" | "line" | "pie";
+  title?: string;
+  onDataPointPress?: (dataPoint: any) => void;
 }
 
-const screenWidth = Dimensions.get('window').width;
+interface ChartDataItem {
+  value: number;
+  label: string;
+  topLabelComponent?: () => React.ReactElement;
+  originalData?: any;
+  name?: string;
+}
 
-const chartConfig = {
-    backgroundColor: '#212121',
-    backgroundGradientFrom: '#212121',
-    backgroundGradientTo: '#212121',
-    decimalPlaces: 2,
-    color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, // Blue
-    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-    style: {
-        borderRadius: 16,
-    },
-    propsForDots: {
-        r: '6',
-        strokeWidth: '2',
-        stroke: '#3b82f6',
-    },
-    propsForBackgroundLines: {
-        strokeDasharray: '',
-        stroke: '#374151',
-        strokeWidth: 1,
-    },
-};
+export default function ReportChart({
+  data,
+  chartType,
+  title,
+  onDataPointPress,
+}: ReportChartProps) {
+  if (!data || data.length === 0) {
+    return (
+      <View className="h-64 bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center p-4">
+        <Text className="text-gray-400 text-lg">No data available</Text>
+      </View>
+    );
+  }
 
-// Helper function to convert ChartData interface to Victory Native format
-const conformDataToVictoryFormat = (data: any[]): Array<{ x: string | number; y: number }> => {
-    if (!data || !Array.isArray(data)) {
-        return [];
-    }
+  const renderChart = () => {
+    switch (chartType) {
+      case "bar": {
+        const formattedData: ChartDataItem[] = data.map((item) => ({
+          value:
+            item.value || item.revenue || item.quantity || item.orders || 0,
+          label:
+            item.name ||
+            item.date?.replace("/2025", "") ||
+            item.hour ||
+            item.employee ||
+            item.method ||
+            "N/A",
+          topLabelComponent: () => (
+            <Text
+              style={{
+                color: "white",
+                fontSize: 10,
+                width: 50,
+                textAlign: "center",
+              }}
+            >
+              {item.value || item.revenue || item.quantity || item.orders || 0}
+            </Text>
+          ),
+          originalData: item,
+        }));
 
-    return data.map((item: any, index: number) => {
-        // Extract x value (label/date/name) - prioritize name for custom reports
-        let xValue: string | number;
-        if (item.name) {
-            // For custom reports with breakdown (category, item, employee, etc.)
-            xValue = item.name;
-        } else if (item.date) {
-            // For time-based reports
-            xValue = item.date.replace('/2025', '') || `Point ${index + 1}`;
-        } else if (item.hour !== undefined) {
-            xValue = item.hour;
-        } else if (item.employee) {
-            xValue = item.employee;
-        } else if (item.method) {
-            xValue = item.method;
-        } else {
-            xValue = index; // Fallback to index
-        }
+        const chartWidth = Dimensions.get("window").width - 70;
 
-        // Extract y value (value/revenue/quantity/orders)
-        let yValue: number;
-        if (typeof item.value === 'number') {
-            yValue = item.value;
-        } else if (typeof item.revenue === 'number') {
-            yValue = item.revenue;
-        } else if (typeof item.quantity === 'number') {
-            yValue = item.quantity;
-        } else if (typeof item.orders === 'number') {
-            yValue = item.orders;
-        } else {
-            yValue = 0; // Fallback to 0
-        }
-
-        return {
-            x: xValue,
-            y: yValue,
-            // Preserve original data for tooltip access
-            originalData: item
-        };
-    });
-};
-
-export default function ReportChart({ data, chartType, title, height = 250, onDataPointPress }: ReportChartProps) {
-    const [tooltipVisible, setTooltipVisible] = useState(false);
-    const [tooltipData, setTooltipData] = useState<any>(null);
-    const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-    const chartRef = useRef<View>(null);
-
-    // Debug logging
-    console.log('📊 ReportChart: Received data:', {
-        dataLength: data?.length,
-        chartType,
-        firstItem: data?.[0],
-        hasName: data?.[0]?.name,
-        hasDate: data?.[0]?.date
-    });
-
-
-    const handleChartPress = (event: any, dataPoint?: any, index?: number) => {
-        if (!data || data.length === 0) return;
-
-        const { locationX, locationY } = event.nativeEvent;
-
-        // Calculate relative position within the chart
-        const relativeX = locationX;
-        const relativeY = locationY;
-
-        let tooltipDataToShow;
-
-        if (chartType === 'pie') {
-            // For pie charts, show all segments with their data
-            tooltipDataToShow = data.map((item, idx) => ({
-                label: item.name || item.method || item.employee || `Segment ${idx + 1}`,
-                value: item.value || item.revenue || item.orders || 0,
-                color: `hsl(${(idx * 137.5) % 360}, 70%, 50%)`,
-                additionalInfo: {
-                    percentage: ((item.value || item.revenue || item.orders || 0) /
-                        data.reduce((sum, d) => sum + (d.value || d.revenue || d.orders || 0), 0) * 100).toFixed(1) + '%'
-                }
-            }));
-        } else {
-            // For bar and line charts, show specific data point
-            const item = dataPoint || data[index || 0];
-            if (item) {
-                tooltipDataToShow = {
-                    label: item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || `Data Point ${(index || 0) + 1}`,
-                    value: item.value || item.quantity || item.revenue || item.orders || 0,
-                    color: '#3b82f6',
-                    additionalInfo: {
-                        date: item.date || 'N/A',
-                        category: item.category || 'N/A',
-                        trend: item.trend || 'N/A'
-                    }
-                };
-            }
-        }
-
-        if (tooltipDataToShow) {
-            setTooltipData(tooltipDataToShow);
-            setTooltipPosition({ x: relativeX, y: relativeY });
-            setTooltipVisible(true);
-
-            // Call the optional callback
-            if (onDataPointPress) {
-                onDataPointPress(tooltipDataToShow, { x: relativeX, y: relativeY });
-            }
-        }
-    };
-
-    // Enhanced handler that uses getCompleteDataPointInfo
-    const handleDataPointClick = (event: any) => {
-        const completeInfo = getCompleteDataPointInfo(event, chartType);
-        console.log("Complete Data Point Info:", completeInfo);
-
-        // Use the complete info to show tooltip
-        const { formatted, eventData } = completeInfo;
-
-        let tooltipDataToShow;
-
-        if (chartType === 'pie') {
-            // For pie charts, show all segments with their data
-            tooltipDataToShow = data.map((item, idx) => ({
-                label: item.name || item.method || item.employee || `Segment ${idx + 1}`,
-                value: item.value || item.revenue || item.orders || 0,
-                color: `hsl(${(idx * 137.5) % 360}, 70%, 50%)`,
-                additionalInfo: {
-                    percentage: ((item.value || item.revenue || item.orders || 0) /
-                        data.reduce((sum, d) => sum + (d.value || d.revenue || d.orders || 0), 0) * 100).toFixed(1) + '%'
-                }
-            }));
-        } else {
-            // For bar and line charts, use the complete info
-            tooltipDataToShow = {
-                label: formatted.label,
-                value: formatted.value,
-                color: '#3b82f6',
-                additionalInfo: {
-                    date: formatted.date,
-                    category: formatted.category,
-                    trend: formatted.trend,
-                    revenue: formatted.revenue,
-                    orders: formatted.orders,
-                    quantity: formatted.quantity
-                }
-            };
-        }
-
-        if (tooltipDataToShow) {
-            setTooltipData(tooltipDataToShow);
-            setTooltipPosition({ x: eventData.position.x, y: eventData.position.y });
-            setTooltipVisible(true);
-
-            // Call the optional callback with complete info
-            if (onDataPointPress) {
-                onDataPointPress(completeInfo, eventData.position);
-            }
-        }
-    };
-
-    const closeTooltip = () => {
-        setTooltipVisible(false);
-        setTooltipData(null);
-    };
-
-    // Helper function to get complete data point information
-    const getCompleteDataPointInfo = (event: any, chartType: 'bar' | 'line' | 'pie') => {
-        const { index, value, x, y } = event;
-
-        // Get the original data point from our data array
-        const originalDataPoint = data[index];
-
-        // Create comprehensive data point info
-        const completeInfo = {
-            // Event data
-            eventData: {
-                index,
-                value,
-                position: { x, y },
-                chartType
-            },
-
-            // Original data point
-            originalData: originalDataPoint,
-
-            // Formatted information
-            formatted: {
-                label: originalDataPoint?.name ||
-                    originalDataPoint?.date?.replace('/2025', '') ||
-                    originalDataPoint?.hour ||
-                    originalDataPoint?.employee ||
-                    originalDataPoint?.method ||
-                    `Data Point ${index + 1}`,
-
-                value: value,
-
-                date: originalDataPoint?.date || 'N/A',
-
-                category: originalDataPoint?.category || 'N/A',
-
-                trend: originalDataPoint?.trend || 'N/A',
-
-                // Additional fields that might be present
-                revenue: originalDataPoint?.revenue || value,
-                orders: originalDataPoint?.orders || 'N/A',
-                quantity: originalDataPoint?.quantity || 'N/A',
-
-                // Chart-specific info
-                chartInfo: {
-                    type: chartType,
-                    position: { x, y },
-                    index: index
-                }
-            },
-
-            // Summary for tooltip
-            tooltipSummary: {
-                primaryLabel: originalDataPoint?.name ||
-                    originalDataPoint?.date?.replace('/2025', '') ||
-                    originalDataPoint?.hour ||
-                    originalDataPoint?.employee ||
-                    originalDataPoint?.method ||
-                    `Data Point ${index + 1}`,
-                primaryValue: value,
-                secondaryInfo: {
-                    date: originalDataPoint?.date || 'N/A',
-                    category: originalDataPoint?.category || 'N/A',
-                    trend: originalDataPoint?.trend || 'N/A'
-                }
-            }
-        };
-
-        return completeInfo;
-    };
-
-    if (!data || data.length === 0) {
         return (
-            <View className="h-56 bg-[#303030] rounded-2xl border border-gray-600 items-center justify-center">
-                <Text className="text-gray-400 text-lg">No data available</Text>
-            </View>
+          <BarChart
+            data={formattedData}
+            isAnimated
+            animationDuration={800}
+            width={chartWidth}
+            disableScroll
+            spacing={20}
+            frontColor={"#60a5fa"}
+            xAxisLabelTextStyle={{
+              color: "white",
+              fontSize: 10,
+              textAlign: "center",
+            }}
+            yAxisTextStyle={{ color: "white" }}
+            xAxisColor={"#374151"}
+            yAxisColor={"#374151"}
+            rulesColor={"#374151"}
+            onPress={(item: any) => {
+              if (onDataPointPress) {
+                onDataPointPress(item.originalData);
+              }
+            }}
+          />
+        );
+      }
+
+      case "line": {
+        const formattedData: ChartDataItem[] = data.map((item) => ({
+          value:
+            item.value || item.revenue || item.quantity || item.orders || 0,
+          label:
+            item.name || item.date?.replace("/2025", "") || item.hour || "N/A",
+          originalData: item,
+        }));
+
+        return (
+          <LineChart
+            isAnimated
+            animationDuration={1000}
+            animateOnDataChange
+            onDataChangeAnimationDuration={500}
+            data={formattedData}
+            curved
+            areaChart
+            startFillColor="#60a5fa"
+            endFillColor="#60a5fa33"
+            startOpacity={0.8}
+            endOpacity={0.3}
+            color="#60a5fa"
+            thickness={2}
+            xAxisLabelTextStyle={{ color: "white" }}
+            yAxisTextStyle={{ color: "white" }}
+            xAxisColor={"#374151"}
+            yAxisColor={"#374151"}
+            rulesColor={"#374151"}
+            hideDataPoints
+            pointerConfig={{
+              pointerStripHeight: 160,
+              pointerStripColor: "lightgray",
+              pointerStripWidth: 2,
+              pointerColor: "lightgray",
+              radius: 6,
+              pointerLabelWidth: 120,
+              pointerLabelHeight: 90,
+              activatePointersOnLongPress: true,
+              autoAdjustPointerLabelPosition: false,
+              pointerLabelComponent: (items: any[]) => {
+                if (onDataPointPress && items[0]?.originalData) {
+                  onDataPointPress(items[0].originalData);
+                }
+                return (
+                  <View className="h-24 w-28 justify-center items-center mt-[-30px] ml-[-40px]">
+                    <Text className="text-white text-center mb-2">
+                      {items[0].label}
+                    </Text>
+                    <View className="px-4 py-2 rounded-2xl bg-white">
+                      <Text className="font-bold text-center">
+                        {"$" + items[0].value.toFixed(2)}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              },
+            }}
+          />
+        );
+      }
+
+      case "pie": {
+        const formattedData = data.map((item) => ({
+          value:
+            item.value || item.revenue || item.quantity || item.orders || 0,
+          name:
+            item.name || item.date?.replace("/2025", "") || item.hour || "N/A",
+          originalData: item,
+        }));
+        return (
+          <PieChart data={formattedData} onDataPointPress={onDataPointPress} />
+        );
+      }
+
+      default:
+        return (
+          <View className="h-56 items-center justify-center">
+            <Text className="text-gray-400">
+              Unsupported chart type: {chartType}
+            </Text>
+          </View>
         );
     }
+  };
 
-    const formattedData =
-        data?.map((item: any) => ({
-            x: item.name || item.date || item.hour || item.employee || item.method || item.category || 'N/A',
-            y: item.value || item.revenue || item.quantity || 0,
-            label: item.label || item.name || item.hour || item.employee || item.method || item.category || 'N/A',
-            value: item.value || item.revenue || item.quantity || 0,
-            valueType: item.valueType || (item.revenue ? 'revenue' : item.quantity ? 'items' : 'value'),
-            unit: item.unit || (item.revenue ? '$' : item.quantity ? 'items' : ''),
-            description: item.description || ''
-        })) || [];
-
-    const formatDataForChart = (): ChartData => {
-        switch (chartType) {
-            case 'bar':
-                const barLabels = data.map(item => item.label || item.name || item?.date?.replace('/2025', '') || item.hour || item.employee || item.method || item.category || '');
-                return {
-                    labels: barLabels,
-                    datasets: [{
-                        data: data.map(item => item.value || item.quantity || item.revenue || item.orders || 0),
-                        color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-                    }]
-                };
-
-            case 'line':
-                const lineLabels = data.map(item => item.name || item?.date?.replace('/2025', '') || item.y || '');
-                console.log('📊 ReportChart: Line chart labels:', lineLabels);
-                return {
-                    labels: lineLabels,
-                    datasets: [{
-                        data: data.map(item => item.value || item.revenue || item.orders || 0),
-                        color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-                        strokeWidth: 2,
-                    }]
-                };
-
-            case 'pie':
-                return {
-                    labels: data.map(item => item.name || item.method || item.employee || ''),
-                    datasets: [{
-                        data: data.map(item => item.value || item.revenue || item.orders || 0),
-                        color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-                    }]
-                };
-
-            default:
-                return {
-                    labels: [],
-                    datasets: [{ data: [] }]
-                };
-        }
-    };
-
-
-    const renderChart = () => {
-
-        switch (chartType) {
-            case 'bar':
-                return (
-                    <VictoryBarChart
-                        data={formattedData}
-                        title={title}
-                        height={height}
-                        onDataPointPress={onDataPointPress}
-                        labelKey="label"
-                        valueKey="value"
-                        valueType={formattedData[0]?.valueType || 'value'}
-                        unit={formattedData[0]?.unit || ''}
-                        barColor="#60a5fa"
-                        selectedBarColor="#3b82f6"
-                        showValueLabels={true}
-                        showTooltips={true}
-                    />
-                );
-
-            case 'line':
-                return (
-                    <VictoryLineChart data={formattedData} />
-                );
-
-            case 'pie':
-                return (
-                    <VictoryPieChart
-                        data={formattedData}
-
-                    />
-                );
-
-            default:
-                return (
-                    <View className="h-56 items-center justify-center">
-                        <Text className="text-gray-400">Unsupported chart type</Text>
-                    </View>
-                );
-        }
-    };
-
-    return (
-        <GestureHandlerRootView>
-            <View className="bg-[#303030] rounded-2xl border border-gray-600 p-4">
-                {title && (
-                    <Text className="text-white text-lg font-semibold mb-4">{title}</Text>
-                )}
-                <View className="relative">
-                    {renderChart()}
-                </View>
-            </View>
-        </GestureHandlerRootView>
-    );
+  return (
+    <View className="bg-[#303030] min-h-[350px] overflow-hidden">
+      {title && (
+        <Text className="text-white text-lg font-semibold mb-4">{title}</Text>
+      )}
+      <View>{renderChart()}</View>
+    </View>
+  );
 }
