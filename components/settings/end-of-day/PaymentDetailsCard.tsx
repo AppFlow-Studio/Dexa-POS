@@ -35,8 +35,10 @@ const PaymentDetailsCard = () => {
     center + radius * Math.cos(startAngle * (Math.PI / 180))
   } ${center + radius * Math.sin(startAngle * (Math.PI / 180))}
                    A ${radius} ${radius} 0 0 1 ${
-    center + radius * Math.cos((startAngle + totalAngle) * (Math.PI / 180))
-  } ${center + radius * Math.sin((startAngle + totalAngle) * (Math.PI / 180))}`;
+                     center +
+                     radius *
+                       Math.cos((startAngle + totalAngle) * (Math.PI / 180))
+                   } ${center + radius * Math.sin((startAngle + totalAngle) * (Math.PI / 180))}`;
 
   const animatedPath = useDerivedValue(() => {
     const sweepAngle = paymentData.progress * totalAngle * progress.value;
@@ -46,8 +48,8 @@ const PaymentDetailsCard = () => {
       center + radius * Math.sin(startRad)
     }
             A ${radius} ${radius} 0 0 1 ${center + radius * Math.cos(endRad)} ${
-      center + radius * Math.sin(endRad)
-    }`;
+              center + radius * Math.sin(endRad)
+            }`;
   });
 
   const animatedColor = useDerivedValue(() => {
@@ -90,8 +92,8 @@ const PaymentDetailsCard = () => {
 
           {/* Center Label */}
           <View className="absolute top-8 left-0 right-0 bottom-0 flex items-center justify-start pt-1">
-            <Text className="text-xs text-gray-500">Total Sales</Text>
-            <Text className="text-2xl font-bold text-gray-800">
+            <Text className="text-xs text-gray-300">Total Sales</Text>
+            <Text className="text-2xl font-bold text-gray-100">
               -${paymentData.displayValue.toFixed(2)}
             </Text>
           </View>
