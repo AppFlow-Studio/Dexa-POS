@@ -38,7 +38,7 @@ export default function GiftedChartsSalesTrendChart() {
   }
 
   return (
-    <View className="h-[300px] w-full bg-[#303030] rounded-2xl border border-gray-600 p-4 overflow-hidden">
+    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 ">
       <LineChart
         data={formattedData}
         areaChart
@@ -70,7 +70,7 @@ export default function GiftedChartsSalesTrendChart() {
             return (
               <View
                 style={{
-                  height: 90,
+                  height: 150,
                   width: 100,
                   justifyContent: "center",
                   marginTop: -30,
