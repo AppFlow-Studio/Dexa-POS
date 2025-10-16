@@ -3,7 +3,7 @@ import StoreDetailsForm from "@/components/settings/store-info/StoreDetailsForm"
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useRouter } from "expo-router";
-import { Building2, Receipt, Save, Undo, User } from "lucide-react-native";
+import { Building2, Receipt, Save, Undo } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
@@ -45,13 +45,6 @@ const StoreInfo = () => {
       subtitle: "Business Details",
       route: "/settings/basic/store-info",
       icon: <Building2 color="#3b82f6" size={24} />,
-    },
-    {
-      id: "my-profile",
-      title: "My Profile",
-      subtitle: "Personal Settings",
-      route: "/settings/basic/my-profile",
-      icon: <User color="#3b82f6" size={24} />,
     },
     {
       id: "taxes",

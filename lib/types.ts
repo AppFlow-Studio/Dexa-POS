@@ -360,6 +360,44 @@ export interface UserProfile {
   profileImageUrl?: string; // e.g., 'tom_hardy.png'
 }
 
+export interface Shift {
+  id: string;
+  date: string; // ISO format: "YYYY-MM-DD"
+  role: string;
+  startTime: string; // "HH:mm"
+  endTime: string; // "HH:mm"
+  location: string;
+  status: "confirmed" | "pending-drop" | "pending-swap" | "dropped";
+  breakMinutes: number;
+  actualClockIn?: string; // "HH:mm"
+  actualClockOut?: string; // "HH:mm"
+}
+
+export interface PTORequest {
+  id: string;
+  startDate: string; // ISO format: "YYYY-MM-DD"
+  endDate: string; // ISO format: "YYYY-MM-DD"
+  hours: number;
+  status: "approved" | "denied" | "pending";
+  note?: string;
+  submittedAt: string; // ISO string
+  reviewedAt?: string; // ISO string
+}
+
+export interface ShiftRequest {
+  id: string;
+  type: "drop" | "swap";
+  status: "pending" | "approved" | "denied" | "picked-up" | "completed";
+  submittedAt: string; // ISO string
+  shift: Shift;
+  // For drop requests
+  pickedUpBy?: string;
+  pickedUpAt?: string;
+  // For swap requests
+  direction?: "incoming" | "outgoing";
+  theirShift?: Shift;
+}
+
 export interface ShiftStatus {
   status: "Clocked In" | "Clocked Out";
   duration: string;

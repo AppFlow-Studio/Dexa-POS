@@ -20,7 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
 const BREAK_DURATION_MIN = 30;
@@ -60,7 +60,9 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
   }
 
   return (
-    <Text className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"}`}>
+    <Text
+      className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"}`}
+    >
       {displayTime}
     </Text>
   );
@@ -68,7 +70,8 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
-  const { sessions, activeEmployeeId, endBreak, startBreak } = useTimeclockStore();
+  const { sessions, activeEmployeeId, endBreak, startBreak } =
+    useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
   const router = useRouter();
@@ -130,9 +133,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               <View className="w-8 h-8 bg-blue-500 rounded-full items-center justify-center">
                 <Text className="text-white text-sm font-bold">
                   {employee.fullName
-                    .split(' ')
+                    .split(" ")
                     .map((name: string) => name.charAt(0))
-                    .join('')
+                    .join("")
                     .toUpperCase()
                     .slice(0, 2)}
                 </Text>
@@ -153,14 +156,17 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               <View className="w-10 h-10 bg-blue-600 rounded-full items-center justify-center mr-3">
                 <Text className="text-white font-bold">
                   {employee.fullName
-                    .split(' ')
+                    .split(" ")
                     .map((n) => n.charAt(0))
-                    .join('')
+                    .join("")
                     .toUpperCase()
                     .slice(0, 2)}
                 </Text>
               </View>
-              <Text className="text-white text-xl font-semibold flex-1" numberOfLines={1}>
+              <Text
+                className="text-white text-xl font-semibold flex-1"
+                numberOfLines={1}
+              >
                 {employee.fullName}
               </Text>
               <View className="bg-[#0e3a63] px-3 py-1 rounded-full">
@@ -172,21 +178,33 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
             {/* Items */}
             <View className="px-4">
-              <DropdownMenuItem onPress={() => router.push('/settings/basic/my-profile')} className="py-3">
+              <DropdownMenuItem
+                onPress={() => router.push("/my-profile")}
+                className="py-3"
+              >
                 <User className="mr-3 h-5 w-5" color="#cbd5e1" />
                 <Text className="text-white text-base">My Profile</Text>
               </DropdownMenuItem>
 
-              <DropdownMenuItem onPress={() => setPinModalOpen(true)} className="py-3">
+              <DropdownMenuItem
+                onPress={() => setPinModalOpen(true)}
+                className="py-3"
+              >
                 <ArrowLeftRight className="mr-3 h-5 w-5" color="#cbd5e1" />
                 <Text className="text-white text-base">Switch Account</Text>
               </DropdownMenuItem>
 
               <View className="h-px bg-[#2a2e35] my-2" />
 
-              <DropdownMenuItem onPress={handleStartBreak} disabled={!isClockedIn || isOnBreak} className="py-3">
+              <DropdownMenuItem
+                onPress={handleStartBreak}
+                disabled={!isClockedIn || isOnBreak}
+                className="py-3"
+              >
                 <Coffee className="mr-3 h-5 w-5" color="#cbd5e1" />
-                <Text className="text-white text-base">{isOnBreak ? 'On Break' : 'Start Break'}</Text>
+                <Text className="text-white text-base">
+                  {isOnBreak ? "On Break" : "Start Break"}
+                </Text>
               </DropdownMenuItem>
 
               <View className="h-px bg-[#2a2e35] my-2" />
@@ -219,20 +237,22 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     <>
       <TouchableOpacity
         onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${isOnBreak
-          ? "bg-yellow-900/50 border-yellow-600"
-          : "bg-gray-700 border-gray-600"
-          }`}
+        className={`flex-row items-center p-1.5 rounded-full border ${
+          isOnBreak
+            ? "bg-yellow-900/50 border-yellow-600"
+            : "bg-gray-700 border-gray-600"
+        }`}
       >
-        <View className={`w-8 h-8 rounded-full items-center justify-center ${isOnBreak
-          ? "bg-yellow-500"
-          : "bg-gray-500"
-          }`}>
+        <View
+          className={`w-8 h-8 rounded-full items-center justify-center ${
+            isOnBreak ? "bg-yellow-500" : "bg-gray-500"
+          }`}
+        >
           <Text className="text-white text-sm font-bold">
             {employee.fullName
-              .split(' ')
+              .split(" ")
               .map((name: string) => name.charAt(0))
-              .join('')
+              .join("")
               .toUpperCase()
               .slice(0, 2)}
           </Text>

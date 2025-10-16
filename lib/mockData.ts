@@ -21,7 +21,10 @@ import {
   PreviousOrder,
   PrinterDevice,
   PrinterRule,
+  PTORequest,
+  Shift,
   ShiftHistoryEntry,
+  ShiftRequest,
   ShiftStatus,
   TableType,
   TrackedOrder,
@@ -3776,6 +3779,154 @@ export const MOCK_DRAWER_SUMMARIES: DrawerSummary[] = [
     difference: 0.0,
     dateIssued: "Oct 16, 2024",
     timeIssued: "09:31 AM",
+  },
+];
+
+export const MOCK_SHIFTS: Shift[] = [
+  // Week of Oct 13th
+  {
+    id: "shift-1",
+    date: "2025-10-13",
+    role: "Server",
+    startTime: "09:00",
+    endTime: "17:00",
+    location: "Main Floor",
+    status: "confirmed",
+    breakMinutes: 30,
+    actualClockIn: "09:02",
+    actualClockOut: "17:05",
+  },
+  {
+    id: "shift-2",
+    date: "2025-10-14",
+    role: "Bartender",
+    startTime: "11:00",
+    endTime: "19:00",
+    location: "Bar",
+    status: "confirmed",
+    breakMinutes: 30,
+  },
+  {
+    id: "shift-3",
+    date: "2025-10-15",
+    role: "Server",
+    startTime: "14:00",
+    endTime: "22:00",
+    location: "Patio",
+    status: "pending-drop",
+    breakMinutes: 30,
+  },
+  {
+    id: "shift-4",
+    date: "2025-10-17",
+    role: "Host",
+    startTime: "17:00",
+    endTime: "21:00",
+    location: "Entrance",
+    status: "pending-swap",
+    breakMinutes: 0,
+  },
+  {
+    id: "shift-5",
+    date: "2025-10-18",
+    role: "Server",
+    startTime: "18:00",
+    endTime: "02:00",
+    location: "Main Floor",
+    status: "dropped",
+    breakMinutes: 30,
+  },
+  // Next Week
+  {
+    id: "shift-6",
+    date: "2025-10-20",
+    role: "Server",
+    startTime: "09:00",
+    endTime: "17:00",
+    location: "Main Floor",
+    status: "confirmed",
+    breakMinutes: 30,
+  },
+  {
+    id: "shift-7",
+    date: "2025-10-22",
+    role: "Server",
+    startTime: "12:00",
+    endTime: "20:00",
+    location: "Patio",
+    status: "confirmed",
+    breakMinutes: 30,
+  },
+];
+
+export const MOCK_PTO_BALANCE = {
+  available: 40,
+  accrued: 80,
+  used: 24,
+  pending: 8,
+  accrualRate: 0.0375,
+};
+
+export const MOCK_PTO_REQUESTS: PTORequest[] = [
+  {
+    id: "pto-1",
+    startDate: "2025-09-20",
+    endDate: "2025-09-22",
+    hours: 24,
+    status: "approved",
+    note: "Family vacation.",
+    submittedAt: "2025-08-15T10:00:00Z",
+    reviewedAt: "2025-08-16T14:30:00Z",
+  },
+  {
+    id: "pto-2",
+    startDate: "2025-10-25",
+    endDate: "2025-10-25",
+    hours: 8,
+    status: "pending",
+    note: "Personal appointment.",
+    submittedAt: "2025-10-14T09:00:00Z",
+  },
+  {
+    id: "pto-3",
+    startDate: "2025-07-04",
+    endDate: "2025-07-04",
+    hours: 8,
+    status: "denied",
+    note: "Holiday coverage needed.",
+    submittedAt: "2025-06-20T11:00:00Z",
+    reviewedAt: "2025-06-21T09:00:00Z",
+  },
+];
+
+export const MOCK_DROP_REQUESTS: ShiftRequest[] = [
+  {
+    id: "drop-1",
+    type: "drop",
+    status: "pending",
+    submittedAt: "2025-10-14T11:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-3")!,
+  },
+  {
+    id: "drop-2",
+    type: "drop",
+    status: "picked-up",
+    submittedAt: "2025-10-05T16:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-5")!,
+    pickedUpBy: "Jane Doe",
+    pickedUpAt: "2025-10-06T10:00:00Z",
+  },
+];
+
+export const MOCK_SWAP_REQUESTS: ShiftRequest[] = [
+  {
+    id: "swap-1",
+    type: "swap",
+    status: "pending",
+    direction: "outgoing",
+    submittedAt: "2025-10-15T08:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-4")!,
+    theirShift: MOCK_SHIFTS.find((s) => s.id === "shift-7")!,
   },
 ];
 
