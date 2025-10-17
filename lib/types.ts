@@ -402,6 +402,7 @@ export interface ShiftRequest {
   status: "pending" | "approved" | "denied" | "picked-up" | "completed";
   submittedAt: string; // ISO string
   shift: Shift;
+  note?: string;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;

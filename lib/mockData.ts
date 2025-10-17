@@ -3922,6 +3922,15 @@ export const MOCK_SWAP_REQUESTS: ShiftRequest[] = [
     shift: MOCK_SHIFTS.find((s) => s.id === "shift-4")!,
     theirShift: MOCK_SHIFTS.find((s) => s.id === "shift-7")!,
   },
+  {
+    id: "swap-2",
+    type: "swap",
+    status: "approved",
+    direction: "outgoing",
+    submittedAt: "2025-10-10T09:00:00Z",
+    shift: MOCK_SHIFTS[0],
+    theirShift: MOCK_SHIFTS[1],
+  },
 ];
 
 export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [

@@ -1,6 +1,9 @@
 import { MOCK_SHIFTS } from "@/lib/mockData";
 import { Shift } from "@/lib/types";
+import BottomSheet from "@gorhom/bottom-sheet";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
+import { router } from "expo-router";
 import {
   AlertTriangle,
   Bell,
@@ -12,7 +15,7 @@ import {
   Clock,
   Coffee,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   FlatList,
   ScrollView,
@@ -22,6 +25,8 @@ import {
 } from "react-native";
 import AnalyticsCard from "./AnalyticsCard";
 import DayScheduleCard from "./DayScheduleCard";
+import DropShiftBottomSheet from "./DropShiftBottomSheet";
+import RequestSwapBottomSheet from "./RequestSwapBottomSheet";
 import ScheduleCalendarView from "./ScheduleCalendarView";
 import { ShiftDetailModal } from "./ShiftDetailModal";
 
@@ -32,6 +37,10 @@ const MyScheduleScreen = () => {
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
+
+  const dropSheetRef = useRef<BottomSheetMethods>(null);
+  const swapSheetRef = useRef<BottomSheetMethods>(null);
+  const [shiftForAction, setShiftForAction] = useState<Shift | null>(null);
 
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     addDays(currentWeekStart, i)
@@ -45,6 +54,16 @@ const MyScheduleScreen = () => {
 
   const getShiftsForDate = (date: Date) => {
     return MOCK_SHIFTS.filter((shift) => isSameDay(parseISO(shift.date), date));
+  };
+
+  const handleRequestDrop = (shift: Shift) => {
+    setShiftForAction(shift);
+    dropSheetRef.current?.expand();
+  };
+
+  const handleRequestSwap = (shift: Shift) => {
+    setShiftForAction(shift);
+    swapSheetRef.current?.expand();
   };
 
   const handleShiftClick = (shift: Shift) => {
@@ -99,7 +118,7 @@ const MyScheduleScreen = () => {
       title: "Open Shift Matches",
       value: "3",
       period: "Claimable this week",
-      onPress: () => console.log("Open Shift Matches"),
+      onPress: () => router.push("/open-shifts"),
     },
   ];
 
@@ -198,6 +217,8 @@ const MyScheduleScreen = () => {
                     date={item}
                     shifts={getShiftsForDate(item)}
                     onShiftPress={handleShiftClick}
+                    onRequestDrop={handleRequestDrop}
+                    onRequestSwap={handleRequestSwap}
                   />
                 )}
               />
@@ -215,6 +236,16 @@ const MyScheduleScreen = () => {
         shift={selectedShift}
         isOpen={showShiftModal}
         onClose={() => setShowShiftModal(false)}
+      />
+      <DropShiftBottomSheet
+        shift={shiftForAction}
+        bottomSheetRef={dropSheetRef as React.RefObject<BottomSheet>}
+        onClose={() => dropSheetRef.current?.close()}
+      />
+      <RequestSwapBottomSheet
+        shift={shiftForAction}
+        bottomSheetRef={swapSheetRef as React.RefObject<BottomSheet>}
+        onClose={() => swapSheetRef.current?.close()}
       />
     </>
   );

@@ -9,12 +9,14 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react-native";
-import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
+import React from "react";
 interface ShiftDetailRowProps {
   shift: Shift;
   onPress: () => void;
+  onRequestDrop: (shift: Shift) => void;
+  onRequestSwap: (shift: Shift) => void;
 }
 
 const StatusBadge = ({
@@ -59,7 +61,12 @@ const ComplianceBadge = ({
   );
 };
 
-const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({ shift, onPress }) => {
+const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
+  shift,
+  onPress,
+  onRequestDrop,
+  onRequestSwap,
+}) => {
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
@@ -149,27 +156,31 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({ shift, onPress }) => {
       </View>
 
       <View className="flex-row items-center gap-4 border-t border-gray-700 pt-3">
-        {shift.status === "pending-swap" ? (
-          <TouchableOpacity>
+        {shift.status === "confirmed" && (
+          <>
+            <TouchableOpacity
+              onPress={() => onRequestSwap(shift)}
+              className="flex-row items-center gap-1.5"
+            >
+              <ArrowRightLeft size={14} color="#9CA3AF" />
+              <Text className="text-base text-gray-400">Request Swap</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onRequestDrop(shift)}>
+              <Text className="text-base text-gray-400">Drop to Open</Text>
+            </TouchableOpacity>
+          </>
+        )}
+        {shift.status === "pending-swap" && (
+          <TouchableOpacity onPress={() => onRequestSwap(shift)}>
             <Text className="text-base font-semibold text-blue-400">
               View swap
             </Text>
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity className="flex-row items-center gap-1.5">
-            <ArrowRightLeft size={14} color="#9CA3AF" />
-            <Text className="text-base text-gray-400">Request Swap</Text>
-          </TouchableOpacity>
         )}
-
-        {shift.status === "dropped" ? (
+        {shift.status === "dropped" && (
           <Text className="text-base text-yellow-400">
             Drop pending approval
           </Text>
-        ) : (
-          <TouchableOpacity>
-            <Text className="text-base text-gray-400">Drop to Open</Text>
-          </TouchableOpacity>
         )}
       </View>
     </TouchableOpacity>

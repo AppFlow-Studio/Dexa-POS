@@ -8,12 +8,16 @@ interface DayScheduleCardProps {
   date: Date;
   shifts: Shift[];
   onShiftPress: (shift: Shift) => void;
+  onRequestDrop: (shift: Shift) => void;
+  onRequestSwap: (shift: Shift) => void;
 }
 
 const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
   date,
   shifts,
   onShiftPress,
+  onRequestDrop,
+  onRequestSwap,
 }) => {
   return (
     <View className="mb-4">
@@ -27,6 +31,8 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
               key={shift.id}
               shift={shift}
               onPress={() => onShiftPress(shift)}
+              onRequestDrop={onRequestDrop}
+              onRequestSwap={onRequestSwap}
             />
           ))
         ) : (
