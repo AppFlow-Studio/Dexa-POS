@@ -12,6 +12,8 @@ const Header = () => {
 
   const showBackButton =
     pathname === "/open-shifts" ||
+    pathname === "/pto" ||
+    pathname === "/requests" ||
     pathname == "/menu" ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
