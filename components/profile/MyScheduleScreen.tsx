@@ -6,7 +6,6 @@ import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
 import { router } from "expo-router";
 import {
   AlertTriangle,
-  Bell,
   Briefcase,
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -23,6 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import NotificationBell from "../notifications/NotificationBell";
 import AnalyticsCard from "./AnalyticsCard";
 import DayScheduleCard from "./DayScheduleCard";
 import DropShiftBottomSheet from "./DropShiftBottomSheet";
@@ -158,9 +158,7 @@ const MyScheduleScreen = () => {
                   Today
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity className="ml-2 p-2 bg-[#303030] rounded-full border border-gray-700">
-                <Bell size={20} color="#9CA3AF" />
-              </TouchableOpacity>
+              <NotificationBell />
             </View>
           </View>
 

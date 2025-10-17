@@ -612,3 +612,17 @@ export interface SpecialHours {
   open: string;
   close: string;
 }
+
+export interface Notification {
+  id: string;
+  type:
+    | "swap_request"
+    | "drop_request"
+    | "manager_note"
+    | "pto_update"
+    | "shift_reminder";
+  message: string;
+  isRead: boolean;
+  timestamp: string; // ISO string
+  relatedShiftId?: string;
+}

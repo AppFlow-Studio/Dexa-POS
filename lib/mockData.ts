@@ -14,6 +14,7 @@ import {
   ItemSize,
   MenuItemType,
   ModifierCategory,
+  Notification,
   OfflineOrder,
   OnlineOrder,
   Order,
@@ -4063,5 +4064,36 @@ export const MOCK_CUSTOMERS: Customer[] = [
     email: "jess.w@example.com",
     createdAt: new Date(),
     totalOrders: 1,
+  },
+];
+
+export const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: "notif-1",
+    type: "swap_request",
+    message: "Your swap request for the shift on Oct 16 was approved.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T10:00:00Z").toISOString(),
+  },
+  {
+    id: "notif-2",
+    type: "drop_request",
+    message: "Your drop request for the shift on Oct 17 is pending.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T09:30:00Z").toISOString(),
+  },
+  {
+    id: "notif-3",
+    type: "manager_note",
+    message: "New manager note on your shift for Oct 13.",
+    isRead: true,
+    timestamp: new Date("2025-10-12T14:00:00Z").toISOString(),
+  },
+  {
+    id: "notif-4",
+    type: "pto_update",
+    message: "Your PTO request for Dec 24-26 was approved.",
+    isRead: true,
+    timestamp: new Date("2025-10-11T11:00:00Z").toISOString(),
   },
 ];
