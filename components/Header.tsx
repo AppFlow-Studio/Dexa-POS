@@ -11,6 +11,9 @@ const Header = () => {
   const { layouts } = useFloorPlanStore();
 
   const showBackButton =
+    pathname === "/open-shifts" ||
+    pathname === "/pto" ||
+    pathname === "/requests" ||
     pathname == "/menu" ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
@@ -103,7 +106,6 @@ const Header = () => {
 
     return title;
   }, [pathname, layouts]);
-
 
   const handleBackPress = () => {
     const pathParts = pathname.split("/").filter(Boolean);

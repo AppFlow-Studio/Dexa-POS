@@ -1,11 +1,5 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
-import {
-  Building2,
-  Database,
-  Receipt,
-  Settings,
-  User,
-} from "lucide-react-native";
+import { Building2, Receipt } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -17,13 +11,6 @@ const Taxes = () => {
       subtitle: "Business Details",
       route: "/settings/basic/store-info",
       icon: <Building2 color="#3b82f6" size={24} />,
-    },
-    {
-      id: "my-profile",
-      title: "My Profile",
-      subtitle: "Personal Settings",
-      route: "/settings/basic/my-profile",
-      icon: <User color="#3b82f6" size={24} />,
     },
     {
       id: "taxes",

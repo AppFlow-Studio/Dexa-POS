@@ -14,6 +14,7 @@ import {
   ItemSize,
   MenuItemType,
   ModifierCategory,
+  Notification,
   OfflineOrder,
   OnlineOrder,
   Order,
@@ -21,7 +22,10 @@ import {
   PreviousOrder,
   PrinterDevice,
   PrinterRule,
+  PTORequest,
+  Shift,
   ShiftHistoryEntry,
+  ShiftRequest,
   ShiftStatus,
   TableType,
   TrackedOrder,
@@ -3779,6 +3783,157 @@ export const MOCK_DRAWER_SUMMARIES: DrawerSummary[] = [
   },
 ];
 
+export const MOCK_SHIFTS: Shift[] = [
+  {
+    id: "shift-1",
+    date: "2025-10-13",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "confirmed",
+    breakMinutes: 30,
+    managerNote: "Manager note",
+    restMet: true,
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-2",
+    date: "2025-10-14",
+    role: "Barista",
+    startTime: "2:00 PM",
+    endTime: "10:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "on-shift",
+    breakMinutes: 30,
+    actualClockIn: "1:58 PM",
+    restMet: true,
+    expectedPace: "Busy",
+    staffingLevel: "May need help",
+  },
+  {
+    id: "shift-3",
+    date: "2025-10-15",
+    role: "Barista",
+    startTime: "6:00 AM",
+    endTime: "2:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "confirmed",
+    isToday: true,
+    breakMinutes: 30,
+    restRiskHours: 8,
+    expectedPace: "Calm",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-4",
+    date: "2025-10-16",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "pending-swap",
+    breakMinutes: 30,
+    restMet: true,
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+  {
+    id: "shift-5",
+    date: "2025-10-17",
+    role: "Barista",
+    startTime: "10:00 AM",
+    endTime: "6:00 PM",
+    location: "Dexa – 5th Ave",
+    status: "dropped",
+    breakMinutes: 30,
+    isOvertimeRisk: true,
+    expectedPace: "Moderate",
+    staffingLevel: "Fully staffed",
+  },
+];
+
+export const MOCK_PTO_BALANCE = {
+  available: 40,
+  accrued: 80,
+  used: 24,
+  pending: 8,
+  accrualRate: 0.0375,
+};
+
+export const MOCK_PTO_REQUESTS: PTORequest[] = [
+  {
+    id: "pto-1",
+    startDate: "2025-02-10",
+    endDate: "2025-02-12",
+    hours: 24,
+    status: "pending",
+    note: "Family vacation.",
+    submittedAt: "2025-01-10T15:20:00Z",
+  },
+  {
+    id: "pto-2",
+    startDate: "2024-12-24",
+    endDate: "2024-12-26",
+    hours: 24,
+    status: "approved",
+    note: "Holiday leave.",
+    submittedAt: "2024-11-15T09:00:00Z",
+    reviewedAt: "2024-11-16T11:30:00Z",
+  },
+  {
+    id: "pto-3",
+    startDate: "2024-11-05",
+    endDate: "2024-11-05",
+    hours: 8,
+    status: "denied",
+    note: "Personal appointment.",
+    submittedAt: "2024-11-01T14:00:00Z",
+    reviewedAt: "2024-11-02T10:00:00Z",
+  },
+];
+
+export const MOCK_DROP_REQUESTS: ShiftRequest[] = [
+  {
+    id: "drop-1",
+    type: "drop",
+    status: "pending",
+    submittedAt: "2025-10-14T11:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-3")!,
+  },
+  {
+    id: "drop-2",
+    type: "drop",
+    status: "picked-up",
+    submittedAt: "2025-10-05T16:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-5")!,
+    pickedUpBy: "Jane Doe",
+    pickedUpAt: "2025-10-06T10:00:00Z",
+  },
+];
+
+export const MOCK_SWAP_REQUESTS: ShiftRequest[] = [
+  {
+    id: "swap-1",
+    type: "swap",
+    status: "pending",
+    direction: "outgoing",
+    submittedAt: "2025-10-15T08:00:00Z",
+    shift: MOCK_SHIFTS.find((s) => s.id === "shift-4")!,
+    theirShift: MOCK_SHIFTS.find((s) => s.id === "shift-5")!,
+  },
+  {
+    id: "swap-2",
+    type: "swap",
+    status: "approved",
+    direction: "outgoing",
+    submittedAt: "2025-10-10T09:00:00Z",
+    shift: MOCK_SHIFTS[0],
+    theirShift: MOCK_SHIFTS[1],
+  },
+];
+
 export const MOCK_EMPLOYEE_SHIFTS: EmployeeShift[] = [
   {
     id: "1",
@@ -3909,5 +4064,36 @@ export const MOCK_CUSTOMERS: Customer[] = [
     email: "jess.w@example.com",
     createdAt: new Date(),
     totalOrders: 1,
+  },
+];
+
+export const MOCK_NOTIFICATIONS: Notification[] = [
+  {
+    id: "notif-1",
+    type: "swap_request",
+    message: "Your swap request for the shift on Oct 16 was approved.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T10:00:00Z").toISOString(),
+  },
+  {
+    id: "notif-2",
+    type: "drop_request",
+    message: "Your drop request for the shift on Oct 17 is pending.",
+    isRead: false,
+    timestamp: new Date("2025-10-15T09:30:00Z").toISOString(),
+  },
+  {
+    id: "notif-3",
+    type: "manager_note",
+    message: "New manager note on your shift for Oct 13.",
+    isRead: true,
+    timestamp: new Date("2025-10-12T14:00:00Z").toISOString(),
+  },
+  {
+    id: "notif-4",
+    type: "pto_update",
+    message: "Your PTO request for Dec 24-26 was approved.",
+    isRead: true,
+    timestamp: new Date("2025-10-11T11:00:00Z").toISOString(),
   },
 ];
