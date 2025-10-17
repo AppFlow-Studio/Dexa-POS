@@ -367,10 +367,22 @@ export interface Shift {
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
   location: string;
-  status: "confirmed" | "pending-drop" | "pending-swap" | "dropped";
+  status:
+    | "confirmed"
+    | "pending-drop"
+    | "pending-swap"
+    | "dropped"
+    | "on-shift";
   breakMinutes: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
+  isToday?: boolean;
+  managerNote?: string;
+  restMet?: boolean; // Replaces '11h rest met'
+  restRiskHours?: number; // e.g., 8 for 'Risk: 8h rest'
+  expectedPace?: "Calm" | "Moderate" | "Busy";
+  staffingLevel?: "Fully staffed" | "May need help";
+  isOvertimeRisk?: boolean;
 }
 
 export interface PTORequest {

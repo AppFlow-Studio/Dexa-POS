@@ -1,9 +1,9 @@
-// File: /components/profile/MyScheduleScreen.tsx
 import { MOCK_SHIFTS } from "@/lib/mockData";
 import { Shift } from "@/lib/types";
 import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
 import {
   AlertTriangle,
+  Bell,
   Briefcase,
   Calendar as CalendarIcon,
   CheckCircle2,
@@ -13,15 +13,22 @@ import {
   Coffee,
 } from "lucide-react-native";
 import React, { useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  FlatList,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import AnalyticsCard from "./AnalyticsCard";
-import DayColumn from "./DayColumn";
+import DayScheduleCard from "./DayScheduleCard";
+import ScheduleCalendarView from "./ScheduleCalendarView";
 import { ShiftDetailModal } from "./ShiftDetailModal";
 
 const MyScheduleScreen = () => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date("2025-10-15"), { weekStartsOn: 1 }) // Monday start
+    startOfWeek(new Date("2025-10-15"), { weekStartsOn: 0 }) // Sunday start
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -30,17 +37,11 @@ const MyScheduleScreen = () => {
     addDays(currentWeekStart, i)
   );
 
-  const goToPreviousWeek = () => {
+  const goToPreviousWeek = () =>
     setCurrentWeekStart(addDays(currentWeekStart, -7));
-  };
-
-  const goToNextWeek = () => {
-    setCurrentWeekStart(addDays(currentWeekStart, 7));
-  };
-
-  const goToCurrentWeek = () => {
-    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
-  };
+  const goToNextWeek = () => setCurrentWeekStart(addDays(currentWeekStart, 7));
+  const goToCurrentWeek = () =>
+    setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
 
   const getShiftsForDate = (date: Date) => {
     return MOCK_SHIFTS.filter((shift) => isSameDay(parseISO(shift.date), date));
@@ -76,6 +77,14 @@ const MyScheduleScreen = () => {
       period: "Last 30 days",
       variant: "warning" as "warning",
       onPress: () => console.log("Open Break Compliance"),
+    },
+    {
+      icon: <AlertTriangle size={24} color="#9CA3AF" />,
+      title: "Rest Window",
+      value: "Risk: 8h rest",
+      period: "Before Thu opening",
+      variant: "warning" as "warning",
+      onPress: () => console.log("Open Rest Window"),
     },
     {
       icon: <AlertTriangle size={24} color="#9CA3AF" />,
@@ -130,9 +139,9 @@ const MyScheduleScreen = () => {
                   Today
                 </Text>
               </TouchableOpacity>
-              <Text className="text-base font-medium text-gray-400 ml-2">
-                New York
-              </Text>
+              <TouchableOpacity className="ml-2 p-2 bg-[#303030] rounded-full border border-gray-700">
+                <Bell size={20} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -155,32 +164,24 @@ const MyScheduleScreen = () => {
             <View className="flex-row p-1 bg-[#212121] rounded-lg border border-gray-600 self-start mb-3">
               <TouchableOpacity
                 onPress={() => setScheduleView("List")}
-                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${
-                  scheduleView === "List" ? "bg-blue-600" : ""
-                }`}
+                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${scheduleView === "List" ? "bg-blue-600" : ""}`}
               >
                 <Text
-                  className={`font-semibold ${
-                    scheduleView === "List" ? "text-white" : "text-gray-400"
-                  }`}
+                  className={`font-semibold ${scheduleView === "List" ? "text-white" : "text-gray-400"}`}
                 >
                   List
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setScheduleView("Calendar")}
-                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${
-                  scheduleView === "Calendar" ? "bg-blue-600" : ""
-                }`}
+                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${scheduleView === "Calendar" ? "bg-blue-600" : ""}`}
               >
                 <CalendarIcon
                   size={16}
                   color={scheduleView === "Calendar" ? "white" : "#9CA3AF"}
                 />
                 <Text
-                  className={`font-semibold ${
-                    scheduleView === "Calendar" ? "text-white" : "text-gray-400"
-                  }`}
+                  className={`font-semibold ${scheduleView === "Calendar" ? "text-white" : "text-gray-400"}`}
                 >
                   Calendar
                 </Text>
@@ -188,22 +189,24 @@ const MyScheduleScreen = () => {
             </View>
 
             {scheduleView === "List" ? (
-              <View className="flex-row gap-2">
-                {weekDays.map((day, index) => (
-                  <DayColumn
-                    key={index}
-                    date={day}
-                    shifts={getShiftsForDate(day)}
+              <FlatList
+                data={weekDays}
+                scrollEnabled={false}
+                keyExtractor={(item) => item.toISOString()}
+                renderItem={({ item }) => (
+                  <DayScheduleCard
+                    date={item}
+                    shifts={getShiftsForDate(item)}
                     onShiftPress={handleShiftClick}
                   />
-                ))}
-              </View>
+                )}
+              />
             ) : (
-              <View className="min-h-[250px] bg-[#212121] p-4 rounded-lg border-2 border-dashed border-gray-600 items-center justify-center">
-                <Text className="text-gray-400 font-semibold">
-                  Calendar View Placeholder
-                </Text>
-              </View>
+              <ScheduleCalendarView
+                weekDays={weekDays}
+                getShiftsForDate={getShiftsForDate}
+                onShiftPress={handleShiftClick}
+              />
             )}
           </View>
         </View>
