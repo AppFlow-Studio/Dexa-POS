@@ -3,7 +3,6 @@ import { Shift } from "@/lib/types";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
-import { router } from "expo-router";
 import {
   AlertTriangle,
   Briefcase,
@@ -29,6 +28,11 @@ import DropShiftBottomSheet from "./DropShiftBottomSheet";
 import RequestSwapBottomSheet from "./RequestSwapBottomSheet";
 import ScheduleCalendarView from "./ScheduleCalendarView";
 import { ShiftDetailModal } from "./ShiftDetailModal";
+import BreakComplianceDrawer from "./drawers/BreakComplianceDrawer";
+import OnTimeDrawer from "./drawers/OnTimeDrawer";
+import OpenShiftsDrawer from "./drawers/OpenShiftsDrawer";
+import OvertimeDrawer from "./drawers/OvertimeDrawer";
+import ScheduledHoursDrawer from "./drawers/ScheduledHoursDrawer";
 
 const MyScheduleScreen = () => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
@@ -41,6 +45,12 @@ const MyScheduleScreen = () => {
   const dropSheetRef = useRef<BottomSheetMethods>(null);
   const swapSheetRef = useRef<BottomSheetMethods>(null);
   const [shiftForAction, setShiftForAction] = useState<Shift | null>(null);
+
+  const scheduledHoursSheetRef = useRef<BottomSheet>(null);
+  const onTimeSheetRef = useRef<BottomSheet>(null);
+  const breakComplianceSheetRef = useRef<BottomSheet>(null);
+  const overtimeSheetRef = useRef<BottomSheet>(null);
+  const openShiftsSheetRef = useRef<BottomSheet>(null);
 
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     addDays(currentWeekStart, i)
@@ -73,52 +83,44 @@ const MyScheduleScreen = () => {
 
   const analyticsData = [
     {
-      icon: <Clock size={24} color="#9CA3AF" />,
+      icon: <Clock size={24} color="#5B8CFF" />,
       title: "Scheduled Hours",
       value: "28h",
       trend: "+2h",
       period: "vs last week",
       variant: "success" as "success",
-      onPress: () => console.log("Open Scheduled Hours"),
+      onPress: () => scheduledHoursSheetRef.current?.expand(),
     },
     {
-      icon: <CheckCircle2 size={24} color="#9CA3AF" />,
+      icon: <CheckCircle2 size={24} color="#19C37D" />,
       title: "On-Time Rate",
       value: "92%",
       period: "Last 30 days",
-      onPress: () => console.log("Open On-Time Rate"),
+      onPress: () => onTimeSheetRef.current?.expand(),
     },
     {
-      icon: <Coffee size={24} color="#9CA3AF" />,
+      icon: <Coffee size={24} color="#60A5FA" />,
       title: "Break Compliance",
       value: "7 On-time",
       trend: "1 Short",
       period: "Last 30 days",
       variant: "warning" as "warning",
-      onPress: () => console.log("Open Break Compliance"),
+      onPress: () => breakComplianceSheetRef.current?.expand(),
     },
     {
-      icon: <AlertTriangle size={24} color="#9CA3AF" />,
-      title: "Rest Window",
-      value: "Risk: 8h rest",
-      period: "Before Thu opening",
-      variant: "warning" as "warning",
-      onPress: () => console.log("Open Rest Window"),
-    },
-    {
-      icon: <AlertTriangle size={24} color="#9CA3AF" />,
+      icon: <AlertTriangle size={24} color="#F5A524" />,
       title: "OT Risk",
       value: "Possible",
-      period: "By Fri",
+      period: "By Sat",
       variant: "warning" as "warning",
-      onPress: () => console.log("Open OT Risk"),
+      onPress: () => overtimeSheetRef.current?.expand(),
     },
     {
-      icon: <Briefcase size={24} color="#9CA3AF" />,
+      icon: <Briefcase size={24} color="#60A5FA" />,
       title: "Open Shift Matches",
       value: "3",
       period: "Claimable this week",
-      onPress: () => router.push("/open-shifts"),
+      onPress: () => openShiftsSheetRef.current?.expand(),
     },
   ];
 
@@ -245,6 +247,11 @@ const MyScheduleScreen = () => {
         bottomSheetRef={swapSheetRef as React.RefObject<BottomSheet>}
         onClose={() => swapSheetRef.current?.close()}
       />
+      <ScheduledHoursDrawer ref={scheduledHoursSheetRef} />
+      <OnTimeDrawer ref={onTimeSheetRef} />
+      <BreakComplianceDrawer ref={breakComplianceSheetRef} />
+      <OvertimeDrawer ref={overtimeSheetRef} />
+      <OpenShiftsDrawer ref={openShiftsSheetRef} />
     </>
   );
 };
