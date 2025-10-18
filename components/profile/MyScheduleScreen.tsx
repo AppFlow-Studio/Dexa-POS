@@ -83,7 +83,7 @@ const MyScheduleScreen = () => {
 
   const analyticsData = [
     {
-      icon: <Clock size={24} color="#9CA3AF" />,
+      icon: <Clock size={24} color="#5B8CFF" />,
       title: "Scheduled Hours",
       value: "28h",
       trend: "+2h",
@@ -92,14 +92,14 @@ const MyScheduleScreen = () => {
       onPress: () => scheduledHoursSheetRef.current?.expand(),
     },
     {
-      icon: <CheckCircle2 size={24} color="#9CA3AF" />,
+      icon: <CheckCircle2 size={24} color="#19C37D" />,
       title: "On-Time Rate",
       value: "92%",
       period: "Last 30 days",
       onPress: () => onTimeSheetRef.current?.expand(),
     },
     {
-      icon: <Coffee size={24} color="#9CA3AF" />,
+      icon: <Coffee size={24} color="#60A5FA" />,
       title: "Break Compliance",
       value: "7 On-time",
       trend: "1 Short",
@@ -108,7 +108,7 @@ const MyScheduleScreen = () => {
       onPress: () => breakComplianceSheetRef.current?.expand(),
     },
     {
-      icon: <AlertTriangle size={24} color="#9CA3AF" />,
+      icon: <AlertTriangle size={24} color="#F5A524" />,
       title: "OT Risk",
       value: "Possible",
       period: "By Sat",
@@ -116,7 +116,7 @@ const MyScheduleScreen = () => {
       onPress: () => overtimeSheetRef.current?.expand(),
     },
     {
-      icon: <Briefcase size={24} color="#9CA3AF" />,
+      icon: <Briefcase size={24} color="#60A5FA" />,
       title: "Open Shift Matches",
       value: "3",
       period: "Claimable this week",
