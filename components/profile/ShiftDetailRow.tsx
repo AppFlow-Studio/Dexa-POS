@@ -6,12 +6,14 @@ import {
   Coffee,
   MapPin,
   MessageSquare,
+  MinusCircle,
   TrendingUp,
   Users,
 } from "lucide-react-native";
-import { Text, TouchableOpacity, View } from "react-native";
-
 import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
+import ComplianceBadge from "./ComplianceBadge";
+
 interface ShiftDetailRowProps {
   shift: Shift;
   onPress: () => void;
@@ -27,36 +29,14 @@ const StatusBadge = ({
   color: "blue" | "yellow" | "gray" | "green";
 }) => {
   const colors = {
-    blue: "bg-blue-600/20 text-blue-400 border-blue-500/30",
-    yellow: "bg-yellow-600/20 text-yellow-400 border-yellow-500/30",
-    gray: "bg-gray-600/20 text-gray-300 border-gray-500/30",
-    green: "bg-green-600/20 text-green-400 border-green-500/30",
+    blue: "bg-blue-600/20 text-blue-400",
+    yellow: "bg-yellow-600/20 text-yellow-400",
+    gray: "bg-gray-600/20 text-gray-300",
+    green: "bg-green-600/20 text-green-400",
   };
   return (
-    <View className={`px-2 py-1 rounded border ${colors[color]}`}>
+    <View className={`px-2 py-1 rounded ${colors[color]}`}>
       <Text className={`text-xs font-semibold ${colors[color]}`}>{text}</Text>
-    </View>
-  );
-};
-
-const ComplianceBadge = ({
-  icon,
-  text,
-  variant,
-}: {
-  icon: React.ReactNode;
-  text: string;
-  variant: "default" | "success" | "warning";
-}) => {
-  const colors = {
-    default: "text-gray-400",
-    success: "text-green-400",
-    warning: "text-yellow-400",
-  };
-  return (
-    <View className="flex-row items-center gap-1.5">
-      {icon}
-      <Text className={`text-sm ${colors[variant]}`}>{text}</Text>
     </View>
   );
 };
@@ -80,6 +60,21 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       default:
         return { label: "Scheduled", color: "gray" as const };
     }
+  };
+
+  const getPaceVariant = (
+    pace?: "Calm" | "Moderate" | "Busy"
+  ): "success" | "default" | "warning" => {
+    if (pace === "Calm") return "success";
+    if (pace === "Busy") return "warning";
+    return "default";
+  };
+
+  const getStaffingVariant = (
+    level?: "Fully staffed" | "May need help"
+  ): "success" | "warning" => {
+    if (level === "May need help") return "warning";
+    return "success";
   };
 
   const { label, color } = getStatusLabel();
@@ -113,13 +108,15 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       </View>
 
       {shift.managerNote && (
-        <View className="flex-row items-center gap-2 mb-3 p-2 bg-blue-900/20 rounded-md">
+        <TouchableOpacity className="flex-row items-center gap-2 mb-3 p-2 bg-blue-900/20 rounded-md">
           <MessageSquare size={16} color="#60A5FA" />
-          <Text className="text-sm text-blue-300">{shift.managerNote}</Text>
-        </View>
+          <Text className="text-sm text-blue-300 underline">
+            {shift.managerNote}
+          </Text>
+        </TouchableOpacity>
       )}
 
-      <View className="flex-row flex-wrap items-center gap-x-4 gap-y-2 mb-4">
+      <View className="flex-row flex-wrap items-center gap-2 mb-4">
         <ComplianceBadge
           icon={<Coffee size={14} color="#9CA3AF" />}
           text={`Meal break ${shift.breakMinutes}m required`}
@@ -136,14 +133,14 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
           <ComplianceBadge
             icon={<TrendingUp size={14} color="#9CA3AF" />}
             text={`Expected: ${shift.expectedPace}`}
-            variant="default"
+            variant={getPaceVariant(shift.expectedPace)}
           />
         )}
         {shift.staffingLevel && (
           <ComplianceBadge
             icon={<Users size={14} color="#9CA3AF" />}
             text={shift.staffingLevel}
-            variant="default"
+            variant={getStaffingVariant(shift.staffingLevel)}
           />
         )}
         {shift.isOvertimeRisk && (
@@ -163,16 +160,25 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
               className="flex-row items-center gap-1.5"
             >
               <ArrowRightLeft size={14} color="#9CA3AF" />
-              <Text className="text-base text-gray-400">Request Swap</Text>
+              <Text className="text-base font-semibold text-white">
+                Request Swap
+              </Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => onRequestDrop(shift)}>
+            <TouchableOpacity
+              onPress={() => onRequestDrop(shift)}
+              className="flex-row items-center gap-1.5"
+            >
+              <MinusCircle size={14} color="#9CA3AF" />
               <Text className="text-base text-gray-400">Drop to Open</Text>
             </TouchableOpacity>
           </>
         )}
         {shift.status === "pending-swap" && (
-          <TouchableOpacity onPress={() => onRequestSwap(shift)}>
-            <Text className="text-base font-semibold text-blue-400">
+          <TouchableOpacity
+            onPress={() => onRequestSwap(shift)}
+            className="px-3 py-1 bg-purple-600/20 border border-purple-500 rounded"
+          >
+            <Text className="text-base font-semibold text-purple-300">
               View swap
             </Text>
           </TouchableOpacity>
