@@ -195,9 +195,9 @@ const ReportViewScreen = () => {
       {/* Header */}
       <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
         <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2">
+          {/* <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2">
             <ArrowLeft color="#9CA3AF" size={24} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <View>
             <Text className="text-2xl font-bold text-white">
               {currentReportData.title}

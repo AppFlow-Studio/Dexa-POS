@@ -1,6 +1,4 @@
 import { Shift } from "@/lib/types";
-import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -106,7 +104,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     }
   };
 
-  const { label, color } = getStatusLabel();
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -230,14 +227,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           </View>
           <View className="flex-row items-center gap-4">
             <TouchableOpacity
-              onPress={() => {}}
+              onPress={() => { }}
               className="flex-row items-center gap-2"
             >
               <Calendar size={16} color="#9CA3AF" />
               <Text className="text-base text-gray-300">Add to Calendar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => {}}
+              onPress={() => { }}
               className="flex-row items-center gap-2"
             >
               <Send size={16} color="#9CA3AF" />
