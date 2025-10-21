@@ -1,4 +1,3 @@
-// File: /app/(main)/tables/index.tsx
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import TableListItem from "@/components/tables/TableListItem";

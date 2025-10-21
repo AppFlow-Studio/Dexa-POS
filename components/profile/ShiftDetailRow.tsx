@@ -2,16 +2,23 @@ import { Shift } from "@/lib/types";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Calendar,
   Clock,
   Coffee,
   MapPin,
   MessageSquare,
   MinusCircle,
+  Send,
   TrendingUp,
   Users,
 } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import {
+  GestureResponderEvent,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import ComplianceBadge from "./ComplianceBadge";
 
 interface ShiftDetailRowProps {
@@ -47,6 +54,8 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onRequestDrop,
   onRequestSwap,
 }) => {
+  const [isNoteVisible, setNoteVisible] = useState(false);
+
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
@@ -79,6 +88,11 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
 
   const { label, color } = getStatusLabel();
 
+  const handleNotePress = (e: GestureResponderEvent) => {
+    e.stopPropagation();
+    setNoteVisible(!isNoteVisible);
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -108,12 +122,20 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       </View>
 
       {shift.managerNote && (
-        <TouchableOpacity className="flex-row items-center gap-2 mb-3 p-2 bg-blue-900/20 rounded-md">
-          <MessageSquare size={16} color="#60A5FA" />
-          <Text className="text-sm text-blue-300 underline">
-            {shift.managerNote}
-          </Text>
-        </TouchableOpacity>
+        <View>
+          <TouchableOpacity
+            onPress={handleNotePress}
+            className="flex-row items-center gap-2 mb-3"
+          >
+            <MessageSquare size={16} color="#60A5FA" />
+            <Text className="text-sm text-blue-300 underline">Manager note</Text>
+          </TouchableOpacity>
+          {isNoteVisible && (
+            <View className="p-3 bg-gray-800/50 rounded-lg mt-2 mb-3">
+              <Text className="text-white">{shift.managerNote}</Text>
+            </View>
+          )}
+        </View>
       )}
 
       <View className="flex-row flex-wrap items-center gap-2 mb-4">
@@ -152,42 +174,71 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
         )}
       </View>
 
-      <View className="flex-row items-center gap-4 border-t border-gray-700 pt-3">
-        {shift.status === "confirmed" && (
-          <>
+      <View className="flex-row items-center justify-between border-t border-gray-700 pt-3">
+        <View className="flex-row items-center gap-4">
+          {shift.status === "confirmed" && (
+            <>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onRequestSwap(shift);
+                }}
+                className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+              >
+                <ArrowRightLeft size={16} color="#9CA3AF" />
+                <Text className="text-base font-semibold text-white">
+                  Request Swap
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onRequestDrop(shift);
+                }}
+                className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+              >
+                <MinusCircle size={16} color="#9CA3AF" />
+                <Text className="text-base font-semibold text-gray-300">
+                  Drop to Open
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {shift.status === "pending-swap" && (
             <TouchableOpacity
-              onPress={() => onRequestSwap(shift)}
-              className="flex-row items-center gap-1.5"
+              onPress={(e) => {
+                e.stopPropagation();
+                onRequestSwap(shift);
+              }}
+              className="px-3 py-1 bg-purple-600/20 border-2 border-purple-500 rounded-lg"
             >
-              <ArrowRightLeft size={14} color="#9CA3AF" />
-              <Text className="text-base font-semibold text-white">
-                Request Swap
+              <Text className="text-base font-semibold text-purple-300">
+                View swap
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onRequestDrop(shift)}
-              className="flex-row items-center gap-1.5"
-            >
-              <MinusCircle size={14} color="#9CA3AF" />
-              <Text className="text-base text-gray-400">Drop to Open</Text>
-            </TouchableOpacity>
-          </>
-        )}
-        {shift.status === "pending-swap" && (
-          <TouchableOpacity
-            onPress={() => onRequestSwap(shift)}
-            className="px-3 py-1 bg-purple-600/20 border border-purple-500 rounded"
-          >
-            <Text className="text-base font-semibold text-purple-300">
-              View swap
+          )}
+          {shift.status === "dropped" && (
+            <Text className="text-base text-yellow-400">
+              Drop pending approval
             </Text>
+          )}
+        </View>
+        <View className="flex-row items-center gap-4">
+          <TouchableOpacity
+            onPress={(e) => e.stopPropagation()}
+            className="flex-row items-center gap-2"
+          >
+            <Calendar size={16} color="#9CA3AF" />
+            <Text className="text-base text-gray-300">Add to Calendar</Text>
           </TouchableOpacity>
-        )}
-        {shift.status === "dropped" && (
-          <Text className="text-base text-yellow-400">
-            Drop pending approval
-          </Text>
-        )}
+          <TouchableOpacity
+            onPress={(e) => e.stopPropagation()}
+            className="flex-row items-center gap-2"
+          >
+            <Send size={16} color="#9CA3AF" />
+            <Text className="text-base text-gray-300">Directions</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );

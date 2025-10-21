@@ -2,7 +2,14 @@ import { MOCK_SHIFTS } from "@/lib/mockData";
 import { Shift } from "@/lib/types";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { addDays, format, isSameDay, parseISO, startOfWeek } from "date-fns";
+import {
+  addDays,
+  format,
+  isSameDay,
+  isSameWeek,
+  parseISO,
+  startOfWeek,
+} from "date-fns";
 import {
   AlertTriangle,
   Briefcase,
@@ -13,7 +20,7 @@ import {
   Clock,
   Coffee,
 } from "lucide-react-native";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
   ScrollView,
@@ -27,6 +34,7 @@ import DayScheduleCard from "./DayScheduleCard";
 import DropShiftBottomSheet from "./DropShiftBottomSheet";
 import RequestSwapBottomSheet from "./RequestSwapBottomSheet";
 import ScheduleCalendarView from "./ScheduleCalendarView";
+import ScheduleNotLive from "./ScheduleNotLive";
 import { ShiftDetailModal } from "./ShiftDetailModal";
 import BreakComplianceDrawer from "./drawers/BreakComplianceDrawer";
 import OnTimeDrawer from "./drawers/OnTimeDrawer";
@@ -37,7 +45,7 @@ import ScheduledHoursDrawer from "./drawers/ScheduledHoursDrawer";
 const MyScheduleScreen = () => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date("2025-10-15"), { weekStartsOn: 0 }) // Sunday start
+    startOfWeek(new Date(), { weekStartsOn: 0 }) // Sunday start
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
@@ -52,9 +60,27 @@ const MyScheduleScreen = () => {
   const overtimeSheetRef = useRef<BottomSheet>(null);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
 
+  const actualCurrentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
+  const isSchedulePublished = isSameWeek(
+    currentWeekStart,
+    actualCurrentWeekStart,
+    { weekStartsOn: 0 }
+  );
+
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     addDays(currentWeekStart, i)
   );
+
+  const dynamicMockShifts = useMemo(() => {
+    return MOCK_SHIFTS.map((shift, index) => {
+      const dayOffset = index % 7;
+      const shiftDate = addDays(currentWeekStart, dayOffset);
+      return {
+        ...shift,
+        date: shiftDate.toISOString(),
+      };
+    });
+  }, [currentWeekStart]);
 
   const goToPreviousWeek = () =>
     setCurrentWeekStart(addDays(currentWeekStart, -7));
@@ -63,7 +89,15 @@ const MyScheduleScreen = () => {
     setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 0 }));
 
   const getShiftsForDate = (date: Date) => {
-    return MOCK_SHIFTS.filter((shift) => isSameDay(parseISO(shift.date), date));
+    if (!isSchedulePublished) return [];
+    return dynamicMockShifts.filter((shift) =>
+      isSameDay(parseISO(shift.date), date)
+    );
+  };
+
+  const goToNextPublisedWeek = () => {
+    //TODO: add this logic once adding schedule logic is done
+    console.log("goToNextPublisedWeek");
   };
 
   const handleRequestDrop = (shift: Shift) => {
@@ -126,11 +160,8 @@ const MyScheduleScreen = () => {
 
   return (
     <>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 20 }}
-      >
-        <View className="space-y-4">
+      <View className="flex-1 bg-[#303030] rounded-2xl">
+        <View className="p-4 space-y-4">
           {/* Header */}
           <View className="flex-row items-center justify-between">
             <Text className="text-xl font-bold text-white">
@@ -139,16 +170,17 @@ const MyScheduleScreen = () => {
             <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={goToPreviousWeek}
-                className="p-2 bg-[#303030] rounded-md border border-gray-700"
+                className="p-2 bg-[#212121] rounded-md border border-gray-700"
               >
                 <ChevronLeft size={20} color="#9CA3AF" />
               </TouchableOpacity>
               <Text className="text-base font-medium text-gray-300">
-                {format(weekDays[0], "MMM d")} - {format(weekDays[6], "MMM d")}
+                {format(weekDays[0], "MMM d")} -{" "}
+                {format(weekDays[6], "MMM d, yyyy")}
               </Text>
               <TouchableOpacity
                 onPress={goToNextWeek}
-                className="p-2 bg-[#303030] rounded-md border border-gray-700"
+                className="p-2 bg-[#212121] rounded-md border border-gray-700"
               >
                 <ChevronRight size={20} color="#9CA3AF" />
               </TouchableOpacity>
@@ -163,79 +195,106 @@ const MyScheduleScreen = () => {
               <NotificationBell />
             </View>
           </View>
+        </View>
 
-          {/* Analytics Grid */}
-          <View>
-            <Text className="text-lg font-bold text-white mb-3">
-              My Week Analytics
-            </Text>
-            <View className="flex-row flex-wrap gap-4">
-              {analyticsData.map((card, index) => (
-                <View key={index} className="w-[32%]">
-                  <AnalyticsCard {...card} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 20 }}
+          className="px-4"
+        >
+          <View className="space-y-4">
+            {/* Analytics Grid */}
+            <View>
+              <Text className="text-lg font-bold text-white mb-3">
+                My Week Analytics
+              </Text>
+              <View className="flex-row flex-wrap gap-4">
+                {analyticsData.map((card, index) => (
+                  <View key={index} className="w-[32%]">
+                    <AnalyticsCard {...card} />
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {isSchedulePublished ? (
+              // Schedule View
+              <View className="mt-4">
+                <View className="flex-row p-1 bg-[#212121] rounded-lg border border-gray-600 self-start mb-3">
+                  <TouchableOpacity
+                    onPress={() => setScheduleView("List")}
+                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
+                      scheduleView === "List" ? "bg-blue-600" : ""
+                    }`}
+                  >
+                    <Text
+                      className={`text-base font-semibold ${
+                        scheduleView === "List" ? "text-white" : "text-gray-400"
+                      }`}
+                    >
+                      List
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setScheduleView("Calendar")}
+                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
+                      scheduleView === "Calendar" ? "bg-blue-600" : ""
+                    }`}
+                  >
+                    <CalendarIcon
+                      size={20}
+                      color={scheduleView === "Calendar" ? "white" : "#9CA3AF"}
+                    />
+                    <Text
+                      className={`text-base font-semibold ${
+                        scheduleView === "Calendar"
+                          ? "text-white"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      Calendar
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              ))}
-            </View>
-          </View>
-
-          {/* Schedule View */}
-          <View className="mt-4">
-            <View className="flex-row p-1 bg-[#212121] rounded-lg border border-gray-600 self-start mb-3">
-              <TouchableOpacity
-                onPress={() => setScheduleView("List")}
-                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${scheduleView === "List" ? "bg-blue-600" : ""}`}
-              >
-                <Text
-                  className={`font-semibold ${scheduleView === "List" ? "text-white" : "text-gray-400"}`}
-                >
-                  List
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setScheduleView("Calendar")}
-                className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${scheduleView === "Calendar" ? "bg-blue-600" : ""}`}
-              >
-                <CalendarIcon
-                  size={16}
-                  color={scheduleView === "Calendar" ? "white" : "#9CA3AF"}
-                />
-                <Text
-                  className={`font-semibold ${scheduleView === "Calendar" ? "text-white" : "text-gray-400"}`}
-                >
-                  Calendar
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {scheduleView === "List" ? (
-              <FlatList
-                data={weekDays}
-                scrollEnabled={false}
-                keyExtractor={(item) => item.toISOString()}
-                renderItem={({ item }) => (
-                  <DayScheduleCard
-                    date={item}
-                    shifts={getShiftsForDate(item)}
+                {scheduleView === "List" ? (
+                  <FlatList
+                    data={weekDays}
+                    scrollEnabled={false}
+                    keyExtractor={(item) => item.toISOString()}
+                    renderItem={({ item }) => (
+                      <DayScheduleCard
+                        date={item}
+                        shifts={getShiftsForDate(item)}
+                        onShiftPress={handleShiftClick}
+                        onRequestDrop={handleRequestDrop}
+                        onRequestSwap={handleRequestSwap}
+                      />
+                    )}
+                  />
+                ) : (
+                  <ScheduleCalendarView
+                    weekDays={weekDays}
+                    getShiftsForDate={getShiftsForDate}
                     onShiftPress={handleShiftClick}
-                    onRequestDrop={handleRequestDrop}
-                    onRequestSwap={handleRequestSwap}
                   />
                 )}
-              />
+              </View>
             ) : (
-              <ScheduleCalendarView
-                weekDays={weekDays}
-                getShiftsForDate={getShiftsForDate}
-                onShiftPress={handleShiftClick}
+              <ScheduleNotLive
+                weekStartDate={currentWeekStart}
+                onViewLastWeek={goToPreviousWeek}
+                onViewNextPublishedWeek={goToNextPublisedWeek}
               />
             )}
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
       <ShiftDetailModal
         shift={selectedShift}
         isOpen={showShiftModal}
         onClose={() => setShowShiftModal(false)}
+        onRequestDrop={handleRequestDrop}
+        onRequestSwap={handleRequestSwap}
       />
       <DropShiftBottomSheet
         shift={shiftForAction}

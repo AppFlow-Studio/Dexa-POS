@@ -3793,7 +3793,7 @@ export const MOCK_SHIFTS: Shift[] = [
     location: "Dexa – 5th Ave",
     status: "confirmed",
     breakMinutes: 30,
-    managerNote: "Manager note",
+    managerNote: "Cover patio from 2-4 if busy",
     restMet: true,
     expectedPace: "Moderate",
     staffingLevel: "Fully staffed",

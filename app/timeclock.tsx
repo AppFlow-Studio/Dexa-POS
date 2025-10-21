@@ -238,7 +238,9 @@ const TimeclockScreen = () => {
                       {item.clockIn}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
-                      {item.breakInitiated !== "N/A" ? item.breakInitiated : "—"}
+                      {item.breakInitiated !== "N/A"
+                        ? item.breakInitiated
+                        : "—"}
                     </Text>
                     <Text className="flex-1 text-sm text-white">
                       {item.breakEnded !== "N/A" ? item.breakEnded : "—"}

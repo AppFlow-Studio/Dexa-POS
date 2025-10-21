@@ -12,11 +12,11 @@ const ComplianceBadge: React.FC<ComplianceBadgeProps> = ({
   text,
   variant,
 }) => {
-  const baseClasses = "flex-row items-center gap-1.5 px-2 py-1 rounded";
+  const baseClasses = "flex-row items-center gap-1.5 px-2 py-1 rounded-full";
   const variantClasses = {
-    default: "bg-gray-700",
-    success: "bg-green-500/20",
-    warning: "bg-yellow-500/20",
+    default: "bg-gray-700/50",
+    success: "bg-green-500/10",
+    warning: "bg-yellow-500/10",
   };
   const textClasses = {
     default: "text-gray-300",

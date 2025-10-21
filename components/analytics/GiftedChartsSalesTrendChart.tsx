@@ -1,17 +1,53 @@
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
+import { format } from "date-fns";
 import { JSX } from "react";
-import { Text, View } from "react-native";
+import { Dimensions, Text, View } from "react-native";
 import { LineChart } from "react-native-gifted-charts";
+
+const screenWidth = Dimensions.get("window").width;
+
+const getXAxisLabelInterval = (dataLength: number) => {
+  if (dataLength <= 14) return 1;
+  if (dataLength <= 60) return 7;
+  return 30;
+};
 
 export default function GiftedChartsSalesTrendChart() {
   const { currentReportData, isLoading, error } = useAnalyticsStore();
 
-  const formattedData =
-    currentReportData?.chartData?.map((item, index) => ({
-      value: item.value || item.revenue || item.quantity || 0,
-      label: item.date || item.name || "N/A",
-      date: item.date || item.name || "N/A",
-    })) || [];
+  const rawData = currentReportData?.chartData || [];
+
+  const processedData = rawData
+    .map((item) => {
+      const parts = item.date?.split("/");
+      let date = new Date();
+      if (parts?.length === 3) {
+        // Assuming MM/DD/YYYY
+        date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+      }
+      return {
+        ...item,
+        dateObj: date,
+        isValid: !isNaN(date.getTime()),
+      };
+    })
+    .filter((item) => item.isValid)
+    .sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
+
+  const formattedData = processedData.map((item) => ({
+    value: item.value || item.revenue || item.quantity || 0,
+    label: format(item.dateObj, "MMM d"),
+    date: format(item.dateObj, "yyyy-MM-dd"),
+  }));
+
+  const containerWidth = screenWidth * 0.9;
+  const dataSpacing =
+    formattedData.length > 1 ? containerWidth / formattedData.length : 0;
+
+  const interval = getXAxisLabelInterval(formattedData.length);
+  const xAxisLabels = formattedData
+    .map((item, index) => (index % interval === 0 ? item.label : null))
+    .filter((l): l is string => l !== null);
 
   if (isLoading) {
     return (
@@ -38,22 +74,23 @@ export default function GiftedChartsSalesTrendChart() {
   }
 
   return (
-    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 ">
+    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 overflow-hidden">
       <LineChart
         data={formattedData}
         areaChart
         curved
         isAnimated
+        disableScroll
+        focusEnabled
+        spacing={dataSpacing}
         animateOnDataChange
         animationDuration={1000}
-        // Styling properties to match the previous chart
         startFillColor="#60a5fa"
         endFillColor="#60a5fa33"
         startOpacity={0.8}
         endOpacity={0.3}
         color="#60a5fa"
         thickness={2}
-        // Pointer configuration for tooltip
         pointerConfig={{
           pointerStripHeight: 160,
           pointerStripColor: "lightgray",
@@ -64,53 +101,30 @@ export default function GiftedChartsSalesTrendChart() {
           pointerLabelHeight: 90,
           activatePointersOnLongPress: true,
           autoAdjustPointerLabelPosition: false,
-          pointerLabelComponent: (
-            items: Array<{ value: number; date: string }>
-          ): JSX.Element => {
+          pointerLabelComponent: (items: any): JSX.Element => {
+            const item = items[0];
             return (
-              <View
-                style={{
-                  height: 150,
-                  width: 100,
-                  justifyContent: "center",
-                  marginTop: -30,
-                  marginLeft: -40,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "white",
-                    fontSize: 14,
-                    marginBottom: 6,
-                    textAlign: "center",
-                  }}
-                >
-                  {items[0].date}
+              <View className="h-36 w-28 justify-center -mt-8 -ml-10">
+                <Text className="color-white text-sm mb-1.5 text-center">
+                  {item.date}
                 </Text>
-                <View
-                  style={{
-                    paddingHorizontal: 14,
-                    paddingVertical: 6,
-                    borderRadius: 16,
-                    backgroundColor: "white",
-                  }}
-                >
-                  <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-                    {"$" + items[0].value.toFixed(2)}
+                <View className="px-3.5 py-1.5 rounded-2xl bg-white">
+                  <Text className="font-bold text-center">
+                    {"$ " + item.value.toFixed(2)}
                   </Text>
                 </View>
               </View>
             );
           },
         }}
-        // X-axis styling
         xAxisColor={"#374151"}
         xAxisLabelTextStyle={{ color: "white" }}
-        // Y-axis styling
+        xAxisLabelTexts={xAxisLabels.filter((l) => l)}
+        xAxisIndicesHeight={10}
+        xAxisIndicesColor="white"
         yAxisColor={"#374151"}
         yAxisTextStyle={{ color: "white" }}
         noOfSections={4}
-        // Hide data point dots
         hideDataPoints
       />
     </View>
