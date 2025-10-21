@@ -3,8 +3,9 @@ import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { differenceInDays, format, isBefore } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react-native";
 import React, { useState } from "react";
-import { Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 interface PTORequestFormProps {
   onClose: () => void;
@@ -15,11 +16,6 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [note, setNote] = useState("");
-
-  const [isCalendarVisible, setCalendarVisible] = useState(false);
-  const [datePickerFor, setDatePickerFor] = useState<"start" | "end" | null>(
-    null
-  );
 
   const calculateHours = () => {
     if (!startDate || !endDate) return 0;
@@ -55,21 +51,25 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
     onClose();
   };
 
-  const openDatePicker = (type: "start" | "end") => {
-    setDatePickerFor(type);
-    setCalendarVisible(true);
+  const onDayPress = (day: DateData, type: "start" | "end") => {
+    const selectedDate = new Date(day.timestamp);
+    if (type === "start") {
+      setStartDate(selectedDate);
+    } else {
+      setEndDate(selectedDate);
+    }
   };
 
-  const onDayPress = (day: DateData) => {
-    const selectedDate = new Date(day.timestamp);
-    if (datePickerFor === "start") {
-      setStartDate(selectedDate);
-      setDatePickerFor("end"); // Automatically move to select end date next
-    } else if (datePickerFor === "end") {
-      setEndDate(selectedDate);
-      setCalendarVisible(false); // Close calendar after selecting end date
-      setDatePickerFor(null);
-    }
+  const calendarTheme = {
+    calendarBackground: "#303030",
+    monthTextColor: "#FFFFFF",
+    dayTextColor: "#FFFFFF",
+    textDisabledColor: "#6B7280",
+    selectedDayBackgroundColor: "#3b82f6",
+    selectedDayTextColor: "#FFFFFF",
+    todayTextColor: "#60A5FA",
+    arrowColor: "#3b82f6",
+    textSectionTitleColor: "#9CA3AF",
   };
 
   return (
@@ -86,27 +86,50 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
         <View className="flex-row gap-4">
           <View className="flex-1">
             <Text className="text-gray-300 mb-1">Start Date</Text>
-            <TouchableOpacity
-              onPress={() => openDatePicker("start")}
-              className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
-            >
-              <Text className="text-white">
-                {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
-              </Text>
-              <CalendarIcon size={16} color="#9CA3AF" />
-            </TouchableOpacity>
+            <Popover>
+              <PopoverTrigger asChild>
+                <TouchableOpacity className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                  <Text className="text-white">
+                    {startDate
+                      ? format(startDate, "yyyy-MM-dd")
+                      : "Select Date"}
+                  </Text>
+                  <CalendarIcon size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-96 bg-[#303030] border-gray-700"
+                align="end"
+              >
+                <Calendar
+                  onDayPress={(day) => onDayPress(day, "start")}
+                  theme={calendarTheme}
+                />
+              </PopoverContent>
+            </Popover>
           </View>
+
           <View className="flex-1">
             <Text className="text-gray-300 mb-1">End Date</Text>
-            <TouchableOpacity
-              onPress={() => openDatePicker("end")}
-              className="p-3 h-14 justify-center bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
-            >
-              <Text className="text-white">
-                {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
-              </Text>
-              <CalendarIcon size={16} color="#9CA3AF" />
-            </TouchableOpacity>
+            <Popover>
+              <PopoverTrigger asChild>
+                <TouchableOpacity className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                  <Text className="text-white">
+                    {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
+                  </Text>
+                  <CalendarIcon size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-96 bg-[#303030] border-gray-700"
+                align="end"
+              >
+                <Calendar
+                  onDayPress={(day) => onDayPress(day, "end")}
+                  theme={calendarTheme}
+                />
+              </PopoverContent>
+            </Popover>
           </View>
         </View>
 
@@ -136,40 +159,6 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
           <Text className="font-bold text-white">Submit Request</Text>
         </TouchableOpacity>
       </View>
-
-      <Modal
-        transparent={true}
-        visible={isCalendarVisible}
-        onRequestClose={() => setCalendarVisible(false)}
-        animationType="fade"
-      >
-        <TouchableOpacity
-          style={{ flex: 1 }}
-          className="bg-black/50 items-center justify-center"
-          activeOpacity={1}
-          onPressOut={() => setCalendarVisible(false)}
-        >
-          <View
-            className="bg-[#303030] border border-gray-700 rounded-2xl p-4"
-            onStartShouldSetResponder={() => true}
-          >
-            <Calendar
-              onDayPress={onDayPress}
-              theme={{
-                calendarBackground: "#303030",
-                monthTextColor: "#FFFFFF",
-                dayTextColor: "#FFFFFF",
-                textDisabledColor: "#6B7280",
-                selectedDayBackgroundColor: "#3b82f6",
-                selectedDayTextColor: "#FFFFFF",
-                todayTextColor: "#60A5FA",
-                arrowColor: "#3b82f6",
-                textSectionTitleColor: "#9CA3AF",
-              }}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 };

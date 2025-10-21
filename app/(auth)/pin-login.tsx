@@ -2,8 +2,8 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
-import { Link, useRouter } from "expo-router";
-import { Clock } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { Lock } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -18,11 +18,10 @@ const MAX_PIN_LENGTH = 4;
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
-  const [currentEmployee, setCurrentEmployee] = useState<EmployeeProfile | null>(null);
-  const { employees, signInWithPin, clockIn, clockOut, activeEmployeeId } = useEmployeeStore();
+  const [currentEmployee, setCurrentEmployee] =
+    useState<EmployeeProfile | null>(null);
+  const { employees, signInWithPin, clockIn, clockOut } = useEmployeeStore();
   const canSubmit = useMemo(() => pin.length === MAX_PIN_LENGTH, [pin]);
-
-  // Get current employee from activeEmployeeId
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -168,6 +167,33 @@ const PinLoginScreen = () => {
     setPin("");
   };
 
+  const handleOpenTimeclock = () => {
+    if (!canSubmit) {
+      showDialog(
+        "Invalid PIN",
+        `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
+        "error"
+      );
+      return;
+    }
+    const employee = employees.find((e) => e.pin === pin);
+    if (!employee) {
+      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      setPin("");
+      return;
+    }
+    if (employee.role !== "manager") {
+      showDialog(
+        "Permission Denied",
+        "Only managers can access the timeclock.",
+        "error"
+      );
+      setPin("");
+      return;
+    }
+    router.push("/timeclock");
+  };
+
   // Animated style for shake effect
   const shakeStyle = useAnimatedStyle(() => {
     return {
@@ -192,8 +218,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
           </TouchableOpacity>
@@ -201,8 +228,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
           </TouchableOpacity>
@@ -210,21 +238,23 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
           </TouchableOpacity>
         </View>
 
-        <Link href="/timeclock" asChild>
-          <TouchableOpacity className="self-center mt-6 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row">
-            <Text className="text-lg font-semibold text-white mr-2">
-              Open Timeclock
-            </Text>
-            <Clock color="white" size={20} />
-          </TouchableOpacity>
-        </Link>
+        <TouchableOpacity
+          onPress={handleOpenTimeclock}
+          className="self-center mt-6 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center flex-row"
+        >
+          <Text className="text-lg font-semibold text-white mr-2">
+            Open Timeclock
+          </Text>
+          <Lock color="white" size={20} />
+        </TouchableOpacity>
       </Animated.View>
 
       <Dialog open={dialog.visible} onOpenChange={hideDialog}>
@@ -243,12 +273,13 @@ const PinLoginScreen = () => {
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
-                ? "text-green-400"
-                : dialog.variant === "warning"
-                  ? "text-yellow-400"
-                  : "text-red-400"
-                }`}
+              className={`text-2xl font-semibold mb-2 ${
+                dialog.variant === "success"
+                  ? "text-green-400"
+                  : dialog.variant === "warning"
+                    ? "text-yellow-400"
+                    : "text-red-400"
+              }`}
             >
               {dialog.title}
             </Text>
@@ -260,9 +291,9 @@ const PinLoginScreen = () => {
                 <View className="w-20 h-20 bg-blue-600 rounded-full items-center justify-center mb-3">
                   <Text className="text-white text-2xl font-bold">
                     {currentEmployee.fullName
-                      .split(' ')
+                      .split(" ")
                       .map((name: string) => name.charAt(0))
-                      .join('')
+                      .join("")
                       .toUpperCase()
                       .slice(0, 2)}
                   </Text>

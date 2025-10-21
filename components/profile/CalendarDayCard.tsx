@@ -1,4 +1,3 @@
-// File: /components/profile/CalendarDayCard.tsx
 import { Shift } from "@/lib/types";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";

@@ -1,5 +1,3 @@
-// stores/useAnalyticsStore.ts
-
 import {
     InventoryAnalysis,
     KPIs,

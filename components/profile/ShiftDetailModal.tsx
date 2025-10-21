@@ -3,11 +3,13 @@ import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  Calendar,
   Clock,
   Coffee,
   MapPin,
   MessageSquare,
   MinusCircle,
+  Send,
   TrendingUp,
   Users,
   X,
@@ -197,26 +199,48 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </View>
           </View>
         </ScrollView>
-        {shift.status === "confirmed" && (
-          <View className="flex-row items-center gap-4 border-t border-gray-700 p-4">
+        <View className="flex-row items-center justify-between border-t border-gray-700 p-4">
+          <View className="flex-row items-center gap-4">
+            {shift.status === "confirmed" && (
+              <>
+                <TouchableOpacity
+                  onPress={handleRequestSwap}
+                  className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+                >
+                  <ArrowRightLeft size={16} color="#9CA3AF" />
+                  <Text className="text-base font-semibold text-white">
+                    Request Swap
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleRequestDrop}
+                  className="flex-row items-center gap-2 rounded-lg bg-gray-700/50 p-2 border-2 border-gray-600"
+                >
+                  <MinusCircle size={16} color="#9CA3AF" />
+                  <Text className="text-base font-semibold text-gray-300">
+                    Drop to Open
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+          <View className="flex-row items-center gap-4">
             <TouchableOpacity
-              onPress={handleRequestSwap}
-              className="flex-row items-center gap-1.5"
+              onPress={() => {}}
+              className="flex-row items-center gap-2"
             >
-              <ArrowRightLeft size={14} color="#9CA3AF" />
-              <Text className="text-base font-semibold text-white">
-                Request Swap
-              </Text>
+              <Calendar size={16} color="#9CA3AF" />
+              <Text className="text-base text-gray-300">Add to Calendar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={handleRequestDrop}
-              className="flex-row items-center gap-1.5"
+              onPress={() => {}}
+              className="flex-row items-center gap-2"
             >
-              <MinusCircle size={14} color="#9CA3AF" />
-              <Text className="text-base text-gray-400">Drop to Open</Text>
+              <Send size={16} color="#9CA3AF" />
+              <Text className="text-base text-gray-300">Directions</Text>
             </TouchableOpacity>
           </View>
-        )}
+        </View>
       </DialogContent>
     </Dialog>
   );

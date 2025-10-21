@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import React from "react";
 import { Dimensions, Text, View } from "react-native";
 import { BarChart, LineChart } from "react-native-gifted-charts";
@@ -18,6 +19,12 @@ interface ChartDataItem {
   originalData?: any;
   name?: string;
 }
+
+const getXAxisLabelInterval = (dataLength: number) => {
+  if (dataLength <= 14) return 1;
+  if (dataLength <= 60) return 7;
+  return 30;
+};
 
 export default function ReportChart({
   data,
@@ -91,13 +98,38 @@ export default function ReportChart({
       }
 
       case "line": {
-        const formattedData: ChartDataItem[] = data.map((item) => ({
-          value:
-            item.value || item.revenue || item.quantity || item.orders || 0,
-          label:
-            item.name || item.date?.replace("/2025", "") || item.hour || "N/A",
+        const processedData = data
+          .map((item) => {
+            const parts = item.date?.split("/");
+            let date = new Date();
+            if (parts?.length === 3) {
+              date = new Date(`${parts[2]}-${parts[0]}-${parts[1]}`);
+            }
+            return {
+              ...item,
+              dateObj: date,
+              isValid: !isNaN(date.getTime()),
+            };
+          })
+          .filter((item) => item.isValid)
+          .sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
+
+        const formattedData = processedData.map((item) => ({
+          value: item.value || item.revenue || item.quantity || 0,
+          label: format(item.dateObj, "MMM d"),
+          date: format(item.dateObj, "yyyy-MM-dd"),
           originalData: item,
         }));
+
+        const screenWidth = Dimensions.get("window").width;
+        const containerWidth = screenWidth * 0.9;
+        const dataSpacing =
+          formattedData.length > 1 ? containerWidth / formattedData.length : 0;
+
+        const interval = getXAxisLabelInterval(formattedData.length);
+        const xAxisLabels = formattedData
+          .map((item, index) => (index % interval === 0 ? item.label : null))
+          .filter((l): l is string => l !== null);
 
         return (
           <LineChart
@@ -108,6 +140,9 @@ export default function ReportChart({
             data={formattedData}
             curved
             areaChart
+            disableScroll
+            focusEnabled
+            spacing={dataSpacing}
             startFillColor="#60a5fa"
             endFillColor="#60a5fa33"
             startOpacity={0.8}
@@ -120,6 +155,7 @@ export default function ReportChart({
             yAxisColor={"#374151"}
             rulesColor={"#374151"}
             hideDataPoints
+            xAxisLabelTexts={xAxisLabels}
             pointerConfig={{
               pointerStripHeight: 160,
               pointerStripColor: "lightgray",
@@ -135,9 +171,9 @@ export default function ReportChart({
                   onDataPointPress(items[0].originalData);
                 }
                 return (
-                  <View className="h-24 w-28 justify-center items-center mt-[-30px] ml-[-40px]">
+                  <View className="h-24 w-28 justify-center items-center mt-[-4px] ml-[-40px]">
                     <Text className="text-white text-center mb-2">
-                      {items[0].label}
+                      {items[0].date}
                     </Text>
                     <View className="px-4 py-2 rounded-2xl bg-white">
                       <Text className="font-bold text-center">

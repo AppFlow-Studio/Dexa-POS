@@ -4,6 +4,7 @@ import { useTimeclockStore } from "./useTimeclockStore";
 export interface EmployeeProfile {
   id: string;
   fullName: string;
+  role: "manager" | "employee";
   profilePictureUrl?: string;
   pin: string; // 4-digit for demo
   shiftStatus: "clocked_in" | "clocked_out";
@@ -52,6 +53,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_0",
     pin: "1111",
+    role: "manager",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/33.jpg",
     shiftStatus: "clocked_out",
   },
@@ -65,6 +67,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_1",
     pin: "2222",
+    role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/40.jpg",
     shiftStatus: "clocked_out",
   },
@@ -78,6 +81,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_2",
     pin: "3333",
+    role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/28.jpg",
     shiftStatus: "clocked_out",
   },
@@ -91,6 +95,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_3",
     pin: "4444",
+    role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/8.jpg",
     shiftStatus: "clocked_out",
   },
@@ -104,6 +109,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "female",
     id: "emp_1759078476073_4",
     pin: "5555",
+    role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/women/48.jpg",
     shiftStatus: "clocked_out",
   },
@@ -142,6 +148,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
           profilePictureUrl: u.picture?.large,
           pin: (1111 + idx).toString(),
           shiftStatus: "clocked_out",
+          role: idx === 0 ? "manager" : "employee", // First user is a manager
           email: u.email,
           phone: u.phone,
           dob: u.dob?.date
