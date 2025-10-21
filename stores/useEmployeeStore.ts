@@ -11,6 +11,8 @@ export interface EmployeeProfile {
   gender?: string;
   country?: string;
   address?: string;
+  email?: string;
+  phone?: string;
   clockInAt?: string | null; // ISO string while clocked in
 }
 
@@ -23,6 +25,10 @@ interface EmployeeState {
   // actions
   loadMockEmployees: (count?: number) => Promise<void>;
   setEmployees: (employees: EmployeeProfile[]) => void;
+  updateSecurity: (
+    employeeId: string,
+    data: { email?: string; phone?: string; pin?: string }
+  ) => void;
   clockIn: (employeeId: string) => void;
   clockOut: (employeeId: string) => void;
   signIn: (
@@ -40,6 +46,8 @@ const MockEmployees: EmployeeProfile[] = [
     address: "1388 West Ave, Chelsea",
     country: "Canada",
     dob: "2/5/1967",
+    email: "philippe.ennis@example.com",
+    phone: "555-123-4567",
     fullName: "Philippe Ennis",
     gender: "male",
     id: "emp_1759078476073_0",
@@ -51,6 +59,8 @@ const MockEmployees: EmployeeProfile[] = [
     address: "7860 Pecan Acres Ln, Hobart",
     country: "Australia",
     dob: "12/12/1969",
+    email: "richard.holland@example.com",
+    phone: "555-234-5678",
     fullName: "Richard Holland",
     gender: "male",
     id: "emp_1759078476073_1",
@@ -62,6 +72,8 @@ const MockEmployees: EmployeeProfile[] = [
     address: "298 Grand Marais Ave, St. George",
     country: "Canada",
     dob: "10/22/1981",
+    email: "zackary.young@example.com",
+    phone: "555-345-6789",
     fullName: "Zackary Young",
     gender: "male",
     id: "emp_1759078476073_2",
@@ -73,6 +85,8 @@ const MockEmployees: EmployeeProfile[] = [
     address: "6730 Avondale Ave, Tweed",
     country: "Australia",
     dob: "1/12/1949",
+    email: "rafael.boyd@example.com",
+    phone: "555-456-7890",
     fullName: "Rafael Boyd",
     gender: "male",
     id: "emp_1759078476073_3",
@@ -84,6 +98,8 @@ const MockEmployees: EmployeeProfile[] = [
     address: "4625 20th Ave, Beaumont",
     country: "Canada",
     dob: "1/9/1955",
+    email: "alice.gagne@example.com",
+    phone: "555-567-8901",
     fullName: "Alice Gagné",
     gender: "female",
     id: "emp_1759078476073_4",
@@ -100,6 +116,14 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
   error: null,
 
   setEmployees: (employees) => set({ employees }),
+
+  updateSecurity: (employeeId, data) => {
+    set((state) => ({
+      employees: state.employees.map((e) =>
+        e.id === employeeId ? { ...e, ...data } : e
+      ),
+    }));
+  },
 
   loadMockEmployees: async (count: number = 8) => {
     const state = get();
@@ -118,6 +142,8 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
           profilePictureUrl: u.picture?.large,
           pin: (1111 + idx).toString(),
           shiftStatus: "clocked_out",
+          email: u.email,
+          phone: u.phone,
           dob: u.dob?.date
             ? new Date(u.dob.date).toLocaleDateString()
             : undefined,

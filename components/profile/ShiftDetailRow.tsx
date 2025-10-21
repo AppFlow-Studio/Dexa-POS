@@ -10,8 +10,13 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import {
+  GestureResponderEvent,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import ComplianceBadge from "./ComplianceBadge";
 
 interface ShiftDetailRowProps {
@@ -47,6 +52,8 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onRequestDrop,
   onRequestSwap,
 }) => {
+  const [isNoteVisible, setNoteVisible] = useState(false);
+
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
@@ -79,6 +86,11 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
 
   const { label, color } = getStatusLabel();
 
+  const handleNotePress = (e: GestureResponderEvent) => {
+    e.stopPropagation();
+    setNoteVisible(!isNoteVisible);
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -108,15 +120,25 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       </View>
 
       {shift.managerNote && (
-        <TouchableOpacity className="flex-row items-center gap-2 mb-3 p-2 bg-blue-900/20 rounded-md">
-          <MessageSquare size={16} color="#60A5FA" />
-          <Text className="text-sm text-blue-300 underline">
-            {shift.managerNote}
-          </Text>
-        </TouchableOpacity>
+        <View>
+          <TouchableOpacity
+            onPress={handleNotePress}
+            className="flex-row items-center gap-2 mb-3"
+          >
+            <MessageSquare size={16} color="#60A5FA" />
+            <Text className="text-sm text-blue-300 underline">
+              Manager note
+            </Text>
+          </TouchableOpacity>
+          {isNoteVisible && (
+            <View className="p-3 bg-gray-800/50 rounded-lg mt-2 mb-3">
+              <Text className="text-white">{shift.managerNote}</Text>
+            </View>
+          )}
+        </View>
       )}
 
-      <View className="flex-row flex-wrap items-center gap-2 mb-4">
+      <View className="flex-row flex-wrap items-center gap-2">
         <ComplianceBadge
           icon={<Coffee size={14} color="#9CA3AF" />}
           text={`Meal break ${shift.breakMinutes}m required`}
@@ -152,11 +174,14 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
         )}
       </View>
 
-      <View className="flex-row items-center gap-4 border-t border-gray-700 pt-3">
+      <View className="flex-row items-center gap-4 border-t border-gray-700 pt-3 mt-3">
         {shift.status === "confirmed" && (
           <>
             <TouchableOpacity
-              onPress={() => onRequestSwap(shift)}
+              onPress={(e) => {
+                e.stopPropagation();
+                onRequestSwap(shift);
+              }}
               className="flex-row items-center gap-1.5"
             >
               <ArrowRightLeft size={14} color="#9CA3AF" />
@@ -165,7 +190,10 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => onRequestDrop(shift)}
+              onPress={(e) => {
+                e.stopPropagation();
+                onRequestDrop(shift);
+              }}
               className="flex-row items-center gap-1.5"
             >
               <MinusCircle size={14} color="#9CA3AF" />
@@ -175,7 +203,10 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
         )}
         {shift.status === "pending-swap" && (
           <TouchableOpacity
-            onPress={() => onRequestSwap(shift)}
+            onPress={(e) => {
+              e.stopPropagation();
+              onRequestSwap(shift);
+            }}
             className="px-3 py-1 bg-purple-600/20 border border-purple-500 rounded"
           >
             <Text className="text-base font-semibold text-purple-300">

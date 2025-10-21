@@ -78,7 +78,7 @@ const MyProfileScreen = () => {
                 }`}
               >
                 <Text
-                  className={`text-xl font-semibold text-center ${
+                  className={`text-lg font-semibold text-center ${
                     activeTab === tab ? "text-blue-400" : "text-gray-300"
                   }`}
                 >
@@ -99,26 +99,6 @@ const MyProfileScreen = () => {
 
             {/* Right: Tab-Specific Content */}
             <View className="flex-1 ml-4">{renderContent()}</View>
-          </View>
-
-          {/* Footer */}
-          <View className="flex-row justify-between items-center pt-3 border-t border-gray-600 w-full mt-auto">
-            <Text className="text-gray-400 text-sm">
-              {currentEmployee
-                ? `Viewing: ${currentEmployee.fullName}`
-                : "No employee"}
-            </Text>
-            <View className="flex-row gap-2">
-              <TouchableOpacity
-                onPress={() => router.replace("/home")}
-                className="px-4 py-2 border border-gray-500 rounded-lg"
-              >
-                <Text className="text-xl font-bold text-gray-300">Close</Text>
-              </TouchableOpacity>
-              <TouchableOpacity className="px-6 py-2 bg-blue-500 rounded-lg">
-                <Text className="text-xl font-bold text-white">Edit</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </View>

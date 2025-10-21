@@ -223,12 +223,12 @@ const MyScheduleScreen = () => {
                 <View className="flex-row p-1 bg-[#212121] rounded-lg border border-gray-600 self-start mb-3">
                   <TouchableOpacity
                     onPress={() => setScheduleView("List")}
-                    className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${
+                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
                       scheduleView === "List" ? "bg-blue-600" : ""
                     }`}
                   >
                     <Text
-                      className={`font-semibold ${
+                      className={`text-base font-semibold ${
                         scheduleView === "List" ? "text-white" : "text-gray-400"
                       }`}
                     >
@@ -237,16 +237,16 @@ const MyScheduleScreen = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setScheduleView("Calendar")}
-                    className={`px-3 py-1 rounded-md flex-row items-center gap-2 ${
+                    className={`px-4 py-2 rounded-md flex-row items-center gap-2 ${
                       scheduleView === "Calendar" ? "bg-blue-600" : ""
                     }`}
                   >
                     <CalendarIcon
-                      size={16}
+                      size={20}
                       color={scheduleView === "Calendar" ? "white" : "#9CA3AF"}
                     />
                     <Text
-                      className={`font-semibold ${
+                      className={`text-base font-semibold ${
                         scheduleView === "Calendar"
                           ? "text-white"
                           : "text-gray-400"
@@ -256,7 +256,6 @@ const MyScheduleScreen = () => {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
                 {scheduleView === "List" ? (
                   <FlatList
                     data={weekDays}
@@ -294,6 +293,8 @@ const MyScheduleScreen = () => {
         shift={selectedShift}
         isOpen={showShiftModal}
         onClose={() => setShowShiftModal(false)}
+        onRequestDrop={handleRequestDrop}
+        onRequestSwap={handleRequestSwap}
       />
       <DropShiftBottomSheet
         shift={shiftForAction}

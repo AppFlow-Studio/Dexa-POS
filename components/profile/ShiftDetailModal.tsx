@@ -1,14 +1,13 @@
-// File: /components/profile/ShiftDetailModal.tsx
 import { Shift } from "@/lib/types";
-import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Clock,
   Coffee,
   MapPin,
   MessageSquare,
+  MinusCircle,
   TrendingUp,
   Users,
   X,
@@ -22,6 +21,8 @@ interface ShiftDetailModalProps {
   shift: Shift | null;
   isOpen: boolean;
   onClose: () => void;
+  onRequestDrop: (shift: Shift) => void;
+  onRequestSwap: (shift: Shift) => void;
 }
 
 const StatusBadge = ({
@@ -48,46 +49,12 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   shift,
   isOpen,
   onClose,
+  onRequestDrop,
+  onRequestSwap,
 }) => {
-  const { addDropRequest, addSwapRequest } = useScheduleStore();
-  const [showDropForm, setShowDropForm] = useState(false);
-  const [showSwapForm, setShowSwapForm] = useState(false);
-  const [dropReason, setDropReason] = useState("");
-  const [swapReason, setSwapReason] = useState("");
+  const [isNoteVisible, setNoteVisible] = useState(false);
 
   if (!isOpen || !shift) return null;
-
-  const handleDropRequest = () => {
-    addDropRequest({
-      shift,
-      status: "pending",
-      submittedAt: new Date().toISOString(),
-      note: dropReason,
-    });
-    toast.success("Drop request submitted for manager approval.", {
-      position: ToastPosition.BOTTOM,
-    });
-    setShowDropForm(false);
-    setDropReason("");
-    onClose();
-  };
-
-  const handleSwapRequest = () => {
-    addSwapRequest({
-      shift,
-      status: "pending",
-      submittedAt: new Date().toISOString(),
-      direction: "outgoing",
-      theirShift: shift, // Placeholder
-      note: swapReason,
-    });
-    toast.success("Swap request sent.", {
-      position: ToastPosition.BOTTOM,
-    });
-    setShowSwapForm(false);
-    setSwapReason("");
-    onClose();
-  };
 
   const getStatusLabel = () => {
     switch (shift.status) {
@@ -120,6 +87,20 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   };
 
   const { label, color } = getStatusLabel();
+
+  const handleRequestSwap = () => {
+    if (shift) {
+      onClose();
+      onRequestSwap(shift);
+    }
+  };
+
+  const handleRequestDrop = () => {
+    if (shift) {
+      onClose();
+      onRequestDrop(shift);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -161,15 +142,25 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </View>
 
             {shift.managerNote && (
-              <TouchableOpacity className="flex-row items-center gap-2 mb-4 p-2 bg-blue-900/20 rounded-md">
-                <MessageSquare size={16} color="#60A5FA" />
-                <Text className="text-sm text-blue-300 underline">
-                  {shift.managerNote}
-                </Text>
-              </TouchableOpacity>
+              <View className="mb-4">
+                <TouchableOpacity
+                  onPress={() => setNoteVisible(!isNoteVisible)}
+                  className="flex-row items-center gap-2"
+                >
+                  <MessageSquare size={16} color="#60A5FA" />
+                  <Text className="text-sm text-blue-300 underline">
+                    Manager note
+                  </Text>
+                </TouchableOpacity>
+                {isNoteVisible && (
+                  <View className="p-3 bg-gray-800/50 rounded-lg mt-2">
+                    <Text className="text-white">{shift.managerNote}</Text>
+                  </View>
+                )}
+              </View>
             )}
 
-            <View className="flex-row flex-wrap items-center gap-2 mb-4">
+            <View className="flex-row flex-wrap items-center gap-2">
               <ComplianceBadge
                 icon={<Coffee size={14} color="#9CA3AF" />}
                 text={`Meal break ${shift.breakMinutes}m required`}
@@ -206,6 +197,26 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </View>
           </View>
         </ScrollView>
+        {shift.status === "confirmed" && (
+          <View className="flex-row items-center gap-4 border-t border-gray-700 p-4">
+            <TouchableOpacity
+              onPress={handleRequestSwap}
+              className="flex-row items-center gap-1.5"
+            >
+              <ArrowRightLeft size={14} color="#9CA3AF" />
+              <Text className="text-base font-semibold text-white">
+                Request Swap
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleRequestDrop}
+              className="flex-row items-center gap-1.5"
+            >
+              <MinusCircle size={14} color="#9CA3AF" />
+              <Text className="text-base text-gray-400">Drop to Open</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </DialogContent>
     </Dialog>
   );
