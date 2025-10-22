@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { CheckCircle2, X } from 'lucide-react-native';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, X } from "lucide-react-native";
+import React from "react";
+import { Text, View } from "react-native";
 
 interface PTORequestCardProps {
   employee: string;
@@ -13,19 +13,30 @@ interface PTORequestCardProps {
   onDeny: () => void;
 }
 
-const PTORequestCard: React.FC<PTORequestCardProps> = ({ employee, startDate, endDate, reason, onApprove, onDeny }) => {
+const PTORequestCard: React.FC<PTORequestCardProps> = ({
+  employee,
+  startDate,
+  endDate,
+  reason,
+  onApprove,
+  onDeny,
+}) => {
   const isSingleDay = startDate === endDate;
 
   return (
     <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl space-y-3">
       <View className="flex-row items-center justify-between">
-        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">PTO Request</Badge>
+        <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+          <Text>PTO Request</Text>
+        </Badge>
         <Text className="text-xs text-gray-500">1 day ago</Text>
       </View>
 
       <View>
         <Text className="text-sm font-medium text-white mb-1">{employee}</Text>
-        <Text className="text-xs text-gray-400">{isSingleDay ? startDate : `${startDate} - ${endDate}`}</Text>
+        <Text className="text-xs text-gray-400">
+          {isSingleDay ? startDate : `${startDate} - ${endDate}`}
+        </Text>
       </View>
 
       {reason && (
@@ -36,13 +47,20 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({ employee, startDate, en
       )}
 
       <View className="flex-row gap-2 pt-2">
-        <Button onPress={onApprove} className="flex-1 gap-2 bg-green-600 hover:bg-green-700">
-            <CheckCircle2 size={16} color="#FFFFFF" />
-            <Text className="text-white font-semibold">Approve</Text>
+        <Button
+          onPress={onApprove}
+          className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+        >
+          <CheckCircle2 size={16} color="#FFFFFF" />
+          <Text className="text-white font-semibold">Approve</Text>
         </Button>
-        <Button onPress={onDeny} variant="outline" className="flex-1 gap-2 bg-transparent border-gray-600">
-            <X size={16} color="#FFFFFF" />
-            <Text className="text-white font-semibold">Deny</Text>
+        <Button
+          onPress={onDeny}
+          variant="outline"
+          className="flex-1 gap-2 bg-transparent border-gray-600"
+        >
+          <X size={16} color="#FFFFFF" />
+          <Text className="text-white font-semibold">Deny</Text>
         </Button>
       </View>
     </View>

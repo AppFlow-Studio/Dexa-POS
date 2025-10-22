@@ -1,38 +1,46 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Shift } from "@/lib/mock-data";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { PTORequest, ShiftRequest as SwapRequest } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
-import { Calendar } from "lucide-react-native";
+import {
+  ArrowRight,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Users,
+  X,
+} from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import PTORequestCard from "./PTORequestCard";
 import SwapRequestCard from "./SwapRequestCard";
 
-// Mock data and types for demonstration
-export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
-export interface Shift {
-  id: string;
-  employeeId: string | null;
-  role: Role;
-  start: string;
-  end: string;
-  date: string;
-  requiredCount: number;
-  isOpen: boolean;
-}
-const mockEmployees = [
-  { id: "4", name: "Tyler Kim" },
-  { id: "6", name: "Jordan Lee" },
-];
-const formatTime = (time: string) => time; // Placeholder
+const formatTime = (time: string): string => {
+  if (!time) return "N/A";
+  const [hours, minutes] = time.split(":");
+  const h = Number.parseInt(hours);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const displayHour = h % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
 
 interface OpenShiftsDrawerProps {
   openShifts: Shift[];
+  swapRequests: SwapRequest[];
+  ptoRequests: PTORequest[];
   onAssign: (shiftId: string, employeeId: string) => void;
   onCloseShift: (shiftId: string) => void;
+  onApproveSwap: (swapId: string) => void;
+  onDenySwap: (swapId: string) => void;
+  onApprovePTO: (ptoId: string) => void;
+  onDenyPTO: (ptoId: string) => void;
 }
 
 interface ShiftApplicant {
@@ -60,13 +68,28 @@ const mockApplicants: Record<string, ShiftApplicant[]> = {
 };
 
 const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
-  ({ openShifts, onAssign, onCloseShift }, ref) => {
+  (
+    {
+      openShifts,
+      swapRequests,
+      ptoRequests,
+      onAssign,
+      onCloseShift,
+      onApproveSwap,
+      onDenySwap,
+      onApprovePTO,
+      onDenyPTO,
+    },
+    ref
+  ) => {
     const snapPoints = useMemo(() => ["90%"], []);
     const [selectedShift, setSelectedShift] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState("open-shifts");
+    const { employees } = useEmployeeStore();
 
     const getApplicants = (shiftId: string) => mockApplicants[shiftId] || [];
     const getEmployeeName = (employeeId: string) =>
-      mockEmployees.find((e) => e.id === employeeId)?.name || "Unknown";
+      employees.find((e) => e.id === employeeId)?.fullName || "Unknown";
 
     const handleAssignBest = (shiftId: string) => {
       const applicants = getApplicants(shiftId);
@@ -101,7 +124,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
               Requests
             </Text>
           </View>
-          <Tabs value="open-shifts" onValueChange={() => {}} className="flex-1">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
             <TabsList className="w-full rounded-none border-b border-gray-700 bg-transparent px-6">
               <TabsTrigger value="open-shifts" className="flex-1">
                 <Text className="text-white">Open Shifts</Text>
@@ -139,9 +162,131 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                       return (
                         <Card
                           key={shift.id}
-                          className="p-4 bg-[#303030] border-gray-700"
+                          className="p-4 bg-[#303030] border-gray-700 space-y-3"
                         >
-                          {/* Open Shift Card Content */}
+                          <View className="flex-row justify-between items-start">
+                            <View className="space-y-2">
+                              <Badge variant="outline" className="text-xs">
+                                {shift.role}
+                              </Badge>
+                              <View className="flex-row items-center gap-2 text-sm">
+                                <Clock size={16} className="text-gray-400" />
+                                <Text className="text-white">
+                                  {formatTime(shift.start)} -
+                                  {formatTime(shift.end)}
+                                </Text>
+                              </View>
+                              <View className="flex-row items-center gap-2 text-sm">
+                                <Calendar size={16} className="text-gray-400" />
+                                <Text className="text-gray-400">
+                                  {new Date(shift.date).toLocaleDateString(
+                                    "en-US",
+                                    {
+                                      weekday: "short",
+                                      month: "short",
+                                      day: "numeric",
+                                    }
+                                  )}
+                                </Text>
+                              </View>
+                            </View>
+                            {shift.requiredCount > 1 && (
+                              <Badge variant="secondary" className="gap-1">
+                                <Users size={12} />
+                                <Text>{shift.requiredCount}</Text>
+                              </Badge>
+                            )}
+                          </View>
+
+                          {applicants.length > 0 && (
+                            <View className="pt-3 border-t border-gray-700">
+                              <View className="flex-row justify-between items-center mb-2">
+                                <Text className="text-xs text-gray-400">
+                                  {applicants.length} applicant
+                                  {applicants.length !== 1 ? "s" : ""}
+                                </Text>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 text-xs"
+                                  onPress={() =>
+                                    setSelectedShift(
+                                      isExpanded ? null : shift.id
+                                    )
+                                  }
+                                >
+                                  <Text className="text-blue-400">
+                                    {isExpanded ? "Hide" : "View"}
+                                  </Text>
+                                </Button>
+                              </View>
+                              {isExpanded && (
+                                <View className="space-y-2 mt-3">
+                                  {applicants.map((applicant) => (
+                                    <View
+                                      key={applicant.employeeId}
+                                      className="flex-row items-center justify-between p-2 rounded bg-[#212121] border border-gray-600"
+                                    >
+                                      <View>
+                                        <Text className="text-sm font-medium text-white">
+                                          {getEmployeeName(
+                                            applicant.employeeId
+                                          )}
+                                        </Text>
+                                        <Text className="text-xs text-gray-500">
+                                          {applicant.hoursDeficit}h deficit •{" "}
+                                          {applicant.seniority}y seniority
+                                        </Text>
+                                      </View>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 gap-1 bg-transparent border-gray-600"
+                                        onPress={() =>
+                                          onAssign(
+                                            shift.id,
+                                            applicant.employeeId
+                                          )
+                                        }
+                                      >
+                                        <Text className="text-white">
+                                          Assign
+                                        </Text>
+                                        <ArrowRight
+                                          size={12}
+                                          className="text-white"
+                                        />
+                                      </Button>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+                          )}
+
+                          <View className="flex-row gap-2 pt-2">
+                            {applicants.length > 0 && (
+                              <Button
+                                size="sm"
+                                className="flex-1 gap-2 bg-blue-600"
+                                onPress={() => handleAssignBest(shift.id)}
+                              >
+                                <CheckCircle2 size={16} color="#FFFFFF" />
+                                <Text className="text-white font-semibold">
+                                  Assign Best
+                                </Text>
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-2 bg-transparent border-gray-600"
+                              onPress={() => onCloseShift(shift.id)}
+                            >
+                              <X size={16} color="#FFFFFF" />
+                              <Text className="text-white">Close</Text>
+                            </Button>
+                          </View>
                         </Card>
                       );
                     })
@@ -150,49 +295,38 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
               </TabsContent>
               <TabsContent value="swaps">
                 <View className="p-6 space-y-4">
-                  <SwapRequestCard
-                    fromEmployee="Sarah Chen"
-                    toEmployee="Jordan Lee"
-                    shift={{
-                      role: "Cashier",
-                      date: "Jan 13",
-                      time: "8:00 AM - 4:00 PM",
-                    }}
-                    reason="Schedule conflict"
-                    onApprove={() => {}}
-                    onDeny={() => {}}
-                  />
-                  <SwapRequestCard
-                    fromEmployee="Marcus Johnson"
-                    toEmployee="Aisha Patel"
-                    shift={{
-                      role: "Line Cook",
-                      date: "Jan 13",
-                      time: "10:00 AM - 6:00 PM",
-                    }}
-                    onApprove={() => {}}
-                    onDeny={() => {}}
-                  />
+                  {swapRequests.map((req) => (
+                    <SwapRequestCard
+                      key={req.id}
+                      fromEmployee={getEmployeeName(req.fromEmployeeId!)}
+                      toEmployee={getEmployeeName(req.toEmployeeId!)}
+                      shift={{
+                        role: req.shift.role,
+                        date: new Date(req.shift.date).toLocaleDateString(),
+                        time: `${formatTime(req.shift.startTime)} - ${formatTime(
+                          req.shift.endTime
+                        )}`,
+                      }}
+                      reason={req.note}
+                      onApprove={() => onApproveSwap(req.id)}
+                      onDeny={() => onDenySwap(req.id)}
+                    />
+                  ))}
                 </View>
               </TabsContent>
               <TabsContent value="pto">
                 <View className="p-6 space-y-4">
-                  <PTORequestCard
-                    employee="Tyler Kim"
-                    startDate="Jan 15"
-                    endDate="Jan 16"
-                    reason="Family event"
-                    onApprove={() => {}}
-                    onDeny={() => {}}
-                  />
-                  <PTORequestCard
-                    employee="Maya Thompson"
-                    startDate="Jan 17"
-                    endDate="Jan 17"
-                    reason="Medical appointment"
-                    onApprove={() => {}}
-                    onDeny={() => {}}
-                  />
+                  {ptoRequests.map((req) => (
+                    <PTORequestCard
+                      key={req.id}
+                      employee={getEmployeeName(req.employeeId)}
+                      startDate={new Date(req.startDate).toLocaleDateString()}
+                      endDate={new Date(req.endDate).toLocaleDateString()}
+                      reason={req.note}
+                      onApprove={() => onApprovePTO(req.id)}
+                      onDeny={() => onDenyPTO(req.id)}
+                    />
+                  ))}
                 </View>
               </TabsContent>
             </BottomSheetScrollView>

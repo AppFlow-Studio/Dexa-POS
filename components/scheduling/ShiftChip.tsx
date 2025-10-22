@@ -1,8 +1,8 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
-import { Badge } from '@/components/ui/badge';
-import { Clock, AlertCircle, Users } from 'lucide-react-native';
-import { Role } from '@/lib/types'; // Assuming types will be in lib/types
+import { Badge } from "@/components/ui/badge";
+import { Role } from "@/lib/types"; // Assuming types will be in lib/types
+import { AlertCircle, Clock, Users } from "lucide-react-native";
+import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
 interface ShiftChipProps {
   role: Role;
@@ -32,16 +32,28 @@ const conflictColors = {
 };
 
 const formatTime = (time: string): string => {
-    const [hours, minutes] = time.split(':');
-    const h = Number.parseInt(hours);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const displayHour = h % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-}
+  const [hours, minutes] = time.split(":");
+  const h = Number.parseInt(hours);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const displayHour = h % 12 || 12;
+  return `${displayHour}:${minutes} ${ampm}`;
+};
 
-export const ShiftChip: React.FC<ShiftChipProps> = ({ role, start, end, requiredCount = 1, wage, isOpen, hasConflict, conflictType, onClick }) => {
-  const roleColorStyle = roleColors[role] || 'bg-gray-500/20 border-gray-500/30';
-  const conflictStyle = hasConflict && conflictType ? conflictColors[conflictType] : '';
+export const ShiftChip: React.FC<ShiftChipProps> = ({
+  role,
+  start,
+  end,
+  requiredCount = 1,
+  wage,
+  isOpen,
+  hasConflict,
+  conflictType,
+  onClick,
+}) => {
+  const roleColorStyle =
+    roleColors[role] || "bg-gray-500/20 border-gray-500/30";
+  const conflictStyle =
+    hasConflict && conflictType ? conflictColors[conflictType] : "";
 
   return (
     <TouchableOpacity
@@ -49,8 +61,11 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({ role, start, end, required
       className={`relative px-3 py-2 rounded-lg border cursor-pointer transition-all active:scale-95 ${isOpen ? "border-dashed border-gray-500 bg-[#212121]" : roleColorStyle} ${conflictStyle}`}
     >
       <View className="flex-row items-center justify-between gap-2 mb-1">
-        <Badge variant="outline" className={`text-xs px-1.5 py-0 h-5 border-current ${isOpen ? 'text-gray-400' : 'text-white'}`}>
-          {role}
+        <Badge
+          variant="outline"
+          className={`text-xs px-1.5 py-0 h-5 border-current ${isOpen ? "text-gray-400" : "text-white"}`}
+        >
+          <Text> {role}</Text>
         </Badge>
         {requiredCount > 1 && (
           <View className="flex-row items-center gap-1 text-xs text-gray-400">
@@ -61,13 +76,19 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({ role, start, end, required
       </View>
 
       <View className="flex-row items-center gap-1.5">
-        <Clock size={12} className={isOpen ? 'text-gray-400' : 'text-white'} />
-        <Text className={`font-medium text-xs ${isOpen ? 'text-gray-400' : 'text-white'}`}>
+        <Clock size={12} className={isOpen ? "text-gray-400" : "text-white"} />
+        <Text
+          className={`font-medium text-xs ${isOpen ? "text-gray-400" : "text-white"}`}
+        >
           {formatTime(start)} - {formatTime(end)}
         </Text>
       </View>
 
-      {wage && <Text className="text-xs text-gray-500 mt-1">${wage.toFixed(2)}/hr</Text>}
+      {wage && (
+        <Text className="text-xs text-gray-500 mt-1">
+          ${wage.toFixed(2)}/hr
+        </Text>
+      )}
 
       {isOpen && (
         <View className="absolute top-1 right-1">

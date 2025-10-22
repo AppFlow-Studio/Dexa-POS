@@ -387,6 +387,7 @@ export interface Shift {
 
 export interface PTORequest {
   id: string;
+  employeeId: string;
   startDate: string; // ISO format: "YYYY-MM-DD"
   endDate: string; // ISO format: "YYYY-MM-DD"
   hours: number;
@@ -407,6 +408,8 @@ export interface ShiftRequest {
   pickedUpBy?: string;
   pickedUpAt?: string;
   // For swap requests
+  fromEmployeeId?: string;
+  toEmployeeId?: string;
   direction?: "incoming" | "outgoing";
   theirShift?: Shift;
 }
@@ -483,7 +486,7 @@ export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
 
   // Link to the physical location. Crucially, this is `string | null`.
-  // If it's `null`, it's not a dine-in order.
+  // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
 
   // The current lifecycle stage of the order.

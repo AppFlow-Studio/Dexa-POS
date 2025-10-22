@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Placeholder Imports - These will be fleshed out in later tasks
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
@@ -32,8 +31,51 @@ import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
-import { Role } from "@/lib/types";
-import { Shift } from "@/lib/mock-data";
+import { Shift, mockShifts } from "@/lib/mock-data";
+import { PTORequest, Role, ShiftRequest as SwapRequest } from "@/lib/types";
+
+const mockSwapRequests: SwapRequest[] = [
+  {
+    id: "swap1",
+    fromEmployeeId: "1",
+    toEmployeeId: "6",
+    shift: mockShifts[0],
+    status: "pending",
+    reason: "Schedule conflict",
+    type: "swap",
+  },
+  {
+    id: "swap2",
+    fromEmployeeId: "2",
+    toEmployeeId: "5",
+    shift: mockShifts[1],
+    status: "pending",
+    type: "swap",
+  },
+];
+
+const mockPtoRequests: PTORequest[] = [
+  {
+    id: "pto1",
+    employeeId: "4",
+    startDate: "2025-01-15",
+    endDate: "2025-01-16",
+    reason: "Family event",
+    status: "pending",
+    hours: 16,
+    submittedAt: new Date().toISOString(),
+  },
+  {
+    id: "pto2",
+    employeeId: "7",
+    startDate: "2025-01-17",
+    endDate: "2025-01-17",
+    reason: "Medical appointment",
+    status: "pending",
+    hours: 8,
+    submittedAt: new Date().toISOString(),
+  },
+];
 
 const ScheduleDetailScreen = () => {
   const router = useRouter();
@@ -70,12 +112,35 @@ const ScheduleDetailScreen = () => {
   const handlePublish = (notificationSettings: any) => {
     console.log("Publishing with settings:", notificationSettings);
     setPublishStatus("published");
-    // Here you would typically show a toast notification
   };
 
   const handleShiftClick = (shift: Shift) => {
     setSelectedShift(shift);
     setShiftEditorOpen(true);
+  };
+
+  const handleApplyTemplate = (templateId: string) => {
+    console.log("Applying template:", templateId);
+  };
+
+  const handleSaveShift = (shiftData: Partial<Shift>) => {
+    console.log("Saving shift:", shiftData);
+  };
+
+  const handleSaveAndDuplicate = (shiftData: Partial<Shift>) => {
+    console.log("Saving and duplicating shift:", shiftData);
+  };
+
+  const handlePreviousWeek = () => {
+    const newDate = new Date(startDate);
+    newDate.setDate(newDate.getDate() - 7);
+    setStartDate(newDate);
+  };
+
+  const handleNextWeek = () => {
+    const newDate = new Date(startDate);
+    newDate.setDate(newDate.getDate() + 7);
+    setStartDate(newDate);
   };
 
   const publishSummary = {
@@ -135,11 +200,13 @@ const ScheduleDetailScreen = () => {
                 </SelectContent>
               </Select>
 
-              <WeekSelector />
+              <WeekSelector
+                startDate={startDate}
+                onPrevious={handlePreviousWeek}
+                onNext={handleNextWeek}
+              />
 
-              <Badge
-                className={statusColors[publishStatus]}
-              >
+              <Badge className={statusColors[publishStatus]}>
                 {publishStatus.charAt(0).toUpperCase() + publishStatus.slice(1)}
               </Badge>
             </View>
@@ -186,7 +253,7 @@ const ScheduleDetailScreen = () => {
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
           <View className="space-y-6">
-            <TemplateDrawer />
+            <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
             <View className="border-t border-gray-700 pt-6">
               <FiltersPanel
@@ -207,7 +274,9 @@ const ScheduleDetailScreen = () => {
                   <Text className="text-sm font-semibold text-white">
                     Open Shifts
                   </Text>
-                  <Badge className="ml-auto">0</Badge>
+                  <Badge className="ml-auto">
+                    {mockShifts.filter((s) => s.isOpen).length}
+                  </Badge>
                 </View>
                 <Text className="text-xs text-gray-400">
                   View and manage open shifts
@@ -217,7 +286,7 @@ const ScheduleDetailScreen = () => {
 
             <View className="border-t border-gray-700 pt-6">
               <TouchableOpacity
-                onPress={() => {}}
+                onPress={() => openShiftsSheetRef.current?.expand()} // Also opens the same drawer
                 className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
               >
                 <View className="flex-row items-center gap-2 mb-2">
@@ -225,7 +294,9 @@ const ScheduleDetailScreen = () => {
                   <Text className="text-sm font-semibold text-white">
                     Swaps & Requests
                   </Text>
-                  <Badge className="ml-auto">0</Badge>
+                  <Badge className="ml-auto">
+                    {mockSwapRequests.length + mockPtoRequests.length}
+                  </Badge>
                 </View>
                 <Text className="text-xs text-gray-400">
                   Pending swap requests and PTO
@@ -260,12 +331,22 @@ const ScheduleDetailScreen = () => {
             </Text>
           </View>
 
-          <ScheduleGrid startDate={startDate} viewMode={viewMode} onShiftClick={handleShiftClick} />
+          <ScheduleGrid
+            startDate={startDate}
+            viewMode={viewMode}
+            onShiftClick={handleShiftClick}
+          />
         </View>
       </View>
 
       {/* Modals & Drawers */}
-      <ShiftEditorModal />
+      <ShiftEditorModal
+        open={shiftEditorOpen}
+        onOpenChange={setShiftEditorOpen}
+        shift={selectedShift}
+        onSave={handleSaveShift}
+        onSaveAndDuplicate={handleSaveAndDuplicate}
+      />
       <PublishModal
         open={publishModalOpen}
         onOpenChange={setPublishModalOpen}
@@ -274,9 +355,17 @@ const ScheduleDetailScreen = () => {
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={[]}
-        onAssign={() => {}}
-        onCloseShift={() => {}}
+        openShifts={mockShifts.filter((s) => s.isOpen)}
+        swapRequests={mockSwapRequests}
+        ptoRequests={mockPtoRequests}
+        onAssign={(shiftId, empId) =>
+          console.log(`Assign shift ${shiftId} to ${empId}`)
+        }
+        onCloseShift={(shiftId) => console.log(`Close shift ${shiftId}`)}
+        onApproveSwap={(id) => console.log(`Approve swap ${id}`)}
+        onDenySwap={(id) => console.log(`Deny swap ${id}`)}
+        onApprovePTO={(id) => console.log(`Approve PTO ${id}`)}
+        onDenyPTO={(id) => console.log(`Deny PTO ${id}`)}
       />
     </SafeAreaView>
   );
