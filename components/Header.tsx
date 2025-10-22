@@ -15,6 +15,7 @@ const Header = () => {
     pathname === "/pto" ||
     pathname === "/requests" ||
     pathname == "/menu" ||
+    pathname === "/scheduling" ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||

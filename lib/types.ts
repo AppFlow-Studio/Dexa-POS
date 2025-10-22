@@ -626,3 +626,5 @@ export interface Notification {
   timestamp: string; // ISO string
   relatedShiftId?: string;
 }
+
+export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";

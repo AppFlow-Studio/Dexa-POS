@@ -15,6 +15,7 @@ export interface EmployeeProfile {
   email?: string;
   phone?: string;
   clockInAt?: string | null; // ISO string while clocked in
+  baseWage: number;
 }
 
 interface EmployeeState {
@@ -56,6 +57,7 @@ const MockEmployees: EmployeeProfile[] = [
     role: "manager",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/33.jpg",
     shiftStatus: "clocked_out",
+    baseWage: 25.0,
   },
   {
     address: "7860 Pecan Acres Ln, Hobart",
@@ -70,6 +72,7 @@ const MockEmployees: EmployeeProfile[] = [
     role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/40.jpg",
     shiftStatus: "clocked_out",
+    baseWage: 18.0,
   },
   {
     address: "298 Grand Marais Ave, St. George",
@@ -84,6 +87,7 @@ const MockEmployees: EmployeeProfile[] = [
     role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/28.jpg",
     shiftStatus: "clocked_out",
+    baseWage: 17.5,
   },
   {
     address: "6730 Avondale Ave, Tweed",
@@ -98,6 +102,7 @@ const MockEmployees: EmployeeProfile[] = [
     role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/8.jpg",
     shiftStatus: "clocked_out",
+    baseWage: 19.0,
   },
   {
     address: "4625 20th Ave, Beaumont",
@@ -112,6 +117,7 @@ const MockEmployees: EmployeeProfile[] = [
     role: "employee",
     profilePictureUrl: "https://randomuser.me/api/portraits/women/48.jpg",
     shiftStatus: "clocked_out",
+    baseWage: 16.5,
   },
 ];
 
@@ -161,6 +167,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
                 u.location.street?.name ?? ""
               }, ${u.location.city ?? ""}`.trim()
             : undefined,
+            baseWage: 15 + Math.floor(Math.random() * 10),
         })
       );
       set({ employees: mapped, isLoading: false });

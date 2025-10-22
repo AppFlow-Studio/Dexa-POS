@@ -1,6 +1,4 @@
 import { Shift } from "@/lib/types";
-import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
@@ -105,8 +103,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
       onRequestDrop(shift);
     }
   };
-
-  const { label, color } = getStatusLabel();
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
