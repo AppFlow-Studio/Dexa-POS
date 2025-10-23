@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus } from 'lucide-react-native';
+import { Plus, BarChart3 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import SchedulePeriodCard from '@/components/scheduling/SchedulePeriodCard';
 import PeriodWizard, { PeriodData } from '@/components/scheduling/PeriodWizard';
@@ -80,13 +80,22 @@ const ScheduleManagerDashboard = () => {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
           <Text className="text-2xl font-bold text-white">Schedule Manager</Text>
-          <TouchableOpacity
-            onPress={handleAddNew}
-            className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-xl"
-          >
-            <Plus size={18} color="#FFFFFF" />
-            <Text className="text-white font-bold">New Period</Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center gap-2">
+            <TouchableOpacity
+              onPress={() => router.push('/scheduling/reports')}
+              className="flex-row items-center gap-2 px-4 py-2 bg-gray-700/80 rounded-xl"
+            >
+              <BarChart3 size={18} color="#FFFFFF" />
+              <Text className="text-white font-bold">View Reports</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAddNew}
+              className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-xl"
+            >
+              <Plus size={18} color="#FFFFFF" />
+              <Text className="text-white font-bold">New Period</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Periods List */}
