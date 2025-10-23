@@ -363,30 +363,37 @@ export interface UserProfile {
 export interface Shift {
   id: string;
   date: string; // ISO format: "YYYY-MM-DD"
-  role: string;
+  role: Role;
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
-  location: string;
-  status:
+  location?: string;
+  status?:
     | "confirmed"
     | "pending-drop"
     | "pending-swap"
     | "dropped"
     | "on-shift";
-  breakMinutes: number;
+  breakMinutes?: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
   isToday?: boolean;
   managerNote?: string;
-  restMet?: boolean; // Replaces '11h rest met'
-  restRiskHours?: number; // e.g., 8 for 'Risk: 8h rest'
+  restMet?: boolean;
+  restRiskHours?: number;
   expectedPace?: "Calm" | "Moderate" | "Busy";
   staffingLevel?: "Fully staffed" | "May need help";
   isOvertimeRisk?: boolean;
+  // Properties from manager's view
+  employeeId: string | null;
+  requiredCount?: number;
+  notes?: string;
+  isOpen?: boolean;
+  locked?: boolean;
 }
 
 export interface PTORequest {
   id: string;
+  employeeId: string;
   startDate: string; // ISO format: "YYYY-MM-DD"
   endDate: string; // ISO format: "YYYY-MM-DD"
   hours: number;
@@ -403,10 +410,13 @@ export interface ShiftRequest {
   submittedAt: string; // ISO string
   shift: Shift;
   note?: string;
+  reason?: string;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;
   // For swap requests
+  fromEmployeeId?: string;
+  toEmployeeId?: string;
   direction?: "incoming" | "outgoing";
   theirShift?: Shift;
 }
@@ -483,7 +493,7 @@ export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
 
   // Link to the physical location. Crucially, this is `string | null`.
-  // If it's `null`, it's not a dine-in order.
+  // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
 
   // The current lifecycle stage of the order.
@@ -626,3 +636,5 @@ export interface Notification {
   timestamp: string; // ISO string
   relatedShiftId?: string;
 }
+
+export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";

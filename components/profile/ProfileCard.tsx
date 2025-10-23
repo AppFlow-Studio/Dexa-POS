@@ -65,7 +65,7 @@ const ProfileCard = () => {
               </Text>
             </View>
           </View>
-          <View className="mt-3 space-y-2">
+          <View className="mt-3 gap-y-2">
             <View className="flex-row items-center">
               <Timer color="#9CA3AF" size={16} />
               <Text className="ml-2 text-gray-300 text-base">

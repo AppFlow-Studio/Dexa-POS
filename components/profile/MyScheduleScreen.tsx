@@ -161,7 +161,7 @@ const MyScheduleScreen = () => {
   return (
     <>
       <View className="flex-1 bg-[#303030] rounded-2xl">
-        <View className="p-4 space-y-4">
+        <View className="p-4 gap-y-4">
           {/* Header */}
           <View className="flex-row items-center justify-between">
             <Text className="text-xl font-bold text-white">
@@ -202,7 +202,7 @@ const MyScheduleScreen = () => {
           contentContainerStyle={{ paddingBottom: 20 }}
           className="px-4"
         >
-          <View className="space-y-4">
+          <View className="gap-y-4">
             {/* Analytics Grid */}
             <View>
               <Text className="text-lg font-bold text-white mb-3">

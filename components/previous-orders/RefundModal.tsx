@@ -276,7 +276,7 @@ const RefundModal: React.FC<RefundModalProps> = ({
                       </View>
 
                       {isSelected && (
-                        <View className="space-y-2">
+                        <View className="gap-y-2">
                           <View className="flex-row items-center gap-2">
                             <Text className="text-gray-600">Refund Qty:</Text>
                             <TextInput

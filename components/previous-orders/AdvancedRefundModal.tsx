@@ -354,7 +354,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
                           </TouchableOpacity>
                         </View>
                         {isSelected && (
-                          <View className="space-y-1.5">
+                          <View className="gap-y-1.5">
                             <View className="flex-row items-center gap-1.5">
                               <Text className="text-lg text-gray-600">
                                 Qty:

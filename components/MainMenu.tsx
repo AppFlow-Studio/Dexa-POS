@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import {
   BarChart3,
+  CalendarClock,
   History,
   Home,
   Lock,
@@ -126,6 +127,16 @@ const MainMenu: React.FC = () => {
       route: "/online-orders",
       isHighlighted: false,
     },
+    {
+      id: "scheduling",
+      icon: <CalendarClock color="#3b82f6" size={48} />,
+      title: "Scheduling",
+      subtitle: "Time Management",
+      route: "/scheduling",
+      isLocked: true,
+      isHighlighted: false,
+    },
+
     // {
     //     id: "customers",
     //     icon: <Users color="#3b82f6" size={48} />,

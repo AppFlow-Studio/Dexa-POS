@@ -104,7 +104,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     }
   };
 
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[600px] bg-[#303030] border-gray-700 p-0 rounded-2xl">
@@ -227,14 +226,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           </View>
           <View className="flex-row items-center gap-4">
             <TouchableOpacity
-              onPress={() => { }}
+              onPress={() => {}}
               className="flex-row items-center gap-2"
             >
               <Calendar size={16} color="#9CA3AF" />
               <Text className="text-base text-gray-300">Add to Calendar</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => { }}
+              onPress={() => {}}
               className="flex-row items-center gap-2"
             >
               <Send size={16} color="#9CA3AF" />

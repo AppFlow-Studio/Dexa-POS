@@ -114,7 +114,7 @@ const OrderLineItemsView = ({
           />
         ))}
       </ScrollView>
-      <View className="border-t border-gray-700 pt-3 mt-4 space-y-2">
+      <View className="border-t border-gray-700 pt-3 mt-4 gap-y-2">
         <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">

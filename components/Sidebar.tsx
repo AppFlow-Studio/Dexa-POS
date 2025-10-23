@@ -136,7 +136,7 @@ const Sidebar: React.FC = () => {
           <Menu color="#1C1C28" size={24} />
         </TouchableOpacity>
         <View className="flex-1 justify-between">
-          <View className="space-y-1 mt-4">
+          <View className="gap-y-1 mt-4">
             {SIDEBAR_DATA.map((item) => (
               <SidebarAccordion
                 key={item.id}
@@ -204,10 +204,7 @@ const Sidebar: React.FC = () => {
             </View>
           </View>
 
-          <View
-            className="space-y-1 px-2"
-            style={{ width: EXPANDED_WIDTH - 16 }}
-          >
+          <View className="gap-y-1 px-2" style={{ width: EXPANDED_WIDTH - 16 }}>
             {SIDEBAR_DATA.map((item) => (
               <SidebarAccordion
                 key={item.id}

@@ -174,7 +174,7 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
             </View>
           )}
           {activeTab === "items" && (
-            <View className="space-y-3">
+            <View className="gap-y-3">
               {itemsWithAvailableDiscounts.length > 0 ? (
                 itemsWithAvailableDiscounts.map((item) => {
                   const isApplied = !!item.appliedDiscount;

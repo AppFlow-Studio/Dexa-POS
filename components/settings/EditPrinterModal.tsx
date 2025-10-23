@@ -78,7 +78,7 @@ const EditPrinterModal: React.FC<EditPrinterModalProps> = ({
         </View>
 
         {/* White Content */}
-        <View className="p-4 rounded-3xl bg-background-100 space-y-3">
+        <View className="p-4 rounded-3xl bg-background-100 gap-y-3">
           <View>
             <Text className="font-bold mb-1.5 text-accent-500 text-sm">
               Item Name

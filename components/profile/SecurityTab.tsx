@@ -216,7 +216,7 @@ const SecurityTab = () => {
         isEditing={editingSection === "pin"}
         onEdit={() => setEditingSection("pin")}
       >
-        <View className="space-y-4">
+        <View className="gap-y-4">
           <View>
             <Text className="text-base text-gray-300 mb-1">New PIN</Text>
             <Controller

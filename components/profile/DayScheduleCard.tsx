@@ -24,7 +24,7 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
       <Text className="text-lg font-bold text-white mb-2">
         {format(date, "EEE, MMM d")}
       </Text>
-      <View className="space-y-3">
+      <View className="gap-y-3">
         {shifts.length > 0 ? (
           shifts.map((shift) => (
             <ShiftDetailRow

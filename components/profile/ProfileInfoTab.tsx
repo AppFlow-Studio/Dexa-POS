@@ -27,7 +27,7 @@ const ProfileInfoTab = () => {
       }
     : MOCK_USER_PROFILE;
   return (
-    <View className="space-y-4">
+    <View className="gap-y-4">
       <DetailRow label="Full Name" value={user.fullName} />
       <DetailRow label="Date of birth" value={user.dob} />
       <DetailRow label="Gender" value={user.gender} />
