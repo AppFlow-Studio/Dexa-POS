@@ -23,9 +23,14 @@ interface FiltersPanelProps {
   onConflictToggle: (conflictId: string) => void;
 }
 
-const FiltersPanel: React.FC<FiltersPanelProps> = ({ selectedRoles, selectedConflicts, onRoleToggle, onConflictToggle }) => {
+const FiltersPanel: React.FC<FiltersPanelProps> = ({
+  selectedRoles,
+  selectedConflicts,
+  onRoleToggle,
+  onConflictToggle,
+}) => {
   return (
-    <View className="space-y-4">
+    <View className="gap-y-4">
       <View className="flex-row items-center gap-2 mb-4">
         <Filter className="text-blue-400" size={16} />
         <Text className="text-sm font-semibold text-white">Filters</Text>
@@ -33,7 +38,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({ selectedRoles, selectedConf
 
       <View>
         <Text className="text-xs text-gray-400 mb-3">Roles</Text>
-        <View className="space-y-2">
+        <View className="gap-y-2">
           {roles.map((role) => (
             <View key={role} className="flex-row items-center gap-2">
               <Checkbox
@@ -51,7 +56,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({ selectedRoles, selectedConf
 
       <View>
         <Text className="text-xs text-gray-400 mb-3">Conflicts</Text>
-        <View className="space-y-2">
+        <View className="gap-y-2">
           {conflicts.map((conflict) => (
             <View key={conflict.id} className="flex-row items-center gap-2">
               <Checkbox
@@ -59,7 +64,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({ selectedRoles, selectedConf
                 checked={selectedConflicts.includes(conflict.id)}
                 onCheckedChange={() => onConflictToggle(conflict.id)}
               />
-              <Label htmlFor={`conflict-${conflict.id}`} className="text-sm text-white flex-row items-center gap-2">
+              <Label
+                htmlFor={`conflict-${conflict.id}`}
+                className="text-sm text-white flex-row items-center gap-2"
+              >
                 <View className={`w-2 h-2 rounded-full ${conflict.color}`} />
                 <Text className="text-white">{conflict.label}</Text>
               </Label>

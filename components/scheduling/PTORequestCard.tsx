@@ -24,7 +24,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
   const isSingleDay = startDate === endDate;
 
   return (
-    <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl space-y-3">
+    <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
         <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
           <Text>PTO Request</Text>

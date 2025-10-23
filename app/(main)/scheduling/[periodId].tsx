@@ -11,7 +11,6 @@ import {
 } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,26 +30,33 @@ import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
-import { Shift, mockShifts } from "@/lib/mock-data";
-import { PTORequest, Role, ShiftRequest as SwapRequest } from "@/lib/types";
+import { mockShiftsScheudleGrid } from "@/lib/mockData";
+import {
+  PTORequest,
+  Role,
+  Shift,
+  ShiftRequest as SwapRequest,
+} from "@/lib/types";
 
 const mockSwapRequests: SwapRequest[] = [
   {
     id: "swap1",
     fromEmployeeId: "1",
     toEmployeeId: "6",
-    shift: mockShifts[0],
+    shift: mockShiftsScheudleGrid[0],
     status: "pending",
-    reason: "Schedule conflict",
+    note: "Schedule conflict",
     type: "swap",
+    submittedAt: new Date().toISOString(),
   },
   {
     id: "swap2",
     fromEmployeeId: "2",
     toEmployeeId: "5",
-    shift: mockShifts[1],
+    shift: mockShiftsScheudleGrid[1],
     status: "pending",
     type: "swap",
+    submittedAt: new Date().toISOString(),
   },
 ];
 
@@ -60,7 +66,7 @@ const mockPtoRequests: PTORequest[] = [
     employeeId: "4",
     startDate: "2025-01-15",
     endDate: "2025-01-16",
-    reason: "Family event",
+    note: "Family event",
     status: "pending",
     hours: 16,
     submittedAt: new Date().toISOString(),
@@ -70,7 +76,7 @@ const mockPtoRequests: PTORequest[] = [
     employeeId: "7",
     startDate: "2025-01-17",
     endDate: "2025-01-17",
-    reason: "Medical appointment",
+    note: "Medical appointment",
     status: "pending",
     hours: 8,
     submittedAt: new Date().toISOString(),
@@ -165,11 +171,11 @@ const ScheduleDetailScreen = () => {
   };
 
   return (
-    <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
+    <View className="flex-1 bg-[#212121]">
       {/* Header */}
       <View className="border-b border-gray-700 bg-[#303030]">
         <View className="px-6 py-4">
-          <View className="flex-row items-center justify-between mb-4">
+          <View className="flex-row items-center justify-between mb-6">
             <View className="flex-row items-center gap-4">
               <TouchableOpacity onPress={() => router.back()}>
                 <ArrowLeft size={24} color="#FFFFFF" />
@@ -184,19 +190,34 @@ const ScheduleDetailScreen = () => {
               </View>
             </View>
 
-            <View className="flex-row items-center gap-3">
+            <View className="flex-row items-center gap-4">
               <Select
                 defaultValue={{
                   value: "location-1",
                   label: "Downtown Location",
                 }}
+                className="text-white"
               >
-                <SelectTrigger className="w-[180px] bg-[#212121]">
-                  <SelectValue placeholder="Select a location" />
+                <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
+                  <SelectValue
+                    placeholder="Select a location"
+                    className="text-white"
+                  />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem label="Downtown Location" value="location-1" />
-                  {/* Add other locations here */}
+                <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
+                  <SelectItem
+                    value="location-1"
+                    label="Downtown Location"
+                    className="text-white"
+                  >
+                    <Text className="text-white">Downtown Location</Text>
+                  </SelectItem>
+                  <SelectItem value="location-2" label="Westside Location">
+                    Westside Location
+                  </SelectItem>
+                  <SelectItem value="location-3" label="Airport Location">
+                    Airport Location
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -207,11 +228,15 @@ const ScheduleDetailScreen = () => {
               />
 
               <Badge className={statusColors[publishStatus]}>
-                {publishStatus.charAt(0).toUpperCase() + publishStatus.slice(1)}
+                <Text>
+                  {publishStatus.charAt(0).toUpperCase() +
+                    publishStatus.slice(1)}
+                </Text>
               </Badge>
             </View>
           </View>
 
+          {/* Bottom Section */}
           <View className="flex-row items-center justify-between">
             <LaborMeter
               projectedCost={12500}
@@ -220,29 +245,33 @@ const ScheduleDetailScreen = () => {
             />
 
             <View className="flex-row items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 bg-transparent"
-              >
-                <Sparkles className="w-4 h-4 text-white" />
+              {/* Generate Draft Button */}
+              <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
+                <Sparkles size={16} color="white" />
                 <Text className="text-white">Generate Draft</Text>
-              </Button>
-              <Button
-                size="sm"
-                className="gap-2"
-                onPress={() => setPublishModalOpen(true)}
+              </TouchableOpacity>
+
+              {/* Publish Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  setPublishModalOpen(true);
+                }}
+                className="flex-row items-center gap-2 rounded-md bg-[#4A44E0] px-3 py-2"
               >
-                <Send className="w-4 h-4 text-white" />
-                <Text>Publish</Text>
-              </Button>
-              <Button variant="ghost" size="sm" className="gap-2">
-                <Download className="w-4 h-4 text-white" />
+                <Send size={16} color="white" />
+                <Text className="text-white">Publish</Text>
+              </TouchableOpacity>
+
+              {/* Export Button */}
+              <TouchableOpacity className="flex-row items-center gap-2 rounded-md px-3 py-2">
+                <Download size={16} color="white" />
                 <Text className="text-white">Export</Text>
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Settings className="w-4 h-4 text-white" />
-              </Button>
+              </TouchableOpacity>
+
+              {/* Settings Icon Button */}
+              <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-md">
+                <Settings size={16} color="white" />
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -252,7 +281,7 @@ const ScheduleDetailScreen = () => {
       <View className="flex-1 flex-row overflow-hidden">
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
-          <View className="space-y-6">
+          <View className="gap-y-6">
             <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
             <View className="border-t border-gray-700 pt-6">
@@ -275,7 +304,9 @@ const ScheduleDetailScreen = () => {
                     Open Shifts
                   </Text>
                   <Badge className="ml-auto">
-                    {mockShifts.filter((s) => s.isOpen).length}
+                    <Text>
+                      {mockShiftsScheudleGrid.filter((s) => s.isOpen).length}
+                    </Text>
                   </Badge>
                 </View>
                 <Text className="text-xs text-gray-400">
@@ -295,7 +326,9 @@ const ScheduleDetailScreen = () => {
                     Swaps & Requests
                   </Text>
                   <Badge className="ml-auto">
-                    {mockSwapRequests.length + mockPtoRequests.length}
+                    <Text>
+                      {mockSwapRequests.length + mockPtoRequests.length}
+                    </Text>
                   </Badge>
                 </View>
                 <Text className="text-xs text-gray-400">
@@ -355,7 +388,7 @@ const ScheduleDetailScreen = () => {
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={mockShifts.filter((s) => s.isOpen)}
+        openShifts={mockShiftsScheudleGrid.filter((s) => s.isOpen)}
         swapRequests={mockSwapRequests}
         ptoRequests={mockPtoRequests}
         onAssign={(shiftId, empId) =>
@@ -367,7 +400,7 @@ const ScheduleDetailScreen = () => {
         onApprovePTO={(id) => console.log(`Approve PTO ${id}`)}
         onDenyPTO={(id) => console.log(`Deny PTO ${id}`)}
       />
-    </SafeAreaView>
+    </View>
   );
 };
 

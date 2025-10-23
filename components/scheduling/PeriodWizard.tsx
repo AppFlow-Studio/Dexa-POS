@@ -247,7 +247,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
             <Text className="text-gray-400 text-center mb-6">
               Verify the details before saving.
             </Text>
-            <View className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg space-y-3">
+            <View className="w-full p-4 bg-[#212121] border border-gray-600 rounded-lg gap-y-3">
               <View className="flex-row justify-between">
                 <Text className="text-gray-400">Period Name:</Text>
                 <Text className="text-white font-semibold">

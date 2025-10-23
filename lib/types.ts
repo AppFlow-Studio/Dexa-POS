@@ -363,26 +363,32 @@ export interface UserProfile {
 export interface Shift {
   id: string;
   date: string; // ISO format: "YYYY-MM-DD"
-  role: string;
+  role: Role;
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
-  location: string;
-  status:
+  location?: string;
+  status?:
     | "confirmed"
     | "pending-drop"
     | "pending-swap"
     | "dropped"
     | "on-shift";
-  breakMinutes: number;
+  breakMinutes?: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
   isToday?: boolean;
   managerNote?: string;
-  restMet?: boolean; // Replaces '11h rest met'
-  restRiskHours?: number; // e.g., 8 for 'Risk: 8h rest'
+  restMet?: boolean;
+  restRiskHours?: number;
   expectedPace?: "Calm" | "Moderate" | "Busy";
   staffingLevel?: "Fully staffed" | "May need help";
   isOvertimeRisk?: boolean;
+  // Properties from manager's view
+  employeeId: string | null;
+  requiredCount?: number;
+  notes?: string;
+  isOpen?: boolean;
+  locked?: boolean;
 }
 
 export interface PTORequest {
@@ -404,6 +410,7 @@ export interface ShiftRequest {
   submittedAt: string; // ISO string
   shift: Shift;
   note?: string;
+  reason?: string;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;

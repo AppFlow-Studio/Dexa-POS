@@ -19,7 +19,7 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
 
   return (
     <View className="px-6 py-1 bg-[#212121]">
-      <View className="space-y-1">
+      <View className="gap-y-1">
         <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
@@ -50,7 +50,6 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
           </Text>
         </View>
       </View>
-
 
       <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
         <Text className="text-lg font-bold text-white">Total</Text>

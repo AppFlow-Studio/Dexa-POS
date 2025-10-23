@@ -3786,6 +3786,7 @@ export const MOCK_DRAWER_SUMMARIES: DrawerSummary[] = [
 export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-1",
+    employeeId: "emp_1759078476073_0",
     date: "2025-10-13",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3800,6 +3801,7 @@ export const MOCK_SHIFTS: Shift[] = [
   },
   {
     id: "shift-2",
+    employeeId: "emp_1759078476073_0",
     date: "2025-10-14",
     role: "Barista",
     startTime: "2:00 PM",
@@ -3814,6 +3816,7 @@ export const MOCK_SHIFTS: Shift[] = [
   },
   {
     id: "shift-3",
+    employeeId: "emp_1759078476073_0",
     date: "2025-10-15",
     role: "Barista",
     startTime: "6:00 AM",
@@ -3828,6 +3831,7 @@ export const MOCK_SHIFTS: Shift[] = [
   },
   {
     id: "shift-4",
+    employeeId: "emp_1759078476073_0",
     date: "2025-10-16",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3841,6 +3845,7 @@ export const MOCK_SHIFTS: Shift[] = [
   },
   {
     id: "shift-5",
+    employeeId: "emp_1759078476073_0",
     date: "2025-10-17",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3851,6 +3856,49 @@ export const MOCK_SHIFTS: Shift[] = [
     isOvertimeRisk: true,
     expectedPace: "Moderate",
     staffingLevel: "Fully staffed",
+  },
+];
+
+export const mockShiftsScheudleGrid: Shift[] = [
+  {
+    id: "s1",
+    employeeId: "emp_1759078476073_0",
+    role: "Cashier",
+    startTime: "08:00",
+    endTime: "16:00",
+    date: "2025-01-13",
+    requiredCount: 1,
+    isOpen: false,
+  },
+  {
+    id: "s2",
+    employeeId: "emp_1759078476073_1",
+    role: "Line Cook",
+    startTime: "10:00",
+    endTime: "18:00",
+    date: "2025-01-13",
+    requiredCount: 1,
+    isOpen: false,
+  },
+  {
+    id: "s3",
+    employeeId: null,
+    role: "Barista",
+    startTime: "06:00",
+    endTime: "14:00",
+    date: "2025-01-14",
+    requiredCount: 2,
+    isOpen: true,
+  },
+  {
+    id: "s4",
+    employeeId: "emp_1759078476073_2",
+    role: "Supervisor",
+    startTime: "12:00",
+    endTime: "20:00",
+    date: "2025-01-14",
+    requiredCount: 1,
+    isOpen: false,
   },
 ];
 
@@ -3865,6 +3913,7 @@ export const MOCK_PTO_BALANCE = {
 export const MOCK_PTO_REQUESTS: PTORequest[] = [
   {
     id: "pto-1",
+    employeeId: "emp_1759078476073_0",
     startDate: "2025-02-10",
     endDate: "2025-02-12",
     hours: 24,
@@ -3874,6 +3923,7 @@ export const MOCK_PTO_REQUESTS: PTORequest[] = [
   },
   {
     id: "pto-2",
+    employeeId: "emp_1759078476073_0",
     startDate: "2024-12-24",
     endDate: "2024-12-26",
     hours: 24,
@@ -3884,6 +3934,7 @@ export const MOCK_PTO_REQUESTS: PTORequest[] = [
   },
   {
     id: "pto-3",
+    employeeId: "emp_1759078476073_0",
     startDate: "2024-11-05",
     endDate: "2024-11-05",
     hours: 8,

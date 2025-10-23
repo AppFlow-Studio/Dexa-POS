@@ -32,7 +32,7 @@ const TrackOrderCard: React.FC<{ order: TrackedOrder }> = ({ order }) => {
       <View className="border-b border-dashed border-white my-4" />
 
       {/* Item List */}
-      <View className="space-y-2 flex-1">
+      <View className="gap-y-2 flex-1">
         {itemsToShow.map((item, index) => (
           <Text key={index} className="text-2xl text-white">
             {item.quantity}x {item.name}

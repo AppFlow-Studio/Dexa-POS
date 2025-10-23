@@ -130,7 +130,7 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
 
   return (
     <View className="p-3 bg-[#303030] rounded-lg border border-gray-600">
-      <View className="space-y-3">
+      <View className="gap-y-3">
         <View className="flex-row gap-3">
           <FormInput
             label="Server/Employee Name"

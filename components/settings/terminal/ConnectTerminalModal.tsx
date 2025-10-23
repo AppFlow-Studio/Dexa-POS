@@ -58,7 +58,7 @@ const ConnectTerminalModal = ({
             <Text className="text-gray-500 mt-1 text-sm">
               Select a terminal to connect.
             </Text>
-            <View className="my-3 space-y-1.5">
+            <View className="my-3 gap-y-1.5">
               {MOCK_FOUND_TERMINALS.map((terminal) => (
                 <TouchableOpacity
                   key={terminal.id}

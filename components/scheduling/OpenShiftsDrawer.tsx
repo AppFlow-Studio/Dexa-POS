@@ -2,9 +2,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shift } from "@/lib/mock-data";
+import { PTORequest, Shift, ShiftRequest as SwapRequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { PTORequest, ShiftRequest as SwapRequest } from "@/lib/types";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -124,7 +123,11 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
               Requests
             </Text>
           </View>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex-1"
+          >
             <TabsList className="w-full rounded-none border-b border-gray-700 bg-transparent px-6">
               <TabsTrigger value="open-shifts" className="flex-1">
                 <Text className="text-white">Open Shifts</Text>
@@ -147,7 +150,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
             </TabsList>
             <BottomSheetScrollView>
               <TabsContent value="open-shifts">
-                <View className="p-6 space-y-4">
+                <View className="p-6 gap-y-4">
                   {openShifts.length === 0 ? (
                     <View className="items-center py-12">
                       <Calendar size={48} className="text-gray-600 mb-3" />
@@ -162,18 +165,18 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                       return (
                         <Card
                           key={shift.id}
-                          className="p-4 bg-[#303030] border-gray-700 space-y-3"
+                          className="p-4 bg-[#303030] border-gray-700 gap-y-3"
                         >
                           <View className="flex-row justify-between items-start">
-                            <View className="space-y-2">
+                            <View className="gap-y-2">
                               <Badge variant="outline" className="text-xs">
-                                {shift.role}
+                                <Text>{shift.role}</Text>
                               </Badge>
                               <View className="flex-row items-center gap-2 text-sm">
                                 <Clock size={16} className="text-gray-400" />
                                 <Text className="text-white">
-                                  {formatTime(shift.start)} -
-                                  {formatTime(shift.end)}
+                                  {formatTime(shift.startTime)} - $
+                                  {formatTime(shift.endTime)}
                                 </Text>
                               </View>
                               <View className="flex-row items-center gap-2 text-sm">
@@ -190,7 +193,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                                 </Text>
                               </View>
                             </View>
-                            {shift.requiredCount > 1 && (
+                            {(shift.requiredCount || 1) > 1 && (
                               <Badge variant="secondary" className="gap-1">
                                 <Users size={12} />
                                 <Text>{shift.requiredCount}</Text>
@@ -221,7 +224,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                                 </Button>
                               </View>
                               {isExpanded && (
-                                <View className="space-y-2 mt-3">
+                                <View className="gap-y-2 mt-3">
                                   {applicants.map((applicant) => (
                                     <View
                                       key={applicant.employeeId}
@@ -294,7 +297,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                 </View>
               </TabsContent>
               <TabsContent value="swaps">
-                <View className="p-6 space-y-4">
+                <View className="p-6 gap-y-4">
                   {swapRequests.map((req) => (
                     <SwapRequestCard
                       key={req.id}
@@ -315,7 +318,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                 </View>
               </TabsContent>
               <TabsContent value="pto">
-                <View className="p-6 space-y-4">
+                <View className="p-6 gap-y-4">
                   {ptoRequests.map((req) => (
                     <PTORequestCard
                       key={req.id}

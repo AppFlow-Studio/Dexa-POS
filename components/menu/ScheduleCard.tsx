@@ -45,7 +45,7 @@ export const ScheduleCard: React.FC<ScheduleCardProps> = ({ item }) => {
         </TouchableOpacity>
       </View>
 
-      <View className="mt-3 space-y-1.5">
+      <View className="mt-3 gap-y-1.5">
         {(item.schedules?.length ?? 0) === 0 ? (
           <Text className="text-base text-gray-400 py-2">
             Always available (no schedule rules)

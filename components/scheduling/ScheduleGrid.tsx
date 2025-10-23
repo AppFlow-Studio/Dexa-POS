@@ -1,9 +1,19 @@
-import { getWeekDates, mockShifts, Shift } from "@/lib/mock-data";
+import { mockShiftsScheudleGrid as mockShifts } from "@/lib/mockData";
+import { Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
 
+function getWeekDates(startDate: Date): Date[] {
+  const dates: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+    dates.push(date);
+  }
+  return dates;
+}
 interface ScheduleGridProps {
   startDate: Date;
   viewMode: "employee" | "role";
@@ -79,13 +89,13 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       key={`${employee.id}-${i}`}
                       className="w-40 bg-[#303030] p-2 min-h-[80px] border-r border-b border-gray-700"
                     >
-                      <View className="space-y-2">
+                      <View className="gap-y-2">
                         {dayShifts.map((shift) => (
                           <ShiftChip
                             key={shift.id}
                             role={shift.role}
-                            start={shift.start}
-                            end={shift.end}
+                            start={shift.startTime}
+                            end={shift.endTime}
                             requiredCount={shift.requiredCount}
                             wage={employee.baseWage} // This property does not exist on EmployeeProfile, will need to be added or handled
                             isOpen={shift.isOpen}

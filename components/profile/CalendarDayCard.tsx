@@ -30,7 +30,7 @@ const CalendarDayCard: React.FC<CalendarDayCardProps> = ({
         >
           {date}
         </Text>
-        <View className="mt-1 space-y-1">
+        <View className="mt-1 gap-y-1">
           {shifts.map((shift) => (
             <TouchableOpacity
               key={shift.id}

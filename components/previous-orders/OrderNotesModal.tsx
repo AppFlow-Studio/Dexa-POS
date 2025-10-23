@@ -78,7 +78,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
             Order #{order.orderId} - Total ${order.total.toFixed(2)}
           </Text>
           <ScrollView className="max-h-[60vh]">
-            <View className="space-y-3">
+            <View className="gap-y-3">
               {order.items.map((item) => (
                 <ModifierItem key={item.id} item={item} />
               ))}

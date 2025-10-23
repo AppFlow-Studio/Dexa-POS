@@ -14,10 +14,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Option,
 } from "@/components/ui/select";
-import { Shift } from "@/lib/mock-data";
-import { Role } from "@/lib/types";
+import { Role, Shift } from "@/lib/types";
 import { AlertCircle, Copy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
@@ -40,8 +38,8 @@ export function ShiftEditorModal({
   onSaveAndDuplicate,
 }: ShiftEditorModalProps) {
   const [role, setRole] = useState<Role>(shift?.role || "Cashier");
-  const [startTime, setStartTime] = useState(shift?.start || "09:00");
-  const [endTime, setEndTime] = useState(shift?.end || "17:00");
+  const [startTime, setStartTime] = useState(shift?.startTime || "09:00");
+  const [endTime, setEndTime] = useState(shift?.endTime || "17:00");
   const [requiredCount, setRequiredCount] = useState(shift?.requiredCount || 1);
   const [notes, setNotes] = useState(shift?.notes || "");
   const [lockAssignment, setLockAssignment] = useState(false);
@@ -51,8 +49,8 @@ export function ShiftEditorModal({
   useEffect(() => {
     if (shift) {
       setRole(shift.role);
-      setStartTime(shift.start);
-      setEndTime(shift.end);
+      setStartTime(shift.startTime);
+      setEndTime(shift.endTime);
       setRequiredCount(shift.requiredCount || 1);
       setNotes(shift.notes || "");
       setLockAssignment(shift.locked || false);
@@ -91,8 +89,8 @@ export function ShiftEditorModal({
     if (!validateShift()) return;
     onSave({
       role,
-      start: startTime,
-      end: endTime,
+      startTime: startTime,
+      endTime: endTime,
       requiredCount,
       notes,
       locked: lockAssignment,
@@ -105,8 +103,8 @@ export function ShiftEditorModal({
     if (!validateShift() || !onSaveAndDuplicate) return;
     onSaveAndDuplicate({
       role,
-      start: startTime,
-      end: endTime,
+      startTime: startTime,
+      endTime: endTime,
       requiredCount,
       notes,
       locked: lockAssignment,
@@ -124,12 +122,12 @@ export function ShiftEditorModal({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollView className="py-4 space-y-4">
+        <ScrollView className="py-4 gap-y-4">
           {errors.length > 0 && (
             <View className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
               <View className="flex-row items-start gap-2">
                 <AlertCircle size={16} className="text-red-400 mt-1" />
-                <View className="space-y-1">
+                <View className="gap-y-1">
                   {errors.map((error, i) => (
                     <Text key={i} className="text-sm text-red-400">
                       {error}
@@ -140,7 +138,7 @@ export function ShiftEditorModal({
             </View>
           )}
 
-          <View className="space-y-2">
+          <View className="gap-y-2">
             <Text className="text-gray-300 font-semibold">Role *</Text>
             <Select
               onValueChange={(option) => setRole(option?.value as Role)}
@@ -158,7 +156,7 @@ export function ShiftEditorModal({
           </View>
 
           <View className="flex-row gap-4">
-            <View className="flex-1 space-y-2">
+            <View className="flex-1 gap-y-2">
               <Text className="text-gray-300 font-semibold">Start Time *</Text>
               <TextInput
                 value={startTime}
@@ -166,7 +164,7 @@ export function ShiftEditorModal({
                 className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
               />
             </View>
-            <View className="flex-1 space-y-2">
+            <View className="flex-1 gap-y-2">
               <Text className="text-gray-300 font-semibold">End Time *</Text>
               <TextInput
                 value={endTime}
@@ -176,7 +174,7 @@ export function ShiftEditorModal({
             </View>
           </View>
 
-          <View className="space-y-2">
+          <View className="gap-y-2">
             <Text className="text-gray-300 font-semibold">
               Required Headcount
             </Text>
@@ -188,7 +186,7 @@ export function ShiftEditorModal({
             />
           </View>
 
-          <View className="space-y-2">
+          <View className="gap-y-2">
             <Text className="text-gray-300 font-semibold">Notes</Text>
             <TextInput
               value={notes}
@@ -200,7 +198,7 @@ export function ShiftEditorModal({
             />
           </View>
 
-          <View className="space-y-3 pt-2">
+          <View className="gap-y-3 pt-2">
             <View className="flex-row items-center gap-2">
               <Checkbox
                 id="lock"
