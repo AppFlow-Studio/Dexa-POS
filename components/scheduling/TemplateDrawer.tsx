@@ -34,7 +34,7 @@ const TemplateDrawer: React.FC<TemplateDrawerProps> = ({ onApplyTemplate }) => {
   return (
     <View className="gap-y-3">
       <View className="flex-row items-center gap-2 mb-4">
-        <Sparkles className="text-blue-400" size={16} />
+        <Sparkles className="text-blue-400" size={16} color={"#60a5fa"} />
         <Text className="text-sm font-semibold text-white">Templates</Text>
       </View>
       {templates.map((template) => (

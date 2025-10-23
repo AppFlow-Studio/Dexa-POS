@@ -1,7 +1,4 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PTORequest, Shift, ShiftRequest as SwapRequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import BottomSheet, {
@@ -17,7 +14,8 @@ import {
   X,
 } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { Button } from "../ui/button";
 import PTORequestCard from "./PTORequestCard";
 import SwapRequestCard from "./SwapRequestCard";
 
@@ -100,6 +98,201 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       }
     };
 
+    const renderContent = () => {
+      switch (activeTab) {
+        case "open-shifts":
+          return (
+            <View className="p-6 gap-y-4">
+              {openShifts.length === 0 ? (
+                <View className="items-center py-12">
+                  <Calendar
+                    size={48}
+                    className="text-gray-600 mb-3"
+                    color={"#4b5563"}
+                  />
+                  <Text className="text-sm text-gray-500">No open shifts</Text>
+                </View>
+              ) : (
+                openShifts.map((shift) => {
+                  const applicants = getApplicants(shift.id);
+                  const isExpanded = selectedShift === shift.id;
+                  return (
+                    <Card
+                      key={shift.id}
+                      className="p-4 bg-[#303030] border-gray-700 gap-y-3"
+                    >
+                      <View className="flex-row justify-between items-start">
+                        <View className="gap-y-2">
+                          <View className="border-none px-2.5 py-0.5 ">
+                            <Text className="text-white">{shift.role}</Text>
+                          </View>
+                          <View className="flex-row items-center gap-2 text-sm">
+                            <Clock
+                              size={16}
+                              className="text-gray-400"
+                              color={"#9ca3af"}
+                            />
+                            <Text className="text-white">
+                              {formatTime(shift.startTime)} - $
+                              {formatTime(shift.endTime)}
+                            </Text>
+                          </View>
+                          <View className="flex-row items-center gap-2 text-sm">
+                            <Calendar
+                              size={16}
+                              className="text-gray-400"
+                              color={"#9ca3af"}
+                            />
+                            <Text className="text-gray-400">
+                              {new Date(shift.date).toLocaleDateString(
+                                "en-US",
+                                {
+                                  weekday: "short",
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )}
+                            </Text>
+                          </View>
+                        </View>
+                        {(shift.requiredCount || 1) > 1 && (
+                          <View className="border-none px-2.5 py-0.5 items-center gap-2 flex-row">
+                            <Users size={12} color={"#9ca3af"} />
+                            <Text className="text-gray-400">
+                              {shift.requiredCount}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {applicants.length > 0 && (
+                        <View className="pt-3 border-t border-gray-700">
+                          <View className="flex-row justify-between items-center mb-2">
+                            <Text className="text-xs text-gray-400">
+                              {applicants.length} applicant
+                              {applicants.length !== 1 ? "s" : ""}
+                            </Text>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-xs flex-row"
+                              onPress={() =>
+                                setSelectedShift(isExpanded ? null : shift.id)
+                              }
+                            >
+                              <Text className="text-blue-400">
+                                {isExpanded ? "Hide" : "View"}
+                              </Text>
+                            </Button>
+                          </View>
+                          {isExpanded && (
+                            <View className="gap-y-2 mt-3">
+                              {applicants.map((applicant) => (
+                                <View
+                                  key={applicant.employeeId}
+                                  className="flex-row items-center justify-between p-2 rounded bg-[#212121] border border-gray-600"
+                                >
+                                  <View>
+                                    <Text className="text-sm font-medium text-white">
+                                      {getEmployeeName(applicant.employeeId)}
+                                    </Text>
+                                    <Text className="text-xs text-gray-500">
+                                      {applicant.hoursDeficit}h deficit •{" "}
+                                      {applicant.seniority}y seniority
+                                    </Text>
+                                  </View>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 gap-2 bg-transparent border-gray-600 flex-row"
+                                    onPress={() =>
+                                      onAssign(shift.id, applicant.employeeId)
+                                    }
+                                  >
+                                    <Text className="text-white">Assign</Text>
+                                    <ArrowRight
+                                      size={12}
+                                      className="text-white"
+                                      color={"#FFFFFF"}
+                                    />
+                                  </Button>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      <View className="flex-row gap-2 pt-2">
+                        {applicants.length > 0 && (
+                          <Button
+                            size="sm"
+                            className="flex-1 gap-2 bg-blue-600 flex-row"
+                            onPress={() => handleAssignBest(shift.id)}
+                          >
+                            <CheckCircle2 size={16} color="#FFFFFF" />
+                            <Text className="text-white font-semibold">
+                              Assign Best
+                            </Text>
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2 bg-transparent border-gray-600 flex-row"
+                          onPress={() => onCloseShift(shift.id)}
+                        >
+                          <X size={16} color="#FFFFFF" />
+                          <Text className="text-white">Close</Text>
+                        </Button>
+                      </View>
+                    </Card>
+                  );
+                })
+              )}
+            </View>
+          );
+        case "swaps":
+          return (
+            <View className="p-6 gap-y-4">
+              {swapRequests.map((req) => (
+                <SwapRequestCard
+                  key={req.id}
+                  fromEmployee={getEmployeeName(req.fromEmployeeId!)}
+                  toEmployee={getEmployeeName(req.toEmployeeId!)}
+                  shift={{
+                    role: req.shift.role,
+                    date: new Date(req.shift.date).toLocaleDateString(),
+                    time: `${formatTime(req.shift.startTime)} - ${formatTime(req.shift.endTime)}`,
+                  }}
+                  reason={req.note}
+                  onApprove={() => onApproveSwap(req.id)}
+                  onDeny={() => onDenySwap(req.id)}
+                />
+              ))}
+            </View>
+          );
+        case "pto":
+          return (
+            <View className="p-6 gap-y-4">
+              {ptoRequests.map((req) => (
+                <PTORequestCard
+                  key={req.id}
+                  employee={getEmployeeName(req.employeeId)}
+                  startDate={new Date(req.startDate).toLocaleDateString()}
+                  endDate={new Date(req.endDate).toLocaleDateString()}
+                  reason={req.note}
+                  onApprove={() => onApprovePTO(req.id)}
+                  onDeny={() => onDenyPTO(req.id)}
+                />
+              ))}
+            </View>
+          );
+        default:
+          return null;
+      }
+    };
+
     return (
       <BottomSheet
         ref={ref}
@@ -118,222 +311,46 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       >
         <View className="flex-1 bg-[#212121]">
           <View className="px-6 py-4 border-b border-gray-700">
-            <Text className="text-white text-xl font-bold flex-row items-center gap-2">
-              <Calendar size={20} className="text-blue-400" /> Open Shifts &
-              Requests
-            </Text>
+            <View className="flex-row items-center gap-2">
+              <Calendar size={20} className="text-blue-400" color={"#60a5fa"} />
+              <Text className="text-white text-xl font-bold">
+                Open Shifts & Requests
+              </Text>
+            </View>
           </View>
-          <Tabs
-            value={activeTab}
-            onValueChange={setActiveTab}
-            className="flex-1"
-          >
-            <TabsList className="w-full rounded-none border-b border-gray-700 bg-transparent px-6">
-              <TabsTrigger value="open-shifts" className="flex-1">
-                <Text className="text-white">Open Shifts</Text>
-                <Badge className="ml-2">
-                  <Text>{openShifts.length}</Text>
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="swaps" className="flex-1">
-                <Text className="text-white">Swaps</Text>
-                <Badge className="ml-2">
-                  <Text>2</Text>
-                </Badge>
-              </TabsTrigger>
-              <TabsTrigger value="pto" className="flex-1">
-                <Text className="text-white">PTO</Text>
-                <Badge className="ml-2">
-                  <Text>2</Text>
-                </Badge>
-              </TabsTrigger>
-            </TabsList>
-            <BottomSheetScrollView>
-              <TabsContent value="open-shifts">
-                <View className="p-6 gap-y-4">
-                  {openShifts.length === 0 ? (
-                    <View className="items-center py-12">
-                      <Calendar size={48} className="text-gray-600 mb-3" />
-                      <Text className="text-sm text-gray-500">
-                        No open shifts
-                      </Text>
-                    </View>
-                  ) : (
-                    openShifts.map((shift) => {
-                      const applicants = getApplicants(shift.id);
-                      const isExpanded = selectedShift === shift.id;
-                      return (
-                        <Card
-                          key={shift.id}
-                          className="p-4 bg-[#303030] border-gray-700 gap-y-3"
-                        >
-                          <View className="flex-row justify-between items-start">
-                            <View className="gap-y-2">
-                              <Badge variant="outline" className="text-xs">
-                                <Text>{shift.role}</Text>
-                              </Badge>
-                              <View className="flex-row items-center gap-2 text-sm">
-                                <Clock size={16} className="text-gray-400" />
-                                <Text className="text-white">
-                                  {formatTime(shift.startTime)} - $
-                                  {formatTime(shift.endTime)}
-                                </Text>
-                              </View>
-                              <View className="flex-row items-center gap-2 text-sm">
-                                <Calendar size={16} className="text-gray-400" />
-                                <Text className="text-gray-400">
-                                  {new Date(shift.date).toLocaleDateString(
-                                    "en-US",
-                                    {
-                                      weekday: "short",
-                                      month: "short",
-                                      day: "numeric",
-                                    }
-                                  )}
-                                </Text>
-                              </View>
-                            </View>
-                            {(shift.requiredCount || 1) > 1 && (
-                              <Badge variant="secondary" className="gap-1">
-                                <Users size={12} />
-                                <Text>{shift.requiredCount}</Text>
-                              </Badge>
-                            )}
-                          </View>
-
-                          {applicants.length > 0 && (
-                            <View className="pt-3 border-t border-gray-700">
-                              <View className="flex-row justify-between items-center mb-2">
-                                <Text className="text-xs text-gray-400">
-                                  {applicants.length} applicant
-                                  {applicants.length !== 1 ? "s" : ""}
-                                </Text>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6 text-xs"
-                                  onPress={() =>
-                                    setSelectedShift(
-                                      isExpanded ? null : shift.id
-                                    )
-                                  }
-                                >
-                                  <Text className="text-blue-400">
-                                    {isExpanded ? "Hide" : "View"}
-                                  </Text>
-                                </Button>
-                              </View>
-                              {isExpanded && (
-                                <View className="gap-y-2 mt-3">
-                                  {applicants.map((applicant) => (
-                                    <View
-                                      key={applicant.employeeId}
-                                      className="flex-row items-center justify-between p-2 rounded bg-[#212121] border border-gray-600"
-                                    >
-                                      <View>
-                                        <Text className="text-sm font-medium text-white">
-                                          {getEmployeeName(
-                                            applicant.employeeId
-                                          )}
-                                        </Text>
-                                        <Text className="text-xs text-gray-500">
-                                          {applicant.hoursDeficit}h deficit •{" "}
-                                          {applicant.seniority}y seniority
-                                        </Text>
-                                      </View>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 gap-1 bg-transparent border-gray-600"
-                                        onPress={() =>
-                                          onAssign(
-                                            shift.id,
-                                            applicant.employeeId
-                                          )
-                                        }
-                                      >
-                                        <Text className="text-white">
-                                          Assign
-                                        </Text>
-                                        <ArrowRight
-                                          size={12}
-                                          className="text-white"
-                                        />
-                                      </Button>
-                                    </View>
-                                  ))}
-                                </View>
-                              )}
-                            </View>
-                          )}
-
-                          <View className="flex-row gap-2 pt-2">
-                            {applicants.length > 0 && (
-                              <Button
-                                size="sm"
-                                className="flex-1 gap-2 bg-blue-600"
-                                onPress={() => handleAssignBest(shift.id)}
-                              >
-                                <CheckCircle2 size={16} color="#FFFFFF" />
-                                <Text className="text-white font-semibold">
-                                  Assign Best
-                                </Text>
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-2 bg-transparent border-gray-600"
-                              onPress={() => onCloseShift(shift.id)}
-                            >
-                              <X size={16} color="#FFFFFF" />
-                              <Text className="text-white">Close</Text>
-                            </Button>
-                          </View>
-                        </Card>
-                      );
-                    })
-                  )}
-                </View>
-              </TabsContent>
-              <TabsContent value="swaps">
-                <View className="p-6 gap-y-4">
-                  {swapRequests.map((req) => (
-                    <SwapRequestCard
-                      key={req.id}
-                      fromEmployee={getEmployeeName(req.fromEmployeeId!)}
-                      toEmployee={getEmployeeName(req.toEmployeeId!)}
-                      shift={{
-                        role: req.shift.role,
-                        date: new Date(req.shift.date).toLocaleDateString(),
-                        time: `${formatTime(req.shift.startTime)} - ${formatTime(
-                          req.shift.endTime
-                        )}`,
-                      }}
-                      reason={req.note}
-                      onApprove={() => onApproveSwap(req.id)}
-                      onDeny={() => onDenySwap(req.id)}
-                    />
-                  ))}
-                </View>
-              </TabsContent>
-              <TabsContent value="pto">
-                <View className="p-6 gap-y-4">
-                  {ptoRequests.map((req) => (
-                    <PTORequestCard
-                      key={req.id}
-                      employee={getEmployeeName(req.employeeId)}
-                      startDate={new Date(req.startDate).toLocaleDateString()}
-                      endDate={new Date(req.endDate).toLocaleDateString()}
-                      reason={req.note}
-                      onApprove={() => onApprovePTO(req.id)}
-                      onDeny={() => onDenyPTO(req.id)}
-                    />
-                  ))}
-                </View>
-              </TabsContent>
-            </BottomSheetScrollView>
-          </Tabs>
+          <View className="flex-row w-full rounded-none border-b border-gray-700 bg-transparent px-6">
+            <TouchableOpacity
+              onPress={() => setActiveTab("open-shifts")}
+              className={`flex-1 py-3 items-center border-b-2 ${activeTab === "open-shifts" ? "border-blue-400" : "border-transparent"}`}
+            >
+              <Text
+                className={`font-semibold ${activeTab === "open-shifts" ? "text-blue-400" : "text-gray-400"}`}
+              >
+                Open Shifts
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab("swaps")}
+              className={`flex-1 py-3 items-center border-b-2 ${activeTab === "swaps" ? "border-blue-400" : "border-transparent"}`}
+            >
+              <Text
+                className={`font-semibold ${activeTab === "swaps" ? "text-blue-400" : "text-gray-400"}`}
+              >
+                Swaps
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab("pto")}
+              className={`flex-1 py-3 items-center border-b-2 ${activeTab === "pto" ? "border-blue-400" : "border-transparent"}`}
+            >
+              <Text
+                className={`font-semibold ${activeTab === "pto" ? "text-blue-400" : "text-gray-400"}`}
+              >
+                PTO
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <BottomSheetScrollView>{renderContent()}</BottomSheetScrollView>
         </View>
       </BottomSheet>
     );

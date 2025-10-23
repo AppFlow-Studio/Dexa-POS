@@ -32,7 +32,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
   return (
     <View className="gap-y-4">
       <View className="flex-row items-center gap-2 mb-4">
-        <Filter className="text-blue-400" size={16} />
+        <Filter className="text-blue-400" size={16} color={"#60a5fa"} />
         <Text className="text-sm font-semibold text-white">Filters</Text>
       </View>
 
@@ -45,6 +45,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 id={`role-${role}`}
                 checked={selectedRoles.includes(role)}
                 onCheckedChange={() => onRoleToggle(role)}
+                className="text-white"
               />
               <Label htmlFor={`role-${role}`} className="text-sm text-white">
                 {role}
@@ -64,13 +65,10 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 checked={selectedConflicts.includes(conflict.id)}
                 onCheckedChange={() => onConflictToggle(conflict.id)}
               />
-              <Label
-                htmlFor={`conflict-${conflict.id}`}
-                className="text-sm text-white flex-row items-center gap-2"
-              >
+              <View className="text-sm text-white flex-row items-center gap-2">
                 <View className={`w-2 h-2 rounded-full ${conflict.color}`} />
                 <Text className="text-white">{conflict.label}</Text>
-              </Label>
+              </View>
             </View>
           ))}
         </View>

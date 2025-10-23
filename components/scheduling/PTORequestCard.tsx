@@ -27,7 +27,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
     <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
         <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-          <Text>PTO Request</Text>
+          <Text className="text-purple-400">PTO Request</Text>
         </Badge>
         <Text className="text-xs text-gray-500">1 day ago</Text>
       </View>
@@ -49,7 +49,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
       <View className="flex-row gap-2 pt-2">
         <Button
           onPress={onApprove}
-          className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+          className="flex-1 gap-2 bg-green-600 hover:bg-green-700 flex-row"
         >
           <CheckCircle2 size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Approve</Text>
@@ -57,7 +57,7 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
         <Button
           onPress={onDeny}
           variant="outline"
-          className="flex-1 gap-2 bg-transparent border-gray-600"
+          className="flex-1 gap-2 bg-transparent border-gray-600 flex-row"
         >
           <X size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Deny</Text>

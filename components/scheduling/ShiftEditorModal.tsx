@@ -138,24 +138,32 @@ export function ShiftEditorModal({
             </View>
           )}
 
-          <View className="gap-y-2">
+          <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">Role *</Text>
             <Select
               onValueChange={(option) => setRole(option?.value as Role)}
               value={{ label: role, value: role }}
             >
               <SelectTrigger className="bg-[#212121]">
-                <SelectValue placeholder="Select a role..." />
+                <SelectValue
+                  placeholder="Select a role..."
+                  className="text-white"
+                />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-[#212121] border-gray-600">
                 {roles.map((r) => (
-                  <SelectItem key={r} label={r} value={r} />
+                  <SelectItem
+                    key={r}
+                    label={r}
+                    value={r}
+                    className="text-white"
+                  />
                 ))}
               </SelectContent>
             </Select>
           </View>
 
-          <View className="flex-row gap-4">
+          <View className="flex-row gap-4 mb-2">
             <View className="flex-1 gap-y-2">
               <Text className="text-gray-300 font-semibold">Start Time *</Text>
               <TextInput
@@ -174,7 +182,7 @@ export function ShiftEditorModal({
             </View>
           </View>
 
-          <View className="gap-y-2">
+          <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">
               Required Headcount
             </Text>
@@ -186,7 +194,7 @@ export function ShiftEditorModal({
             />
           </View>
 
-          <View className="gap-y-2">
+          <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">Notes</Text>
             <TextInput
               value={notes}
@@ -230,7 +238,7 @@ export function ShiftEditorModal({
             <Button
               variant="outline"
               onPress={handleSaveAndDuplicate}
-              className="gap-2 bg-transparent border-gray-600"
+              className="gap-2 bg-transparent border-gray-600 flex-row"
             >
               <Copy size={16} color="#FFFFFF" />
               <Text className="text-white">Save & Duplicate</Text>

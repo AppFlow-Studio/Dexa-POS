@@ -25,7 +25,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
     <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-          Swap Request
+          <Text className="text-xs text-blue-400">Swap Request</Text>
         </Badge>
         <Text className="text-xs text-gray-500">2 hours ago</Text>
       </View>
@@ -58,7 +58,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
       <View className="flex-row gap-2 pt-2">
         <Button
           onPress={onApprove}
-          className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+          className="flex-1 gap-2 bg-green-600 hover:bg-green-700 flex-row"
         >
           <CheckCircle2 size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Approve</Text>
@@ -66,7 +66,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         <Button
           onPress={onDeny}
           variant="outline"
-          className="flex-1 gap-2 bg-transparent border-gray-600"
+          className="flex-1 gap-2 bg-transparent border-gray-600 flex-row"
         >
           <X size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Deny</Text>

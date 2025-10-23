@@ -63,20 +63,28 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
       <View className="flex-row items-center justify-between gap-2 mb-1">
         <Badge
           variant="outline"
-          className={`text-xs px-1.5 py-0 h-5 border-current ${isOpen ? "text-gray-400" : "text-white"}`}
+          className={`text-xs px-1.5 border-current ${isOpen ? "text-gray-400 border-gray-400" : "text-white border-white"}`}
         >
-          <Text> {role}</Text>
+          <Text
+            className={`text-xs ${isOpen ? "text-gray-400" : "text-white"}`}
+          >
+            {role}
+          </Text>
         </Badge>
         {requiredCount > 1 && (
           <View className="flex-row items-center gap-1 text-xs text-gray-400">
-            <Users size={12} />
+            <Users size={12} color={"#9ca3af"} />
             <Text className="text-xs text-gray-400">{requiredCount}</Text>
           </View>
         )}
       </View>
 
       <View className="flex-row items-center gap-1.5">
-        <Clock size={12} className={isOpen ? "text-gray-400" : "text-white"} />
+        <Clock
+          size={12}
+          color={isOpen ? "#9ca3af" : "white"}
+          className={isOpen ? "text-gray-400" : "text-white"}
+        />
         <Text
           className={`font-medium text-xs ${isOpen ? "text-gray-400" : "text-white"}`}
         >

@@ -1,7 +1,6 @@
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import {
-  ArrowLeft,
   Calendar,
   Download,
   Send,
@@ -13,7 +12,6 @@ import React, { useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -37,6 +35,7 @@ import {
   Shift,
   ShiftRequest as SwapRequest,
 } from "@/lib/types";
+import { ScrollView } from "react-native-gesture-handler";
 
 const mockSwapRequests: SwapRequest[] = [
   {
@@ -177,14 +176,8 @@ const ScheduleDetailScreen = () => {
         <View className="px-6 py-4">
           <View className="flex-row items-center justify-between mb-6">
             <View className="flex-row items-center gap-4">
-              <TouchableOpacity onPress={() => router.back()}>
-                <ArrowLeft size={24} color="#FFFFFF" />
-              </TouchableOpacity>
               <View>
-                <Text className="text-xl font-bold text-white">
-                  Scheduling Dashboard
-                </Text>
-                <Text className="text-sm text-gray-400">
+                <Text className="text-white">
                   Plan and manage weekly schedules
                 </Text>
               </View>
@@ -281,82 +274,110 @@ const ScheduleDetailScreen = () => {
       <View className="flex-1 flex-row overflow-hidden">
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
-          <View className="gap-y-6">
-            <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
+          <ScrollView>
+            <View className="gap-y-6">
+              <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
-            <View className="border-t border-gray-700 pt-6">
-              <FiltersPanel
-                selectedRoles={selectedRoles}
-                selectedConflicts={selectedConflicts}
-                onRoleToggle={handleRoleToggle}
-                onConflictToggle={handleConflictToggle}
-              />
-            </View>
+              <View className="border-t border-gray-700 pt-6">
+                <FiltersPanel
+                  selectedRoles={selectedRoles}
+                  selectedConflicts={selectedConflicts}
+                  onRoleToggle={handleRoleToggle}
+                  onConflictToggle={handleConflictToggle}
+                />
+              </View>
 
-            <View className="border-t border-gray-700 pt-6">
-              <TouchableOpacity
-                onPress={() => openShiftsSheetRef.current?.expand()}
-                className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
-              >
-                <View className="flex-row items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4 text-blue-400" />
-                  <Text className="text-sm font-semibold text-white">
-                    Open Shifts
-                  </Text>
-                  <Badge className="ml-auto">
-                    <Text>
-                      {mockShiftsScheudleGrid.filter((s) => s.isOpen).length}
+              <View className="border-t border-gray-700 pt-6">
+                <TouchableOpacity
+                  onPress={() => openShiftsSheetRef.current?.expand()}
+                  className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
+                >
+                  <View className="flex-row items-center gap-2 mb-2">
+                    <Calendar
+                      className="w-4 h-4 text-blue-400"
+                      color={"#60a5fa"}
+                    />
+                    <Text className="text-sm font-semibold text-white">
+                      Open Shifts
                     </Text>
-                  </Badge>
-                </View>
-                <Text className="text-xs text-gray-400">
-                  View and manage open shifts
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View className="border-t border-gray-700 pt-6">
-              <TouchableOpacity
-                onPress={() => openShiftsSheetRef.current?.expand()} // Also opens the same drawer
-                className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
-              >
-                <View className="flex-row items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-blue-400" />
-                  <Text className="text-sm font-semibold text-white">
-                    Swaps & Requests
+                    <Badge className="ml-auto bg-gray-700">
+                      <Text className="text-white">
+                        {mockShiftsScheudleGrid.filter((s) => s.isOpen).length}
+                      </Text>
+                    </Badge>
+                  </View>
+                  <Text className="text-xs text-gray-400">
+                    View and manage open shifts
                   </Text>
-                  <Badge className="ml-auto">
-                    <Text>
-                      {mockSwapRequests.length + mockPtoRequests.length}
+                </TouchableOpacity>
+              </View>
+
+              <View className="border-t border-gray-700 pt-6">
+                <TouchableOpacity
+                  onPress={() => openShiftsSheetRef.current?.expand()} // Also opens the same drawer
+                  className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
+                >
+                  <View className="flex-row items-center gap-2 mb-2">
+                    <Users
+                      className="w-4 h-4 text-blue-400"
+                      color={"#60a5fa"}
+                    />
+                    <Text className="text-sm font-semibold text-white">
+                      Swaps & Requests
                     </Text>
-                  </Badge>
-                </View>
-                <Text className="text-xs text-gray-400">
-                  Pending swap requests and PTO
-                </Text>
-              </TouchableOpacity>
+                    <Badge className="ml-auto bg-gray-700">
+                      <Text className="text-white">
+                        {mockSwapRequests.length + mockPtoRequests.length}
+                      </Text>
+                    </Badge>
+                  </View>
+                  <Text className="text-xs text-gray-400">
+                    Pending swap requests and PTO
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
-
         {/* Schedule Grid */}
         <View className="flex-1 flex-col overflow-hidden">
           <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <Button
-                variant={viewMode === "employee" ? "default" : "ghost"}
-                size="sm"
+            <View className="flex-row items-center gap-1 rounded-lg p-1">
+              {/* "By Employee" Button */}
+              <TouchableOpacity
                 onPress={() => setViewMode("employee")}
+                className={`px-3 py-1.5 rounded-md ${
+                  viewMode === "employee" ? "bg-gray-700" : "bg-transparent"
+                }`}
               >
-                <Text>By Employee</Text>
-              </Button>
-              <Button
-                variant={viewMode === "role" ? "default" : "ghost"}
-                size="sm"
+                <Text
+                  className={
+                    viewMode === "employee"
+                      ? "text-white font-semibold"
+                      : "text-gray-400"
+                  }
+                >
+                  By Employee
+                </Text>
+              </TouchableOpacity>
+
+              {/* "By Role" Button */}
+              <TouchableOpacity
                 onPress={() => setViewMode("role")}
+                className={`px-3 py-1.5 rounded-md ${
+                  viewMode === "role" ? "bg-gray-700" : "bg-transparent"
+                }`}
               >
-                <Text>By Role</Text>
-              </Button>
+                <Text
+                  className={
+                    viewMode === "role"
+                      ? "text-white font-semibold"
+                      : "text-gray-400"
+                  }
+                >
+                  By Role
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <Text className="text-xs text-gray-400">

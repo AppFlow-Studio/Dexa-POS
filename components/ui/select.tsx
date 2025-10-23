@@ -38,7 +38,7 @@ function SelectTrigger({
       <ChevronDown
         size={16}
         aria-hidden={true}
-        className="text-foreground opacity-50"
+        className="text-white opacity-50"
       />
     </SelectPrimitive.Trigger>
   );

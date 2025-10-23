@@ -6,9 +6,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import {
   AlertCircle,
   Bell,
@@ -58,12 +56,12 @@ export function PublishModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-[#303030] border-gray-700">
+      <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
         <DialogHeader>
-          <DialogTitle className="text-white flex-row items-center gap-2">
-            <Send size={20} className="text-blue-400" />
-            Publish Schedule
-          </DialogTitle>
+          <View className="text-white flex-row items-center gap-2">
+            <Send size={20} className="text-blue-400" color={"#60a5fa"} />
+            <Text className="text-white font-semibold">Publish Schedule</Text>
+          </View>
         </DialogHeader>
 
         <View className="gap-y-4 py-4">
@@ -72,7 +70,7 @@ export function PublishModal({
             <View className="flex-row items-center justify-between">
               <Text className="text-sm text-gray-400">Assigned Shifts</Text>
               <Badge className="bg-green-500/20 text-green-400">
-                {summary.assignedShifts}
+                <Text className="text-green-400">{summary.assignedShifts}</Text>
               </Badge>
             </View>
             <View className="flex-row items-center justify-between">
@@ -84,7 +82,13 @@ export function PublishModal({
                     : "bg-gray-500/20 text-gray-400"
                 }
               >
-                {summary.openShifts}
+                <Text
+                  className={
+                    summary.openShifts > 0 ? "text-yellow-400" : "text-gray-400"
+                  }
+                >
+                  {summary.openShifts}
+                </Text>
               </Badge>
             </View>
             <View className="flex-row items-center justify-between">
@@ -96,7 +100,11 @@ export function PublishModal({
                     : "bg-gray-500/20 text-gray-400"
                 }
               >
-                {summary.conflicts.length}
+                <Text
+                  className={hasConflicts ? "text-red-400" : "text-gray-400"}
+                >
+                  {summary.conflicts.length}
+                </Text>
               </Badge>
             </View>
           </View>
@@ -105,7 +113,11 @@ export function PublishModal({
           {hasConflicts && (
             <View className="gap-y-2">
               <View className="flex-row items-center gap-2">
-                <AlertCircle size={16} className="text-red-400" />
+                <AlertCircle
+                  size={16}
+                  className="text-red-400"
+                  color={"#f87171"}
+                />
                 <Text className="text-sm font-semibold text-white">
                   Conflicts Detected
                 </Text>
@@ -114,7 +126,9 @@ export function PublishModal({
                 {summary.conflicts.map((conflict, i) => (
                   <View key={i} className="flex-row items-start gap-2 mb-2">
                     <Badge className="text-xs bg-red-500/20 text-red-400 border-red-500/30">
-                      {conflict.type}
+                      <Text className="text-xs text-red-400">
+                        {conflict.type}
+                      </Text>
                     </Badge>
                     <Text className="text-sm text-gray-400 flex-1">
                       {conflict.description}
@@ -139,10 +153,10 @@ export function PublishModal({
                     setNotifications({ ...notifications, push: !!checked })
                   }
                 />
-                <Label htmlFor="push" className="flex-row items-center gap-2">
-                  <Bell size={16} className="text-blue-400" />
+                <View className="flex-row items-center gap-2">
+                  <Bell size={16} className="text-blue-400" color={"#60a5fa"} />
                   <Text className="text-sm text-white">Push Notifications</Text>
-                </Label>
+                </View>
               </View>
               <View className="flex-row items-center gap-3">
                 <Checkbox
@@ -152,10 +166,14 @@ export function PublishModal({
                     setNotifications({ ...notifications, sms: !!checked })
                   }
                 />
-                <Label htmlFor="sms" className="flex-row items-center gap-2">
-                  <MessageSquare size={16} className="text-blue-400" />
+                <View className="flex-row items-center gap-2">
+                  <MessageSquare
+                    size={16}
+                    className="text-blue-400"
+                    color={"#60a5fa"}
+                  />
                   <Text className="text-sm text-white">SMS Messages</Text>
-                </Label>
+                </View>
               </View>
               <View className="flex-row items-center gap-3">
                 <Checkbox
@@ -165,10 +183,10 @@ export function PublishModal({
                     setNotifications({ ...notifications, email: !!checked })
                   }
                 />
-                <Label htmlFor="email" className="flex-row items-center gap-2">
-                  <Mail size={16} className="text-blue-400" />
+                <View className="flex-row items-center gap-2">
+                  <Mail size={16} className="text-blue-400" color={"#60a5fa"} />
                   <Text className="text-sm text-white">Email</Text>
-                </Label>
+                </View>
               </View>
             </View>
           </View>
@@ -176,7 +194,11 @@ export function PublishModal({
           {/* Warning/Success Message */}
           {hasConflicts ? (
             <View className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex-row items-start gap-2">
-              <AlertCircle size={16} className="text-yellow-400 mt-1" />
+              <AlertCircle
+                size={16}
+                className="text-yellow-400 mt-1"
+                color={"#facc15"}
+              />
               <Text className="text-sm text-yellow-300 flex-1">
                 Publishing with conflicts may cause scheduling issues. Review
                 and resolve conflicts before publishing.
@@ -184,7 +206,11 @@ export function PublishModal({
             </View>
           ) : (
             <View className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex-row items-start gap-2">
-              <CheckCircle2 size={16} className="text-green-400 mt-1" />
+              <CheckCircle2
+                size={16}
+                className="text-green-400 mt-1"
+                color={"#4ade80"}
+              />
               <Text className="text-sm text-green-300 flex-1">
                 Schedule is ready to publish. Employees will be notified based
                 on your settings.
@@ -199,7 +225,7 @@ export function PublishModal({
           </Button>
           <Button
             onPress={handlePublish}
-            className="gap-2 bg-blue-600 hover:bg-blue-700"
+            className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
           >
             <Send size={16} color="#FFFFFF" />
             <Text className="text-white font-semibold">Publish Schedule</Text>
