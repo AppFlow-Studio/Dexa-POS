@@ -362,6 +362,7 @@ export interface UserProfile {
 
 export interface Shift {
   id: string;
+  periodId: string;
   date: string; // ISO format: "YYYY-MM-DD"
   role: Role;
   startTime: string; // "HH:mm"

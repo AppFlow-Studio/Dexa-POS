@@ -1,126 +1,63 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, BarChart3 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import SchedulePeriodCard from '@/components/scheduling/SchedulePeriodCard';
-import PeriodWizard, { PeriodData } from '@/components/scheduling/PeriodWizard';
+import { useRouter } from "expo-router";
+import { BarChart3, Calendar } from "lucide-react-native";
+import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
-// Mock data - in a real app, this would come from a store or API
-const MOCK_PERIODS: PeriodData[] = [
-  {
-    id: '1',
-    name: 'Q2 2025 Spring Schedule',
-    startDate: '04/01/2025',
-    endDate: '06/30/2025',
-    status: 'draft',
-    isScheduled: false,
-  },
-  {
-    id: '2',
-    name: 'Q1 2025 Schedule',
-    startDate: '01/01/2025',
-    endDate: '03/31/2025',
-    status: 'active',
-    isScheduled: true,
-  },
-  {
-    id: '3',
-    name: 'Q4 2024 Schedule',
-    startDate: '10/01/2024',
-    endDate: '12/31/2024',
-    status: 'completed',
-    isScheduled: true,
-  },
-];
+interface SchedulingCardProps {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}
 
-const ScheduleManagerDashboard = () => {
-  const router = useRouter();
-  const [periods, setPeriods] = useState<PeriodData[]>(MOCK_PERIODS);
-  const [isWizardOpen, setWizardOpen] = useState(false);
-  const [editingPeriod, setEditingPeriod] = useState<PeriodData | null>(null);
-
-  const handleAddNew = () => {
-    setEditingPeriod(null);
-    setWizardOpen(true);
-  };
-
-  const handleEdit = (period: PeriodData) => {
-    setEditingPeriod(period);
-    setWizardOpen(true);
-  };
-
-  const handleWizardComplete = (data: PeriodData) => {
-    if (editingPeriod) {
-      // Update existing period
-      setPeriods(periods.map(p => p.id === editingPeriod.id ? { ...p, ...data } : p));
-    } else {
-      // Add new period
-      setPeriods([...periods, { ...data, id: Date.now().toString() }]);
-    }
-    setWizardOpen(false);
-    setEditingPeriod(null);
-  };
-
-  const handlePressSchedule = (period: PeriodData) => {
-    if (period.isScheduled) {
-      // Navigate to the schedule view
-      router.push(`/scheduling/${period.id}`);
-    } else {
-      // Here you might navigate to a schedule creation screen
-      // For now, we'll just log it.
-      console.log('Navigate to create schedule for', period.name);
-      router.push(`/scheduling/${period.id}`);
-    }
-  };
-
+const SchedulingCard: React.FC<SchedulingCardProps> = ({ icon, title, subtitle, onPress }) => {
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-[#212121]">
-      <View className="p-4 flex-1">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-6">
-          <Text className="text-2xl font-bold text-white">Schedule Manager</Text>
-          <View className="flex-row items-center gap-2">
-            <TouchableOpacity
-              onPress={() => router.push('/scheduling/reports')}
-              className="flex-row items-center gap-2 px-4 py-2 bg-gray-700/80 rounded-xl"
-            >
-              <BarChart3 size={18} color="#FFFFFF" />
-              <Text className="text-white font-bold">View Reports</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleAddNew}
-              className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-xl"
-            >
-              <Plus size={18} color="#FFFFFF" />
-              <Text className="text-white font-bold">New Period</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Periods List */}
-        <FlatList
-          data={periods}
-          keyExtractor={(item) => item.id!}
-          renderItem={({ item }) => (
-            <SchedulePeriodCard
-              period={item}
-              onEdit={() => handleEdit(item)}
-              onPressSchedule={() => handlePressSchedule(item)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View className="h-4" />}
-        />
-      </View>
-
-      <PeriodWizard
-        isOpen={isWizardOpen}
-        onClose={() => setWizardOpen(false)}
-        onComplete={handleWizardComplete}
-        periodToEdit={editingPeriod}
-      />
-    </SafeAreaView>
+    <TouchableOpacity
+      onPress={onPress}
+      className="w-1/3 h-1/4 rounded-2xl border border-gray-600 p-6 bg-[#303030] justify-center items-center"
+    >
+        <View className="mb-3">{icon}</View>
+        <Text className="text-3xl font-bold text-white mb-1 text-center">{title}</Text>
+        <Text className="text-xl text-gray-300 text-center">{subtitle}</Text>
+    </TouchableOpacity>
   );
 };
 
-export default ScheduleManagerDashboard;
+const SchedulingMenuScreen = () => {
+  const router = useRouter();
+
+  const menuItems = [
+    {
+      id: "dashboard",
+      icon: <Calendar color="#3b82f6" size={48} />,
+      title: "Dashboard",
+      subtitle: "Manage Schedules",
+      route: "/scheduling/dashboard",
+    },
+    {
+      id: "reports",
+      icon: <BarChart3 color="#3b82f6" size={48} />,
+      title: "Reports",
+      subtitle: "Analytics & Insights",
+      route: "/scheduling/reports",
+    },
+  ];
+
+  return (
+    <View className="flex-1 p-4 bg-[#212121] justify-center items-center">
+        <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
+            {menuItems.map((item) => (
+                <SchedulingCard
+                    key={item.id}
+                    icon={item.icon}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    onPress={() => router.push(item.route as any)}
+                />
+            ))}
+        </View>
+    </View>
+  );
+};
+
+export default SchedulingMenuScreen;

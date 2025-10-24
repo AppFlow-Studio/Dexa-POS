@@ -1,15 +1,16 @@
 import BottomSheet from "@gorhom/bottom-sheet";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import {
   Calendar,
   Download,
+  Search,
   Send,
   Settings,
   Sparkles,
   Users,
 } from "lucide-react-native";
-import React, { useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +36,8 @@ import {
   Shift,
   ShiftRequest as SwapRequest,
 } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import { ScrollView } from "react-native-gesture-handler";
 
 const mockSwapRequests: SwapRequest[] = [
@@ -83,16 +86,21 @@ const mockPtoRequests: PTORequest[] = [
 ];
 
 const ScheduleDetailScreen = () => {
-  const router = useRouter();
+  const { periodId } = useLocalSearchParams();
+  const { shifts, addShift, updateShift, publishSchedule } = useScheduleStore();
+  const { employees } = useEmployeeStore();
+
   const [startDate, setStartDate] = useState(new Date(2025, 0, 13));
-  const [viewMode, setViewMode] = useState<"employee" | "role">("employee");
+  const [searchQuery, setSearchQuery] = useState("");
   const [publishStatus, setPublishStatus] = useState<
     "draft" | "published" | "archived"
   >("draft");
 
   // State for modals and drawers
   const [shiftEditorOpen, setShiftEditorOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
+  const [selectedShift, setSelectedShift] = useState<Partial<Shift> | null>(
+    null
+  );
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
 
@@ -116,6 +124,7 @@ const ScheduleDetailScreen = () => {
 
   const handlePublish = (notificationSettings: any) => {
     console.log("Publishing with settings:", notificationSettings);
+    publishSchedule(periodId as string);
     setPublishStatus("published");
   };
 
@@ -124,16 +133,25 @@ const ScheduleDetailScreen = () => {
     setShiftEditorOpen(true);
   };
 
+  const handleAddShift = (employeeId: string, date: string) => {
+    setSelectedShift({ employeeId, date });
+    setShiftEditorOpen(true);
+  };
+
   const handleApplyTemplate = (templateId: string) => {
     console.log("Applying template:", templateId);
   };
 
   const handleSaveShift = (shiftData: Partial<Shift>) => {
-    console.log("Saving shift:", shiftData);
+    if (shiftData.id) {
+      updateShift(shiftData as Shift);
+    } else {
+      addShift(shiftData as Omit<Shift, "id">);
+    }
   };
 
   const handleSaveAndDuplicate = (shiftData: Partial<Shift>) => {
-    console.log("Saving and duplicating shift:", shiftData);
+    addShift(shiftData as Omit<Shift, "id">);
   };
 
   const handlePreviousWeek = () => {
@@ -147,6 +165,12 @@ const ScheduleDetailScreen = () => {
     newDate.setDate(newDate.getDate() + 7);
     setStartDate(newDate);
   };
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) =>
+      emp.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [employees, searchQuery]);
 
   const publishSummary = {
     assignedShifts: 42,
@@ -168,6 +192,16 @@ const ScheduleDetailScreen = () => {
     published: "bg-green-500/20 text-green-400 border-green-500/30",
     archived: "bg-gray-500/20 text-gray-400",
   };
+
+  const statusTextColor = {
+    draft: "text-muted-foreground",
+    published: "text-green-400",
+    archived: "text-gray-400",
+  };
+
+  if (!periodId) {
+    return null;
+  }
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -221,7 +255,7 @@ const ScheduleDetailScreen = () => {
               />
 
               <Badge className={statusColors[publishStatus]}>
-                <Text>
+                <Text className={statusTextColor[publishStatus]}>
                   {publishStatus.charAt(0).toUpperCase() +
                     publishStatus.slice(1)}
                 </Text>
@@ -342,42 +376,15 @@ const ScheduleDetailScreen = () => {
         {/* Schedule Grid */}
         <View className="flex-1 flex-col overflow-hidden">
           <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
-            <View className="flex-row items-center gap-1 rounded-lg p-1">
-              {/* "By Employee" Button */}
-              <TouchableOpacity
-                onPress={() => setViewMode("employee")}
-                className={`px-3 py-1.5 rounded-md ${
-                  viewMode === "employee" ? "bg-gray-700" : "bg-transparent"
-                }`}
-              >
-                <Text
-                  className={
-                    viewMode === "employee"
-                      ? "text-white font-semibold"
-                      : "text-gray-400"
-                  }
-                >
-                  By Employee
-                </Text>
-              </TouchableOpacity>
-
-              {/* "By Role" Button */}
-              <TouchableOpacity
-                onPress={() => setViewMode("role")}
-                className={`px-3 py-1.5 rounded-md ${
-                  viewMode === "role" ? "bg-gray-700" : "bg-transparent"
-                }`}
-              >
-                <Text
-                  className={
-                    viewMode === "role"
-                      ? "text-white font-semibold"
-                      : "text-gray-400"
-                  }
-                >
-                  By Role
-                </Text>
-              </TouchableOpacity>
+            <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
+              <Search size={16} color="#9CA3AF" />
+              <TextInput
+                placeholder="Search employees..."
+                placeholderTextColor="#9CA3AF"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                className="p-2 text-white flex-1"
+              />
             </View>
 
             <Text className="text-xs text-gray-400">
@@ -387,8 +394,10 @@ const ScheduleDetailScreen = () => {
 
           <ScheduleGrid
             startDate={startDate}
-            viewMode={viewMode}
+            employees={filteredEmployees}
+            selectedRoles={selectedRoles}
             onShiftClick={handleShiftClick}
+            onAddShift={handleAddShift}
           />
         </View>
       </View>
@@ -397,7 +406,7 @@ const ScheduleDetailScreen = () => {
       <ShiftEditorModal
         open={shiftEditorOpen}
         onOpenChange={setShiftEditorOpen}
-        shift={selectedShift}
+        shift={selectedShift as Shift}
         onSave={handleSaveShift}
         onSaveAndDuplicate={handleSaveAndDuplicate}
       />
@@ -409,7 +418,7 @@ const ScheduleDetailScreen = () => {
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={mockShiftsScheudleGrid.filter((s) => s.isOpen)}
+        openShifts={shifts.filter((s) => s.isOpen)}
         swapRequests={mockSwapRequests}
         ptoRequests={mockPtoRequests}
         onAssign={(shiftId, empId) =>
