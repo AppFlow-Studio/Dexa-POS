@@ -1,37 +1,37 @@
-import React from 'react';
-import { View, Text } from 'react-native';
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { Button } from '@/components/ui/button';
+import { addDays, format, startOfWeek } from "date-fns";
+import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
 interface WeekSelectorProps {
   startDate: Date;
   onPrevious: () => void;
   onNext: () => void;
+  minDate?: Date;
+  maxDate?: Date;
 }
 
-const WeekSelector: React.FC<WeekSelectorProps> = ({ startDate, onPrevious, onNext }) => {
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 6);
+const WeekSelector: React.FC<WeekSelectorProps> = ({ startDate, onPrevious, onNext, minDate, maxDate }) => {
+  const weekStart = startOfWeek(startDate, { weekStartsOn: 1 });
+  const weekEnd = addDays(weekStart, 6);
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
+  const isPreviousDisabled = minDate ? weekStart <= minDate : false;
+  const isNextDisabled = maxDate ? weekEnd >= maxDate : false;
 
   return (
-    <View className="flex-row items-center gap-2">
-      <Button variant="ghost" size="icon" onPress={onPrevious} className="h-8 w-8">
-        <ChevronLeft size={16} color="#9CA3AF" />
-      </Button>
-      <View className="min-w-[180px] items-center">
-        <Text className="text-sm font-medium text-white">
-          {formatDate(startDate)} - {formatDate(endDate)}, {startDate.getFullYear()}
-        </Text>
-      </View>
-      <Button variant="ghost" size="icon" onPress={onNext} className="h-8 w-8">
-        <ChevronRight size={16} color="#9CA3AF" />
-      </Button>
+    <View className="flex-row items-center gap-2 bg-[#212121] border border-gray-600 rounded-lg p-1">
+      <TouchableOpacity onPress={onPrevious} disabled={isPreviousDisabled} className={`p-2 rounded-md ${isPreviousDisabled ? 'opacity-50' : ''}`}>
+        <ChevronLeft size={16} color="#FFFFFF" />
+      </TouchableOpacity>
+      <Text className="text-white font-semibold w-48 text-center">
+        {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
+      </Text>
+      <TouchableOpacity onPress={onNext} disabled={isNextDisabled} className={`p-2 rounded-md ${isNextDisabled ? 'opacity-50' : ''}`}>
+        <ChevronRight size={16} color="#FFFFFF" />
+      </TouchableOpacity>
     </View>
   );
 };
 
 export default WeekSelector;
+

@@ -32,6 +32,8 @@ interface ShiftEditorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shift?: Partial<Shift> | null;
+  periodId: string;
+  scheduleType: 'period' | 'week';
   onSave: (shift: Partial<Shift>) => void;
   onSaveAndDuplicate?: (shift: Partial<Shift>) => void;
 }
@@ -48,6 +50,8 @@ export function ShiftEditorModal({
   open,
   onOpenChange,
   shift,
+  periodId,
+  scheduleType,
   onSave,
   onSaveAndDuplicate,
 }: ShiftEditorModalProps) {
@@ -105,6 +109,7 @@ export function ShiftEditorModal({
     onSave({
       id: shift?.id,
       employeeId: shift?.employeeId,
+      periodId,
       role,
       date,
       startTime,
@@ -120,6 +125,7 @@ export function ShiftEditorModal({
     if (!validateShift() || !onSaveAndDuplicate) return;
     onSaveAndDuplicate({
       employeeId: shift?.employeeId,
+      periodId,
       role,
       date,
       startTime,

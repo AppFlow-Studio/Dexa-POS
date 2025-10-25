@@ -7,6 +7,7 @@ import {
   DialogFooter,
   DialogHeader,
 } from "@/components/ui/dialog";
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import {
   AlertCircle,
   Bell,
@@ -15,19 +16,8 @@ import {
   MessageSquare,
   Send,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
-
-interface PublishModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onPublish: (notificationSettings: NotificationSettings) => void;
-  summary: {
-    assignedShifts: number;
-    openShifts: number;
-    conflicts: Array<{ type: string; description: string }>;
-  };
-}
 
 interface NotificationSettings {
   push: boolean;
@@ -35,24 +25,42 @@ interface NotificationSettings {
   email: boolean;
 }
 
+interface PublishModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scheduleId: string;
+  scheduleType: "period" | "week";
+}
+
 export function PublishModal({
   open,
   onOpenChange,
-  onPublish,
-  summary,
+  scheduleId,
+  scheduleType,
 }: PublishModalProps) {
   const [notifications, setNotifications] = useState<NotificationSettings>({
     push: true,
     sms: false,
     email: true,
   });
+  const [conflicts, setConflicts] = useState<
+    { employeeName: string; date: string }[]
+  >([]);
+  const { checkShiftConflicts, publishSchedulePeriod } = useScheduleStore();
+
+  useEffect(() => {
+    if (open) {
+      const foundConflicts = checkShiftConflicts(scheduleId, scheduleType);
+      setConflicts(foundConflicts);
+    }
+  }, [open, scheduleId, scheduleType, checkShiftConflicts]);
 
   const handlePublish = () => {
-    onPublish(notifications);
+    publishSchedulePeriod(scheduleId);
     onOpenChange(false);
   };
 
-  const hasConflicts = summary.conflicts.length > 0;
+  const hasConflicts = conflicts.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -65,52 +73,7 @@ export function PublishModal({
         </DialogHeader>
 
         <View className="gap-y-4 py-4">
-          {/* Summary */}
-          <View className="p-4 rounded-lg bg-[#212121] border border-gray-700 gap-y-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-gray-400">Assigned Shifts</Text>
-              <Badge className="bg-green-500/20 text-green-400">
-                <Text className="text-green-400">{summary.assignedShifts}</Text>
-              </Badge>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-gray-400">Open Shifts</Text>
-              <Badge
-                className={
-                  summary.openShifts > 0
-                    ? "bg-yellow-500/20 text-yellow-400"
-                    : "bg-gray-500/20 text-gray-400"
-                }
-              >
-                <Text
-                  className={
-                    summary.openShifts > 0 ? "text-yellow-400" : "text-gray-400"
-                  }
-                >
-                  {summary.openShifts}
-                </Text>
-              </Badge>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-gray-400">Conflicts</Text>
-              <Badge
-                className={
-                  hasConflicts
-                    ? "bg-red-500/20 text-red-400"
-                    : "bg-gray-500/20 text-gray-400"
-                }
-              >
-                <Text
-                  className={hasConflicts ? "text-red-400" : "text-gray-400"}
-                >
-                  {summary.conflicts.length}
-                </Text>
-              </Badge>
-            </View>
-          </View>
-
-          {/* Conflicts */}
-          {hasConflicts && (
+          {hasConflicts ? (
             <View className="gap-y-2">
               <View className="flex-row items-center gap-2">
                 <AlertCircle
@@ -123,19 +86,31 @@ export function PublishModal({
                 </Text>
               </View>
               <ScrollView className="h-24 rounded-lg border border-gray-700 bg-[#212121] p-3">
-                {summary.conflicts.map((conflict, i) => (
+                {conflicts.map((conflict, i) => (
                   <View key={i} className="flex-row items-start gap-2 mb-2">
                     <Badge className="text-xs bg-red-500/20 text-red-400 border-red-500/30">
                       <Text className="text-xs text-red-400">
-                        {conflict.type}
+                        {conflict.employeeName}
                       </Text>
                     </Badge>
                     <Text className="text-sm text-gray-400 flex-1">
-                      {conflict.description}
+                      has a conflicting shift on {conflict.date}
                     </Text>
                   </View>
                 ))}
               </ScrollView>
+            </View>
+          ) : (
+            <View className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex-row items-start gap-2">
+              <CheckCircle2
+                size={16}
+                className="text-green-400 mt-1"
+                color={"#4ade80"}
+              />
+              <Text className="text-sm text-green-300 flex-1">
+                Schedule is ready to publish. Employees will be notified based
+                on your settings.
+              </Text>
             </View>
           )}
 
@@ -190,46 +165,29 @@ export function PublishModal({
               </View>
             </View>
           </View>
-
-          {/* Warning/Success Message */}
-          {hasConflicts ? (
-            <View className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex-row items-start gap-2">
-              <AlertCircle
-                size={16}
-                className="text-yellow-400 mt-1"
-                color={"#facc15"}
-              />
-              <Text className="text-sm text-yellow-300 flex-1">
-                Publishing with conflicts may cause scheduling issues. Review
-                and resolve conflicts before publishing.
-              </Text>
-            </View>
-          ) : (
-            <View className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex-row items-start gap-2">
-              <CheckCircle2
-                size={16}
-                className="text-green-400 mt-1"
-                color={"#4ade80"}
-              />
-              <Text className="text-sm text-green-300 flex-1">
-                Schedule is ready to publish. Employees will be notified based
-                on your settings.
-              </Text>
-            </View>
-          )}
         </View>
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onPress={() => onOpenChange(false)}>
             <Text className="text-white">Cancel</Text>
           </Button>
-          <Button
-            onPress={handlePublish}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
-          >
-            <Send size={16} color="#FFFFFF" />
-            <Text className="text-white font-semibold">Publish Schedule</Text>
-          </Button>
+          {hasConflicts ? (
+            <Button
+              onPress={handlePublish}
+              className="gap-2 bg-yellow-600 hover:bg-yellow-700 flex-row"
+            >
+              <AlertCircle size={16} color="#FFFFFF" />
+              <Text className="text-white font-semibold">Publish Anyway</Text>
+            </Button>
+          ) : (
+            <Button
+              onPress={handlePublish}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
+            >
+              <Send size={16} color="#FFFFFF" />
+              <Text className="text-white font-semibold">Publish Schedule</Text>
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

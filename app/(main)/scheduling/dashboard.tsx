@@ -1,44 +1,34 @@
+import EditWeeklyScheduleModal from "@/components/scheduling/EditWeeklyScheduleModal";
 import PeriodWizard, { PeriodData } from "@/components/scheduling/PeriodWizard";
+import QuickScheduleModal from "@/components/scheduling/QuickScheduleModal";
 import SchedulePeriodCard from "@/components/scheduling/SchedulePeriodCard";
+import WeeklyScheduleCard from "@/components/scheduling/WeeklyScheduleCard";
+import { SchedulePeriod, WeeklySchedule } from "@/lib/types";
+import { useScheduleStore } from "@/stores/useScheduleStore";
+import { addDays, format } from "date-fns";
 import { useRouter } from "expo-router";
 import { Plus } from "lucide-react-native";
 import React, { useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-// Mock data - in a real app, this would come from a store or API
-const MOCK_PERIODS: PeriodData[] = [
-  {
-    id: "1",
-    name: "Q2 2025 Spring Schedule",
-    startDate: "04/01/2025",
-    endDate: "06/30/2025",
-    status: "draft",
-    isScheduled: false,
-  },
-  {
-    id: "2",
-    name: "Q1 2025 Schedule",
-    startDate: "01/01/2025",
-    endDate: "03/31/2025",
-    status: "active",
-    isScheduled: true,
-  },
-  {
-    id: "3",
-    name: "Q4 2024 Schedule",
-    startDate: "10/01/2024",
-    endDate: "12/31/2024",
-    status: "completed",
-    isScheduled: true,
-  },
-];
-
 const ScheduleManagerDashboard = () => {
   const router = useRouter();
-  const [periods, setPeriods] = useState<PeriodData[]>(MOCK_PERIODS);
+  const {
+    schedulePeriods,
+    weeklySchedules,
+    addWeeklySchedule,
+    addSchedulePeriod,
+    updateSchedulePeriod,
+    updateWeeklySchedule,
+  } = useScheduleStore();
   const [isWizardOpen, setWizardOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<PeriodData | null>(null);
+  const [isQuickScheduleModalOpen, setIsQuickScheduleModalOpen] =
+    useState(false);
+  const [isEditWeeklyModalOpen, setIsEditWeeklyModalOpen] = useState(false);
+  const [editingWeeklySchedule, setEditingWeeklySchedule] =
+    useState<WeeklySchedule | null>(null);
 
   const handleAddNew = () => {
     setEditingPeriod(null);
@@ -52,27 +42,63 @@ const ScheduleManagerDashboard = () => {
 
   const handleWizardComplete = (data: PeriodData) => {
     if (editingPeriod) {
-      // Update existing period
-      setPeriods(
-        periods.map((p) => (p.id === editingPeriod.id ? { ...p, ...data } : p))
-      );
+      updateSchedulePeriod(editingPeriod.id!, data);
     } else {
-      // Add new period
-      setPeriods([...periods, { ...data, id: Date.now().toString() }]);
+      addSchedulePeriod(
+        data as Omit<
+          SchedulePeriod,
+          "id" | "createdAt" | "updatedAt" | "shifts"
+        >
+      );
     }
     setWizardOpen(false);
     setEditingPeriod(null);
   };
 
-  const handlePressSchedule = (period: PeriodData) => {
-    if (period.isScheduled) {
-      // Navigate to the schedule view
-      router.push(`/scheduling/${period.id}`);
-    } else {
-      // Here you might navigate to a schedule creation screen
-      // For now, we'll just log it.
-      console.log("Navigate to create schedule for", period.name);
-      router.push(`/scheduling/${period.id}`);
+  const handlePressSchedule = (periodId: string) => {
+    router.push(`/scheduling/${periodId}`);
+  };
+
+  const handleCreateWeeklySchedule = (startDate: string) => {
+    const endDate = format(addDays(new Date(startDate), 6), "yyyy-MM-dd");
+    const name = `Week of ${format(new Date(startDate), "MMM dd")} - ${format(
+      new Date(endDate),
+      "MMM dd, yyyy"
+    )}`;
+
+    const newWeeklySchedule: Omit<
+      WeeklySchedule,
+      "id" | "createdAt" | "updatedAt" | "shifts"
+    > = {
+      name,
+      startDate,
+      endDate,
+      status: "draft",
+      createdBy: "Manager",
+      type: "weekly",
+    };
+
+    const newId = addWeeklySchedule(newWeeklySchedule);
+    router.push(`/scheduling/${newId}`);
+    setIsQuickScheduleModalOpen(false);
+  };
+
+  const handleEditWeekly = (schedule: WeeklySchedule) => {
+    setEditingWeeklySchedule(schedule);
+    setIsEditWeeklyModalOpen(true);
+  };
+
+  const handleUpdateWeeklySchedule = (startDate: string) => {
+    if (editingWeeklySchedule) {
+      const endDate = format(addDays(new Date(startDate), 6), "yyyy-MM-dd");
+      const name = `Week of ${format(new Date(startDate), "MMM dd")} - ${format(new Date(endDate), "MMM dd, yyyy")}`;
+      updateWeeklySchedule(editingWeeklySchedule.id, {
+        startDate,
+        endDate,
+        name,
+      });
+      setIsEditWeeklyModalOpen(false);
+      setEditingWeeklySchedule(null);
     }
   };
 
@@ -81,8 +107,17 @@ const ScheduleManagerDashboard = () => {
       <View className="p-4 flex-1">
         {/* Header */}
         <View className="flex-row items-center justify-between mb-6">
-          <Text className="text-2xl font-bold text-white"></Text>
+          <Text className="text-2xl font-bold text-white">
+            Schedule Manager
+          </Text>
           <View className="flex-row items-center gap-2">
+            <TouchableOpacity
+              onPress={() => setIsQuickScheduleModalOpen(true)}
+              className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-xl"
+            >
+              <Plus size={18} color="#FFFFFF" />
+              <Text className="text-white font-bold">New Week</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAddNew}
               className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-xl"
@@ -93,19 +128,59 @@ const ScheduleManagerDashboard = () => {
           </View>
         </View>
 
-        {/* Periods List */}
-        <FlatList
-          data={periods}
-          keyExtractor={(item) => item.id!}
-          renderItem={({ item }) => (
-            <SchedulePeriodCard
-              period={item}
-              onEdit={() => handleEdit(item)}
-              onPressSchedule={() => handlePressSchedule(item)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View className="h-4" />}
-        />
+        {/* Schedule Periods List (Top Section) */}
+        <View className="mb-6">
+          <Text className="text-xl font-bold text-white mb-4">
+            Schedule Periods
+          </Text>
+          <FlatList
+            horizontal
+            data={schedulePeriods}
+            keyExtractor={(item) => item.id!}
+            renderItem={({ item }) => (
+              <SchedulePeriodCard
+                period={item as PeriodData} // Cast to PeriodData for now, will update PeriodWizard later
+                onEdit={() => handleEdit(item as PeriodData)}
+                onPressSchedule={() => handlePressSchedule(item.id!)}
+              />
+            )}
+            ItemSeparatorComponent={() => <View className="w-4" />}
+            showsHorizontalScrollIndicator={false}
+            ListEmptyComponent={() => (
+              <View className="h-24 justify-center items-center bg-[#303030] border border-gray-700 rounded-2xl p-4">
+                <Text className="text-white">
+                  No schedule periods created yet.
+                </Text>
+              </View>
+            )}
+          />
+        </View>
+
+        {/* Weekly Schedules List (Bottom Section) */}
+        <View className="flex-1">
+          <Text className="text-xl font-bold text-white mb-4">
+            Weekly Schedules
+          </Text>
+          <FlatList
+            data={weeklySchedules}
+            keyExtractor={(item) => item.id!}
+            renderItem={({ item }) => (
+              <WeeklyScheduleCard
+                schedule={item}
+                onEdit={() => handleEditWeekly(item)}
+                onPressSchedule={() => handlePressSchedule(item.id!)}
+              />
+            )}
+            ItemSeparatorComponent={() => <View className="h-4" />}
+            ListEmptyComponent={() => (
+              <View className="flex-1 justify-center items-center bg-[#303030] border border-gray-700 rounded-2xl p-4">
+                <Text className="text-white">
+                  No weekly schedules created yet.
+                </Text>
+              </View>
+            )}
+          />
+        </View>
       </View>
 
       <PeriodWizard
@@ -114,6 +189,19 @@ const ScheduleManagerDashboard = () => {
         onComplete={handleWizardComplete}
         periodToEdit={editingPeriod}
       />
+      <QuickScheduleModal
+        isOpen={isQuickScheduleModalOpen}
+        onClose={() => setIsQuickScheduleModalOpen(false)}
+        onCreate={handleCreateWeeklySchedule}
+      />
+      {editingWeeklySchedule && (
+        <EditWeeklyScheduleModal
+          isOpen={isEditWeeklyModalOpen}
+          onClose={() => setIsEditWeeklyModalOpen(false)}
+          onSave={handleUpdateWeeklySchedule}
+          initialDate={editingWeeklySchedule.startDate}
+        />
+      )}
     </SafeAreaView>
   );
 };

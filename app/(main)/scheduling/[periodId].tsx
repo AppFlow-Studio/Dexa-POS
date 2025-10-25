@@ -35,10 +35,13 @@ import {
   Role,
   Shift,
   ShiftRequest as SwapRequest,
+  SchedulePeriod,
+  WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { ScrollView } from "react-native-gesture-handler";
+import { isBefore, isAfter, addDays, subDays } from "date-fns";
 
 const mockSwapRequests: SwapRequest[] = [
   {
@@ -87,10 +90,24 @@ const mockPtoRequests: PTORequest[] = [
 
 const ScheduleDetailScreen = () => {
   const { periodId } = useLocalSearchParams();
-  const { shifts, addShift, updateShift, publishSchedule } = useScheduleStore();
+  const {
+    schedulePeriods,
+    weeklySchedules,
+    addShift,
+    updateShift,
+    publishSchedulePeriod,
+  } = useScheduleStore();
   const { employees } = useEmployeeStore();
 
-  const [startDate, setStartDate] = useState(new Date(2025, 0, 13));
+  const currentSchedule = useMemo(() => {
+    const period = schedulePeriods.find((p) => p.id === periodId);
+    if (period) return { schedule: period, type: "period" as const };
+    const weekly = weeklySchedules.find((w) => w.id === periodId);
+    if (weekly) return { schedule: weekly, type: "week" as const };
+    return null;
+  }, [periodId, schedulePeriods, weeklySchedules]);
+
+  const [startDate, setStartDate] = useState(currentSchedule ? new Date(currentSchedule.schedule.startDate) : new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [publishStatus, setPublishStatus] = useState<
     "draft" | "published" | "archived"
@@ -108,6 +125,14 @@ const ScheduleDetailScreen = () => {
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
 
+  if (!currentSchedule) {
+    return (
+      <Text className="text-white">
+        Loading schedule or schedule not found...
+      </Text>
+    );
+  }
+
   const handleRoleToggle = (role: Role) => {
     setSelectedRoles((prev) =>
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
@@ -122,10 +147,8 @@ const ScheduleDetailScreen = () => {
     );
   };
 
-  const handlePublish = (notificationSettings: any) => {
-    console.log("Publishing with settings:", notificationSettings);
-    publishSchedule(periodId as string);
-    setPublishStatus("published");
+  const handlePublish = () => {
+    setPublishModalOpen(true);
   };
 
   const handleShiftClick = (shift: Shift) => {
@@ -144,26 +167,40 @@ const ScheduleDetailScreen = () => {
 
   const handleSaveShift = (shiftData: Partial<Shift>) => {
     if (shiftData.id) {
-      updateShift(shiftData as Shift);
+      updateShift(
+        currentSchedule.schedule.id,
+        currentSchedule.type,
+        shiftData as Shift
+      );
     } else {
-      addShift(shiftData as Omit<Shift, "id">);
+      addShift(
+        currentSchedule.schedule.id,
+        currentSchedule.type,
+        shiftData as Omit<Shift, "id">
+      );
     }
   };
 
   const handleSaveAndDuplicate = (shiftData: Partial<Shift>) => {
-    addShift(shiftData as Omit<Shift, "id">);
+    addShift(
+      currentSchedule.schedule.id,
+      currentSchedule.type,
+      shiftData as Omit<Shift, "id">
+    );
   };
 
   const handlePreviousWeek = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() - 7);
-    setStartDate(newDate);
+    const newDate = subDays(startDate, 7);
+    if (!isBefore(newDate, new Date(currentSchedule.schedule.startDate))) {
+        setStartDate(newDate);
+    }
   };
 
   const handleNextWeek = () => {
-    const newDate = new Date(startDate);
-    newDate.setDate(newDate.getDate() + 7);
-    setStartDate(newDate);
+    const newDate = addDays(startDate, 7);
+    if (!isAfter(newDate, new Date(currentSchedule.schedule.endDate))) {
+        setStartDate(newDate);
+    }
   };
 
   const filteredEmployees = useMemo(() => {
@@ -173,8 +210,8 @@ const ScheduleDetailScreen = () => {
   }, [employees, searchQuery]);
 
   const publishSummary = {
-    assignedShifts: 42,
-    openShifts: 3,
+    assignedShifts: currentSchedule.schedule.shifts.length,
+    openShifts: currentSchedule.schedule.shifts.filter((s) => s.isOpen).length,
     conflicts: [
       {
         type: "OT Risk",
@@ -198,10 +235,6 @@ const ScheduleDetailScreen = () => {
     published: "text-green-400",
     archived: "text-gray-400",
   };
-
-  if (!periodId) {
-    return null;
-  }
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -252,6 +285,8 @@ const ScheduleDetailScreen = () => {
                 startDate={startDate}
                 onPrevious={handlePreviousWeek}
                 onNext={handleNextWeek}
+                minDate={new Date(currentSchedule.schedule.startDate)}
+                maxDate={new Date(currentSchedule.schedule.endDate)}
               />
 
               <Badge className={statusColors[publishStatus]}>
@@ -280,9 +315,7 @@ const ScheduleDetailScreen = () => {
 
               {/* Publish Button */}
               <TouchableOpacity
-                onPress={() => {
-                  setPublishModalOpen(true);
-                }}
+                onPress={handlePublish}
                 className="flex-row items-center gap-2 rounded-md bg-[#4A44E0] px-3 py-2"
               >
                 <Send size={16} color="white" />
@@ -336,7 +369,11 @@ const ScheduleDetailScreen = () => {
                     </Text>
                     <Badge className="ml-auto bg-gray-700">
                       <Text className="text-white">
-                        {mockShiftsScheudleGrid.filter((s) => s.isOpen).length}
+                        {
+                          currentSchedule.schedule.shifts.filter(
+                            (s) => s.isOpen
+                          ).length
+                        }
                       </Text>
                     </Badge>
                   </View>
@@ -398,6 +435,9 @@ const ScheduleDetailScreen = () => {
             selectedRoles={selectedRoles}
             onShiftClick={handleShiftClick}
             onAddShift={handleAddShift}
+            shifts={currentSchedule.schedule.shifts}
+            periodStartDate={new Date(currentSchedule.schedule.startDate)}
+            periodEndDate={new Date(currentSchedule.schedule.endDate)}
           />
         </View>
       </View>
@@ -407,18 +447,20 @@ const ScheduleDetailScreen = () => {
         open={shiftEditorOpen}
         onOpenChange={setShiftEditorOpen}
         shift={selectedShift as Shift}
+        periodId={currentSchedule.schedule.id!}
+        scheduleType={currentSchedule.type}
         onSave={handleSaveShift}
         onSaveAndDuplicate={handleSaveAndDuplicate}
       />
       <PublishModal
         open={publishModalOpen}
         onOpenChange={setPublishModalOpen}
-        onPublish={handlePublish}
-        summary={publishSummary}
+        scheduleId={periodId as string}
+        scheduleType={currentSchedule.type}
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={shifts.filter((s) => s.isOpen)}
+        openShifts={currentSchedule.schedule.shifts.filter((s) => s.isOpen)}
         swapRequests={mockSwapRequests}
         ptoRequests={mockPtoRequests}
         onAssign={(shiftId, empId) =>

@@ -1,16 +1,21 @@
 import { Role, Shift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
-import { useScheduleStore } from "@/stores/useScheduleStore";
+import {
+  addDays,
+  format,
+  isWithinInterval,
+  startOfDay,
+  startOfWeek,
+} from "date-fns";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
 
 function getWeekDates(startDate: Date): Date[] {
+  const weekStart = startOfWeek(startDate, { weekStartsOn: 1 }); // 1 = Monday
   const dates: Date[] = [];
   for (let i = 0; i < 7; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    dates.push(date);
+    dates.push(addDays(weekStart, i));
   }
   return dates;
 }
@@ -19,6 +24,9 @@ interface ScheduleGridProps {
   startDate: Date;
   employees: EmployeeProfile[];
   selectedRoles: Role[];
+  shifts: Shift[];
+  periodStartDate: Date;
+  periodEndDate: Date;
   onShiftClick: (shift: Shift) => void;
   onAddShift: (employeeId: string, date: string) => void;
 }
@@ -27,11 +35,13 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   startDate,
   employees,
   selectedRoles,
+  shifts,
+  periodStartDate,
+  periodEndDate,
   onShiftClick,
   onAddShift,
 }) => {
   const weekDates = getWeekDates(startDate);
-  const { shifts } = useScheduleStore();
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
     const dateStr = date.toISOString().split("T")[0];
@@ -43,10 +53,8 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       return dayShifts;
     }
 
-    return dayShifts.filter(shift => selectedRoles.includes(shift.role));
+    return dayShifts.filter((shift) => selectedRoles.includes(shift.role));
   };
-
-  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   return (
     <View className="flex-1">
@@ -62,7 +70,9 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                 key={i}
                 className="w-40 bg-[#303030] p-3 text-center border-r border-gray-700 items-center"
               >
-                <Text className="text-xs text-gray-400">{dayNames[i]}</Text>
+                <Text className="text-xs text-gray-400">
+                  {format(date, "E")}
+                </Text>
                 <Text className="text-sm font-semibold text-white">
                   {date.toLocaleDateString("en-US", {
                     month: "short",
@@ -93,32 +103,41 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     employee.id
                   );
                   const dateStr = date.toISOString().split("T")[0];
+                  const isDateInRange = isWithinInterval(startOfDay(date), {
+                    start: startOfDay(periodStartDate),
+                    end: startOfDay(periodEndDate),
+                  });
+
                   return (
                     <View
                       key={`${employee.id}-${i}`}
-                      className="w-40 bg-[#303030] p-2 min-h-[80px] border-r border-b border-gray-700"
+                      className={`w-40 p-2 min-h-[80px] border-r border-b border-gray-700 ${
+                        isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
+                      }`}
                     >
-                      {dayShifts.length > 0 ? (
-                        <View className="gap-y-2">
-                          {dayShifts.map((shift) => (
-                            <ShiftChip
-                              key={shift.id}
-                              role={shift.role}
-                              start={shift.startTime}
-                              end={shift.endTime}
-                              requiredCount={shift.requiredCount}
-                              wage={employee.baseWage}
-                              isOpen={shift.isOpen}
-                              onClick={() => onShiftClick(shift)}
-                            />
-                          ))}
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          onPress={() => onAddShift(employee.id, dateStr)}
-                          className="flex-1 h-full"
-                        />
-                      )}
+                      {isDateInRange ? (
+                        dayShifts.length > 0 ? (
+                          <View className="gap-y-2">
+                            {dayShifts.map((shift) => (
+                              <ShiftChip
+                                key={shift.id}
+                                role={shift.role}
+                                start={shift.startTime}
+                                end={shift.endTime}
+                                requiredCount={shift.requiredCount}
+                                wage={employee.baseWage}
+                                isOpen={shift.isOpen}
+                                onClick={() => onShiftClick(shift)}
+                              />
+                            ))}
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => onAddShift(employee.id, dateStr)}
+                            className="flex-1 h-full"
+                          />
+                        )
+                      ) : null}
                     </View>
                   );
                 })}

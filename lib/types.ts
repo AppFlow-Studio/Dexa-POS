@@ -392,6 +392,32 @@ export interface Shift {
   locked?: boolean;
 }
 
+export interface SchedulePeriod {
+  id: string;
+  name: string;
+  startDate: string; // ISO date
+  endDate: string; // ISO date
+  status: 'draft' | 'active' | 'completed';
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  isScheduled?: boolean;
+}
+
+export interface WeeklySchedule {
+  id: string;
+  name: string; // e.g., "Week of Nov 10-16, 2025"
+  startDate: string; // ISO date
+  endDate: string; // ISO date (always 7 days after startDate)
+  status: 'draft' | 'published' | 'archived'; // Assuming similar statuses
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  type: 'weekly'; // Explicit discriminator
+}
+
 export interface PTORequest {
   id: string;
   employeeId: string;
