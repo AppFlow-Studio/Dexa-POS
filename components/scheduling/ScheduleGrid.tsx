@@ -1,60 +1,69 @@
-import { mockShiftsScheudleGrid as mockShifts } from "@/lib/mockData";
-import { Shift } from "@/lib/types";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import React, { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Role, Shift } from "@/lib/types";
+import { EmployeeProfile } from "@/stores/useEmployeeStore";
+import React from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
+import { isWithinInterval, startOfDay, addDays, format } from "date-fns";
 
 function getWeekDates(startDate: Date): Date[] {
   const dates: Date[] = [];
   for (let i = 0; i < 7; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    dates.push(date);
+    dates.push(addDays(startDate, i));
   }
   return dates;
 }
+
 interface ScheduleGridProps {
   startDate: Date;
-  viewMode: "employee" | "role";
+  employees: EmployeeProfile[];
+  selectedRoles: Role[];
+  shifts: Shift[];
+  periodStartDate: Date;
+  periodEndDate: Date;
   onShiftClick: (shift: Shift) => void;
+  onAddShift: (employeeId: string, date: string) => void;
 }
 
 const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   startDate,
-  viewMode,
+  employees,
+  selectedRoles,
+  shifts,
+  periodStartDate,
+  periodEndDate,
   onShiftClick,
+  onAddShift,
 }) => {
   const weekDates = getWeekDates(startDate);
-  const [shifts] = useState<Shift[]>(mockShifts);
-  const { employees } = useEmployeeStore();
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
     const dateStr = date.toISOString().split("T")[0];
-    return shifts.filter(
+    const dayShifts = shifts.filter(
       (s) => s.date === dateStr && s.employeeId === employeeId
     );
-  };
 
-  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    if (selectedRoles.length === 0) {
+      return dayShifts;
+    }
+
+    return dayShifts.filter((shift) => selectedRoles.includes(shift.role));
+  };
 
   return (
     <View className="flex-1">
       <ScrollView horizontal>
-        <View style={{ minWidth: 1200 }}>
+        <View>
           {/* Header */}
           <View className="flex-row bg-gray-800 sticky top-0 z-10">
             <View className="w-48 bg-[#303030] p-3 border-r border-gray-700">
-              <Text className="text-sm font-semibold text-white">
-                {viewMode === "employee" ? "Employee" : "Role"}
-              </Text>
+              <Text className="text-sm font-semibold text-white">Employee</Text>
             </View>
             {weekDates.map((date, i) => (
               <View
                 key={i}
                 className="w-40 bg-[#303030] p-3 text-center border-r border-gray-700 items-center"
               >
-                <Text className="text-xs text-gray-400">{dayNames[i]}</Text>
+                <Text className="text-xs text-gray-400">{format(date, 'E')}</Text>
                 <Text className="text-sm font-semibold text-white">
                   {date.toLocaleDateString("en-US", {
                     month: "short",
@@ -67,7 +76,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
 
           {/* Grid Body */}
           <ScrollView>
-            {employees.map((employee) => (
+            {employees.map((employee: EmployeeProfile) => (
               <View key={employee.id} className="flex-row">
                 <View className="w-48 bg-[#303030] p-3 flex-row items-center border-r border-gray-700 border-b">
                   <View>
@@ -84,25 +93,42 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     date,
                     employee.id
                   );
+                  const dateStr = date.toISOString().split("T")[0];
+                  const isDateInRange = isWithinInterval(startOfDay(date), {
+                    start: startOfDay(periodStartDate),
+                    end: startOfDay(periodEndDate),
+                  });
+
                   return (
                     <View
                       key={`${employee.id}-${i}`}
-                      className="w-40 bg-[#303030] p-2 min-h-[80px] border-r border-b border-gray-700"
+                      className={`w-40 p-2 min-h-[80px] border-r border-b border-gray-700 ${
+                        isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
+                      }`}
                     >
-                      <View className="gap-y-2">
-                        {dayShifts.map((shift) => (
-                          <ShiftChip
-                            key={shift.id}
-                            role={shift.role}
-                            start={shift.startTime}
-                            end={shift.endTime}
-                            requiredCount={shift.requiredCount}
-                            wage={employee.baseWage} // This property does not exist on EmployeeProfile, will need to be added or handled
-                            isOpen={shift.isOpen}
-                            onClick={() => onShiftClick(shift)}
+                      {isDateInRange ? (
+                        dayShifts.length > 0 ? (
+                          <View className="gap-y-2">
+                            {dayShifts.map((shift) => (
+                              <ShiftChip
+                                key={shift.id}
+                                role={shift.role}
+                                start={shift.startTime}
+                                end={shift.endTime}
+                                requiredCount={shift.requiredCount}
+                                wage={employee.baseWage}
+                                isOpen={shift.isOpen}
+                                onClick={() => onShiftClick(shift)}
+                              />
+                            ))}
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => onAddShift(employee.id, dateStr)}
+                            className="flex-1 h-full"
                           />
-                        ))}
-                      </View>
+                        )
+                      ) : null}
                     </View>
                   );
                 })}

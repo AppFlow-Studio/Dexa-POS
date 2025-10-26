@@ -7,52 +7,78 @@ import {
   DialogFooter,
   DialogHeader,
 } from "@/components/ui/dialog";
-import {
-  AlertCircle,
-  Bell,
-  CheckCircle2,
-  Mail,
-  MessageSquare,
-  Send,
-} from "lucide-react-native";
-import React, { useState } from "react";
+import { useScheduleStore } from "@/stores/useScheduleStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
+
+interface NotificationSettings {
+  push: boolean;
+  email: boolean;
+}
 
 interface PublishModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPublish: (notificationSettings: NotificationSettings) => void;
-  summary: {
-    assignedShifts: number;
-    openShifts: number;
-    conflicts: Array<{ type: string; description: string }>;
-  };
-}
-
-interface NotificationSettings {
-  push: boolean;
-  sms: boolean;
-  email: boolean;
+  scheduleId: string;
+  scheduleType: "period" | "week";
 }
 
 export function PublishModal({
   open,
   onOpenChange,
-  onPublish,
-  summary,
+  scheduleId,
+  scheduleType,
 }: PublishModalProps) {
   const [notifications, setNotifications] = useState<NotificationSettings>({
     push: true,
-    sms: false,
     email: true,
   });
+  const [conflicts, setConflicts] = useState<
+    { employeeName: string; date: string }[]
+  >([]);
+  const {
+    checkShiftConflicts,
+    publishSchedule,
+    schedulePeriods,
+    weeklySchedules,
+  } = useScheduleStore();
+
+  const currentSchedule = useMemo(() => {
+    const period = schedulePeriods.find((p) => p.id === scheduleId);
+    if (period) return period;
+    const weekly = weeklySchedules.find((w) => w.id === scheduleId);
+    if (weekly) return weekly;
+    return null;
+  }, [scheduleId, schedulePeriods, weeklySchedules]);
+
+  useEffect(() => {
+    if (open && currentSchedule) {
+      const foundConflicts = checkShiftConflicts(scheduleId, scheduleType);
+      setConflicts(foundConflicts);
+    } else {
+      setConflicts([]);
+    }
+  }, [open, scheduleId, scheduleType, checkShiftConflicts, currentSchedule]);
 
   const handlePublish = () => {
-    onPublish(notifications);
+    publishSchedule(scheduleId, scheduleType);
+    toast.success("Publish Successful", { position: ToastPosition.BOTTOM });
     onOpenChange(false);
   };
 
-  const hasConflicts = summary.conflicts.length > 0;
+  const summary = useMemo(() => {
+    if (!currentSchedule)
+      return { assignedShifts: 0, openShifts: 0, conflicts: [] };
+    return {
+      assignedShifts: currentSchedule.shifts.filter((s) => s.employeeId).length,
+      openShifts: currentSchedule.shifts.filter((s) => !s.employeeId).length,
+      conflicts: conflicts,
+    };
+  }, [currentSchedule, conflicts]);
+
+  const hasConflicts = conflicts.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -103,13 +129,12 @@ export function PublishModal({
                 <Text
                   className={hasConflicts ? "text-red-400" : "text-gray-400"}
                 >
-                  {summary.conflicts.length}
+                  {conflicts.length}
                 </Text>
               </Badge>
             </View>
           </View>
 
-          {/* Conflicts */}
           {hasConflicts && (
             <View className="gap-y-2">
               <View className="flex-row items-center gap-2">
@@ -118,20 +143,20 @@ export function PublishModal({
                   className="text-red-400"
                   color={"#f87171"}
                 />
-                <Text className="text-sm font-semibold text-white">
+                <Text className="text-sm text-white font-semibold">
                   Conflicts Detected
                 </Text>
               </View>
               <ScrollView className="h-24 rounded-lg border border-gray-700 bg-[#212121] p-3">
-                {summary.conflicts.map((conflict, i) => (
+                {conflicts.map((conflict, i) => (
                   <View key={i} className="flex-row items-start gap-2 mb-2">
                     <Badge className="text-xs bg-red-500/20 text-red-400 border-red-500/30">
                       <Text className="text-xs text-red-400">
-                        {conflict.type}
+                        {conflict.employeeName}
                       </Text>
                     </Badge>
                     <Text className="text-sm text-gray-400 flex-1">
-                      {conflict.description}
+                      has a conflicting shift on {conflict.date}
                     </Text>
                   </View>
                 ))}
@@ -160,23 +185,6 @@ export function PublishModal({
               </View>
               <View className="flex-row items-center gap-3">
                 <Checkbox
-                  id="sms"
-                  checked={notifications.sms}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, sms: !!checked })
-                  }
-                />
-                <View className="flex-row items-center gap-2">
-                  <MessageSquare
-                    size={16}
-                    className="text-blue-400"
-                    color={"#60a5fa"}
-                  />
-                  <Text className="text-sm text-white">SMS Messages</Text>
-                </View>
-              </View>
-              <View className="flex-row items-center gap-3">
-                <Checkbox
                   id="email"
                   checked={notifications.email}
                   onCheckedChange={(checked) =>
@@ -190,46 +198,29 @@ export function PublishModal({
               </View>
             </View>
           </View>
-
-          {/* Warning/Success Message */}
-          {hasConflicts ? (
-            <View className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex-row items-start gap-2">
-              <AlertCircle
-                size={16}
-                className="text-yellow-400 mt-1"
-                color={"#facc15"}
-              />
-              <Text className="text-sm text-yellow-300 flex-1">
-                Publishing with conflicts may cause scheduling issues. Review
-                and resolve conflicts before publishing.
-              </Text>
-            </View>
-          ) : (
-            <View className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex-row items-start gap-2">
-              <CheckCircle2
-                size={16}
-                className="text-green-400 mt-1"
-                color={"#4ade80"}
-              />
-              <Text className="text-sm text-green-300 flex-1">
-                Schedule is ready to publish. Employees will be notified based
-                on your settings.
-              </Text>
-            </View>
-          )}
         </View>
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onPress={() => onOpenChange(false)}>
             <Text className="text-white">Cancel</Text>
           </Button>
-          <Button
-            onPress={handlePublish}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
-          >
-            <Send size={16} color="#FFFFFF" />
-            <Text className="text-white font-semibold">Publish Schedule</Text>
-          </Button>
+          {hasConflicts ? (
+            <Button
+              onPress={handlePublish}
+              className="gap-2 bg-yellow-600 hover:bg-yellow-700 flex-row"
+            >
+              <AlertCircle size={16} color="#FFFFFF" />
+              <Text className="text-white font-semibold">Publish Anyway</Text>
+            </Button>
+          ) : (
+            <Button
+              onPress={handlePublish}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 flex-row"
+            >
+              <Send size={16} color="#FFFFFF" />
+              <Text className="text-white font-semibold">Publish Schedule</Text>
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

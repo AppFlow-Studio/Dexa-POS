@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { differenceInDays, format, parse } from "date-fns";
 import {
   ArrowLeft,
   ArrowRight,
@@ -44,10 +44,21 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
   useEffect(() => {
     if (isOpen) {
       if (periodToEdit) {
+        // Ensure dates are in YYYY-MM-DD format
+        const convertDate = (dateStr: string) => {
+          try {
+            return format(
+              parse(dateStr, "MM/dd/yyyy", new Date()),
+              "yyyy-MM-dd"
+            );
+          } catch {
+            return dateStr; // Assume it's already in a valid format if parsing fails
+          }
+        };
         setFormData({
           name: periodToEdit.name,
-          startDate: periodToEdit.startDate,
-          endDate: periodToEdit.endDate,
+          startDate: convertDate(periodToEdit.startDate),
+          endDate: convertDate(periodToEdit.endDate),
         });
       } else {
         setFormData({ name: "", startDate: "", endDate: "" });
@@ -87,6 +98,18 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
 
   const onDayPress = (day: DateData, type: "startDate" | "endDate") => {
     setFormData({ ...formData, [type]: day.dateString });
+  };
+
+  const getDuration = () => {
+    if (!formData.startDate || !formData.endDate) return 0;
+    try {
+      const start = new Date(formData.startDate);
+      const end = new Date(formData.endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+      return differenceInDays(end, start) + 1;
+    } catch (e) {
+      return 0;
+    }
   };
 
   const calendarTheme = {
@@ -138,7 +161,11 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
         return (
           <View className="items-center">
             <View className="p-4 bg-blue-600/20 rounded-full mb-4">
-              <CalendarIcon size={32} className="text-blue-400" />
+              <CalendarIcon
+                size={32}
+                className="text-blue-400"
+                color={"#60a5fa"}
+              />
             </View>
             <Text className="text-xl font-bold text-white mb-2">
               Name Your Schedule Period
@@ -159,7 +186,11 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
         return (
           <View className="items-center">
             <View className="p-4 bg-blue-600/20 rounded-full mb-4">
-              <CalendarIcon size={32} className="text-blue-400" />
+              <CalendarIcon
+                size={32}
+                className="text-blue-400"
+                color={"#60a5fa"}
+              />
             </View>
             <Text className="text-xl font-bold text-white mb-2">
               Set Date Range
@@ -188,6 +219,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                     align="end"
                   >
                     <Calendar
+                      current={formData.startDate || undefined}
                       onDayPress={(day) => onDayPress(day, "startDate")}
                       theme={calendarTheme}
                       markedDates={{
@@ -220,6 +252,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                     align="end"
                   >
                     <Calendar
+                      current={formData.endDate || undefined}
                       onDayPress={(day) => onDayPress(day, "endDate")}
                       theme={calendarTheme}
                       markedDates={{
@@ -264,6 +297,18 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 <Text className="text-gray-400">End Date:</Text>
                 <Text className="text-white font-semibold">
                   {formData.endDate}
+                </Text>
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-400">Duration:</Text>
+                <Text className="text-white font-semibold">
+                  {getDuration()} days
+                </Text>
+              </View>
+              <View className="flex-row justify-between">
+                <Text className="text-gray-400">Status:</Text>
+                <Text className="text-yellow-400 font-semibold">
+                  {periodToEdit?.status || "Draft"}
                 </Text>
               </View>
             </View>

@@ -48,6 +48,7 @@ const Header = () => {
 
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
+    if (pathname === "/scheduling/reports") return "Reports";
     if (pathname.startsWith("/scheduling/") && pathname.split("/").length === 3)
       return "Scheduling Dashboard";
     if (pathname === "/pto") return "PTO";

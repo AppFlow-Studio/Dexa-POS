@@ -3787,6 +3787,7 @@ export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-1",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     date: "2025-10-13",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3802,6 +3803,7 @@ export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-2",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     date: "2025-10-14",
     role: "Barista",
     startTime: "2:00 PM",
@@ -3817,6 +3819,7 @@ export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-3",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     date: "2025-10-15",
     role: "Barista",
     startTime: "6:00 AM",
@@ -3832,6 +3835,7 @@ export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-4",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     date: "2025-10-16",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3846,6 +3850,7 @@ export const MOCK_SHIFTS: Shift[] = [
   {
     id: "shift-5",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     date: "2025-10-17",
     role: "Barista",
     startTime: "10:00 AM",
@@ -3863,6 +3868,7 @@ export const mockShiftsScheudleGrid: Shift[] = [
   {
     id: "s1",
     employeeId: "emp_1759078476073_0",
+    periodId: "2",
     role: "Cashier",
     startTime: "08:00",
     endTime: "16:00",
@@ -3873,6 +3879,7 @@ export const mockShiftsScheudleGrid: Shift[] = [
   {
     id: "s2",
     employeeId: "emp_1759078476073_1",
+    periodId: "2",
     role: "Line Cook",
     startTime: "10:00",
     endTime: "18:00",
@@ -3883,6 +3890,7 @@ export const mockShiftsScheudleGrid: Shift[] = [
   {
     id: "s3",
     employeeId: null,
+    periodId: "2",
     role: "Barista",
     startTime: "06:00",
     endTime: "14:00",
@@ -3893,6 +3901,7 @@ export const mockShiftsScheudleGrid: Shift[] = [
   {
     id: "s4",
     employeeId: "emp_1759078476073_2",
+    periodId: "2",
     role: "Supervisor",
     startTime: "12:00",
     endTime: "20:00",

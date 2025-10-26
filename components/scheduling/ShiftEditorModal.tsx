@@ -16,50 +16,68 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Role, Shift } from "@/lib/types";
-import { AlertCircle, Copy } from "lucide-react-native";
+import { format } from "date-fns";
+import {
+  AlertCircle,
+  Calendar as CalendarIcon,
+  Copy,
+} from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { ScrollView, Text, TextInput, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
+import { ScrollView } from "react-native-gesture-handler";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 interface ShiftEditorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  shift?: Shift | null;
+  shift?: Partial<Shift> | null;
+  periodId: string;
+  scheduleType: "period" | "week";
   onSave: (shift: Partial<Shift>) => void;
   onSaveAndDuplicate?: (shift: Partial<Shift>) => void;
 }
 
 const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
 
+const timeSlots = Array.from({ length: 48 }, (_, i) => {
+  const hours = Math.floor(i / 2);
+  const minutes = (i % 2) * 30;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+});
+
 export function ShiftEditorModal({
   open,
   onOpenChange,
   shift,
+  periodId,
+  scheduleType,
   onSave,
   onSaveAndDuplicate,
 }: ShiftEditorModalProps) {
-  const [role, setRole] = useState<Role>(shift?.role || "Cashier");
-  const [startTime, setStartTime] = useState(shift?.startTime || "09:00");
-  const [endTime, setEndTime] = useState(shift?.endTime || "17:00");
-  const [requiredCount, setRequiredCount] = useState(shift?.requiredCount || 1);
-  const [notes, setNotes] = useState(shift?.notes || "");
+  const [role, setRole] = useState<Role>("Cashier");
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [notes, setNotes] = useState("");
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (shift) {
-      setRole(shift.role);
-      setStartTime(shift.startTime);
-      setEndTime(shift.endTime);
-      setRequiredCount(shift.requiredCount || 1);
+      setRole(shift.role || "Cashier");
+      setDate(shift.date || new Date().toISOString().split("T")[0]);
+      setStartTime(shift.startTime || "09:00");
+      setEndTime(shift.endTime || "17:00");
       setNotes(shift.notes || "");
       setLockAssignment(shift.locked || false);
     } else {
       // Reset for new shift
       setRole("Cashier");
+      setDate(new Date().toISOString().split("T")[0]);
       setStartTime("09:00");
       setEndTime("17:00");
-      setRequiredCount(1);
       setNotes("");
       setLockAssignment(false);
       setAllowOpenClaims(true);
@@ -88,10 +106,13 @@ export function ShiftEditorModal({
   const handleSave = () => {
     if (!validateShift()) return;
     onSave({
+      id: shift?.id,
+      employeeId: shift?.employeeId,
+      periodId,
       role,
-      startTime: startTime,
-      endTime: endTime,
-      requiredCount,
+      date,
+      startTime,
+      endTime,
       notes,
       locked: lockAssignment,
       isOpen: allowOpenClaims && !shift?.employeeId,
@@ -102,10 +123,12 @@ export function ShiftEditorModal({
   const handleSaveAndDuplicate = () => {
     if (!validateShift() || !onSaveAndDuplicate) return;
     onSaveAndDuplicate({
+      employeeId: shift?.employeeId,
+      periodId,
       role,
-      startTime: startTime,
-      endTime: endTime,
-      requiredCount,
+      date,
+      startTime,
+      endTime,
       notes,
       locked: lockAssignment,
       isOpen: allowOpenClaims && !shift?.employeeId,
@@ -113,12 +136,28 @@ export function ShiftEditorModal({
     onOpenChange(false);
   };
 
+  const onDayPress = (day: DateData) => {
+    setDate(day.dateString);
+  };
+
+  const calendarTheme = {
+    calendarBackground: "#303030",
+    monthTextColor: "#FFFFFF",
+    dayTextColor: "#FFFFFF",
+    textDisabledColor: "#6B7280",
+    selectedDayBackgroundColor: "#3b82f6",
+    selectedDayTextColor: "#FFFFFF",
+    todayTextColor: "#60A5FA",
+    arrowColor: "#3b82f6",
+    textSectionTitleColor: "#9CA3AF",
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg bg-[#303030] border-gray-700">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {shift ? "Edit Shift" : "Create Shift"}
+            {shift?.id ? "Edit Shift" : "Create Shift"}
           </DialogTitle>
         </DialogHeader>
 
@@ -126,7 +165,11 @@ export function ShiftEditorModal({
           {errors.length > 0 && (
             <View className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
               <View className="flex-row items-start gap-2">
-                <AlertCircle size={16} className="text-red-400 mt-1" />
+                <AlertCircle
+                  size={16}
+                  className="text-red-400 mt-1"
+                  color={"#f87171"}
+                />
                 <View className="gap-y-1">
                   {errors.map((error, i) => (
                     <Text key={i} className="text-sm text-red-400">
@@ -163,35 +206,81 @@ export function ShiftEditorModal({
             </Select>
           </View>
 
+          <View className="gap-y-2 mb-2">
+            <Text className="text-gray-300 font-semibold">Date</Text>
+            <Popover>
+              <PopoverTrigger asChild>
+                <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                  <Text className="text-white text-base">
+                    {date
+                      ? format(new Date(date), "yyyy-MM-dd")
+                      : "Select Date"}
+                  </Text>
+                  <CalendarIcon size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-96 bg-[#303030] border-gray-700 z-50"
+                align="end"
+              >
+                <Calendar
+                  current={date || undefined}
+                  onDayPress={onDayPress}
+                  theme={calendarTheme}
+                  markedDates={{
+                    [date]: {
+                      selected: true,
+                      selectedColor: "#3b82f6",
+                    },
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+          </View>
+
           <View className="flex-row gap-4 mb-2">
             <View className="flex-1 gap-y-2">
               <Text className="text-gray-300 font-semibold">Start Time *</Text>
-              <TextInput
-                value={startTime}
-                onChangeText={setStartTime}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
-              />
+              <Select
+                onValueChange={(option) => option && setStartTime(option.value)}
+                value={{ label: startTime, value: startTime }}
+              >
+                <SelectTrigger className="bg-[#212121]">
+                  <SelectValue
+                    placeholder="Select a time..."
+                    className="text-white"
+                  />
+                </SelectTrigger>
+                <SelectContent className="bg-[#212121] border-gray-600">
+                  <ScrollView className="h-full">
+                    {timeSlots.map((time) => (
+                      <SelectItem key={time} label={time} value={time} />
+                    ))}
+                  </ScrollView>
+                </SelectContent>
+              </Select>
             </View>
             <View className="flex-1 gap-y-2">
               <Text className="text-gray-300 font-semibold">End Time *</Text>
-              <TextInput
-                value={endTime}
-                onChangeText={setEndTime}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
-              />
+              <Select
+                onValueChange={(option) => option && setEndTime(option.value)}
+                value={{ label: endTime, value: endTime }}
+              >
+                <SelectTrigger className="bg-[#212121]">
+                  <SelectValue
+                    placeholder="Select a time..."
+                    className="text-white"
+                  />
+                </SelectTrigger>
+                <SelectContent className="bg-[#212121] border-gray-600">
+                  <ScrollView className="h-full">
+                    {timeSlots.map((time) => (
+                      <SelectItem key={time} label={time} value={time} />
+                    ))}
+                  </ScrollView>
+                </SelectContent>
+              </Select>
             </View>
-          </View>
-
-          <View className="gap-y-2 mb-2">
-            <Text className="text-gray-300 font-semibold">
-              Required Headcount
-            </Text>
-            <TextInput
-              value={String(requiredCount)}
-              onChangeText={(text) => setRequiredCount(Number(text))}
-              keyboardType="numeric"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
-            />
           </View>
 
           <View className="gap-y-2 mb-2">

@@ -362,6 +362,7 @@ export interface UserProfile {
 
 export interface Shift {
   id: string;
+  periodId: string;
   date: string; // ISO format: "YYYY-MM-DD"
   role: Role;
   startTime: string; // "HH:mm"
@@ -389,6 +390,32 @@ export interface Shift {
   notes?: string;
   isOpen?: boolean;
   locked?: boolean;
+}
+
+export interface SchedulePeriod {
+  id: string;
+  name: string;
+  startDate: string; // ISO date
+  endDate: string; // ISO date
+  status: "draft" | "active" | "completed";
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  isScheduled?: boolean;
+}
+
+export interface WeeklySchedule {
+  id: string;
+  name: string; // e.g., "Week of Nov 10-16, 2025"
+  startDate: string; // ISO date
+  endDate: string; // ISO date (always 7 days after startDate)
+  status: "draft" | "active" | "completed"; // Assuming similar statuses
+  shifts: Shift[]; // Nested shifts
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  type: "weekly"; // Explicit discriminator
 }
 
 export interface PTORequest {
