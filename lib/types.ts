@@ -397,7 +397,7 @@ export interface SchedulePeriod {
   name: string;
   startDate: string; // ISO date
   endDate: string; // ISO date
-  status: 'draft' | 'active' | 'completed';
+  status: "draft" | "active" | "completed";
   shifts: Shift[]; // Nested shifts
   createdAt: string;
   updatedAt: string;
@@ -410,12 +410,12 @@ export interface WeeklySchedule {
   name: string; // e.g., "Week of Nov 10-16, 2025"
   startDate: string; // ISO date
   endDate: string; // ISO date (always 7 days after startDate)
-  status: 'draft' | 'published' | 'archived'; // Assuming similar statuses
+  status: "draft" | "active" | "completed"; // Assuming similar statuses
   shifts: Shift[]; // Nested shifts
   createdAt: string;
   updatedAt: string;
   createdBy: string;
-  type: 'weekly'; // Explicit discriminator
+  type: "weekly"; // Explicit discriminator
 }
 
 export interface PTORequest {

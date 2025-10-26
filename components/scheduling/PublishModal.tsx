@@ -8,20 +8,13 @@ import {
   DialogHeader,
 } from "@/components/ui/dialog";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import {
-  AlertCircle,
-  Bell,
-  CheckCircle2,
-  Mail,
-  MessageSquare,
-  Send,
-} from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 
 interface NotificationSettings {
   push: boolean;
-  sms: boolean;
   email: boolean;
 }
 
@@ -40,25 +33,50 @@ export function PublishModal({
 }: PublishModalProps) {
   const [notifications, setNotifications] = useState<NotificationSettings>({
     push: true,
-    sms: false,
     email: true,
   });
   const [conflicts, setConflicts] = useState<
     { employeeName: string; date: string }[]
   >([]);
-  const { checkShiftConflicts, publishSchedulePeriod } = useScheduleStore();
+  const {
+    checkShiftConflicts,
+    publishSchedule,
+    schedulePeriods,
+    weeklySchedules,
+  } = useScheduleStore();
+
+  const currentSchedule = useMemo(() => {
+    const period = schedulePeriods.find((p) => p.id === scheduleId);
+    if (period) return period;
+    const weekly = weeklySchedules.find((w) => w.id === scheduleId);
+    if (weekly) return weekly;
+    return null;
+  }, [scheduleId, schedulePeriods, weeklySchedules]);
 
   useEffect(() => {
-    if (open) {
+    if (open && currentSchedule) {
       const foundConflicts = checkShiftConflicts(scheduleId, scheduleType);
       setConflicts(foundConflicts);
+    } else {
+      setConflicts([]);
     }
-  }, [open, scheduleId, scheduleType, checkShiftConflicts]);
+  }, [open, scheduleId, scheduleType, checkShiftConflicts, currentSchedule]);
 
   const handlePublish = () => {
-    publishSchedulePeriod(scheduleId);
+    publishSchedule(scheduleId, scheduleType);
+    toast.success("Publish Successful", { position: ToastPosition.BOTTOM });
     onOpenChange(false);
   };
+
+  const summary = useMemo(() => {
+    if (!currentSchedule)
+      return { assignedShifts: 0, openShifts: 0, conflicts: [] };
+    return {
+      assignedShifts: currentSchedule.shifts.filter((s) => s.employeeId).length,
+      openShifts: currentSchedule.shifts.filter((s) => !s.employeeId).length,
+      conflicts: conflicts,
+    };
+  }, [currentSchedule, conflicts]);
 
   const hasConflicts = conflicts.length > 0;
 
@@ -73,7 +91,51 @@ export function PublishModal({
         </DialogHeader>
 
         <View className="gap-y-4 py-4">
-          {hasConflicts ? (
+          {/* Summary */}
+          <View className="p-4 rounded-lg bg-[#212121] border border-gray-700 gap-y-3">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm text-gray-400">Assigned Shifts</Text>
+              <Badge className="bg-green-500/20 text-green-400">
+                <Text className="text-green-400">{summary.assignedShifts}</Text>
+              </Badge>
+            </View>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm text-gray-400">Open Shifts</Text>
+              <Badge
+                className={
+                  summary.openShifts > 0
+                    ? "bg-yellow-500/20 text-yellow-400"
+                    : "bg-gray-500/20 text-gray-400"
+                }
+              >
+                <Text
+                  className={
+                    summary.openShifts > 0 ? "text-yellow-400" : "text-gray-400"
+                  }
+                >
+                  {summary.openShifts}
+                </Text>
+              </Badge>
+            </View>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm text-gray-400">Conflicts</Text>
+              <Badge
+                className={
+                  hasConflicts
+                    ? "bg-red-500/20 text-red-400"
+                    : "bg-gray-500/20 text-gray-400"
+                }
+              >
+                <Text
+                  className={hasConflicts ? "text-red-400" : "text-gray-400"}
+                >
+                  {conflicts.length}
+                </Text>
+              </Badge>
+            </View>
+          </View>
+
+          {hasConflicts && (
             <View className="gap-y-2">
               <View className="flex-row items-center gap-2">
                 <AlertCircle
@@ -81,7 +143,7 @@ export function PublishModal({
                   className="text-red-400"
                   color={"#f87171"}
                 />
-                <Text className="text-sm font-semibold text-white">
+                <Text className="text-sm text-white font-semibold">
                   Conflicts Detected
                 </Text>
               </View>
@@ -99,18 +161,6 @@ export function PublishModal({
                   </View>
                 ))}
               </ScrollView>
-            </View>
-          ) : (
-            <View className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 flex-row items-start gap-2">
-              <CheckCircle2
-                size={16}
-                className="text-green-400 mt-1"
-                color={"#4ade80"}
-              />
-              <Text className="text-sm text-green-300 flex-1">
-                Schedule is ready to publish. Employees will be notified based
-                on your settings.
-              </Text>
             </View>
           )}
 
@@ -131,23 +181,6 @@ export function PublishModal({
                 <View className="flex-row items-center gap-2">
                   <Bell size={16} className="text-blue-400" color={"#60a5fa"} />
                   <Text className="text-sm text-white">Push Notifications</Text>
-                </View>
-              </View>
-              <View className="flex-row items-center gap-3">
-                <Checkbox
-                  id="sms"
-                  checked={notifications.sms}
-                  onCheckedChange={(checked) =>
-                    setNotifications({ ...notifications, sms: !!checked })
-                  }
-                />
-                <View className="flex-row items-center gap-2">
-                  <MessageSquare
-                    size={16}
-                    className="text-blue-400"
-                    color={"#60a5fa"}
-                  />
-                  <Text className="text-sm text-white">SMS Messages</Text>
                 </View>
               </View>
               <View className="flex-row items-center gap-3">

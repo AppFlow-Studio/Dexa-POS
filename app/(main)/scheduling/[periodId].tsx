@@ -35,13 +35,11 @@ import {
   Role,
   Shift,
   ShiftRequest as SwapRequest,
-  SchedulePeriod,
-  WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
+import { addDays, isAfter, isBefore, subDays } from "date-fns";
 import { ScrollView } from "react-native-gesture-handler";
-import { isBefore, isAfter, addDays, subDays } from "date-fns";
 
 const mockSwapRequests: SwapRequest[] = [
   {
@@ -90,13 +88,8 @@ const mockPtoRequests: PTORequest[] = [
 
 const ScheduleDetailScreen = () => {
   const { periodId } = useLocalSearchParams();
-  const {
-    schedulePeriods,
-    weeklySchedules,
-    addShift,
-    updateShift,
-    publishSchedulePeriod,
-  } = useScheduleStore();
+  const { schedulePeriods, weeklySchedules, addShift, updateShift } =
+    useScheduleStore();
   const { employees } = useEmployeeStore();
 
   const currentSchedule = useMemo(() => {
@@ -107,11 +100,10 @@ const ScheduleDetailScreen = () => {
     return null;
   }, [periodId, schedulePeriods, weeklySchedules]);
 
-  const [startDate, setStartDate] = useState(currentSchedule ? new Date(currentSchedule.schedule.startDate) : new Date());
+  const [startDate, setStartDate] = useState(
+    currentSchedule ? new Date(currentSchedule.schedule.startDate) : new Date()
+  );
   const [searchQuery, setSearchQuery] = useState("");
-  const [publishStatus, setPublishStatus] = useState<
-    "draft" | "published" | "archived"
-  >("draft");
 
   // State for modals and drawers
   const [shiftEditorOpen, setShiftEditorOpen] = useState(false);
@@ -192,14 +184,14 @@ const ScheduleDetailScreen = () => {
   const handlePreviousWeek = () => {
     const newDate = subDays(startDate, 7);
     if (!isBefore(newDate, new Date(currentSchedule.schedule.startDate))) {
-        setStartDate(newDate);
+      setStartDate(newDate);
     }
   };
 
   const handleNextWeek = () => {
     const newDate = addDays(startDate, 7);
     if (!isAfter(newDate, new Date(currentSchedule.schedule.endDate))) {
-        setStartDate(newDate);
+      setStartDate(newDate);
     }
   };
 
@@ -209,31 +201,16 @@ const ScheduleDetailScreen = () => {
     );
   }, [employees, searchQuery]);
 
-  const publishSummary = {
-    assignedShifts: currentSchedule.schedule.shifts.length,
-    openShifts: currentSchedule.schedule.shifts.filter((s) => s.isOpen).length,
-    conflicts: [
-      {
-        type: "OT Risk",
-        description: "Sarah Chen scheduled for 42 hours this week",
-      },
-      {
-        type: "Coverage Gap",
-        description: "No supervisor on duty Tuesday 2-4 PM",
-      },
-    ],
-  };
-
   const statusColors = {
     draft: "bg-muted text-muted-foreground",
-    published: "bg-green-500/20 text-green-400 border-green-500/30",
-    archived: "bg-gray-500/20 text-gray-400",
+    active: "bg-green-500/20 text-green-400 border-green-500/30",
+    completed: "bg-gray-500/20 text-gray-400",
   };
 
   const statusTextColor = {
     draft: "text-muted-foreground",
-    published: "text-green-400",
-    archived: "text-gray-400",
+    active: "text-green-400",
+    completed: "text-gray-400",
   };
 
   return (
@@ -289,10 +266,10 @@ const ScheduleDetailScreen = () => {
                 maxDate={new Date(currentSchedule.schedule.endDate)}
               />
 
-              <Badge className={statusColors[publishStatus]}>
-                <Text className={statusTextColor[publishStatus]}>
-                  {publishStatus.charAt(0).toUpperCase() +
-                    publishStatus.slice(1)}
+              <Badge className={statusColors[currentSchedule.schedule.status]}>
+                <Text className={statusTextColor[currentSchedule.schedule.status]}>
+                  {currentSchedule.schedule.status.charAt(0).toUpperCase() +
+                    currentSchedule.schedule.status.slice(1)}
                 </Text>
               </Badge>
             </View>

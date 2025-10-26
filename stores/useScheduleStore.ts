@@ -67,7 +67,10 @@ interface ScheduleRequestState {
     scheduleId: string,
     scheduleType: "period" | "week"
   ) => { employeeName: string; date: string }[];
-  publishSchedulePeriod: (periodId: string) => void;
+  publishSchedule: (
+    scheduleId: string,
+    scheduleType: "period" | "week"
+  ) => void;
 }
 
 export const useScheduleStore = create<ScheduleRequestState>()(
@@ -284,14 +287,24 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           return uniqueConflicts;
         },
 
-        publishSchedulePeriod: (periodId) => {
+        publishSchedule: (scheduleId, scheduleType) => {
           set((state) => {
-            const period = state.schedulePeriods.find(
-              (p: SchedulePeriod) => p.id === periodId
-            );
-            if (period) {
-              period.status = "active";
-              period.updatedAt = new Date().toISOString();
+            if (scheduleType === "period") {
+              const period = state.schedulePeriods.find(
+                (p: SchedulePeriod) => p.id === scheduleId
+              );
+              if (period) {
+                period.status = "active";
+                period.updatedAt = new Date().toISOString();
+              }
+            } else {
+              const schedule = state.weeklySchedules.find(
+                (s: WeeklySchedule) => s.id === scheduleId
+              );
+              if (schedule) {
+                schedule.status = "active";
+                schedule.updatedAt = new Date().toISOString();
+              }
             }
           });
         },

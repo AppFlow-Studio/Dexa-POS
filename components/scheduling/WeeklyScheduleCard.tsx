@@ -16,14 +16,14 @@ const WeeklyScheduleCard: React.FC<WeeklyScheduleCardProps> = ({
 }) => {
   const statusStyles = {
     draft: "bg-yellow-500/20",
-    published: "bg-green-500/20",
-    archived: "bg-gray-500/20",
+    active: "bg-green-500/20",
+    completed: "bg-gray-500/20",
   };
 
   const statusStylesText = {
     draft: "text-yellow-400",
-    published: "text-green-400",
-    archived: "text-gray-400",
+    active: "text-green-400",
+    completed: "text-gray-400",
   };
 
   const statusStyle = statusStyles[schedule.status] || statusStyles.draft;

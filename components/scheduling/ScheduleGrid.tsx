@@ -1,21 +1,14 @@
 import { Role, Shift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
-import {
-  addDays,
-  format,
-  isWithinInterval,
-  startOfDay,
-  startOfWeek,
-} from "date-fns";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
+import { isWithinInterval, startOfDay, addDays, format } from "date-fns";
 
 function getWeekDates(startDate: Date): Date[] {
-  const weekStart = startOfWeek(startDate, { weekStartsOn: 1 }); // 1 = Monday
   const dates: Date[] = [];
   for (let i = 0; i < 7; i++) {
-    dates.push(addDays(weekStart, i));
+    dates.push(addDays(startDate, i));
   }
   return dates;
 }
@@ -59,7 +52,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   return (
     <View className="flex-1">
       <ScrollView horizontal>
-        <View style={{ minWidth: 1200 }}>
+        <View>
           {/* Header */}
           <View className="flex-row bg-gray-800 sticky top-0 z-10">
             <View className="w-48 bg-[#303030] p-3 border-r border-gray-700">
@@ -70,9 +63,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                 key={i}
                 className="w-40 bg-[#303030] p-3 text-center border-r border-gray-700 items-center"
               >
-                <Text className="text-xs text-gray-400">
-                  {format(date, "E")}
-                </Text>
+                <Text className="text-xs text-gray-400">{format(date, 'E')}</Text>
                 <Text className="text-sm font-semibold text-white">
                   {date.toLocaleDateString("en-US", {
                     month: "short",

@@ -33,7 +33,7 @@ interface ShiftEditorModalProps {
   onOpenChange: (open: boolean) => void;
   shift?: Partial<Shift> | null;
   periodId: string;
-  scheduleType: 'period' | 'week';
+  scheduleType: "period" | "week";
   onSave: (shift: Partial<Shift>) => void;
   onSaveAndDuplicate?: (shift: Partial<Shift>) => void;
 }
@@ -63,7 +63,6 @@ export function ShiftEditorModal({
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   useEffect(() => {
     if (shift) {
@@ -139,7 +138,6 @@ export function ShiftEditorModal({
 
   const onDayPress = (day: DateData) => {
     setDate(day.dateString);
-    setIsDatePickerOpen(false);
   };
 
   const calendarTheme = {
@@ -210,7 +208,7 @@ export function ShiftEditorModal({
 
           <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">Date</Text>
-            <Popover onOpenChange={setIsDatePickerOpen}>
+            <Popover>
               <PopoverTrigger asChild>
                 <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
                   <Text className="text-white text-base">
@@ -221,24 +219,22 @@ export function ShiftEditorModal({
                   <CalendarIcon size={16} color="#9CA3AF" />
                 </TouchableOpacity>
               </PopoverTrigger>
-              {isDatePickerOpen && (
-                <PopoverContent
-                  className="w-96 bg-[#303030] border-gray-700 z-50"
-                  align="end"
-                >
-                  <Calendar
-                    current={date || undefined}
-                    onDayPress={onDayPress}
-                    theme={calendarTheme}
-                    markedDates={{
-                      [date]: {
-                        selected: true,
-                        selectedColor: "#3b82f6",
-                      },
-                    }}
-                  />
-                </PopoverContent>
-              )}
+              <PopoverContent
+                className="w-96 bg-[#303030] border-gray-700 z-50"
+                align="end"
+              >
+                <Calendar
+                  current={date || undefined}
+                  onDayPress={onDayPress}
+                  theme={calendarTheme}
+                  markedDates={{
+                    [date]: {
+                      selected: true,
+                      selectedColor: "#3b82f6",
+                    },
+                  }}
+                />
+              </PopoverContent>
             </Popover>
           </View>
 

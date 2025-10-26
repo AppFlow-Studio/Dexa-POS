@@ -40,8 +40,6 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
     startDate: "",
     endDate: "",
   });
-  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
-  const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -100,11 +98,6 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
 
   const onDayPress = (day: DateData, type: "startDate" | "endDate") => {
     setFormData({ ...formData, [type]: day.dateString });
-    if (type === "startDate") {
-      setIsStartDatePickerOpen(false);
-    } else {
-      setIsEndDatePickerOpen(false);
-    }
   };
 
   const getDuration = () => {
@@ -210,7 +203,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                 <Text className="text-gray-300 mb-2 font-semibold">
                   Start Date
                 </Text>
-                <Popover onOpenChange={setIsStartDatePickerOpen}>
+                <Popover>
                   <PopoverTrigger asChild>
                     <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
                       <Text className="text-white text-base">
@@ -221,31 +214,29 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                       <CalendarIcon size={16} color="#9CA3AF" />
                     </TouchableOpacity>
                   </PopoverTrigger>
-                  {isStartDatePickerOpen && (
-                    <PopoverContent
-                      className="w-96 bg-[#303030] border-gray-700 z-50"
-                      align="end"
-                    >
-                      <Calendar
-                        current={formData.startDate || undefined}
-                        onDayPress={(day) => onDayPress(day, "startDate")}
-                        theme={calendarTheme}
-                        markedDates={{
-                          [formData.startDate]: {
-                            selected: true,
-                            selectedColor: "#3b82f6",
-                          },
-                        }}
-                      />
-                    </PopoverContent>
-                  )}
+                  <PopoverContent
+                    className="w-96 bg-[#303030] border-gray-700 z-50"
+                    align="end"
+                  >
+                    <Calendar
+                      current={formData.startDate || undefined}
+                      onDayPress={(day) => onDayPress(day, "startDate")}
+                      theme={calendarTheme}
+                      markedDates={{
+                        [formData.startDate]: {
+                          selected: true,
+                          selectedColor: "#3b82f6",
+                        },
+                      }}
+                    />
+                  </PopoverContent>
                 </Popover>
               </View>
               <View className="flex-1">
                 <Text className="text-gray-300 mb-2 font-semibold">
                   End Date
                 </Text>
-                <Popover onOpenChange={setIsEndDatePickerOpen}>
+                <Popover>
                   <PopoverTrigger asChild>
                     <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
                       <Text className="text-white text-base">
@@ -256,24 +247,22 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                       <CalendarIcon size={16} color="#9CA3AF" />
                     </TouchableOpacity>
                   </PopoverTrigger>
-                  {isEndDatePickerOpen && (
-                    <PopoverContent
-                      className="w-96 bg-[#303030] border-gray-700 z-50"
-                      align="end"
-                    >
-                      <Calendar
-                        current={formData.endDate || undefined}
-                        onDayPress={(day) => onDayPress(day, "endDate")}
-                        theme={calendarTheme}
-                        markedDates={{
-                          [formData.endDate]: {
-                            selected: true,
-                            selectedColor: "#3b82f6",
-                          },
-                        }}
-                      />
-                    </PopoverContent>
-                  )}
+                  <PopoverContent
+                    className="w-96 bg-[#303030] border-gray-700 z-50"
+                    align="end"
+                  >
+                    <Calendar
+                      current={formData.endDate || undefined}
+                      onDayPress={(day) => onDayPress(day, "endDate")}
+                      theme={calendarTheme}
+                      markedDates={{
+                        [formData.endDate]: {
+                          selected: true,
+                          selectedColor: "#3b82f6",
+                        },
+                      }}
+                    />
+                  </PopoverContent>
                 </Popover>
               </View>
             </View>
