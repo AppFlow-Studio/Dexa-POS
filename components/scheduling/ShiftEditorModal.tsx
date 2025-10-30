@@ -22,11 +22,11 @@ import {
   Calendar as CalendarIcon,
   Copy,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { ScrollView } from "react-native-gesture-handler";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import Popover from "react-native-popover-view";
 
 interface ShiftEditorModalProps {
   open: boolean;
@@ -63,6 +63,15 @@ export function ShiftEditorModal({
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const dateRef = useRef<typeof TouchableOpacity>(null);
+  const [breakMinutes, setBreakMinutes] = useState(30);
+  const [expectedPace, setExpectedPace] = useState<
+    "Moderate" | "Busy" | "Calm"
+  >("Moderate");
+  const [staffingLevel, setStaffingLevel] = useState<
+    "May need help" | "Fully staffed"
+  >("Fully staffed");
 
   useEffect(() => {
     if (shift) {
@@ -70,8 +79,11 @@ export function ShiftEditorModal({
       setDate(shift.date || new Date().toISOString().split("T")[0]);
       setStartTime(shift.startTime || "09:00");
       setEndTime(shift.endTime || "17:00");
-      setNotes(shift.notes || "");
+      setNotes(shift.managerNote || "");
       setLockAssignment(shift.locked || false);
+      setBreakMinutes(shift.breakMinutes || 30);
+      setExpectedPace(shift.expectedPace || "Moderate");
+      setStaffingLevel(shift.staffingLevel || "Fully staffed");
     } else {
       // Reset for new shift
       setRole("Cashier");
@@ -81,6 +93,9 @@ export function ShiftEditorModal({
       setNotes("");
       setLockAssignment(false);
       setAllowOpenClaims(true);
+      setBreakMinutes(30);
+      setExpectedPace("Moderate");
+      setStaffingLevel("Fully staffed");
     }
     setErrors([]);
   }, [shift, open]);
@@ -113,9 +128,13 @@ export function ShiftEditorModal({
       date,
       startTime,
       endTime,
-      notes,
+      managerNote: notes,
       locked: lockAssignment,
       isOpen: allowOpenClaims && !shift?.employeeId,
+      location: "Dexa – 5th Ave", //Update it once location logic is made
+      breakMinutes,
+      expectedPace,
+      staffingLevel,
     });
     onOpenChange(false);
   };
@@ -129,15 +148,20 @@ export function ShiftEditorModal({
       date,
       startTime,
       endTime,
-      notes,
+      managerNote: notes,
       locked: lockAssignment,
       isOpen: allowOpenClaims && !shift?.employeeId,
+      location: "Dexa – 5th Ave", //Update it once location logic is made
+      breakMinutes,
+      expectedPace,
+      staffingLevel,
     });
     onOpenChange(false);
   };
 
   const onDayPress = (day: DateData) => {
     setDate(day.dateString);
+    setIsDatePickerOpen(false);
   };
 
   const calendarTheme = {
@@ -161,7 +185,7 @@ export function ShiftEditorModal({
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollView className="py-4 gap-y-4">
+        <ScrollView className="py-4 gap-y-4 max-h-[75vh]">
           {errors.length > 0 && (
             <View className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
               <View className="flex-row items-start gap-2">
@@ -208,21 +232,22 @@ export function ShiftEditorModal({
 
           <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">Date</Text>
-            <Popover>
-              <PopoverTrigger asChild>
-                <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                  <Text className="text-white text-base">
-                    {date
-                      ? format(new Date(date), "yyyy-MM-dd")
-                      : "Select Date"}
-                  </Text>
-                  <CalendarIcon size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-96 bg-[#303030] border-gray-700 z-50"
-                align="end"
-              >
+            <TouchableOpacity
+              ref={dateRef as unknown as React.RefObject<View>}
+              onPress={() => setIsDatePickerOpen(true)}
+              className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+            >
+              <Text className="text-white text-base">
+                {date ? format(new Date(date), "yyyy-MM-dd") : "Select Date"}
+              </Text>
+              <CalendarIcon size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+            <Popover
+              from={dateRef as unknown as React.RefObject<View>}
+              isVisible={isDatePickerOpen}
+              onRequestClose={() => setIsDatePickerOpen(false)}
+            >
+              <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
                 <Calendar
                   current={date || undefined}
                   onDayPress={onDayPress}
@@ -234,7 +259,7 @@ export function ShiftEditorModal({
                     },
                   }}
                 />
-              </PopoverContent>
+              </View>
             </Popover>
           </View>
 
@@ -284,6 +309,63 @@ export function ShiftEditorModal({
           </View>
 
           <View className="gap-y-2 mb-2">
+            <Text className="text-gray-300 font-semibold">Break Minutes</Text>
+            <TextInput
+              value={String(breakMinutes)}
+              onChangeText={(text) => setBreakMinutes(Number(text))}
+              keyboardType="numeric"
+              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white text-base"
+            />
+          </View>
+
+          <View className="gap-y-2 mb-2">
+            <Text className="text-gray-300 font-semibold">Expected Pace</Text>
+            <Select
+              onValueChange={(option) =>
+                option &&
+                setExpectedPace(option.value as "Moderate" | "Busy" | "Calm")
+              }
+              value={{ label: expectedPace, value: expectedPace }}
+            >
+              <SelectTrigger className="bg-[#212121]">
+                <SelectValue
+                  placeholder="Select a pace..."
+                  className="text-white"
+                />
+              </SelectTrigger>
+              <SelectContent className="bg-[#212121] border-gray-600">
+                <SelectItem label="Moderate" value="Moderate" />
+                <SelectItem label="Busy" value="Busy" />
+                <SelectItem label="Calm" value="Calm" />
+              </SelectContent>
+            </Select>
+          </View>
+
+          <View className="gap-y-2 mb-2">
+            <Text className="text-gray-300 font-semibold">Staffing Level</Text>
+            <Select
+              onValueChange={(option) =>
+                option &&
+                setStaffingLevel(
+                  option.value as "May need help" | "Fully staffed"
+                )
+              }
+              value={{ label: staffingLevel, value: staffingLevel }}
+            >
+              <SelectTrigger className="bg-[#212121]">
+                <SelectValue
+                  placeholder="Select a staffing level..."
+                  className="text-white"
+                />
+              </SelectTrigger>
+              <SelectContent className="bg-[#212121] border-gray-600">
+                <SelectItem label="May need help" value="May need help" />
+                <SelectItem label="Fully staffed" value="Fully staffed" />
+              </SelectContent>
+            </Select>
+          </View>
+
+          <View className="gap-y-2 mb-2">
             <Text className="text-gray-300 font-semibold">Notes</Text>
             <TextInput
               value={notes}
@@ -295,7 +377,7 @@ export function ShiftEditorModal({
             />
           </View>
 
-          <View className="gap-y-3 pt-2">
+          <View className="gap-y-3 pt-2 mb-6">
             <View className="flex-row items-center gap-2">
               <Checkbox
                 id="lock"

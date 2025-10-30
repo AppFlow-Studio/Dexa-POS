@@ -4,13 +4,15 @@ import {
   MOCK_SWAP_REQUESTS,
 } from "@/lib/mockData";
 import {
+  ConflictInfo,
   PTORequest,
   SchedulePeriod,
   Shift,
   ShiftRequest,
   WeeklySchedule,
 } from "@/lib/types";
-import { useEmployeeStore } from "@/stores/useEmployeeStore"; // New import
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { areIntervalsOverlapping } from "date-fns";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -63,10 +65,16 @@ interface ScheduleRequestState {
     scheduleId: string,
     updates: Partial<WeeklySchedule>
   ) => void;
+  checkDateConflicts: (
+    startDate: string,
+    endDate: string,
+    excludePeriodId?: string
+  ) => ConflictInfo;
   checkShiftConflicts: (
     scheduleId: string,
     scheduleType: "period" | "week"
   ) => { employeeName: string; date: string }[];
+  getShiftsForEmployee: (employeeId: string) => Shift[];
   publishSchedule: (
     scheduleId: string,
     scheduleType: "period" | "week"
@@ -224,6 +232,25 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           });
         },
 
+        checkDateConflicts: (startDate, endDate, excludePeriodId) => {
+          const periods = get().schedulePeriods.filter(
+            (p) => p.id !== excludePeriodId
+          );
+          const conflictingPeriods = periods.filter((period) => {
+            return areIntervalsOverlapping(
+              { start: new Date(startDate), end: new Date(endDate) },
+              {
+                start: new Date(period.startDate),
+                end: new Date(period.endDate),
+              }
+            );
+          });
+          return {
+            hasConflict: conflictingPeriods.length > 0,
+            conflictingPeriods: conflictingPeriods.map((p) => ({ ...p })),
+          };
+        },
+
         checkShiftConflicts: (scheduleId, scheduleType) => {
           const allSchedules = [
             ...get().schedulePeriods,
@@ -287,6 +314,14 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           return uniqueConflicts;
         },
 
+        getShiftsForEmployee: (employeeId) => {
+          const allShifts = [
+            ...get().schedulePeriods.flatMap((p) => p.shifts),
+            ...get().weeklySchedules.flatMap((w) => w.shifts),
+          ];
+          return allShifts.filter((shift) => shift.employeeId === employeeId);
+        },
+
         publishSchedule: (scheduleId, scheduleType) => {
           set((state) => {
             if (scheduleType === "period") {
@@ -296,6 +331,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               if (period) {
                 period.status = "active";
                 period.updatedAt = new Date().toISOString();
+                period.shifts.forEach((shift) => {
+                  shift.status = "confirmed";
+                });
               }
             } else {
               const schedule = state.weeklySchedules.find(
@@ -304,6 +342,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               if (schedule) {
                 schedule.status = "active";
                 schedule.updatedAt = new Date().toISOString();
+                schedule.shifts.forEach((shift) => {
+                  shift.status = "confirmed";
+                });
               }
             }
           });

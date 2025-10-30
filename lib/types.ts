@@ -379,7 +379,6 @@ export interface Shift {
   actualClockOut?: string; // "HH:mm"
   isToday?: boolean;
   managerNote?: string;
-  restMet?: boolean;
   restRiskHours?: number;
   expectedPace?: "Calm" | "Moderate" | "Busy";
   staffingLevel?: "Fully staffed" | "May need help";
@@ -387,7 +386,6 @@ export interface Shift {
   // Properties from manager's view
   employeeId: string | null;
   requiredCount?: number;
-  notes?: string;
   isOpen?: boolean;
   locked?: boolean;
 }
@@ -416,6 +414,11 @@ export interface WeeklySchedule {
   updatedAt: string;
   createdBy: string;
   type: "weekly"; // Explicit discriminator
+}
+
+export interface ConflictInfo {
+  hasConflict: boolean;
+  conflictingPeriods: SchedulePeriod[];
 }
 
 export interface PTORequest {

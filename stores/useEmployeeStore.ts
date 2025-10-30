@@ -23,6 +23,7 @@ interface EmployeeState {
   activeEmployeeId: string | null; // signed-in employee for terminal session
   isLoading: boolean;
   error: string | null;
+  loggedInEmployee: EmployeeProfile | null;
 
   // actions
   loadMockEmployees: (count?: number) => Promise<void>;
@@ -126,6 +127,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
   activeEmployeeId: null,
   isLoading: false,
   error: null,
+  loggedInEmployee: MockEmployees[0] || null,
 
   setEmployees: (employees) => set({ employees }),
 
@@ -216,7 +218,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
     if (employee.pin !== pin) {
       return { ok: false as const, reason: "invalid_pin" as const };
     }
-    set({ activeEmployeeId: employeeId });
+    set({ activeEmployeeId: employeeId, loggedInEmployee: employee });
     useTimeclockStore.getState().setActiveEmployee(employeeId);
     return { ok: true as const };
   },
@@ -244,14 +246,14 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
     }
 
     // In all cases (new session or existing), set this employee as the active one.
-    set({ activeEmployeeId: employee.id });
+    set({ activeEmployeeId: employee.id, loggedInEmployee: employee });
     setActiveEmployee(employee.id);
 
     return { ok: true as const };
   },
 
   signOut: () => {
-    set({ activeEmployeeId: null });
+    set({ activeEmployeeId: null, loggedInEmployee: null });
     // Also clear the active employee in the timeclock store so the dock can react.
     useTimeclockStore.getState().setActiveEmployee(null);
   },
