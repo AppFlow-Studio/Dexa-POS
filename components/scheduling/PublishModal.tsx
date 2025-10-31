@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
+import { useRouter } from "expo-router";
 import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -23,6 +24,7 @@ interface PublishModalProps {
   onOpenChange: (open: boolean) => void;
   scheduleId: string;
   scheduleType: "period" | "week";
+  originalScheduleId?: string;
 }
 
 export function PublishModal({
@@ -30,7 +32,9 @@ export function PublishModal({
   onOpenChange,
   scheduleId,
   scheduleType,
+  originalScheduleId,
 }: PublishModalProps) {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationSettings>({
     push: true,
     email: true,
@@ -41,6 +45,7 @@ export function PublishModal({
   const {
     checkShiftConflicts,
     publishSchedule,
+    compareSchedules,
     schedulePeriods,
     weeklySchedules,
   } = useScheduleStore();
@@ -53,30 +58,32 @@ export function PublishModal({
     return null;
   }, [scheduleId, schedulePeriods, weeklySchedules]);
 
+  const changeSummary = useMemo(() => {
+    if (!originalScheduleId) {
+      return {
+        added: currentSchedule?.shifts.length || 0,
+        updated: 0,
+        removed: 0,
+      };
+    }
+    return compareSchedules(originalScheduleId, scheduleId);
+  }, [originalScheduleId, scheduleId, compareSchedules, currentSchedule]);
+
   useEffect(() => {
-    if (open && currentSchedule) {
+    if (open) {
       const foundConflicts = checkShiftConflicts(scheduleId, scheduleType);
       setConflicts(foundConflicts);
     } else {
       setConflicts([]);
     }
-  }, [open, scheduleId, scheduleType, checkShiftConflicts, currentSchedule]);
+  }, [open, scheduleId, scheduleType, checkShiftConflicts]);
 
   const handlePublish = () => {
     publishSchedule(scheduleId, scheduleType);
     toast.success("Publish Successful", { position: ToastPosition.BOTTOM });
     onOpenChange(false);
+    router.push("/scheduling/dashboard");
   };
-
-  const summary = useMemo(() => {
-    if (!currentSchedule)
-      return { assignedShifts: 0, openShifts: 0, conflicts: [] };
-    return {
-      assignedShifts: currentSchedule.shifts.filter((s) => s.employeeId).length,
-      openShifts: currentSchedule.shifts.filter((s) => !s.employeeId).length,
-      conflicts: conflicts,
-    };
-  }, [currentSchedule, conflicts]);
 
   const hasConflicts = conflicts.length > 0;
 
@@ -94,27 +101,21 @@ export function PublishModal({
           {/* Summary */}
           <View className="p-4 rounded-lg bg-[#212121] border border-gray-700 gap-y-3">
             <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-gray-400">Assigned Shifts</Text>
+              <Text className="text-sm text-gray-400">Added Shifts</Text>
               <Badge className="bg-green-500/20 text-green-400">
-                <Text className="text-green-400">{summary.assignedShifts}</Text>
+                <Text className="text-green-400">{changeSummary.added}</Text>
               </Badge>
             </View>
             <View className="flex-row items-center justify-between">
-              <Text className="text-sm text-gray-400">Open Shifts</Text>
-              <Badge
-                className={
-                  summary.openShifts > 0
-                    ? "bg-yellow-500/20 text-yellow-400"
-                    : "bg-gray-500/20 text-gray-400"
-                }
-              >
-                <Text
-                  className={
-                    summary.openShifts > 0 ? "text-yellow-400" : "text-gray-400"
-                  }
-                >
-                  {summary.openShifts}
-                </Text>
+              <Text className="text-sm text-gray-400">Updated Shifts</Text>
+              <Badge className="bg-yellow-500/20 text-yellow-400">
+                <Text className="text-yellow-400">{changeSummary.updated}</Text>
+              </Badge>
+            </View>
+            <View className="flex-row items-center justify-between">
+              <Text className="text-sm text-gray-400">Removed Shifts</Text>
+              <Badge className="bg-red-500/20 text-red-400">
+                <Text className="text-red-400">{changeSummary.removed}</Text>
               </Badge>
             </View>
             <View className="flex-row items-center justify-between">
@@ -143,7 +144,7 @@ export function PublishModal({
                   className="text-red-400"
                   color={"#f87171"}
                 />
-                <Text className="text-sm text-white font-semibold">
+                <Text className="text-sm font-semibold text-white">
                   Conflicts Detected
                 </Text>
               </View>

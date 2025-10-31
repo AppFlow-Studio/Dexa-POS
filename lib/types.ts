@@ -395,12 +395,13 @@ export interface SchedulePeriod {
   name: string;
   startDate: string; // ISO date
   endDate: string; // ISO date
-  status: "draft" | "active" | "completed";
+  status: "draft" | "active" | "completed" | "draft-edit";
   shifts: Shift[]; // Nested shifts
   createdAt: string;
   updatedAt: string;
   createdBy: string;
   isScheduled?: boolean;
+  originalScheduleId?: string;
 }
 
 export interface WeeklySchedule {
@@ -408,12 +409,13 @@ export interface WeeklySchedule {
   name: string; // e.g., "Week of Nov 10-16, 2025"
   startDate: string; // ISO date
   endDate: string; // ISO date (always 7 days after startDate)
-  status: "draft" | "active" | "completed"; // Assuming similar statuses
+  status: "draft" | "active" | "completed" | "draft-edit"; // Assuming similar statuses
   shifts: Shift[]; // Nested shifts
   createdAt: string;
   updatedAt: string;
   createdBy: string;
   type: "weekly"; // Explicit discriminator
+  originalScheduleId?: string;
 }
 
 export interface ConflictInfo {

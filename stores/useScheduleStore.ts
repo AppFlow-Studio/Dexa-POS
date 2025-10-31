@@ -75,10 +75,21 @@ interface ScheduleRequestState {
     scheduleType: "period" | "week"
   ) => { employeeName: string; date: string }[];
   getShiftsForEmployee: (employeeId: string) => Shift[];
+  getDashboardSchedulePeriods: () => SchedulePeriod[];
+  getDashboardWeeklySchedules: () => WeeklySchedule[];
   publishSchedule: (
     scheduleId: string,
     scheduleType: "period" | "week"
   ) => void;
+  findOrCreateDraft: (
+    originalScheduleId: string,
+    scheduleType: "period" | "week"
+  ) => string;
+  compareSchedules: (
+    originalId: string,
+    draftId: string
+  ) => { added: number; updated: number; removed: number };
+  discardDraft: (draftId: string, scheduleType: "period" | "week") => void;
 }
 
 export const useScheduleStore = create<ScheduleRequestState>()(
@@ -256,39 +267,31 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             ...get().schedulePeriods,
             ...get().weeklySchedules,
           ];
-          const employees = useEmployeeStore.getState().employees; // Access employees from other store
+          const employees = useEmployeeStore.getState().employees;
 
           const conflicts: { employeeName: string; date: string }[] = [];
 
-          // Find the target schedule
-          const targetSchedule = allSchedules.find(
-            (s) =>
-              s.id === scheduleId &&
-              ((scheduleType === "period" && "isScheduled" in s) ||
-                (scheduleType === "week" && "type" in s && s.type === "weekly"))
-          );
+          const targetSchedule = allSchedules.find((s) => s.id === scheduleId);
 
           if (!targetSchedule) {
             console.warn(`Target schedule ${scheduleId} not found.`);
             return [];
           }
 
-          // Collect all shifts from other schedules
-          const otherShifts: Shift[] = [];
-          allSchedules.forEach((s) => {
-            if (s.id !== scheduleId) {
-              // Exclude the target schedule itself
-              otherShifts.push(...s.shifts);
-            }
-          });
+          const otherShifts: Shift[] = allSchedules
+            .filter(
+              (s) =>
+                s.id !== scheduleId &&
+                s.id !== targetSchedule.originalScheduleId
+            )
+            .flatMap((s) => s.shifts);
 
-          // Check for conflicts for each shift in the target schedule
           targetSchedule.shifts.forEach((targetShift) => {
             otherShifts.forEach((otherShift) => {
               if (
                 targetShift.employeeId === otherShift.employeeId &&
                 targetShift.date === otherShift.date &&
-                targetShift.employeeId !== null // Only check for assigned shifts
+                targetShift.employeeId !== null
               ) {
                 const employee = employees.find(
                   (emp) => emp.id === targetShift.employeeId
@@ -303,7 +306,6 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             });
           });
 
-          // Remove duplicate conflicts (same employee, same date might be reported multiple times)
           const uniqueConflicts = Array.from(
             new Set(conflicts.map((c) => `${c.employeeName}-${c.date}`))
           ).map((str) => {
@@ -319,33 +321,176 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             ...get().schedulePeriods.flatMap((p) => p.shifts),
             ...get().weeklySchedules.flatMap((w) => w.shifts),
           ];
-          return allShifts.filter((shift) => shift.employeeId === employeeId);
+          console.log("allShifts", allShifts);
+
+          return allShifts.filter(
+            (shift) =>
+              shift.employeeId === employeeId &&
+              (get().schedulePeriods.find((p) => p.id === shift.periodId)
+                ?.status === "active" ||
+                get().weeklySchedules.find((w) => w.id === shift.periodId)
+                  ?.status === "active")
+          );
+        },
+
+        getDashboardSchedulePeriods: () => {
+          const { schedulePeriods } = get();
+          const draftedIds = new Set(
+            schedulePeriods
+              .filter((p) => p.status === "draft-edit" && p.originalScheduleId)
+              .map((p) => p.originalScheduleId)
+          );
+          return schedulePeriods.filter((p) => !draftedIds.has(p.id));
+        },
+
+        getDashboardWeeklySchedules: () => {
+          const { weeklySchedules } = get();
+          const draftedIds = new Set(
+            weeklySchedules
+              .filter((w) => w.status === "draft-edit" && w.originalScheduleId)
+              .map((w) => w.originalScheduleId)
+          );
+          return weeklySchedules.filter((w) => !draftedIds.has(w.id));
         },
 
         publishSchedule: (scheduleId, scheduleType) => {
           set((state) => {
-            if (scheduleType === "period") {
-              const period = state.schedulePeriods.find(
-                (p: SchedulePeriod) => p.id === scheduleId
-              );
-              if (period) {
-                period.status = "active";
-                period.updatedAt = new Date().toISOString();
-                period.shifts.forEach((shift) => {
-                  shift.status = "confirmed";
-                });
-              }
-            } else {
-              const schedule = state.weeklySchedules.find(
-                (s: WeeklySchedule) => s.id === scheduleId
-              );
-              if (schedule) {
+            const targetArray =
+              scheduleType === "period"
+                ? state.schedulePeriods
+                : state.weeklySchedules;
+            const schedule = targetArray.find((s) => s.id === scheduleId);
+
+            if (schedule) {
+              if (schedule.originalScheduleId) {
+                const originalIndex = targetArray.findIndex(
+                  (s) => s.id === schedule.originalScheduleId
+                );
+                if (originalIndex !== -1) {
+                  const updatedOriginal = {
+                    ...JSON.parse(JSON.stringify(schedule)),
+                    id: schedule.originalScheduleId,
+                    status: "active",
+                    originalScheduleId: undefined,
+                  };
+                  updatedOriginal.shifts.forEach((shift: Shift) => {
+                    shift.status = "confirmed";
+                    shift.periodId = updatedOriginal.id;
+                  });
+                  (targetArray as any)[originalIndex] = updatedOriginal;
+                  if (scheduleType === "period") {
+                    state.schedulePeriods = state.schedulePeriods.filter(
+                      (p) => p.id !== scheduleId
+                    );
+                  } else {
+                    state.weeklySchedules = state.weeklySchedules.filter(
+                      (w) => w.id !== scheduleId
+                    );
+                  }
+                }
+              } else {
                 schedule.status = "active";
                 schedule.updatedAt = new Date().toISOString();
                 schedule.shifts.forEach((shift) => {
                   shift.status = "confirmed";
                 });
               }
+            }
+          });
+        },
+
+        findOrCreateDraft: (originalScheduleId, scheduleType) => {
+          const state = get();
+          const targetArray =
+            scheduleType === "period"
+              ? state.schedulePeriods
+              : state.weeklySchedules;
+          const existingDraft = targetArray.find(
+            (s) => s.originalScheduleId === originalScheduleId
+          );
+          if (existingDraft) {
+            return existingDraft.id;
+          }
+
+          const originalSchedule = targetArray.find(
+            (s) => s.id === originalScheduleId
+          );
+          if (!originalSchedule) {
+            throw new Error("Original schedule not found");
+          }
+
+          const draftId = generateId();
+          const draftSchedule = {
+            ...JSON.parse(JSON.stringify(originalSchedule)), // Deep copy
+            id: draftId,
+            status: "draft-edit",
+            originalScheduleId: originalScheduleId,
+          };
+
+          set((state) => {
+            if (scheduleType === "period") {
+              state.schedulePeriods.push(draftSchedule as SchedulePeriod);
+            } else {
+              state.weeklySchedules.push(draftSchedule as WeeklySchedule);
+              console.log("added the new copy");
+            }
+          });
+
+          return draftId;
+        },
+
+        compareSchedules: (originalId, draftId) => {
+          const state = get();
+          const originalSchedule =
+            state.schedulePeriods.find((p) => p.id === originalId) ||
+            state.weeklySchedules.find((w) => w.id === originalId);
+          const draftSchedule =
+            state.schedulePeriods.find((p) => p.id === draftId) ||
+            state.weeklySchedules.find((w) => w.id === draftId);
+
+          if (!originalSchedule || !draftSchedule) {
+            return { added: 0, updated: 0, removed: 0 };
+          }
+
+          const originalShiftIds = new Set(
+            originalSchedule.shifts.map((s) => s.id)
+          );
+          const draftShiftIds = new Set(draftSchedule.shifts.map((s) => s.id));
+
+          const added = draftSchedule.shifts.filter(
+            (s) => !originalShiftIds.has(s.id)
+          ).length;
+          const removed = originalSchedule.shifts.filter(
+            (s) => !draftShiftIds.has(s.id)
+          ).length;
+          let updated = 0;
+
+          draftSchedule.shifts.forEach((draftShift) => {
+            if (originalShiftIds.has(draftShift.id)) {
+              const originalShift = originalSchedule.shifts.find(
+                (s) => s.id === draftShift.id
+              );
+              if (
+                JSON.stringify(originalShift) !== JSON.stringify(draftShift)
+              ) {
+                updated++;
+              }
+            }
+          });
+
+          return { added, updated, removed };
+        },
+
+        discardDraft: (draftId, scheduleType) => {
+          set((state) => {
+            if (scheduleType === "period") {
+              state.schedulePeriods = state.schedulePeriods.filter(
+                (p) => p.id !== draftId
+              );
+            } else {
+              state.weeklySchedules = state.weeklySchedules.filter(
+                (w) => w.id !== draftId
+              );
             }
           });
         },
