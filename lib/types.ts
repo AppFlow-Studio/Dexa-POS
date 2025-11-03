@@ -667,6 +667,7 @@ export interface Notification {
   isRead: boolean;
   timestamp: string; // ISO string
   relatedShiftId?: string;
+  employeeId: string;
 }
 
 export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
