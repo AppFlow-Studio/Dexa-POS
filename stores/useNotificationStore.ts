@@ -10,6 +10,7 @@ interface NotificationState {
   ) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
+  getUnreadCountForEmployee: (employeeId: string) => number;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -49,5 +50,11 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
       unreadCount: 0,
     }));
+  },
+
+  getUnreadCountForEmployee: (employeeId) => {
+    return get().notifications.filter(
+      (n) => n.employeeId === employeeId && !n.isRead
+    ).length;
   },
 }));

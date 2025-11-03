@@ -3,13 +3,11 @@ import { format, parseISO } from "date-fns";
 import {
   AlertTriangle,
   ArrowRightLeft,
-  Calendar,
   Clock,
   Coffee,
   MapPin,
   MessageSquare,
   MinusCircle,
-  Send,
   TrendingUp,
   Users,
   X,
@@ -168,13 +166,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 text={`Meal break ${shift.breakMinutes}m required`}
                 variant="default"
               />
-              {shift.restRiskHours && (
-                <ComplianceBadge
-                  icon={<AlertTriangle size={14} color="#f59e0b" />}
-                  text={`Risk: ${shift.restRiskHours}h rest`}
-                  variant="warning"
-                />
-              )}
               {shift.expectedPace && (
                 <ComplianceBadge
                   icon={<TrendingUp size={14} color="#9CA3AF" />}
@@ -223,22 +214,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 </TouchableOpacity>
               </>
             )}
-          </View>
-          <View className="flex-row items-center gap-4">
-            <TouchableOpacity
-              onPress={() => {}}
-              className="flex-row items-center gap-2"
-            >
-              <Calendar size={16} color="#9CA3AF" />
-              <Text className="text-base text-gray-300">Add to Calendar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {}}
-              className="flex-row items-center gap-2"
-            >
-              <Send size={16} color="#9CA3AF" />
-              <Text className="text-base text-gray-300">Directions</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </DialogContent>

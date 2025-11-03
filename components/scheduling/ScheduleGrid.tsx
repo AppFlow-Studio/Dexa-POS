@@ -1,9 +1,17 @@
 import { Role, Shift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
+import {
+  addDays,
+  differenceInHours,
+  format,
+  isWithinInterval,
+  parse,
+  startOfDay,
+} from "date-fns";
+import { Plus } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
-import { isWithinInterval, startOfDay, addDays, format } from "date-fns";
 
 function getWeekDates(startDate: Date): Date[] {
   const dates: Date[] = [];
@@ -49,26 +57,34 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     return dayShifts.filter((shift) => selectedRoles.includes(shift.role));
   };
 
+  const calculateTotalHours = (employeeId: string) => {
+    const employeeShifts = shifts.filter((s) => s.employeeId === employeeId);
+    return employeeShifts.reduce((total, shift) => {
+      const start = parse(shift.startTime, "HH:mm", new Date());
+      const end = parse(shift.endTime, "HH:mm", new Date());
+      return total + differenceInHours(end, start);
+    }, 0);
+  };
+
   return (
-    <View className="flex-1">
-      <ScrollView horizontal>
+    <View className="flex-1 bg-[#212121]">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View>
           {/* Header */}
-          <View className="flex-row bg-gray-800 sticky top-0 z-10">
-            <View className="w-48 bg-[#303030] p-3 border-r border-gray-700">
+          <View className="flex-row bg-[#212121] sticky top-0 z-10">
+            <View className="w-48 bg-[#212121] p-3 border-r border-gray-700">
               <Text className="text-sm font-semibold text-white">Employee</Text>
             </View>
             {weekDates.map((date, i) => (
               <View
                 key={i}
-                className="w-40 bg-[#303030] p-3 text-center border-r border-gray-700 items-center"
+                className="w-40 bg-[#212121] p-3 text-center border-r border-gray-700 items-center"
               >
-                <Text className="text-xs text-gray-400">{format(date, 'E')}</Text>
-                <Text className="text-sm font-semibold text-white">
-                  {date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
+                <Text className="text-xs text-gray-400 uppercase">
+                  {format(date, "E")}
+                </Text>
+                <Text className="text-lg font-semibold text-white">
+                  {format(date, "d")}
                 </Text>
               </View>
             ))}
@@ -79,12 +95,23 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
             {employees.map((employee: EmployeeProfile) => (
               <View key={employee.id} className="flex-row">
                 <View className="w-48 bg-[#303030] p-3 flex-row items-center border-r border-gray-700 border-b">
-                  <View>
-                    <Text className="text-sm font-medium text-white">
-                      {employee.fullName}
+                  <View className="w-12 h-12 rounded-full bg-red-500 items-center justify-center mr-3">
+                    <Text className="text-white font-bold text-lg">
+                      {employee.fullName
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")}
                     </Text>
-                    <Text className="text-xs text-gray-400">
+                  </View>
+                  <View>
+                    <Text className="text-base font-medium text-white">
+                      {employee.fullName.split(" ")[0]}
+                    </Text>
+                    <Text className="text-sm text-gray-400">
                       {employee.role}
+                    </Text>
+                    <Text className="text-xs text-gray-500 mt-1">
+                      Total: {calculateTotalHours(employee.id)}h
                     </Text>
                   </View>
                 </View>
@@ -125,8 +152,13 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                         ) : (
                           <TouchableOpacity
                             onPress={() => onAddShift(employee.id, dateStr)}
-                            className="flex-1 h-full"
-                          />
+                            className="flex-1 h-full w-full items-center justify-center border-2 border-dashed border-gray-600 rounded-lg"
+                          >
+                            <Plus size={16} color="#9CA3AF" />
+                            <Text className="text-gray-400 ml-2">
+                              Add Shift
+                            </Text>
+                          </TouchableOpacity>
                         )
                       ) : null}
                     </View>

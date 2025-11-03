@@ -26,9 +26,11 @@ import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
 import PublishModal from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
+import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
 import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
+import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { mockShiftsScheudleGrid } from "@/lib/mockData";
 import {
@@ -98,7 +100,7 @@ const ScheduleDetail = ({
   };
 }) => {
   const router = useRouter();
-  const { addShift, updateShift, discardDraft, compareSchedules } =
+  const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
     useScheduleStore();
   const { employees } = useEmployeeStore();
 
@@ -114,6 +116,7 @@ const ScheduleDetail = ({
   );
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
 
   // State for filters
@@ -154,7 +157,7 @@ const ScheduleDetail = ({
 
   const handleShiftClick = (shift: Shift) => {
     setSelectedShift(shift);
-    setShiftEditorOpen(true);
+    setIsActionModalOpen(true);
   };
 
   const handleAddShift = (employeeId: string, date: string) => {
@@ -180,6 +183,8 @@ const ScheduleDetail = ({
         shiftData as Omit<Shift, "id">
       );
     }
+    setShiftEditorOpen(false);
+    setSelectedShift(null);
   };
 
   const handleSaveAndDuplicate = (shiftData: Partial<Shift>) => {
@@ -188,6 +193,25 @@ const ScheduleDetail = ({
       currentSchedule.type,
       shiftData as Omit<Shift, "id">
     );
+    setShiftEditorOpen(false);
+    setSelectedShift(null);
+  };
+
+  const handleDeleteShift = () => {
+    if (selectedShift?.id) {
+      deleteShift(
+        currentSchedule.schedule.id,
+        currentSchedule.type,
+        selectedShift.id
+      );
+    }
+    setIsActionModalOpen(false);
+    setSelectedShift(null);
+  };
+
+  const handleEditShift = () => {
+    setIsActionModalOpen(false);
+    setShiftEditorOpen(true);
   };
 
   const handlePreviousWeek = () => {
@@ -331,11 +355,14 @@ const ScheduleDetail = ({
               )}
 
               {/* Export Button */}
-              <TouchableOpacity className="flex-row items-center gap-2 rounded-md px-3 py-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent flex-row items-center"
+              >
                 <Download size={16} color="white" />
                 <Text className="text-white">Export</Text>
-              </TouchableOpacity>
-
+              </Button>
               {/* Settings Icon Button */}
               <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-md">
                 <Settings size={16} color="white" />
@@ -421,20 +448,18 @@ const ScheduleDetail = ({
         {/* Schedule Grid */}
         <View className="flex-1 flex-col overflow-hidden">
           <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
-            <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
-              <Search size={16} color="#9CA3AF" />
-              <TextInput
-                placeholder="Search employees..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                className="p-2 text-white flex-1"
-              />
+            <View className="w-full border border-gray-600 rounded-lg p-3">
+              <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
+                <Search size={16} color="#9CA3AF" />
+                <TextInput
+                  placeholder="Search employees..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  className="p-2 text-white flex-1"
+                />
+              </View>
             </View>
-
-            <Text className="text-xs text-gray-400">
-              Drag to move • Alt+Drag to duplicate • Right-click for options
-            </Text>
           </View>
 
           <ScheduleGrid
@@ -460,6 +485,15 @@ const ScheduleDetail = ({
         onSave={handleSaveShift}
         onSaveAndDuplicate={handleSaveAndDuplicate}
       />
+      {selectedShift && (
+        <ShiftActionModal
+          open={isActionModalOpen}
+          onOpenChange={setIsActionModalOpen}
+          shift={selectedShift as Shift}
+          onEdit={handleEditShift}
+          onDelete={handleDeleteShift}
+        />
+      )}
       <PublishModal
         open={publishModalOpen}
         onOpenChange={setPublishModalOpen}

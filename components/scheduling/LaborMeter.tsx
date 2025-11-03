@@ -21,7 +21,7 @@ const LaborMeter: React.FC<LaborMeterProps> = ({
   const trendColor = isOverBudget ? "text-red-500" : "text-green-400";
 
   return (
-    <View className="flex-row items-center gap-8 px-4 py-3 bg-[#212121] rounded-xl border border-gray-700 ">
+    <View className="flex-row items-center gap-8 px-4 py-3 bg-[#20262f] rounded-2xl ">
       <View className="flex-row items-center gap-2 max-w-[60px]">
         <TrendingUp
           className={trendColor}
@@ -37,7 +37,11 @@ const LaborMeter: React.FC<LaborMeterProps> = ({
       </View>
 
       <View className="flex-1 max-w-[100px]">
-        <Progress value={Math.min(laborPercentage, 100)} className="h-2" />
+        <Progress
+          value={Math.min(laborPercentage, 100)}
+          className="h-2 bg-[#353f57]"
+          indicatorClassName="bg-[#8aa5f9]"
+        />
       </View>
 
       <View className="flex-row items-center gap-2">

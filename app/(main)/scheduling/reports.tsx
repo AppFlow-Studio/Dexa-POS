@@ -2,7 +2,6 @@ import BreakComplianceTable from "@/components/scheduling/reports/BreakComplianc
 import OvertimeSummary from "@/components/scheduling/reports/OvertimeSummary";
 import StatCard from "@/components/scheduling/reports/StatCard";
 import VarianceChart from "@/components/scheduling/reports/VarianceChart";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -73,9 +72,6 @@ const ReportsScreen = () => {
                   <SelectItem label="Last Week" value="last" />
                 </SelectContent>
               </Select>
-              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                <Text className="text-green-400">Week Closed</Text>
-              </Badge>
             </View>
           </View>
           <View className="flex-row items-center justify-between">

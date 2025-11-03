@@ -2,13 +2,11 @@ import { Shift } from "@/lib/types";
 import {
   AlertTriangle,
   ArrowRightLeft,
-  Calendar,
   Clock,
   Coffee,
   MapPin,
   MessageSquare,
   MinusCircle,
-  Send,
   TrendingUp,
   Users,
 } from "lucide-react-native";
@@ -128,7 +126,9 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
             className="flex-row items-center gap-2 mb-3"
           >
             <MessageSquare size={16} color="#60A5FA" />
-            <Text className="text-sm text-blue-300 underline">Manager note</Text>
+            <Text className="text-sm text-blue-300 underline">
+              Manager note
+            </Text>
           </TouchableOpacity>
           {isNoteVisible && (
             <View className="p-3 bg-gray-800/50 rounded-lg mt-2 mb-3">
@@ -144,13 +144,6 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
           text={`Meal break ${shift.breakMinutes}m required`}
           variant="default"
         />
-        {shift.restRiskHours && (
-          <ComplianceBadge
-            icon={<AlertTriangle size={14} color="#f59e0b" />}
-            text={`Risk: ${shift.restRiskHours}h rest`}
-            variant="warning"
-          />
-        )}
         {shift.expectedPace && (
           <ComplianceBadge
             icon={<TrendingUp size={14} color="#9CA3AF" />}
@@ -222,22 +215,6 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
               Drop pending approval
             </Text>
           )}
-        </View>
-        <View className="flex-row items-center gap-4">
-          <TouchableOpacity
-            onPress={(e) => e.stopPropagation()}
-            className="flex-row items-center gap-2"
-          >
-            <Calendar size={16} color="#9CA3AF" />
-            <Text className="text-base text-gray-300">Add to Calendar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={(e) => e.stopPropagation()}
-            className="flex-row items-center gap-2"
-          >
-            <Send size={16} color="#9CA3AF" />
-            <Text className="text-base text-gray-300">Directions</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </TouchableOpacity>

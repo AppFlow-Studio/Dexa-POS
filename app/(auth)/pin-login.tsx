@@ -284,26 +284,6 @@ const PinLoginScreen = () => {
               {dialog.title}
             </Text>
             <Text className="text-xl text-gray-200 mb-6">{dialog.message}</Text>
-
-            {/* User Avatar and Name */}
-            {currentEmployee && (
-              <View className="items-center mb-6">
-                <View className="w-20 h-20 bg-blue-600 rounded-full items-center justify-center mb-3">
-                  <Text className="text-white text-2xl font-bold">
-                    {currentEmployee.fullName
-                      .split(" ")
-                      .map((name: string) => name.charAt(0))
-                      .join("")
-                      .toUpperCase()
-                      .slice(0, 2)}
-                  </Text>
-                </View>
-                <Text className="text-white text-lg font-semibold">
-                  {currentEmployee.fullName}
-                </Text>
-              </View>
-            )}
-
             <TouchableOpacity
               onPress={hideDialog}
               className="self-end px-5 py-2.5 rounded-lg"
