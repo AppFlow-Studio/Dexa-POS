@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Role } from "@/lib/types"; // Assuming types will be in lib/types
+import { format, parseISO } from "date-fns";
 import { AlertCircle, Clock, Users } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -37,14 +38,6 @@ const conflictColors = {
   pto: "border-l-purple-500",
   gap: "border-l-red-500",
   swap: "border-l-blue-500",
-};
-
-const formatTime = (time: string): string => {
-  const [hours, minutes] = time.split(":");
-  const h = Number.parseInt(hours);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const displayHour = h % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
 };
 
 export const ShiftChip: React.FC<ShiftChipProps> = ({
@@ -93,7 +86,8 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
           className="font-medium text-xs"
           style={{ color: textColors[role] || "#ffffff" }}
         >
-          {formatTime(start)} - {formatTime(end)}
+          {format(parseISO(start), "h:mm a")} -{" "}
+          {format(parseISO(end), "h:mm a")}
         </Text>
       </View>
 

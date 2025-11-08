@@ -6,6 +6,7 @@ import {
   Search,
   Send,
   Settings,
+  Sparkles,
   Users,
   X,
 } from "lucide-react-native";
@@ -32,6 +33,7 @@ import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { DropZoneProvider } from "@/contexts/DropZoneContext";
 import { mockShiftsScheudleGrid } from "@/lib/mockData";
 import {
   PTORequest,
@@ -49,8 +51,7 @@ import { ScrollView } from "react-native-gesture-handler";
 const mockSwapRequests: SwapRequest[] = [
   {
     id: "swap1",
-    fromEmployeeId: "1",
-    toEmployeeId: "6",
+    ownerId: "1",
     shift: mockShiftsScheudleGrid[0],
     status: "pending",
     note: "Schedule conflict",
@@ -59,8 +60,7 @@ const mockSwapRequests: SwapRequest[] = [
   },
   {
     id: "swap2",
-    fromEmployeeId: "2",
-    toEmployeeId: "5",
+    ownerId: "2",
     shift: mockShiftsScheudleGrid[1],
     status: "pending",
     type: "swap",
@@ -93,11 +93,13 @@ const mockPtoRequests: PTORequest[] = [
 
 const ScheduleDetail = ({
   currentSchedule,
+  approvedPtoRequests,
 }: {
   currentSchedule: {
     schedule: SchedulePeriod | WeeklySchedule;
     type: "period" | "week";
   };
+  approvedPtoRequests: PTORequest[];
 }) => {
   const router = useRouter();
   const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
@@ -326,6 +328,11 @@ const ScheduleDetail = ({
             />
 
             <View className="flex-row items-center gap-2">
+              {/* Generate Draft Button */}
+              <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
+                <Sparkles size={16} color="white" />
+                <Text className="text-white">Generate Draft</Text>
+              </TouchableOpacity>
               {currentSchedule.schedule.status === "draft-edit" ? (
                 <>
                   {hasUnsavedChanges && (
@@ -378,7 +385,7 @@ const ScheduleDetail = ({
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 flex-row overflow-hidden">
+      <View className="flex-1 flex-row">
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
           <ScrollView>
@@ -411,7 +418,7 @@ const ScheduleDetail = ({
                       <Text className="text-white">
                         {
                           currentSchedule.schedule.shifts.filter(
-                            (s) => s.isOpen
+                            (s) => s.status === "open"
                           ).length
                         }
                       </Text>
@@ -466,17 +473,21 @@ const ScheduleDetail = ({
               </View>
             </View>
           </View>
-
-          <ScheduleGrid
-            startDate={startDate}
-            employees={filteredEmployees}
-            selectedRoles={selectedRoles}
-            onShiftClick={handleShiftClick}
-            onAddShift={handleAddShift}
-            shifts={currentSchedule.schedule.shifts}
-            periodStartDate={new Date(currentSchedule.schedule.startDate)}
-            periodEndDate={new Date(currentSchedule.schedule.endDate)}
-          />
+          <DropZoneProvider>
+            <ScheduleGrid
+              startDate={startDate}
+              employees={filteredEmployees}
+              selectedRoles={selectedRoles}
+              onShiftClick={handleShiftClick}
+              onAddShift={handleAddShift}
+              shifts={currentSchedule.schedule.shifts}
+              periodStartDate={new Date(currentSchedule.schedule.startDate)}
+              periodEndDate={new Date(currentSchedule.schedule.endDate)}
+              approvedPtoRequests={approvedPtoRequests}
+              scheduleId={currentSchedule.schedule.id}
+              scheduleType={currentSchedule.type}
+            />
+          </DropZoneProvider>
         </View>
       </View>
 
@@ -508,17 +519,13 @@ const ScheduleDetail = ({
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={currentSchedule.schedule.shifts.filter((s) => s.isOpen)}
-        swapRequests={mockSwapRequests}
-        ptoRequests={mockPtoRequests}
+        openShifts={currentSchedule.schedule.shifts.filter(
+          (s) => s.status === "open"
+        )}
         onAssign={(shiftId, empId) =>
           console.log(`Assign shift ${shiftId} to ${empId}`)
         }
         onCloseShift={(shiftId) => console.log(`Close shift ${shiftId}`)}
-        onApproveSwap={(id) => console.log(`Approve swap ${id}`)}
-        onDenySwap={(id) => console.log(`Deny swap ${id}`)}
-        onApprovePTO={(id) => console.log(`Approve PTO ${id}`)}
-        onDenyPTO={(id) => console.log(`Deny PTO ${id}`)}
       />
       <UnsavedChangesDialog
         isOpen={isDiscardModalOpen}
@@ -531,7 +538,12 @@ const ScheduleDetail = ({
 
 const ScheduleDetailScreen = () => {
   const { periodId } = useLocalSearchParams();
-  const { schedulePeriods, weeklySchedules } = useScheduleStore();
+  const { schedulePeriods, weeklySchedules, ptoRequests } = useScheduleStore();
+
+  const approvedPtoRequests = useMemo(
+    () => ptoRequests.filter((r) => r.status === "approved"),
+    [ptoRequests]
+  );
 
   const currentSchedule = useMemo(() => {
     const period = schedulePeriods.find((p) => p.id === periodId);
@@ -550,7 +562,12 @@ const ScheduleDetailScreen = () => {
     );
   }
 
-  return <ScheduleDetail currentSchedule={currentSchedule} />;
+  return (
+    <ScheduleDetail
+      currentSchedule={currentSchedule}
+      approvedPtoRequests={approvedPtoRequests}
+    />
+  );
 };
 
 export default ScheduleDetailScreen;

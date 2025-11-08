@@ -1,5 +1,6 @@
-import { MOCK_SWAP_REQUESTS } from "@/lib/mockData";
 import { Shift } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import { format, parseISO } from "date-fns";
 import {
   AlertCircle,
@@ -7,8 +8,14 @@ import {
   Clock,
   MapPin,
 } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+
+const formatTime = (time: string): string => {
+  if (!time) return "N/A";
+  // Create a dummy date to parse the time correctly with parseISO
+  return format(parseISO(time), "h:mm a");
+};
 
 const ShiftInfoCard = ({ shift }: { shift?: Shift }) => {
   // Add a guard clause to handle cases where the shift might be undefined.
@@ -28,7 +35,7 @@ const ShiftInfoCard = ({ shift }: { shift?: Shift }) => {
         <View className="flex-row items-center gap-2">
           <Clock size={16} color="#9CA3AF" />
           <Text className="text-sm text-gray-400">
-            {shift.startTime} - {shift.endTime}
+            {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
           </Text>
         </View>
         <View className="flex-row items-center gap-2">
@@ -41,45 +48,93 @@ const ShiftInfoCard = ({ shift }: { shift?: Shift }) => {
 };
 
 const SwapRequestsOutTab = () => {
+  const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
+  const swapRequests = useScheduleStore((state) => state.swapRequests);
+  const schedulePeriods = useScheduleStore((state) => state.schedulePeriods);
+  const weeklySchedules = useScheduleStore((state) => state.weeklySchedules);
+  const cancelSwap = useScheduleStore((state) => state.cancelSwap);
+
+  const findShiftById = (shiftId: string | undefined) => {
+    if (!shiftId) return undefined;
+    const allSchedules = [...schedulePeriods, ...weeklySchedules];
+    for (const schedule of allSchedules) {
+      const foundShift = schedule.shifts.find((s) => s.id === shiftId);
+      if (foundShift) return foundShift;
+    }
+    return undefined;
+  };
+
+  const outgoingSwapRequests = useMemo(() => {
+    if (!loggedInEmployee) return [];
+    return swapRequests.filter(
+      (request) => request.ownerId === loggedInEmployee.id
+    );
+  }, [swapRequests, loggedInEmployee]);
+
   return (
     <View className="gap-y-4">
-      {MOCK_SWAP_REQUESTS.map((request) => (
-        <View
-          key={request.id}
-          className="p-4 bg-[#303030] rounded-2xl border border-yellow-500/20"
-        >
-          <View className="flex-row items-start justify-between mb-3">
-            <View className="flex-row items-start gap-3">
-              <AlertCircle size={20} color="#f59e0b" />
-              <View className="flex-1">
-                <Text className="text-sm text-gray-400 mb-2">
-                  You're offering
-                </Text>
-                <ShiftInfoCard shift={request.shift} />
-                <View className="items-center my-4">
-                  <ArrowRightLeft size={20} color="#3b82f6" />
+      {outgoingSwapRequests.length === 0 ? (
+        <Text className="text-gray-400 text-center mt-4">
+          No outgoing swap requests.
+        </Text>
+      ) : (
+        outgoingSwapRequests.map((request) => {
+          const myShift = findShiftById(request.myShiftId);
+          const peerShift = findShiftById(request.peerShiftId);
+
+          return (
+            <View
+              key={request.id}
+              className="p-4 bg-[#303030] rounded-2xl border border-yellow-500/20"
+            >
+              <View className="flex-row items-start justify-between mb-3">
+                <View className="flex-row items-start gap-3">
+                  <AlertCircle size={20} color="#f59e0b" />
+
+                  <View className="flex-1">
+                    <View className="flex-row justify-between mb-4">
+                      <Text className="text-sm text-gray-400 mb-2">
+                        You're offering
+                      </Text>
+                      <View className="items-end">
+                        <Text className="text-xs font-medium px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400">
+                          {request.status}
+                        </Text>
+                        <Text className="text-xs text-gray-500 mt-1">
+                          Submitted{" "}
+                          {format(parseISO(request.submittedAt), "MMM d")}
+                        </Text>
+                      </View>
+                    </View>
+                    <ShiftInfoCard shift={myShift} />
+                    <View className="items-center my-4">
+                      <ArrowRightLeft size={20} color="#3b82f6" />
+                    </View>
+                    <Text className="text-sm text-gray-400 mb-2">
+                      In exchange for
+                    </Text>
+                    <ShiftInfoCard shift={peerShift} />
+                  </View>
                 </View>
-                <Text className="text-sm text-gray-400 mb-2">
-                  In exchange for
-                </Text>
-                {/* --- REMOVED the non-null assertion (!) --- */}
-                <ShiftInfoCard shift={request.theirShift} />
               </View>
+              {(request.status === "pending-peer" ||
+                request.status === "pending-manager") && (
+                <TouchableOpacity
+                  className="py-2 border border-gray-600 rounded-lg items-center mt-2"
+                  onPress={() =>
+                    loggedInEmployee &&
+                    cancelSwap(request.id, loggedInEmployee.id)
+                  }
+                >
+                  <Text className="text-white font-semibold">
+                    Cancel Request
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <View className="items-end">
-              <Text className="text-xs font-medium px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400">
-                Pending
-              </Text>
-              <Text className="text-xs text-gray-500 mt-1">
-                Submitted {format(parseISO(request.submittedAt), "MMM d")}
-              </Text>
-            </View>
-          </View>
-          <TouchableOpacity className="py-2 border border-gray-600 rounded-lg items-center">
-            <Text className="text-white font-semibold">Cancel Request</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+          );
+        })
+      )}
     </View>
   );
 };

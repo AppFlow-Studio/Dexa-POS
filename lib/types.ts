@@ -365,15 +365,16 @@ export interface Shift {
   periodId: string;
   date: string; // ISO format: "YYYY-MM-DD"
   role: Role;
-  startTime: string; // "HH:mm"
-  endTime: string; // "HH:mm"
+  startTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
+  endTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
   location?: string;
   status?:
     | "confirmed"
     | "pending-drop"
     | "pending-swap"
     | "dropped"
-    | "on-shift";
+    | "on-shift"
+    | "open";
   breakMinutes?: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
@@ -386,7 +387,6 @@ export interface Shift {
   // Properties from manager's view
   employeeId: string | null;
   requiredCount?: number;
-  isOpen?: boolean;
   locked?: boolean;
 }
 
@@ -433,24 +433,28 @@ export interface PTORequest {
   note?: string;
   submittedAt: string; // ISO string
   reviewedAt?: string; // ISO string
+  approverId?: string;
+  denialReason?: string;
 }
 
 export interface ShiftRequest {
   id: string;
+  ownerId: string; // The employee who initiated the request.
   type: "drop" | "swap";
-  status: "pending" | "approved" | "denied" | "picked-up" | "completed";
+  status: "pending" | "approved" | "denied" | "picked-up" | "completed" | "pending-peer" | "pending-manager" | "canceled";
   submittedAt: string; // ISO string
-  shift: Shift;
+  shift: Shift; // Kept for drop requests
   note?: string;
   reason?: string;
+  approverId?: string;
+  denialReason?: string;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;
-  // For swap requests
-  fromEmployeeId?: string;
-  toEmployeeId?: string;
-  direction?: "incoming" | "outgoing";
-  theirShift?: Shift;
+  // For swap requests (new fields)
+  myShiftId?: string; // The ID of the shift being offered by the initiator.
+  peerId?: string; // The employee ID of the peer being requested to swap with.
+  peerShiftId?: string; // The ID of the shift being offered in return by the peer.
 }
 
 export interface ShiftStatus {

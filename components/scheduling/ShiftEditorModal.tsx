@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Role, Shift } from "@/lib/types";
-import { format, parse } from "date-fns";
+import { format, parse, parseISO } from "date-fns";
 import { AlertCircle, Copy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -39,38 +39,30 @@ interface ShiftEditorModalProps {
 
 const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
 
-// Helper to format 24-hour time to 12-hour AM/PM
-const formatTo12Hour = (time: string) => {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const h = parseInt(hours, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const formattedHours = h % 12 || 12; // Converts 0 or 12 to 12
-  return `${String(formattedHours).padStart(2, "0")}:${minutes} ${ampm}`;
+// Helper to format ISO string to 12-hour AM/PM
+const formatTo12Hour = (isoString: string) => {
+  if (!isoString) return "";
+  try {
+    return format(parseISO(isoString), "h:mm a");
+  } catch (error) {
+    console.warn(`Invalid ISO string passed to formatTo12Hour: ${isoString}`);
+    return ""; // Return empty or a fallback
+  }
 };
 
-// Helper to format 12-hour AM/PM time to 24-hour
-const formatTo24Hour = (time: string) => {
-  if (!time) return "";
-  const [timePart, ampm] = time.split(" ");
-  let [hours, minutes] = timePart.split(":");
-  let h = parseInt(hours, 10);
-
-  if (ampm === "PM" && h < 12) {
-    h += 12;
-  }
-  if (ampm === "AM" && h === 12) {
-    h = 0; // Midnight case
-  }
-  return `${String(h).padStart(2, "0")}:${minutes}`;
+// Helper to combine date and 12-hour time into an ISO string
+const combineToISO = (date: string, time12h: string) => {
+  const time24h = format(parse(time12h, "h:mm a", new Date()), "HH:mm");
+  return `${date}T${time24h}:00.000Z`;
 };
 
 const timeSlots = Array.from({ length: 48 }, (_, i) => {
   const hours = Math.floor(i / 2);
   const minutes = (i % 2) * 30;
-  return formatTo12Hour(
-    `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
-  );
+  const time24 = `${String(hours).padStart(2, "0")}:${String(
+    minutes
+  ).padStart(2, "0")}`;
+  return format(parse(time24, "HH:mm", new Date()), "h:mm a");
 });
 
 export function ShiftEditorModal({
@@ -84,8 +76,8 @@ export function ShiftEditorModal({
 }: ShiftEditorModalProps) {
   const [role, setRole] = useState<Role>("Cashier");
   const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("09:00 AM");
-  const [endTime, setEndTime] = useState("05:00 PM");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
@@ -100,21 +92,22 @@ export function ShiftEditorModal({
 
   useEffect(() => {
     if (shift) {
+      const shiftDate = shift.date || new Date().toISOString().split("T")[0];
       setRole(shift.role || "Cashier");
-      setDate(shift.date || new Date().toISOString().split("T")[0]);
-      setStartTime(formatTo12Hour(shift.startTime || "09:00"));
-      setEndTime(formatTo12Hour(shift.endTime || "17:00"));
+      setDate(shiftDate);
+      setStartTime(`${shiftDate}T${shift.startTime || "09:00"}:00.000Z`);
+      setEndTime(`${shiftDate}T${shift.endTime || "17:00"}:00.000Z`);
       setNotes(shift.managerNote || "");
       setLockAssignment(shift.locked || false);
       setBreakMinutes(shift.breakMinutes || 30);
       setExpectedPace(shift.expectedPace || "Moderate");
       setStaffingLevel(shift.staffingLevel || "Fully staffed");
     } else {
-      // Reset for new shift
+      const today = new Date().toISOString().split("T")[0];
       setRole("Cashier");
-      setDate(new Date().toISOString().split("T")[0]);
-      setStartTime("09:00 AM");
-      setEndTime("05:00 PM");
+      setDate(today);
+      setStartTime(combineToISO(today, "09:00 AM"));
+      setEndTime(combineToISO(today, "05:00 PM"));
       setNotes("");
       setLockAssignment(false);
       setAllowOpenClaims(true);
@@ -127,17 +120,13 @@ export function ShiftEditorModal({
 
   const validateShift = () => {
     const newErrors: string[] = [];
-    const start24 = formatTo24Hour(startTime);
-    const end24 = formatTo24Hour(endTime);
-    const [startH, startM] = start24.split(":").map(Number);
-    const [endH, endM] = end24.split(":").map(Number);
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-    const durationHours = (endMinutes - startMinutes) / 60;
+    const start = parseISO(startTime);
+    const end = parseISO(endTime);
+    const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 
     if (durationHours < 4) newErrors.push("Shift must be at least 4 hours");
     if (durationHours > 8) newErrors.push("Shift cannot exceed 8 hours");
-    if (startMinutes >= endMinutes)
+    if (start.getTime() >= end.getTime())
       newErrors.push("End time must be after start time");
     if (!role) newErrors.push("Role is required");
 
@@ -153,11 +142,10 @@ export function ShiftEditorModal({
       periodId,
       role,
       date,
-      startTime: formatTo24Hour(startTime),
-      endTime: formatTo24Hour(endTime),
+      startTime: startTime,
+      endTime: endTime,
       managerNote: notes,
       locked: lockAssignment,
-      isOpen: allowOpenClaims && !shift?.employeeId,
       location: "Dexa – 5th Ave", //Update it once location logic is made
       breakMinutes,
       expectedPace,
@@ -173,11 +161,10 @@ export function ShiftEditorModal({
       periodId,
       role,
       date,
-      startTime: formatTo24Hour(startTime),
-      endTime: formatTo24Hour(endTime),
+      startTime: startTime,
+      endTime: endTime,
       managerNote: notes,
       locked: lockAssignment,
-      isOpen: allowOpenClaims && !shift?.employeeId,
       location: "Dexa – 5th Ave", //Update it once location logic is made
       breakMinutes,
       expectedPace,
@@ -204,7 +191,7 @@ export function ShiftEditorModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-[#303030] border-gray-700">
+      <DialogContent className="w-[950px] bg-[#303030] border-gray-700 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">
             {shift?.id ? "Edit Shift" : "Create Shift"}
@@ -281,9 +268,12 @@ export function ShiftEditorModal({
                 </Text>
                 <Select
                   onValueChange={(option) =>
-                    option && setStartTime(option.value)
+                    option && setStartTime(combineToISO(date, option.value))
                   }
-                  value={{ label: startTime, value: startTime }}
+                  value={{
+                    label: formatTo12Hour(startTime),
+                    value: formatTo12Hour(startTime),
+                  }}
                 >
                   <SelectTrigger className="bg-[#212121]">
                     <SelectValue
@@ -303,8 +293,13 @@ export function ShiftEditorModal({
               <View className="flex-1 gap-y-2">
                 <Text className="text-gray-300 font-semibold">End Time *</Text>
                 <Select
-                  onValueChange={(option) => option && setEndTime(option.value)}
-                  value={{ label: endTime, value: endTime }}
+                  onValueChange={(option) =>
+                    option && setEndTime(combineToISO(date, option.value))
+                  }
+                  value={{
+                    label: formatTo12Hour(endTime),
+                    value: formatTo12Hour(endTime),
+                  }}
                 >
                   <SelectTrigger className="bg-[#212121]">
                     <SelectValue
@@ -428,26 +423,32 @@ export function ShiftEditorModal({
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onPress={() => onOpenChange(false)}>
-            <Text className="text-white">Cancel</Text>
-          </Button>
-          {onSaveAndDuplicate && (
+        <DialogFooter className="w-full">
+          <View className="flex-row gap-2 justify-end w-full">
             <Button
               variant="outline"
-              onPress={handleSaveAndDuplicate}
-              className="gap-2 bg-transparent border-gray-600 flex-row"
+              onPress={() => onOpenChange(false)}
+              className="mr-auto"
             >
-              <Copy size={16} color="#FFFFFF" />
-              <Text className="text-white">Save & Duplicate</Text>
+              <Text className="text-white">Cancel</Text>
             </Button>
-          )}
-          <Button
-            onPress={handleSave}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Text className="text-white font-semibold">Save Shift</Text>
-          </Button>
+            {onSaveAndDuplicate && (
+              <Button
+                variant="outline"
+                onPress={handleSaveAndDuplicate}
+                className="gap-2 bg-transparent border-gray-600 flex-row"
+              >
+                <Copy size={16} color="#FFFFFF" />
+                <Text className="text-white">Save & Duplicate</Text>
+              </Button>
+            )}
+            <Button
+              onPress={handleSave}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Text className="text-white font-semibold">Save Shift</Text>
+            </Button>
+          </View>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -28,9 +28,8 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
 
   const snapPoints = useMemo(() => ["50%", "60%"], []);
 
-  if (!shift) return null;
-
   const handleSubmit = () => {
+    if (!shift) return;
     if (!selectedReason) {
       toast.error("Please select a reason for dropping the shift.", {
         position: ToastPosition.BOTTOM,

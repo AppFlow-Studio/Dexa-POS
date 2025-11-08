@@ -1,21 +1,40 @@
+import { PTORequest } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { differenceInDays, format, isBefore } from "date-fns";
+import { differenceInDays, format, isBefore, startOfDay } from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  View as RNView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import Popover from "react-native-popover-view";
 
 interface PTORequestFormProps {
   onClose: () => void;
+  onAddRequest: (
+    request: Omit<PTORequest, "id" | "submittedAt" | "status">
+  ) => void;
 }
 
-const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
-  const { addPTORequest } = useScheduleStore();
+const PTORequestForm: React.FC<PTORequestFormProps> = ({
+  onClose,
+  onAddRequest,
+}) => {
+  const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
+  const { checkPtoConflict } = useScheduleStore();
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [note, setNote] = useState("");
+  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
+  const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
+  const startDateRef = useRef<RNView>(null);
+  const endDateRef = useRef<RNView>(null);
 
   const calculateHours = () => {
     if (!startDate || !endDate) return 0;
@@ -28,12 +47,28 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
   };
 
   const handleSubmit = () => {
+    if (!loggedInEmployee) {
+      toast.error("Employee not logged in.", {
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
     if (!startDate || !endDate) {
       toast.error("Please select both a start and end date.", {
         position: ToastPosition.BOTTOM,
       });
       return;
     }
+
+    const today = startOfDay(new Date());
+    if (isBefore(startDate, today)) {
+      toast.error("Start date cannot be in the past.", {
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
     if (isBefore(endDate, startDate)) {
       toast.error("End date cannot be before the start date.", {
         position: ToastPosition.BOTTOM,
@@ -41,12 +76,25 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
       return;
     }
 
-    addPTORequest({
+    const isConflict = checkPtoConflict(
+      loggedInEmployee.id,
+      startDate.toISOString(),
+      endDate.toISOString()
+    );
+
+    if (isConflict) {
+      toast.error("This PTO request overlaps with an existing request.", {
+        position: ToastPosition.BOTTOM,
+      });
+      return;
+    }
+
+    onAddRequest({
+      employeeId: loggedInEmployee.id,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       hours: calculateHours(),
       note,
-      status: "pending",
     });
     onClose();
   };
@@ -55,8 +103,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
     const selectedDate = new Date(day.timestamp);
     if (type === "start") {
       setStartDate(selectedDate);
+      setIsStartDatePickerOpen(false);
     } else {
       setEndDate(selectedDate);
+      setIsEndDatePickerOpen(false);
     }
   };
 
@@ -86,49 +136,65 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({ onClose }) => {
         <View className="flex-row gap-4">
           <View className="flex-1">
             <Text className="text-gray-300 mb-1">Start Date</Text>
-            <Popover>
-              <PopoverTrigger asChild>
-                <TouchableOpacity className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                  <Text className="text-white">
-                    {startDate
-                      ? format(startDate, "yyyy-MM-dd")
-                      : "Select Date"}
-                  </Text>
-                  <CalendarIcon size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-96 bg-[#303030] border-gray-700"
-                align="end"
-              >
+            <TouchableOpacity
+              ref={startDateRef}
+              onPress={() => setIsStartDatePickerOpen(true)}
+              className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+            >
+              <Text className="text-white">
+                {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
+              </Text>
+              <CalendarIcon size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+            <Popover
+              from={startDateRef as unknown as React.RefObject<RNView>}
+              isVisible={isStartDatePickerOpen}
+              onRequestClose={() => setIsStartDatePickerOpen(false)}
+            >
+              <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
                 <Calendar
                   onDayPress={(day) => onDayPress(day, "start")}
                   theme={calendarTheme}
+                  markedDates={{
+                    [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
+                      selected: true,
+                      selectedColor: "#3b82f6",
+                    },
+                  }}
                 />
-              </PopoverContent>
+              </View>
             </Popover>
           </View>
 
           <View className="flex-1">
             <Text className="text-gray-300 mb-1">End Date</Text>
-            <Popover>
-              <PopoverTrigger asChild>
-                <TouchableOpacity className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                  <Text className="text-white">
-                    {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
-                  </Text>
-                  <CalendarIcon size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-              </PopoverTrigger>
-              <PopoverContent
-                className="w-96 bg-[#303030] border-gray-700"
-                align="end"
-              >
+            <TouchableOpacity
+              ref={endDateRef}
+              onPress={() => setIsEndDatePickerOpen(true)}
+              className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+            >
+              <Text className="text-white">
+                {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
+              </Text>
+              <CalendarIcon size={16} color="#9CA3AF" />
+            </TouchableOpacity>
+            <Popover
+              from={endDateRef as unknown as React.RefObject<RNView>}
+              isVisible={isEndDatePickerOpen}
+              onRequestClose={() => setIsEndDatePickerOpen(false)}
+            >
+              <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
                 <Calendar
                   onDayPress={(day) => onDayPress(day, "end")}
                   theme={calendarTheme}
+                  markedDates={{
+                    [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
+                      selected: true,
+                      selectedColor: "#3b82f6",
+                    },
+                  }}
                 />
-              </PopoverContent>
+              </View>
             </Popover>
           </View>
         </View>

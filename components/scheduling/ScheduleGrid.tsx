@@ -1,18 +1,104 @@
-import { Role, Shift } from "@/lib/types";
+import { useDropZoneContext } from "@/contexts/DropZoneContext";
+import { PTORequest, Role, Shift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import {
   addDays,
-  differenceInHours,
+  differenceInMinutes,
   format,
+  isValid,
   isWithinInterval,
-  parse,
+  parseISO,
   startOfDay,
 } from "date-fns";
 import { Plus } from "lucide-react-native";
-import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { ShiftChip } from "./ShiftChip";
-import { isWithinInterval, startOfDay, addDays, format } from "date-fns";
+import React, { useEffect, useRef } from "react";
+import {
+  findNodeHandle,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  UIManager,
+  View,
+} from "react-native";
+import Animated, { runOnUI, useAnimatedStyle } from "react-native-reanimated";
+import { DraggableShift } from "./DraggableShift";
+
+const ScheduleCell = React.memo(
+  ({
+    children,
+    employeeId,
+    dateStr,
+    isDateInRange,
+    ptoOnDate,
+    ancestor,
+  }: {
+    children: React.ReactNode;
+    employeeId: string;
+    dateStr: string;
+    isDateInRange: boolean;
+    ptoOnDate: PTORequest | undefined;
+    ancestor: React.RefObject<ScrollView>;
+  }) => {
+    const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey } =
+      useDropZoneContext();
+    const cellKey = `${employeeId}-${dateStr}`;
+    const viewRef = useRef<Animated.View>(null);
+
+    useEffect(() => {
+      const measure = () => {
+        if (viewRef.current && ancestor.current) {
+          const ancestorNodeHandle = findNodeHandle(ancestor.current);
+          const viewNodeHandle = findNodeHandle(viewRef.current);
+
+          if (ancestorNodeHandle && viewNodeHandle) {
+            UIManager.measureLayout(
+              viewNodeHandle,
+              ancestorNodeHandle,
+              () => {}, // onFail
+              (x, y, width, height) => {
+                if (width > 0 && height > 0) {
+                  runOnUI(() => {
+                    "worklet";
+                    const newLayouts = { ...dropZoneLayouts.value };
+                    newLayouts[cellKey] = { x, y, width, height };
+                    dropZoneLayouts.value = newLayouts;
+                  })();
+                }
+              }
+            );
+          }
+        }
+      };
+
+      // Measure after a short delay to ensure layout is stable
+      const timeoutId = setTimeout(measure, 150);
+      return () => clearTimeout(timeoutId);
+    }, [ancestor, cellKey, dropZoneLayouts]);
+
+    const animatedStyle = useAnimatedStyle(() => {
+      const isHovered = hoveredDropZoneKey.value === cellKey;
+      const isDragging = draggingCellKey.value === cellKey;
+      return {
+        borderColor: isHovered ? "#22c55e" : "#4b5563", // Green when hovered, otherwise gray
+        borderWidth: isHovered ? 2 : 1,
+        zIndex: isDragging ? 100 : 1,
+      };
+    });
+
+    return (
+      <Animated.View
+        ref={viewRef}
+        style={animatedStyle}
+        className={`w-40 p-2 min-h-[80px] border-r border-b ${
+          isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
+        } ${ptoOnDate ? "bg-purple-900/30" : ""}`}
+      >
+        {children}
+      </Animated.View>
+    );
+  }
+);
 
 function getWeekDates(startDate: Date): Date[] {
   const dates: Date[] = [];
@@ -31,6 +117,9 @@ interface ScheduleGridProps {
   periodEndDate: Date;
   onShiftClick: (shift: Shift) => void;
   onAddShift: (employeeId: string, date: string) => void;
+  approvedPtoRequests: PTORequest[];
+  scheduleId: string;
+  scheduleType: "period" | "week";
 }
 
 const ScheduleGrid: React.FC<ScheduleGridProps> = ({
@@ -42,8 +131,13 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   periodEndDate,
   onShiftClick,
   onAddShift,
+  approvedPtoRequests,
+  scheduleId,
+  scheduleType,
 }) => {
   const weekDates = getWeekDates(startDate);
+  const updateShift = useScheduleStore((state) => state.updateShift);
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
     const dateStr = date.toISOString().split("T")[0];
@@ -60,11 +154,38 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
 
   const calculateTotalHours = (employeeId: string) => {
     const employeeShifts = shifts.filter((s) => s.employeeId === employeeId);
-    return employeeShifts.reduce((total, shift) => {
-      const start = parse(shift.startTime, "HH:mm", new Date());
-      const end = parse(shift.endTime, "HH:mm", new Date());
-      return total + differenceInHours(end, start);
+    const totalMinutes = employeeShifts.reduce((total, shift) => {
+      if (!shift.startTime || !shift.endTime) {
+        return total;
+      }
+      let start = parseISO(shift.startTime);
+      let end = parseISO(shift.endTime);
+
+      if (!isValid(start) || !isValid(end)) {
+        return total;
+      }
+
+      // Handle overnight shifts
+      if (end < start) {
+        end = addDays(end, 1);
+      }
+
+      return total + differenceInMinutes(end, start);
     }, 0);
+
+    return totalMinutes / 60;
+  };
+
+  const handleShiftDrop = (
+    shift: Shift,
+    newEmployeeId: string,
+    newDate: string
+  ) => {
+    updateShift(scheduleId, scheduleType, {
+      ...shift,
+      employeeId: newEmployeeId,
+      date: newDate,
+    });
   };
 
   return (
@@ -92,7 +213,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
           </View>
 
           {/* Grid Body */}
-          <ScrollView>
+          <ScrollView ref={scrollViewRef}>
             {employees.map((employee: EmployeeProfile) => (
               <View key={employee.id} className="flex-row">
                 <View className="w-48 bg-[#303030] p-3 flex-row items-center border-r border-gray-700 border-b">
@@ -127,26 +248,40 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     end: startOfDay(periodEndDate),
                   });
 
+                  const ptoOnDate = approvedPtoRequests.find(
+                    (pto) =>
+                      pto.employeeId === employee.id &&
+                      isWithinInterval(startOfDay(date), {
+                        start: startOfDay(new Date(pto.startDate)),
+                        end: startOfDay(new Date(pto.endDate)),
+                      })
+                  );
+
                   return (
-                    <View
+                    <ScheduleCell
                       key={`${employee.id}-${i}`}
-                      className={`w-40 p-2 min-h-[80px] border-r border-b border-gray-700 ${
-                        isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
-                      }`}
+                      employeeId={employee.id}
+                      dateStr={dateStr}
+                      isDateInRange={isDateInRange}
+                      ptoOnDate={ptoOnDate}
+                      ancestor={scrollViewRef as React.RefObject<ScrollView>}
                     >
                       {isDateInRange ? (
-                        dayShifts.length > 0 ? (
+                        ptoOnDate ? (
+                          <View className="flex-1 h-full w-full items-center justify-center">
+                            <Text className="font-bold text-purple-400">
+                              PTO
+                            </Text>
+                          </View>
+                        ) : dayShifts.length > 0 ? (
                           <View className="gap-y-2">
                             {dayShifts.map((shift) => (
-                              <ShiftChip
+                              <DraggableShift
                                 key={shift.id}
-                                role={shift.role}
-                                start={shift.startTime}
-                                end={shift.endTime}
-                                requiredCount={shift.requiredCount}
+                                shift={shift}
+                                onShiftClick={onShiftClick}
                                 wage={employee.baseWage}
-                                isOpen={shift.isOpen}
-                                onClick={() => onShiftClick(shift)}
+                                onShiftDrop={handleShiftDrop}
                               />
                             ))}
                           </View>
@@ -162,7 +297,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                           </TouchableOpacity>
                         )
                       ) : null}
-                    </View>
+                    </ScheduleCell>
                   );
                 })}
               </View>

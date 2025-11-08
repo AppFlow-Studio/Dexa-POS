@@ -15,7 +15,9 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 const PTOPage = () => {
-  const { ptoRequests } = useScheduleStore();
+  const ptoRequests = useScheduleStore(state => state.ptoRequests);
+  const addPTORequest = useScheduleStore(state => state.addPTORequest);
+  const cancelPTORequest = useScheduleStore(state => state.cancelPTORequest);
   const [showRequestForm, setShowRequestForm] = useState(false);
 
   return (
@@ -36,7 +38,7 @@ const PTOPage = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {showRequestForm && (
           <Animated.View entering={FadeIn} exiting={FadeOut}>
-            <PTORequestForm onClose={() => setShowRequestForm(false)} />
+            <PTORequestForm onClose={() => setShowRequestForm(false)} onAddRequest={addPTORequest} />
           </Animated.View>
         )}
 
@@ -93,7 +95,7 @@ const PTOPage = () => {
           </Text>
           <View className="gap-y-3">
             {ptoRequests.map((request) => (
-              <PTOHistoryCard key={request.id} request={request} />
+              <PTOHistoryCard key={request.id} request={request} onCancelRequest={cancelPTORequest} />
             ))}
           </View>
         </View>

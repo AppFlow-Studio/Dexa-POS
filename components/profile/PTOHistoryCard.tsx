@@ -2,10 +2,11 @@ import { PTORequest } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { AlertCircle, CheckCircle2, XCircle } from "lucide-react-native";
 import React from "react";
-import { Text, View } from "react-native";
+import { Text, View, TouchableOpacity } from "react-native";
 
 interface PTOHistoryCardProps {
   request: PTORequest;
+  onCancelRequest: (requestId: string) => void;
 }
 
 const getStatusStyles = (status: PTORequest["status"]) => {
@@ -34,7 +35,7 @@ const getStatusStyles = (status: PTORequest["status"]) => {
   }
 };
 
-const PTOHistoryCard: React.FC<PTOHistoryCardProps> = ({ request }) => {
+const PTOHistoryCard: React.FC<PTOHistoryCardProps> = ({ request, onCancelRequest }) => {
   const styles = getStatusStyles(request.status);
 
   return (
@@ -54,13 +55,30 @@ const PTOHistoryCard: React.FC<PTOHistoryCardProps> = ({ request }) => {
               Submitted{" "}
               {format(parseISO(request.submittedAt), "MMM d, yyyy 'at' h:mm a")}
             </Text>
+            {request.status === "denied" && request.denialReason && (
+              <Text className="text-xs text-red-400 mt-1">
+                Reason: {request.denialReason}
+              </Text>
+            )}
           </View>
         </View>
-        <Text
-          className={`text-xs font-medium px-2 py-1 rounded-full ${styles.bg} ${styles.text}`}
-        >
-          {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
-        </Text>
+        <View className="items-end">
+          <Text
+            className={`text-xs font-medium px-2 py-1 rounded-full ${styles.bg} ${styles.text} mb-2`}
+          >
+            {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+          </Text>
+          {request.status === "pending" && (
+            <TouchableOpacity
+              onPress={() => onCancelRequest(request.id)}
+              className="px-3 py-1 bg-red-600/20 border-2 border-red-500 rounded-lg"
+            >
+              <Text className="text-sm font-semibold text-red-300">
+                Cancel Request
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );

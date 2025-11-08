@@ -1,5 +1,5 @@
 import { Shift } from "@/lib/types";
-import { format, parseISO } from "date-fns";
+import { format, parse, parseISO } from "date-fns";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Users,
   X,
+  XCircle,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
@@ -23,6 +24,7 @@ interface ShiftDetailModalProps {
   onClose: () => void;
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
+  onCancelDropRequest: (shift: Shift) => void;
 }
 
 const StatusBadge = ({
@@ -32,15 +34,24 @@ const StatusBadge = ({
   text: string;
   color: "blue" | "yellow" | "gray" | "green";
 }) => {
-  const colors = {
+  const bgColors = {
     blue: "bg-blue-600/20 text-blue-400",
     yellow: "bg-yellow-600/20 text-yellow-400",
     gray: "bg-gray-600/20 text-gray-300",
     green: "bg-green-600/20 text-green-400",
   };
+
+  const textColors = {
+    blue: "text-blue-400",
+    yellow: "text-yellow-400",
+    gray: "text-gray-300",
+    green: "text-green-400",
+  };
   return (
-    <View className={`px-2 py-1 rounded ${colors[color]}`}>
-      <Text className={`text-xs font-semibold ${colors[color]}`}>{text}</Text>
+    <View className={`px-2 py-1 rounded ${bgColors[color]}`}>
+      <Text className={`text-xs font-semibold ${textColors[color]}`}>
+        {text}
+      </Text>
     </View>
   );
 };
@@ -51,6 +62,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   onClose,
   onRequestDrop,
   onRequestSwap,
+  onCancelDropRequest,
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
 
@@ -63,7 +75,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
       case "pending-swap":
         return { label: "Pending swap", color: "yellow" as const };
       case "dropped":
-        return { label: "Dropped (pending)", color: "yellow" as const };
+        return { label: "Drop Pending", color: "yellow" as const };
       case "on-shift":
         return { label: "On shift", color: "green" as const };
       default:
@@ -102,6 +114,13 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     }
   };
 
+  const handleCancelDropRequest = () => {
+    if (shift) {
+      onClose();
+      onCancelDropRequest(shift);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[600px] bg-[#303030] border-gray-700 p-0 rounded-2xl">
@@ -127,11 +146,17 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             <View className="flex-row items-center gap-2 mb-2">
               <Clock size={16} color="#9CA3AF" />
               <Text className="text-base text-white">
-                {shift.startTime} – {shift.endTime}
+                {shift.startTime ? format(parseISO(shift.startTime), "h:mm a") : "N/A"} –{" "}
+                {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
               </Text>
-              {shift.status === "on-shift" && (
+              {shift.status === "on-shift" && shift.actualClockIn && (
                 <Text className="text-base text-green-400">
-                  (On since {shift.actualClockIn})
+                  (On since{" "}
+                  {format(
+                    parse(shift.actualClockIn, "HH:mm", new Date()),
+                    "h:mm a"
+                  )}
+                  )
                 </Text>
               )}
             </View>
@@ -213,6 +238,17 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   </Text>
                 </TouchableOpacity>
               </>
+            )}
+            {shift.status === "dropped" && (
+              <TouchableOpacity
+                onPress={handleCancelDropRequest}
+                className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600"
+              >
+                <XCircle size={16} color="#FCA5A5" />
+                <Text className="text-base font-semibold text-red-300">
+                  Cancel Drop Request
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
