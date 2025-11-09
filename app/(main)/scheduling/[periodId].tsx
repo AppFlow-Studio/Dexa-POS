@@ -160,10 +160,10 @@ const ScheduleDetail = ({
     setIsActionModalOpen(true);
   };
 
-  const handleAddShift = (employeeId: string, date: string) => {
-    setSelectedShift({ employeeId, date });
-    setShiftEditorOpen(true);
-  };
+  // const handleAddShift = (employeeId: string, date: string) => {
+  //   setSelectedShift({ employeeId, date });
+  //   setShiftEditorOpen(true);
+  // };
 
   const handleAddShift = (employeeId: string, date: string) => {
     setSelectedShift({ employeeId, date });

@@ -158,17 +158,17 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
     }
   };
 
-  const getDuration = () => {
-    if (!formData.startDate || !formData.endDate) return 0;
-    try {
-      const start = new Date(formData.startDate);
-      const end = new Date(formData.endDate);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
-      return differenceInDays(end, start) + 1;
-    } catch (e) {
-      return 0;
-    }
-  };
+  // const getDuration = () => {
+  //   if (!formData.startDate || !formData.endDate) return 0;
+  //   try {
+  //     const start = new Date(formData.startDate);
+  //     const end = new Date(formData.endDate);
+  //     if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+  //     return differenceInDays(end, start) + 1;
+  //   } catch (e) {
+  //     return 0;
+  //   }
+  //};
 
   const getDuration = () => {
     if (!formData.startDate || !formData.endDate) return 0;
