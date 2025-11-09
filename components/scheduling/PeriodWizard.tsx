@@ -1,3 +1,4 @@
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import { differenceInDays, format, parse } from "date-fns";
 import {
   ArrowLeft,
@@ -6,11 +7,17 @@ import {
   Check,
   X,
 } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View as RNView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
+import Popover from "react-native-popover-view";
 import { Dialog, DialogContent } from "../ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
 export interface PeriodData {
   id?: string;
@@ -40,6 +47,12 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
     startDate: "",
     endDate: "",
   });
+  const [errors, setErrors] = useState<string[]>([]);
+  const { checkDateConflicts } = useScheduleStore();
+  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
+  const [isEndDatePickerOpen, setIsEndDatePickerOpen] = useState(false);
+  const startDateRef = useRef<typeof TouchableOpacity>(null); // Ref for the start date TouchableOpacity
+  const endDateRef = useRef<typeof TouchableOpacity>(null); // Ref for the end date TouchableOpacity
 
   useEffect(() => {
     if (isOpen) {
@@ -64,8 +77,44 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
         setFormData({ name: "", startDate: "", endDate: "" });
       }
       setStep(1); // Reset to first step whenever modal opens
+      setErrors([]);
     }
   }, [periodToEdit, isOpen]);
+
+  useEffect(() => {
+    if (step === 2) {
+      const newErrors: string[] = [];
+      if (formData.startDate && formData.endDate) {
+        const start = new Date(formData.startDate);
+        const end = new Date(formData.endDate);
+
+        if (start > end) {
+          newErrors.push("End date cannot be before start date.");
+        }
+
+        const conflicts = checkDateConflicts(
+          formData.startDate,
+          formData.endDate,
+          periodToEdit?.id
+        );
+
+        if (conflicts.hasConflict) {
+          console.log("Conflicts:", conflicts);
+
+          newErrors.push(
+            `Date range conflicts with an existing schedule: ${conflicts.conflictingPeriods[0].name}`
+          );
+        }
+      }
+      setErrors(newErrors);
+    }
+  }, [
+    formData.startDate,
+    formData.endDate,
+    step,
+    periodToEdit,
+    checkDateConflicts,
+  ]);
 
   const handleNext = () => {
     if (step < 3) setStep(step + 1);
@@ -88,7 +137,11 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
       case 1:
         return formData.name.trim().length > 0;
       case 2:
-        return formData.startDate.length > 0 && formData.endDate.length > 0;
+        return (
+          formData.startDate.length > 0 &&
+          formData.endDate.length > 0 &&
+          errors.length === 0
+        );
       case 3:
         return true;
       default:
@@ -98,6 +151,23 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
 
   const onDayPress = (day: DateData, type: "startDate" | "endDate") => {
     setFormData({ ...formData, [type]: day.dateString });
+    if (type === "startDate") {
+      setIsStartDatePickerOpen(false);
+    } else {
+      setIsEndDatePickerOpen(false);
+    }
+  };
+
+  const getDuration = () => {
+    if (!formData.startDate || !formData.endDate) return 0;
+    try {
+      const start = new Date(formData.startDate);
+      const end = new Date(formData.endDate);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
+      return differenceInDays(end, start) + 1;
+    } catch (e) {
+      return 0;
+    }
   };
 
   const getDuration = () => {
@@ -198,26 +268,38 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
             <Text className="text-gray-400 text-center mb-6">
               Define the start and end dates.
             </Text>
+            {errors.length > 0 && (
+              <View className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 w-full mb-4">
+                {errors.map((error, i) => (
+                  <Text key={i} className="text-sm text-red-400">
+                    {error}
+                  </Text>
+                ))}
+              </View>
+            )}
             <View className="w-full flex-row gap-4">
               <View className="flex-1">
                 <Text className="text-gray-300 mb-2 font-semibold">
                   Start Date
                 </Text>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                      <Text className="text-white text-base">
-                        {formData.startDate
-                          ? format(new Date(formData.startDate), "yyyy-MM-dd")
-                          : "Select Date"}
-                      </Text>
-                      <CalendarIcon size={16} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-96 bg-[#303030] border-gray-700 z-50"
-                    align="end"
-                  >
+                <TouchableOpacity
+                  ref={startDateRef as unknown as React.RefObject<RNView>}
+                  onPress={() => setIsStartDatePickerOpen(true)}
+                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                >
+                  <Text className="text-white text-base">
+                    {formData.startDate
+                      ? format(new Date(formData.startDate), "yyyy-MM-dd")
+                      : "Select Start Date"}
+                  </Text>
+                  <CalendarIcon size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+                <Popover
+                  from={startDateRef as unknown as React.RefObject<RNView>}
+                  isVisible={isStartDatePickerOpen}
+                  onRequestClose={() => setIsStartDatePickerOpen(false)}
+                >
+                  <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
                     <Calendar
                       current={formData.startDate || undefined}
                       onDayPress={(day) => onDayPress(day, "startDate")}
@@ -229,28 +311,31 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                         },
                       }}
                     />
-                  </PopoverContent>
+                  </View>
                 </Popover>
               </View>
               <View className="flex-1">
                 <Text className="text-gray-300 mb-2 font-semibold">
                   End Date
                 </Text>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <TouchableOpacity className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                      <Text className="text-white text-base">
-                        {formData.endDate
-                          ? format(new Date(formData.endDate), "yyyy-MM-dd")
-                          : "Select Date"}
-                      </Text>
-                      <CalendarIcon size={16} color="#9CA3AF" />
-                    </TouchableOpacity>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    className="w-96 bg-[#303030] border-gray-700 z-50"
-                    align="end"
-                  >
+                <TouchableOpacity
+                  ref={endDateRef as unknown as React.RefObject<RNView>}
+                  onPress={() => setIsEndDatePickerOpen(true)}
+                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                >
+                  <Text className="text-white text-base">
+                    {formData.endDate
+                      ? format(new Date(formData.endDate), "yyyy-MM-dd")
+                      : "Select End Date"}
+                  </Text>
+                  <CalendarIcon size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+                <Popover
+                  from={endDateRef as unknown as React.RefObject<RNView>}
+                  isVisible={isEndDatePickerOpen}
+                  onRequestClose={() => setIsEndDatePickerOpen(false)}
+                >
+                  <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
                     <Calendar
                       current={formData.endDate || undefined}
                       onDayPress={(day) => onDayPress(day, "endDate")}
@@ -262,7 +347,7 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
                         },
                       }}
                     />
-                  </PopoverContent>
+                  </View>
                 </Popover>
               </View>
             </View>

@@ -8,19 +8,24 @@ import { useScheduleStore } from "@/stores/useScheduleStore";
 import { addDays, format } from "date-fns";
 import { useRouter } from "expo-router";
 import { Plus } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 const ScheduleManagerDashboard = () => {
   const router = useRouter();
   const {
-    schedulePeriods,
-    weeklySchedules,
+    getDashboardSchedulePeriods,
+    getDashboardWeeklySchedules,
     addWeeklySchedule,
     addSchedulePeriod,
     updateSchedulePeriod,
     updateWeeklySchedule,
+    findOrCreateDraft,
+    compareSchedules,
+    discardDraft,
+    schedulePeriods: allSchedulePeriods,
+    weeklySchedules: allWeeklySchedules,
   } = useScheduleStore();
   const [isWizardOpen, setWizardOpen] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<PeriodData | null>(null);
@@ -29,6 +34,32 @@ const ScheduleManagerDashboard = () => {
   const [isEditWeeklyModalOpen, setIsEditWeeklyModalOpen] = useState(false);
   const [editingWeeklySchedule, setEditingWeeklySchedule] =
     useState<WeeklySchedule | null>(null);
+
+  useEffect(() => {
+    const allSchedules = [...allSchedulePeriods, ...allWeeklySchedules];
+    const draftEdits = allSchedules.filter((s) => s.status === "draft-edit");
+
+    draftEdits.forEach((draft) => {
+      if (draft.originalScheduleId) {
+        const { added, updated, removed } = compareSchedules(
+          draft.originalScheduleId,
+          draft.id
+        );
+        if (added === 0 && updated === 0 && removed === 0) {
+          discardDraft(draft.id, (draft as any).type);
+        }
+      }
+    });
+  }, []);
+
+  const schedulePeriods = useMemo(
+    () => getDashboardSchedulePeriods(),
+    [getDashboardSchedulePeriods, allSchedulePeriods]
+  );
+  const weeklySchedules = useMemo(
+    () => getDashboardWeeklySchedules(),
+    [getDashboardWeeklySchedules, allWeeklySchedules]
+  );
 
   const handleAddNew = () => {
     setEditingPeriod(null);
@@ -55,8 +86,13 @@ const ScheduleManagerDashboard = () => {
     setEditingPeriod(null);
   };
 
-  const handlePressSchedule = (periodId: string) => {
-    router.push(`/scheduling/${periodId}`);
+  const handlePressSchedule = (schedule: SchedulePeriod | WeeklySchedule) => {
+    if (schedule.status === "draft" || schedule.status === "draft-edit") {
+      router.push(`/scheduling/${schedule.id}`);
+    } else {
+      const draftId = findOrCreateDraft(schedule.id, (schedule as any).type);
+      router.push(`/scheduling/${draftId}`);
+    }
   };
 
   const handleCreateWeeklySchedule = (startDate: string) => {
@@ -141,7 +177,7 @@ const ScheduleManagerDashboard = () => {
               <SchedulePeriodCard
                 period={item as PeriodData} // Cast to PeriodData for now, will update PeriodWizard later
                 onEdit={() => handleEdit(item as PeriodData)}
-                onPressSchedule={() => handlePressSchedule(item.id!)}
+                onPressSchedule={() => handlePressSchedule(item)}
               />
             )}
             ItemSeparatorComponent={() => <View className="w-4" />}
@@ -168,7 +204,7 @@ const ScheduleManagerDashboard = () => {
               <WeeklyScheduleCard
                 schedule={item}
                 onEdit={() => handleEditWeekly(item)}
-                onPressSchedule={() => handlePressSchedule(item.id!)}
+                onPressSchedule={() => handlePressSchedule(item)}
               />
             )}
             ItemSeparatorComponent={() => <View className="h-4" />}

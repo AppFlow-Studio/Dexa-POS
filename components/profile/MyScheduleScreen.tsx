@@ -1,5 +1,6 @@
-import { MOCK_SHIFTS } from "@/lib/mockData";
 import { Shift } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useScheduleStore } from "@/stores/useScheduleStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
@@ -50,6 +51,9 @@ const MyScheduleScreen = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
 
+  const { loggedInEmployee } = useEmployeeStore();
+  const { getShiftsForEmployee } = useScheduleStore();
+
   const dropSheetRef = useRef<BottomSheetMethods>(null);
   const swapSheetRef = useRef<BottomSheetMethods>(null);
   const [shiftForAction, setShiftForAction] = useState<Shift | null>(null);
@@ -60,27 +64,20 @@ const MyScheduleScreen = () => {
   const overtimeSheetRef = useRef<BottomSheet>(null);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
 
-  const actualCurrentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 });
-  const isSchedulePublished = isSameWeek(
-    currentWeekStart,
-    actualCurrentWeekStart,
-    { weekStartsOn: 0 }
-  );
+  const employeeShifts = useMemo(() => {
+    if (!loggedInEmployee) return [];
+    return getShiftsForEmployee(loggedInEmployee.id);
+  }, [loggedInEmployee, getShiftsForEmployee]);
+
+  const isSchedulePublished = useMemo(() => {
+    return employeeShifts.some((shift) =>
+      isSameWeek(parseISO(shift.date), currentWeekStart, { weekStartsOn: 0 })
+    );
+  }, [employeeShifts, currentWeekStart]);
 
   const weekDays = Array.from({ length: 7 }, (_, i) =>
     addDays(currentWeekStart, i)
   );
-
-  const dynamicMockShifts = useMemo(() => {
-    return MOCK_SHIFTS.map((shift, index) => {
-      const dayOffset = index % 7;
-      const shiftDate = addDays(currentWeekStart, dayOffset);
-      return {
-        ...shift,
-        date: shiftDate.toISOString(),
-      };
-    });
-  }, [currentWeekStart]);
 
   const goToPreviousWeek = () =>
     setCurrentWeekStart(addDays(currentWeekStart, -7));
@@ -90,7 +87,7 @@ const MyScheduleScreen = () => {
 
   const getShiftsForDate = (date: Date) => {
     if (!isSchedulePublished) return [];
-    return dynamicMockShifts.filter((shift) =>
+    return employeeShifts.filter((shift) =>
       isSameDay(parseISO(shift.date), date)
     );
   };

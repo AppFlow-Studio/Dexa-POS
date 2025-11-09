@@ -40,6 +40,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
       <FlatList
         data={notifications}
         keyExtractor={(item) => item.id}
+        scrollEnabled
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => handleNotificationPress(item)}>
             <NotificationItem notification={item} />

@@ -1,10 +1,12 @@
 import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import {
   ArrowLeftRight,
+  Bell,
   ChevronLeft,
   ChevronRight,
   Coffee,
@@ -14,8 +16,10 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import NotificationPanel from "./notifications/NotificationPanel";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
+import { Dialog, DialogContent } from "./ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -70,10 +74,13 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const { sessions, activeEmployeeId, endBreak, startBreak } =
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+  const { getUnreadCountForEmployee, unreadCount, markAllAsRead } =
+    useNotificationStore();
   const router = useRouter();
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
@@ -87,6 +94,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const isActive = activeEmployeeId === session.employeeId;
   const isOnBreak = session.status === "onBreak";
   const isClockedIn = session.status === "clockedIn";
+  const unreadNotifications = getUnreadCountForEmployee(employee.id);
+
+  const handleOpenNotificationPanel = () => {
+    setIsPanelOpen(true);
+    if (unreadCount > 0) {
+      // Optimistically mark as read, or wait for panel to close
+      // For now, let's do it on open
+      markAllAsRead();
+    }
+  };
 
   const handlePress = () => {
     if (isActive) return;
@@ -140,6 +157,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     .slice(0, 2)}
                 </Text>
               </View>
+              {unreadNotifications > 0 && (
+                <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-blue-600" />
+              )}
               <View className="mx-2">
                 <Text className="font-semibold text-white">
                   {employee.fullName.split(" ")[0]}
@@ -187,6 +207,22 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               </DropdownMenuItem>
 
               <DropdownMenuItem
+                onPress={() => handleOpenNotificationPanel()}
+                className="py-3"
+              >
+                <View>
+                  <Bell size={24} color="#9CA3AF" />
+                  {unreadCount > 0 && (
+                    <View className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 rounded-full items-center justify-center border-2 border-[#303030]">
+                      <Text className="text-white text-xs font-bold">
+                        {unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text className="text-white text-base">Notification</Text>
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onPress={() => setPinModalOpen(true)}
                 className="py-3"
               >
@@ -228,6 +264,11 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           }}
           shift={session}
         />
+        <Dialog open={isPanelOpen} onOpenChange={setIsPanelOpen}>
+          <DialogContent className="p-0 w-[350px]">
+            <NotificationPanel onClose={() => setIsPanelOpen(false)} />
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -257,6 +298,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               .slice(0, 2)}
           </Text>
         </View>
+        {unreadNotifications > 0 && (
+          <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-700" />
+        )}
         <View className="mx-2">
           <Text className="font-semibold text-gray-300">
             {employee.fullName.split(" ")[0]}

@@ -3796,7 +3796,6 @@ export const MOCK_SHIFTS: Shift[] = [
     status: "confirmed",
     breakMinutes: 30,
     managerNote: "Cover patio from 2-4 if busy",
-    restMet: true,
     expectedPace: "Moderate",
     staffingLevel: "Fully staffed",
   },
@@ -3812,7 +3811,6 @@ export const MOCK_SHIFTS: Shift[] = [
     status: "on-shift",
     breakMinutes: 30,
     actualClockIn: "1:58 PM",
-    restMet: true,
     expectedPace: "Busy",
     staffingLevel: "May need help",
   },
@@ -3843,7 +3841,6 @@ export const MOCK_SHIFTS: Shift[] = [
     location: "Dexa – 5th Ave",
     status: "pending-swap",
     breakMinutes: 30,
-    restMet: true,
     expectedPace: "Moderate",
     staffingLevel: "Fully staffed",
   },
@@ -4134,6 +4131,7 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     message: "Your swap request for the shift on Oct 16 was approved.",
     isRead: false,
     timestamp: new Date("2025-10-15T10:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
   },
   {
     id: "notif-2",
@@ -4141,6 +4139,7 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     message: "Your drop request for the shift on Oct 17 is pending.",
     isRead: false,
     timestamp: new Date("2025-10-15T09:30:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
   },
   {
     id: "notif-3",
@@ -4148,6 +4147,7 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     message: "New manager note on your shift for Oct 13.",
     isRead: true,
     timestamp: new Date("2025-10-12T14:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
   },
   {
     id: "notif-4",
@@ -4155,5 +4155,6 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
     message: "Your PTO request for Dec 24-26 was approved.",
     isRead: true,
     timestamp: new Date("2025-10-11T11:00:00Z").toISOString(),
+    employeeId: "emp_1759078476073_0",
   },
 ];

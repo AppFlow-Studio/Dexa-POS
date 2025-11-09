@@ -24,6 +24,14 @@ const roleColors: Record<Role, string> = {
   Supervisor: "bg-pink-500/20 border-pink-500/30",
 };
 
+const textColors: Record<Role, string> = {
+  Cashier: "#60a5fa",
+  Barista: "#c084fc",
+  "Line Cook": "#facc15",
+  Prep: "#4ade80",
+  Supervisor: "#f472b6",
+};
+
 const conflictColors = {
   ot: "border-l-red-500",
   pto: "border-l-purple-500",
@@ -80,20 +88,17 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
       </View>
 
       <View className="flex-row items-center gap-1.5">
-        <Clock
-          size={12}
-          color={isOpen ? "#9ca3af" : "white"}
-          className={isOpen ? "text-gray-400" : "text-white"}
-        />
+        <Clock size={12} color={`${textColors[role] || "#ffffff"}`} />
         <Text
-          className={`font-medium text-xs ${isOpen ? "text-gray-400" : "text-white"}`}
+          className="font-medium text-xs"
+          style={{ color: textColors[role] || "#ffffff" }}
         >
           {formatTime(start)} - {formatTime(end)}
         </Text>
       </View>
 
       {wage && (
-        <Text className="text-xs text-gray-500 mt-1">
+        <Text className="text-xs text-gray-400 mt-1">
           ${wage.toFixed(2)}/hr
         </Text>
       )}

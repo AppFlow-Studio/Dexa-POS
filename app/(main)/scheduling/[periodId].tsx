@@ -1,13 +1,13 @@
 import BottomSheet from "@gorhom/bottom-sheet";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Calendar,
   Download,
   Search,
   Send,
   Settings,
-  Sparkles,
   Users,
+  X,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -26,15 +26,20 @@ import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
 import PublishModal from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
+import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
 import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
+import { Button } from "@/components/ui/button";
+import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { mockShiftsScheudleGrid } from "@/lib/mockData";
 import {
   PTORequest,
   Role,
+  SchedulePeriod,
   Shift,
   ShiftRequest as SwapRequest,
+  WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -86,22 +91,21 @@ const mockPtoRequests: PTORequest[] = [
   },
 ];
 
-const ScheduleDetailScreen = () => {
-  const { periodId } = useLocalSearchParams();
-  const { schedulePeriods, weeklySchedules, addShift, updateShift } =
+const ScheduleDetail = ({
+  currentSchedule,
+}: {
+  currentSchedule: {
+    schedule: SchedulePeriod | WeeklySchedule;
+    type: "period" | "week";
+  };
+}) => {
+  const router = useRouter();
+  const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
     useScheduleStore();
   const { employees } = useEmployeeStore();
 
-  const currentSchedule = useMemo(() => {
-    const period = schedulePeriods.find((p) => p.id === periodId);
-    if (period) return { schedule: period, type: "period" as const };
-    const weekly = weeklySchedules.find((w) => w.id === periodId);
-    if (weekly) return { schedule: weekly, type: "week" as const };
-    return null;
-  }, [periodId, schedulePeriods, weeklySchedules]);
-
   const [startDate, setStartDate] = useState(
-    currentSchedule ? new Date(currentSchedule.schedule.startDate) : new Date()
+    new Date(currentSchedule.schedule.startDate)
   );
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -111,19 +115,22 @@ const ScheduleDetailScreen = () => {
     null
   );
   const [publishModalOpen, setPublishModalOpen] = useState(false);
+  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
 
   // State for filters
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
   const [selectedConflicts, setSelectedConflicts] = useState<string[]>([]);
 
-  if (!currentSchedule) {
-    return (
-      <Text className="text-white">
-        Loading schedule or schedule not found...
-      </Text>
+  const hasUnsavedChanges = useMemo(() => {
+    if (currentSchedule.schedule.status !== "draft-edit") return false;
+    const { added, updated, removed } = compareSchedules(
+      currentSchedule.schedule.originalScheduleId!,
+      currentSchedule.schedule.id
     );
-  }
+    return added > 0 || updated > 0 || removed > 0;
+  }, [currentSchedule, compareSchedules]);
 
   const handleRoleToggle = (role: Role) => {
     setSelectedRoles((prev) =>
@@ -143,8 +150,18 @@ const ScheduleDetailScreen = () => {
     setPublishModalOpen(true);
   };
 
+  const handleDiscard = () => {
+    discardDraft(currentSchedule.schedule.id, currentSchedule.type);
+    router.back();
+  };
+
   const handleShiftClick = (shift: Shift) => {
     setSelectedShift(shift);
+    setIsActionModalOpen(true);
+  };
+
+  const handleAddShift = (employeeId: string, date: string) => {
+    setSelectedShift({ employeeId, date });
     setShiftEditorOpen(true);
   };
 
@@ -171,6 +188,8 @@ const ScheduleDetailScreen = () => {
         shiftData as Omit<Shift, "id">
       );
     }
+    setShiftEditorOpen(false);
+    setSelectedShift(null);
   };
 
   const handleSaveAndDuplicate = (shiftData: Partial<Shift>) => {
@@ -179,6 +198,25 @@ const ScheduleDetailScreen = () => {
       currentSchedule.type,
       shiftData as Omit<Shift, "id">
     );
+    setShiftEditorOpen(false);
+    setSelectedShift(null);
+  };
+
+  const handleDeleteShift = () => {
+    if (selectedShift?.id) {
+      deleteShift(
+        currentSchedule.schedule.id,
+        currentSchedule.type,
+        selectedShift.id
+      );
+    }
+    setIsActionModalOpen(false);
+    setSelectedShift(null);
+  };
+
+  const handleEditShift = () => {
+    setIsActionModalOpen(false);
+    setShiftEditorOpen(true);
   };
 
   const handlePreviousWeek = () => {
@@ -205,12 +243,14 @@ const ScheduleDetailScreen = () => {
     draft: "bg-muted text-muted-foreground",
     active: "bg-green-500/20 text-green-400 border-green-500/30",
     completed: "bg-gray-500/20 text-gray-400",
+    "draft-edit": "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   };
 
   const statusTextColor = {
     draft: "text-muted-foreground",
     active: "text-green-400",
     completed: "text-gray-400",
+    "draft-edit": "text-yellow-400",
   };
 
   return (
@@ -267,7 +307,9 @@ const ScheduleDetailScreen = () => {
               />
 
               <Badge className={statusColors[currentSchedule.schedule.status]}>
-                <Text className={statusTextColor[currentSchedule.schedule.status]}>
+                <Text
+                  className={statusTextColor[currentSchedule.schedule.status]}
+                >
                   {currentSchedule.schedule.status.charAt(0).toUpperCase() +
                     currentSchedule.schedule.status.slice(1)}
                 </Text>
@@ -284,27 +326,48 @@ const ScheduleDetailScreen = () => {
             />
 
             <View className="flex-row items-center gap-2">
-              {/* Generate Draft Button */}
-              <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
-                <Sparkles size={16} color="white" />
-                <Text className="text-white">Generate Draft</Text>
-              </TouchableOpacity>
+              {currentSchedule.schedule.status === "draft-edit" ? (
+                <>
+                  {hasUnsavedChanges && (
+                    <TouchableOpacity
+                      onPress={() => setIsDiscardModalOpen(true)}
+                      disabled={!hasUnsavedChanges}
+                      className={`flex-row items-center gap-2 rounded-md border border-red-500/50 bg-transparent px-3 py-2 ${
+                        !hasUnsavedChanges && "opacity-50"
+                      }`}
+                    >
+                      <X size={16} color="#f87171" />
+                      <Text className="text-red-400">Discard Changes</Text>
+                    </TouchableOpacity>
+                  )}
 
-              {/* Publish Button */}
-              <TouchableOpacity
-                onPress={handlePublish}
-                className="flex-row items-center gap-2 rounded-md bg-[#4A44E0] px-3 py-2"
-              >
-                <Send size={16} color="white" />
-                <Text className="text-white">Publish</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handlePublish}
+                    className="flex-row items-center gap-2 rounded-md bg-blue-600 px-3 py-2"
+                  >
+                    <Send size={16} color="white" />
+                    <Text className="text-white">Publish Changes</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity
+                  onPress={handlePublish}
+                  className="flex-row items-center gap-2 rounded-md bg-gray-600 px-3 py-2"
+                >
+                  <Send size={16} color="white" />
+                  <Text className="text-white">Published</Text>
+                </TouchableOpacity>
+              )}
 
               {/* Export Button */}
-              <TouchableOpacity className="flex-row items-center gap-2 rounded-md px-3 py-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 bg-transparent flex-row items-center"
+              >
                 <Download size={16} color="white" />
                 <Text className="text-white">Export</Text>
-              </TouchableOpacity>
-
+              </Button>
               {/* Settings Icon Button */}
               <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-md">
                 <Settings size={16} color="white" />
@@ -390,20 +453,18 @@ const ScheduleDetailScreen = () => {
         {/* Schedule Grid */}
         <View className="flex-1 flex-col overflow-hidden">
           <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
-            <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
-              <Search size={16} color="#9CA3AF" />
-              <TextInput
-                placeholder="Search employees..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                className="p-2 text-white flex-1"
-              />
+            <View className="w-full border border-gray-600 rounded-lg p-3">
+              <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
+                <Search size={16} color="#9CA3AF" />
+                <TextInput
+                  placeholder="Search employees..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  className="p-2 text-white flex-1"
+                />
+              </View>
             </View>
-
-            <Text className="text-xs text-gray-400">
-              Drag to move • Alt+Drag to duplicate • Right-click for options
-            </Text>
           </View>
 
           <ScheduleGrid
@@ -429,11 +490,21 @@ const ScheduleDetailScreen = () => {
         onSave={handleSaveShift}
         onSaveAndDuplicate={handleSaveAndDuplicate}
       />
+      {selectedShift && (
+        <ShiftActionModal
+          open={isActionModalOpen}
+          onOpenChange={setIsActionModalOpen}
+          shift={selectedShift as Shift}
+          onEdit={handleEditShift}
+          onDelete={handleDeleteShift}
+        />
+      )}
       <PublishModal
         open={publishModalOpen}
         onOpenChange={setPublishModalOpen}
-        scheduleId={periodId as string}
+        scheduleId={currentSchedule.schedule.id}
         scheduleType={currentSchedule.type}
+        originalScheduleId={currentSchedule.schedule.originalScheduleId}
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
@@ -449,8 +520,37 @@ const ScheduleDetailScreen = () => {
         onApprovePTO={(id) => console.log(`Approve PTO ${id}`)}
         onDenyPTO={(id) => console.log(`Deny PTO ${id}`)}
       />
+      <UnsavedChangesDialog
+        isOpen={isDiscardModalOpen}
+        onCancel={() => setIsDiscardModalOpen(false)}
+        onDiscard={handleDiscard}
+      />
     </View>
   );
+};
+
+const ScheduleDetailScreen = () => {
+  const { periodId } = useLocalSearchParams();
+  const { schedulePeriods, weeklySchedules } = useScheduleStore();
+
+  const currentSchedule = useMemo(() => {
+    const period = schedulePeriods.find((p) => p.id === periodId);
+    if (period) return { schedule: period, type: "period" as const };
+    const weekly = weeklySchedules.find((w) => w.id === periodId);
+
+    if (weekly) return { schedule: weekly, type: "week" as const };
+    return null;
+  }, [periodId, schedulePeriods, weeklySchedules]);
+
+  if (!currentSchedule) {
+    return (
+      <Text className="text-white">
+        Loading schedule or schedule not found...
+      </Text>
+    );
+  }
+
+  return <ScheduleDetail currentSchedule={currentSchedule} />;
 };
 
 export default ScheduleDetailScreen;
