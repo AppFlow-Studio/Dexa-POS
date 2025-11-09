@@ -12,6 +12,7 @@ import { Plus } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { ShiftChip } from "./ShiftChip";
+import { isWithinInterval, startOfDay, addDays, format } from "date-fns";
 
 function getWeekDates(startDate: Date): Date[] {
   const dates: Date[] = [];

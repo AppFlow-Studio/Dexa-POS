@@ -186,6 +186,22 @@ export function ShiftEditorModal({
     onOpenChange(false);
   };
 
+  const onDayPress = (day: DateData) => {
+    setDate(day.dateString);
+  };
+
+  const calendarTheme = {
+    calendarBackground: "#303030",
+    monthTextColor: "#FFFFFF",
+    dayTextColor: "#FFFFFF",
+    textDisabledColor: "#6B7280",
+    selectedDayBackgroundColor: "#3b82f6",
+    selectedDayTextColor: "#FFFFFF",
+    todayTextColor: "#60A5FA",
+    arrowColor: "#3b82f6",
+    textSectionTitleColor: "#9CA3AF",
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg bg-[#303030] border-gray-700">

@@ -144,7 +144,7 @@ export function PublishModal({
                   className="text-red-400"
                   color={"#f87171"}
                 />
-                <Text className="text-sm font-semibold text-white">
+                <Text className="text-sm text-white font-semibold">
                   Conflicts Detected
                 </Text>
               </View>

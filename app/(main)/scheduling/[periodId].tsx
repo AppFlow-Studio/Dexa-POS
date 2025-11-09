@@ -165,6 +165,11 @@ const ScheduleDetail = ({
     setShiftEditorOpen(true);
   };
 
+  const handleAddShift = (employeeId: string, date: string) => {
+    setSelectedShift({ employeeId, date });
+    setShiftEditorOpen(true);
+  };
+
   const handleApplyTemplate = (templateId: string) => {
     console.log("Applying template:", templateId);
   };
