@@ -1,9 +1,19 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useDropZoneContext } from "@/contexts/DropZoneContext";
 import { PTORequest, Role, Shift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import {
   addDays,
+  areIntervalsOverlapping,
   differenceInMinutes,
   format,
   isValid,
@@ -12,7 +22,7 @@ import {
   startOfDay,
 } from "date-fns";
 import { Plus } from "lucide-react-native";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   findNodeHandle,
   ScrollView,
@@ -135,6 +145,8 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   scheduleId,
   scheduleType,
 }) => {
+  const [showConflictAlert, setShowConflictAlert] = useState(false);
+  const { dropResult } = useDropZoneContext();
   const weekDates = getWeekDates(startDate);
   const updateShift = useScheduleStore((state) => state.updateShift);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -177,19 +189,77 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   };
 
   const handleShiftDrop = (
-    shift: Shift,
+    draggedShift: Shift,
     newEmployeeId: string,
     newDate: string
   ) => {
-    updateShift(scheduleId, scheduleType, {
-      ...shift,
-      employeeId: newEmployeeId,
-      date: newDate,
-    });
+    // Extract time part from original ISO strings
+    const startTimeStr = format(parseISO(draggedShift.startTime), "HH:mm:ss");
+    const endTimeStr = format(parseISO(draggedShift.endTime), "HH:mm:ss");
+
+    // Construct new ISO strings with the new date
+    const newStartTime = `${newDate}T${startTimeStr}`;
+    const newEndTime = `${newDate}T${endTimeStr}`;
+
+    // Find all shifts for the target employee on the new date, excluding the one being dragged.
+    const targetEmployeeShifts = shifts.filter(
+      (s) =>
+        s.employeeId === newEmployeeId &&
+        s.date === newDate &&
+        s.id !== draggedShift.id
+    );
+
+    const draggedShiftInterval = {
+      start: parseISO(newStartTime),
+      end: parseISO(newEndTime),
+    };
+
+    // Check for any overlapping shifts.
+    const hasOverlap = targetEmployeeShifts.some((existingShift) =>
+      areIntervalsOverlapping(draggedShiftInterval, {
+        start: parseISO(existingShift.startTime),
+        end: parseISO(existingShift.endTime),
+      })
+    );
+
+    if (hasOverlap) {
+      setShowConflictAlert(true);
+      dropResult.value = "failure";
+    } else {
+      // When updating, we need to provide the updated start and end times
+      updateShift(scheduleId, scheduleType, {
+        ...draggedShift,
+        employeeId: newEmployeeId,
+        date: newDate,
+        startTime: newStartTime, // Pass the new start time
+        endTime: newEndTime, // Pass the new end time
+      });
+      dropResult.value = "success";
+    }
   };
 
   return (
     <View className="flex-1 bg-[#212121]">
+      <AlertDialog open={showConflictAlert} onOpenChange={setShowConflictAlert}>
+        <AlertDialogContent className="bg-[#1C1C1E] border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">
+              Shift Conflict
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              This employee already has an overlapping shift.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onPress={() => setShowConflictAlert(false)}
+              className="bg-blue-600"
+            >
+              <Text className="text-white">OK</Text>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View>
           {/* Header */}
@@ -217,7 +287,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
             {employees.map((employee: EmployeeProfile) => (
               <View key={employee.id} className="flex-row">
                 <View className="w-48 bg-[#303030] p-3 flex-row items-center border-r border-gray-700 border-b">
-                  <View className="w-12 h-12 rounded-full bg-red-500 items-center justify-center mr-3">
+                  <View className="w-12 h-12 rounded-full bg-purple-500 items-center justify-center mr-3">
                     <Text className="text-white font-bold text-lg">
                       {employee.fullName
                         .split(" ")

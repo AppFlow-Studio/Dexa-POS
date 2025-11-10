@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { useUndoableToast } from "@/hooks/useUndoableToast";
 import { PTORequest, Shift, ShiftRequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -49,6 +50,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
     const snapPoints = useMemo(() => ["90%"], []);
     const [selectedShift, setSelectedShift] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState("open-shifts");
+    const { showUndoableToast } = useUndoableToast();
 
     const { employees, loggedInEmployee } = useEmployeeStore();
     const {
@@ -63,6 +65,9 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       denySwap,
       schedulePeriods,
       weeklySchedules,
+      revertPTORequestApproval,
+      revertDropRequestApproval,
+      revertSwapApproval,
     } = useScheduleStore();
 
     const ptoRequests = useMemo(
@@ -119,6 +124,18 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       }
     };
 
+    const handleApprovePTO = (request: PTORequest) => {
+      if (!loggedInEmployee) return;
+      approvePTORequest(request.id, loggedInEmployee.id);
+      showUndoableToast(
+        "PTO Request Approved",
+        `${getEmployeeName(request.employeeId)}'s request has been approved.`,
+        () => {
+          revertPTORequestApproval(request.id);
+        }
+      );
+    };
+
     const renderContent = () => {
       switch (activeTab) {
         case "open-shifts":
@@ -172,9 +189,19 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                     key={req.id}
                     request={req}
                     employeeName={getEmployeeName(req.shift.employeeId!)}
-                    onApprove={() =>
-                      approveDropRequest(req.id, loggedInEmployee!.id)
-                    }
+                    onApprove={() => {
+                      if (!loggedInEmployee) return;
+                      approveDropRequest(req.id, loggedInEmployee.id);
+                      showUndoableToast(
+                        "Drop Request Approved",
+                        `${getEmployeeName(
+                          req.shift.employeeId!
+                        )}'s request has been approved.`,
+                        () => {
+                          revertDropRequestApproval(req.id);
+                        }
+                      );
+                    }}
                     onDeny={() => handleDenyClick(req)}
                   />
                 ))
@@ -208,10 +235,23 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                       peerName={getEmployeeName(req.peerId!)}
                       myShift={myShift}
                       peerShift={peerShift}
-                      onApprove={() => approveSwap(req.id)}
+                      onApprove={() => {
+                        approveSwap(req.id);
+                        showUndoableToast(
+                          "Swap Request Approved",
+                          `The swap between ${getEmployeeName(
+                            req.ownerId
+                          )} and ${getEmployeeName(
+                            req.peerId!
+                          )} has been approved.`,
+                          () => {
+                            revertSwapApproval(req.id);
+                          }
+                        );
+                      }}
                       onDeny={() => denySwap(req.id)}
                     />
-                  )
+                  );
                 })
               )}
             </View>
@@ -238,9 +278,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                     startDate={new Date(req.startDate).toLocaleDateString()}
                     endDate={new Date(req.endDate).toLocaleDateString()}
                     reason={req.note}
-                    onApprove={() =>
-                      approvePTORequest(req.id, loggedInEmployee!.id)
-                    }
+                    onApprove={() => handleApprovePTO(req)}
                     onDeny={() => handleDenyClick(req)}
                   />
                 ))
@@ -285,40 +323,66 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
             <View className="flex-row w-full rounded-none border-b border-gray-700 bg-transparent px-6">
               <TouchableOpacity
                 onPress={() => setActiveTab("open-shifts")}
-                className={`flex-1 py-3 items-center border-b-2 ${activeTab === "open-shifts" ? "border-blue-400" : "border-transparent"}`}
+                className={`flex-1 py-3 items-center border-b-2 ${
+                  activeTab === "open-shifts"
+                    ? "border-blue-400"
+                    : "border-transparent"
+                }`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "open-shifts" ? "text-blue-400" : "text-gray-400"}`}
+                  className={`font-semibold ${
+                    activeTab === "open-shifts"
+                      ? "text-blue-400"
+                      : "text-gray-400"
+                  }`}
                 >
                   Open Shifts
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("drop-requests")}
-                className={`flex-1 py-3 items-center border-b-2 ${activeTab === "drop-requests" ? "border-blue-400" : "border-transparent"}`}
+                className={`flex-1 py-3 items-center border-b-2 ${
+                  activeTab === "drop-requests"
+                    ? "border-blue-400"
+                    : "border-transparent"
+                }`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "drop-requests" ? "text-blue-400" : "text-gray-400"}`}
+                  className={`font-semibold ${
+                    activeTab === "drop-requests"
+                      ? "text-blue-400"
+                      : "text-gray-400"
+                  }`}
                 >
                   Drop Requests
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("swaps")}
-                className={`flex-1 py-3 items-center border-b-2 ${activeTab === "swaps" ? "border-blue-400" : "border-transparent"}`}
+                className={`flex-1 py-3 items-center border-b-2 ${
+                  activeTab === "swaps"
+                    ? "border-blue-400"
+                    : "border-transparent"
+                }`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "swaps" ? "text-blue-400" : "text-gray-400"}`}
+                  className={`font-semibold ${
+                    activeTab === "swaps" ? "text-blue-400" : "text-gray-400"
+                  }`}
                 >
                   Swaps
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("pto")}
-                className={`flex-1 py-3 items-center border-b-2 ${activeTab === "pto" ? "border-blue-400" : "border-transparent"}`}
+                className={`flex-1 py-3 items-center border-b-2 ${
+                  activeTab === "pto" ? "border-blue-400" : "border-transparent"
+                }`}
               >
                 <Text
-                  className={`font-semibold ${activeTab === "pto" ? "text-blue-400" : "text-gray-400"}`}
+                  className={`font-semibold ${
+                    activeTab === "pto" ? "text-blue-400" : "text-gray-400"
+                  }`}
                 >
                   PTO
                 </Text>

@@ -7,6 +7,7 @@ import CustomerSheet from "@/components/bill/CustomerSheet";
 import PaymentModal from "@/components/bill/PaymentModal";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
+import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -57,19 +58,6 @@ export default function RootLayout() {
     hasMounted.current = true;
   }, []);
 
-  // useEffect(() => {
-  //   // iOS: Smooth animations
-  //   if (Platform.OS === "ios") {
-  //     Keyboard.addListener("keyboardWillShow", keyboardWillShow);
-  //     Keyboard.addListener("keyboardWillHide", keyboardWillHide);
-  //   }
-  //   // Android: Immediate response
-  //   else {
-  //     Keyboard.addListener("keyboardDidShow", keyboardDidShow);
-  //     Keyboard.addListener("keyboardDidHide", keyboardDidHide);
-  //   }
-  // }, []);
-
   if (!isColorSchemeLoaded) {
     return null;
   }
@@ -78,39 +66,41 @@ export default function RootLayout() {
     <GestureHandlerRootView>
       <SafeAreaProvider>
         <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <StatusBar style={"dark"} translucent />
-          <Stack
-            screenOptions={{ headerShown: false }}
-            initialRouteName="(auth)"
-          />
-          <PortalHost />
-          <SearchBottomSheet />
-          <PaymentModal />
-          <ItemCustomizationDialog />
-          <ClockInWallModal
-            isOpen={isClockInWallOpen}
-            onClose={hideClockInWall}
-          />
-          <ManagerPinModal />
-          <CustomerSheet />
-          <Toasts
-            defaultStyle={{
-              view: {
-                backgroundColor: "#ffffff",
-                borderWidth: 1,
-                borderColor: "#e5e7eb",
-                flex: 1,
-              },
-              text: {
-                color: "#1f2937",
-                fontWeight: "bold",
-                fontSize: 24,
-              },
-              indicator: {
-                backgroundColor: "#659AF0",
-              },
-            }}
-          />
+          <ToastProvider>
+            <StatusBar style={"dark"} translucent />
+            <Stack
+              screenOptions={{ headerShown: false }}
+              initialRouteName="(auth)"
+            />
+            <PortalHost />
+            <SearchBottomSheet />
+            <PaymentModal />
+            <ItemCustomizationDialog />
+            <ClockInWallModal
+              isOpen={isClockInWallOpen}
+              onClose={hideClockInWall}
+            />
+            <ManagerPinModal />
+            <CustomerSheet />
+            <Toasts
+              defaultStyle={{
+                view: {
+                  backgroundColor: "#ffffff",
+                  borderWidth: 1,
+                  borderColor: "#e5e7eb",
+                  flex: 1,
+                },
+                text: {
+                  color: "#1f2937",
+                  fontWeight: "bold",
+                  fontSize: 24,
+                },
+                indicator: {
+                  backgroundColor: "#659AF0",
+                },
+              }}
+            />
+          </ToastProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

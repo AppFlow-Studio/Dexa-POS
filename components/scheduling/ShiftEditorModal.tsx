@@ -26,6 +26,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { DateData } from "react-native-calendars";
 import { ScrollView } from "react-native-gesture-handler";
 interface ShiftEditorModalProps {
   open: boolean;
@@ -59,9 +60,10 @@ const combineToISO = (date: string, time12h: string) => {
 const timeSlots = Array.from({ length: 48 }, (_, i) => {
   const hours = Math.floor(i / 2);
   const minutes = (i % 2) * 30;
-  const time24 = `${String(hours).padStart(2, "0")}:${String(
-    minutes
-  ).padStart(2, "0")}`;
+  const time24 = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}`;
   return format(parse(time24, "HH:mm", new Date()), "h:mm a");
 });
 

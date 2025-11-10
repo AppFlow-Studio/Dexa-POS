@@ -66,8 +66,6 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onCancelDropRequest,
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
-  console.log("shift status:", shift.status);
-
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
@@ -119,8 +117,10 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       <View className="flex-row items-center gap-2 mb-2">
         <Clock size={16} color="#9CA3AF" />
         <Text className="text-base text-white">
-          {shift.startTime ? format(parseISO(shift.startTime), "h:mm a") : "N/A"} –{" "}
-          {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
+          {shift.startTime
+            ? format(parseISO(shift.startTime), "h:mm a")
+            : "N/A"}{" "}
+          – {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
         </Text>
         {shift.status === "on-shift" && shift.actualClockIn && (
           <Text className="text-base text-green-400">

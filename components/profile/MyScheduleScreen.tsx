@@ -133,8 +133,6 @@ const MyScheduleScreen = () => {
   };
 
   const handleRequestSwap = (shift: Shift) => {
-    console.log("this is working fine");
-
     setShiftToSwap(shift);
     swapWizardRef.current?.expand();
   };

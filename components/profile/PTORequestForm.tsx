@@ -11,6 +11,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import Popover from "react-native-popover-view";
@@ -123,109 +125,116 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   };
 
   return (
-    <View className="p-4 bg-[#303030] border border-gray-700 rounded-2xl mb-6">
-      <View className="flex-row items-center justify-between mb-4">
-        <Text className="text-xl font-semibold text-white">
-          New PTO Request
-        </Text>
-        <TouchableOpacity onPress={onClose}>
-          <Text className="text-gray-400">Cancel</Text>
-        </TouchableOpacity>
-      </View>
-      <View className="gap-y-4">
-        <View className="flex-row gap-4">
-          <View className="flex-1">
-            <Text className="text-gray-300 mb-1">Start Date</Text>
-            <TouchableOpacity
-              ref={startDateRef}
-              onPress={() => setIsStartDatePickerOpen(true)}
-              className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
-            >
-              <Text className="text-white">
-                {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
-              </Text>
-              <CalendarIcon size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-            <Popover
-              from={startDateRef as unknown as React.RefObject<RNView>}
-              isVisible={isStartDatePickerOpen}
-              onRequestClose={() => setIsStartDatePickerOpen(false)}
-            >
-              <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
-                <Calendar
-                  onDayPress={(day) => onDayPress(day, "start")}
-                  theme={calendarTheme}
-                  markedDates={{
-                    [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
-                      selected: true,
-                      selectedColor: "#3b82f6",
-                    },
-                  }}
-                />
-              </View>
-            </Popover>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+    >
+      <View className="p-4 bg-[#303030] border border-gray-700 rounded-2xl mb-6">
+        <View className="flex-row items-center justify-between mb-4">
+          <Text className="text-xl font-semibold text-white">
+            New PTO Request
+          </Text>
+          <TouchableOpacity onPress={onClose}>
+            <Text className="text-gray-400">Cancel</Text>
+          </TouchableOpacity>
+        </View>
+        <View className="gap-y-4">
+          <View className="flex-row gap-4">
+            <View className="flex-1">
+              <Text className="text-gray-300 mb-1">Start Date</Text>
+              <TouchableOpacity
+                ref={startDateRef}
+                onPress={() => setIsStartDatePickerOpen(true)}
+                className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+              >
+                <Text className="text-white">
+                  {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
+                </Text>
+                <CalendarIcon size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+              <Popover
+                from={startDateRef as unknown as React.RefObject<RNView>}
+                isVisible={isStartDatePickerOpen}
+                onRequestClose={() => setIsStartDatePickerOpen(false)}
+              >
+                <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                  <Calendar
+                    onDayPress={(day) => onDayPress(day, "start")}
+                    theme={calendarTheme}
+                    markedDates={{
+                      [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
+                        selected: true,
+                        selectedColor: "#3b82f6",
+                      },
+                    }}
+                  />
+                </View>
+              </Popover>
+            </View>
+
+            <View className="flex-1">
+              <Text className="text-gray-300 mb-1">End Date</Text>
+              <TouchableOpacity
+                ref={endDateRef}
+                onPress={() => setIsEndDatePickerOpen(true)}
+                className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+              >
+                <Text className="text-white">
+                  {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
+                </Text>
+                <CalendarIcon size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+              <Popover
+                from={endDateRef as unknown as React.RefObject<RNView>}
+                isVisible={isEndDatePickerOpen}
+                onRequestClose={() => setIsEndDatePickerOpen(false)}
+              >
+                <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
+                  <Calendar
+                    onDayPress={(day) => onDayPress(day, "end")}
+                    theme={calendarTheme}
+                    markedDates={{
+                      [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
+                        selected: true,
+                        selectedColor: "#3b82f6",
+                      },
+                    }}
+                  />
+                </View>
+              </Popover>
+            </View>
           </View>
 
-          <View className="flex-1">
-            <Text className="text-gray-300 mb-1">End Date</Text>
-            <TouchableOpacity
-              ref={endDateRef}
-              onPress={() => setIsEndDatePickerOpen(true)}
-              className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
-            >
-              <Text className="text-white">
-                {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
+          {calculateHours() > 0 && (
+            <View className="p-3 bg-blue-600/10 border border-blue-500/20 rounded-lg flex-row justify-between items-center">
+              <Text className="text-sm text-gray-400">
+                Total Hours Requested
               </Text>
-              <CalendarIcon size={16} color="#9CA3AF" />
-            </TouchableOpacity>
-            <Popover
-              from={endDateRef as unknown as React.RefObject<RNView>}
-              isVisible={isEndDatePickerOpen}
-              onRequestClose={() => setIsEndDatePickerOpen(false)}
-            >
-              <View className="w-96 bg-[#303030] border-gray-700 z-50 rounded-lg">
-                <Calendar
-                  onDayPress={(day) => onDayPress(day, "end")}
-                  theme={calendarTheme}
-                  markedDates={{
-                    [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
-                      selected: true,
-                      selectedColor: "#3b82f6",
-                    },
-                  }}
-                />
-              </View>
-            </Popover>
+              <Text className="text-lg font-bold text-blue-400">
+                {calculateHours()}h
+              </Text>
+            </View>
+          )}
+          <View>
+            <Text className="text-gray-300 mb-1">Note (Optional)</Text>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Add any additional details..."
+              multiline
+              placeholderTextColor="#6B7280"
+              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white min-h-[80px]"
+            />
           </View>
+          <TouchableOpacity
+            onPress={handleSubmit}
+            className="py-3 bg-blue-600 rounded-lg items-center"
+          >
+            <Text className="font-bold text-white">Submit Request</Text>
+          </TouchableOpacity>
         </View>
-
-        {calculateHours() > 0 && (
-          <View className="p-3 bg-blue-600/10 border border-blue-500/20 rounded-lg flex-row justify-between items-center">
-            <Text className="text-sm text-gray-400">Total Hours Requested</Text>
-            <Text className="text-lg font-bold text-blue-400">
-              {calculateHours()}h
-            </Text>
-          </View>
-        )}
-        <View>
-          <Text className="text-gray-300 mb-1">Note (Optional)</Text>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Add any additional details..."
-            multiline
-            placeholderTextColor="#6B7280"
-            className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white min-h-[80px]"
-          />
-        </View>
-        <TouchableOpacity
-          onPress={handleSubmit}
-          className="py-3 bg-blue-600 rounded-lg items-center"
-        >
-          <Text className="font-bold text-white">Submit Request</Text>
-        </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

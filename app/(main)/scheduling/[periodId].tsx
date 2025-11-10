@@ -11,7 +11,13 @@ import {
   X,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,81 +31,41 @@ import {
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
-import PublishModal from "@/components/scheduling/PublishModal";
+import { PublishModal } from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
-import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
+import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
-import { mockShiftsScheudleGrid } from "@/lib/mockData";
 import {
   PTORequest,
   Role,
   SchedulePeriod,
   Shift,
-  ShiftRequest as SwapRequest,
   WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { addDays, isAfter, isBefore, subDays } from "date-fns";
-import { ScrollView } from "react-native-gesture-handler";
-
-const mockSwapRequests: SwapRequest[] = [
-  {
-    id: "swap1",
-    ownerId: "1",
-    shift: mockShiftsScheudleGrid[0],
-    status: "pending",
-    note: "Schedule conflict",
-    type: "swap",
-    submittedAt: new Date().toISOString(),
-  },
-  {
-    id: "swap2",
-    ownerId: "2",
-    shift: mockShiftsScheudleGrid[1],
-    status: "pending",
-    type: "swap",
-    submittedAt: new Date().toISOString(),
-  },
-];
-
-const mockPtoRequests: PTORequest[] = [
-  {
-    id: "pto1",
-    employeeId: "4",
-    startDate: "2025-01-15",
-    endDate: "2025-01-16",
-    note: "Family event",
-    status: "pending",
-    hours: 16,
-    submittedAt: new Date().toISOString(),
-  },
-  {
-    id: "pto2",
-    employeeId: "7",
-    startDate: "2025-01-17",
-    endDate: "2025-01-17",
-    note: "Medical appointment",
-    status: "pending",
-    hours: 8,
-    submittedAt: new Date().toISOString(),
-  },
-];
 
 const ScheduleDetail = ({
   currentSchedule,
   approvedPtoRequests,
+  pendingSwapRequestsCount,
+  pendingPtoRequestsCount,
+  pendingDropRequestsCount,
 }: {
   currentSchedule: {
     schedule: SchedulePeriod | WeeklySchedule;
     type: "period" | "week";
   };
   approvedPtoRequests: PTORequest[];
+  pendingSwapRequestsCount: number;
+  pendingPtoRequestsCount: number;
+  pendingDropRequestsCount: number;
 }) => {
   const router = useRouter();
   const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
@@ -160,11 +126,6 @@ const ScheduleDetail = ({
   const handleShiftClick = (shift: Shift) => {
     setSelectedShift(shift);
     setIsActionModalOpen(true);
-  };
-
-  const handleAddShift = (employeeId: string, date: string) => {
-    setSelectedShift({ employeeId, date });
-    setShiftEditorOpen(true);
   };
 
   const handleAddShift = (employeeId: string, date: string) => {
@@ -254,6 +215,11 @@ const ScheduleDetail = ({
     completed: "text-gray-400",
     "draft-edit": "text-yellow-400",
   };
+
+  const totalPendingRequests =
+    pendingSwapRequestsCount +
+    pendingPtoRequestsCount +
+    pendingDropRequestsCount;
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -414,7 +380,15 @@ const ScheduleDetail = ({
                     <Text className="text-sm font-semibold text-white">
                       Open Shifts
                     </Text>
-                    <Badge className="ml-auto bg-gray-700">
+                    <Badge
+                      className={`ml-auto ${
+                        currentSchedule.schedule.shifts.filter(
+                          (s) => s.status === "open"
+                        ).length > 0
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-700 text-white"
+                      }`}
+                    >
                       <Text className="text-white">
                         {
                           currentSchedule.schedule.shifts.filter(
@@ -443,9 +417,19 @@ const ScheduleDetail = ({
                     <Text className="text-sm font-semibold text-white">
                       Swaps & Requests
                     </Text>
-                    <Badge className="ml-auto bg-gray-700">
-                      <Text className="text-white">
-                        {mockSwapRequests.length + mockPtoRequests.length}
+                    <Badge
+                      className={`ml-auto ${
+                        totalPendingRequests > 0
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-700 text-white"
+                      }`}
+                    >
+                      <Text
+                        className={
+                          totalPendingRequests > 0 ? "text-white" : "text-white"
+                        }
+                      >
+                        {totalPendingRequests}
                       </Text>
                     </Badge>
                   </View>
@@ -538,11 +522,35 @@ const ScheduleDetail = ({
 
 const ScheduleDetailScreen = () => {
   const { periodId } = useLocalSearchParams();
-  const { schedulePeriods, weeklySchedules, ptoRequests } = useScheduleStore();
+  const {
+    schedulePeriods,
+    weeklySchedules,
+    ptoRequests,
+    swapRequests,
+    dropRequests,
+  } = useScheduleStore();
 
   const approvedPtoRequests = useMemo(
     () => ptoRequests.filter((r) => r.status === "approved"),
     [ptoRequests]
+  );
+
+  const pendingPtoRequestsCount = useMemo(
+    () => ptoRequests.filter((r) => r.status === "pending").length,
+    [ptoRequests]
+  );
+
+  const pendingSwapRequestsCount = useMemo(
+    () =>
+      swapRequests.filter(
+        (r) => r.status === "pending-manager" || r.status === "pending-peer"
+      ).length,
+    [swapRequests]
+  );
+
+  const pendingDropRequestsCount = useMemo(
+    () => dropRequests.filter((r) => r.status === "pending").length,
+    [dropRequests]
   );
 
   const currentSchedule = useMemo(() => {
@@ -566,6 +574,9 @@ const ScheduleDetailScreen = () => {
     <ScheduleDetail
       currentSchedule={currentSchedule}
       approvedPtoRequests={approvedPtoRequests}
+      pendingSwapRequestsCount={pendingSwapRequestsCount}
+      pendingPtoRequestsCount={pendingPtoRequestsCount}
+      pendingDropRequestsCount={pendingDropRequestsCount}
     />
   );
 };

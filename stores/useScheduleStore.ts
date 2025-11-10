@@ -30,12 +30,14 @@ interface ScheduleRequestState {
   acceptSwap: (requestId: string, peerId: string) => void;
   denySwap: (requestId: string, reason?: string) => void;
   approveSwap: (requestId: string) => void;
+  revertSwapApproval: (requestId: string) => void;
   addPTORequest: (
     request: Omit<PTORequest, "id" | "submittedAt" | "status">
   ) => void;
 
   // Drop Request Actions
   approveDropRequest: (requestId: string, approverId: string) => void;
+  revertDropRequestApproval: (requestId: string) => void;
   denyDropRequest: (
     requestId: string,
     approverId: string,
@@ -45,6 +47,7 @@ interface ScheduleRequestState {
 
   // PTO Request Actions
   approvePTORequest: (requestId: string, approverId: string) => void;
+  revertPTORequestApproval: (requestId: string) => void;
   denyPTORequest: (
     requestId: string,
     approverId: string,
@@ -310,30 +313,74 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               return;
             }
 
-            request.status = "approved";
-
             const { ownerId, peerId, myShiftId, peerShiftId } = request;
+            const allSchedules = [
+              ...state.schedulePeriods,
+              ...state.weeklySchedules,
+            ];
 
-            // Swap employees and revert status in all schedules
+            let myShift, peerShift;
+            for (const schedule of allSchedules) {
+              if (!myShift)
+                myShift = schedule.shifts.find((s) => s.id === myShiftId);
+              if (!peerShift)
+                peerShift = schedule.shifts.find((s) => s.id === peerShiftId);
+            }
+
+            if (myShift && peerShift) {
+              request.revertedMyShift = JSON.parse(JSON.stringify(myShift));
+              request.revertedPeerShift = JSON.parse(JSON.stringify(peerShift));
+
+              myShift.employeeId = peerId ?? null;
+              myShift.status = "confirmed";
+              peerShift.employeeId = ownerId;
+              peerShift.status = "confirmed";
+            }
+
+            request.status = "approved";
+          });
+        },
+        revertSwapApproval: (requestId) => {
+          set((state) => {
+            const request = state.swapRequests.find((r) => r.id === requestId);
+            if (
+              !request ||
+              !request.revertedMyShift ||
+              !request.revertedPeerShift
+            ) {
+              console.error(
+                `Swap request with ID ${requestId} not found or no reverted shifts stored.`
+              );
+              return;
+            }
+
+            request.status = "pending-manager";
+
             const allSchedules = [
               ...state.schedulePeriods,
               ...state.weeklySchedules,
             ];
             for (const schedule of allSchedules) {
-              const myShift = schedule.shifts.find((s) => s.id === myShiftId);
-              const peerShift = schedule.shifts.find(
-                (s) => s.id === peerShiftId
+              const myShiftIndex = schedule.shifts.findIndex(
+                (s) => s.id === request.revertedMyShift!.id
               );
-
-              if (myShift) {
-                myShift.employeeId = peerId ?? null;
-                myShift.status = "confirmed";
+              if (myShiftIndex !== -1) {
+                schedule.shifts[myShiftIndex] = JSON.parse(
+                  JSON.stringify(request.revertedMyShift)
+                );
               }
-              if (peerShift) {
-                peerShift.employeeId = ownerId;
-                peerShift.status = "confirmed";
+              const peerShiftIndex = schedule.shifts.findIndex(
+                (s) => s.id === request.revertedPeerShift!.id
+              );
+              if (peerShiftIndex !== -1) {
+                schedule.shifts[peerShiftIndex] = JSON.parse(
+                  JSON.stringify(request.revertedPeerShift)
+                );
               }
             }
+
+            request.revertedMyShift = undefined;
+            request.revertedPeerShift = undefined;
           });
         },
         addPTORequest: (request) => {
@@ -357,6 +404,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               return;
             }
 
+            // Store original shift before modification
+            request.revertedShift = JSON.parse(JSON.stringify(request.shift));
+
             // Find and update the corresponding shift in all schedules
             const allSchedules = [
               ...state.schedulePeriods,
@@ -371,10 +421,44 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               }
             }
 
-            // Remove the approved request from the list
-            state.dropRequests = state.dropRequests.filter(
-              (r) => r.id !== requestId
-            );
+            // Update the request status
+            request.status = "approved";
+            request.approverId = approverId;
+          });
+        },
+
+        revertDropRequestApproval: (requestId) => {
+          set((state) => {
+            const request = state.dropRequests.find((r) => r.id === requestId);
+            if (!request || !request.revertedShift) {
+              console.error(
+                `Drop request with ID ${requestId} not found or no reverted shift stored.`
+              );
+              return;
+            }
+
+            // Revert the request's status
+            request.status = "pending";
+            request.approverId = undefined;
+
+            // Restore the original shift
+            const allSchedules = [
+              ...state.schedulePeriods,
+              ...state.weeklySchedules,
+            ];
+            for (const schedule of allSchedules) {
+              const shiftIndex = schedule.shifts.findIndex(
+                (s) => s.id === request.revertedShift!.id
+              );
+              if (shiftIndex !== -1) {
+                schedule.shifts[shiftIndex] = JSON.parse(
+                  JSON.stringify(request.revertedShift)
+                );
+              }
+            }
+
+            // Clear the reverted shift
+            request.revertedShift = undefined;
           });
         },
 
@@ -440,17 +524,32 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               return;
             }
 
+            // Store original shifts before modification
+            const originalShifts: Shift[] = [];
+            const allSchedules = [
+              ...state.schedulePeriods,
+              ...state.weeklySchedules,
+            ];
+
+            for (const schedule of allSchedules) {
+              for (const shift of schedule.shifts) {
+                if (
+                  shift.employeeId === request.employeeId &&
+                  shift.date >= request.startDate &&
+                  shift.date <= request.endDate
+                ) {
+                  originalShifts.push(JSON.parse(JSON.stringify(shift)));
+                }
+              }
+            }
+            request.revertedShifts = originalShifts;
+
             // Update its status and approverId
             request.status = "approved";
             request.approverId = approverId;
             request.reviewedAt = new Date().toISOString();
 
             // Crucially, iterate through all schedules
-            const allSchedules = [
-              ...state.schedulePeriods,
-              ...state.weeklySchedules,
-            ];
-
             for (const schedule of allSchedules) {
               // Find all shifts for the employee
               for (const shift of schedule.shifts) {
@@ -468,6 +567,43 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 }
               }
             }
+          });
+        },
+        revertPTORequestApproval: (requestId) => {
+          set((state) => {
+            const request = state.ptoRequests.find((r) => r.id === requestId);
+            if (!request || !request.revertedShifts) {
+              console.error(
+                `PTO Request with ID ${requestId} not found or no reverted shifts stored.`
+              );
+              return;
+            }
+
+            // Revert the request's status
+            request.status = "pending";
+            request.approverId = undefined;
+            request.reviewedAt = undefined;
+
+            // Restore the original shifts
+            const allSchedules = [
+              ...state.schedulePeriods,
+              ...state.weeklySchedules,
+            ];
+            for (const originalShift of request.revertedShifts) {
+              for (const schedule of allSchedules) {
+                const shiftIndex = schedule.shifts.findIndex(
+                  (s) => s.id === originalShift.id
+                );
+                if (shiftIndex !== -1) {
+                  schedule.shifts[shiftIndex] = JSON.parse(
+                    JSON.stringify(originalShift)
+                  );
+                }
+              }
+            }
+
+            // Clear the reverted shifts
+            request.revertedShifts = [];
           });
         },
 
@@ -824,9 +960,6 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           const draftSchedule =
             state.schedulePeriods.find((p) => p.id === draftId) ||
             state.weeklySchedules.find((w) => w.id === draftId);
-
-          console.log("Original Schedule:", originalSchedule);
-          console.log("Draft Schedule:", draftSchedule);
 
           if (!originalSchedule || !draftSchedule) {
             return { added: 0, updated: 0, removed: 0 };

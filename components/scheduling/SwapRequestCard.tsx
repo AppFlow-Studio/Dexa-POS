@@ -2,7 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Shift } from "@/lib/types";
 import { format, parseISO } from "date-fns";
-import { ArrowRightLeft, CheckCircle2, Clock, MapPin, X } from "lucide-react-native";
+import {
+  ArrowRightLeft,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  X,
+} from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 
@@ -22,28 +28,28 @@ const ShiftInfoCard = ({ shift }: { shift: Shift }) => (
       {format(parseISO(shift.date), "EEEE, MMM d")}
     </Text>
     <View className="flex-row gap-4">
-        <View className="flex-row items-center gap-2">
-          <Clock size={16} color="#9CA3AF" />
-          <Text className="text-sm text-gray-400">
-            {shift.startTime} - {shift.endTime}
-          </Text>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <MapPin size={16} color="#9CA3AF" />
-          <Text className="text-sm text-gray-400">{shift.location}</Text>
-        </View>
+      <View className="flex-row items-center gap-2">
+        <Clock size={16} color="#9CA3AF" />
+        <Text className="text-sm text-gray-400">
+          {shift.startTime} - {shift.endTime}
+        </Text>
       </View>
+      <View className="flex-row items-center gap-2">
+        <MapPin size={16} color="#9CA3AF" />
+        <Text className="text-sm text-gray-400">{shift.location}</Text>
+      </View>
+    </View>
   </View>
 );
 
-const SwapRequestCard: React.FC<SwapRequestCardProps> = ({ 
+const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
   ownerName,
   peerName,
   myShift,
   peerShift,
   onApprove,
   onDeny,
- }) => {
+}) => {
   return (
     <View className="p-4 bg-[#212121] border border-gray-700 rounded-2xl gap-y-3">
       <View className="flex-row items-center justify-between">
@@ -55,17 +61,22 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
 
       <View className="gap-y-2">
         <Text className="text-sm text-gray-300">
-          <Text className="font-bold text-white">{ownerName}</Text> wants to swap with <Text className="font-bold text-white">{peerName}</Text>.
+          <Text className="font-bold text-white">{ownerName}</Text> wants to
+          swap with <Text className="font-bold text-white">{peerName}</Text>.
         </Text>
       </View>
 
       <View className="gap-y-2">
-        <Text className="text-xs text-gray-400 font-semibold">{ownerName} offers:</Text>
+        <Text className="text-xs text-gray-400 font-semibold">
+          {ownerName} offers:
+        </Text>
         <ShiftInfoCard shift={myShift} />
         <View className="items-center my-1">
           <ArrowRightLeft size={20} color="#3b82f6" />
         </View>
-        <Text className="text-xs text-gray-400 font-semibold">For {peerName}'s shift:</Text>
+        <Text className="text-xs text-gray-400 font-semibold">
+          For {peerName}'s shift:
+        </Text>
         <ShiftInfoCard shift={peerShift} />
       </View>
 
@@ -79,8 +90,8 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         </Button>
         <Button
           onPress={onDeny}
-          variant="outline"
-          className="flex-1 gap-2 bg-transparent border-gray-600 flex-row"
+          variant="destructive"
+          className="flex-1 gap-2 border-gray-600 flex-row"
         >
           <X size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Deny</Text>

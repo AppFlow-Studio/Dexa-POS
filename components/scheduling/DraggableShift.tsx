@@ -25,7 +25,7 @@ export const DraggableShift: React.FC<DraggableShiftProps> = ({
   wage,
   onShiftDrop,
 }) => {
-  const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey } =
+  const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey, dropResult } =
     useDropZoneContext();
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -35,24 +35,21 @@ export const DraggableShift: React.FC<DraggableShiftProps> = ({
     .onBegin(() => {
       isDragging.value = true;
       draggingCellKey.value = `${shift.employeeId}-${shift.date}`;
+      dropResult.value = "idle"; // Reset on new drag
     })
     .onUpdate((e) => {
       translateX.value = e.translationX;
       translateY.value = e.translationY;
     })
     .onEnd(() => {
-      let droppedSuccessfully = false;
       if (hoveredDropZoneKey.value) {
         const parts = hoveredDropZoneKey.value.split("-");
         const newEmployeeId = parts[0];
         const newDate = parts.slice(1).join("-"); // Re-join date parts like "2025-11-10"
 
         runOnJS(onShiftDrop)(shift, newEmployeeId, newDate);
-        droppedSuccessfully = true;
-      }
-
-      // Only animate back if the drop was NOT successful
-      if (!droppedSuccessfully) {
+      } else {
+        // Dropped outside a valid zone, so animate back
         translateX.value = withTiming(0);
         translateY.value = withTiming(0);
       }
@@ -62,6 +59,18 @@ export const DraggableShift: React.FC<DraggableShiftProps> = ({
       draggingCellKey.value = null;
       hoveredDropZoneKey.value = null;
     });
+
+  // This reaction handles the result of the drop from the JS thread
+  useAnimatedReaction(
+    () => dropResult.value,
+    (result) => {
+      if (result === "failure") {
+        translateX.value = withTiming(0);
+        translateY.value = withTiming(0);
+      }
+    },
+    [dropResult]
+  );
 
   useAnimatedReaction(
     () => ({
