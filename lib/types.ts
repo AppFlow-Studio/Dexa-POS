@@ -435,19 +435,29 @@ export interface PTORequest {
   reviewedAt?: string; // ISO string
   approverId?: string;
   denialReason?: string;
+  revertedShifts?: Shift[];
 }
 
 export interface ShiftRequest {
   id: string;
   ownerId: string; // The employee who initiated the request.
   type: "drop" | "swap";
-  status: "pending" | "approved" | "denied" | "picked-up" | "completed" | "pending-peer" | "pending-manager" | "canceled";
+  status:
+    | "pending"
+    | "approved"
+    | "denied"
+    | "picked-up"
+    | "completed"
+    | "pending-peer"
+    | "pending-manager"
+    | "canceled";
   submittedAt: string; // ISO string
   shift: Shift; // Kept for drop requests
   note?: string;
   reason?: string;
   approverId?: string;
   denialReason?: string;
+  revertedShift?: Shift;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;
@@ -455,6 +465,8 @@ export interface ShiftRequest {
   myShiftId?: string; // The ID of the shift being offered by the initiator.
   peerId?: string; // The employee ID of the peer being requested to swap with.
   peerShiftId?: string; // The ID of the shift being offered in return by the peer.
+  revertedMyShift?: Shift;
+  revertedPeerShift?: Shift;
 }
 
 export interface ShiftStatus {
