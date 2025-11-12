@@ -1,4 +1,4 @@
-import { MOCK_SWAP_REQUESTS } from "@/lib/mockData";
+import { validatePtoRequest } from "@/lib/rules";
 import {
   ConflictInfo,
   PTORequest,
@@ -12,6 +12,7 @@ import { areIntervalsOverlapping } from "date-fns";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
+import { usePtoStore } from "./usePtoStore";
 
 // Helper to generate unique IDs
 const generateId = () =>
@@ -131,7 +132,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
         schedulePeriods: [],
         weeklySchedules: [],
         dropRequests: [],
-        swapRequests: MOCK_SWAP_REQUESTS,
+        swapRequests: [],
         ptoRequests: [],
 
         addDropRequest: (request) => {
@@ -524,6 +525,18 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               return;
             }
 
+            // Validate the PTO request
+            const validationErrors = validatePtoRequest(request);
+            if (validationErrors.length > 0) {
+              console.error("PTO Request validation failed:", validationErrors);
+              // Optionally, update request status to 'denied' or add a denial reason
+              request.status = "denied";
+              request.denialReason = validationErrors.join("; ");
+              request.approverId = approverId;
+              request.reviewedAt = new Date().toISOString();
+              return;
+            }
+
             // Store original shifts before modification
             const originalShifts: Shift[] = [];
             const allSchedules = [
@@ -548,6 +561,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             request.status = "approved";
             request.approverId = approverId;
             request.reviewedAt = new Date().toISOString();
+
+            // Record PTO usage
+            usePtoStore
+              .getState()
+              .recordPtoUsage(request.employeeId, request.hours);
 
             // Crucially, iterate through all schedules
             for (const schedule of allSchedules) {
@@ -583,6 +601,11 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             request.status = "pending";
             request.approverId = undefined;
             request.reviewedAt = undefined;
+
+            // Revert PTO usage by subtracting the hours from the used total
+            usePtoStore
+              .getState()
+              .revertPtoUsage(request.employeeId, request.hours);
 
             // Restore the original shifts
             const allSchedules = [
@@ -625,18 +648,41 @@ export const useScheduleStore = create<ScheduleRequestState>()(
 
         cancelPTORequest: (requestId) => {
           set((state) => {
-            // Find the PTORequest and ensure it\'s still pending
-            const request = state.ptoRequests.find(
-              (r) => r.id === requestId && r.status === "pending"
-            );
+            // Find the PTORequest
+            const request = state.ptoRequests.find((r) => r.id === requestId);
             if (!request) {
-              console.warn(
-                `PTO Request with ID ${requestId} not found or not pending.`
-              );
+              console.warn(`PTO Request with ID ${requestId} not found.`);
               return;
             }
 
-            // Filter the ptoRequests array to remove the specified pending request.
+            // If the request was approved, revert the PTO usage
+            if (request.status === "approved") {
+              usePtoStore
+                .getState()
+                .revertPtoUsage(request.employeeId, request.hours);
+
+              // Restore the original shifts if they were stored
+              if (request.revertedShifts && request.revertedShifts.length > 0) {
+                const allSchedules = [
+                  ...state.schedulePeriods,
+                  ...state.weeklySchedules,
+                ];
+                for (const originalShift of request.revertedShifts) {
+                  for (const schedule of allSchedules) {
+                    const shiftIndex = schedule.shifts.findIndex(
+                      (s) => s.id === originalShift.id
+                    );
+                    if (shiftIndex !== -1) {
+                      schedule.shifts[shiftIndex] = JSON.parse(
+                        JSON.stringify(originalShift)
+                      );
+                    }
+                  }
+                }
+              }
+            }
+
+            // Remove the request from the list
             state.ptoRequests = state.ptoRequests.filter(
               (r) => r.id !== requestId
             );

@@ -11,6 +11,7 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { usePtoStore } from "@/stores/usePtoStore"; // Import usePtoStore
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import {
   DarkTheme,
@@ -56,6 +57,11 @@ export default function RootLayout() {
     }
     setIsColorSchemeLoaded(true);
     hasMounted.current = true;
+
+    // Initialize timeclock history first
+    useTimeclockStore.getState().initializeHistory();
+    // Then initialize PTO history based on the timeclock history
+    usePtoStore.getState().initializePtoFromHistory();
   }, []);
 
   if (!isColorSchemeLoaded) {

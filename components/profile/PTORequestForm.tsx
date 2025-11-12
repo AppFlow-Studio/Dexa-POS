@@ -1,10 +1,18 @@
 import { PTORequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { usePtoStore } from "@/stores/usePtoStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
-import { differenceInDays, format, isBefore, startOfDay } from "date-fns";
+import {
+  differenceInHours,
+  format,
+  isBefore,
+  isWithinInterval,
+  parseISO,
+  startOfDay,
+} from "date-fns";
 import { Calendar as CalendarIcon } from "lucide-react-native";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   View as RNView,
   Text,
@@ -29,7 +37,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   onAddRequest,
 }) => {
   const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
-  const { checkPtoConflict } = useScheduleStore();
+  const { schedulePeriods, weeklySchedules, checkPtoConflict, ptoRequests } =
+    useScheduleStore();
+  const { balances } = usePtoStore();
+
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [note, setNote] = useState("");
@@ -38,15 +49,57 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   const startDateRef = useRef<RNView>(null);
   const endDateRef = useRef<RNView>(null);
 
-  const calculateHours = () => {
+  const employeeShifts = useMemo(() => {
+    if (!loggedInEmployee) return [];
+    return [...schedulePeriods, ...weeklySchedules]
+      .filter((p) => p.status === "active")
+      .flatMap((s) => s.shifts)
+      .filter((shift) => shift.employeeId === loggedInEmployee.id);
+  }, [loggedInEmployee, schedulePeriods, weeklySchedules]);
+
+  const hasScheduledShifts = employeeShifts.length > 0;
+
+  const todayFormatted = useMemo(() => format(startOfDay(new Date()), "yyyy-MM-dd"), []);
+
+  const maxDate = useMemo(() => {
+    if (employeeShifts.length === 0) return undefined;
+    const lastShift = employeeShifts.sort((a, b) =>
+      isBefore(parseISO(a.date), parseISO(b.date)) ? 1 : -1
+    )[0];
+    return format(parseISO(lastShift.date), "yyyy-MM-dd");
+  }, [employeeShifts]);
+
+  const requestedHours = useMemo(() => {
     if (!startDate || !endDate) return 0;
-    try {
-      const days = differenceInDays(endDate, startDate) + 1;
-      return days > 0 ? days * 8 : 0;
-    } catch {
-      return 0;
-    }
-  };
+    const shiftsInDateRange = employeeShifts.filter((shift) =>
+      isWithinInterval(parseISO(shift.date), {
+        start: startDate,
+        end: endDate,
+      })
+    );
+    return shiftsInDateRange.reduce((total, shift) => {
+      const duration = differenceInHours(
+        parseISO(shift.endTime),
+        parseISO(shift.startTime)
+      );
+      return total + duration;
+    }, 0);
+  }, [startDate, endDate, employeeShifts]);
+
+  const spendableBalance = useMemo(() => {
+    if (!loggedInEmployee) return 0;
+    const balance = balances[loggedInEmployee.id] || {
+      totalAccrued: 0,
+      usedThisYear: 0,
+    };
+    const pendingApproval = ptoRequests
+      .filter(
+        (req) =>
+          req.employeeId === loggedInEmployee.id && req.status === "pending"
+      )
+      .reduce((sum, req) => sum + req.hours, 0);
+    return balance.totalAccrued - balance.usedThisYear - pendingApproval;
+  }, [balances, ptoRequests, loggedInEmployee]);
 
   const handleSubmit = () => {
     if (!loggedInEmployee) {
@@ -78,6 +131,16 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
       return;
     }
 
+    if (requestedHours > spendableBalance) {
+      toast.error(
+        `You cannot request ${requestedHours}h as it exceeds your available balance of ${spendableBalance.toFixed(
+          2
+        )}h.`,
+        { position: ToastPosition.BOTTOM }
+      );
+      return;
+    }
+
     const isConflict = checkPtoConflict(
       loggedInEmployee.id,
       startDate.toISOString(),
@@ -95,7 +158,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
       employeeId: loggedInEmployee.id,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      hours: calculateHours(),
+      hours: requestedHours,
       note,
     });
     onClose();
@@ -139,13 +202,25 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
           </TouchableOpacity>
         </View>
         <View className="gap-y-4">
+          {!hasScheduledShifts && (
+            <View className="p-3 bg-red-600/10 border border-red-500/20 rounded-lg flex-row justify-between items-center">
+              <Text className="text-sm text-red-400">
+                You cannot submit a PTO request as you have no scheduled shifts.
+              </Text>
+            </View>
+          )}
           <View className="flex-row gap-4">
             <View className="flex-1">
               <Text className="text-gray-300 mb-1">Start Date</Text>
               <TouchableOpacity
                 ref={startDateRef}
                 onPress={() => setIsStartDatePickerOpen(true)}
-                className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                className={`p-3 h-14 bg-[#212121] border rounded-lg flex-row justify-between items-center ${
+                  !hasScheduledShifts
+                    ? "border-gray-800 opacity-50"
+                    : "border-gray-600"
+                }`}
+                disabled={!hasScheduledShifts}
               >
                 <Text className="text-white">
                   {startDate ? format(startDate, "yyyy-MM-dd") : "Select Date"}
@@ -161,6 +236,8 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                   <Calendar
                     onDayPress={(day) => onDayPress(day, "start")}
                     theme={calendarTheme}
+                    minDate={todayFormatted}
+                    maxDate={maxDate}
                     markedDates={{
                       [startDate ? format(startDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
@@ -177,7 +254,12 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
               <TouchableOpacity
                 ref={endDateRef}
                 onPress={() => setIsEndDatePickerOpen(true)}
-                className="p-3 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                className={`p-3 h-14 bg-[#212121] border rounded-lg flex-row justify-between items-center ${
+                  !hasScheduledShifts
+                    ? "border-gray-800 opacity-50"
+                    : "border-gray-600"
+                }`}
+                disabled={!hasScheduledShifts}
               >
                 <Text className="text-white">
                   {endDate ? format(endDate, "yyyy-MM-dd") : "Select Date"}
@@ -193,6 +275,8 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
                   <Calendar
                     onDayPress={(day) => onDayPress(day, "end")}
                     theme={calendarTheme}
+                    minDate={todayFormatted}
+                    maxDate={maxDate}
                     markedDates={{
                       [endDate ? format(endDate, "yyyy-MM-dd") : ""]: {
                         selected: true,
@@ -205,13 +289,13 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
             </View>
           </View>
 
-          {calculateHours() > 0 && (
+          {requestedHours > 0 && (
             <View className="p-3 bg-blue-600/10 border border-blue-500/20 rounded-lg flex-row justify-between items-center">
               <Text className="text-sm text-gray-400">
                 Total Hours Requested
               </Text>
-              <Text className="text-lg font-bold text-blue-400">
-                {calculateHours()}h
+              <Text className="lg font-bold text-blue-400">
+                {requestedHours}h
               </Text>
             </View>
           )}
@@ -228,7 +312,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
           </View>
           <TouchableOpacity
             onPress={handleSubmit}
-            className="py-3 bg-blue-600 rounded-lg items-center"
+            className={`py-3 bg-blue-600 rounded-lg items-center ${
+              !hasScheduledShifts ? "opacity-50" : ""
+            }`}
+            disabled={!hasScheduledShifts}
           >
             <Text className="font-bold text-white">Submit Request</Text>
           </TouchableOpacity>

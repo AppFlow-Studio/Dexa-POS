@@ -75,10 +75,21 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       [allPtoRequests]
     );
 
+    const pendingDrops = useMemo(
+      () => dropRequests.filter((r) => r.status === "pending"),
+      [dropRequests]
+    );
+
     const pendingManagerSwaps = useMemo(
       () => swapRequests.filter((r) => r.status === "pending-manager"),
       [swapRequests]
     );
+
+    // Calculate counts for tabs
+    const openShiftsCount = openShifts.length;
+    const dropRequestsCount = pendingDrops.length;
+    const swapsCount = pendingManagerSwaps.length;
+    const ptoCount = ptoRequests.length;
 
     const [isDenyModalOpen, setDenyModalOpen] = useState(false);
     const [requestToDeny, setRequestToDeny] = useState<
@@ -167,9 +178,6 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
             </View>
           );
         case "drop-requests":
-          const pendingDrops = dropRequests.filter(
-            (r) => r.status === "pending"
-          );
           return (
             <View className="p-6 gap-y-4">
               {pendingDrops.length === 0 ? (
@@ -329,15 +337,24 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                     : "border-transparent"
                 }`}
               >
-                <Text
-                  className={`font-semibold ${
-                    activeTab === "open-shifts"
-                      ? "text-blue-400"
-                      : "text-gray-400"
-                  }`}
-                >
-                  Open Shifts
-                </Text>
+                <View className="flex-row items-center">
+                  <Text
+                    className={`font-semibold ${
+                      activeTab === "open-shifts"
+                        ? "text-blue-400"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    Open Shifts
+                  </Text>
+                  {openShiftsCount > 0 && (
+                    <View className="ml-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">
+                        {openShiftsCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("drop-requests")}
@@ -347,15 +364,24 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                     : "border-transparent"
                 }`}
               >
-                <Text
-                  className={`font-semibold ${
-                    activeTab === "drop-requests"
-                      ? "text-blue-400"
-                      : "text-gray-400"
-                  }`}
-                >
-                  Drop Requests
-                </Text>
+                <View className="flex-row items-center">
+                  <Text
+                    className={`font-semibold ${
+                      activeTab === "drop-requests"
+                        ? "text-blue-400"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    Drop Requests
+                  </Text>
+                  {dropRequestsCount > 0 && (
+                    <View className="ml-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">
+                        {dropRequestsCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("swaps")}
@@ -365,13 +391,22 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                     : "border-transparent"
                 }`}
               >
-                <Text
-                  className={`font-semibold ${
-                    activeTab === "swaps" ? "text-blue-400" : "text-gray-400"
-                  }`}
-                >
-                  Swaps
-                </Text>
+                <View className="flex-row items-center">
+                  <Text
+                    className={`font-semibold ${
+                      activeTab === "swaps" ? "text-blue-400" : "text-gray-400"
+                    }`}
+                  >
+                    Swaps
+                  </Text>
+                  {swapsCount > 0 && (
+                    <View className="ml-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">
+                        {swapsCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setActiveTab("pto")}
@@ -379,13 +414,22 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                   activeTab === "pto" ? "border-blue-400" : "border-transparent"
                 }`}
               >
-                <Text
-                  className={`font-semibold ${
-                    activeTab === "pto" ? "text-blue-400" : "text-gray-400"
-                  }`}
-                >
-                  PTO
-                </Text>
+                <View className="flex-row items-center">
+                  <Text
+                    className={`font-semibold ${
+                      activeTab === "pto" ? "text-blue-400" : "text-gray-400"
+                    }`}
+                  >
+                    PTO
+                  </Text>
+                  {ptoCount > 0 && (
+                    <View className="ml-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">
+                        {ptoCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
             <BottomSheetScrollView>{renderContent()}</BottomSheetScrollView>

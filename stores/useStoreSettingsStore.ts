@@ -12,6 +12,7 @@ export interface StoreSettings {
   specialHours: SpecialHours[];
   storeTaxId: string;
   defaultTaxRate: number;
+  ptoAccrualRate: number;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -21,6 +22,7 @@ interface StoreSettingsState extends StoreSettings {
     field: K,
     value: StoreSettings[K]
   ) => void;
+  setPtoAccrualRate: (rate: number) => void; // New action
   saveChanges: () => void;
   discardChanges: () => void;
 }
@@ -48,6 +50,7 @@ const initialData: StoreSettings = {
   specialHours: [],
   storeTaxId: "US123456789",
   defaultTaxRate: 8.25,
+  ptoAccrualRate: 0.0375,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
@@ -63,6 +66,20 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
         JSON.stringify({
           ...newState,
           initialState: undefined, // Exclude these from comparison
+          isDirty: undefined,
+        });
+      return { ...newState, isDirty };
+    });
+  },
+
+  setPtoAccrualRate: (rate: number) => {
+    set((state) => {
+      const newState = { ...state, ptoAccrualRate: rate };
+      const isDirty =
+        JSON.stringify(newState.initialState) !==
+        JSON.stringify({
+          ...newState,
+          initialState: undefined,
           isDirty: undefined,
         });
       return { ...newState, isDirty };

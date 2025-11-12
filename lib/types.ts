@@ -477,6 +477,7 @@ export interface ShiftStatus {
 
 export interface ShiftHistoryEntry {
   id: string;
+  employeeId: string;
   date: string;
   clockIn: string;
   breakInitiated: string;
@@ -484,6 +485,22 @@ export interface ShiftHistoryEntry {
   clockOut: string;
   duration: string;
   role: string;
+}
+
+export interface PTOAccrualEntry {
+  date: string;
+  hoursWorked: number;
+  ptoEarned: number;
+  accrualRateUsed: number;
+  shiftId: string;
+  employeeId: string;
+}
+
+export interface CompletedShift {
+  shiftId: string;
+  employeeId: string;
+  date: string;
+  hoursWorked: number;
 }
 
 export interface PrinterDevice {
