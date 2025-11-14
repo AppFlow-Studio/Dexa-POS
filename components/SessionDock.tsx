@@ -79,8 +79,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
-  const { getUnreadCountForEmployee, unreadCount, markAllAsRead } =
-    useNotificationStore();
+  const { unreadCount, markAllAsRead } = useNotificationStore();
   const router = useRouter();
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
@@ -89,12 +88,15 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const session = sessions[sessionId];
   const employee = employees.find((e) => e.id === session.employeeId);
 
+  const unreadNotifications = useNotificationStore((state) =>
+    employee ? state.getUnreadCountForEmployee(employee.id) : 0
+  );
+
   if (!session || !employee) return null;
 
   const isActive = activeEmployeeId === session.employeeId;
   const isOnBreak = session.status === "onBreak";
   const isClockedIn = session.status === "clockedIn";
-  const unreadNotifications = getUnreadCountForEmployee(employee.id);
 
   const handleOpenNotificationPanel = () => {
     setIsPanelOpen(true);

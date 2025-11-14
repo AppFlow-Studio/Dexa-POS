@@ -1,5 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
-import { CheckCircle2, X } from "lucide-react-native";
+import { CheckCircle2, Undo2, X, XCircle } from "lucide-react-native";
 import { MotiView } from "moti";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -48,12 +48,24 @@ const CustomToast: React.FC<CustomToastProps> = ({
           <Text className="text-white font-bold text-base">{title}</Text>
           <Text className="text-gray-300 text-sm mt-1">{message}</Text>
           {onUndo && (
-            <View className="flex-row mt-3">
-              <TouchableOpacity onPress={handleUndo} className="mr-4">
-                <Text className="text-blue-400 font-bold">UNDO</Text>
+            <View className="flex-row mt-4 gap-x-2">
+              <TouchableOpacity
+                onPress={handleUndo}
+                className="flex-row items-center bg-yellow-500/20 border border-yellow-500/30 rounded-md px-3 py-1.5"
+              >
+                <Undo2 size={14} color="#FBBF24" />
+                <Text className="text-yellow-400 font-bold text-xs ml-1.5">
+                  UNDO
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDismiss}>
-                <Text className="text-gray-500">Dismiss</Text>
+              <TouchableOpacity
+                onPress={handleDismiss}
+                className="flex-row items-center bg-gray-600/50 border border-gray-500/50 rounded-md px-3 py-1.5"
+              >
+                <XCircle size={14} color="#9CA3AF" />
+                <Text className="text-gray-400 font-semibold text-xs ml-1.5">
+                  Dismiss
+                </Text>
               </TouchableOpacity>
             </View>
           )}

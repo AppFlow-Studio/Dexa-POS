@@ -4,10 +4,10 @@ import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { Link, router } from "expo-router";
+import { Link, router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
-import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type TabName = "Profile Info" | "My Schedule" | "Security" | "History";
@@ -15,20 +15,40 @@ const TABS: TabName[] = ["Profile Info", "My Schedule", "Security", "History"];
 
 const MyProfileScreen = () => {
   const { activeEmployeeId, employees } = useEmployeeStore();
+  const { tab, date } = useLocalSearchParams<{
+    tab: string;
+    date: string;
+  }>();
   const currentEmployee = React.useMemo(() => {
     return activeEmployeeId
       ? employees.find((e) => e.id === activeEmployeeId)
       : employees.find((e) => e.shiftStatus === "clocked_in");
   }, [activeEmployeeId, employees]);
 
-  const [activeTab, setActiveTab] = useState<TabName>("Profile Info");
+  const [activeTab, setActiveTab] = useState<TabName | null>(null); // Initialize to null
+
+  useEffect(() => {
+    if (tab === "MyScheduleScreen") {
+      setActiveTab("My Schedule");
+    } else {
+      setActiveTab("Profile Info");
+    }
+  }, [tab]);
 
   const renderContent = () => {
+    if (activeTab === null) {
+      return (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#0000ff" />
+        </View>
+      );
+    }
+
     switch (activeTab) {
       case "Profile Info":
         return <ProfileInfoTab />;
       case "My Schedule":
-        return <MyScheduleScreen />;
+        return <MyScheduleScreen initialDate={date} />;
       case "Security":
         return <SecurityTab />;
       case "History":

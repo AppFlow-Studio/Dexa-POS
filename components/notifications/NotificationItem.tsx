@@ -6,6 +6,8 @@ import {
   Calendar,
   MessageSquare,
   MinusCircle,
+  CheckCircle, // New import
+  XCircle, // New import
 } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -24,6 +26,30 @@ const getIconForType = (type: Notification["type"]) => {
       return <MessageSquare size={16} color="#9CA3AF" />;
     case "pto_update":
       return <Calendar size={16} color="#22c55e" />;
+    case "shift_updated":
+      return <Calendar size={16} color="#3b82f6" />; // Blue calendar for updated shift
+    case "shift_assigned":
+      return <Calendar size={16} color="#22c55e" />; // Green calendar for assigned shift
+    case "schedule_published":
+      return <Calendar size={16} color="#f59e0b" />; // Orange calendar for published schedule
+    case "drop_request_approved":
+      return <CheckCircle size={16} color="#22c55e" />; // Green check for approved drop
+    case "drop_request_denied":
+      return <XCircle size={16} color="#ef4444" />; // Red X for denied drop
+    case "pto_request_approved":
+      return <CheckCircle size={16} color="#22c55e" />; // Green check for approved PTO
+    case "pto_request_denied":
+      return <XCircle size={16} color="#ef4444" />; // Red X for denied PTO
+    case "swap_request_received":
+      return <ArrowRightLeft size={16} color="#3b82f6" />; // Blue swap for received swap request
+    case "swap_request_peer_accepted":
+      return <CheckCircle size={16} color="#22c55e" />; // Green check for peer accepted swap
+    case "swap_request_peer_denied":
+      return <XCircle size={16} color="#ef4444" />; // Red X for peer denied swap
+    case "swap_approved":
+      return <CheckCircle size={16} color="#22c55e" />; // Green check for approved swap
+    case "swap_denied":
+      return <XCircle size={16} color="#ef4444" />; // Red X for denied swap
     default:
       return <AlertCircle size={16} color="#9CA3AF" />;
   }

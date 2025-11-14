@@ -695,12 +695,26 @@ export interface Notification {
     | "drop_request"
     | "manager_note"
     | "pto_update"
-    | "shift_reminder";
+    | "shift_reminder"
+    | "shift_updated"
+    | "shift_assigned"
+    | "schedule_published"
+    | "drop_request_approved"
+    | "drop_request_denied"
+    | "pto_request_approved"
+    | "pto_request_denied"
+    | "swap_request_received"
+    | "swap_request_peer_accepted"
+    | "swap_request_peer_denied"
+    | "swap_approved"
+    | "swap_denied";
   message: string;
   isRead: boolean;
   timestamp: string; // ISO string
   relatedShiftId?: string;
+  relatedRequestId?: string; // New field for request-related notifications
   employeeId: string;
+  payload?: Record<string, any>; // Optional payload for additional data
 }
 
 export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";

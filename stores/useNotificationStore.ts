@@ -1,10 +1,10 @@
-import { MOCK_NOTIFICATIONS } from "@/lib/mockData";
 import { Notification } from "@/lib/types";
 import { create } from "zustand";
+import { useEmployeeStore } from "./useEmployeeStore";
 
 interface NotificationState {
   notifications: Notification[];
-  unreadCount: number;
+  unreadCount: number; // Now represents unread count for the ACTIVE employee
   addNotification: (
     notification: Omit<Notification, "id" | "isRead" | "timestamp">
   ) => void;
@@ -14,8 +14,8 @@ interface NotificationState {
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  notifications: MOCK_NOTIFICATIONS,
-  unreadCount: MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length,
+  notifications: [],
+  unreadCount: 0, // Initial value, will be updated by subscription
 
   addNotification: (notificationData) => {
     const newNotification: Notification = {
@@ -24,32 +24,67 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       isRead: false,
       timestamp: new Date().toISOString(),
     };
+
+    const { loggedInEmployee } = useEmployeeStore.getState();
+    const isForActiveEmployee =
+      loggedInEmployee?.id === newNotification.employeeId;
+
     set((state) => ({
       notifications: [newNotification, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
+      // Only increment if the notification is for the currently logged-in user
+      unreadCount: isForActiveEmployee
+        ? state.unreadCount + 1
+        : state.unreadCount,
     }));
   },
 
   markAsRead: (id) => {
     set((state) => {
       const target = state.notifications.find((n) => n.id === id);
-      if (target && !target.isRead) {
-        return {
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, isRead: true } : n
-          ),
-          unreadCount: state.unreadCount - 1,
-        };
+      if (!target || target.isRead) {
+        return state; // No change if not found or already read
       }
-      return state;
+
+      const { loggedInEmployee } = useEmployeeStore.getState();
+      const isForActiveEmployee = loggedInEmployee?.id === target.employeeId;
+
+      return {
+        notifications: state.notifications.map((n) =>
+          n.id === id ? { ...n, isRead: true } : n
+        ),
+        // Only decrement if the notification was for the currently logged-in user
+        unreadCount: isForActiveEmployee
+          ? state.unreadCount - 1
+          : state.unreadCount,
+      };
     });
   },
 
   markAllAsRead: () => {
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
-      unreadCount: 0,
-    }));
+    const { loggedInEmployee } = useEmployeeStore.getState();
+    if (!loggedInEmployee) {
+      return;
+    }
+
+    set((state) => {
+      let newlyReadCount = 0;
+      const updatedNotifications = state.notifications.map((n) => {
+        if (n.employeeId === loggedInEmployee.id && !n.isRead) {
+          newlyReadCount++;
+          return { ...n, isRead: true };
+        }
+        return n;
+      });
+
+      if (newlyReadCount === 0) {
+        return state;
+      }
+
+      return {
+        notifications: updatedNotifications,
+        unreadCount: state.unreadCount - newlyReadCount,
+      };
+    });
   },
 
   getUnreadCountForEmployee: (employeeId) => {
@@ -58,3 +93,19 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     ).length;
   },
 }));
+
+// Subscribe to employee store to update unread count on user change
+useEmployeeStore.subscribe((state, prevState) => {
+  const loggedInEmployee = state.loggedInEmployee;
+
+  // We only update if the employee has actually changed
+  if (loggedInEmployee?.id !== prevState.loggedInEmployee?.id) {
+    const { notifications } = useNotificationStore.getState();
+    const newUnreadCount = loggedInEmployee
+      ? notifications.filter(
+          (n) => n.employeeId === loggedInEmployee.id && !n.isRead
+        ).length
+      : 0;
+    useNotificationStore.setState({ unreadCount: newUnreadCount });
+  }
+});

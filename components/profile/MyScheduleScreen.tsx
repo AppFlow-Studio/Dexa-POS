@@ -45,10 +45,10 @@ import OpenShiftsDrawer from "./drawers/OpenShiftsDrawer";
 import OvertimeDrawer from "./drawers/OvertimeDrawer";
 import ScheduledHoursDrawer from "./drawers/ScheduledHoursDrawer";
 
-const MyScheduleScreen = () => {
+const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: 0 }) // Sunday start
+    startOfWeek(initialDate ? parseISO(initialDate) : new Date(), { weekStartsOn: 0 }) // Sunday start
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
