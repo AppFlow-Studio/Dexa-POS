@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Shift } from "@/lib/types";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, formatDistanceToNow } from "date-fns";
 import {
   ArrowRightLeft,
   CheckCircle2,
@@ -17,9 +17,25 @@ interface SwapRequestCardProps {
   peerName: string;
   myShift: Shift;
   peerShift: Shift;
+  submittedAt: string;
   onApprove: () => void;
   onDeny: () => void;
 }
+const formatTime = (time: string): string => {
+  if (!time) return "N/A";
+  // Create a dummy date to parse the time correctly with parseISO
+  return format(parseISO(time), "h:mm a");
+};
+
+const formatTimeAgo = (dateString: string): string => {
+  if (!dateString) return "";
+  try {
+    return formatDistanceToNow(parseISO(dateString), { addSuffix: true });
+  } catch (error) {
+    console.warn(`Invalid date string passed to formatTimeAgo: ${dateString}`);
+    return "";
+  }
+};
 
 const ShiftInfoCard = ({ shift }: { shift: Shift }) => (
   <View className="p-3 rounded-lg bg-[#303030] border border-gray-600">
@@ -31,7 +47,7 @@ const ShiftInfoCard = ({ shift }: { shift: Shift }) => (
       <View className="flex-row items-center gap-2">
         <Clock size={16} color="#9CA3AF" />
         <Text className="text-sm text-gray-400">
-          {shift.startTime} - {shift.endTime}
+          {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
         </Text>
       </View>
       <View className="flex-row items-center gap-2">
@@ -47,6 +63,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
   peerName,
   myShift,
   peerShift,
+  submittedAt,
   onApprove,
   onDeny,
 }) => {
@@ -56,7 +73,7 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
           <Text className="text-xs text-blue-400">Swap Request</Text>
         </Badge>
-        <Text className="text-xs text-gray-500">2 hours ago</Text>
+        <Text className="text-xs text-gray-500">{formatTimeAgo(submittedAt)}</Text>
       </View>
 
       <View className="gap-y-2">

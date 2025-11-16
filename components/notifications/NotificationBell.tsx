@@ -1,3 +1,4 @@
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { Bell } from "lucide-react-native";
 import React, { useState } from "react";
@@ -7,14 +8,21 @@ import NotificationPanel from "./NotificationPanel";
 
 const NotificationBell = () => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const { unreadCount, markAllAsRead } = useNotificationStore();
+  const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
+  const { loggedInEmployee } = useEmployeeStore();
+
+  const unreadCount = useNotificationStore((state) =>
+    loggedInEmployee
+      ? state.notifications.filter(
+          (n) => n.employeeId === loggedInEmployee.id && !n.isRead
+        ).length
+      : 0
+  );
 
   const handleOpen = () => {
     setIsPanelOpen(true);
-    if (unreadCount > 0) {
-      // Optimistically mark as read, or wait for panel to close
-      // For now, let's do it on open
-      markAllAsRead();
+    if (unreadCount > 0 && loggedInEmployee) {
+      markAllAsRead(loggedInEmployee.id);
     }
   };
 

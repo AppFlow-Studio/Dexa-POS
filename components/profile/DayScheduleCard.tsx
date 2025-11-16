@@ -11,6 +11,7 @@ interface DayScheduleCardProps {
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
   onCancelDropRequest: (shift: Shift) => void;
+  onCancelSwapRequest: (shift: Shift) => void; // New prop
 }
 
 const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
@@ -20,6 +21,7 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
   onRequestDrop,
   onRequestSwap,
   onCancelDropRequest,
+  onCancelSwapRequest, // Destructure new prop
 }) => {
   return (
     <View className="mb-4">
@@ -36,6 +38,7 @@ const DayScheduleCard: React.FC<DayScheduleCardProps> = ({
               onRequestDrop={onRequestDrop}
               onRequestSwap={onRequestSwap}
               onCancelDropRequest={onCancelDropRequest}
+              onCancelSwapRequest={onCancelSwapRequest} // Pass new prop
             />
           ))
         ) : (

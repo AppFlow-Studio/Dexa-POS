@@ -27,6 +27,7 @@ interface ShiftDetailRowProps {
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
   onCancelDropRequest: (shift: Shift) => void;
+  onCancelSwapRequest: (shift: Shift) => void; // New prop
 }
 
 const StatusBadge = ({
@@ -64,6 +65,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onRequestDrop,
   onRequestSwap,
   onCancelDropRequest,
+  onCancelSwapRequest, // Destructure new prop
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
   const getStatusLabel = () => {
@@ -217,12 +219,13 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                onRequestSwap(shift);
+                onCancelSwapRequest(shift); // Call new prop
               }}
-              className="px-3 py-1 bg-purple-600/20 border-2 border-purple-500 rounded-lg"
+              className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600" // Red style
             >
-              <Text className="text-base font-semibold text-purple-300">
-                View swap
+              <XCircle size={16} color="#FCA5A5" />
+              <Text className="text-base font-semibold text-red-300">
+                Cancel Swap Request
               </Text>
             </TouchableOpacity>
           )}

@@ -79,7 +79,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
-  const { unreadCount, markAllAsRead } = useNotificationStore();
+  const { markAllAsRead } = useNotificationStore();
   const router = useRouter();
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
@@ -88,8 +88,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const session = sessions[sessionId];
   const employee = employees.find((e) => e.id === session.employeeId);
 
-  const unreadNotifications = useNotificationStore((state) =>
-    employee ? state.getUnreadCountForEmployee(employee.id) : 0
+  const unreadCount = useNotificationStore((state) =>
+    employee
+      ? state.notifications.filter(
+          (n) => n.employeeId === employee.id && !n.isRead
+        ).length
+      : 0
   );
 
   if (!session || !employee) return null;
@@ -101,9 +105,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const handleOpenNotificationPanel = () => {
     setIsPanelOpen(true);
     if (unreadCount > 0) {
-      // Optimistically mark as read, or wait for panel to close
-      // For now, let's do it on open
-      markAllAsRead();
+      markAllAsRead(employee.id);
     }
   };
 
@@ -159,7 +161,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
                     .slice(0, 2)}
                 </Text>
               </View>
-              {unreadNotifications > 0 && (
+              {unreadCount > 0 && (
                 <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-blue-600" />
               )}
               <View className="mx-2">
@@ -300,7 +302,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               .slice(0, 2)}
           </Text>
         </View>
-        {unreadNotifications > 0 && (
+        {unreadCount > 0 && (
           <View className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-gray-700" />
         )}
         <View className="mx-2">

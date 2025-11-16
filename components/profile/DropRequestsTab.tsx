@@ -58,6 +58,14 @@ const DropRequestsTab = () => {
       </View>
     );
   }
+  const formatTime = (time: string): string => {
+    if (!time) return "N/A";
+    const [hours, minutes] = time.split(":");
+    const h = Number.parseInt(hours);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const displayHour = h % 12 || 12;
+    return `${displayHour}:${minutes} ${ampm}`;
+  };
 
   return (
     <View className="gap-y-4">
@@ -82,7 +90,8 @@ const DropRequestsTab = () => {
                     <View className="flex-row items-center gap-2">
                       <Clock size={16} color="#9CA3AF" />
                       <Text className="text-sm text-gray-400">
-                        {request.shift.startTime} - {request.shift.endTime}
+                        {formatTime(request.shift.startTime)} -{" "}
+                        {formatTime(request.shift.endTime)}
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-2">
@@ -96,8 +105,10 @@ const DropRequestsTab = () => {
               </View>
               <View className="items-end">
                 <Text
-                  className={`text-xs font-medium px-2 py-1 rounded-full ${styles.bgColor} ${styles.textColor}`}>
-                  {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                  className={`text-xs font-medium px-2 py-1 rounded-full ${styles.bgColor} ${styles.textColor}`}
+                >
+                  {request.status.charAt(0).toUpperCase() +
+                    request.status.slice(1)}
                 </Text>
                 <Text className="text-xs text-gray-500 mt-1">
                   Submitted {format(parseISO(request.submittedAt), "MMM d")}
@@ -105,10 +116,12 @@ const DropRequestsTab = () => {
               </View>
             </View>
             {request.status === "denied" && request.denialReason && (
-                <View className="p-3 bg-red-900/30 rounded-lg mb-3 border border-red-700">
-                    <Text className="text-red-300 font-semibold">Denial Reason:</Text>
-                    <Text className="text-red-300">{request.denialReason}</Text>
-                </View>
+              <View className="p-3 bg-red-900/30 rounded-lg mb-3 border border-red-700">
+                <Text className="text-red-300 font-semibold">
+                  Denial Reason:
+                </Text>
+                <Text className="text-red-300">{request.denialReason}</Text>
+              </View>
             )}
             {request.status === "pending" && (
               <TouchableOpacity

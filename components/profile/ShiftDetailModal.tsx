@@ -25,6 +25,7 @@ interface ShiftDetailModalProps {
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
   onCancelDropRequest: (shift: Shift) => void;
+  onCancelSwapRequest: (shift: Shift) => void; // New prop
 }
 
 const StatusBadge = ({
@@ -63,6 +64,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   onRequestDrop,
   onRequestSwap,
   onCancelDropRequest,
+  onCancelSwapRequest, // Destructure new prop
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
 
@@ -118,6 +120,13 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     if (shift) {
       onClose();
       onCancelDropRequest(shift);
+    }
+  };
+
+  const handleCancelSwapRequest = () => { // New handler
+    if (shift) {
+      onClose();
+      onCancelSwapRequest(shift);
     }
   };
 
@@ -247,6 +256,17 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 <XCircle size={16} color="#FCA5A5" />
                 <Text className="text-base font-semibold text-red-300">
                   Cancel Drop Request
+                </Text>
+              </TouchableOpacity>
+            )}
+            {shift.status === "pending-swap" && ( // New UI block
+              <TouchableOpacity
+                onPress={handleCancelSwapRequest}
+                className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600"
+              >
+                <XCircle size={16} color="#FCA5A5" />
+                <Text className="text-base font-semibold text-red-300">
+                  Cancel Swap Request
                 </Text>
               </TouchableOpacity>
             )}

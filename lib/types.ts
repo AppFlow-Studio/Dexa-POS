@@ -401,6 +401,7 @@ export interface SchedulePeriod {
   updatedAt: string;
   createdBy: string;
   isScheduled?: boolean;
+  type: "period"; // Explicit discriminator
   originalScheduleId?: string;
 }
 
@@ -717,4 +718,45 @@ export interface Notification {
   payload?: Record<string, any>; // Optional payload for additional data
 }
 
-export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
+export type Role =
+  | "Cashier"
+  | "Barista"
+  | "Line Cook"
+  | "Prep"
+  | "Supervisor"
+  | "Manager";
+
+// --- SCHEDULE TEMPLATE TYPES ---
+
+export interface TemplateShift {
+  tempId: string;
+  employeeId: string | null;
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+  role: Role;
+  startTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T09:00:00.000Z"
+  endTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T17:00:00.000Z"
+  notes?: string;
+  breakMinutes?: number;
+  expectedPace?: "Calm" | "Moderate" | "Busy";
+  staffingLevel?: "Fully staffed" | "May need help";
+}
+
+export const PREDEFINED_TAGS = [
+  "weekday",
+  "weekend",
+  "holiday",
+  "peak",
+  "slow",
+  "morning",
+  "evening",
+] as const;
+
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  shifts: TemplateShift[];
+  lastUsed: Date;
+  isActiveForScheduling?: boolean;
+}

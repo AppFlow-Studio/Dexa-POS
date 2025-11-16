@@ -55,12 +55,14 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
   const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
 
-  const dropRequests = useScheduleStore((state) => state.dropRequests);
-  const cancelDropRequest = useScheduleStore(
-    (state) => state.cancelDropRequest
-  );
-  const schedulePeriods = useScheduleStore((state) => state.schedulePeriods);
-  const weeklySchedules = useScheduleStore((state) => state.weeklySchedules);
+  const {
+    dropRequests,
+    swapRequests,
+    cancelDropRequest,
+    cancelSwap,
+    schedulePeriods,
+    weeklySchedules,
+  } = useScheduleStore();
 
   const employeeShifts = useMemo(() => {
     if (!loggedInEmployee) return [];
@@ -143,6 +145,26 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
     );
     if (requestToCancel) {
       cancelDropRequest(requestToCancel.id);
+    }
+  };
+
+  const handleCancelSwapRequest = (shiftToCancel: Shift) => {
+    const requestToCancel = swapRequests.find(
+      (req) =>
+        (req.myShiftId === shiftToCancel.id ||
+          req.peerShiftId === shiftToCancel.id) &&
+        (req.status === "pending-peer" || req.status === "pending-manager")
+    );
+
+    if (requestToCancel && loggedInEmployee) {
+      cancelSwap(requestToCancel.id, loggedInEmployee.id);
+      toast.success("Swap request cancelled.", {
+        position: ToastPosition.BOTTOM,
+      });
+    } else {
+      toast.error("Could not find pending swap request for this shift or employee not logged in.", {
+        position: ToastPosition.BOTTOM,
+      });
     }
   };
 
@@ -305,6 +327,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
                         onRequestDrop={handleRequestDrop}
                         onRequestSwap={handleRequestSwap}
                         onCancelDropRequest={handleCancelDropRequest}
+                        onCancelSwapRequest={handleCancelSwapRequest}
                       />
                     )}
                   />
@@ -333,6 +356,7 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
         onRequestDrop={handleRequestDrop}
         onRequestSwap={handleRequestSwap}
         onCancelDropRequest={handleCancelDropRequest}
+        onCancelSwapRequest={handleCancelSwapRequest}
       />
       <DropShiftBottomSheet
         shift={shiftForAction}

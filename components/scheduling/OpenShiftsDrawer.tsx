@@ -243,6 +243,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                       peerName={getEmployeeName(req.peerId!)}
                       myShift={myShift}
                       peerShift={peerShift}
+                      submittedAt={req.submittedAt}
                       onApprove={() => {
                         approveSwap(req.id);
                         showUndoableToast(

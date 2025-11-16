@@ -1,13 +1,11 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Role } from "@/lib/types"; // Import Role from lib/types
 import { Filter } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 
-// Assuming Role is a string literal type as in the reference
-export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
-
-const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
+const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor", "Manager"];
 
 const conflicts = [
   { id: "ot", label: "Overtime Risk", color: "bg-red-500" },

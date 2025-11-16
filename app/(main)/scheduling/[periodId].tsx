@@ -1,3 +1,12 @@
+import ApplyTemplateBar from "@/components/scheduling/ApplyTemplateBar"; // Import ApplyTemplateBar
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -19,15 +28,6 @@ import {
   View,
 } from "react-native";
 
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
@@ -40,16 +40,27 @@ import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
+import { detectTemplateConflicts } from "@/lib/rules"; // Import detectTemplateConflicts
 import {
   PTORequest,
   Role,
   SchedulePeriod,
   Shift,
+  TemplateShift,
   WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { addDays, isAfter, isBefore, subDays } from "date-fns";
+import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
+import {
+  addDays,
+  getDay,
+  isAfter,
+  isBefore,
+  isEqual,
+  startOfDay,
+  subDays,
+} from "date-fns";
 
 const ScheduleDetail = ({
   currentSchedule,
@@ -71,21 +82,30 @@ const ScheduleDetail = ({
   const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
     useScheduleStore();
   const { employees } = useEmployeeStore();
+  const {
+    templates,
+    actions: { updateTemplate },
+  } = useScheduleTemplateStore(); // Get templates and actions
 
   const [startDate, setStartDate] = useState(
-    new Date(currentSchedule.schedule.startDate)
+    startOfDay(new Date(currentSchedule.schedule.startDate))
   );
   const [searchQuery, setSearchQuery] = useState("");
 
   // State for modals and drawers
   const [shiftEditorOpen, setShiftEditorOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Partial<Shift> | null>(
-    null
-  );
+  const [selectedShift, setSelectedShift] = useState<Partial<
+    Shift & TemplateShift
+  > | null>(null); // Updated type
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
+
+  // State for template overlay
+  const [overlayTemplateId, setOverlayTemplateId] = useState<string | null>(
+    null
+  );
 
   // State for filters
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
@@ -134,21 +154,82 @@ const ScheduleDetail = ({
   };
 
   const handleApplyTemplate = (templateId: string) => {
-    console.log("Applying template:", templateId);
+    setOverlayTemplateId(templateId);
   };
 
-  const handleSaveShift = (shiftData: Partial<Shift>) => {
+  const handleCancelApplyTemplate = () => {
+    setOverlayTemplateId(null);
+  };
+
+  const handleApplyTemplateAction = () => {
+    if (!overlayTemplate || !templateConflictSummary) return;
+
+    const conflictingShiftTempIds = new Set(
+      templateConflictSummary.conflictDetails.map(
+        (cd) => cd.templateShift.tempId
+      )
+    );
+
+    const scheduleStartDate = startOfDay(
+      new Date(currentSchedule.schedule.startDate)
+    );
+    const scheduleEndDate = startOfDay(
+      new Date(currentSchedule.schedule.endDate)
+    );
+
+    let currentDate = scheduleStartDate;
+
+    while (currentDate <= scheduleEndDate) {
+      const dayOfWeek = getDay(currentDate);
+
+      overlayTemplate.shifts.forEach((templateShift) => {
+        if (
+          templateShift.dayOfWeek === dayOfWeek &&
+          !conflictingShiftTempIds.has(templateShift.tempId)
+        ) {
+          const shiftDateISO = currentDate.toISOString().split("T")[0];
+
+          const newShift: Omit<Shift, "id"> = {
+            employeeId: templateShift.employeeId,
+            role: templateShift.role,
+            date: shiftDateISO,
+            startTime: `${shiftDateISO}T${
+              templateShift.startTime.split("T")[1]
+            }`,
+            endTime: `${shiftDateISO}T${templateShift.endTime.split("T")[1]}}`,
+            status: "confirmed",
+            periodId: currentSchedule.schedule.id,
+          };
+
+          addShift(currentSchedule.schedule.id, currentSchedule.type, newShift);
+        }
+      });
+
+      currentDate = addDays(currentDate, 1);
+    }
+
+    updateTemplate(overlayTemplate.id, { lastUsed: new Date() });
+    handleCancelApplyTemplate(); // Close the bar after applying
+  };
+
+  const handleViewDetails = () => {
+    // TODO: Implement viewing conflict details
+    console.log("Viewing conflict details...");
+  };
+
+  const handleSaveShift = (shiftData: Partial<Shift & TemplateShift>) => {
+    // Updated parameter type
     if (shiftData.id) {
       updateShift(
         currentSchedule.schedule.id,
         currentSchedule.type,
-        shiftData as Shift
+        shiftData as Shift // Cast back to Shift for store
       );
     } else {
       addShift(
         currentSchedule.schedule.id,
         currentSchedule.type,
-        shiftData as Omit<Shift, "id">
+        shiftData as Omit<Shift, "id"> // Cast back to Omit<Shift, "id"> for store
       );
     }
     setShiftEditorOpen(false);
@@ -185,14 +266,14 @@ const ScheduleDetail = ({
   const handlePreviousWeek = () => {
     const newDate = subDays(startDate, 7);
     if (!isBefore(newDate, new Date(currentSchedule.schedule.startDate))) {
-      setStartDate(newDate);
+      setStartDate(startOfDay(newDate));
     }
   };
 
   const handleNextWeek = () => {
     const newDate = addDays(startDate, 7);
     if (!isAfter(newDate, new Date(currentSchedule.schedule.endDate))) {
-      setStartDate(newDate);
+      setStartDate(startOfDay(newDate));
     }
   };
 
@@ -220,6 +301,29 @@ const ScheduleDetail = ({
     pendingSwapRequestsCount +
     pendingPtoRequestsCount +
     pendingDropRequestsCount;
+
+  const overlayTemplate = useMemo(() => {
+    return templates.find((t) => t.id === overlayTemplateId);
+  }, [overlayTemplateId, templates]);
+
+  const templateConflictSummary = useMemo(() => {
+    if (!overlayTemplate) {
+      return { shiftsToAdd: 0, conflictsDetected: 0, conflictDetails: [] };
+    }
+    return detectTemplateConflicts(
+      overlayTemplate,
+      currentSchedule.schedule,
+      new Date(currentSchedule.schedule.startDate), // Pass full schedule start date
+      new Date(currentSchedule.schedule.endDate), // Pass full schedule end date
+      approvedPtoRequests
+    );
+  }, [
+    overlayTemplate,
+    currentSchedule.schedule,
+    currentSchedule.schedule.startDate, // New dependency
+    currentSchedule.schedule.endDate, // New dependency
+    approvedPtoRequests,
+  ]);
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -354,7 +458,11 @@ const ScheduleDetail = ({
       <View className="flex-1 flex-row">
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
-          <ScrollView>
+          <ScrollView
+            contentContainerStyle={{
+              paddingBottom: overlayTemplateId ? 80 : 0, // Conditional padding for sidebar
+            }}
+          >
             <View className="gap-y-6">
               <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
@@ -470,6 +578,10 @@ const ScheduleDetail = ({
               approvedPtoRequests={approvedPtoRequests}
               scheduleId={currentSchedule.schedule.id}
               scheduleType={currentSchedule.type}
+              overlayTemplateId={overlayTemplateId}
+              templates={templates}
+              templateConflictSummary={templateConflictSummary}
+              isApplyTemplateBarVisible={!!overlayTemplateId}
             />
           </DropZoneProvider>
         </View>
@@ -479,7 +591,7 @@ const ScheduleDetail = ({
       <ShiftEditorModal
         open={shiftEditorOpen}
         onOpenChange={setShiftEditorOpen}
-        shift={selectedShift as Shift}
+        shift={selectedShift} // No need to cast here, type is already Partial<Shift & TemplateShift>
         periodId={currentSchedule.schedule.id!}
         scheduleType={currentSchedule.type}
         onSave={handleSaveShift}
@@ -516,6 +628,17 @@ const ScheduleDetail = ({
         onCancel={() => setIsDiscardModalOpen(false)}
         onDiscard={handleDiscard}
       />
+
+      {overlayTemplateId && overlayTemplate && (
+        <ApplyTemplateBar
+          templateName={overlayTemplate.name}
+          shiftsToAdd={templateConflictSummary.shiftsToAdd}
+          conflictsDetected={templateConflictSummary.conflictsDetected}
+          onCancel={handleCancelApplyTemplate}
+          onViewDetails={handleViewDetails}
+          onApply={handleApplyTemplateAction}
+        />
+      )}
     </View>
   );
 };
@@ -529,6 +652,7 @@ const ScheduleDetailScreen = () => {
     swapRequests,
     dropRequests,
   } = useScheduleStore();
+  const { templates } = useScheduleTemplateStore(); // Get templates
 
   const approvedPtoRequests = useMemo(
     () => ptoRequests.filter((r) => r.status === "approved"),

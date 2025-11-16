@@ -1,5 +1,5 @@
 import { useRouter } from "expo-router";
-import { BarChart3, Calendar } from "lucide-react-native";
+import { BarChart3, Calendar, Sparkles } from "lucide-react-native"; // Added Sparkles
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -51,6 +51,14 @@ const SchedulingMenuScreen = () => {
       subtitle: "Analytics & Insights",
       route: "/scheduling/reports",
       iconBgColor: "bg-green-600/20",
+    },
+    {
+      id: "templates",
+      icon: <Sparkles color="#A78BFA" size={48} />, // Purple Sparkles
+      title: "Templates",
+      subtitle: "Manage Shift Patterns",
+      route: "/scheduling/templates",
+      iconBgColor: "bg-purple-600/20", // Purple background
     },
   ];
 

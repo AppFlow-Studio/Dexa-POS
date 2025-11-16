@@ -1,7 +1,7 @@
 import ActivityFeedTab from "@/components/profile/ActivityFeedTab";
 import DropRequestsTab from "@/components/profile/DropRequestsTab";
 import SwapRequestsInTab from "@/components/profile/SwapRequestsInTab";
-import SwapRequestsOutTab from "@/components/profile/SwapRequestsInTab";
+import SwapRequestsOutTab from "@/components/profile/SwapRequestsOutTab";
 import {
   AlertCircle,
   ArrowDownCircle,

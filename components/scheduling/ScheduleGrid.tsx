@@ -8,7 +8,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useDropZoneContext } from "@/contexts/DropZoneContext";
-import { PTORequest, Role, Shift } from "@/lib/types";
+import { TemplateConflictSummary } from "@/lib/rules";
+import {
+  PTORequest,
+  Role,
+  ScheduleTemplate,
+  Shift,
+  TemplateShift,
+} from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import {
@@ -16,13 +23,14 @@ import {
   areIntervalsOverlapping,
   differenceInMinutes,
   format,
+  getDay,
   isValid,
   isWithinInterval,
   parseISO,
   startOfDay,
 } from "date-fns";
 import { Plus } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   findNodeHandle,
   ScrollView,
@@ -33,6 +41,7 @@ import {
 } from "react-native";
 import Animated, { runOnUI, useAnimatedStyle } from "react-native-reanimated";
 import { DraggableShift } from "./DraggableShift";
+import OverlayShiftChip from "./OverlayShiftChip"; // Import OverlayShiftChip
 
 const ScheduleCell = React.memo(
   ({
@@ -42,6 +51,9 @@ const ScheduleCell = React.memo(
     isDateInRange,
     ptoOnDate,
     ancestor,
+    overlayShifts,
+    conflictingShiftTempIds,
+    isApplyTemplateBarVisible,
   }: {
     children: React.ReactNode;
     employeeId: string;
@@ -49,6 +61,9 @@ const ScheduleCell = React.memo(
     isDateInRange: boolean;
     ptoOnDate: PTORequest | undefined;
     ancestor: React.RefObject<ScrollView>;
+    overlayShifts: TemplateShift[];
+    conflictingShiftTempIds: Set<string>;
+    isApplyTemplateBarVisible?: boolean;
   }) => {
     const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey } =
       useDropZoneContext();
@@ -104,6 +119,13 @@ const ScheduleCell = React.memo(
           isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
         } ${ptoOnDate ? "bg-purple-900/30" : ""}`}
       >
+        {overlayShifts.map((shift) => (
+          <OverlayShiftChip
+            key={shift.tempId}
+            shift={shift}
+            isConflicting={conflictingShiftTempIds.has(shift.tempId)}
+          />
+        ))}
         {children}
       </Animated.View>
     );
@@ -130,6 +152,10 @@ interface ScheduleGridProps {
   approvedPtoRequests: PTORequest[];
   scheduleId: string;
   scheduleType: "period" | "week";
+  overlayTemplateId?: string | null;
+  templates?: ScheduleTemplate[];
+  templateConflictSummary?: TemplateConflictSummary;
+  isApplyTemplateBarVisible: boolean; // New prop added here
 }
 
 const ScheduleGrid: React.FC<ScheduleGridProps> = ({
@@ -144,12 +170,27 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   approvedPtoRequests,
   scheduleId,
   scheduleType,
+  overlayTemplateId,
+  templates,
+  templateConflictSummary,
+  isApplyTemplateBarVisible, // Destructure new prop here
 }) => {
   const [showConflictAlert, setShowConflictAlert] = useState(false);
   const { dropResult } = useDropZoneContext();
   const weekDates = getWeekDates(startDate);
   const updateShift = useScheduleStore((state) => state.updateShift);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  const overlayTemplate = templates?.find((t) => t.id === overlayTemplateId);
+
+  const conflictingShiftTempIds = useMemo(() => {
+    if (!templateConflictSummary) return new Set<string>();
+    return new Set(
+      templateConflictSummary.conflictDetails.map(
+        (cd) => cd.templateShift.tempId
+      )
+    );
+  }, [templateConflictSummary]);
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
     const dateStr = date.toISOString().split("T")[0];
@@ -162,6 +203,24 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     }
 
     return dayShifts.filter((shift) => selectedRoles.includes(shift.role));
+  };
+
+  const getOverlayShiftsForDate = (date: Date, employeeId: string) => {
+    if (!overlayTemplate) return [];
+    const dayOfWeek = getDay(date);
+    const isCurrentDateInRange = isWithinInterval(startOfDay(date), {
+      start: startOfDay(periodStartDate),
+      end: startOfDay(periodEndDate),
+    });
+
+    if (!isCurrentDateInRange) {
+      return []; // Do not show overlay shifts if the date is out of range
+    }
+
+    return overlayTemplate.shifts.filter(
+      (shift) =>
+        shift.dayOfWeek === dayOfWeek && shift.employeeId === employeeId
+    );
   };
 
   const calculateTotalHours = (employeeId: string) => {
@@ -260,7 +319,11 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: isApplyTemplateBarVisible ? 80 : 0 }} // Conditional padding
+      >
         <View>
           {/* Header */}
           <View className="flex-row bg-[#212121] sticky top-0 z-10">
@@ -312,6 +375,10 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     date,
                     employee.id
                   );
+                  const overlayShifts = getOverlayShiftsForDate(
+                    date,
+                    employee.id
+                  );
                   const dateStr = date.toISOString().split("T")[0];
                   const isDateInRange = isWithinInterval(startOfDay(date), {
                     start: startOfDay(periodStartDate),
@@ -335,6 +402,8 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       isDateInRange={isDateInRange}
                       ptoOnDate={ptoOnDate}
                       ancestor={scrollViewRef as React.RefObject<ScrollView>}
+                      overlayShifts={overlayShifts}
+                      conflictingShiftTempIds={conflictingShiftTempIds}
                     >
                       {isDateInRange ? (
                         ptoOnDate ? (
@@ -355,7 +424,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                               />
                             ))}
                           </View>
-                        ) : (
+                        ) : overlayShifts.length === 0 ? (
                           <TouchableOpacity
                             onPress={() => onAddShift(employee.id, dateStr)}
                             className="flex-1 h-full w-full items-center justify-center border-2 border-dashed border-gray-600 rounded-lg"
@@ -365,7 +434,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                               Add Shift
                             </Text>
                           </TouchableOpacity>
-                        )
+                        ) : null
                       ) : null}
                     </ScheduleCell>
                   );

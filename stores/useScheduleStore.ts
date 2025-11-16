@@ -467,6 +467,12 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 }
               }
 
+              // Remove notifications
+              useNotificationStore.getState().removeNotification({
+                type: "swap_approved",
+                payload: { requestId },
+              });
+
               request.revertedMyShift = undefined;
               request.revertedPeerShift = undefined;
             });
@@ -555,6 +561,12 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   );
                 }
               }
+
+              // Remove notification
+              useNotificationStore.getState().removeNotification({
+                type: "drop_request_approved",
+                payload: { requestId: request.id, shiftId: request.shift.id },
+              });
 
               // Clear the reverted shift
               request.revertedShift = undefined;
@@ -743,6 +755,12 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 }
               }
 
+              // Remove notification
+              useNotificationStore.getState().removeNotification({
+                type: "pto_request_approved",
+                payload: { requestId },
+              });
+
               // Clear the reverted shifts
               request.revertedShifts = [];
             });
@@ -869,36 +887,6 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   schedule.updatedAt = new Date().toISOString();
 
                   const currentShift = schedule.shifts[shiftIndex];
-
-                  // 2.2. New Shift Assignment Notification
-                  if (!previousShift.employeeId && currentShift.employeeId) {
-                    useNotificationStore.getState().addNotification({
-                      employeeId: currentShift.employeeId,
-                      type: "shift_assigned", // Changed to lowercase
-                      message: `You have been assigned to a new shift on ${format(new Date(currentShift.startTime), "MMM d")} from ${format(new Date(currentShift.startTime), "p")} to ${format(new Date(currentShift.endTime), "p")}.`,
-                      payload: {
-                        shiftId: currentShift.id,
-                        scheduleType: scheduleType,
-                      },
-                    });
-                  }
-                  // 2.1. Shift Update Notification (only if not a new assignment and employee is assigned)
-                  else if (
-                    currentShift.employeeId &&
-                    previousShift.employeeId &&
-                    JSON.stringify(previousShift) !==
-                      JSON.stringify(currentShift)
-                  ) {
-                    useNotificationStore.getState().addNotification({
-                      employeeId: currentShift.employeeId,
-                      type: "shift_updated", // Changed to lowercase
-                      message: `Your shift on ${format(new Date(currentShift.startTime), "MMM d")} has been updated.`,
-                      payload: {
-                        shiftId: currentShift.id,
-                        scheduleType: scheduleType,
-                      },
-                    });
-                  }
                 }
               }
             });
@@ -947,6 +935,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               shifts: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
+              type: "period",
             };
             set((state) => {
               state.schedulePeriods.push(newSchedulePeriod);
@@ -1161,6 +1150,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             if (existingDraft) {
               return existingDraft.id;
             }
+            console.log("originalScheduleId", originalScheduleId);
+            console.log("targetArray", targetArray);
+            console.log("scheduleType", scheduleType);
 
             const originalSchedule = targetArray.find(
               (s) => s.id === originalScheduleId

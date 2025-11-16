@@ -1,10 +1,11 @@
+import { Role } from "@/lib/types";
 import { create } from "zustand";
 import { useTimeclockStore } from "./useTimeclockStore";
 
 export interface EmployeeProfile {
   id: string;
   fullName: string;
-  role: "manager" | "employee";
+  role: Role;
   profilePictureUrl?: string;
   pin: string; // 4-digit for demo
   shiftStatus: "clocked_in" | "clocked_out";
@@ -55,7 +56,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_0",
     pin: "1111",
-    role: "manager",
+    role: "Manager",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/33.jpg",
     shiftStatus: "clocked_out",
     baseWage: 25.0,
@@ -70,7 +71,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_1",
     pin: "2222",
-    role: "employee",
+    role: "Cashier",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/40.jpg",
     shiftStatus: "clocked_out",
     baseWage: 18.0,
@@ -85,7 +86,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_2",
     pin: "3333",
-    role: "employee",
+    role: "Barista",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/28.jpg",
     shiftStatus: "clocked_out",
     baseWage: 17.5,
@@ -100,7 +101,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "male",
     id: "emp_1759078476073_3",
     pin: "4444",
-    role: "employee",
+    role: "Line Cook",
     profilePictureUrl: "https://randomuser.me/api/portraits/men/8.jpg",
     shiftStatus: "clocked_out",
     baseWage: 19.0,
@@ -115,7 +116,7 @@ const MockEmployees: EmployeeProfile[] = [
     gender: "female",
     id: "emp_1759078476073_4",
     pin: "5555",
-    role: "employee",
+    role: "Prep",
     profilePictureUrl: "https://randomuser.me/api/portraits/women/48.jpg",
     shiftStatus: "clocked_out",
     baseWage: 16.5,
@@ -149,6 +150,13 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
         `https://randomuser.me/api/?results=${count}&nat=us,ca,gb,au`
       );
       const data = await resp.json();
+      const roles: Role[] = [
+        "Cashier",
+        "Barista",
+        "Line Cook",
+        "Prep",
+        "Supervisor",
+      ];
       const mapped: EmployeeProfile[] = (data.results || []).map(
         (u: any, idx: number) => ({
           id: `emp_${Date.now()}_${idx}`,
@@ -156,7 +164,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
           profilePictureUrl: u.picture?.large,
           pin: (1111 + idx).toString(),
           shiftStatus: "clocked_out",
-          role: idx === 0 ? "manager" : "employee", // First user is a manager
+          role: idx === 0 ? "Supervisor" : roles[idx % roles.length],
           email: u.email,
           phone: u.phone,
           dob: u.dob?.date
@@ -169,7 +177,7 @@ export const useEmployeeStore = create<EmployeeState>((set, get) => ({
                 u.location.street?.name ?? ""
               }, ${u.location.city ?? ""}`.trim()
             : undefined,
-            baseWage: 15 + Math.floor(Math.random() * 10),
+          baseWage: 15 + Math.floor(Math.random() * 10),
         })
       );
       set({ employees: mapped, isLoading: false });
