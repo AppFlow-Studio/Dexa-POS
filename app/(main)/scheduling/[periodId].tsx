@@ -1,3 +1,12 @@
+import ApplyTemplateBar from "@/components/scheduling/ApplyTemplateBar"; // Import ApplyTemplateBar
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -10,114 +19,100 @@ import {
   X,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
-
-import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
-import PublishModal from "@/components/scheduling/PublishModal";
+import { PublishModal } from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
-import ShiftEditorModal from "@/components/scheduling/ShiftEditorModal";
+import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
-import { mockShiftsScheudleGrid } from "@/lib/mockData";
+import { DropZoneProvider } from "@/contexts/DropZoneContext";
+import { detectTemplateConflicts } from "@/lib/rules"; // Import detectTemplateConflicts
 import {
+  ApplyMode,
   PTORequest,
   Role,
   SchedulePeriod,
   Shift,
-  ShiftRequest as SwapRequest,
+  TemplateShift,
   WeeklySchedule,
 } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { addDays, isAfter, isBefore, subDays } from "date-fns";
-import { ScrollView } from "react-native-gesture-handler";
-
-const mockSwapRequests: SwapRequest[] = [
-  {
-    id: "swap1",
-    fromEmployeeId: "1",
-    toEmployeeId: "6",
-    shift: mockShiftsScheudleGrid[0],
-    status: "pending",
-    note: "Schedule conflict",
-    type: "swap",
-    submittedAt: new Date().toISOString(),
-  },
-  {
-    id: "swap2",
-    fromEmployeeId: "2",
-    toEmployeeId: "5",
-    shift: mockShiftsScheudleGrid[1],
-    status: "pending",
-    type: "swap",
-    submittedAt: new Date().toISOString(),
-  },
-];
-
-const mockPtoRequests: PTORequest[] = [
-  {
-    id: "pto1",
-    employeeId: "4",
-    startDate: "2025-01-15",
-    endDate: "2025-01-16",
-    note: "Family event",
-    status: "pending",
-    hours: 16,
-    submittedAt: new Date().toISOString(),
-  },
-  {
-    id: "pto2",
-    employeeId: "7",
-    startDate: "2025-01-17",
-    endDate: "2025-01-17",
-    note: "Medical appointment",
-    status: "pending",
-    hours: 8,
-    submittedAt: new Date().toISOString(),
-  },
-];
+import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
+import {
+  addDays,
+  getDay,
+  isAfter,
+  isBefore,
+  isEqual,
+  startOfDay,
+  subDays,
+} from "date-fns";
 
 const ScheduleDetail = ({
   currentSchedule,
+  approvedPtoRequests,
+  pendingSwapRequestsCount,
+  pendingPtoRequestsCount,
+  pendingDropRequestsCount,
 }: {
   currentSchedule: {
     schedule: SchedulePeriod | WeeklySchedule;
     type: "period" | "week";
   };
+  approvedPtoRequests: PTORequest[];
+  pendingSwapRequestsCount: number;
+  pendingPtoRequestsCount: number;
+  pendingDropRequestsCount: number;
 }) => {
   const router = useRouter();
-  const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
-    useScheduleStore();
+  const {
+    addShift,
+    updateShift,
+    deleteShift,
+    discardDraft,
+    compareSchedules,
+    applyTemplate,
+  } = useScheduleStore();
   const { employees } = useEmployeeStore();
+  const {
+    templates,
+    actions: { updateTemplate },
+  } = useScheduleTemplateStore(); // Get templates and actions
 
   const [startDate, setStartDate] = useState(
-    new Date(currentSchedule.schedule.startDate)
+    startOfDay(new Date(currentSchedule.schedule.startDate))
   );
   const [searchQuery, setSearchQuery] = useState("");
 
   // State for modals and drawers
   const [shiftEditorOpen, setShiftEditorOpen] = useState(false);
-  const [selectedShift, setSelectedShift] = useState<Partial<Shift> | null>(
-    null
-  );
+  const [selectedShift, setSelectedShift] = useState<Partial<
+    Shift & TemplateShift
+  > | null>(null); // Updated type
   const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [isDiscardModalOpen, setIsDiscardModalOpen] = useState(false);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
+
+  // State for template overlay
+  const [overlayTemplateId, setOverlayTemplateId] = useState<string | null>(
+    null
+  );
+  const [applyMode, setApplyMode] = useState<ApplyMode>("merge");
 
   // State for filters
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
@@ -171,21 +166,45 @@ const ScheduleDetail = ({
   };
 
   const handleApplyTemplate = (templateId: string) => {
-    console.log("Applying template:", templateId);
+    setOverlayTemplateId(templateId);
   };
 
-  const handleSaveShift = (shiftData: Partial<Shift>) => {
+  const handleCancelApplyTemplate = () => {
+    setOverlayTemplateId(null);
+  };
+
+  const handleApplyTemplateAction = () => {
+    if (!overlayTemplate) return;
+
+    applyTemplate(
+      currentSchedule.schedule.id,
+      currentSchedule.type,
+      overlayTemplate,
+      applyMode
+    );
+
+    updateTemplate(overlayTemplate.id, { lastUsed: new Date() });
+    handleCancelApplyTemplate(); // Close the bar after applying
+  };
+
+  const handleViewDetails = () => {
+    // TODO: Implement viewing conflict details
+    console.log("Viewing conflict details...");
+  };
+
+  const handleSaveShift = (shiftData: Partial<Shift & TemplateShift>) => {
+    // Updated parameter type
     if (shiftData.id) {
       updateShift(
         currentSchedule.schedule.id,
         currentSchedule.type,
-        shiftData as Shift
+        shiftData as Shift // Cast back to Shift for store
       );
     } else {
       addShift(
         currentSchedule.schedule.id,
         currentSchedule.type,
-        shiftData as Omit<Shift, "id">
+        shiftData as Omit<Shift, "id"> // Cast back to Omit<Shift, "id"> for store
       );
     }
     setShiftEditorOpen(false);
@@ -222,14 +241,14 @@ const ScheduleDetail = ({
   const handlePreviousWeek = () => {
     const newDate = subDays(startDate, 7);
     if (!isBefore(newDate, new Date(currentSchedule.schedule.startDate))) {
-      setStartDate(newDate);
+      setStartDate(startOfDay(newDate));
     }
   };
 
   const handleNextWeek = () => {
     const newDate = addDays(startDate, 7);
     if (!isAfter(newDate, new Date(currentSchedule.schedule.endDate))) {
-      setStartDate(newDate);
+      setStartDate(startOfDay(newDate));
     }
   };
 
@@ -252,6 +271,34 @@ const ScheduleDetail = ({
     completed: "text-gray-400",
     "draft-edit": "text-yellow-400",
   };
+
+  const totalPendingRequests =
+    pendingSwapRequestsCount +
+    pendingPtoRequestsCount +
+    pendingDropRequestsCount;
+
+  const overlayTemplate = useMemo(() => {
+    return templates.find((t) => t.id === overlayTemplateId);
+  }, [overlayTemplateId, templates]);
+
+  const templateConflictSummary = useMemo(() => {
+    if (!overlayTemplate) {
+      return { shiftsToAdd: 0, conflictsDetected: 0, conflictDetails: [] };
+    }
+    return detectTemplateConflicts(
+      overlayTemplate,
+      currentSchedule.schedule,
+      new Date(currentSchedule.schedule.startDate), // Pass full schedule start date
+      new Date(currentSchedule.schedule.endDate), // Pass full schedule end date
+      approvedPtoRequests
+    );
+  }, [
+    overlayTemplate,
+    currentSchedule.schedule,
+    currentSchedule.schedule.startDate, // New dependency
+    currentSchedule.schedule.endDate, // New dependency
+    approvedPtoRequests,
+  ]);
 
   return (
     <View className="flex-1 bg-[#212121]">
@@ -326,6 +373,11 @@ const ScheduleDetail = ({
             />
 
             <View className="flex-row items-center gap-2">
+              {/* Generate Draft Button */}
+              <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
+                <Sparkles size={16} color="white" />
+                <Text className="text-white">Generate Draft</Text>
+              </TouchableOpacity>
               {currentSchedule.schedule.status === "draft-edit" ? (
                 <>
                   {hasUnsavedChanges && (
@@ -378,10 +430,14 @@ const ScheduleDetail = ({
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 flex-row overflow-hidden">
+      <View className="flex-1 flex-row">
         {/* Left Sidebar */}
         <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
-          <ScrollView>
+          <ScrollView
+            contentContainerStyle={{
+              paddingBottom: overlayTemplateId ? 80 : 0, // Conditional padding for sidebar
+            }}
+          >
             <View className="gap-y-6">
               <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
@@ -407,11 +463,19 @@ const ScheduleDetail = ({
                     <Text className="text-sm font-semibold text-white">
                       Open Shifts
                     </Text>
-                    <Badge className="ml-auto bg-gray-700">
+                    <Badge
+                      className={`ml-auto ${
+                        currentSchedule.schedule.shifts.filter(
+                          (s) => s.status === "open"
+                        ).length > 0
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-700 text-white"
+                      }`}
+                    >
                       <Text className="text-white">
                         {
                           currentSchedule.schedule.shifts.filter(
-                            (s) => s.isOpen
+                            (s) => s.status === "open"
                           ).length
                         }
                       </Text>
@@ -436,9 +500,19 @@ const ScheduleDetail = ({
                     <Text className="text-sm font-semibold text-white">
                       Swaps & Requests
                     </Text>
-                    <Badge className="ml-auto bg-gray-700">
-                      <Text className="text-white">
-                        {mockSwapRequests.length + mockPtoRequests.length}
+                    <Badge
+                      className={`ml-auto ${
+                        totalPendingRequests > 0
+                          ? "bg-red-500 text-white"
+                          : "bg-gray-700 text-white"
+                      }`}
+                    >
+                      <Text
+                        className={
+                          totalPendingRequests > 0 ? "text-white" : "text-white"
+                        }
+                      >
+                        {totalPendingRequests}
                       </Text>
                     </Badge>
                   </View>
@@ -466,17 +540,25 @@ const ScheduleDetail = ({
               </View>
             </View>
           </View>
-
-          <ScheduleGrid
-            startDate={startDate}
-            employees={filteredEmployees}
-            selectedRoles={selectedRoles}
-            onShiftClick={handleShiftClick}
-            onAddShift={handleAddShift}
-            shifts={currentSchedule.schedule.shifts}
-            periodStartDate={new Date(currentSchedule.schedule.startDate)}
-            periodEndDate={new Date(currentSchedule.schedule.endDate)}
-          />
+          <DropZoneProvider>
+            <ScheduleGrid
+              startDate={startDate}
+              employees={filteredEmployees}
+              selectedRoles={selectedRoles}
+              onShiftClick={handleShiftClick}
+              onAddShift={handleAddShift}
+              shifts={currentSchedule.schedule.shifts}
+              periodStartDate={new Date(currentSchedule.schedule.startDate)}
+              periodEndDate={new Date(currentSchedule.schedule.endDate)}
+              approvedPtoRequests={approvedPtoRequests}
+              scheduleId={currentSchedule.schedule.id}
+              scheduleType={currentSchedule.type}
+              overlayTemplateId={overlayTemplateId}
+              templates={templates}
+              templateConflictSummary={templateConflictSummary}
+              isApplyTemplateBarVisible={!!overlayTemplateId}
+            />
+          </DropZoneProvider>
         </View>
       </View>
 
@@ -484,7 +566,7 @@ const ScheduleDetail = ({
       <ShiftEditorModal
         open={shiftEditorOpen}
         onOpenChange={setShiftEditorOpen}
-        shift={selectedShift as Shift}
+        shift={selectedShift} // No need to cast here, type is already Partial<Shift & TemplateShift>
         periodId={currentSchedule.schedule.id!}
         scheduleType={currentSchedule.type}
         onSave={handleSaveShift}
@@ -508,30 +590,69 @@ const ScheduleDetail = ({
       />
       <OpenShiftsDrawer
         ref={openShiftsSheetRef}
-        openShifts={currentSchedule.schedule.shifts.filter((s) => s.isOpen)}
-        swapRequests={mockSwapRequests}
-        ptoRequests={mockPtoRequests}
+        openShifts={currentSchedule.schedule.shifts.filter(
+          (s) => s.status === "open"
+        )}
         onAssign={(shiftId, empId) =>
           console.log(`Assign shift ${shiftId} to ${empId}`)
         }
         onCloseShift={(shiftId) => console.log(`Close shift ${shiftId}`)}
-        onApproveSwap={(id) => console.log(`Approve swap ${id}`)}
-        onDenySwap={(id) => console.log(`Deny swap ${id}`)}
-        onApprovePTO={(id) => console.log(`Approve PTO ${id}`)}
-        onDenyPTO={(id) => console.log(`Deny PTO ${id}`)}
       />
       <UnsavedChangesDialog
         isOpen={isDiscardModalOpen}
         onCancel={() => setIsDiscardModalOpen(false)}
         onDiscard={handleDiscard}
       />
+
+      {overlayTemplateId && overlayTemplate && (
+        <ApplyTemplateBar
+          templateName={overlayTemplate.name}
+          shiftsToAdd={templateConflictSummary.shiftsToAdd}
+          conflictsDetected={templateConflictSummary.conflictsDetected}
+          applyMode={applyMode}
+          onApplyModeChange={setApplyMode}
+          onCancel={handleCancelApplyTemplate}
+          onViewDetails={handleViewDetails}
+          onApply={handleApplyTemplateAction}
+        />
+      )}
     </View>
   );
 };
 
 const ScheduleDetailScreen = () => {
   const { periodId } = useLocalSearchParams();
-  const { schedulePeriods, weeklySchedules } = useScheduleStore();
+  const {
+    schedulePeriods,
+    weeklySchedules,
+    ptoRequests,
+    swapRequests,
+    dropRequests,
+  } = useScheduleStore();
+  const { templates } = useScheduleTemplateStore(); // Get templates
+
+  const approvedPtoRequests = useMemo(
+    () => ptoRequests.filter((r) => r.status === "approved"),
+    [ptoRequests]
+  );
+
+  const pendingPtoRequestsCount = useMemo(
+    () => ptoRequests.filter((r) => r.status === "pending").length,
+    [ptoRequests]
+  );
+
+  const pendingSwapRequestsCount = useMemo(
+    () =>
+      swapRequests.filter(
+        (r) => r.status === "pending-manager" || r.status === "pending-peer"
+      ).length,
+    [swapRequests]
+  );
+
+  const pendingDropRequestsCount = useMemo(
+    () => dropRequests.filter((r) => r.status === "pending").length,
+    [dropRequests]
+  );
 
   const currentSchedule = useMemo(() => {
     const period = schedulePeriods.find((p) => p.id === periodId);
@@ -550,7 +671,15 @@ const ScheduleDetailScreen = () => {
     );
   }
 
-  return <ScheduleDetail currentSchedule={currentSchedule} />;
+  return (
+    <ScheduleDetail
+      currentSchedule={currentSchedule}
+      approvedPtoRequests={approvedPtoRequests}
+      pendingSwapRequestsCount={pendingSwapRequestsCount}
+      pendingPtoRequestsCount={pendingPtoRequestsCount}
+      pendingDropRequestsCount={pendingDropRequestsCount}
+    />
+  );
 };
 
 export default ScheduleDetailScreen;

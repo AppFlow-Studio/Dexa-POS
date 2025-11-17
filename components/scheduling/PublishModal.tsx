@@ -82,7 +82,7 @@ export function PublishModal({
     publishSchedule(scheduleId, scheduleType);
     toast.success("Publish Successful", { position: ToastPosition.BOTTOM });
     onOpenChange(false);
-    router.push("/scheduling/dashboard");
+    router.back();
   };
 
   const hasConflicts = conflicts.length > 0;

@@ -1,11 +1,13 @@
 import { Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
+import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import {
   addDays,
   format,
+  isAfter,
   isSameDay,
   isSameWeek,
   parseISO,
@@ -30,10 +32,10 @@ import {
   View,
 } from "react-native";
 import NotificationBell from "../notifications/NotificationBell";
+import SwapProposalWizard from "../scheduling/SwapProposalWizard";
 import AnalyticsCard from "./AnalyticsCard";
 import DayScheduleCard from "./DayScheduleCard";
 import DropShiftBottomSheet from "./DropShiftBottomSheet";
-import RequestSwapBottomSheet from "./RequestSwapBottomSheet";
 import ScheduleCalendarView from "./ScheduleCalendarView";
 import ScheduleNotLive from "./ScheduleNotLive";
 import { ShiftDetailModal } from "./ShiftDetailModal";
@@ -43,31 +45,46 @@ import OpenShiftsDrawer from "./drawers/OpenShiftsDrawer";
 import OvertimeDrawer from "./drawers/OvertimeDrawer";
 import ScheduledHoursDrawer from "./drawers/ScheduledHoursDrawer";
 
-const MyScheduleScreen = () => {
+const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(new Date(), { weekStartsOn: 0 }) // Sunday start
+    startOfWeek(initialDate ? parseISO(initialDate) : new Date(), { weekStartsOn: 0 }) // Sunday start
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
 
-  const { loggedInEmployee } = useEmployeeStore();
-  const { getShiftsForEmployee } = useScheduleStore();
+  const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
+
+  const {
+    dropRequests,
+    swapRequests,
+    cancelDropRequest,
+    cancelSwap,
+    schedulePeriods,
+    weeklySchedules,
+  } = useScheduleStore();
+
+  const employeeShifts = useMemo(() => {
+    if (!loggedInEmployee) return [];
+    const activeSchedules = [
+      ...schedulePeriods.filter((p) => p.status === "active"),
+      ...weeklySchedules.filter((w) => w.status === "active"),
+    ];
+    return activeSchedules
+      .flatMap((s) => s.shifts)
+      .filter((shift) => shift.employeeId === loggedInEmployee.id);
+  }, [loggedInEmployee, schedulePeriods, weeklySchedules]);
 
   const dropSheetRef = useRef<BottomSheetMethods>(null);
-  const swapSheetRef = useRef<BottomSheetMethods>(null);
+  const swapWizardRef = useRef<BottomSheet>(null);
   const [shiftForAction, setShiftForAction] = useState<Shift | null>(null);
+  const [shiftToSwap, setShiftToSwap] = useState<Shift | null>(null);
 
   const scheduledHoursSheetRef = useRef<BottomSheet>(null);
   const onTimeSheetRef = useRef<BottomSheet>(null);
   const breakComplianceSheetRef = useRef<BottomSheet>(null);
   const overtimeSheetRef = useRef<BottomSheet>(null);
   const openShiftsSheetRef = useRef<BottomSheet>(null);
-
-  const employeeShifts = useMemo(() => {
-    if (!loggedInEmployee) return [];
-    return getShiftsForEmployee(loggedInEmployee.id);
-  }, [loggedInEmployee, getShiftsForEmployee]);
 
   const isSchedulePublished = useMemo(() => {
     return employeeShifts.some((shift) =>
@@ -93,8 +110,23 @@ const MyScheduleScreen = () => {
   };
 
   const goToNextPublisedWeek = () => {
-    //TODO: add this logic once adding schedule logic is done
-    console.log("goToNextPublisedWeek");
+    const sortedShifts = [...employeeShifts].sort(
+      (a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime()
+    );
+
+    const nextShift = sortedShifts.find((shift) =>
+      isAfter(parseISO(shift.date), addDays(currentWeekStart, 6))
+    );
+
+    if (nextShift) {
+      setCurrentWeekStart(
+        startOfWeek(parseISO(nextShift.date), { weekStartsOn: 0 })
+      );
+    } else {
+      toast.error("No future published schedules found.", {
+        position: ToastPosition.BOTTOM,
+      });
+    }
   };
 
   const handleRequestDrop = (shift: Shift) => {
@@ -103,8 +135,37 @@ const MyScheduleScreen = () => {
   };
 
   const handleRequestSwap = (shift: Shift) => {
-    setShiftForAction(shift);
-    swapSheetRef.current?.expand();
+    setShiftToSwap(shift);
+    swapWizardRef.current?.expand();
+  };
+
+  const handleCancelDropRequest = (shiftToCancel: Shift) => {
+    const requestToCancel = dropRequests.find(
+      (req) => req.shift.id === shiftToCancel.id && req.status === "pending"
+    );
+    if (requestToCancel) {
+      cancelDropRequest(requestToCancel.id);
+    }
+  };
+
+  const handleCancelSwapRequest = (shiftToCancel: Shift) => {
+    const requestToCancel = swapRequests.find(
+      (req) =>
+        (req.myShiftId === shiftToCancel.id ||
+          req.peerShiftId === shiftToCancel.id) &&
+        (req.status === "pending-peer" || req.status === "pending-manager")
+    );
+
+    if (requestToCancel && loggedInEmployee) {
+      cancelSwap(requestToCancel.id, loggedInEmployee.id);
+      toast.success("Swap request cancelled.", {
+        position: ToastPosition.BOTTOM,
+      });
+    } else {
+      toast.error("Could not find pending swap request for this shift or employee not logged in.", {
+        position: ToastPosition.BOTTOM,
+      });
+    }
   };
 
   const handleShiftClick = (shift: Shift) => {
@@ -265,6 +326,8 @@ const MyScheduleScreen = () => {
                         onShiftPress={handleShiftClick}
                         onRequestDrop={handleRequestDrop}
                         onRequestSwap={handleRequestSwap}
+                        onCancelDropRequest={handleCancelDropRequest}
+                        onCancelSwapRequest={handleCancelSwapRequest}
                       />
                     )}
                   />
@@ -292,16 +355,18 @@ const MyScheduleScreen = () => {
         onClose={() => setShowShiftModal(false)}
         onRequestDrop={handleRequestDrop}
         onRequestSwap={handleRequestSwap}
+        onCancelDropRequest={handleCancelDropRequest}
+        onCancelSwapRequest={handleCancelSwapRequest}
       />
       <DropShiftBottomSheet
         shift={shiftForAction}
         bottomSheetRef={dropSheetRef as React.RefObject<BottomSheet>}
         onClose={() => dropSheetRef.current?.close()}
       />
-      <RequestSwapBottomSheet
-        shift={shiftForAction}
-        bottomSheetRef={swapSheetRef as React.RefObject<BottomSheet>}
-        onClose={() => swapSheetRef.current?.close()}
+      <SwapProposalWizard
+        shiftToOffer={shiftToSwap}
+        bottomSheetRef={swapWizardRef as React.RefObject<BottomSheet>}
+        onClose={() => swapWizardRef.current?.close()}
       />
       <ScheduledHoursDrawer ref={scheduledHoursSheetRef} />
       <OnTimeDrawer ref={onTimeSheetRef} />

@@ -1,22 +1,76 @@
-import PTOBalanceCard from "@/components/profile/PTOBalanceCard";
 import PTOHistoryCard from "@/components/profile/PTOHistoryCard";
 import PTORequestForm from "@/components/profile/PTORequestForm";
-import { MOCK_PTO_BALANCE } from "@/lib/mockData";
+import PtoMetrics from "@/components/pto/PtoMetrics";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import {
-  AlertCircle,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-} from "lucide-react-native";
-import React, { useState } from "react";
+  differenceInHours,
+  isFuture,
+  isToday,
+  parse,
+  parseISO,
+} from "date-fns";
+import { Calendar } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
 const PTOPage = () => {
-  const { ptoRequests } = useScheduleStore();
+  const ptoRequests = useScheduleStore((state) => state.ptoRequests);
+  const addPTORequest = useScheduleStore((state) => state.addPTORequest);
+  const cancelPTORequest = useScheduleStore((state) => state.cancelPTORequest);
+  const activeEmployeeId = useEmployeeStore((state) => state.activeEmployeeId);
+  const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
+  const { schedulePeriods, weeklySchedules } = useScheduleStore();
+  const { ptoAccrualRate } = useStoreSettingsStore();
   const [showRequestForm, setShowRequestForm] = useState(false);
+
+  const nextAccrualInfo = useMemo(() => {
+    if (!loggedInEmployee) return "No upcoming shifts";
+
+    const futureShifts = [...schedulePeriods, ...weeklySchedules]
+      .filter((p) => p.status === "active")
+      .flatMap((s) => s.shifts)
+      .filter((shift) => {
+        if (shift.employeeId !== loggedInEmployee.id) return false;
+        const shiftDate = parseISO(shift.date);
+        return isToday(shiftDate) || isFuture(shiftDate);
+      })
+      .sort((a, b) => {
+        const dateA = parseISO(a.date).getTime();
+        const dateB = parseISO(b.date).getTime();
+        if (dateA !== dateB) {
+          return dateA - dateB;
+        }
+        return (
+          parse(a.startTime, "HH:mm", new Date()).getTime() -
+          parse(b.startTime, "HH:mm", new Date()).getTime()
+        );
+      });
+
+    if (futureShifts.length === 0) {
+      return "No upcoming shifts";
+    }
+
+    const nextShift = futureShifts[0];
+    const startTime = parseISO(nextShift.startTime);
+    const endTime = parseISO(nextShift.endTime);
+    const duration = differenceInHours(endTime, startTime);
+    const ptoFromNextShift = duration * ptoAccrualRate;
+
+    return `~${ptoFromNextShift.toFixed(2)}h after next shift`;
+  }, [loggedInEmployee, schedulePeriods, weeklySchedules, ptoAccrualRate]);
+
+  if (!activeEmployeeId) {
+    return (
+      <View className="flex-1 bg-[#212121] p-4 items-center justify-center">
+        <Text className="text-white text-lg">
+          Please clock in to view your PTO information.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-[#212121] p-4">
@@ -36,36 +90,13 @@ const PTOPage = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {showRequestForm && (
           <Animated.View entering={FadeIn} exiting={FadeOut}>
-            <PTORequestForm onClose={() => setShowRequestForm(false)} />
+            <PTORequestForm
+              onClose={() => setShowRequestForm(false)}
+              onAddRequest={addPTORequest}
+            />
           </Animated.View>
         )}
-
-        <View className="flex-row gap-4 mb-6">
-          <PTOBalanceCard
-            label="Available"
-            value={`${MOCK_PTO_BALANCE.available}h`}
-            icon={<Clock size={20} color="#22c55e" />}
-            variant="success"
-          />
-          <PTOBalanceCard
-            label="Total Accrued"
-            value={`${MOCK_PTO_BALANCE.accrued}h`}
-            icon={<TrendingUp size={20} color="#9CA3AF" />}
-            variant="default"
-          />
-          <PTOBalanceCard
-            label="Used This Year"
-            value={`${MOCK_PTO_BALANCE.used}h`}
-            icon={<CheckCircle2 size={20} color="#9CA3AF" />}
-            variant="default"
-          />
-          <PTOBalanceCard
-            label="Pending Approval"
-            value={`${MOCK_PTO_BALANCE.pending}h`}
-            icon={<AlertCircle size={20} color="#f59e0b" />}
-            variant="warning"
-          />
-        </View>
+        <PtoMetrics employeeId={activeEmployeeId} />
 
         <View className="p-4 bg-blue-600/10 border border-blue-500/20 rounded-2xl mb-6">
           <Text className="text-lg font-semibold text-white mb-2">
@@ -75,13 +106,13 @@ const PTOPage = () => {
             <View>
               <Text className="text-sm text-gray-400 mb-1">Accrual Rate</Text>
               <Text className="text-xl font-bold text-white">
-                {MOCK_PTO_BALANCE.accrualRate} hours per hour worked
+                {ptoAccrualRate} hours per hour worked
               </Text>
             </View>
             <View>
               <Text className="text-sm text-gray-400 mb-1">Next Accrual</Text>
               <Text className="text-xl font-bold text-white">
-                ~1.5h after next shift
+                {nextAccrualInfo}
               </Text>
             </View>
           </View>
@@ -92,9 +123,15 @@ const PTOPage = () => {
             Request History
           </Text>
           <View className="gap-y-3">
-            {ptoRequests.map((request) => (
-              <PTOHistoryCard key={request.id} request={request} />
-            ))}
+            {ptoRequests
+              .filter((req) => req.employeeId === activeEmployeeId)
+              .map((request) => (
+                <PTOHistoryCard
+                  key={request.id}
+                  request={request}
+                  onCancelRequest={cancelPTORequest}
+                />
+              ))}
           </View>
         </View>
       </ScrollView>

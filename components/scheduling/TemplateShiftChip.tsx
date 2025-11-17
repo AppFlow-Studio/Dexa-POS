@@ -1,0 +1,35 @@
+import React from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { format, parseISO } from 'date-fns';
+import { TemplateShift } from '@/lib/types';
+
+interface TemplateShiftChipProps {
+  shift: TemplateShift;
+  onClick: (shift: TemplateShift) => void;
+}
+
+const formatTime = (isoString: string): string => {
+  if (!isoString) return "N/A";
+  try {
+    return format(parseISO(isoString), "h:mm a");
+  } catch (error) {
+    console.warn(`Invalid ISO string passed to formatTime: ${isoString}`);
+    return "";
+  }
+};
+
+export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({ shift, onClick }) => {
+  return (
+    <TouchableOpacity
+      onPress={() => onClick(shift)}
+      className="bg-blue-600/20 border border-blue-500 rounded-lg p-2 flex-row items-center justify-between"
+    >
+      <View>
+        <Text className="text-white font-semibold text-sm">{shift.role}</Text>
+        <Text className="text-blue-200 text-xs">
+          {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+};

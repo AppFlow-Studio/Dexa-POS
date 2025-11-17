@@ -17,6 +17,8 @@ const Header = () => {
     pathname == "/menu" ||
     pathname === "/scheduling" ||
     (pathname.startsWith("/scheduling/") && pathname.split("/").length === 3) ||
+    (pathname.startsWith("/scheduling/templates/") &&
+      pathname.split("/").length === 4) ||
     pathname === "/tables" ||
     pathname === "/tables/edit-layout" ||
     pathname === "/inventory" ||
@@ -49,6 +51,10 @@ const Header = () => {
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
     if (pathname === "/scheduling/reports") return "Reports";
+    if (pathname === "/scheduling/templates") return "Schdule Templates";
+    if (pathname === "/scheduling/templates/create")
+      return "Create New Template";
+    if (pathname.startsWith("/scheduling/templates/")) return "Edit Template";
     if (pathname.startsWith("/scheduling/") && pathname.split("/").length === 3)
       return "Scheduling Dashboard";
     if (pathname === "/pto") return "PTO";

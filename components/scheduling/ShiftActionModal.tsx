@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Shift } from "@/lib/types";
-import { format, parse } from "date-fns";
+import { format, parse, parseISO } from "date-fns";
 import { Clock, FileText, MapPin, Pencil, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -19,15 +19,6 @@ interface ShiftActionModalProps {
   onEdit: () => void;
   onDelete: () => void;
 }
-
-const formatTo12Hour = (time: string) => {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const h = parseInt(hours, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const formattedHours = h % 12 || 12;
-  return `${String(formattedHours).padStart(2, "0")}:${minutes} ${ampm}`;
-};
 
 export function ShiftActionModal({
   open,
@@ -43,10 +34,9 @@ export function ShiftActionModal({
       <DialogContent className="bg-[#1C1C1E] border-gray-700">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {format(
-              parse(shift.date, "yyyy-MM-dd", new Date()),
-              "EEEE, MMMM d"
-            )}
+            {shift.date
+              ? format(parse(shift.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d")
+              : "No Date"}
           </DialogTitle>
         </DialogHeader>
 
@@ -61,8 +51,13 @@ export function ShiftActionModal({
             <View className="flex-row items-center gap-x-3">
               <Clock size={20} color="#9CA3AF" />
               <Text className="text-white text-base">
-                {formatTo12Hour(shift.startTime)} –{" "}
-                {formatTo12Hour(shift.endTime)}
+                {shift.startTime
+                  ? format(parseISO(shift.startTime), "h:mm a")
+                  : "N/A"}{' '}
+                –{" "}
+                {shift.endTime
+                  ? format(parseISO(shift.endTime), "h:mm a")
+                  : "N/A"}
               </Text>
             </View>
             <View className="flex-row items-center gap-x-3">

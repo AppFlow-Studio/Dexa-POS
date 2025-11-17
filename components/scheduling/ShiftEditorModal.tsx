@@ -14,8 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Role, Shift } from "@/lib/types";
-import { format, parse } from "date-fns";
+import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
+import { addDays, format, parse, parseISO } from "date-fns"; // Import addDays
 import { AlertCircle, Copy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -27,50 +27,53 @@ import {
   View,
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
+import uuid from "react-native-uuid"; // Import uuid
+
 interface ShiftEditorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  shift?: Partial<Shift> | null;
-  periodId: string;
-  scheduleType: "period" | "week";
-  onSave: (shift: Partial<Shift>) => void;
-  onSaveAndDuplicate?: (shift: Partial<Shift>) => void;
+  shift?: Partial<Shift & TemplateShift> | null; // Updated prop type
+  periodId?: string; // Made optional for template mode
+  scheduleType?: "period" | "week"; // Made optional for template mode
+  onSave: (data: Partial<Shift & TemplateShift>) => void; // Updated prop type
+  onSaveAndDuplicate?: (data: Partial<Shift & TemplateShift>) => void; // Updated prop type
+  isTemplateMode?: boolean; // New prop
+  dayOfWeek?: number; // New prop for template mode
 }
 
 const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
 
-// Helper to format 24-hour time to 12-hour AM/PM
-const formatTo12Hour = (time: string) => {
-  if (!time) return "";
-  const [hours, minutes] = time.split(":");
-  const h = parseInt(hours, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const formattedHours = h % 12 || 12; // Converts 0 or 12 to 12
-  return `${String(formattedHours).padStart(2, "0")}:${minutes} ${ampm}`;
+// Helper to format ISO string to 12-hour AM/PM
+const formatTo12Hour = (isoString: string) => {
+  if (!isoString) return "";
+  try {
+    return format(parseISO(isoString), "h:mm a");
+  } catch (error) {
+    console.warn(`Invalid ISO string passed to formatTo12Hour: ${isoString}`);
+    return ""; // Return empty or a fallback
+  }
 };
 
-// Helper to format 12-hour AM/PM time to 24-hour
-const formatTo24Hour = (time: string) => {
-  if (!time) return "";
-  const [timePart, ampm] = time.split(" ");
-  let [hours, minutes] = timePart.split(":");
-  let h = parseInt(hours, 10);
+// Helper to combine date and 12-hour time into an ISO string
+const combineToISO = (date: string, time12h: string) => {
+  const time24h = format(parse(time12h, "h:mm a", new Date()), "HH:mm");
+  return `${date}T${time24h}:00.000Z`;
+};
 
-  if (ampm === "PM" && h < 12) {
-    h += 12;
-  }
-  if (ampm === "AM" && h === 12) {
-    h = 0; // Midnight case
-  }
-  return `${String(h).padStart(2, "0")}:${minutes}`;
+// Helper to get a placeholder date for a given dayOfWeek (0=Sunday, 6=Saturday)
+const getPlaceholderDate = (dayOfWeek: number): string => {
+  const baseDate = new Date("1970-01-04T00:00:00.000Z"); // A Sunday
+  return format(addDays(baseDate, dayOfWeek), "yyyy-MM-dd");
 };
 
 const timeSlots = Array.from({ length: 48 }, (_, i) => {
   const hours = Math.floor(i / 2);
   const minutes = (i % 2) * 30;
-  return formatTo12Hour(
-    `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`
-  );
+  const time24 = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
+    2,
+    "0"
+  )}`;
+  return format(parse(time24, "HH:mm", new Date()), "h:mm a");
 });
 
 export function ShiftEditorModal({
@@ -81,11 +84,13 @@ export function ShiftEditorModal({
   scheduleType,
   onSave,
   onSaveAndDuplicate,
+  isTemplateMode = false, // Default to false
+  dayOfWeek, // For new template shifts
 }: ShiftEditorModalProps) {
   const [role, setRole] = useState<Role>("Cashier");
-  const [date, setDate] = useState("");
-  const [startTime, setStartTime] = useState("09:00 AM");
-  const [endTime, setEndTime] = useState("05:00 PM");
+  const [date, setDate] = useState(""); // This will be a placeholder date in template mode
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [notes, setNotes] = useState("");
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
@@ -99,46 +104,81 @@ export function ShiftEditorModal({
   >("Fully staffed");
 
   useEffect(() => {
-    if (shift) {
-      setRole(shift.role || "Cashier");
-      setDate(shift.date || new Date().toISOString().split("T")[0]);
-      setStartTime(formatTo12Hour(shift.startTime || "09:00"));
-      setEndTime(formatTo12Hour(shift.endTime || "17:00"));
-      setNotes(shift.managerNote || "");
-      setLockAssignment(shift.locked || false);
-      setBreakMinutes(shift.breakMinutes || 30);
-      setExpectedPace(shift.expectedPace || "Moderate");
-      setStaffingLevel(shift.staffingLevel || "Fully staffed");
-    } else {
-      // Reset for new shift
-      setRole("Cashier");
-      setDate(new Date().toISOString().split("T")[0]);
-      setStartTime("09:00 AM");
-      setEndTime("05:00 PM");
-      setNotes("");
-      setLockAssignment(false);
-      setAllowOpenClaims(true);
-      setBreakMinutes(30);
-      setExpectedPace("Moderate");
-      setStaffingLevel("Fully staffed");
+    if (open) {
+      // Only reset when modal opens
+      if (shift) {
+        // Editing existing shift or template shift
+        setRole("Cashier");
+        setNotes(shift.managerNote || shift.notes || "");
+        setBreakMinutes(shift.breakMinutes || 30);
+        setExpectedPace(shift.expectedPace || "Moderate");
+        setStaffingLevel(shift.staffingLevel || "Fully staffed");
+
+        if (isTemplateMode) {
+          // For template shifts, extract dayOfWeek and use placeholder date
+          const shiftDayOfWeek =
+            shift.dayOfWeek !== undefined
+              ? shift.dayOfWeek
+              : shift.startTime
+                ? parseISO(shift.startTime).getDay()
+                : 0;
+          const placeholderDate = getPlaceholderDate(shiftDayOfWeek);
+          setDate(placeholderDate);
+          setStartTime(
+            shift.startTime || combineToISO(placeholderDate, "09:00 AM")
+          );
+          setEndTime(
+            shift.endTime || combineToISO(placeholderDate, "05:00 PM")
+          );
+          setLockAssignment(false); // Not applicable for template shifts
+          setAllowOpenClaims(true); // Not applicable for template shifts
+        } else {
+          // For real shifts
+          const shiftDate =
+            shift.date || new Date().toISOString().split("T")[0];
+          setDate(shiftDate);
+          setStartTime(shift.startTime || combineToISO(shiftDate, "09:00 AM"));
+          setEndTime(shift.endTime || combineToISO(shiftDate, "05:00 PM"));
+          setLockAssignment(shift.locked || false);
+          setAllowOpenClaims(true); // Default for real shifts
+        }
+      } else {
+        // Creating new shift or template shift
+        setRole("Cashier");
+        setNotes("");
+        setLockAssignment(false);
+        setAllowOpenClaims(true);
+        setBreakMinutes(30);
+        setExpectedPace("Moderate");
+        setStaffingLevel("Fully staffed");
+
+        if (isTemplateMode && dayOfWeek !== undefined) {
+          const placeholderDate = getPlaceholderDate(dayOfWeek);
+          setDate(placeholderDate);
+          setStartTime(combineToISO(placeholderDate, "09:00 AM"));
+          setEndTime(combineToISO(placeholderDate, "05:00 PM"));
+        } else {
+          const today = new Date().toISOString().split("T")[0];
+          setDate(today);
+          setStartTime(combineToISO(today, "09:00 AM"));
+          setEndTime(combineToISO(today, "05:00 PM"));
+        }
+      }
+      setErrors([]);
     }
-    setErrors([]);
-  }, [shift, open]);
+  }, [shift, open, isTemplateMode, dayOfWeek]);
 
   const validateShift = () => {
     const newErrors: string[] = [];
-    const start24 = formatTo24Hour(startTime);
-    const end24 = formatTo24Hour(endTime);
-    const [startH, startM] = start24.split(":").map(Number);
-    const [endH, endM] = end24.split(":").map(Number);
-    const startMinutes = startH * 60 + startM;
-    const endMinutes = endH * 60 + endM;
-    const durationHours = (endMinutes - startMinutes) / 60;
+    const start = parseISO(startTime);
+    const end = parseISO(endTime);
+    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
 
-    if (durationHours < 4) newErrors.push("Shift must be at least 4 hours");
-    if (durationHours > 8) newErrors.push("Shift cannot exceed 8 hours");
-    if (startMinutes >= endMinutes)
+    if (durationMinutes < 0)
       newErrors.push("End time must be after start time");
+    if (durationMinutes < 4 * 60)
+      newErrors.push("Shift must be at least 4 hours");
+    if (durationMinutes > 8 * 60) newErrors.push("Shift cannot exceed 8 hours");
     if (!role) newErrors.push("Role is required");
 
     setErrors(newErrors);
@@ -147,67 +187,89 @@ export function ShiftEditorModal({
 
   const handleSave = () => {
     if (!validateShift()) return;
-    onSave({
-      id: shift?.id,
-      employeeId: shift?.employeeId,
-      periodId,
-      role,
-      date,
-      startTime: formatTo24Hour(startTime),
-      endTime: formatTo24Hour(endTime),
-      managerNote: notes,
-      locked: lockAssignment,
-      isOpen: allowOpenClaims && !shift?.employeeId,
-      location: "Dexa – 5th Ave", //Update it once location logic is made
-      breakMinutes,
-      expectedPace,
-      staffingLevel,
-    });
+
+    if (isTemplateMode) {
+      const templateShift: TemplateShift = {
+        tempId: shift?.tempId || (uuid.v4() as string), // Use existing tempId or generate new
+        employeeId: shift?.employeeId || null,
+        dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : shift?.dayOfWeek || 0,
+        role,
+        startTime,
+        endTime,
+        notes,
+        breakMinutes,
+        expectedPace,
+        staffingLevel,
+      };
+      onSave(templateShift); // Pass TemplateShift data
+    } else {
+      onSave({
+        id: shift?.id,
+        employeeId: shift?.employeeId,
+        periodId,
+        role,
+        date,
+        startTime: startTime,
+        endTime: endTime,
+        managerNote: notes,
+        locked: lockAssignment,
+        location: "Dexa – 5th Ave", //Update it once location logic is made
+        breakMinutes,
+        expectedPace,
+        staffingLevel,
+      });
+    }
     onOpenChange(false);
   };
 
   const handleSaveAndDuplicate = () => {
     if (!validateShift() || !onSaveAndDuplicate) return;
-    onSaveAndDuplicate({
-      employeeId: shift?.employeeId,
-      periodId,
-      role,
-      date,
-      startTime: formatTo24Hour(startTime),
-      endTime: formatTo24Hour(endTime),
-      managerNote: notes,
-      locked: lockAssignment,
-      isOpen: allowOpenClaims && !shift?.employeeId,
-      location: "Dexa – 5th Ave", //Update it once location logic is made
-      breakMinutes,
-      expectedPace,
-      staffingLevel,
-    });
+
+    if (isTemplateMode) {
+      const templateShift: TemplateShift = {
+        tempId: uuid.v4() as string, // Always generate new tempId for duplicate
+        employeeId: shift?.employeeId || null,
+        dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : shift?.dayOfWeek || 0,
+        role,
+        startTime,
+        endTime,
+        notes,
+        breakMinutes,
+        expectedPace,
+        staffingLevel,
+      };
+      onSaveAndDuplicate(templateShift); // Pass TemplateShift data
+    } else {
+      onSaveAndDuplicate({
+        employeeId: shift?.employeeId,
+        periodId,
+        role,
+        date,
+        startTime: startTime,
+        endTime: endTime,
+        managerNote: notes,
+        locked: lockAssignment,
+        location: "Dexa – 5th Ave", //Update it once location logic is made
+        breakMinutes,
+        expectedPace,
+        staffingLevel,
+      });
+    }
     onOpenChange(false);
-  };
-
-  const onDayPress = (day: DateData) => {
-    setDate(day.dateString);
-  };
-
-  const calendarTheme = {
-    calendarBackground: "#303030",
-    monthTextColor: "#FFFFFF",
-    dayTextColor: "#FFFFFF",
-    textDisabledColor: "#6B7280",
-    selectedDayBackgroundColor: "#3b82f6",
-    selectedDayTextColor: "#FFFFFF",
-    todayTextColor: "#60A5FA",
-    arrowColor: "#3b82f6",
-    textSectionTitleColor: "#9CA3AF",
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-[#303030] border-gray-700">
+      <DialogContent className="w-[950px] bg-[#303030] border-gray-700 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {shift?.id ? "Edit Shift" : "Create Shift"}
+            {isTemplateMode
+              ? shift?.tempId
+                ? "Edit Template Shift"
+                : "Create Template Shift"
+              : shift?.id
+                ? "Edit Shift"
+                : "Create Shift"}
           </DialogTitle>
         </DialogHeader>
 
@@ -260,19 +322,21 @@ export function ShiftEditorModal({
               </Select>
             </View>
 
-            <View className="gap-y-2 mb-2">
-              <Text className="text-gray-300 font-semibold">Date</Text>
-              <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                <Text className="text-white text-base">
-                  {date
-                    ? format(
-                        parse(date, "yyyy-MM-dd", new Date()),
-                        "EEEE, MMMM d"
-                      )
-                    : "No Date"}
-                </Text>
+            {!isTemplateMode && ( // Hide Date field in template mode
+              <View className="gap-y-2 mb-2">
+                <Text className="text-gray-300 font-semibold">Date</Text>
+                <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                  <Text className="text-white text-base">
+                    {date
+                      ? format(
+                          parse(date, "yyyy-MM-dd", new Date()),
+                          "EEEE, MMMM d"
+                        )
+                      : "No Date"}
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
 
             <View className="flex-row gap-4 mb-2">
               <View className="flex-1 gap-y-2">
@@ -281,9 +345,12 @@ export function ShiftEditorModal({
                 </Text>
                 <Select
                   onValueChange={(option) =>
-                    option && setStartTime(option.value)
+                    option && setStartTime(combineToISO(date, option.value))
                   }
-                  value={{ label: startTime, value: startTime }}
+                  value={{
+                    label: formatTo12Hour(startTime),
+                    value: formatTo12Hour(startTime),
+                  }}
                 >
                   <SelectTrigger className="bg-[#212121]">
                     <SelectValue
@@ -303,8 +370,13 @@ export function ShiftEditorModal({
               <View className="flex-1 gap-y-2">
                 <Text className="text-gray-300 font-semibold">End Time *</Text>
                 <Select
-                  onValueChange={(option) => option && setEndTime(option.value)}
-                  value={{ label: endTime, value: endTime }}
+                  onValueChange={(option) =>
+                    option && setEndTime(combineToISO(date, option.value))
+                  }
+                  value={{
+                    label: formatTo12Hour(endTime),
+                    value: formatTo12Hour(endTime),
+                  }}
                 >
                   <SelectTrigger className="bg-[#212121]">
                     <SelectValue
@@ -394,60 +466,68 @@ export function ShiftEditorModal({
               />
             </View>
 
-            <View className="gap-y-1 pt-2 mb-6">
-              <View className="flex-row items-center justify-between py-2">
-                <Label htmlFor="lock" className="text-sm text-white flex-1">
-                  Lock assignment (prevent changes)
-                </Label>
-                <Switch
-                  trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
-                  thumbColor={"#f4f4f5"}
-                  ios_backgroundColor="#3e3e3e"
-                  onValueChange={setLockAssignment}
-                  value={lockAssignment}
-                  id="lock"
-                />
+            {!isTemplateMode && ( // Hide these fields in template mode
+              <View className="gap-y-1 pt-2 mb-6">
+                <View className="flex-row items-center justify-between py-2">
+                  <Label htmlFor="lock" className="text-sm text-white flex-1">
+                    Lock assignment (prevent changes)
+                  </Label>
+                  <Switch
+                    trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
+                    thumbColor={"#f4f4f5"}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={setLockAssignment}
+                    value={lockAssignment}
+                    id="lock"
+                  />
+                </View>
+                <View className="flex-row items-center justify-between py-2">
+                  <Label
+                    htmlFor="open-claims"
+                    className="text-sm text-white flex-1"
+                  >
+                    Allow open shift claims
+                  </Label>
+                  <Switch
+                    trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
+                    thumbColor={"#f4f4f5"}
+                    ios_backgroundColor="#3e3e3e"
+                    onValueChange={setAllowOpenClaims}
+                    value={allowOpenClaims}
+                    id="open-claims"
+                  />
+                </View>
               </View>
-              <View className="flex-row items-center justify-between py-2">
-                <Label
-                  htmlFor="open-claims"
-                  className="text-sm text-white flex-1"
-                >
-                  Allow open shift claims
-                </Label>
-                <Switch
-                  trackColor={{ false: "#3e3e3e", true: "#4f46e5" }}
-                  thumbColor={"#f4f4f5"}
-                  ios_backgroundColor="#3e3e3e"
-                  onValueChange={setAllowOpenClaims}
-                  value={allowOpenClaims}
-                  id="open-claims"
-                />
-              </View>
-            </View>
+            )}
           </ScrollView>
         </KeyboardAvoidingView>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onPress={() => onOpenChange(false)}>
-            <Text className="text-white">Cancel</Text>
-          </Button>
-          {onSaveAndDuplicate && (
+        <DialogFooter className="w-full">
+          <View className="flex-row gap-2 justify-end w-full">
             <Button
               variant="outline"
-              onPress={handleSaveAndDuplicate}
-              className="gap-2 bg-transparent border-gray-600 flex-row"
+              onPress={() => onOpenChange(false)}
+              className="mr-auto"
             >
-              <Copy size={16} color="#FFFFFF" />
-              <Text className="text-white">Save & Duplicate</Text>
+              <Text className="text-white">Cancel</Text>
             </Button>
-          )}
-          <Button
-            onPress={handleSave}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Text className="text-white font-semibold">Save Shift</Text>
-          </Button>
+            {onSaveAndDuplicate && (
+              <Button
+                variant="outline"
+                onPress={handleSaveAndDuplicate}
+                className="gap-2 bg-transparent border-gray-600 flex-row"
+              >
+                <Copy size={16} color="#FFFFFF" />
+                <Text className="text-white">Save & Duplicate</Text>
+              </Button>
+            )}
+            <Button
+              onPress={handleSave}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Text className="text-white font-semibold">Save Shift</Text>
+            </Button>
+          </View>
         </DialogFooter>
       </DialogContent>
     </Dialog>

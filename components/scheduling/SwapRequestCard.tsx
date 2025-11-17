@@ -1,23 +1,69 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, X } from "lucide-react-native";
+import { Shift } from "@/lib/types";
+import { format, parseISO, formatDistanceToNow } from "date-fns";
+import {
+  ArrowRightLeft,
+  CheckCircle2,
+  Clock,
+  MapPin,
+  X,
+} from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 
 interface SwapRequestCardProps {
-  fromEmployee: string;
-  toEmployee: string;
-  shift: { role: string; date: string; time: string };
-  reason?: string;
+  ownerName: string;
+  peerName: string;
+  myShift: Shift;
+  peerShift: Shift;
+  submittedAt: string;
   onApprove: () => void;
   onDeny: () => void;
 }
+const formatTime = (time: string): string => {
+  if (!time) return "N/A";
+  // Create a dummy date to parse the time correctly with parseISO
+  return format(parseISO(time), "h:mm a");
+};
+
+const formatTimeAgo = (dateString: string): string => {
+  if (!dateString) return "";
+  try {
+    return formatDistanceToNow(parseISO(dateString), { addSuffix: true });
+  } catch (error) {
+    console.warn(`Invalid date string passed to formatTimeAgo: ${dateString}`);
+    return "";
+  }
+};
+
+const ShiftInfoCard = ({ shift }: { shift: Shift }) => (
+  <View className="p-3 rounded-lg bg-[#303030] border border-gray-600">
+    <Text className="text-sm font-medium text-white">{shift.role}</Text>
+    <Text className="text-xs text-gray-400 mt-1 mb-2">
+      {format(parseISO(shift.date), "EEEE, MMM d")}
+    </Text>
+    <View className="flex-row gap-4">
+      <View className="flex-row items-center gap-2">
+        <Clock size={16} color="#9CA3AF" />
+        <Text className="text-sm text-gray-400">
+          {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
+        </Text>
+      </View>
+      <View className="flex-row items-center gap-2">
+        <MapPin size={16} color="#9CA3AF" />
+        <Text className="text-sm text-gray-400">{shift.location}</Text>
+      </View>
+    </View>
+  </View>
+);
 
 const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
-  fromEmployee,
-  toEmployee,
-  shift,
-  reason,
+  ownerName,
+  peerName,
+  myShift,
+  peerShift,
+  submittedAt,
   onApprove,
   onDeny,
 }) => {
@@ -27,33 +73,29 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
           <Text className="text-xs text-blue-400">Swap Request</Text>
         </Badge>
-        <Text className="text-xs text-gray-500">2 hours ago</Text>
+        <Text className="text-xs text-gray-500">{formatTimeAgo(submittedAt)}</Text>
       </View>
 
       <View className="gap-y-2">
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">From:</Text>
-          <Text className="font-medium text-white">{fromEmployee}</Text>
-        </View>
-        <View className="flex-row items-center gap-2">
-          <Text className="text-sm text-gray-400">To:</Text>
-          <Text className="font-medium text-white">{toEmployee}</Text>
-        </View>
-      </View>
-
-      <View className="p-3 rounded-lg bg-[#303030] border border-gray-600">
-        <Text className="text-xs text-gray-400 mb-1">Shift Details</Text>
-        <Text className="text-sm font-medium text-white">{shift.role}</Text>
-        <Text className="text-xs text-gray-400 mt-1">
-          {shift.date} • {shift.time}
+        <Text className="text-sm text-gray-300">
+          <Text className="font-bold text-white">{ownerName}</Text> wants to
+          swap with <Text className="font-bold text-white">{peerName}</Text>.
         </Text>
       </View>
 
-      {reason && (
-        <Text className="text-sm text-gray-400">
-          <Text className="font-medium">Reason:</Text> {reason}
+      <View className="gap-y-2">
+        <Text className="text-xs text-gray-400 font-semibold">
+          {ownerName} offers:
         </Text>
-      )}
+        <ShiftInfoCard shift={myShift} />
+        <View className="items-center my-1">
+          <ArrowRightLeft size={20} color="#3b82f6" />
+        </View>
+        <Text className="text-xs text-gray-400 font-semibold">
+          For {peerName}'s shift:
+        </Text>
+        <ShiftInfoCard shift={peerShift} />
+      </View>
 
       <View className="flex-row gap-2 pt-2">
         <Button
@@ -65,8 +107,8 @@ const SwapRequestCard: React.FC<SwapRequestCardProps> = ({
         </Button>
         <Button
           onPress={onDeny}
-          variant="outline"
-          className="flex-1 gap-2 bg-transparent border-gray-600 flex-row"
+          variant="destructive"
+          className="flex-1 gap-2 border-gray-600 flex-row"
         >
           <X size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Deny</Text>

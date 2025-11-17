@@ -56,8 +56,8 @@ const PTORequestCard: React.FC<PTORequestCardProps> = ({
         </Button>
         <Button
           onPress={onDeny}
-          variant="outline"
-          className="flex-1 gap-2 bg-transparent border-gray-600 flex-row"
+          variant="destructive"
+          className="flex-1 gap-2 flex-row"
         >
           <X size={16} color="#FFFFFF" />
           <Text className="text-white font-semibold">Deny</Text>

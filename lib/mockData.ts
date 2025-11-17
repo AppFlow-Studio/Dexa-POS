@@ -7,6 +7,7 @@ import {
   AddOn,
   CartItem,
   Check,
+  CompletedShift,
   Discount,
   DrawerSummary,
   EmployeeShift,
@@ -25,7 +26,6 @@ import {
   PTORequest,
   Shift,
   ShiftHistoryEntry,
-  ShiftRequest,
   ShiftStatus,
   TableType,
   TrackedOrder,
@@ -2050,15 +2050,138 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     vendorId: "vendor_2",
   },
   {
-    id: "inv_112",
-    name: "Black Tea Leaves",
-    category: "Beverages",
-    stockQuantity: 10,
+    id: "inv_106",
+    name: "Breadcrumbs",
+    category: "Bakery",
+    stockQuantity: 12,
     unit: "lbs",
-    reorderThreshold: 4,
-    cost: 3.0,
-    vendorId: "vendor_2",
+    reorderThreshold: 5,
+    cost: 1.2,
+    vendorId: "vendor_1",
   },
+];
+
+// --- MOCK WORK HISTORY ---
+const MANAGER_ID = "emp_1759078476073_0";
+const EMPLOYEE_ID = "emp_1759078476073_1";
+const NEW_HIRE_ID = "emp_1759078476073_2";
+
+// Helper function to generate random clock-in and clock-out times
+const generateShiftTimes = (
+  baseDate: Date,
+  minHours: number,
+  maxHours: number,
+  startHour: number
+) => {
+  const date = new Date(baseDate);
+
+  // Set clock-in time (between startHour and startHour+1)
+  const clockInHour = startHour + Math.random();
+  date.setHours(
+    Math.floor(clockInHour),
+    Math.floor((clockInHour % 1) * 60),
+    0,
+    0
+  );
+  const clockIn = new Date(date);
+
+  // Calculate clock-out time based on hours worked
+  const hoursWorked = Math.random() * (maxHours - minHours) + minHours;
+  date.setHours(
+    date.getHours() + Math.floor(hoursWorked),
+    date.getMinutes() + Math.floor((hoursWorked % 1) * 60)
+  );
+  const clockOut = new Date(date);
+
+  // Add some random variation to clock-out time (±15 minutes)
+  const variation = (Math.random() - 0.5) * 30; // ±15 minutes in milliseconds
+  clockOut.setTime(clockOut.getTime() + variation * 60 * 1000);
+
+  return {
+    clockIn: clockIn.toISOString(),
+    clockOut: clockOut.toISOString(),
+    hoursWorked: hoursWorked,
+  };
+};
+
+export const MOCK_WORK_HISTORY: CompletedShift[] = [
+  // Manager (12 months of history - 240 shifts spread over 365 days)
+  ...Array.from({ length: 240 }).map((_, i) => {
+    const daysAgo = Math.floor((365 * i) / 240);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // Managers start between 8-9 AM
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      6,
+      8,
+      8
+    );
+
+    return {
+      shiftId: `shift-manager-${i}`,
+      employeeId: MANAGER_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "manager",
+    };
+  }),
+
+  // Employee (6 months of history - 120 shifts spread over 180 days)
+  ...Array.from({ length: 120 }).map((_, i) => {
+    const daysAgo = Math.floor((180 * i) / 120);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // Regular employees start between 7-8 AM
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      5,
+      7,
+      7
+    );
+
+    return {
+      shiftId: `shift-employee-${i}`,
+      employeeId: EMPLOYEE_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "employee",
+    };
+  }),
+
+  // New Hire (1 month of history - 20 shifts spread over 30 days)
+  ...Array.from({ length: 20 }).map((_, i) => {
+    const daysAgo = Math.floor((30 * i) / 20);
+    const baseDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+
+    // New hires start between 9-10 AM (later start for training)
+    const { clockIn, clockOut, hoursWorked } = generateShiftTimes(
+      baseDate,
+      4,
+      6,
+      9
+    );
+
+    return {
+      shiftId: `shift-newhire-${i}`,
+      employeeId: NEW_HIRE_ID,
+      date: baseDate.toISOString().split("T")[0],
+      clockIn,
+      clockOut,
+      hoursWorked: parseFloat(hoursWorked.toFixed(2)),
+      breakInitiated: "N/A",
+      breakEnded: "N/A",
+      role: "employee",
+    };
+  }),
 ];
 
 export const MOCK_MENU_ITEMS: MenuItemType[] = [
@@ -3861,53 +3984,6 @@ export const MOCK_SHIFTS: Shift[] = [
   },
 ];
 
-export const mockShiftsScheudleGrid: Shift[] = [
-  {
-    id: "s1",
-    employeeId: "emp_1759078476073_0",
-    periodId: "2",
-    role: "Cashier",
-    startTime: "08:00",
-    endTime: "16:00",
-    date: "2025-01-13",
-    requiredCount: 1,
-    isOpen: false,
-  },
-  {
-    id: "s2",
-    employeeId: "emp_1759078476073_1",
-    periodId: "2",
-    role: "Line Cook",
-    startTime: "10:00",
-    endTime: "18:00",
-    date: "2025-01-13",
-    requiredCount: 1,
-    isOpen: false,
-  },
-  {
-    id: "s3",
-    employeeId: null,
-    periodId: "2",
-    role: "Barista",
-    startTime: "06:00",
-    endTime: "14:00",
-    date: "2025-01-14",
-    requiredCount: 2,
-    isOpen: true,
-  },
-  {
-    id: "s4",
-    employeeId: "emp_1759078476073_2",
-    periodId: "2",
-    role: "Supervisor",
-    startTime: "12:00",
-    endTime: "20:00",
-    date: "2025-01-14",
-    requiredCount: 1,
-    isOpen: false,
-  },
-];
-
 export const MOCK_PTO_BALANCE = {
   available: 40,
   accrued: 80,
@@ -3948,46 +4024,6 @@ export const MOCK_PTO_REQUESTS: PTORequest[] = [
     note: "Personal appointment.",
     submittedAt: "2024-11-01T14:00:00Z",
     reviewedAt: "2024-11-02T10:00:00Z",
-  },
-];
-
-export const MOCK_DROP_REQUESTS: ShiftRequest[] = [
-  {
-    id: "drop-1",
-    type: "drop",
-    status: "pending",
-    submittedAt: "2025-10-14T11:00:00Z",
-    shift: MOCK_SHIFTS.find((s) => s.id === "shift-3")!,
-  },
-  {
-    id: "drop-2",
-    type: "drop",
-    status: "picked-up",
-    submittedAt: "2025-10-05T16:00:00Z",
-    shift: MOCK_SHIFTS.find((s) => s.id === "shift-5")!,
-    pickedUpBy: "Jane Doe",
-    pickedUpAt: "2025-10-06T10:00:00Z",
-  },
-];
-
-export const MOCK_SWAP_REQUESTS: ShiftRequest[] = [
-  {
-    id: "swap-1",
-    type: "swap",
-    status: "pending",
-    direction: "outgoing",
-    submittedAt: "2025-10-15T08:00:00Z",
-    shift: MOCK_SHIFTS.find((s) => s.id === "shift-4")!,
-    theirShift: MOCK_SHIFTS.find((s) => s.id === "shift-5")!,
-  },
-  {
-    id: "swap-2",
-    type: "swap",
-    status: "approved",
-    direction: "outgoing",
-    submittedAt: "2025-10-10T09:00:00Z",
-    shift: MOCK_SHIFTS[0],
-    theirShift: MOCK_SHIFTS[1],
   },
 ];
 

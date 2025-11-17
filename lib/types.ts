@@ -365,15 +365,16 @@ export interface Shift {
   periodId: string;
   date: string; // ISO format: "YYYY-MM-DD"
   role: Role;
-  startTime: string; // "HH:mm"
-  endTime: string; // "HH:mm"
+  startTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
+  endTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
   location?: string;
   status?:
     | "confirmed"
     | "pending-drop"
     | "pending-swap"
     | "dropped"
-    | "on-shift";
+    | "on-shift"
+    | "open";
   breakMinutes?: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
@@ -386,7 +387,6 @@ export interface Shift {
   // Properties from manager's view
   employeeId: string | null;
   requiredCount?: number;
-  isOpen?: boolean;
   locked?: boolean;
 }
 
@@ -401,6 +401,7 @@ export interface SchedulePeriod {
   updatedAt: string;
   createdBy: string;
   isScheduled?: boolean;
+  type: "period"; // Explicit discriminator
   originalScheduleId?: string;
 }
 
@@ -433,24 +434,40 @@ export interface PTORequest {
   note?: string;
   submittedAt: string; // ISO string
   reviewedAt?: string; // ISO string
+  approverId?: string;
+  denialReason?: string;
+  revertedShifts?: Shift[];
 }
 
 export interface ShiftRequest {
   id: string;
+  ownerId: string; // The employee who initiated the request.
   type: "drop" | "swap";
-  status: "pending" | "approved" | "denied" | "picked-up" | "completed";
+  status:
+    | "pending"
+    | "approved"
+    | "denied"
+    | "picked-up"
+    | "completed"
+    | "pending-peer"
+    | "pending-manager"
+    | "canceled";
   submittedAt: string; // ISO string
-  shift: Shift;
+  shift: Shift; // Kept for drop requests
   note?: string;
   reason?: string;
+  approverId?: string;
+  denialReason?: string;
+  revertedShift?: Shift;
   // For drop requests
   pickedUpBy?: string;
   pickedUpAt?: string;
-  // For swap requests
-  fromEmployeeId?: string;
-  toEmployeeId?: string;
-  direction?: "incoming" | "outgoing";
-  theirShift?: Shift;
+  // For swap requests (new fields)
+  myShiftId?: string; // The ID of the shift being offered by the initiator.
+  peerId?: string; // The employee ID of the peer being requested to swap with.
+  peerShiftId?: string; // The ID of the shift being offered in return by the peer.
+  revertedMyShift?: Shift;
+  revertedPeerShift?: Shift;
 }
 
 export interface ShiftStatus {
@@ -461,6 +478,7 @@ export interface ShiftStatus {
 
 export interface ShiftHistoryEntry {
   id: string;
+  employeeId: string;
   date: string;
   clockIn: string;
   breakInitiated: string;
@@ -468,6 +486,22 @@ export interface ShiftHistoryEntry {
   clockOut: string;
   duration: string;
   role: string;
+}
+
+export interface PTOAccrualEntry {
+  date: string;
+  hoursWorked: number;
+  ptoEarned: number;
+  accrualRateUsed: number;
+  shiftId: string;
+  employeeId: string;
+}
+
+export interface CompletedShift {
+  shiftId: string;
+  employeeId: string;
+  date: string;
+  hoursWorked: number;
 }
 
 export interface PrinterDevice {
@@ -662,12 +696,69 @@ export interface Notification {
     | "drop_request"
     | "manager_note"
     | "pto_update"
-    | "shift_reminder";
+    | "shift_reminder"
+    | "shift_updated"
+    | "shift_assigned"
+    | "schedule_published"
+    | "drop_request_approved"
+    | "drop_request_denied"
+    | "pto_request_approved"
+    | "pto_request_denied"
+    | "swap_request_received"
+    | "swap_request_peer_accepted"
+    | "swap_request_peer_denied"
+    | "swap_approved"
+    | "swap_denied";
   message: string;
   isRead: boolean;
   timestamp: string; // ISO string
   relatedShiftId?: string;
+  relatedRequestId?: string; // New field for request-related notifications
   employeeId: string;
+  payload?: Record<string, any>; // Optional payload for additional data
 }
 
-export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
+export type Role =
+  | "Cashier"
+  | "Barista"
+  | "Line Cook"
+  | "Prep"
+  | "Supervisor"
+  | "Manager";
+
+// --- SCHEDULE TEMPLATE TYPES ---
+
+export interface TemplateShift {
+  tempId: string;
+  employeeId: string | null;
+  dayOfWeek: number; // 0 = Sunday, 6 = Saturday
+  role: Role;
+  startTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T09:00:00.000Z"
+  endTime: string; // ISO string with a placeholder date, e.g., "1970-01-01T17:00:00.000Z"
+  notes?: string;
+  breakMinutes?: number;
+  expectedPace?: "Calm" | "Moderate" | "Busy";
+  staffingLevel?: "Fully staffed" | "May need help";
+}
+
+export const PREDEFINED_TAGS = [
+  "weekday",
+  "weekend",
+  "holiday",
+  "peak",
+  "slow",
+  "morning",
+  "evening",
+] as const;
+
+export interface ScheduleTemplate {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  shifts: TemplateShift[];
+  lastUsed: Date;
+  isActiveForScheduling?: boolean;
+}
+
+export type ApplyMode = "merge" | "replace-all" | "fill-gaps";

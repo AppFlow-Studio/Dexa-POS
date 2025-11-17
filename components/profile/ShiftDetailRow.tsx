@@ -1,4 +1,5 @@
 import { Shift } from "@/lib/types";
+import { format, parse, parseISO } from "date-fns";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -9,6 +10,7 @@ import {
   MinusCircle,
   TrendingUp,
   Users,
+  XCircle,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -24,6 +26,8 @@ interface ShiftDetailRowProps {
   onPress: () => void;
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
+  onCancelDropRequest: (shift: Shift) => void;
+  onCancelSwapRequest: (shift: Shift) => void; // New prop
 }
 
 const StatusBadge = ({
@@ -33,15 +37,24 @@ const StatusBadge = ({
   text: string;
   color: "blue" | "yellow" | "gray" | "green";
 }) => {
-  const colors = {
+  const bgColors = {
     blue: "bg-blue-600/20 text-blue-400",
     yellow: "bg-yellow-600/20 text-yellow-400",
     gray: "bg-gray-600/20 text-gray-300",
     green: "bg-green-600/20 text-green-400",
   };
+
+  const textColors = {
+    blue: "text-blue-400",
+    yellow: "text-yellow-400",
+    gray: "text-gray-300",
+    green: "text-green-400",
+  };
   return (
-    <View className={`px-2 py-1 rounded ${colors[color]}`}>
-      <Text className={`text-xs font-semibold ${colors[color]}`}>{text}</Text>
+    <View className={`px-2 py-1 rounded ${bgColors[color]}`}>
+      <Text className={`text-xs font-semibold ${textColors[color]}`}>
+        {text}
+      </Text>
     </View>
   );
 };
@@ -51,9 +64,10 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onPress,
   onRequestDrop,
   onRequestSwap,
+  onCancelDropRequest,
+  onCancelSwapRequest, // Destructure new prop
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
-
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
@@ -61,7 +75,7 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       case "pending-swap":
         return { label: "Pending swap", color: "yellow" as const };
       case "dropped":
-        return { label: "Dropped (pending)", color: "yellow" as const };
+        return { label: "Drop Pending", color: "yellow" as const };
       case "on-shift":
         return { label: "On shift", color: "green" as const };
       default:
@@ -105,11 +119,15 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
       <View className="flex-row items-center gap-2 mb-2">
         <Clock size={16} color="#9CA3AF" />
         <Text className="text-base text-white">
-          {shift.startTime} – {shift.endTime}
+          {shift.startTime
+            ? format(parseISO(shift.startTime), "h:mm a")
+            : "N/A"}{" "}
+          – {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
         </Text>
-        {shift.status === "on-shift" && (
+        {shift.status === "on-shift" && shift.actualClockIn && (
           <Text className="text-base text-green-400">
-            (On since {shift.actualClockIn})
+            (On since{" "}
+            {format(parse(shift.actualClockIn, "HH:mm", new Date()), "h:mm a")})
           </Text>
         )}
       </View>
@@ -201,19 +219,29 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                onRequestSwap(shift);
+                onCancelSwapRequest(shift); // Call new prop
               }}
-              className="px-3 py-1 bg-purple-600/20 border-2 border-purple-500 rounded-lg"
+              className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600" // Red style
             >
-              <Text className="text-base font-semibold text-purple-300">
-                View swap
+              <XCircle size={16} color="#FCA5A5" />
+              <Text className="text-base font-semibold text-red-300">
+                Cancel Swap Request
               </Text>
             </TouchableOpacity>
           )}
           {shift.status === "dropped" && (
-            <Text className="text-base text-yellow-400">
-              Drop pending approval
-            </Text>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onCancelDropRequest(shift);
+              }}
+              className="flex-row items-center gap-2 rounded-lg bg-red-700/50 p-2 border-2 border-red-600"
+            >
+              <XCircle size={16} color="#FCA5A5" />
+              <Text className="text-base font-semibold text-red-300">
+                Cancel Drop Request
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>

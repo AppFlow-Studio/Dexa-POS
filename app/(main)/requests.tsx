@@ -10,6 +10,7 @@ import {
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 
 const StatCard = ({
   label,
@@ -28,7 +29,8 @@ const StatCard = ({
 );
 
 const RequestsPage = () => {
-  const [activeTab, setActiveTab] = useState("drops");
+  const { tab } = useLocalSearchParams();
+  const [activeTab, setActiveTab] = useState((tab as string) || "drops");
 
   const renderContent = () => {
     switch (activeTab) {

@@ -1,21 +1,18 @@
-import { MOCK_NOTIFICATIONS } from "@/lib/mockData";
 import { Notification } from "@/lib/types";
 import { create } from "zustand";
 
 interface NotificationState {
   notifications: Notification[];
-  unreadCount: number;
   addNotification: (
     notification: Omit<Notification, "id" | "isRead" | "timestamp">
   ) => void;
   markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  getUnreadCountForEmployee: (employeeId: string) => number;
+  markAllAsRead: (employeeId: string) => void;
+  removeNotification: (criteria: { type?: string; payload?: Record<string, any> }) => void;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  notifications: MOCK_NOTIFICATIONS,
-  unreadCount: MOCK_NOTIFICATIONS.filter((n) => !n.isRead).length,
+  notifications: [],
 
   addNotification: (notificationData) => {
     const newNotification: Notification = {
@@ -26,29 +23,35 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     };
     set((state) => ({
       notifications: [newNotification, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
     }));
   },
 
   markAsRead: (id) => {
-    set((state) => {
-      const target = state.notifications.find((n) => n.id === id);
-      if (target && !target.isRead) {
-        return {
-          notifications: state.notifications.map((n) =>
-            n.id === id ? { ...n, isRead: true } : n
-          ),
-          unreadCount: state.unreadCount - 1,
-        };
-      }
-      return state;
-    });
+    set((state) => ({
+      notifications: state.notifications.map((n) =>
+        n.id === id ? { ...n, isRead: true } : n
+      ),
+    }));
   },
 
-  markAllAsRead: () => {
+  markAllAsRead: (employeeId) => {
     set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
-      unreadCount: 0,
+      notifications: state.notifications.map((n) => {
+        if (n.employeeId === employeeId) {
+          return { ...n, isRead: true };
+        }
+        return n;
+      }),
+    }));
+  },
+
+  removeNotification: ({ type, payload }) => {
+    set((state) => ({
+      notifications: state.notifications.filter((n) => {
+        const typeMatch = type ? n.type === type : true;
+        const payloadMatch = payload ? JSON.stringify(n.payload) === JSON.stringify(payload) : true;
+        return !typeMatch || !payloadMatch;
+      }),
     }));
   },
 

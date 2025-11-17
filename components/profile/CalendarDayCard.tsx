@@ -1,4 +1,5 @@
 import { Shift } from "@/lib/types";
+import { format, parse, parseISO } from "date-fns";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -41,7 +42,8 @@ const CalendarDayCard: React.FC<CalendarDayCardProps> = ({
                 {shift.role}
               </Text>
               <Text className="text-[10px] text-gray-400">
-                {shift.startTime} - {shift.endTime}
+                {shift.startTime ? format(parseISO(shift.startTime), "h:mm a") : "N/A"}{" "}
+                - {shift.endTime ? format(parseISO(shift.endTime), "h:mm a") : "N/A"}
               </Text>
             </TouchableOpacity>
           ))}

@@ -1,13 +1,11 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Role } from "@/lib/types"; // Import Role from lib/types
 import { Filter } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
 
-// Assuming Role is a string literal type as in the reference
-export type Role = "Cashier" | "Barista" | "Line Cook" | "Prep" | "Supervisor";
-
-const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
+const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor", "Manager"];
 
 const conflicts = [
   { id: "ot", label: "Overtime Risk", color: "bg-red-500" },
@@ -45,7 +43,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 id={`role-${role}`}
                 checked={selectedRoles.includes(role)}
                 onCheckedChange={() => onRoleToggle(role)}
-                className="text-white"
+                className="border-blue-400"
               />
               <Label htmlFor={`role-${role}`} className="text-sm text-white">
                 {role}
@@ -64,6 +62,7 @@ const FiltersPanel: React.FC<FiltersPanelProps> = ({
                 id={`conflict-${conflict.id}`}
                 checked={selectedConflicts.includes(conflict.id)}
                 onCheckedChange={() => onConflictToggle(conflict.id)}
+                className="border-blue-400"
               />
               <View className="text-sm text-white flex-row items-center gap-2">
                 <View className={`w-2 h-2 rounded-full ${conflict.color}`} />
