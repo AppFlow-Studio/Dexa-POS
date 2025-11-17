@@ -42,6 +42,7 @@ import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
 import { detectTemplateConflicts } from "@/lib/rules"; // Import detectTemplateConflicts
 import {
+  ApplyMode,
   PTORequest,
   Role,
   SchedulePeriod,
@@ -79,8 +80,14 @@ const ScheduleDetail = ({
   pendingDropRequestsCount: number;
 }) => {
   const router = useRouter();
-  const { addShift, updateShift, deleteShift, discardDraft, compareSchedules } =
-    useScheduleStore();
+  const {
+    addShift,
+    updateShift,
+    deleteShift,
+    discardDraft,
+    compareSchedules,
+    applyTemplate,
+  } = useScheduleStore();
   const { employees } = useEmployeeStore();
   const {
     templates,
@@ -106,6 +113,7 @@ const ScheduleDetail = ({
   const [overlayTemplateId, setOverlayTemplateId] = useState<string | null>(
     null
   );
+  const [applyMode, setApplyMode] = useState<ApplyMode>("merge");
 
   // State for filters
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
@@ -162,51 +170,14 @@ const ScheduleDetail = ({
   };
 
   const handleApplyTemplateAction = () => {
-    if (!overlayTemplate || !templateConflictSummary) return;
+    if (!overlayTemplate) return;
 
-    const conflictingShiftTempIds = new Set(
-      templateConflictSummary.conflictDetails.map(
-        (cd) => cd.templateShift.tempId
-      )
+    applyTemplate(
+      currentSchedule.schedule.id,
+      currentSchedule.type,
+      overlayTemplate,
+      applyMode
     );
-
-    const scheduleStartDate = startOfDay(
-      new Date(currentSchedule.schedule.startDate)
-    );
-    const scheduleEndDate = startOfDay(
-      new Date(currentSchedule.schedule.endDate)
-    );
-
-    let currentDate = scheduleStartDate;
-
-    while (currentDate <= scheduleEndDate) {
-      const dayOfWeek = getDay(currentDate);
-
-      overlayTemplate.shifts.forEach((templateShift) => {
-        if (
-          templateShift.dayOfWeek === dayOfWeek &&
-          !conflictingShiftTempIds.has(templateShift.tempId)
-        ) {
-          const shiftDateISO = currentDate.toISOString().split("T")[0];
-
-          const newShift: Omit<Shift, "id"> = {
-            employeeId: templateShift.employeeId,
-            role: templateShift.role,
-            date: shiftDateISO,
-            startTime: `${shiftDateISO}T${
-              templateShift.startTime.split("T")[1]
-            }`,
-            endTime: `${shiftDateISO}T${templateShift.endTime.split("T")[1]}}`,
-            status: "confirmed",
-            periodId: currentSchedule.schedule.id,
-          };
-
-          addShift(currentSchedule.schedule.id, currentSchedule.type, newShift);
-        }
-      });
-
-      currentDate = addDays(currentDate, 1);
-    }
 
     updateTemplate(overlayTemplate.id, { lastUsed: new Date() });
     handleCancelApplyTemplate(); // Close the bar after applying
@@ -634,6 +605,8 @@ const ScheduleDetail = ({
           templateName={overlayTemplate.name}
           shiftsToAdd={templateConflictSummary.shiftsToAdd}
           conflictsDetected={templateConflictSummary.conflictsDetected}
+          applyMode={applyMode}
+          onApplyModeChange={setApplyMode}
           onCancel={handleCancelApplyTemplate}
           onViewDetails={handleViewDetails}
           onApply={handleApplyTemplateAction}

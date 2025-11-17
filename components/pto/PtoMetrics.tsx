@@ -46,8 +46,6 @@ const PtoMetrics: React.FC<PtoMetricsProps> = ({ employeeId }) => {
       )
       .reduce((sum, req) => sum + req.hours, 0);
 
-    const spendableBalance = totalAccrued - usedThisYear - pendingApproval;
-
     const today = startOfDay(new Date());
 
     const futureShifts = [...schedulePeriods, ...weeklySchedules]
@@ -68,12 +66,11 @@ const PtoMetrics: React.FC<PtoMetricsProps> = ({ employeeId }) => {
     }, 0);
 
     const ptoFromFutureShifts = futureHours * ptoAccrualRate;
-    const currentAccrued = employeeBalance.totalAccrued;
+    // Removed redundant declaration: const totalAccrued = employeeBalance.totalAccrued;
 
-    const projectedPto = ptoFromFutureShifts;
+    const projectedPto = totalAccrued + ptoFromFutureShifts;
 
     return {
-      spendableBalance,
       projectedPto,
       totalAccrued,
       usedThisYear,
@@ -93,22 +90,16 @@ const PtoMetrics: React.FC<PtoMetricsProps> = ({ employeeId }) => {
     <View className="py-4  mb-4">
       <View className="flex-row gap-4 mb-6 flex-wrap">
         <PTOBalanceCard
-          label="Spendable Balance"
-          value={`${metrics.spendableBalance.toFixed(2)}h`}
-          icon={<Clock size={20} color="#22c55e" />}
-          variant="success"
+          label="Total Accrued"
+          value={`${metrics.totalAccrued.toFixed(2)}h`}
+          icon={<TrendingUp size={20} color="#9CA3AF" />}
+          variant="default"
         />
         <PTOBalanceCard
           label="Projected PTO"
           value={`${metrics.projectedPto.toFixed(2)}h`}
           icon={<TrendingUp size={20} color="#60A5FA" />}
           variant="primary"
-        />
-        <PTOBalanceCard
-          label="Total Accrued"
-          value={`${metrics.totalAccrued.toFixed(2)}h`}
-          icon={<TrendingUp size={20} color="#9CA3AF" />}
-          variant="default"
         />
         <PTOBalanceCard
           label="Used This Year"

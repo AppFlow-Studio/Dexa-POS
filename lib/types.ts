@@ -760,3 +760,5 @@ export interface ScheduleTemplate {
   lastUsed: Date;
   isActiveForScheduling?: boolean;
 }
+
+export type ApplyMode = "merge" | "replace-all" | "fill-gaps";

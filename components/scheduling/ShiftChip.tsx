@@ -23,6 +23,7 @@ const roleColors: Record<Role, string> = {
   "Line Cook": "bg-yellow-500/20 border-yellow-500/30",
   Prep: "bg-green-500/20 border-green-500/30",
   Supervisor: "bg-pink-500/20 border-pink-500/30",
+  Manager: "bg-amber-500/20 border-amber-500/50",
 };
 
 const textColors: Record<Role, string> = {
@@ -31,6 +32,7 @@ const textColors: Record<Role, string> = {
   "Line Cook": "#facc15",
   Prep: "#4ade80",
   Supervisor: "#f472b6",
+  Manager: "#fbbf24",
 };
 
 const conflictColors = {

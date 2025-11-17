@@ -1,12 +1,48 @@
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle, ChevronDown } from "lucide-react-native";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ApplyMode } from "@/lib/types";
+import {
+  AlertTriangle,
+  CheckCircle,
+  CheckCircle2,
+  ChevronDown,
+} from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, View } from "react-native";
+
+const APPLY_MODES: {
+  value: ApplyMode;
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: "merge",
+    label: "Merge",
+    description: "Keep existing shifts, add new",
+  },
+  {
+    value: "replace-all",
+    label: "Replace All",
+    description: "Delete all existing shifts",
+  },
+  {
+    value: "fill-gaps",
+    label: "Fill Gaps",
+    description: "Only add shifts into empty slots",
+  },
+];
 
 interface ApplyTemplateBarProps {
   templateName: string;
   shiftsToAdd: number;
   conflictsDetected: number;
+  applyMode: ApplyMode;
+  onApplyModeChange: (mode: ApplyMode) => void;
   onCancel: () => void;
   onViewDetails: () => void;
   onApply: () => void;
@@ -16,20 +52,56 @@ const ApplyTemplateBar: React.FC<ApplyTemplateBarProps> = ({
   templateName,
   shiftsToAdd,
   conflictsDetected,
+  applyMode,
+  onApplyModeChange,
   onCancel,
   onViewDetails,
   onApply,
 }) => {
+  const currentMode = APPLY_MODES.find((m) => m.value === applyMode)!;
+
   return (
     <View className="absolute bottom-0 left-0 right-0 bg-[#303030] border-t border-gray-700 p-4 flex-row items-center justify-between">
-      <View className="flex-row items-center">
-        <Text className="text-white text-lg font-semibold mr-2">
-          {templateName}
-        </Text>
-        <TouchableOpacity className="flex-row items-center p-1 rounded-md bg-gray-600">
-          <Text className="text-white text-sm mr-1">Merge</Text>
-          <ChevronDown size={16} color="#FFFFFF" />
-        </TouchableOpacity>
+      <View className="flex-row items-center gap-4">
+        <Text className="text-white text-lg font-semibold">{templateName}</Text>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex-row items-center gap-1 px-2 bg-gray-600"
+            >
+              <Text className="text-white text-sm">{currentMode.label}</Text>
+              <ChevronDown size={16} color="white" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="bg-[#1f2937] border-[#374151]"
+          >
+            {APPLY_MODES.map((mode) => (
+              <DropdownMenuItem
+                key={mode.value}
+                onPress={() => onApplyModeChange(mode.value)}
+                className="text-white hover:bg-[#374151] cursor-pointer"
+              >
+                <View className="flex-row items-center gap-2">
+                  {applyMode === mode.value ? (
+                    <CheckCircle2 size={16} color="#3b82f6" />
+                  ) : (
+                    <View className="w-4" /> // Placeholder for alignment
+                  )}
+                  <View>
+                    <Text className="font-medium text-white">{mode.label}</Text>
+                    <Text className="text-xs text-gray-400">
+                      {mode.description}
+                    </Text>
+                  </View>
+                </View>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </View>
 
       <View className="flex-row items-center mx-4">

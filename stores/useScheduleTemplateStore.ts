@@ -1,5 +1,5 @@
 import { ScheduleTemplate } from "@/lib/types";
-import uuid from "react-native-uuid"; // Updated import
+import uuid from "react-native-uuid";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
