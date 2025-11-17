@@ -15,7 +15,6 @@ import {
   Search,
   Send,
   Settings,
-  Sparkles,
   Users,
   X,
 } from "lucide-react-native";
@@ -155,6 +154,11 @@ const ScheduleDetail = ({
     setSelectedShift(shift);
     setIsActionModalOpen(true);
   };
+
+  // const handleAddShift = (employeeId: string, date: string) => {
+  //   setSelectedShift({ employeeId, date });
+  //   setShiftEditorOpen(true);
+  // };
 
   const handleAddShift = (employeeId: string, date: string) => {
     setSelectedShift({ employeeId, date });

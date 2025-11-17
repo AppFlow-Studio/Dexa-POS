@@ -101,6 +101,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const isActive = activeEmployeeId === session.employeeId;
   const isOnBreak = session.status === "onBreak";
   const isClockedIn = session.status === "clockedIn";
+  const unreadNotifications = getUnreadCountForEmployee(employee.id);
+
+  const handleOpenNotificationPanel = () => {
+    setIsPanelOpen(true);
+    if (unreadCount > 0) {
+      // Optimistically mark as read, or wait for panel to close
+      // For now, let's do it on open
+      markAllAsRead();
+    }
+  };
 
   const handleOpenNotificationPanel = () => {
     setIsPanelOpen(true);

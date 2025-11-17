@@ -54,4 +54,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       }),
     }));
   },
+
+  getUnreadCountForEmployee: (employeeId) => {
+    return get().notifications.filter(
+      (n) => n.employeeId === employeeId && !n.isRead
+    ).length;
+  },
 }));
