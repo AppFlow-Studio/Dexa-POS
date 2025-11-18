@@ -1,14 +1,22 @@
 import { validatePtoRequest } from "@/lib/rules";
 import {
+  ApplyMode,
   ConflictInfo,
   PTORequest,
   SchedulePeriod,
+  ScheduleTemplate,
   Shift,
   ShiftRequest,
   WeeklySchedule,
 } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
-import { areIntervalsOverlapping, format } from "date-fns";
+import {
+  areIntervalsOverlapping,
+  format,
+  getDay,
+  addDays,
+  startOfDay,
+} from "date-fns";
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
@@ -123,6 +131,12 @@ interface ScheduleRequestState {
     shiftToOffer: Shift
   ) => { employee: EmployeeProfile; swappableShiftsCount: number }[];
   discardDraft: (draftId: string, scheduleType: "period" | "week") => void;
+  applyTemplate: (
+    scheduleId: string,
+    scheduleType: "period" | "week",
+    template: ScheduleTemplate,
+    mode: ApplyMode
+  ) => void;
 }
 
 export const useScheduleStore = create<ScheduleRequestState>()(
@@ -1320,6 +1334,113 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   (w) => w.id !== draftId
                 );
               }
+            });
+          },
+
+          applyTemplate: (scheduleId, scheduleType, template, mode) => {
+            set((state) => {
+              const targetArray =
+                scheduleType === "period"
+                  ? state.schedulePeriods
+                  : state.weeklySchedules;
+              const schedule = targetArray.find((s) => s.id === scheduleId);
+
+              if (!schedule) {
+                console.error("Schedule not found");
+                return;
+              }
+
+              const scheduleStartDate = startOfDay(new Date(schedule.startDate));
+              const scheduleEndDate = startOfDay(new Date(schedule.endDate));
+
+              const templateShiftsToApply: Omit<Shift, "id">[] = [];
+              let currentDate = scheduleStartDate;
+              while (currentDate <= scheduleEndDate) {
+                const dayOfWeek = getDay(currentDate);
+                template.shifts.forEach((templateShift) => {
+                  if (templateShift.dayOfWeek === dayOfWeek) {
+                    const shiftDateISO = currentDate.toISOString().split("T")[0];
+                    const newShift: Omit<Shift, "id"> = {
+                      employeeId: templateShift.employeeId,
+                      role: templateShift.role,
+                      date: shiftDateISO,
+                      startTime: `${shiftDateISO}T${
+                        templateShift.startTime.split("T")[1]
+                      }`,
+                      endTime: `${shiftDateISO}T${
+                        templateShift.endTime.split("T")[1]
+                      }`,
+                      status: "confirmed",
+                      periodId: schedule.id,
+                    };
+                    templateShiftsToApply.push(newShift);
+                  }
+                });
+                currentDate = addDays(currentDate, 1);
+              }
+
+              switch (mode) {
+                case "replace-all":
+                  schedule.shifts = []; // Clear all existing shifts
+                  templateShiftsToApply.forEach((newShift) => {
+                    schedule.shifts.push({ ...newShift, id: generateId() });
+                  });
+                  break;
+
+                case "fill-gaps":
+                  templateShiftsToApply.forEach((newShift) => {
+                    const hasConflict = schedule.shifts.some(
+                      (existingShift) =>
+                        existingShift.employeeId === newShift.employeeId &&
+                        areIntervalsOverlapping(
+                          {
+                            start: new Date(newShift.startTime),
+                            end: new Date(newShift.endTime),
+                          },
+                          {
+                            start: new Date(existingShift.startTime),
+                            end: new Date(existingShift.endTime),
+                          }
+                        )
+                    );
+                    if (!hasConflict) {
+                      schedule.shifts.push({ ...newShift, id: generateId() });
+                    }
+                  });
+                  break;
+
+                case "merge":
+                  const shiftsToDelete = new Set<string>();
+                  templateShiftsToApply.forEach((newShift) => {
+                    schedule.shifts.forEach((existingShift) => {
+                      if (
+                        existingShift.employeeId === newShift.employeeId &&
+                        areIntervalsOverlapping(
+                          {
+                            start: new Date(newShift.startTime),
+                            end: new Date(newShift.endTime),
+                          },
+                          {
+                            start: new Date(existingShift.startTime),
+                            end: new Date(existingShift.endTime),
+                          }
+                        )
+                      ) {
+                        shiftsToDelete.add(existingShift.id);
+                      }
+                    });
+                  });
+
+                  schedule.shifts = schedule.shifts.filter(
+                    (s) => !shiftsToDelete.has(s.id)
+                  );
+
+                  templateShiftsToApply.forEach((newShift) => {
+                    schedule.shifts.push({ ...newShift, id: generateId() });
+                  });
+                  break;
+              }
+              schedule.updatedAt = new Date().toISOString();
             });
           },
         };
