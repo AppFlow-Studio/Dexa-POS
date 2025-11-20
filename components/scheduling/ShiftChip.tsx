@@ -35,14 +35,6 @@ const textColors: Record<Role, string> = {
   Manager: "#fbbf24",
 };
 
-const textColors: Record<Role, string> = {
-  Cashier: "#60a5fa",
-  Barista: "#c084fc",
-  "Line Cook": "#facc15",
-  Prep: "#4ade80",
-  Supervisor: "#f472b6",
-};
-
 const conflictColors = {
   ot: "border-l-red-500",
   pto: "border-l-purple-500",

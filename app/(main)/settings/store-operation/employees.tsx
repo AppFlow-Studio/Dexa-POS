@@ -1,7 +1,7 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import {
   Receipt,
   RefreshCcw,
@@ -25,6 +25,7 @@ const EmployeeSettingsScreen = () => {
   const { isBreakAndSwitchEnabled, setIsBreakAndSwitchEnabled } =
     useEmployeeSettingsStore();
   const { ptoAccrualRate, setPtoAccrualRate } = useStoreSettingsStore(); // Get ptoAccrualRate and setPtoAccrualRate
+  const { show } = useToast(); // Initialize useToast
 
   const [ptoRateInput, setPtoRateInput] = useState(ptoAccrualRate.toString());
 
@@ -46,21 +47,29 @@ const EmployeeSettingsScreen = () => {
       parsedRate !== ptoAccrualRate
     ) {
       setPtoAccrualRate(parsedRate);
-      toast.success("PTO Accrual Rate updated!", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Success",
+        message: "PTO Accrual Rate updated!",
+        type: "success",
       });
     } else if (ptoRateInput === "" && ptoAccrualRate !== 0) {
       setPtoAccrualRate(0);
-      toast.success("PTO Accrual Rate set to 0!", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Success",
+        message: "PTO Accrual Rate set to 0!",
+        type: "success",
       });
     } else if (parsedRate === ptoAccrualRate) {
-      toast.success("Rate is already up to date.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Info",
+        message: "Rate is already up to date.",
+        type: "success", // Using success type for info, as per previous discussion
       });
     } else {
-      toast.error("Invalid rate. Please enter a valid non-negative number.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Error",
+        message: "Invalid rate. Please enter a valid non-negative number.",
+        type: "error",
       });
     }
   };

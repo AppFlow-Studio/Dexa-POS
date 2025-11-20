@@ -1,5 +1,11 @@
 import { useToast } from "@/contexts/ToastContext";
-import { CheckCircle2, Undo2, X, XCircle } from "lucide-react-native";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Undo2,
+  X,
+  XCircle,
+} from "lucide-react-native";
 import { MotiView } from "moti";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -9,6 +15,7 @@ interface CustomToastProps {
   title: string;
   message: string;
   onUndo?: () => void;
+  type?: "success" | "error" | "warning";
 }
 
 const CustomToast: React.FC<CustomToastProps> = ({
@@ -16,6 +23,7 @@ const CustomToast: React.FC<CustomToastProps> = ({
   title,
   message,
   onUndo,
+  type = "success",
 }) => {
   const { hide } = useToast();
 
@@ -30,6 +38,23 @@ const CustomToast: React.FC<CustomToastProps> = ({
     hide(id);
   };
 
+  const isError = type === "error";
+  const isWarning = type === "warning";
+
+  const containerClasses = isError
+    ? "flex-row items-center bg-gray-800 border border-red-500 rounded-lg p-4 w-full"
+    : isWarning
+      ? "flex-row items-center bg-gray-800 border border-yellow-500 rounded-lg p-4 w-full"
+      : "flex-row items-center bg-gray-800 border border-green-500 rounded-lg p-4 w-full";
+
+  const Icon = isError ? (
+    <XCircle size={24} color="#EF4444" />
+  ) : isWarning ? (
+    <AlertTriangle size={24} color="#FBBF24" />
+  ) : (
+    <CheckCircle2 size={24} color="#22C55E" />
+  );
+
   return (
     <MotiView
       from={{ opacity: 0, translateY: 20 }}
@@ -42,8 +67,8 @@ const CustomToast: React.FC<CustomToastProps> = ({
         marginBottom: 10,
       }}
     >
-      <View className="flex-row items-center bg-gray-800 border border-green-500 rounded-lg p-4 w-full">
-        <CheckCircle2 size={24} color="#22C55E" />
+      <View className={containerClasses}>
+        {Icon}
         <View className="flex-1 ml-3">
           <Text className="text-white font-bold text-base">{title}</Text>
           <Text className="text-gray-300 text-sm mt-1">{message}</Text>

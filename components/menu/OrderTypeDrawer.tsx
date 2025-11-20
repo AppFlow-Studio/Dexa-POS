@@ -1,9 +1,9 @@
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useCustomerStore } from "@/stores/useCustomerStore";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -41,6 +41,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     searchCustomersByPhone,
   } = useCustomerStore();
   const { layouts, updateTableStatus } = useFloorPlanStore();
+  const { show } = useToast(); // Initialize useToast
 
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
@@ -61,10 +62,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     { value: "Delivery", label: "Delivery" },
   ];
 
-  // Customer info state
-  // const [customerName, setCustomerName] = useState("");
-  // const [phoneNumber, setPhoneNumber] = useState("");
-  // const [address, setAddress] = useState("");
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
@@ -83,42 +80,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     return floorTables.filter((table) => table.status === "Available");
   }, [floorTables]);
 
-  // Check for existing customer when phone number changes
-  // useEffect(() => {
-  //   if (phoneNumber.length >= 3) {
-  //     const suggestions = searchCustomersByPhone(phoneNumber);
-  //     setCustomerSuggestions(suggestions);
-  //     setShowSuggestions(suggestions.length > 0);
-  //   } else {
-  //     setShowSuggestions(false);
-  //     setCustomerSuggestions([]);
-  //   }
-
-  //   if (phoneNumber.length >= 10) {
-  //     const existingCustomer = findCustomerByPhone(phoneNumber);
-  //     if (existingCustomer) {
-  //       setCustomerName(existingCustomer.name);
-  //       setAddress(existingCustomer.address || "");
-  //       setIsExistingCustomer(true);
-  //       setShowSuggestions(false);
-  //     } else {
-  //       setIsExistingCustomer(false);
-  //     }
-  //   }
-  // }, [phoneNumber, findCustomerByPhone, searchCustomersByPhone]);
-
-  // const handleSelectCustomer = (customer: any) => {
-  //   setPhoneNumber(customer.phoneNumber);
-  //   setCustomerName(customer.name);
-  //   setAddress(customer.address || "");
-  //   setIsExistingCustomer(true);
-  //   setShowSuggestions(false);
-  //   setCustomerSuggestions([]);
-
-  //   // Assign customer to order immediately
-  //   assignCustomerToOrder(customer);
-  // };
-
   const assignCustomerToOrder = (customer: any) => {
     if (activeOrderId) {
       updateActiveOrderDetails({
@@ -132,42 +93,12 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     // Increment order count for existing customer
     incrementOrderCount(customer.id);
 
-    toast.success("Customer assigned to order", {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Customer Assigned",
+      message: `${customer.name} has been successfully assigned to this order.`,
+      type: "success",
     });
   };
-
-  // const handleSaveNewCustomer = () => {
-  //   if (!customerName.trim() || !phoneNumber.trim()) {
-  //     toast.error("Please fill in name and phone number", {
-  //       duration: 3000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //     return;
-  //   }
-
-  //   if (currentOrderType === "Delivery" && !address.trim()) {
-  //     toast.error("Please provide delivery address", {
-  //       duration: 3000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //     return;
-  //   }
-
-  //   // Create new customer
-  //   const newCustomer = addCustomer({
-  //     name: customerName.trim(),
-  //     phoneNumber: phoneNumber.trim(),
-  //     address: currentOrderType === "Delivery" ? address.trim() : undefined,
-  //   });
-
-  //   // Assign customer to order
-  //   assignCustomerToOrder(newCustomer);
-
-  //   setIsExistingCustomer(true);
-  //   setShowSuggestions(false);
-  // };
 
   const handleFloorSelect = (floorId: string) => {
     setSelectedFloor(floorId);
@@ -200,9 +131,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       // Navigate to the table screen
       router.push(`/tables/${selectedTable.id}`);
 
-      toast.success(`Order transferred to Table ${selectedTable.name}`, {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Transferred",
+        message: `The order has been successfully transferred to Table ${selectedTable.name}.`,
+        type: "success",
       });
     } else {
       // Create a new order and assign it to the table (existing flow)
@@ -221,9 +153,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
   const handleTableSelect = (table: any) => {
     if (table.status !== "Available") {
-      toast.error(`Table ${table.name} is not available`, {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Table Unavailable",
+        message: `Table ${table.name} is currently occupied or unavailable.`,
+        type: "error",
       });
       return;
     }
@@ -231,11 +164,10 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     setSelectedTable(table);
     setGuestModalOpen(true);
 
-    // Just store the table selection - don't assign yet
-    // Assignment will happen when user pays or sends to kitchen
-    toast.success(`Table ${table.name} selected`, {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Table Selected",
+      message: `Table ${table.name} has been selected. Please set the guest count.`,
+      type: "success",
     });
   };
 
@@ -304,7 +236,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           <View className="h-[1px] bg-gray-700 w-full mx-auto" />
 
           {(currentOrderType === "Delivery" ||
-            currentOrderType === "Take Away") && (
+            currentOrderType === "Takeaway") && (
             <View className="mt-4">
               <Text className="text-white font-semibold text-2xl mb-3">
                 Customer Information

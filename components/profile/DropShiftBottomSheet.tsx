@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { Shift } from "@/lib/types";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -25,14 +25,17 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
   const { addDropRequest } = useScheduleStore();
   const [selectedReason, setSelectedReason] = useState("");
   const [note, setNote] = useState("");
+  const { show } = useToast();
 
   const snapPoints = useMemo(() => ["50%", "60%"], []);
 
   const handleSubmit = () => {
     if (!shift) return;
     if (!selectedReason) {
-      toast.error("Please select a reason for dropping the shift.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Reason Required",
+        message: "Please select a reason before submitting your drop request.",
+        type: "error",
       });
       return;
     }
@@ -42,8 +45,10 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
       submittedAt: new Date().toISOString(),
       note: `${selectedReason}${note ? `: ${note}` : ""}`,
     });
-    toast.success("Drop request submitted for manager approval.", {
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Request Submitted",
+      message: "Your drop request has been sent for manager approval.",
+      type: "success",
     });
     onClose();
   };

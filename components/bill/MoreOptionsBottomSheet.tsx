@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -33,6 +33,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const [managerPin, setManagerPin] = useState("");
   const [isClearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+  const { show } = useToast();
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -59,6 +60,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     if (ref && "current" in ref && ref.current) {
       ref.current.close();
     }
+    show({
+      title: "Cart Cleared",
+      message: "All items have been removed from the cart.",
+      type: "success",
+    });
   };
 
   const handleVoidOrderClick = () => {
@@ -74,14 +80,20 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     if (activeOrderId) {
       voidOrder(activeOrderId);
       setVoidConfirmOpen(false);
+      show({
+        title: "Order Voided",
+        message: "The current order has been successfully voided.",
+        type: "success",
+      });
     }
   };
 
   const handleApplyPromoCode = () => {
     if (promoCode.trim()) {
-      toast.success("Promo code applied", {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Promo Code Applied",
+        message: `Promo code "${promoCode.trim()}" has been applied.`,
+        type: "success",
       });
       setPromoCode("");
     }
@@ -92,31 +104,33 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
       setShowManagerPin(true);
     } else {
       setIsTaxExempt(false);
+      show({
+        title: "Tax Exempt Disabled",
+        message: "Tax exemption has been removed from this order.",
+        type: "success",
+      });
     }
   };
 
   const handleManagerPinSubmit = () => {
     if (managerPin === "1234") {
-
-      if (
-        !isOpenDrawer
-      ) {
-        setIsTaxExempt(true);
-        setShowManagerPin(false);
-        setManagerPin("");
-        toast.success("Tax exempt enabled", {
-          duration: 2000,
-          position: ToastPosition.BOTTOM,
+      if (isOpenDrawer) {
+        show({
+          title: "Drawer Opened",
+          message: "The cash drawer has been successfully opened.",
+          type: "success",
         });
-      } else {
         setIsOpenDrawer(false);
-        setShowManagerPin(false);
-        setManagerPin("");
-        toast.success("Drawer opened", {
-          duration: 2000,
-          position: ToastPosition.BOTTOM,
+      } else {
+        setIsTaxExempt(true);
+        show({
+          title: "Tax Exempt Enabled",
+          message: "The order is now tax-exempt.",
+          type: "success",
         });
       }
+      setShowManagerPin(false);
+      setManagerPin("");
     } else {
       // Trigger shake animation for wrong PIN
       shakeX.value = withSequence(
@@ -127,10 +141,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         withTiming(0, { duration: 100 })
       );
       setManagerPin("");
-      // toast.error("Invalid PIN", {
-      //   duration: 2000,
-      //   position: ToastPosition.BOTTOM,
-      // });
+      show({
+        title: "Invalid PIN",
+        message: "The manager PIN you entered is incorrect.",
+        type: "error",
+      });
     }
   };
 
@@ -138,25 +153,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     setIsOpenDrawer(true);
     setShowManagerPin(true);
   };
-
-  // const handleManagerPinForDrawer = () => {
-  //   if (managerPin === "1234") {
-  //     toast.success("Drawer opened", {
-  //       duration: 2000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //     setShowManagerPin(false);
-  //     setManagerPin("");
-  //     if (ref && "current" in ref && ref.current) {
-  //       ref.current.close();
-  //     }
-  //   } else {
-  //     toast.error("Invalid PIN", {
-  //       duration: 2000,
-  //       position: ToastPosition.BOTTOM,
-  //     });
-  //   }
-  // };
 
   const handleAddCustomer = () => {
     if (ref && "current" in ref && ref.current) {
@@ -168,8 +164,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const renderBackdrop = useMemo(
-    () => (props: any) =>
-    (
+    () => (props: any) => (
       <BottomSheetBackdrop
         {...props}
         appearsOnIndex={0}
@@ -239,16 +234,18 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
             <TouchableOpacity
               onPress={handleVoidOrderClick}
               disabled={!canVoid}
-              className={`flex-row items-center gap-x-3 w-full p-3 rounded-lg ${canVoid
-                ? "bg-[#303030] border border-red-700"
-                : "bg-[#2a2a2a] border border-gray-700 opacity-50"
-                }`}
+              className={`flex-row items-center gap-x-3 w-full p-3 rounded-lg ${
+                canVoid
+                  ? "bg-[#303030] border border-red-700"
+                  : "bg-[#2a2a2a] border border-gray-700 opacity-50"
+              }`}
             >
               <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={20} />
               <View>
                 <Text
-                  className={`text-lg font-semibold ${canVoid ? "text-red-400" : "text-gray-500"
-                    }`}
+                  className={`text-lg font-semibold ${
+                    canVoid ? "text-red-400" : "text-gray-500"
+                  }`}
                 >
                   Void Order
                 </Text>
@@ -296,10 +293,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <Text className="text-lg text-gray-400">Requires PIN</Text>
               <TouchableOpacity
                 onPress={handleTaxExemptToggle}
-                className={`w-14 h-8 rounded-full flex-row items-center p-1 ${isTaxExempt
-                  ? "bg-blue-600 justify-end"
-                  : "bg-gray-600 justify-start"
-                  }`}
+                className={`w-14 h-8 rounded-full flex-row items-center p-1 ${
+                  isTaxExempt
+                    ? "bg-blue-600 justify-end"
+                    : "bg-gray-600 justify-start"
+                }`}
               >
                 <View className="w-6 h-6 bg-white rounded-full shadow-sm" />
               </TouchableOpacity>

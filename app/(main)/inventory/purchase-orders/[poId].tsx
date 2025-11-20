@@ -1,6 +1,6 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useToast } from "@/contexts/ToastContext";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
@@ -35,6 +35,7 @@ const PurchaseOrderDetailScreen = () => {
     submitPurchaseOrder,
     deletePurchaseOrder,
   } = useInventoryStore();
+  const { show } = useToast();
 
   const po = purchaseOrders.find((p) => p.id === poId);
   const vendor = po ? vendors.find((v) => v.id === po.vendorId) : null;
@@ -103,9 +104,10 @@ const PurchaseOrderDetailScreen = () => {
       receivedItems,
     });
     setShowDeliveryForm(false);
-    toast.success(`Delivery logged for PO #${po.poNumber}`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Success",
+      message: `Delivery logged for PO #${po.poNumber}`,
+      type: "success",
     });
   };
 
@@ -133,9 +135,10 @@ const PurchaseOrderDetailScreen = () => {
       paidToEmployee,
     });
     setShowPaymentForm(false);
-    toast.success(`Payment logged for PO #${po.poNumber}`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Success",
+      message: `Payment logged for PO #${po.poNumber}`,
+      type: "success",
     });
   };
 
@@ -143,18 +146,20 @@ const PurchaseOrderDetailScreen = () => {
     if (!poId) return;
     cancelPurchaseOrder(poId as string);
     setShowCancelDialog(false);
-    toast.success(`PO #${po.poNumber} has been cancelled`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Success",
+      message: `PO #${po.poNumber} has been cancelled`,
+      type: "success",
     });
   };
 
   const handleSubmitDraft = () => {
     if (!poId) return;
     submitPurchaseOrder(poId as string);
-    toast.success(`PO #${po.poNumber} submitted to Pending Delivery`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Success",
+      message: `PO #${po.poNumber} submitted to Pending Delivery`,
+      type: "success",
     });
   };
 
@@ -162,9 +167,10 @@ const PurchaseOrderDetailScreen = () => {
     if (!poId) return;
     deletePurchaseOrder(poId as string);
     setShowDeleteDraftDialog(false);
-    toast.success(`Draft ${po.poNumber} deleted`, {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Success",
+      message: `Draft ${po.poNumber} deleted`,
+      type: "success",
     });
     router.back();
   };

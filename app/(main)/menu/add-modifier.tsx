@@ -1,13 +1,12 @@
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useToast } from "@/contexts/ToastContext";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   ScrollView,
@@ -36,6 +35,7 @@ interface FormErrors {
 
 const AddModifierScreen: React.FC = () => {
   const { addModifierGroup } = useMenuStore();
+  const { show } = useToast();
 
   const [formData, setFormData] = useState<ModifierFormData>({
     name: "",
@@ -82,11 +82,13 @@ const AddModifierScreen: React.FC = () => {
       newErrors.options = "Option name is required";
     }
 
+    const hasDefault = formData.options.some((option) => option.isDefault);
     if (
       formData.type === "required" &&
-      formData.options.some((option) => option.isDefault !== true)
+      formData.selectionType === "single" &&
+      !hasDefault
     ) {
-      newErrors.options = "One option must be set as default";
+      newErrors.options = "One option must be set as default for this type.";
     }
 
     if (
@@ -99,10 +101,14 @@ const AddModifierScreen: React.FC = () => {
 
     setErrors(newErrors);
 
-    // Show toasts for errors
+    // Show a single toast for the first error found
     if (Object.keys(newErrors).length > 0) {
-      Object.values(newErrors).forEach((error) => {
-        toast.error(error, { position: ToastPosition.BOTTOM });
+      const firstErrorMessage = Object.values(newErrors)[0];
+      show({
+        title: "Validation Error",
+        message:
+          firstErrorMessage || "Please review the form for required fields.",
+        type: "error",
       });
     }
 
@@ -140,6 +146,12 @@ const AddModifierScreen: React.FC = () => {
       // Save to store
       addModifierGroup(modifierGroupData);
 
+      show({
+        title: "Modifier Group Saved",
+        message: `Successfully created "${modifierGroupData.name}".`,
+        type: "success",
+      });
+
       hasSavedRef.current = true;
       setHasChanges(false);
 
@@ -153,7 +165,11 @@ const AddModifierScreen: React.FC = () => {
         router.back();
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to save modifier group. Please try again.");
+      show({
+        title: "Save Failed",
+        message: "An error occurred while saving. Please try again.",
+        type: "error",
+      });
     } finally {
       setIsSaving(false);
     }

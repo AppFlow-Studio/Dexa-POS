@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { CartItem, PaymentType, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Check, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -33,6 +33,7 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
   const [reason, setReason] = useState("");
   const [selectedItems, setSelectedItems] = useState<RefundItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentType>("Card");
+  const { show } = useToast();
 
   const { refundFullOrder, refundItems } = usePreviousOrdersStore();
 
@@ -68,26 +69,29 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
 
   const handleFullRefund = () => {
     if (!reason.trim()) {
-      toast.error("Please provide a reason for the refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Reason Required",
+        message: "Please provide a reason for the full refund.",
+        type: "error",
       });
       return;
     }
 
     refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
-    toast.success("Full refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Refund Successful",
+      message: "The full refund has been processed successfully.",
+      type: "success",
     });
     onClose();
   };
 
   const handlePartialRefund = () => {
     if (selectedItems.length === 0) {
-      toast.error("Please select items to refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Items Selected",
+        message: "Please select one or more items to process a partial refund.",
+        type: "error",
       });
       return;
     }
@@ -95,17 +99,19 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
     // Validate that all selected items have reasons
     const itemsWithReasons = selectedItems.filter((item) => item.reason.trim());
     if (itemsWithReasons.length !== selectedItems.length) {
-      toast.error("Please provide reasons for all selected items", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Reason Required",
+        message: "Please provide a reason for each item selected for refund.",
+        type: "error",
       });
       return;
     }
 
     refundItems(order.orderId, selectedItems, "Cashier", paymentMethod);
-    toast.success("Partial refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Refund Successful",
+      message: "The partial refund has been processed successfully.",
+      type: "success",
     });
     onClose();
   };

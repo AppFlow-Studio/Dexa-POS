@@ -1,11 +1,11 @@
 import AddIngredientModal from "@/components/inventory/AddIngredientModal";
 import RecipeIngredientSheet from "@/components/inventory/RecipeIngredientSheet";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { toast } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -50,6 +50,7 @@ interface MenuItemFormData {
 
 const AddMenuItemScreen: React.FC = () => {
   const { addMenuItem, categories, modifierGroups } = useMenuStore();
+  const { show } = useToast();
 
   const [formData, setFormData] = useState<MenuItemFormData>({
     name: "",
@@ -143,7 +144,15 @@ const AddMenuItemScreen: React.FC = () => {
     }
 
     setErrors(newErrors);
-    toast.error(Object.keys(newErrors).join(", "));
+
+    if (Object.keys(newErrors).length > 0) {
+      show({
+        title: "Validation Error",
+        message: "Please correct the highlighted fields before saving.",
+        type: "error",
+      });
+    }
+
     return Object.keys(newErrors).length === 0;
   };
 
@@ -217,6 +226,12 @@ const AddMenuItemScreen: React.FC = () => {
 
       addMenuItem(newMenuItem);
 
+      show({
+        title: "Item Created",
+        message: `Successfully added "${newMenuItem.name}" to the menu.`,
+        type: "success",
+      });
+
       // Mark as saved to allow navigation
       hasSavedRef.current = true;
       setHasChanges(false);
@@ -226,7 +241,11 @@ const AddMenuItemScreen: React.FC = () => {
         router.back();
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to save menu item. Please try again.");
+      show({
+        title: "Save Error",
+        message: "Failed to save the menu item. Please try again.",
+        type: "error",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -288,10 +307,11 @@ const AddMenuItemScreen: React.FC = () => {
     ) {
       setRecipeItems((prev) => [...prev, ingredient]);
     } else {
-      Alert.alert(
-        "Duplicate Item",
-        "This ingredient is already in the recipe."
-      );
+      show({
+        title: "Duplicate Item",
+        message: "This ingredient is already in the recipe.",
+        type: "warning",
+      });
     }
   };
 
@@ -373,15 +393,14 @@ const AddMenuItemScreen: React.FC = () => {
 
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
-    () => (backdropProps: any) =>
-      (
-        <BottomSheetBackdrop
-          {...backdropProps}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (backdropProps: any) => (
+      <BottomSheetBackdrop
+        {...backdropProps}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
 
@@ -507,7 +526,11 @@ const AddMenuItemScreen: React.FC = () => {
               <Text className="text-lg text-white font-medium mb-1.5">
                 Price *
               </Text>
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4">
+              <View
+                className={`flex-row items-center bg-[#303030] border rounded-lg px-4 ${
+                  errors.price ? "border-red-500" : "border-gray-600"
+                }`}
+              >
                 <Text className="text-lg text-white">$</Text>
                 <TextInput
                   className="flex-1 ml-2 text-lg h-16 text-white"
@@ -531,7 +554,11 @@ const AddMenuItemScreen: React.FC = () => {
               <Text className="text-lg text-white font-medium mb-1.5">
                 Cash Price (Optional)
               </Text>
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-4">
+              <View
+                className={`flex-row items-center bg-[#303030] border rounded-lg px-4 ${
+                  errors.cashPrice ? "border-red-500" : "border-gray-600"
+                }`}
+              >
                 <Text className="text-lg text-white">$</Text>
                 <TextInput
                   className="flex-1 ml-2 text-lg text-white h-16"
@@ -705,7 +732,6 @@ const AddMenuItemScreen: React.FC = () => {
             ) : (
               <>
                 <View className="flex-row flex-wrap gap-2">
-
                   {filteredModifierGroups.map((modifier) => (
                     <Pressable
                       key={modifier.id}
@@ -1214,8 +1240,8 @@ const AddMenuItemScreen: React.FC = () => {
                       isCurrentlyEditing
                         ? "bg-blue-900 border-blue-600"
                         : isAlreadyInRecipe
-                        ? "bg-gray-800 opacity-50"
-                        : "bg-transparent"
+                          ? "bg-gray-800 opacity-50"
+                          : "bg-transparent"
                     }`}
                   >
                     <View className="flex-row items-center justify-between">
@@ -1225,8 +1251,8 @@ const AddMenuItemScreen: React.FC = () => {
                             isCurrentlyEditing
                               ? "text-blue-300"
                               : isAlreadyInRecipe
-                              ? "text-gray-500"
-                              : "text-white"
+                                ? "text-gray-500"
+                                : "text-white"
                           }`}
                         >
                           {inventoryItem.name}
@@ -1236,8 +1262,8 @@ const AddMenuItemScreen: React.FC = () => {
                             isCurrentlyEditing
                               ? "text-blue-400"
                               : isAlreadyInRecipe
-                              ? "text-gray-600"
-                              : "text-gray-400"
+                                ? "text-gray-600"
+                                : "text-gray-400"
                           }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $

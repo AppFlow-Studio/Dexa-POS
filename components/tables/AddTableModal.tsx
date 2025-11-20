@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -76,14 +76,16 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
   >(SHAPE_OPTIONS[0].id as keyof typeof TABLE_SHAPES);
 
   const { layouts, activeLayoutId } = useFloorPlanStore();
+  const { show } = useToast();
   const activeLayout = layouts.find((layout) => layout.id === activeLayoutId);
   const tablesInCurrentLayout = activeLayout?.tables || [];
 
   const handleAddPress = () => {
     if (!name || !selectedShapeId) {
-      toast.error("Please enter a name and select a shape.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Missing Information",
+        message: "Please provide a name for the object and select a shape.",
+        type: "error",
       });
       return;
     }
@@ -93,9 +95,10 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
     );
 
     if (nameExists) {
-      toast.error(`An object named "${name}" already exists in this layout.`, {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Duplicate Name",
+        message: `An object named "${name}" already exists. Please choose a unique name.`,
+        type: "error",
       });
       return;
     }

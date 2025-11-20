@@ -1,11 +1,12 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 
 const OpenItemAdder = () => {
   const { activeOrderId, addItemToActiveOrder, orders } = useOrderStore();
+  const { show } = useToast();
 
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
@@ -81,9 +82,10 @@ const OpenItemAdder = () => {
     const price = parseFloat(openItemPrice);
 
     if (isNaN(price) || price <= 0) {
-      toast.error("Please enter a valid price", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid Price",
+        message: "Please enter a valid price greater than zero.",
+        type: "error",
       });
       return;
     }
@@ -91,9 +93,10 @@ const OpenItemAdder = () => {
     // Check if the active order is closed
     const activeOrder = orders.find((o) => o.id === activeOrderId);
     if (activeOrder?.order_status === "Closed") {
-      toast.error("Order is closed. Please reopen the check to add items.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Closed",
+        message: "This order is closed. Please reopen the check to add items.",
+        type: "error",
       });
       return;
     }
@@ -116,9 +119,12 @@ const OpenItemAdder = () => {
 
     addItemToActiveOrder(newOpenItem);
 
-    toast.success(`${itemName} ${price.toFixed(2)} added`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Item Added",
+      message: `${itemName} for $${price.toFixed(
+        2
+      )} has been added to the order.`,
+      type: "success",
     });
 
     // Reset form

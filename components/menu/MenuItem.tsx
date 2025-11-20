@@ -1,9 +1,9 @@
+import { useToast } from "@/contexts/ToastContext";
 import { MenuItemType } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Settings, Utensils } from "lucide-react-native";
 import React, { useMemo } from "react";
 import {
@@ -33,6 +33,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   const { openFullscreen } = useModifierSidebarStore();
   const { openToAdd } = useCustomizationStore();
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
+  const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -55,9 +56,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
     }
 
     if (!activeOrder?.order_type) {
-      toast.error("Please select an Order Type", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Type Required",
+        message:
+          "Please select an order type (e.g., Dine-In) before adding items.",
+        type: "warning",
       });
       return;
     }

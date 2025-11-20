@@ -1,3 +1,4 @@
+import { useToast } from "@/contexts/ToastContext";
 import { getMenuItemCategory, getMenuItemCostOfGoods } from "@/lib/chartUtils";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useDineInStore } from "@/stores/useDineInStore";
@@ -6,23 +7,10 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Printer, ShoppingBag } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
-
-// export interface SaleEvent {
-//   date: string; // ISO string
-//   menuItemId: string;
-//   itemName: string;
-//   quantitySold: number;
-//   salePrice: number; // Price per item
-//   costOfGoods: number; // Cost per item
-//   category?: string;
-//   employeeId?: string;
-//   paymentMethod?: string;
-// }
 
 const ReceiptRow = ({
   label,
@@ -42,6 +30,7 @@ const PaymentSuccessView = () => {
   const { updateTableStatus } = useFloorPlanStore();
   const { clearSelectedTable } = useDineInStore();
   const { decrementStockFromSale } = useInventoryStore();
+  const { show } = useToast();
 
   const {
     activeOrderId,
@@ -153,9 +142,10 @@ const PaymentSuccessView = () => {
   };
 
   const handlePrint = () => {
-    toast.success("Receipt sent to printer", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Printing Receipt",
+      message: "The receipt has been sent to the designated printer.",
+      type: "success",
     });
   };
 

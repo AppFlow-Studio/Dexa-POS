@@ -38,15 +38,6 @@ const SelectableTable: React.FC<SelectableTableProps> = ({
   const translateY = useSharedValue(table.y);
 
   const handleTablePress = () => {
-    // if (table.status !== "Available") {
-    //     toast.error(`Table ${table.name} is not available`, {
-    //         duration: 3000,
-    //         position: ToastPosition.BOTTOM,
-    //     });
-    //     return;
-    // }
-
-    // Call the onSelect callback - let parent handle the assignment
     onSelect(table);
   };
 

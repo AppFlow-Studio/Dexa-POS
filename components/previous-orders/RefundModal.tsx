@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { PaymentType, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Check, X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -29,6 +29,7 @@ const RefundModal: React.FC<RefundModalProps> = ({
     Array<{ itemId: string; quantity: number; reason: string }>
   >([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentType>("Card");
+  const { show } = useToast();
 
   const { refundFullOrder, refundItems } = usePreviousOrdersStore();
 
@@ -36,34 +37,38 @@ const RefundModal: React.FC<RefundModalProps> = ({
 
   const handleFullRefund = () => {
     if (!reason.trim()) {
-      toast.error("Please provide a reason for the refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Reason Required",
+        message: "A reason must be provided to process a full refund.",
+        type: "error",
       });
       return;
     }
 
     refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
-    toast.success("Full refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Refund Successful",
+      message: "The full refund has been processed successfully.",
+      type: "success",
     });
     onClose();
   };
 
   const handlePartialRefund = () => {
     if (selectedItems.length === 0) {
-      toast.error("Please select items to refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Items Selected",
+        message: "Please select one or more items to process a partial refund.",
+        type: "error",
       });
       return;
     }
 
     refundItems(order.orderId, selectedItems, "Cashier", paymentMethod);
-    toast.success("Partial refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Refund Successful",
+      message: "The partial refund has been processed successfully.",
+      type: "success",
     });
     onClose();
   };

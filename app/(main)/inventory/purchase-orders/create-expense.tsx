@@ -6,17 +6,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/contexts/ToastContext";
 import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { FlatList, TextInput } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 const CreateExternalExpenseScreen = () => {
   const router = useRouter();
   const {
@@ -26,6 +27,7 @@ const CreateExternalExpenseScreen = () => {
     addInventoryItem,
   } = useInventoryStore();
   const { activeEmployeeId, employees, loadMockEmployees } = useEmployeeStore();
+  const { show } = useToast();
 
   // Main expense state
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
@@ -84,10 +86,12 @@ const CreateExternalExpenseScreen = () => {
 
   const addSelectedItemToExpense = () => {
     if (!selectedInventoryItemId || !selectedQuantity || !selectedUnitPrice) {
-      Alert.alert(
-        "Missing Information",
-        "Please select an item, enter quantity, and unit price."
-      );
+      show({
+        title: "Missing Details",
+        message:
+          "Please select an item, and enter a valid quantity and unit price.",
+        type: "error",
+      });
       return;
     }
 
@@ -100,10 +104,11 @@ const CreateExternalExpenseScreen = () => {
       isNaN(unitPrice) ||
       unitPrice <= 0
     ) {
-      Alert.alert(
-        "Invalid Values",
-        "Please enter valid quantity and unit price greater than 0."
-      );
+      show({
+        title: "Invalid Input",
+        message: "Please enter a quantity and unit price greater than 0.",
+        type: "error",
+      });
       return;
     }
 
@@ -111,7 +116,11 @@ const CreateExternalExpenseScreen = () => {
       (item) => item.id === selectedInventoryItemId
     );
     if (!selectedItem) {
-      Alert.alert("Error", "Selected item not found.");
+      show({
+        title: "Item Not Found",
+        message: "The selected item could not be found in the inventory.",
+        type: "error",
+      });
       return;
     }
 
@@ -133,15 +142,20 @@ const CreateExternalExpenseScreen = () => {
     setItemNotes("");
     itemsSheetRef.current?.close();
 
-    toast.success(`Item added to expense`, {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Item Added",
+      message: `${selectedItem.name} has been added to the expense list.`,
+      type: "success",
     });
   };
 
   const handleCreateNewItem = () => {
     if (!newItemName.trim()) {
-      Alert.alert("Please enter item name");
+      show({
+        title: "Missing Name",
+        message: "Please provide a name for the new item.",
+        type: "error",
+      });
       return;
     }
     const costNum = Number(newItemCost || 0);
@@ -185,24 +199,39 @@ const CreateExternalExpenseScreen = () => {
     setNewItemModalOpen(false);
     itemsSheetRef.current?.close();
 
-    toast.success(`New item created and added to expense`, {
-      duration: 2000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Item Created",
+      message: `New item '${newItemName.trim()}' created and added to the expense.`,
+      type: "success",
     });
   };
 
   const handleRemoveItemFromExpense = (index: number) => {
+    const removedItem = expenseItems[index];
     setExpenseItems((prev) => prev.filter((_, i) => i !== index));
+    show({
+      title: "Item Removed",
+      message: `${removedItem.itemName} has been removed from the expense list.`,
+      type: "success",
+    });
   };
 
   const handleCreateExpense = () => {
     if (expenseItems.length === 0) {
-      Alert.alert("No Items", "Please add at least one item to the expense.");
+      show({
+        title: "Empty Expense",
+        message: "Please add at least one item before creating the expense.",
+        type: "error",
+      });
       return;
     }
 
     if (!selectedEmployeeId) {
-      Alert.alert("Missing Information", "Please select an employee.");
+      show({
+        title: "Employee Not Selected",
+        message: "Please select the employee who made the purchase.",
+        type: "error",
+      });
       return;
     }
 
@@ -210,7 +239,11 @@ const CreateExternalExpenseScreen = () => {
       (emp) => emp.id === selectedEmployeeId
     );
     if (!selectedEmployee) {
-      Alert.alert("Error", "Selected employee not found.");
+      show({
+        title: "Employee Not Found",
+        message: "The selected employee could not be found.",
+        type: "error",
+      });
       return;
     }
 
@@ -235,13 +268,11 @@ const CreateExternalExpenseScreen = () => {
       storeLocation: storeLocation.trim() || undefined,
     });
 
-    toast.success(
-      `External expense created with ${expenseItems.length} items`,
-      {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      }
-    );
+    show({
+      title: "Expense Created",
+      message: `Successfully created an expense with ${expenseItems.length} items.`,
+      type: "success",
+    });
 
     router.back();
   };
@@ -254,7 +285,6 @@ const CreateExternalExpenseScreen = () => {
     right: 12,
   };
 
-  console.log(filteredInventoryItems.length);
   return (
     <View className="flex-1">
       <View className="flex-row justify-between items-center mb-4">
@@ -440,9 +470,7 @@ const CreateExternalExpenseScreen = () => {
               <Text className="text-white text-base mb-1.5">Store Name</Text>
               <TextInput
                 value={storeName}
-
                 placeholderTextColor="#9CA3AF"
-
                 onChangeText={setStoreName}
                 placeholder="e.g., Fresh Market"
                 className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
@@ -455,8 +483,7 @@ const CreateExternalExpenseScreen = () => {
                 onChangeText={setStoreLocation}
                 placeholder="e.g., 123 Main St"
                 className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
-                 placeholderTextColor="#9CA3AF"
-
+                placeholderTextColor="#9CA3AF"
               />
             </View>
           </View>
@@ -469,7 +496,6 @@ const CreateExternalExpenseScreen = () => {
           <TextInput
             value={expenseNotes}
             onChangeText={setExpenseNotes}
-
             placeholderTextColor="#9CA3AF"
             placeholder="e.g., Vendor delay"
             multiline

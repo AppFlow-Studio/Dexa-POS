@@ -3,10 +3,10 @@ import TemplateGrid from "@/components/scheduling/TemplateGrid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
+import { useToast } from "@/contexts/ToastContext";
 import { PREDEFINED_TAGS, ScheduleTemplate, TemplateShift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { addTemplate } from "@/stores/useScheduleTemplateStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -21,6 +21,7 @@ import {
 const CreateTemplateScreen = () => {
   const router = useRouter();
   const { employees } = useEmployeeStore();
+  const { show } = useToast();
   const [template, setTemplate] = useState<Omit<ScheduleTemplate, "id">>({
     name: "",
     description: "",
@@ -86,14 +87,18 @@ const CreateTemplateScreen = () => {
 
   const handleSave = () => {
     if (!template.name.trim()) {
-      toast.error("Template name cannot be empty.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Name Required",
+        message: "Please enter a name for the template before saving.",
+        type: "error",
       });
       return;
     }
     addTemplate(template);
-    toast.success("Template created successfully!", {
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Template Created",
+      message: `The template "${template.name}" has been successfully created.`,
+      type: "success",
     });
     router.back();
   };

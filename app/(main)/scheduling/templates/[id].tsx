@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DropZoneProvider } from "@/contexts/DropZoneContext";
+import { useToast } from "@/contexts/ToastContext";
 import { PREDEFINED_TAGS, ScheduleTemplate, TemplateShift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   updateTemplate,
   useScheduleTemplateStore,
 } from "@/stores/useScheduleTemplateStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -27,6 +27,7 @@ const EditTemplateScreen = () => {
   const { id } = useLocalSearchParams();
   const { templates } = useScheduleTemplateStore();
   const { employees } = useEmployeeStore();
+  const { show } = useToast();
   const [template, setTemplate] = useState<ScheduleTemplate | null>(null);
 
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
@@ -40,10 +41,14 @@ const EditTemplateScreen = () => {
         setTemplate(foundTemplate);
       } else {
         router.back();
-        toast.error("Template not found.", { position: ToastPosition.BOTTOM });
+        show({
+          title: "Template Not Found",
+          message: "The template you are trying to edit does not exist.",
+          type: "error",
+        });
       }
     }
-  }, [id, templates, router]);
+  }, [id, templates, router, show]);
 
   const handleNameChange = (name: string) => {
     if (template) setTemplate((prev) => (prev ? { ...prev, name } : null));
@@ -100,14 +105,18 @@ const EditTemplateScreen = () => {
   const handleSave = () => {
     if (!template) return;
     if (!template.name.trim()) {
-      toast.error("Template name cannot be empty.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Validation Error",
+        message: "Template name cannot be empty.",
+        type: "error",
       });
       return;
     }
     updateTemplate(template.id, template);
-    toast.success("Template updated successfully!", {
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Template Updated",
+      message: `"${template.name}" has been successfully updated.`,
+      type: "success",
     });
     router.back();
   };

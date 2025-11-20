@@ -1,7 +1,7 @@
+import { useToast } from "@/contexts/ToastContext";
 import { AddOn, CartItem, ItemSize } from "@/lib/types";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Image, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -11,6 +11,7 @@ const ItemCustomizationDialog: React.FC = () => {
   const { isOpen, mode, menuItem, cartItem, close } = useCustomizationStore();
   const { addItemToActiveOrder, updateItemInActiveOrder, generateCartItemId } =
     useOrderStore();
+  const { show } = useToast();
 
   // Internal state for the form
   const [quantity, setQuantity] = useState(1);
@@ -71,6 +72,11 @@ const ItemCustomizationDialog: React.FC = () => {
         customizations: { size: selectedSize, addOns: selectedAddOns, notes },
       };
       updateItemInActiveOrder(updatedItem);
+      show({
+        title: "Item Updated",
+        message: `Your changes to ${menuItem.name} have been saved.`,
+        type: "success",
+      });
     } else {
       // If in add mode, create a brand new CartItem
       const newItem: CartItem = {
@@ -91,12 +97,12 @@ const ItemCustomizationDialog: React.FC = () => {
         paidQuantity: 0,
       };
       addItemToActiveOrder(newItem);
+      show({
+        title: "Item Added",
+        message: `${menuItem.name} has been added to the order.`,
+        type: "success",
+      });
     }
-    // Trigger the toast notification with the item's details
-    toast.success(`${menuItem.name} $${total.toFixed(2)} added`, {
-      duration: 4000, // Show for 4 seconds
-      position: ToastPosition.BOTTOM,
-    });
 
     close();
   }, [
@@ -111,6 +117,8 @@ const ItemCustomizationDialog: React.FC = () => {
     close,
     addItemToActiveOrder,
     updateItemInActiveOrder,
+    show,
+    generateCartItemId,
   ]);
 
   if (!isOpen || !menuItem) return null;

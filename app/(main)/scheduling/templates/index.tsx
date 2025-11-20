@@ -1,8 +1,8 @@
 import TemplateListItem from "@/components/scheduling/TemplateListItem";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { useToast } from "@/contexts/ToastContext";
 import { ScheduleTemplate } from "@/lib/types";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import { Calendar, CheckCircle2, Plus, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -17,6 +17,7 @@ import {
 const TemplateLibraryScreen = () => {
   const router = useRouter();
   const { templates, activeTemplateIds, actions } = useScheduleTemplateStore();
+  const { show } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] =
@@ -59,8 +60,10 @@ const TemplateLibraryScreen = () => {
   const handleConfirmDelete = () => {
     if (selectedTemplate) {
       actions.deleteTemplate(selectedTemplate.id);
-      toast.success(`Template "${selectedTemplate.name}" deleted.`, {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Template Deleted",
+        message: `Template "${selectedTemplate.name}" has been removed.`,
+        type: "success",
       });
     }
     setDeleteConfirmOpen(false);
@@ -68,8 +71,13 @@ const TemplateLibraryScreen = () => {
   };
 
   const handleDuplicate = (id: string) => {
+    const originalTemplate = templates.find((t) => t.id === id);
     actions.duplicateTemplate(id);
-    toast.success("Template duplicated.", { position: ToastPosition.BOTTOM });
+    show({
+      title: "Template Duplicated",
+      message: `A copy of "${originalTemplate?.name}" has been created.`,
+      type: "success",
+    });
   };
 
   const handleToggleSelection = (id: string) => {
@@ -80,8 +88,10 @@ const TemplateLibraryScreen = () => {
       if (prev.length < 3) {
         return [...prev, id];
       }
-      toast.error("You can only select up to 3 active templates.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Selection Limit Reached",
+        message: "You can only select up to 3 active templates.",
+        type: "warning",
       });
       return prev;
     });
@@ -90,8 +100,10 @@ const TemplateLibraryScreen = () => {
   const handleSaveSelection = () => {
     actions.setActiveTemplateIds(selectedActiveIds);
     setSelectionMode(false);
-    toast.success("Active templates updated.", {
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Selection Saved",
+      message: "Your active templates have been updated.",
+      type: "success",
     });
   };
 

@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import { Text, TouchableOpacity } from "react-native";
 import Animated, {
@@ -17,6 +17,7 @@ const ManagerPinModal = () => {
   const { isPinModalOpen, closePinModal, actionToPerform } =
     usePinOverrideStore();
   const { addTemporaryMenuAccess, addTemporaryCategoryAccess } = useMenuStore();
+  const { show } = useToast(); // Initialize useToast
   const [currentPin, setCurrentPin] = useState("");
 
   // Animation values for shake effect
@@ -32,7 +33,11 @@ const ManagerPinModal = () => {
           addTemporaryCategoryAccess(actionToPerform.payload.categoryName);
         }
       }
-      toast.success("Access Granted", { position: ToastPosition.BOTTOM });
+      show({
+        title: "Access Granted",
+        message: "Temporary access has been granted.",
+        type: "success",
+      });
       closePinModal();
     } else {
       // Trigger shake animation for wrong PIN
@@ -43,7 +48,11 @@ const ManagerPinModal = () => {
         withTiming(10, { duration: 100 }),
         withTiming(0, { duration: 100 })
       );
-      toast.error("Invalid PIN", { position: ToastPosition.BOTTOM });
+      show({
+        title: "Invalid PIN",
+        message: "The PIN you entered is incorrect. Please try again.",
+        type: "error",
+      });
     }
     setCurrentPin("");
   };

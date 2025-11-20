@@ -1,9 +1,9 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
+import { useToast } from "@/contexts/ToastContext";
 import { PurchaseOrder } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Link, useRouter } from "expo-router";
 import { Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -103,6 +103,7 @@ const PurchaseOrdersScreen = () => {
   } = useInventoryStore();
   const { employees, activeEmployeeId, loadMockEmployees } = useEmployeeStore();
   const router = useRouter();
+  const { show } = useToast();
 
   const [poToDelete, setPoToDelete] = useState<PurchaseOrder | null>(null);
   const [query, setQuery] = useState("");
@@ -123,10 +124,14 @@ const PurchaseOrdersScreen = () => {
   }, [loadMockEmployees]);
 
   const handleRemoveExternalExpense = (expenseId: string) => {
+    const expenseToRemove = externalExpenses.find((e) => e.id === expenseId);
     removeExternalExpense(expenseId);
-    toast.success("External expense removed", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Expense Removed",
+      message: `Expense ${
+        expenseToRemove?.expenseNumber || ""
+      } has been successfully removed.`,
+      type: "success",
     });
   };
 
@@ -164,6 +169,11 @@ const PurchaseOrdersScreen = () => {
   const handleConfirmDelete = () => {
     if (poToDelete) {
       deletePurchaseOrder(poToDelete.id);
+      show({
+        title: "PO Deleted",
+        message: `Purchase Order "${poToDelete.poNumber}" has been deleted.`,
+        type: "success",
+      });
     }
     setPoToDelete(null);
   };
@@ -279,16 +289,16 @@ const PurchaseOrdersScreen = () => {
                   header === "PO Number"
                     ? "w-[15%]"
                     : header === "Vendor"
-                    ? "w-[20%]"
-                    : header === "Status"
-                    ? "w-[15%]"
-                    : header === "Date Created"
-                    ? "w-[15%]"
-                    : header === "Total Items"
-                    ? "w-[11%]"
-                    : header === "Total Cost"
-                    ? "w-[15%]"
-                    : "w-[13%]"
+                      ? "w-[20%]"
+                      : header === "Status"
+                        ? "w-[15%]"
+                        : header === "Date Created"
+                          ? "w-[15%]"
+                          : header === "Total Items"
+                            ? "w-[11%]"
+                            : header === "Total Cost"
+                              ? "w-[15%]"
+                              : "w-[13%]"
                 }`}
               >
                 {header}

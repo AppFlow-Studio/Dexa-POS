@@ -1,5 +1,5 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Eye, Plus } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -89,15 +89,14 @@ const OrderRow: React.FC<OrderRowProps> = ({
     order.paid_status === "Paid"
       ? "bg-green-600/20"
       : order.paid_status === "Pending"
-      ? "bg-yellow-600/20"
-      : "bg-red-600/20";
+        ? "bg-yellow-600/20"
+        : "bg-red-600/20";
   const paidText =
     order.paid_status === "Paid"
       ? "text-green-400"
       : order.paid_status === "Pending"
-      ? "text-yellow-400"
-      : "text-red-400";
-
+        ? "text-yellow-400"
+        : "text-red-400";
 
   return (
     <View className="bg-[#303030] p-3 rounded-lg border border-gray-700 mb-2">
@@ -180,6 +179,7 @@ const RetrieveButton = ({ orderId }: { orderId: string }) => {
 const PreviousOrdersSection = () => {
   const { orders, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
+  const { show } = useToast();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -201,8 +201,7 @@ const PreviousOrdersSection = () => {
     );
   }, [allOrders, activeTab]);
 
-  // Function passed to OrderTabs to update the state
-  const handleTabChange = (tabName: string) => {
+  const handleTabChange = (tabName: TabName) => {
     setActiveTab(tabName);
   };
 
@@ -213,26 +212,29 @@ const PreviousOrdersSection = () => {
 
   const handleAssignToBill = (orderId: string) => {
     if (!activeOrderId) {
-      toast.error("No active order found. Please start a new order first.", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Active Order",
+        message: "Please start a new order before adding items.",
+        type: "error",
       });
       return;
     }
 
     const previousOrder = orders.find((o) => o.id === orderId);
     if (!previousOrder) {
-      toast.error("Previous order not found.", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Not Found",
+        message: "The selected previous order could not be found.",
+        type: "error",
       });
       return;
     }
 
     if (!previousOrder.items || previousOrder.items.length === 0) {
-      toast.error("No items found in the previous order.", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Items to Add",
+        message: "This previous order has no items to add to the bill.",
+        type: "warning",
       });
       return;
     }
@@ -250,13 +252,11 @@ const PreviousOrdersSection = () => {
       addedCount++;
     });
 
-    toast.success(
-      `Added ${addedCount} items from previous order to current bill.`,
-      {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      }
-    );
+    show({
+      title: "Items Added",
+      message: `${addedCount} items from the previous order have been added to the current bill.`,
+      type: "success",
+    });
   };
 
   return (

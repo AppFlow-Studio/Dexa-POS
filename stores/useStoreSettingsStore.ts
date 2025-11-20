@@ -1,5 +1,5 @@
+import { toastService } from "@/lib/toastService";
 import { Address, DayHours, SpecialHours } from "@/lib/types"; // We will add these types next
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 
 export interface StoreSettings {
@@ -96,8 +96,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
 
     set({ initialState: newInitialState, isDirty: false });
 
-    toast.success("Store info updated successfully.", {
-      position: ToastPosition.BOTTOM,
+    toastService.show({
+      title: "Settings Saved",
+      message: "Store information has been updated successfully.",
+      type: "success",
     });
   },
 

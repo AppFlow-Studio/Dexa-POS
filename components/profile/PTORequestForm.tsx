@@ -1,8 +1,8 @@
+import { useToast } from "@/contexts/ToastContext";
 import { PTORequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import {
   differenceInHours,
   format,
@@ -14,13 +14,13 @@ import {
 import { Calendar as CalendarIcon } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   View as RNView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import Popover from "react-native-popover-view";
@@ -40,6 +40,7 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
   const { schedulePeriods, weeklySchedules, checkPtoConflict, ptoRequests } =
     useScheduleStore();
   const { balances } = usePtoStore();
+  const { show } = useToast();
 
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -59,7 +60,10 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
 
   const hasScheduledShifts = employeeShifts.length > 0;
 
-  const todayFormatted = useMemo(() => format(startOfDay(new Date()), "yyyy-MM-dd"), []);
+  const todayFormatted = useMemo(
+    () => format(startOfDay(new Date()), "yyyy-MM-dd"),
+    []
+  );
 
   const maxDate = useMemo(() => {
     if (employeeShifts.length === 0) return undefined;
@@ -103,41 +107,50 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
 
   const handleSubmit = () => {
     if (!loggedInEmployee) {
-      toast.error("Employee not logged in.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Authentication Error",
+        message: "Could not identify the logged-in employee.",
+        type: "error",
       });
       return;
     }
 
     if (!startDate || !endDate) {
-      toast.error("Please select both a start and end date.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Missing Dates",
+        message: "Please select both a start and an end date for your request.",
+        type: "error",
       });
       return;
     }
 
     const today = startOfDay(new Date());
     if (isBefore(startDate, today)) {
-      toast.error("Start date cannot be in the past.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid Start Date",
+        message: "The start date for a PTO request cannot be in the past.",
+        type: "error",
       });
       return;
     }
 
     if (isBefore(endDate, startDate)) {
-      toast.error("End date cannot be before the start date.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid End Date",
+        message: "The end date cannot be earlier than the start date.",
+        type: "error",
       });
       return;
     }
 
     if (requestedHours > spendableBalance) {
-      toast.error(
-        `You cannot request ${requestedHours}h as it exceeds your available balance of ${spendableBalance.toFixed(
+      show({
+        title: "Insufficient Balance",
+        message: `Your request for ${requestedHours}h exceeds your available balance of ${spendableBalance.toFixed(
           2
         )}h.`,
-        { position: ToastPosition.BOTTOM }
-      );
+        type: "error",
+      });
       return;
     }
 
@@ -148,8 +161,11 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
     );
 
     if (isConflict) {
-      toast.error("This PTO request overlaps with an existing request.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Scheduling Conflict",
+        message:
+          "This request overlaps with another PTO request you have already submitted.",
+        type: "error",
       });
       return;
     }
@@ -160,6 +176,11 @@ const PTORequestForm: React.FC<PTORequestFormProps> = ({
       endDate: endDate.toISOString(),
       hours: requestedHours,
       note,
+    });
+    show({
+      title: "Request Submitted",
+      message: "Your PTO request has been successfully submitted for approval.",
+      type: "success",
     });
     onClose();
   };

@@ -1,11 +1,13 @@
+import ToastContainer from "@/components/ui/ToastContainer";
+import { toastService } from "@/lib/toastService"; // Import the toastService
 import React, {
   createContext,
-  useContext,
-  useState,
-  useCallback,
   ReactNode,
+  useCallback,
+  useContext,
+  useEffect, // Import useEffect
+  useState,
 } from "react";
-import ToastContainer from "@/components/ui/ToastContainer";
 
 export interface ToastProps {
   id: string;
@@ -13,6 +15,7 @@ export interface ToastProps {
   message: string;
   onUndo?: () => void;
   duration?: number;
+  type?: "success" | "error" | "warning";
 }
 
 interface ToastContextType {
@@ -33,21 +36,29 @@ export const useToast = () => {
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, setToasts] = useState<ToastProps[]>([]);
 
-  const show = useCallback((options: Omit<ToastProps, "id">) => {
-    const id = Date.now().toString();
-    const newToast: ToastProps = { id, ...options };
-    setToasts((prevToasts) => [newToast, ...prevToasts]);
-
-    if (options.duration) {
-      setTimeout(() => {
-        hide(id);
-      }, options.duration);
-    }
-  }, []);
-
   const hide = useCallback((id: string) => {
     setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
   }, []);
+
+  const show = useCallback(
+    (options: Omit<ToastProps, "id">) => {
+      const id = Date.now().toString();
+      const newToast: ToastProps = { id, ...options };
+      setToasts((prevToasts) => [newToast, ...prevToasts]);
+
+      if (options.duration) {
+        setTimeout(() => {
+          hide(id);
+        }, options.duration);
+      }
+    },
+    [hide]
+  ); // Added 'hide' to dependencies
+
+  // Register the show function with the global toastService
+  useEffect(() => {
+    toastService.setToast(show);
+  }, [show]); // Re-register if 'show' function changes (though useCallback should keep it stable)
 
   return (
     <ToastContext.Provider value={{ show, hide }}>
