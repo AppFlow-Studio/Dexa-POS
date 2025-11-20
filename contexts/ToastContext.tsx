@@ -9,6 +9,9 @@ import React, {
   useState,
 } from "react";
 
+// Define a default duration for toasts if none is provided
+const DEFAULT_TOAST_DURATION = 4000; // 4 seconds
+
 export interface ToastProps {
   id: string;
   title: string;
@@ -46,10 +49,13 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
       const newToast: ToastProps = { id, ...options };
       setToasts((prevToasts) => [newToast, ...prevToasts]);
 
-      if (options.duration) {
+      // Determine the duration: use options.duration if provided, otherwise use default
+      const durationToUse = options.duration ?? DEFAULT_TOAST_DURATION;
+
+      if (durationToUse) {
         setTimeout(() => {
           hide(id);
-        }, options.duration);
+        }, durationToUse);
       }
     },
     [hide]

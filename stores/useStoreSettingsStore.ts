@@ -13,6 +13,7 @@ export interface StoreSettings {
   storeTaxId: string;
   defaultTaxRate: number;
   ptoAccrualRate: number;
+  minimumPtoNoticeDays: number;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -51,6 +52,7 @@ const initialData: StoreSettings = {
   storeTaxId: "US123456789",
   defaultTaxRate: 8.25,
   ptoAccrualRate: 0.0375,
+  minimumPtoNoticeDays: 7, // Default to 7 days
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
