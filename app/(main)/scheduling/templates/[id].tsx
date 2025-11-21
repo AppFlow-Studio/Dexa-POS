@@ -12,7 +12,8 @@ import {
   useScheduleTemplateStore,
 } from "@/stores/useScheduleTemplateStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { Search } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,6 +34,13 @@ const EditTemplateScreen = () => {
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
   const [selectedShift, setSelectedShift] =
     useState<Partial<TemplateShift> | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) =>
+      emp.fullName.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [employees, searchQuery]);
 
   useEffect(() => {
     if (id) {
@@ -203,11 +211,25 @@ const EditTemplateScreen = () => {
               </View>
             </View>
 
+            {/* Employee Search Input */}
+            <View className="w-full border border-gray-600 rounded-lg p-3 mb-4">
+              <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-full">
+                <Search size={16} color="#9CA3AF" />
+                <TextInput
+                  placeholder="Search employees..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  className="p-2 text-white flex-1"
+                />
+              </View>
+            </View>
+
             {/* TemplateGrid */}
             <DropZoneProvider>
               <TemplateGrid
                 shifts={template.shifts}
-                employees={employees}
+                employees={filteredEmployees}
                 onShiftPress={handleShiftPress}
                 onAddShift={handleAddShift}
               />
