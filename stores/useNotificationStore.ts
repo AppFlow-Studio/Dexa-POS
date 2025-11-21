@@ -8,7 +8,12 @@ interface NotificationState {
   ) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: (employeeId: string) => void;
-  removeNotification: (criteria: { type?: string; payload?: Record<string, any> }) => void;
+  removeNotification: (criteria: {
+    type?: string;
+    payload?: Record<string, any>;
+  }) => void;
+  deleteNotification: (id: string) => void; // New action for swipe-to-delete
+  getUnreadCountForEmployee: (employeeId: string) => number;
 }
 
 export const useNotificationStore = create<NotificationState>((set, get) => ({
@@ -45,11 +50,19 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     }));
   },
 
+  deleteNotification: (id) => {
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+    }));
+  },
+
   removeNotification: ({ type, payload }) => {
     set((state) => ({
       notifications: state.notifications.filter((n) => {
         const typeMatch = type ? n.type === type : true;
-        const payloadMatch = payload ? JSON.stringify(n.payload) === JSON.stringify(payload) : true;
+        const payloadMatch = payload
+          ? JSON.stringify(n.payload) === JSON.stringify(payload)
+          : true;
         return !typeMatch || !payloadMatch;
       }),
     }));

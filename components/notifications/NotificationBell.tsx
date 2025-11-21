@@ -1,15 +1,13 @@
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { Bell } from "lucide-react-native";
-import React, { useState } from "react";
+import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { Dialog, DialogContent } from "../ui/dialog";
-import NotificationPanel from "./NotificationPanel";
 
 const NotificationBell = () => {
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const markAllAsRead = useNotificationStore((state) => state.markAllAsRead);
-  const { loggedInEmployee } = useEmployeeStore();
+  const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
+  const openSheet = useNotificationSheetStore((state) => state.openSheet);
 
   const unreadCount = useNotificationStore((state) =>
     loggedInEmployee
@@ -20,10 +18,7 @@ const NotificationBell = () => {
   );
 
   const handleOpen = () => {
-    setIsPanelOpen(true);
-    if (unreadCount > 0 && loggedInEmployee) {
-      markAllAsRead(loggedInEmployee.id);
-    }
+    openSheet();
   };
 
   return (
@@ -39,12 +34,6 @@ const NotificationBell = () => {
           </View>
         )}
       </TouchableOpacity>
-
-      <Dialog open={isPanelOpen} onOpenChange={setIsPanelOpen}>
-        <DialogContent className="w-[350px] p-0">
-          <NotificationPanel onClose={() => setIsPanelOpen(false)} />
-        </DialogContent>
-      </Dialog>
     </>
   );
 };
