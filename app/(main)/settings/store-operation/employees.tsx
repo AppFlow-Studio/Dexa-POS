@@ -1,7 +1,7 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import {
   Receipt,
   RefreshCcw,
@@ -24,12 +24,22 @@ import {
 const EmployeeSettingsScreen = () => {
   const { isBreakAndSwitchEnabled, setIsBreakAndSwitchEnabled } =
     useEmployeeSettingsStore();
-  const { ptoAccrualRate, setPtoAccrualRate } = useStoreSettingsStore(); // Get ptoAccrualRate and setPtoAccrualRate
+  const {
+    ptoAccrualRate,
+    setPtoAccrualRate,
+    minimumPtoNoticeDays,
+    updateField,
+  } = useStoreSettingsStore();
+  const { show } = useToast();
 
-  const [ptoRateInput, setPtoRateInput] = useState(ptoAccrualRate.toString());
+  const [ptoRateInput, setPtoRateInput] = useState(
+    ptoAccrualRate?.toString() || ""
+  );
+  const [ptoNoticeDaysInput, setPtoNoticeDaysInput] = useState(
+    minimumPtoNoticeDays?.toString() || ""
+  );
 
   const handlePtoRateChange = (text: string) => {
-    // Allow only numbers and a single decimal point
     let cleanedText = text.replace(/[^0-9.]/g, "");
     const parts = cleanedText.split(".");
     if (parts.length > 2) {
@@ -38,29 +48,64 @@ const EmployeeSettingsScreen = () => {
     setPtoRateInput(cleanedText);
   };
 
-  const handleUpdatePress = () => {
+  const handlePtoNoticeDaysChange = (text: string) => {
+    const cleanedText = text.replace(/[^0-9]/g, "");
+    setPtoNoticeDaysInput(cleanedText);
+  };
+
+  const handleUpdateAllSettings = () => {
+    let rateUpdated = false;
+    let noticeDaysUpdated = false;
+
+    // Update PTO Accrual Rate
     const parsedRate = parseFloat(ptoRateInput);
-    if (
-      !isNaN(parsedRate) &&
-      parsedRate >= 0 &&
-      parsedRate !== ptoAccrualRate
-    ) {
-      setPtoAccrualRate(parsedRate);
-      toast.success("PTO Accrual Rate updated!", {
-        position: ToastPosition.BOTTOM,
-      });
+    if (!isNaN(parsedRate) && parsedRate >= 0) {
+      if (parsedRate !== ptoAccrualRate) {
+        setPtoAccrualRate(parsedRate);
+        rateUpdated = true;
+      }
     } else if (ptoRateInput === "" && ptoAccrualRate !== 0) {
       setPtoAccrualRate(0);
-      toast.success("PTO Accrual Rate set to 0!", {
-        position: ToastPosition.BOTTOM,
+      rateUpdated = true;
+    } else if (isNaN(parsedRate)) {
+      show({
+        title: "Invalid Input",
+        message: "PTO Accrual Rate must be a valid number.",
+        type: "error",
       });
-    } else if (parsedRate === ptoAccrualRate) {
-      toast.success("Rate is already up to date.", {
-        position: ToastPosition.BOTTOM,
+      return;
+    }
+
+    // Update Minimum PTO Notice Days
+    const parsedNoticeDays = parseInt(ptoNoticeDaysInput, 10);
+    if (!isNaN(parsedNoticeDays) && parsedNoticeDays >= 0) {
+      if (parsedNoticeDays !== minimumPtoNoticeDays) {
+        updateField("minimumPtoNoticeDays", parsedNoticeDays);
+        noticeDaysUpdated = true;
+      }
+    } else if (ptoNoticeDaysInput === "" && minimumPtoNoticeDays !== 0) {
+      updateField("minimumPtoNoticeDays", 0);
+      noticeDaysUpdated = true;
+    } else if (isNaN(parsedNoticeDays)) {
+      show({
+        title: "Invalid Input",
+        message: "Minimum PTO Notice Days must be a valid number.",
+        type: "error",
+      });
+      return;
+    }
+
+    if (rateUpdated || noticeDaysUpdated) {
+      show({
+        title: "Settings Updated",
+        message: "Employee settings have been successfully updated.",
+        type: "success",
       });
     } else {
-      toast.error("Invalid rate. Please enter a valid non-negative number.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Changes",
+        message: "All settings are already up to date.",
+        type: "success",
       });
     }
   };
@@ -107,7 +152,7 @@ const EmployeeSettingsScreen = () => {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0} // Adjust offset as needed
+      keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
       <View className="flex-1 bg-[#212121] p-6">
         <View className="flex-row gap-6 h-full w-full">
@@ -117,50 +162,77 @@ const EmployeeSettingsScreen = () => {
             currentRoute="/settings/store-operation/employees"
           />
           <ScrollView className="flex-1 bg-[#303030] rounded-2xl border border-gray-700 p-6">
-            <Text className="text-3xl font-bold text-white mb-4">
-              Employee Settings
-            </Text>
-            <View className="flex-row items-center justify-between p-4 bg-[#212121] rounded-lg border border-gray-600 mb-4">
-              <View>
-                <Text className="text-lg font-semibold text-white">
-                  Enable Break & Switch Account
-                </Text>
-                <Text className="text-sm text-gray-400 mt-1">
-                  Allow another employee to log in while someone is on break.
-                </Text>
-              </View>
-              <Switch
-                value={isBreakAndSwitchEnabled}
-                onValueChange={setIsBreakAndSwitchEnabled}
-                trackColor={{ false: "#767577", true: "#81b0ff" }}
-                thumbColor={isBreakAndSwitchEnabled ? "#3b82f6" : "#f4f3f4"}
-              />
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-3xl font-bold text-white">
+                Employee Settings
+              </Text>
+              <TouchableOpacity
+                onPress={handleUpdateAllSettings}
+                className="px-6 py-3 bg-blue-600 rounded-md"
+              >
+                <Text className="text-white font-semibold">Update</Text>
+              </TouchableOpacity>
             </View>
 
-            {/* PTO Accrual Rate Setting */}
+            <View className="p-4 bg-[#212121] rounded-lg border border-gray-600 mb-4">
+              <Text className="text-lg font-semibold text-white">
+                Break & Login
+              </Text>
+              <View className="flex-row items-center justify-between mt-3">
+                <View>
+                  <Text className="text-base text-white">
+                    Enable Break & Switch Account
+                  </Text>
+                  <Text className="text-sm text-gray-400 mt-1 max-w-md">
+                    Allow another employee to log in while someone is on break.
+                  </Text>
+                </View>
+                <Switch
+                  value={isBreakAndSwitchEnabled}
+                  onValueChange={setIsBreakAndSwitchEnabled}
+                  trackColor={{ false: "#767577", true: "#81b0ff" }}
+                  thumbColor={isBreakAndSwitchEnabled ? "#3b82f6" : "#f4f3f4"}
+                />
+              </View>
+            </View>
+
             <View className="p-4 bg-[#212121] rounded-lg border border-gray-600">
-              <Text className="text-lg font-semibold text-white mb-2">
-                PTO Accrual Rate
+              <Text className="text-lg font-semibold text-white">
+                Paid Time Off (PTO)
               </Text>
-              <Text className="text-sm text-gray-400 mb-3">
-                Set the rate at which employees accrue PTO (e.g., 0.025 hours of
-                PTO per hour worked).
-              </Text>
-              <View className="flex-row items-center gap-3">
+
+              <View className="mt-4">
+                <Text className="text-base text-white mb-1">
+                  PTO Accrual Rate
+                </Text>
+                <Text className="text-sm text-gray-400 mb-2">
+                  Rate at which employees accrue PTO per hour worked.
+                </Text>
                 <TextInput
-                  className="flex-1 p-3 bg-[#303030] rounded-md border border-gray-600 text-white text-base"
+                  className="p-3 bg-[#303030] rounded-md border border-gray-600 text-white text-base"
                   keyboardType="numeric"
                   value={ptoRateInput}
                   onChangeText={handlePtoRateChange}
                   placeholder="e.g., 0.025"
                   placeholderTextColor="#6B7280"
                 />
-                <TouchableOpacity
-                  onPress={handleUpdatePress}
-                  className="px-4 py-3 bg-blue-600 rounded-md"
-                >
-                  <Text className="text-white font-semibold">Update</Text>
-                </TouchableOpacity>
+              </View>
+
+              <View className="mt-4">
+                <Text className="text-base text-white mb-1">
+                  Minimum PTO Request Notice (Days)
+                </Text>
+                <Text className="text-sm text-gray-400 mb-2">
+                  Minimum number of days in advance an employee can request PTO.
+                </Text>
+                <TextInput
+                  className="p-3 bg-[#303030] rounded-md border border-gray-600 text-white text-base"
+                  keyboardType="numeric"
+                  value={ptoNoticeDaysInput}
+                  onChangeText={handlePtoNoticeDaysChange}
+                  placeholder="e.g., 7"
+                  placeholderTextColor="#6B7280"
+                />
               </View>
             </View>
           </ScrollView>

@@ -1,3 +1,4 @@
+import { useToast } from "@/contexts/ToastContext";
 import { Shift } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
@@ -48,10 +49,13 @@ import ScheduledHoursDrawer from "./drawers/ScheduledHoursDrawer";
 const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
   const [scheduleView, setScheduleView] = useState<"List" | "Calendar">("List");
   const [currentWeekStart, setCurrentWeekStart] = useState(
-    startOfWeek(initialDate ? parseISO(initialDate) : new Date(), { weekStartsOn: 0 }) // Sunday start
+    startOfWeek(initialDate ? parseISO(initialDate) : new Date(), {
+      weekStartsOn: 0,
+    }) // Sunday start
   );
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [showShiftModal, setShowShiftModal] = useState(false);
+  const { show } = useToast();
 
   const loggedInEmployee = useEmployeeStore((state) => state.loggedInEmployee);
 
@@ -123,8 +127,10 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
         startOfWeek(parseISO(nextShift.date), { weekStartsOn: 0 })
       );
     } else {
-      toast.error("No future published schedules found.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "No Schedules Found",
+        message: "There are no future published schedules available to view.",
+        type: "warning",
       });
     }
   };
@@ -158,12 +164,17 @@ const MyScheduleScreen = ({ initialDate }: { initialDate?: string }) => {
 
     if (requestToCancel && loggedInEmployee) {
       cancelSwap(requestToCancel.id, loggedInEmployee.id);
-      toast.success("Swap request cancelled.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Swap Cancelled",
+        message:
+          "Your request to swap this shift has been successfully cancelled.",
+        type: "success",
       });
     } else {
-      toast.error("Could not find pending swap request for this shift or employee not logged in.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Cancellation Failed",
+        message: "Could not find a pending swap request for this shift.",
+        type: "error",
       });
     }
   };

@@ -1,8 +1,8 @@
+import { useToast } from "@/contexts/ToastContext";
 import { ModifierCategory } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import React, {
   useCallback,
@@ -42,8 +42,8 @@ const ModifierScreen = () => {
     menuItems,
     modifierGroups: allModifierGroups,
   } = useMenuStore();
-  // Note: do not early-return before hooks; render read-only view after hooks below if needed
-  // Internal state for the form
+  const { show } = useToast();
+
   const [quantity, setQuantity] = useState(1);
   const [modifierSelections, setModifierSelections] =
     useState<ModifierSelection>({});
@@ -268,30 +268,30 @@ const ModifierScreen = () => {
         // Convert modifier selections to the format expected by the order system
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
-            ([categoryId, selections]) => {
-              const category = menuItemForModifiers.modifiers?.find(
-                (cat) => cat.id === categoryId
-              );
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId, _]) => {
-                  const option = category?.options.find(
-                    (opt) => opt.id === optionId
-                  );
-                  return {
-                    id: optionId,
-                    name: option?.name || "",
-                    price: option?.price || 0,
-                  };
-                });
+              ([categoryId, selections]) => {
+                const category = menuItemForModifiers.modifiers?.find(
+                  (cat) => cat.id === categoryId
+                );
+                const selectedOptions = Object.entries(selections)
+                  .filter(([_, isSelected]) => isSelected)
+                  .map(([optionId, _]) => {
+                    const option = category?.options.find(
+                      (opt) => opt.id === optionId
+                    );
+                    return {
+                      id: optionId,
+                      name: option?.name || "",
+                      price: option?.price || 0,
+                    };
+                  });
 
-              return {
-                categoryId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            }
-          )
+                return {
+                  categoryId,
+                  categoryName: category?.name || "",
+                  options: selectedOptions,
+                };
+              }
+            )
           : [];
 
         // Calculate total price
@@ -459,9 +459,10 @@ const ModifierScreen = () => {
       );
 
       if (!hasRequiredSelections) {
-        toast.error("Please select all required options", {
-          duration: 4000,
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Missing Selections",
+          message: "Please select all required options before proceeding.",
+          type: "error",
         });
         return;
       }
@@ -469,29 +470,31 @@ const ModifierScreen = () => {
 
     // Convert modifier selections to the format expected by the order system
     const selectedModifiers = menuItemForModifiers?.modifiers
-      ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-        const category = menuItemForModifiers.modifiers?.find(
-          (cat) => cat.id === categoryId
-        );
-        const selectedOptions = Object.entries(selections)
-          .filter(([_, isSelected]) => isSelected)
-          .map(([optionId, _]) => {
-            const option = category?.options.find(
-              (opt) => opt.id === optionId
+      ? Object.entries(modifierSelections)
+          .map(([categoryId, selections]) => {
+            const category = menuItemForModifiers.modifiers?.find(
+              (cat) => cat.id === categoryId
             );
-            return {
-              id: optionId,
-              name: option?.name || "",
-              price: option?.price || 0,
-            };
-          });
+            const selectedOptions = Object.entries(selections)
+              .filter(([_, isSelected]) => isSelected)
+              .map(([optionId, _]) => {
+                const option = category?.options.find(
+                  (opt) => opt.id === optionId
+                );
+                return {
+                  id: optionId,
+                  name: option?.name || "",
+                  price: option?.price || 0,
+                };
+              });
 
-        return {
-          categoryId,
-          categoryName: category?.name || "",
-          options: selectedOptions,
-        };
-      })
+            return {
+              categoryId,
+              categoryName: category?.name || "",
+              options: selectedOptions,
+            };
+          })
+          .filter((mod) => mod.options.length > 0)
       : [];
 
     const finalCustomizations = {
@@ -508,13 +511,14 @@ const ModifierScreen = () => {
         quantity,
         price: total / Math.max(1, quantity),
         customizations: finalCustomizations,
-        isDraft: false, // Ensure it's not a draft anymore
+        isDraft: false,
       };
-      console.log("i am crete teh problem in handle save");
 
       updateItemInActiveOrder(updatedItem);
-      toast.success(`Updated ${currentItem?.name}`, {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Item Updated",
+        message: `Your changes to ${currentItem?.name} have been saved.`,
+        type: "success",
       });
     } else {
       // --- ADD NEW ITEM TO CART ---
@@ -597,10 +601,11 @@ const ModifierScreen = () => {
           paidQuantity: 0,
           isDraft: false,
         };
-
         addItemToActiveOrder(confirmedItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Item Added",
+          message: `${baseItem.name} has been successfully added to your order.`,
+          type: "success",
         });
       } else {
         // Or add a completely new item if no draft was found
@@ -619,8 +624,10 @@ const ModifierScreen = () => {
           isDraft: false,
         };
         addItemToActiveOrder(newItem);
-        toast.success(`Added ${baseItem.name}`, {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Item Added",
+          message: `${baseItem.name} has been successfully added to your order.`,
+          type: "success",
         });
       }
     }
@@ -640,6 +647,7 @@ const ModifierScreen = () => {
     addItemToActiveOrder,
     updateItemInActiveOrder,
     generateCartItemId,
+    show,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -800,12 +808,13 @@ const ModifierScreen = () => {
                     <TouchableOpacity
                       key={category.id}
                       onPress={() => setActiveCategory(category.id)}
-                      className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
-                        ? "bg-blue-600 border-blue-400"
-                        : hasSelection
-                          ? "bg-green-600 border-green-400"
-                          : "bg-[#303030] border-gray-600"
-                        }`}
+                      className={`p-3 rounded-xl border-2 min-w-[140px] ${
+                        isActive
+                          ? "bg-blue-600 border-blue-400"
+                          : hasSelection
+                            ? "bg-green-600 border-green-400"
+                            : "bg-[#303030] border-gray-600"
+                      }`}
                     >
                       <View className="flex-row items-center justify-between mb-1.5">
                         <Text className="font-semibold text-lg text-white">
@@ -819,10 +828,11 @@ const ModifierScreen = () => {
                         )}
                       </View>
                       <Text
-                        className={`text-base ${category.type === "required"
-                          ? "text-red-400"
-                          : "text-gray-400"
-                          }`}
+                        className={`text-base ${
+                          category.type === "required"
+                            ? "text-red-400"
+                            : "text-gray-400"
+                        }`}
                       >
                         {category.type}
                       </Text>
@@ -861,28 +871,31 @@ const ModifierScreen = () => {
                           onPress={() =>
                             handleModifierToggle(currentCategory.id, option.id)
                           }
-                          className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : isUnavailable
-                              ? "bg-[#1a1a1a] border-gray-700"
-                              : "bg-[#303030] border-gray-600"
-                            }`}
+                          className={`p-4 rounded-xl border-2 min-w-[120px] ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-400"
+                              : isUnavailable
+                                ? "bg-[#1a1a1a] border-gray-700"
+                                : "bg-[#303030] border-gray-600"
+                          }`}
                         >
                           <Text
-                            className={`text-xl font-medium text-center ${isSelected
-                              ? "text-white"
-                              : isUnavailable
-                                ? "text-gray-500"
-                                : "text-white"
-                              }`}
+                            className={`text-xl font-medium text-center ${
+                              isSelected
+                                ? "text-white"
+                                : isUnavailable
+                                  ? "text-gray-500"
+                                  : "text-white"
+                            }`}
                           >
                             {option.name}
                             {isUnavailable && " (86'd)"}
                           </Text>
                           {option.price > 0 && (
                             <Text
-                              className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
-                                }`}
+                              className={`text-lg text-center mt-1 ${
+                                isSelected ? "text-blue-200" : "text-blue-400"
+                              }`}
                             >
                               +${option.price.toFixed(2)}
                             </Text>

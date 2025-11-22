@@ -1,8 +1,9 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import {
   ArrowLeftRight,
@@ -16,10 +17,8 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import NotificationPanel from "./notifications/NotificationPanel";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
-import { Dialog, DialogContent } from "./ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,17 +54,23 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
     const overtime = diff - breakDurationMs;
     const minutes = Math.floor((overtime / (1000 * 60)) % 60);
     const seconds = Math.floor((overtime / 1000) % 60);
-    displayTime = `+${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    displayTime = `+${String(minutes).padStart(2, "0")}:${String(
+      seconds
+    ).padStart(2, "0")}`;
   } else {
     const remaining = Math.max(0, breakDurationMs - diff);
     const minutes = Math.floor((remaining / 1000 / 60) % 60);
     const seconds = Math.floor((remaining / 1000) % 60);
-    displayTime = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    displayTime = `${String(minutes).padStart(2, "0")}:${String(
+      seconds
+    ).padStart(2, "0")}`;
   }
 
   return (
     <Text
-      className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"}`}
+      className={`text-xs font-bold ${
+        isOvertime ? "text-red-400" : "text-yellow-400"
+      }`}
     >
       {displayTime}
     </Text>
@@ -74,13 +79,15 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
 // Individual chip for each user session
 const SessionChip = ({ sessionId }: { sessionId: string }) => {
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const { sessions, activeEmployeeId, endBreak, startBreak } =
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
   const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
   const { markAllAsRead } = useNotificationStore();
   const router = useRouter();
+  const { show } = useToast();
+
+  const openSheet = useNotificationSheetStore((state) => state.openSheet);
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
@@ -101,15 +108,9 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const isActive = activeEmployeeId === session.employeeId;
   const isOnBreak = session.status === "onBreak";
   const isClockedIn = session.status === "clockedIn";
-  const unreadNotifications = getUnreadCountForEmployee(employee.id);
 
   const handleOpenNotificationPanel = () => {
-    setIsPanelOpen(true);
-    if (unreadCount > 0) {
-      // Optimistically mark as read, or wait for panel to close
-      // For now, let's do it on open
-      markAllAsRead();
-    }
+    openSheet();
   };
 
   const handleOpenNotificationPanel = () => {
@@ -138,13 +139,19 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
       startBreak();
 
       if (isBreakAndSwitchEnabled) {
-        toast.success("Break started. Ready for next user.", {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Break Started",
+          message: "Your break has started. Ready for the next user to log in.",
+          type: "success",
         });
         signOut();
         router.replace("/pin-login");
       } else {
-        toast.success("Break started.", { position: ToastPosition.BOTTOM });
+        show({
+          title: "Break Started",
+          message: "Your break has started.",
+          type: "success",
+        });
       }
     }
   };
@@ -221,7 +228,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               </DropdownMenuItem>
 
               <DropdownMenuItem
-                onPress={() => handleOpenNotificationPanel()}
+                onPress={handleOpenNotificationPanel}
                 className="py-3"
               >
                 <View>
@@ -278,11 +285,10 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           }}
           shift={session}
         />
-        <Dialog open={isPanelOpen} onOpenChange={setIsPanelOpen}>
-          <DialogContent className="p-0 w-[350px]">
-            <NotificationPanel onClose={() => setIsPanelOpen(false)} />
-          </DialogContent>
-        </Dialog>
+        {/* <NotificationBottomSheet
+          bottomSheetRef={notificationSheetRef}
+          onClose={() => notificationSheetRef.current?.close()}
+        /> */}
       </>
     );
   }
@@ -347,10 +353,10 @@ const SessionDock = () => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   const activeSessionId = Object.keys(sessions).find(
-    (id) => id === activeEmployeeId
+    (id) => sessions[id].employeeId === activeEmployeeId
   );
   const otherSessionIds = Object.keys(sessions).filter(
-    (id) => id !== activeEmployeeId
+    (id) => sessions[id].employeeId !== activeEmployeeId
   );
 
   return (

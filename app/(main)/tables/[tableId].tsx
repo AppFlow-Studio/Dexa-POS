@@ -3,12 +3,12 @@ import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
+import { useToast } from "@/contexts/ToastContext";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertCircle, XCircle } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +21,7 @@ const UpdateTableScreen = () => {
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
+  const { show } = useToast();
 
   const [isPaymentSelectOpen, setPaymentSelectOpen] = useState(false);
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
@@ -64,25 +65,14 @@ const UpdateTableScreen = () => {
     (o) =>
       o.service_location_id === tableId &&
       o.order_status !== "Voided" &&
-      o.order_status !== "Closed" // Show all orders except voided ones
+      o.order_status !== "Closed"
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
-  const isReopenedPaidNoNewItems = useMemo(() => {
-    if (!activeOrder) return false;
-    const totalQty = activeOrder.items.reduce((acc, i) => acc + i.quantity, 0);
-    const paidQty = activeOrder.items.reduce(
-      (acc, i) => acc + (i.paidQuantity || 0),
-      0
-    );
-    // Previously paid order (Paid) that was reopened to Pending, and no new items added
-    return activeOrder.paid_status !== "Paid" && paidQty === totalQty;
-  }, [activeOrder]);
 
-  // --- Core Logic ---
   useEffect(() => {
     if (table?.status !== "In Use" || !activeOrder?.opened_at) {
       setDuration("");
@@ -98,7 +88,7 @@ const UpdateTableScreen = () => {
 
       setDuration(`${diffMins} min`);
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 60000); // Update every minute
+    }, 60000);
 
     // Run once immediately
     const startTime = new Date(activeOrder.opened_at);
@@ -166,15 +156,16 @@ const UpdateTableScreen = () => {
     updateActiveOrderDetails({
       paid_status: "Pending",
       check_status: "Opened",
-      order_status: "Preparing", // Reopen the order status
+      order_status: "Preparing",
     });
 
     // Sync order status based on existing items
     syncOrderStatus(activeOrderId);
 
-    toast.success("Check reopened. You can add items now.", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Check Reopened",
+      message: "You can now add new items to the order.",
+      type: "success",
     });
   };
 
@@ -218,12 +209,13 @@ const UpdateTableScreen = () => {
       activeOrder.id,
       activeOrder.items.map((i) => i.id)
     );
-    toast.success(
-      `Course ${
+    show({
+      title: "Course Finalized",
+      message: `Course ${
         nextCourse - 1
-      } created. New items will be Course ${nextCourse}.`,
-      { duration: 2500, position: ToastPosition.BOTTOM }
-    );
+      } complete. New items added to Course ${nextCourse}.`,
+      type: "success",
+    });
   };
 
   const handleSendCourseToKitchen = (course: number) => {
@@ -231,9 +223,10 @@ const UpdateTableScreen = () => {
 
     // Use helper function to check if course was already sent
     if (coursing.isCourseSent(activeOrder.id, course)) {
-      toast.error(`Course ${course} has already been sent to kitchen.`, {
-        duration: 2500,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Already Sent",
+        message: `Course ${course} has already been sent to the kitchen.`,
+        type: "warning",
       });
       return;
     }
@@ -243,9 +236,10 @@ const UpdateTableScreen = () => {
       (i) => (state?.itemCourseMap?.[i.id] ?? 1) === course
     );
     if (itemsInCourse.length === 0) {
-      toast.error(`No items in course ${course} to send.`, {
-        duration: 2500,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Empty Course",
+        message: `There are no items in Course ${course} to send.`,
+        type: "warning",
       });
       return;
     }
@@ -273,9 +267,10 @@ const UpdateTableScreen = () => {
       handleAssignToTable();
     }
 
-    toast.success(`Sent course ${course} to kitchen.`, {
-      duration: 2500,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Course Sent",
+      message: `Course ${course} has been sent for preparation.`,
+      type: "success",
     });
   };
 
@@ -284,7 +279,7 @@ const UpdateTableScreen = () => {
     if (!activeOrder || !tableId) return;
     // If the order is already paid, "closing" it means clearing the table for the next customer.
     if (activeOrder.paid_status === "Paid") {
-      handleClearTable(); // This function already archives the order and sets the table to "Needs Cleaning".
+      handleClearTable();
       return;
     }
     // If the order is unpaid AND has items, prompt to void it.
@@ -305,9 +300,10 @@ const UpdateTableScreen = () => {
     updateOrderStatus(activeOrder.id, "Voided");
     updateTableStatus(tableId as string, "Available");
     setVoidConfirmOpen(false);
-    toast.success("Check voided.", {
-      duration: 2500,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Check Voided",
+      message: "The order has been successfully voided.",
+      type: "success",
     });
     router.back();
   };
@@ -322,8 +318,10 @@ const UpdateTableScreen = () => {
     );
 
     if (!primaryTable) {
-      toast.error("Could not find the table for this order.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Table Not Found",
+        message: "Could not find the table for this order.",
+        type: "error",
       });
       return;
     }
@@ -333,9 +331,11 @@ const UpdateTableScreen = () => {
     );
 
     if (!allItemsReady) {
-      toast.error("Cannot clear table: Not all items are ready.", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Items Not Ready",
+        message:
+          "Cannot clear the table as some items are still being prepared.",
+        type: "warning",
       });
       return;
     }
@@ -354,18 +354,15 @@ const UpdateTableScreen = () => {
     // Archive the order and navigate back
     archiveOrder(activeOrderId);
     router.back();
-    toast.success(
-      `Table(s) ${tablesToClean
+    show({
+      title: "Table Cleared",
+      message: `Table(s) ${tablesToClean
         .map((id) => allTables.find((t) => t.id === id)?.name)
         .join(", ")} marked for cleaning.`,
-      {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
-      }
-    );
+      type: "success",
+    });
   };
 
-  // Function to check if order is closed and show warning
   const checkOrderClosedAndWarn = () => {
     if (activeOrder?.check_status === "Closed") {
       setOrderClosedWarningOpen(true);
@@ -572,8 +569,8 @@ const UpdateTableScreen = () => {
                 activeOrder.paid_status === "Paid"
                   ? "bg-green-600"
                   : activeOrder.paid_status === "Pending"
-                  ? "bg-yellow-600"
-                  : "bg-red-600"
+                    ? "bg-yellow-600"
+                    : "bg-red-600"
               }`}
             >
               <Text
@@ -581,8 +578,8 @@ const UpdateTableScreen = () => {
                   activeOrder.paid_status === "Paid"
                     ? "text-green-100"
                     : activeOrder.paid_status === "Pending"
-                    ? "text-yellow-100"
-                    : "text-red-100"
+                      ? "text-yellow-100"
+                      : "text-red-100"
                 }`}
               >
                 {activeOrder.paid_status}

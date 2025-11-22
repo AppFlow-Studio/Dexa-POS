@@ -1,8 +1,8 @@
+import { ToastProps } from "@/contexts/ToastContext";
+import { AnimatePresence } from "moti";
 import React from "react";
 import { View } from "react-native";
-import { AnimatePresence } from "moti";
 import CustomToast from "./CustomToast";
-import { ToastProps } from "@/contexts/ToastContext";
 
 interface ToastContainerProps {
   toasts: ToastProps[];

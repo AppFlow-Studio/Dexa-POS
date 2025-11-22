@@ -1,5 +1,5 @@
+import { toastService } from "@/lib/toastService";
 import { Address, DayHours, SpecialHours } from "@/lib/types"; // We will add these types next
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 
 export interface StoreSettings {
@@ -13,6 +13,7 @@ export interface StoreSettings {
   storeTaxId: string;
   defaultTaxRate: number;
   ptoAccrualRate: number;
+  minimumPtoNoticeDays: number;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -51,6 +52,7 @@ const initialData: StoreSettings = {
   storeTaxId: "US123456789",
   defaultTaxRate: 8.25,
   ptoAccrualRate: 0.0375,
+  minimumPtoNoticeDays: 7, // Default to 7 days
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
@@ -96,8 +98,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
 
     set({ initialState: newInitialState, isDirty: false });
 
-    toast.success("Store info updated successfully.", {
-      position: ToastPosition.BOTTOM,
+    toastService.show({
+      title: "Settings Saved",
+      message: "Store information has been updated successfully.",
+      type: "success",
     });
   },
 

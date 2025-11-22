@@ -1,9 +1,9 @@
+import { useToast } from "@/contexts/ToastContext";
 import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -36,10 +36,10 @@ const StatusIndicator = ({
   const color = isOvertime
     ? "bg-yellow-500"
     : status === "Available"
-    ? "bg-green-500"
-    : status === "In Use"
-    ? "bg-blue-500"
-    : "bg-red-500";
+      ? "bg-green-500"
+      : status === "In Use"
+        ? "bg-blue-500"
+        : "bg-red-500";
   return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
 const QuickActionButton: React.FC<{
@@ -53,8 +53,8 @@ const QuickActionButton: React.FC<{
     variant === "primary"
       ? "bg-blue-600"
       : variant === "destructive"
-      ? "bg-red-600"
-      : "bg-gray-600";
+        ? "bg-red-600"
+        : "bg-gray-600";
   const disabledStyle = disabled ? "opacity-50" : "";
   return (
     <TouchableOpacity
@@ -170,6 +170,7 @@ const ExpandedView: React.FC<{
   const { layouts, updateTableStatus } = useFloorPlanStore();
   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
   const { menuItems } = useMenuStore();
+  const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
 
   const getCategoryForItem = (itemId: string) => {
@@ -226,12 +227,17 @@ const ExpandedView: React.FC<{
       if (allItemsInGroupAreReady) {
         tableData.orders.forEach((order) => archiveOrder(order.id));
         groupTableIds.forEach((id) => updateTableStatus(id, "Needs Cleaning"));
-        toast.success(`Tables ${tableData.displayName} marked for cleaning.`, {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Tables Cleared",
+          message: `Tables ${tableData.displayName} are now marked for cleaning.`,
+          type: "success",
         });
       } else {
-        toast.error("Cannot clear tables: Not all items are ready.", {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Action Restricted",
+          message:
+            "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
+          type: "error",
         });
       }
     } else {

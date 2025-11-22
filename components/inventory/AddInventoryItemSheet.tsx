@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { InventoryUnit } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -16,25 +16,26 @@ import {
   View,
 } from "react-native";
 import { UNIT_OPTIONS } from "./InventoryItemFormModal";
+
 export type AddInventoryItemSheetRef = BottomSheet;
 
 const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
   (props, ref) => {
     const snapPoints = useMemo(() => ["90%"], []);
     const renderBackdrop = useMemo(
-      () => (backdropProps: any) =>
-        (
-          <BottomSheetBackdrop
-            {...backdropProps}
-            appearsOnIndex={0}
-            disappearsOnIndex={-1}
-            opacity={0.7}
-          />
-        ),
+      () => (backdropProps: any) => (
+        <BottomSheetBackdrop
+          {...backdropProps}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
       []
     );
 
     const { vendors, addInventoryItem } = useInventoryStore();
+    const { show } = useToast();
 
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [name, setName] = useState("");
@@ -68,9 +69,11 @@ const AddInventoryItemSheet = forwardRef<AddInventoryItemSheetRef, {}>(
         vendorId: vendorId || null,
         stockTrackingMode,
       });
-      toast.success(`${name.trim()} added to inventory`, {
-        duration: 2000,
-        position: ToastPosition.BOTTOM,
+
+      show({
+        title: "Item Added",
+        message: `"${name.trim()}" has been successfully added to your inventory.`,
+        type: "success",
       });
 
       // Reset form after save

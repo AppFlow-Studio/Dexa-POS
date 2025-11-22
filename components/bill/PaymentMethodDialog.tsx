@@ -1,8 +1,8 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Banknote, Columns, CreditCard, X } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -27,6 +27,7 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { assignOrderToTable } = useOrderStore();
   const { updateTableStatus } = useFloorPlanStore();
+  const { show } = useToast();
 
   const paymentMethods = [
     {
@@ -52,9 +53,11 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
 
   const handleProceedToPayment = () => {
     if (activeOrder?.order_type === "Dine In" && !selectedTable) {
-      toast.error("Please select a table", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Table Required",
+        message:
+          "For Dine-In orders, please select a table before proceeding to payment.",
+        type: "warning",
       });
       return;
     }

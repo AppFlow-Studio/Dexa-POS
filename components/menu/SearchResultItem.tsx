@@ -1,9 +1,9 @@
+import { useToast } from "@/contexts/ToastContext";
 import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Plus } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -17,6 +17,7 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
   const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
   const { openFullscreen } = useModifierSidebarStore();
+  const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const { openToAdd } = useModifierSidebarStore();
@@ -24,9 +25,11 @@ const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const handleAddToCart = () => {
     // 2. Add validation check before opening the dialog
     if (!activeOrder?.order_type) {
-      toast.error("Please select an Order Type", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Type Required",
+        message:
+          "Please select an order type (e.g., Dine-In) before adding items.",
+        type: "warning",
       });
       return; // Stop execution
     }

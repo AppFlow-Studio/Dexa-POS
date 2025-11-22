@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { PaymentType, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import React, { useState } from "react";
 import {
   ScrollView,
@@ -24,6 +24,7 @@ const SimpleRefundModal: React.FC<SimpleRefundModalProps> = ({
 }) => {
   const [reason, setReason] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentType>("Card");
+  const { show } = useToast();
 
   const { refundFullOrder } = usePreviousOrdersStore();
 
@@ -31,17 +32,19 @@ const SimpleRefundModal: React.FC<SimpleRefundModalProps> = ({
 
   const handleRefund = () => {
     if (!reason.trim()) {
-      toast.error("Please provide a reason for the refund", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Reason Required",
+        message: "A reason must be provided to process the refund.",
+        type: "error",
       });
       return;
     }
 
     refundFullOrder(order.orderId, reason, "Cashier", paymentMethod);
-    toast.success("Refund processed successfully", {
-      duration: 3000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Refund Processed",
+      message: `The refund for order #${order.orderId} has been successfully processed.`,
+      type: "success",
     });
     onClose();
   };

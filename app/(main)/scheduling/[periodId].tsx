@@ -15,6 +15,7 @@ import {
   Search,
   Send,
   Settings,
+  Sparkles,
   Users,
   X,
 } from "lucide-react-native";
@@ -52,15 +53,7 @@ import {
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
-import {
-  addDays,
-  getDay,
-  isAfter,
-  isBefore,
-  isEqual,
-  startOfDay,
-  subDays,
-} from "date-fns";
+import { addDays, isAfter, isBefore, startOfDay, subDays } from "date-fns";
 
 const ScheduleDetail = ({
   currentSchedule,
@@ -154,11 +147,6 @@ const ScheduleDetail = ({
     setSelectedShift(shift);
     setIsActionModalOpen(true);
   };
-
-  // const handleAddShift = (employeeId: string, date: string) => {
-  //   setSelectedShift({ employeeId, date });
-  //   setShiftEditorOpen(true);
-  // };
 
   const handleAddShift = (employeeId: string, date: string) => {
     setSelectedShift({ employeeId, date });
@@ -376,6 +364,7 @@ const ScheduleDetail = ({
               {/* Generate Draft Button */}
               <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
                 <Sparkles size={16} color="white" />
+
                 <Text className="text-white">Generate Draft</Text>
               </TouchableOpacity>
               {currentSchedule.schedule.status === "draft-edit" ? (

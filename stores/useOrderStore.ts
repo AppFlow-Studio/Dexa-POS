@@ -1,5 +1,5 @@
+import { toastService } from "@/lib/toastService";
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
@@ -710,9 +710,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const orderToAssign = orders.find((o) => o.id === activeOrderId);
       if (!orderToAssign || orderToAssign.items.length === 0) {
         console.warn("Cannot assign an empty order to a table.");
-        toast.error("Cart is empty", {
-          duration: 4000,
-          position: ToastPosition.BOTTOM,
+        toastService.show({
+          title: "Empty Cart",
+          message: "Cannot assign an empty order to a table.",
+          type: "error",
         });
         return;
       }
@@ -722,9 +723,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         orderToAssign.order_type === "Dine In" &&
         orderToAssign.paid_status !== "Paid"
       ) {
-        toast.error("Order must be paid before assigning to table", {
-          duration: 4000,
-          position: ToastPosition.BOTTOM,
+        toastService.show({
+          title: "Payment Required",
+          message:
+            "This order must be paid before it can be assigned to a table.",
+          type: "error",
         });
         return;
       }
@@ -1105,12 +1108,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set({ orders: [...updatedOrders, newOrder], activeOrderId: newOrder.id });
       // Totals for the new active (empty) order become zero
       recalculateTotals(newOrder.id);
-      try {
-        toast.success("Order sent to kitchen", {
-          duration: 2500,
-          position: ToastPosition.BOTTOM,
-        });
-      } catch {}
+      toastService.show({
+        title: "Order Sent",
+        message: "The order has been successfully sent to the kitchen.",
+        type: "success",
+      });
     },
     transferOrderToTable: (orderId, newTableId) => {
       set((state) => ({
@@ -1208,12 +1210,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       recalculateTotals(activeOrderId); // Recalculate totals after merging
 
-      toast.success(
-        `${newItems.length} new item${
+      toastService.show({
+        title: "Items Sent",
+        message: `${newItems.length} new item${
           newItems.length > 1 ? "s" : ""
-        } sent to kitchen.`,
-        { duration: 2500, position: ToastPosition.BOTTOM }
-      );
+        } sent to the kitchen.`,
+        type: "success",
+      });
     },
 
     sendNewItemsToKitchenForOrder: (orderId: string) => {
@@ -1262,9 +1265,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       });
 
       // Show toast after the state update
-      toast.success("New items sent to kitchen.", {
-        duration: 2500,
-        position: ToastPosition.BOTTOM,
+      toastService.show({
+        title: "Items Sent",
+        message: "New items have been sent to the kitchen.",
+        type: "success",
       });
     },
 
@@ -1289,8 +1293,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // After clearing the cart, recalculate totals to update them to $0.00
       recalculateTotals(activeOrderId);
 
-      toast.success("Cart has been cleared.", {
-        position: ToastPosition.BOTTOM,
+      toastService.show({
+        title: "Cart Cleared",
+        message: "All items have been removed from the current order.",
+        type: "success",
       });
     },
     voidOrder: (orderId: string) => {
@@ -1298,8 +1304,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const orderToVoid = orders.find((o) => o.id === orderId);
 
       if (!orderToVoid) {
-        toast.error("Could not find the order to void.", {
-          position: ToastPosition.BOTTOM,
+        toastService.show({
+          title: "Void Failed",
+          message: "Could not find the order to void.",
+          type: "error",
         });
         return;
       }
@@ -1322,8 +1330,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
           .updateTableStatus(orderToVoid.service_location_id, "Needs Cleaning");
       }
 
-      toast.success(`Order #${orderId.slice(-5)} has been voided.`, {
-        position: ToastPosition.BOTTOM,
+      toastService.show({
+        title: "Order Voided",
+        message: `Order #${orderId.slice(-5)} has been successfully voided.`,
+        type: "success",
       });
 
       // After voiding, there is no active order to work on

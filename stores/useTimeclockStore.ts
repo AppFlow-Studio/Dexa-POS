@@ -1,10 +1,10 @@
 import { MOCK_WORK_HISTORY } from "@/lib/mockData";
+import { toastService } from "@/lib/toastService";
 import {
   CompletedShift,
   PTOAccrualEntry,
   ShiftHistoryEntry,
 } from "@/lib/types";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { create } from "zustand";
 import { useEmployeeSettingsStore } from "./useEmployeeSettingsStore";
 import { EmployeeProfile, useEmployeeStore } from "./useEmployeeStore";
@@ -149,8 +149,10 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       activeEmployeeId: employeeId,
     }));
 
-    toast.success("Break ended. Welcome back!", {
-      position: ToastPosition.BOTTOM,
+    toastService.show({
+      title: "Break Over",
+      message: "Welcome back! Your break has ended.",
+      type: "success",
     });
   },
 
@@ -160,12 +162,13 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
     if (!sessionToClose) return;
 
     if (sessionToClose.status === "onBreak") {
-      toast.error(
-        "Cannot clock out while on break. Please end your break first.",
-        {
-          position: ToastPosition.BOTTOM,
-        }
-      );
+      toastService.show({
+        title: "Action Restricted",
+        message:
+          "Cannot clock out while on break. Please end your break first.",
+        type: "error",
+      });
+
       return;
     }
 
@@ -234,8 +237,11 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       }
     } catch (error) {
       console.error("Error during PTO accrual:", error);
-      toast.error("Error recording PTO accrual. Please contact support.", {
-        position: ToastPosition.BOTTOM,
+      toastService.show({
+        title: "PTO Error",
+        message:
+          "An error occurred while recording PTO accrual. Please contact support.",
+        type: "error",
       });
     }
     // --- End PTO Accrual Logic ---
@@ -248,8 +254,10 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       useEmployeeStore.getState().signOut();
     }
 
-    toast.success("Clocked out successfully.", {
-      position: ToastPosition.BOTTOM,
+    toastService.show({
+      title: "Clocked Out",
+      message: "You have been successfully clocked out.",
+      type: "success",
     });
   },
 

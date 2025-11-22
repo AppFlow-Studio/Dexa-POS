@@ -1,10 +1,10 @@
+import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 import { CartItem } from "@/lib/types";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Minus } from "lucide-react-native";
 import { ScrollView } from "react-native-gesture-handler";
 type SplitOption = "Split Evenly" | "Split by Item" | "Custom Amount";
@@ -27,6 +27,7 @@ const SplitPaymentView = () => {
   const { activeOrderId, orders, activeOrderOutstandingTotal } =
     useOrderStore();
   const { close, setView } = usePaymentStore();
+  const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const originalItems = activeOrder?.items || [];
@@ -217,9 +218,12 @@ const SplitPaymentView = () => {
   };
 
   const handleRemoveSplit = (splitToRemove: Split) => {
-    // Don't allow removing the last split
     if (splits.length <= 1) {
-      alert("Cannot remove the last split.");
+      show({
+        title: "Action Restricted",
+        message: "You cannot remove the last remaining split.",
+        type: "warning",
+      });
       return;
     }
 
@@ -277,8 +281,11 @@ const SplitPaymentView = () => {
         0
       );
       if (totalSplitAmount > activeOrderOutstandingTotal + 0.001) {
-        toast.error("split total cannot exceed the outstanding amount.", {
-          position: ToastPosition.BOTTOM,
+        show({
+          title: "Amount Exceeded",
+          message:
+            "The total split amount cannot exceed the outstanding balance.",
+          type: "error",
         });
         return;
       }

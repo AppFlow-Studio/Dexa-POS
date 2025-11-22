@@ -1,6 +1,6 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Banknote, Columns, CreditCard } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -13,7 +13,10 @@ const PaymentActions = () => {
   const activeOrder = useOrderStore((state) =>
     state.orders.find((o) => o.id === state.activeOrderId)
   );
-  const pendingTableSelection = useOrderStore((state) => state.pendingTableSelection);
+  const pendingTableSelection = useOrderStore(
+    (state) => state.pendingTableSelection
+  );
+  const { show } = useToast();
 
   const paymentMethods = [
     { name: "Card", icon: CreditCard },
@@ -22,21 +25,25 @@ const PaymentActions = () => {
   ];
 
   const handlePlaceOrder = () => {
-    // For dine-in orders, use the pending table selection
-    const tableIdForOrder = activeOrder?.order_type === "Dine In"
-      ? pendingTableSelection
-      : activeOrder?.service_location_id;
+    const tableIdForOrder =
+      activeOrder?.order_type === "Dine In"
+        ? pendingTableSelection
+        : activeOrder?.service_location_id;
 
     if (activeOrder?.order_type === "Dine In" && !tableIdForOrder) {
-      toast.error("Please select a table", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Table Not Selected",
+        message: "Please select a table before placing a dine-in order.",
+        type: "error",
       });
       return;
     }
 
     // For dine-in orders, we need to check if the order is paid before assigning to table
-    if (activeOrder?.order_type === "Dine In" && activeOrder.paid_status !== "Paid") {
+    if (
+      activeOrder?.order_type === "Dine In" &&
+      activeOrder.paid_status !== "Paid"
+    ) {
       // Open payment modal with the pending table selection
       openPaymentModal(activeMethod, tableIdForOrder);
       return;

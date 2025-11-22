@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
 } from "@/components/ui/dialog";
+import { useToast } from "@/contexts/ToastContext";
 import { useScheduleStore } from "@/stores/useScheduleStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { useRouter } from "expo-router";
 import { AlertCircle, Bell, Mail, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -49,6 +49,7 @@ export function PublishModal({
     schedulePeriods,
     weeklySchedules,
   } = useScheduleStore();
+  const { show } = useToast();
 
   const currentSchedule = useMemo(() => {
     const period = schedulePeriods.find((p) => p.id === scheduleId);
@@ -80,7 +81,12 @@ export function PublishModal({
 
   const handlePublish = () => {
     publishSchedule(scheduleId, scheduleType);
-    toast.success("Publish Successful", { position: ToastPosition.BOTTOM });
+    show({
+      title: "Schedule Published",
+      message:
+        "The schedule has been successfully published and employees notified.",
+      type: "success",
+    });
     onOpenChange(false);
     router.back();
   };

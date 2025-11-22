@@ -1,7 +1,7 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { Customer, useCustomerStore } from "@/stores/useCustomerStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -17,6 +17,7 @@ const CustomerSheet: React.FC = () => {
   const { isOpen, closeSheet } = useCustomerSheetStore();
   const { customers, addCustomer } = useCustomerStore();
   const { activeOrderId, updateActiveOrderDetails } = useOrderStore();
+  const { show } = useToast();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -69,8 +70,10 @@ const CustomerSheet: React.FC = () => {
         customer_phone: customer.phoneNumber,
         delivery_address: customer.address,
       });
-      toast.success(`${customer.name} assigned to order.`, {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Customer Assigned",
+        message: `${customer.name} has been assigned to the order.`,
+        type: "success",
       });
       handleClose();
     }
@@ -78,8 +81,11 @@ const CustomerSheet: React.FC = () => {
 
   const handleAddNewCustomer = () => {
     if (!name.trim() || !phone.trim()) {
-      toast.error("Customer name and phone number are required.", {
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Missing Information",
+        message:
+          "Customer name and phone number are required to add a new customer.",
+        type: "error",
       });
       return;
     }
@@ -88,9 +94,10 @@ const CustomerSheet: React.FC = () => {
       const newCustomer = addCustomer({ name, phoneNumber: phone, address });
       handleSelectCustomer(newCustomer);
     } catch (error: any) {
-      toast.error(error.message, {
-        position: ToastPosition.BOTTOM,
-        duration: 4000,
+      show({
+        title: "Could Not Add Customer",
+        message: error.message,
+        type: "error",
       });
     }
   };

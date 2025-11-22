@@ -1,12 +1,15 @@
+import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import HistoryTab from "@/components/profile/HistoryTab";
 import MyScheduleScreen from "@/components/profile/MyScheduleScreen";
 import ProfileInfoTab from "@/components/profile/ProfileInfoTab";
 import SecurityTab from "@/components/profile/SecurityTab";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Link, router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -26,6 +29,14 @@ const MyProfileScreen = () => {
   }, [activeEmployeeId, employees]);
 
   const [activeTab, setActiveTab] = useState<TabName | null>(null); // Initialize to null
+  const notificationSheetRef = useRef<BottomSheetMethods | null>(null);
+  const { setSheetRef } = useNotificationSheetStore();
+
+  useEffect(() => {
+    console.log("we are setting it here again");
+
+    setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
+  }, [setSheetRef]);
 
   useEffect(() => {
     if (tab === "MyScheduleScreen") {
@@ -122,6 +133,12 @@ const MyProfileScreen = () => {
           </View>
         </View>
       </View>
+      <NotificationBottomSheet
+        bottomSheetRef={
+          notificationSheetRef as React.RefObject<BottomSheetMethods>
+        }
+        onClose={() => notificationSheetRef.current?.close()}
+      />
     </SafeAreaView>
   );
 };

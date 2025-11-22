@@ -1,13 +1,12 @@
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
+import { useToast } from "@/contexts/ToastContext";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   ScrollView,
@@ -38,6 +37,7 @@ const EditModifierScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { modifierGroups, updateModifierGroup, deleteModifierGroup } =
     useMenuStore();
+  const { show } = useToast();
 
   const existing = useMemo(
     () => modifierGroups.find((m) => m.id === id),
@@ -55,6 +55,7 @@ const EditModifierScreen: React.FC = () => {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [originalFormData, setOriginalFormData] =
     useState<ModifierFormData | null>(null);
@@ -123,8 +124,10 @@ const EditModifierScreen: React.FC = () => {
 
     // Show toasts for errors
     if (Object.keys(newErrors).length > 0) {
-      Object.values(newErrors).forEach((error) => {
-        toast.error(error, { position: ToastPosition.BOTTOM });
+      show({
+        title: "Validation Error",
+        message: "Please fix the errors before saving.",
+        type: "error",
       });
     }
 
@@ -154,12 +157,23 @@ const EditModifierScreen: React.FC = () => {
         description: formData.description?.trim() || undefined,
         options: formData.options.map((o) => ({ ...o, name: o.name.trim() })),
       });
+
+      show({
+        title: "Modifier Updated",
+        message: `The modifier group "${formData.name.trim()}" has been saved.`,
+        type: "success",
+      });
+
       hasSavedRef.current = true;
       setHasChanges(false);
 
       router.back();
-
-      router.back();
+    } catch (error) {
+      show({
+        title: "Error",
+        message: "Failed to update the modifier group. Please try again.",
+        type: "error",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -167,17 +181,18 @@ const EditModifierScreen: React.FC = () => {
 
   const handleDelete = () => {
     if (!existing) return;
-    Alert.alert("Delete Modifier", `Delete "${existing.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => {
-          deleteModifierGroup(existing.id);
-          router.back();
-        },
-      },
-    ]);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    if (!existing) return;
+    deleteModifierGroup(existing.id);
+    show({
+      title: "Modifier Deleted",
+      message: `The modifier group "${existing.name}" has been deleted.`,
+      type: "success",
+    });
+    router.back();
   };
 
   // --- Form update functions ---
@@ -550,6 +565,39 @@ const EditModifierScreen: React.FC = () => {
                 <Text className="text-xl text-white">
                   {isSaving ? "Saving..." : "Save"}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDeleteConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteConfirm(false)}
+      >
+        <View className="flex-1 bg-black/50 items-center justify-center p-4">
+          <View className="bg-[#303030] rounded-2xl p-4 w-full max-w-md border border-gray-600">
+            <Text className="text-2xl text-white font-bold mb-1.5">
+              Delete Modifier?
+            </Text>
+            <Text className="text-xl text-gray-400 mb-3">
+              Are you sure you want to delete "{existing.name}"? This action
+              cannot be undone.
+            </Text>
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => setShowDeleteConfirm(false)}
+                className="flex-1 bg-[#212121] border border-gray-600 rounded-lg py-3 items-center"
+              >
+                <Text className="text-xl text-gray-300">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDelete}
+                className="flex-1 bg-red-600 rounded-lg py-3 items-center"
+              >
+                <Text className="text-xl text-white">Delete</Text>
               </TouchableOpacity>
             </View>
           </View>

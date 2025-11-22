@@ -1,6 +1,6 @@
 import SettingsSidebar from "@/components/settings/SettingsSidebar";
+import { useToast } from "@/contexts/ToastContext";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import {
   Receipt,
   RefreshCcw,
@@ -14,6 +14,7 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 const DiningOptionsScreen = () => {
   const { defaultSittingTimeMinutes, setDefaultSittingTimeMinutes } =
     useSettingsStore();
+  const { show } = useToast();
   const [timeInput, setTimeInput] = useState(
     defaultSittingTimeMinutes.toString()
   );
@@ -64,14 +65,16 @@ const DiningOptionsScreen = () => {
     const time = parseInt(timeInput, 10);
     if (!isNaN(time) && time > 0) {
       setDefaultSittingTimeMinutes(time);
-      toast.success("Default sitting time updated!", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Settings Updated",
+        message: `Default sitting time has been set to ${time} minutes.`,
+        type: "success",
       });
     } else {
-      toast.error("Please enter a valid number of minutes.", {
-        duration: 3000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid Input",
+        message: "Please enter a valid, positive number for the time.",
+        type: "error",
       });
     }
   };

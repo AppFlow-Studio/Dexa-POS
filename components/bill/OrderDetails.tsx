@@ -1,8 +1,8 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
-import { toast, ToastPosition } from "@backpackapp-io/react-native-toast";
 import { Edit3, Plus, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -19,16 +19,9 @@ import { Label } from "../ui/label";
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
 
-// Static options for the Order Type dropdown
-// const ORDER_TYPE_OPTIONS: SelectOption[] = [
-//   { label: "Dine In", value: "Dine In" },
-//   { label: "Takeaway", value: "Takeaway" },
-//   { label: "Delivery", value: "Delivery" },
-// ];
-
 const OrderDetails: React.FC = () => {
   const { layouts } = useFloorPlanStore();
-
+  const { show } = useToast();
   const {
     activeOrderId,
     orders,
@@ -125,18 +118,20 @@ const OrderDetails: React.FC = () => {
 
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
-      toast.error("Please enter an item name", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Item Name Required",
+        message: "Please enter a name for the open item.",
+        type: "error",
       });
       return;
     }
 
     const price = parseFloat(openItemPrice);
     if (isNaN(price) || price <= 0) {
-      toast.error("Please enter a valid price", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Invalid Price",
+        message: "Please enter a valid, positive price for the item.",
+        type: "error",
       });
       return;
     }
@@ -144,9 +139,10 @@ const OrderDetails: React.FC = () => {
     // Check if the active order is closed
     const activeOrder = orders.find((o) => o.id === activeOrderId);
     if (activeOrder?.order_status === "Closed") {
-      toast.error("Order is closed. Please reopen the check to add items.", {
-        duration: 4000,
-        position: ToastPosition.BOTTOM,
+      show({
+        title: "Order Closed",
+        message: "Cannot add items to a closed order. Please reopen it first.",
+        type: "error",
       });
       return;
     }
@@ -169,9 +165,12 @@ const OrderDetails: React.FC = () => {
 
     addItemToActiveOrder(newOpenItem);
 
-    toast.success(`${openItemName} ${price.toFixed(2)} added`, {
-      duration: 4000,
-      position: ToastPosition.BOTTOM,
+    show({
+      title: "Item Added",
+      message: `${openItemName.trim()} for $${price.toFixed(
+        2
+      )} has been added to the order.`,
+      type: "success",
     });
 
     // Reset form and close modal
@@ -198,13 +197,13 @@ const OrderDetails: React.FC = () => {
       setCustomerName(trimmedName);
       updateActiveOrderDetails({ customer_name: trimmedName });
       setIsCustomerNameModalVisible(false);
-      toast.success(
-        trimmedName ? "Customer name updated" : "Customer name removed",
-        {
-          duration: 2000,
-          position: ToastPosition.BOTTOM,
-        }
-      );
+      show({
+        title: "Customer Name Updated",
+        message: trimmedName
+          ? `Order is now under the name: ${trimmedName}`
+          : "Customer name has been removed from the order.",
+        type: "success",
+      });
     }
   };
 
@@ -228,7 +227,7 @@ const OrderDetails: React.FC = () => {
         <View className="w-[50%] flex items-center justify-center flex-col gap-y-1">
           <Label className="text-white font-semibold text-xl">Customer</Label>
           <TouchableOpacity
-            onPress={openSheet} // 3. Trigger the bottom sheet
+            onPress={openSheet}
             className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
           >
             {activeOrder?.customer_name ? (
