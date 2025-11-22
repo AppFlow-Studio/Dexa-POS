@@ -13,12 +13,8 @@ interface NotificationPanelProps {
 }
 
 const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
-  const {
-    notifications,
-    markAllAsRead,
-    markAsRead,
-    deleteNotification,
-  } = useNotificationStore();
+  const { notifications, markAllAsRead, markAsRead, deleteNotification } =
+    useNotificationStore();
   const { schedulePeriods, weeklySchedules, swapRequests, dropRequests } =
     useScheduleStore();
   const { loggedInEmployee } = useEmployeeStore();

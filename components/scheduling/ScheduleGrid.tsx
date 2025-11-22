@@ -193,7 +193,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   }, [templateConflictSummary]);
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = format(date, "yyyy-MM-dd"); // Use format to get local date string
     const dayShifts = shifts.filter(
       (s) => s.date === dateStr && s.employeeId === employeeId
     );
@@ -322,7 +322,9 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: isApplyTemplateBarVisible ? 80 : 0 }} // Conditional padding
+        contentContainerStyle={{
+          paddingBottom: isApplyTemplateBarVisible ? 80 : 0,
+        }} // Conditional padding
       >
         <View>
           {/* Header */}
@@ -379,7 +381,8 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                     date,
                     employee.id
                   );
-                  const dateStr = date.toISOString().split("T")[0];
+                  const dateStr = format(date, "yyyy-MM-dd");
+
                   const isDateInRange = isWithinInterval(startOfDay(date), {
                     start: startOfDay(periodStartDate),
                     end: startOfDay(periodEndDate),
