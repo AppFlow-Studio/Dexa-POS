@@ -113,12 +113,12 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     openSheet();
   };
 
-  const handleOpenNotificationPanel = () => {
-    setIsPanelOpen(true);
-    if (unreadCount > 0) {
-      markAllAsRead(employee.id);
-    }
-  };
+  // const handleOpenNotificationPanel = () => {
+  //   setIsPanelOpen(true);
+  //   if (unreadCount > 0) {
+  //     markAllAsRead(employee.id);
+  //   }
+  // };
 
   const handlePress = () => {
     if (isActive) return;
