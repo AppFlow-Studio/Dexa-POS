@@ -5,10 +5,12 @@ import { Text, TextInput, TouchableOpacity, View } from "react-native";
 
 const CashPaymentView = () => {
   const {
+    activeOrderId, // Get activeOrderId
     activeOrderDiscount,
     activeOrderOutstandingSubtotal,
     activeOrderOutstandingTax,
     activeOrderOutstandingTotal,
+    addPaymentToOrder, // Get addPaymentToOrder
   } = useOrderStore();
   const { close, setView } = usePaymentStore();
 
@@ -31,6 +33,21 @@ const CashPaymentView = () => {
     setSelectedAmountId("exact");
   };
 
+  const handleProcessCashPayment = () => {
+    if (activeOrderId && activeOrderOutstandingTotal > 0) {
+      addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: activeOrderOutstandingTotal,
+        method: "Cash",
+      });
+      setView("success");
+    } else {
+      // If there's nothing to pay or no active order, still go to success view,
+      // but a toast or other feedback might be appropriate in a real app.
+      setView("success");
+    }
+  };
+
   return (
     <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
       {/* Dark Header */}
@@ -42,6 +59,31 @@ const CashPaymentView = () => {
 
       {/* Dark Content */}
       <View className="p-4 bg-[#303030] rounded-b-2xl">
+        {/* Totals Summary */}
+        <View className="gap-y-2 mb-4">
+          {/* ... (Subtotal, Discount, Tax are not directly shown in cash view now, but if you want to add them here, they're from useOrderStore) */}
+          <View className="flex-row justify-between">
+            <Text className="text-lg text-gray-300">Subtotal</Text>
+            <Text className="text-lg text-white">
+              ${activeOrderOutstandingSubtotal.toFixed(2)}
+            </Text>
+          </View>
+          {activeOrderDiscount > 0 && (
+            <View className="flex-row justify-between">
+              <Text className="text-lg text-green-400">Discount</Text>
+              <Text className="text-lg text-green-400">
+                -${activeOrderDiscount.toFixed(2)}
+              </Text>
+            </View>
+          )}
+          <View className="flex-row justify-between">
+            <Text className="text-lg text-gray-300">Tax</Text>
+            <Text className="text-lg text-white">
+              ${activeOrderOutstandingTax.toFixed(2)}
+            </Text>
+          </View>
+        </View>
+
         {/* Total */}
         <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">
           <Text className="text-2xl font-bold text-white">Total</Text>
@@ -127,7 +169,7 @@ const CashPaymentView = () => {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setView("success")}
+              onPress={handleProcessCashPayment} // Use the new handler
               className="flex-1 py-3 bg-blue-600 rounded-xl items-center"
             >
               <Text className="text-lg font-bold text-white text-center">
@@ -140,5 +182,6 @@ const CashPaymentView = () => {
     </View>
   );
 };
+
 
 export default CashPaymentView;

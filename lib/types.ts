@@ -334,6 +334,7 @@ export interface PreviousOrder {
   type: OrderType;
   total: number;
   items: CartItem[]; // The detailed list of items for the notes modal
+  payments?: OrderProfile['payments']; // Add payments array
   // Refund tracking fields
   refunded?: boolean;
   refundedAmount?: number;
@@ -602,7 +603,12 @@ export interface OrderProfile {
   server_name?: string;
   checkDiscount?: Discount | null;
   paymentMethod?: PaymentType; // Example usage
-  payments?: { amount: number; method: PaymentType }[]; // Example usage
+  payments?: {
+    amount: number;
+    method: PaymentType;
+    cardBrand?: string;
+    last4?: string;
+  }[]; // Example usage
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

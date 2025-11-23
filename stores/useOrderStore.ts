@@ -54,11 +54,13 @@ interface OrderState {
     orderId: string,
     status: OrderProfile["order_status"]
   ) => void;
-  addPaymentToOrder: (
-    orderId: string,
-    amount: number,
-    method: PaymentType
-  ) => void;
+  addPaymentToOrder: (paymentDetails: {
+    orderId: string;
+    amount: number;
+    method: PaymentType;
+    cardBrand?: string;
+    last4?: string;
+  }) => void;
 
   markOrderAsPaid: (orderId: string) => void;
   setPendingTableSelection: (tableId: string | null) => void;
@@ -779,15 +781,23 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
     },
 
-    addPaymentToOrder: (orderId, amount, method) => {
+    addPaymentToOrder: ({ orderId, amount, method, cardBrand, last4 }) => {
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id === orderId) {
-            const newPayments = [...(o.payments || []), { amount, method }];
+            const newPayment = {
+              amount,
+              method,
+              ...(cardBrand && { cardBrand }),
+              ...(last4 && { last4 }),
+            };
+
+            const newPayments = [...(o.payments || []), newPayment];
+
             // Mark items as paid in FIFO order until amount is exhausted
             let remaining = amount;
             const updatedItems = o.items.map((item) => {
-              const unitPrice = item.price; // price already includes customizations
+              const unitPrice = item.price;
               const unpaidQty = item.quantity - (item.paidQuantity || 0);
               if (remaining <= 0 || unpaidQty <= 0) return item;
 
@@ -903,6 +913,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           closed_at: new Date().toISOString(),
           total_amount: total + tax,
           total_tax: tax,
+          payments: order.payments, // Include the payments array
         };
         addOrderToHistory(updatedOrder);
       }

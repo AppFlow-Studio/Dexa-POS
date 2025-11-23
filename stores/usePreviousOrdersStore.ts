@@ -95,6 +95,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         refunded: false,
         refundedAmount: 0,
         originalTotal: finalTotal,
+        payments: order.payments,
       };
 
       set((state) => ({

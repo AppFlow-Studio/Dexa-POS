@@ -16,17 +16,26 @@ const CardPaymentView = () => {
     "processing"
   );
 
+  const { activeOrderId, addPaymentToOrder } = useOrderStore(); // Add this line
+
   useEffect(() => {
     const timer = setTimeout(() => setStatus("success"), 3000);
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (status === "success") {
+    if (status === "success" && activeOrderId) { // Add activeOrderId check
+      // Add payment to order store
+      addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: activeOrderOutstandingTotal,
+        method: "Card",
+      });
       const timer = setTimeout(() => setView("success"), 1000);
       return () => clearTimeout(timer);
     }
-  }, [status, setView]);
+  }, [status, activeOrderId, activeOrderOutstandingTotal, addPaymentToOrder, setView]); // Update dependencies
+
 
   const statusColors = {
     processing: "bg-yellow-100", // Will be dark themed

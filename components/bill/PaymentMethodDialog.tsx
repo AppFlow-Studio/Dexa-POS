@@ -76,7 +76,11 @@ const PaymentMethodDialog: React.FC<PaymentMethodDialogProps> = ({
       activeOrder?.order_type === "Dine In"
         ? selectedTable?.id
         : activeOrder?.service_location_id;
-    openPaymentModal(selectedMethod, tableIdForOrder);
+
+    const initialViewForModal =
+      selectedMethod === "Card" ? "cardOptions" : "review"; // Determine initial view
+
+    openPaymentModal(selectedMethod, tableIdForOrder, initialViewForModal); // Pass initialView
     onClose();
   };
 
