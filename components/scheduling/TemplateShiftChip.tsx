@@ -1,10 +1,11 @@
-import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import { format, parseISO } from 'date-fns';
-import { TemplateShift } from '@/lib/types';
+import { TemplateShift } from "@/lib/types";
+import { format, parseISO } from "date-fns";
+import React from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
 interface TemplateShiftChipProps {
   shift: TemplateShift;
+  wage?: number; // Add wage prop
   onClick: (shift: TemplateShift) => void;
 }
 
@@ -18,7 +19,11 @@ const formatTime = (isoString: string): string => {
   }
 };
 
-export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({ shift, onClick }) => {
+export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({
+  shift,
+  wage,
+  onClick,
+}) => {
   return (
     <TouchableOpacity
       onPress={() => onClick(shift)}
@@ -29,6 +34,11 @@ export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({ shift, onC
         <Text className="text-blue-200 text-xs">
           {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
         </Text>
+        {wage && (
+          <Text className="text-gray-400 text-xs mt-1">
+            ${wage.toFixed(2)}/hr
+          </Text>
+        )}
       </View>
     </TouchableOpacity>
   );

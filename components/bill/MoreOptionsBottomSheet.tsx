@@ -9,7 +9,7 @@ import BottomSheet, {
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Lock, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -195,7 +195,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
-        handleComponent={null}
+        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
         backdropComponent={renderBackdrop}
         backgroundStyle={{ backgroundColor: "#212121" }}
       >
@@ -213,114 +213,116 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <X color="#9CA3AF" size={20} />
             </TouchableOpacity>
           </View>
-          <View className="p-4 border-b border-gray-700">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Cart Actions
-            </Text>
-            <TouchableOpacity
-              onPress={handleClearCart}
-              className="flex-row items-center gap-x-3 w-full bg-[#303030] border border-red-700 p-3 rounded-lg"
-            >
-              <Trash2 color="#f87171" size={20} />
-              <Text className="text-lg text-red-400 font-semibold">
-                Clear Full Cart
+          <ScrollView>
+            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
+              <Text className="text-xl font-semibold text-white">
+                Cart Actions
               </Text>
-            </TouchableOpacity>
-          </View>
-          <View className="p-4 border-b border-gray-700">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Order Actions
-            </Text>
-            <TouchableOpacity
-              onPress={handleVoidOrderClick}
-              disabled={!canVoid}
-              className={`flex-row items-center gap-x-3 w-full p-3 rounded-lg ${
-                canVoid
-                  ? "bg-[#303030] border border-red-700"
-                  : "bg-[#2a2a2a] border border-gray-700 opacity-50"
-              }`}
-            >
-              <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={20} />
+              <TouchableOpacity
+                onPress={handleClearCart}
+                className="flex-row items-center gap-x-2 bg-[#303030] border border-red-700 p-2 rounded-lg"
+              >
+                <Trash2 color="#f87171" size={16} />
+                <Text className="text-base text-red-400 font-semibold">
+                  Clear Cart
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
               <View>
-                <Text
-                  className={`text-lg font-semibold ${
-                    canVoid ? "text-red-400" : "text-gray-500"
-                  }`}
-                >
-                  Void Order
+                <Text className="text-xl font-semibold text-white">
+                  Order Actions
                 </Text>
                 <Text className="text-sm text-gray-500">
                   This action cannot be undone.
                 </Text>
               </View>
-            </TouchableOpacity>
-          </View>
-          <View className="p-4 border-b border-gray-700">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Customer
-            </Text>
-            <TouchableOpacity
-              onPress={handleAddCustomer}
-              className="flex-row items-center gap-x-3 w-full bg-[#303030] border border-gray-600 p-3 rounded-lg"
-            >
-              <User color="#9CA3AF" size={20} />
-              <Text className="text-lg text-gray-300">
-                Add Customer to Order
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View className="p-4">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Order Notes
-            </Text>
-            <BottomSheetTextInput
-              value={orderNotes}
-              onChangeText={setOrderNotes}
-              placeholder="Add special instructions..."
-              multiline
-              numberOfLines={3}
-              className="p-3 bg-[#303030] rounded-xl text-lg min-h-[90px] text-white border border-gray-600"
-              placeholderTextColor="#6B7280"
-              textAlignVertical="top"
-            />
-          </View>
-
-          <View className="px-4 pb-4">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Tax Exempt
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-lg text-gray-400">Requires PIN</Text>
               <TouchableOpacity
-                onPress={handleTaxExemptToggle}
-                className={`w-14 h-8 rounded-full flex-row items-center p-1 ${
-                  isTaxExempt
-                    ? "bg-blue-600 justify-end"
-                    : "bg-gray-600 justify-start"
+                onPress={handleVoidOrderClick}
+                disabled={!canVoid}
+                className={`flex-row items-center gap-x-2 p-2 rounded-lg ${
+                  canVoid
+                    ? "bg-[#303030] border border-red-700"
+                    : "bg-[#2a2a2a] border border-gray-700 opacity-50"
                 }`}
               >
-                <View className="w-6 h-6 bg-white rounded-full shadow-sm" />
+                <Trash2 color={canVoid ? "#f87171" : "#6B7280"} size={16} />
+                <Text
+                  className={`text-base font-semibold ${
+                    canVoid ? "text-red-400" : "text-gray-500"
+                  }`}
+                >
+                  Void Order
+                </Text>
               </TouchableOpacity>
             </View>
-          </View>
-
-          <View className="px-4 pb-4">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Open Drawer (No-sale)
-            </Text>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <Text className="text-lg text-gray-400 mr-2">Requires PIN</Text>
-                <Lock color="#9CA3AF" size={20} />
-              </View>
+            <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
+              <Text className="text-xl font-semibold text-white">
+                Customer
+              </Text>
               <TouchableOpacity
-                onPress={handleOpenDrawer}
-                className="px-5 py-2 bg-[#303030] rounded-xl border border-gray-600"
+                onPress={handleAddCustomer}
+                className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-2 rounded-lg"
               >
-                <Text className="text-xl font-medium text-white">Open</Text>
+                <User color="#9CA3AF" size={16} />
+                <Text className="text-base text-gray-300">Add Customer</Text>
               </TouchableOpacity>
             </View>
-          </View>
+            <View className="p-4">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Order Notes
+              </Text>
+              <BottomSheetTextInput
+                value={orderNotes}
+                onChangeText={setOrderNotes}
+                placeholder="Add special instructions..."
+                multiline
+                numberOfLines={3}
+                className="p-3 bg-[#303030] rounded-xl text-lg min-h-[90px] text-white border border-gray-600"
+                placeholderTextColor="#6B7280"
+                textAlignVertical="top"
+              />
+            </View>
+
+            <View className="px-4 pb-4">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Tax Exempt
+              </Text>
+              <View className="flex-row items-center justify-between">
+                <Text className="text-lg text-gray-400">Requires PIN</Text>
+                <TouchableOpacity
+                  onPress={handleTaxExemptToggle}
+                  className={`w-14 h-8 rounded-full flex-row items-center p-1 ${
+                    isTaxExempt
+                      ? "bg-blue-600 justify-end"
+                      : "bg-gray-600 justify-start"
+                  }`}
+                >
+                  <View className="w-6 h-6 bg-white rounded-full shadow-sm" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View className="px-4 pb-4">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Open Drawer (No-sale)
+              </Text>
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center">
+                  <Text className="text-lg text-gray-400 mr-2">
+                    Requires PIN
+                  </Text>
+                  <Lock color="#9CA3AF" size={20} />
+                </View>
+                <TouchableOpacity
+                  onPress={handleOpenDrawer}
+                  className="px-5 py-2 bg-[#303030] rounded-xl border border-gray-600"
+                >
+                  <Text className="text-xl font-medium text-white">Open</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
         </BottomSheetView>
       </BottomSheet>
 
@@ -389,3 +391,4 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 const MoreOptionsBottomSheet = forwardRef(MoreOptionsComponent);
 
 export default MoreOptionsBottomSheet;
+

@@ -113,13 +113,6 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     openSheet();
   };
 
-  const handleOpenNotificationPanel = () => {
-    setIsPanelOpen(true);
-    if (unreadCount > 0) {
-      markAllAsRead(employee.id);
-    }
-  };
-
   const handlePress = () => {
     if (isActive) return;
     setPinModalOpen(true);
@@ -191,7 +184,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
               </View>
             </TouchableOpacity>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[300px] bg-[#181a1f] border border-[#2a2e35] rounded-2xl shadow-2xl">
+          <DropdownMenuContent className="w-[300px] bg-[#181a1f] border border-[#2a2e35] rounded-2xl shadow-2xl mt-4">
             {/* Header row like the design */}
             <View className="flex-row items-center px-4 py-4">
               <View className="w-10 h-10 bg-blue-600 rounded-full items-center justify-center mr-3">

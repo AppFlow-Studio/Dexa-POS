@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
 import { addDays, format, parse, parseISO } from "date-fns"; // Import addDays
+import { formatInTimeZone } from "date-fns-tz";
 import { AlertCircle, Copy } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -43,21 +44,30 @@ interface ShiftEditorModalProps {
 
 const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
 
-// Helper to format ISO string to 12-hour AM/PM
+// Helper to format ISO string to 12-hour AM/PM in UTC
 const formatTo12Hour = (isoString: string) => {
   if (!isoString) return "";
   try {
-    return format(parseISO(isoString), "h:mm a");
+    return formatInTimeZone(isoString, "UTC", "h:mm a");
   } catch (error) {
     console.warn(`Invalid ISO string passed to formatTo12Hour: ${isoString}`);
     return ""; // Return empty or a fallback
   }
 };
 
-// Helper to combine date and 12-hour time into an ISO string
+// Helper to combine date and 12-hour time into a UTC ISO string
 const combineToISO = (date: string, time12h: string) => {
-  const time24h = format(parse(time12h, "h:mm a", new Date()), "HH:mm");
-  return `${date}T${time24h}:00.000Z`;
+  // The date is yyyy-MM-dd, and time is h:mm a
+  const [year, month, day] = date.split("-").map(Number);
+  const parsedTime = parse(time12h, "h:mm a", new Date());
+  const hours = parsedTime.getHours();
+  const minutes = parsedTime.getMinutes();
+
+  // Create a UTC date object
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+
+  // Return the date in ISO format (which is always UTC with 'Z')
+  return utcDate.toISOString();
 };
 
 // Helper to get a placeholder date for a given dayOfWeek (0=Sunday, 6=Saturday)

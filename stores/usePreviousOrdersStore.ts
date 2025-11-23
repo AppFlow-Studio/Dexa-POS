@@ -30,6 +30,7 @@ interface PreviousOrdersState {
   getOrderById: (orderId: string) => PreviousOrder | undefined;
   searchOrders: (query: string) => PreviousOrder[];
   getOrdersByDate: (date: Date) => PreviousOrder[];
+  refreshPreviousOrders: () => Promise<void>; // New action for pull-to-refresh
 
   // Refund actions
   refundFullOrder: (
@@ -131,6 +132,17 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
       });
 
       return orders.filter((order) => order.orderDate === targetDate);
+    },
+
+    refreshPreviousOrders: async () => {
+      console.log("Simulating refresh of previous orders data...");
+      // In a real application, this would involve fetching data from an API
+      // and then updating the 'previousOrders' state.
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate API call delay
+      console.log("Previous orders data refreshed (simulated).");
+      // For now, we don't change the actual previousOrders array as we don't have a real API.
+      // If we had a backend, we'd fetch and then do:
+      // set({ previousOrders: fetchedNewOrders });
     },
 
     refundFullOrder: (
