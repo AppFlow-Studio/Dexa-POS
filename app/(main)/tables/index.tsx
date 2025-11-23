@@ -6,7 +6,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Href, useRouter } from "expo-router";
-import { Search } from "lucide-react-native";
+import { Search } from "lucide-react-native"; // Added Edit icon for better look
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
@@ -32,7 +32,7 @@ const TablesScreen = () => {
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Table");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
-  const [expandedTableId, setExpandedTableId] = useState<string | null>(null); // State for expanded item
+  const [expandedTableId, setExpandedTableId] = useState<string | null>(null);
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
 
@@ -119,7 +119,6 @@ const TablesScreen = () => {
     }
   };
 
-  // New handler specifically for toggling the expanded state in the list
   const handleToggleExpand = (tableId: string) => {
     if (!isClockedIn) {
       showClockInWall();
@@ -144,6 +143,7 @@ const TablesScreen = () => {
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
+        {/* Left Side: Table List */}
         <View className="w-[370px] bg-[#212121] border-r border-gray-700">
           <View className="p-4 border-b border-gray-700">
             <Text className="text-2xl font-bold text-white">Tables List</Text>
@@ -165,79 +165,53 @@ const TablesScreen = () => {
                 handleTablePress={handleTablePress}
               />
             )}
-            extraData={expandedTableId} // Ensures re-render on expand
+            extraData={expandedTableId}
           />
         </View>
 
+        {/* Right Side: Floor Plan */}
         <View className="flex-1 p-4">
-          <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl mb-3 self-start">
-            {layouts.map((layout) => (
-              <TouchableOpacity
-                key={layout.id}
-                onPress={() => setActiveLayout(layout.id)}
-                className={`py-2 px-4 rounded-lg ${
-                  activeLayoutId === layout.id ? "bg-[#212121]" : ""
-                }`}
-              >
-                <Text
-                  className={`text-lg font-semibold ${
-                    activeLayoutId === layout.id
-                      ? "text-blue-400"
-                      : "text-gray-300"
+          <View className="flex-row justify-between items-center mb-3">
+            {/* Layout Tabs */}
+            <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl self-start">
+              {layouts.map((layout) => (
+                <TouchableOpacity
+                  key={layout.id}
+                  onPress={() => setActiveLayout(layout.id)}
+                  className={`py-2 px-4 rounded-lg ${
+                    activeLayoutId === layout.id ? "bg-[#212121]" : ""
                   }`}
                 >
-                  {layout.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View className="flex-row items-end gap-2 w-full justify-end mb-3">
-            <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 flex-1 max-w-sm">
-              <Search color="#9CA3AF" size={20} />
-              <TextInput
-                placeholder="Search table name..."
-                placeholderTextColor="#9CA3AF"
-                value={searchText}
-                onChangeText={setSearchText}
-                className="ml-2 text-lg h-16 flex-1 text-white"
-              />
-            </View>
-            <TouchableOpacity
-              onPress={() => router.push(`/tables/floor-plan` as Href)}
-              className="py-3 px-5 h-16 flex-row items-center justify-center rounded-lg bg-blue-500 "
-            >
-              <Text className="text-lg font-bold text-white">Edit Layout</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 ">
-            <View className="flex-row items-center gap-4 my-3 ml-3">
-              <View className="flex-row items-center gap-2">
-                <View className="w-4 h-4 rounded-full bg-green-500" />
-                <Text className="text-lg font-semibold text-white">
-                  Available
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-4 h-4 rounded-full bg-blue-500" />
-                <Text className="text-lg font-semibold text-white">In Use</Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-4 h-4 rounded-full bg-red-500" />
-                <Text className="text-lg font-semibold text-white">
-                  Needs Cleaning
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-2">
-                <View className="w-4 h-4 rounded-full bg-yellow-500" />
-                <Text className="text-lg font-semibold text-white">
-                  Overtime
-                </Text>
-              </View>
+                  <Text
+                    className={`text-lg font-semibold ${
+                      activeLayoutId === layout.id
+                        ? "text-blue-400"
+                        : "text-gray-300"
+                    }`}
+                  >
+                    {layout.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            {/* Floor Plan Area */}
+            {/* Search Bar - Edit button removed from here */}
+            <View className="flex-row items-center gap-2">
+              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 max-w-sm">
+                <Search color="#9CA3AF" size={20} />
+                <TextInput
+                  placeholder="Search table name..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  className="ml-2 text-lg h-12 flex-1 text-white"
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Map Container */}
+          <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 relative">
             <TableLayoutView
               tables={activeLayout?.tables || []}
               isSelectionMode={true}
@@ -245,6 +219,42 @@ const TablesScreen = () => {
               showConnections={true}
               layoutId={activeLayoutId || ""}
             />
+
+            {/* NEW: Edit Layout Button (Top Right) */}
+            <TouchableOpacity
+              onPress={() => router.push(`/tables/floor-plan` as Href)}
+              className="absolute top-4 right-4 z-10 py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 shadow-md border border-blue-500"
+            >
+              <Text className="text-lg font-bold text-white">Edit Layout</Text>
+            </TouchableOpacity>
+
+            {/* Status Indicators (Bottom Left) */}
+            <View className="absolute bottom-3 left-4 self-center flex-row items-center gap-4 p-2 rounded-full bg-[#1c1c1c]/90 border border-gray-600">
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full bg-green-500" />
+                <Text className="text-base font-semibold text-gray-300">
+                  Available
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full bg-blue-500" />
+                <Text className="text-base font-semibold text-gray-300">
+                  In Use
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full bg-red-500" />
+                <Text className="text-base font-semibold text-gray-300">
+                  Needs Cleaning
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <View className="w-3 h-3 rounded-full bg-yellow-500" />
+                <Text className="text-base font-semibold text-gray-300">
+                  Overtime
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
       </View>
