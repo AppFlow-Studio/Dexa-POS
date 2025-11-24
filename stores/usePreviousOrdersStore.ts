@@ -97,6 +97,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         refundedAmount: 0,
         originalTotal: finalTotal,
         payments: order.payments,
+        service_location_id: order.service_location_id, // Add this line
       };
 
       set((state) => ({
