@@ -13,12 +13,14 @@ import { TemplateShiftChip } from "./TemplateShiftChip";
 
 interface DraggableTemplateShiftProps {
   shift: TemplateShift;
+  wage?: number;
   onShiftClick: (shift: TemplateShift) => void;
   onShiftDrop: (draggedShift: TemplateShift, newDayOfWeek: number) => void;
 }
 
 export const DraggableTemplateShift: React.FC<DraggableTemplateShiftProps> = ({
   shift,
+  wage,
   onShiftClick,
   onShiftDrop,
 }) => {
@@ -115,7 +117,11 @@ export const DraggableTemplateShift: React.FC<DraggableTemplateShiftProps> = ({
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={animatedStyle}>
-        <TemplateShiftChip shift={shift} onClick={() => onShiftClick(shift)} />
+        <TemplateShiftChip
+          shift={shift}
+          wage={wage}
+          onClick={() => onShiftClick(shift)}
+        />
       </Animated.View>
     </GestureDetector>
   );

@@ -54,11 +54,13 @@ interface OrderState {
     orderId: string,
     status: OrderProfile["order_status"]
   ) => void;
-  addPaymentToOrder: (
-    orderId: string,
-    amount: number,
-    method: PaymentType
-  ) => void;
+  addPaymentToOrder: (paymentDetails: {
+    orderId: string;
+    amount: number;
+    method: PaymentType;
+    cardBrand?: string;
+    last4?: string;
+  }) => void;
 
   markOrderAsPaid: (orderId: string) => void;
   setPendingTableSelection: (tableId: string | null) => void;
@@ -429,10 +431,17 @@ export const useOrderStore = create<OrderState>((set, get) => {
         newItem.customizations
       );
 
-      // --- THIS IS THE FINAL, CORRECTED LOGIC ---
+      let updatedCart: CartItem[] = activeOrder.items;
 
-      // 1. Find a potential candidate for merging
-      const mergeCandidate = activeOrder.items.find((cartItem) => {
+      // 1. If newItem is NOT a draft, remove any existing drafts for this MenuItemId
+      if (!newItem.isDraft) {
+        updatedCart = updatedCart.filter(
+          (item) => !(item.isDraft && item.menuItemId === newItem.menuItemId)
+        );
+      }
+
+      // 2. Find a potential candidate for merging with the (possibly filtered) cart
+      const mergeCandidate = updatedCart.find((cartItem) => {
         // Must be a "new" item, not a draft, and in the same course
         if (
           cartItem.isDraft ||
@@ -455,25 +464,23 @@ export const useOrderStore = create<OrderState>((set, get) => {
         return existingItemKey === newItemKey;
       });
 
-      let updatedCart: CartItem[];
-
       if (mergeCandidate) {
-        // 2. If a candidate exists, create a new cart array with the updated quantity
-        updatedCart = activeOrder.items.map((item) =>
+        // 3. If a candidate exists, create a new cart array with the updated quantity
+        updatedCart = updatedCart.map((item) =>
           item.id === mergeCandidate.id
             ? { ...item, quantity: item.quantity + newItem.quantity }
             : item
         );
       } else {
-        // 3. If no candidate, create a new item and add it to a new cart array
+        // 4. If no candidate, create a new item and add it to a new cart array
         const newCartItem: CartItem = {
           ...newItem,
           paidQuantity: 0,
           item_status:
             activeOrder.order_type === "Dine In" ? "Preparing" : undefined,
-          kitchen_status: "new" as const,
+          kitchen_status: newItem.isDraft ? undefined : ("new" as const), // Only mark as 'new' if not a draft
         };
-        updatedCart = [...activeOrder.items, newCartItem];
+        updatedCart = [...updatedCart, newCartItem];
         coursingState.setItemCourse(
           activeOrderId,
           newCartItem.id,
@@ -481,7 +488,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         );
       }
 
-      // 4. Update the state with the new cart array
+      // 5. Update the state with the new cart array
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === activeOrderId ? { ...o, items: updatedCart } : o
@@ -779,15 +786,23 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
     },
 
-    addPaymentToOrder: (orderId, amount, method) => {
+    addPaymentToOrder: ({ orderId, amount, method, cardBrand, last4 }) => {
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id === orderId) {
-            const newPayments = [...(o.payments || []), { amount, method }];
+            const newPayment = {
+              amount,
+              method,
+              ...(cardBrand && { cardBrand }),
+              ...(last4 && { last4 }),
+            };
+
+            const newPayments = [...(o.payments || []), newPayment];
+
             // Mark items as paid in FIFO order until amount is exhausted
             let remaining = amount;
             const updatedItems = o.items.map((item) => {
-              const unitPrice = item.price; // price already includes customizations
+              const unitPrice = item.price;
               const unpaidQty = item.quantity - (item.paidQuantity || 0);
               if (remaining <= 0 || unpaidQty <= 0) return item;
 
@@ -863,52 +878,47 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const { orders } = get();
       const order = orders.find((o) => o.id === orderId);
 
-      // Trigger stock deduction before archiving ---
-      if (order && order.items.length > 0) {
+      if (!order) return null;
+
+      // Trigger stock deduction before archiving
+      if (order.items.length > 0) {
         useInventoryStore.getState().decrementStockFromSale(order.items);
       }
 
-      let tableId: string | null = null;
+      const tableId = order.service_location_id;
 
-      // Calculate total before closing
-      const total =
-        order?.items.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
-        ) || 0;
-      const tax = total * TAX_RATE;
+      // Ensure the order has a final status. If not "Voided", set it to "Closed".
+      const finalOrder = {
+        ...order,
+        order_status:
+          order.order_status === "Voided" ? ("Voided" as const) : ("Closed" as const),
+        closed_at: order.closed_at || new Date().toISOString(),
+        total_amount:
+          order.total_amount ||
+          order.items.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0
+          ) ||
+          0,
+        total_tax:
+          order.total_tax ||
+          (order.items.reduce(
+            (sum, item) => sum + item.price * item.quantity,
+            0
+          ) || 0) * TAX_RATE,
+      };
 
+      // Save to previous orders
+      const { addOrderToHistory } = usePreviousOrdersStore.getState();
+      addOrderToHistory(finalOrder);
+
+      // Finally, remove the order from the active orders list
       set((state) => ({
-        orders: state.orders.map((o) => {
-          if (o.id === order?.id) {
-            tableId = o.service_location_id;
-            return {
-              ...o,
-              order_status: "Closed",
-              closed_at: new Date().toISOString(),
-              total_amount: total + tax,
-              total_tax: tax,
-            };
-          }
-          return o;
-        }),
+        orders: state.orders.filter((o) => o.id !== orderId),
+        activeOrderId:
+          state.activeOrderId === orderId ? null : state.activeOrderId,
       }));
 
-      // Save to previous orders when closed
-      if (order) {
-        const { addOrderToHistory } = usePreviousOrdersStore.getState();
-        // Pass the updated order with totals
-        const updatedOrder = {
-          ...order,
-          closed_at: new Date().toISOString(),
-          total_amount: total + tax,
-          total_tax: tax,
-        };
-        addOrderToHistory(updatedOrder);
-      }
-
-      // After closing, there is no active order
-      // set({ activeOrderId: null });
       recalculateTotals(null);
 
       return tableId;
@@ -1300,17 +1310,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       });
     },
     voidOrder: (orderId: string) => {
-      const { orders, archiveOrder } = get();
-      const orderToVoid = orders.find((o) => o.id === orderId);
-
-      if (!orderToVoid) {
-        toastService.show({
-          title: "Void Failed",
-          message: "Could not find the order to void.",
-          type: "error",
-        });
-        return;
-      }
+      const { archiveOrder } = get();
 
       // Update the order's status
       set((state) => ({
@@ -1321,32 +1321,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
         ),
       }));
 
+      // Directly call archiveOrder after the state has been updated
       archiveOrder(orderId);
-
-      // If the order was for a table, free up the table
-      if (orderToVoid.service_location_id) {
-        useFloorPlanStore
-          .getState()
-          .updateTableStatus(orderToVoid.service_location_id, "Needs Cleaning");
-      }
-
-      toastService.show({
-        title: "Order Voided",
-        message: `Order #${orderId.slice(-5)} has been successfully voided.`,
-        type: "success",
-      });
-
-      // After voiding, there is no active order to work on
-      // Find or create a new global "Building" order to set as active
-      const globalBuilding = get().orders.find(
-        (o) => o.service_location_id === null && o.order_status === "Building"
-      );
-      if (globalBuilding) {
-        get().setActiveOrder(globalBuilding.id);
-      } else {
-        const newOrder = get().startNewOrder({});
-        get().setActiveOrder(newOrder.id);
-      }
     },
   };
 });

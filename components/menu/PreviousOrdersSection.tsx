@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore"; // New import
 import { Eye, Plus } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   Text,
   TouchableOpacity,
   View,
+  RefreshControl, // New import
 } from "react-native";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 
@@ -179,10 +181,18 @@ const RetrieveButton = ({ orderId }: { orderId: string }) => {
 const PreviousOrdersSection = () => {
   const { orders, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
+  const { refreshPreviousOrders } = usePreviousOrdersStore(); // Access refresh action
   const { show } = useToast();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false); // New state for refreshing
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshPreviousOrders(); // Call the store action
+    setIsRefreshing(false);
+  };
 
   // Get all orders (including completed ones)
   const allOrders = orders.filter(
@@ -270,6 +280,9 @@ const PreviousOrdersSection = () => {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         className="flex-1"
+        refreshControl={ // New prop for pull-to-refresh
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+        }
         renderItem={({ item }) => (
           <OrderRow
             order={item}

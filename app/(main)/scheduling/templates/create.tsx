@@ -1,4 +1,6 @@
+import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
 import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
+import TemplateEditorHeader from "@/components/scheduling/TemplateEditorHeader";
 import TemplateGrid from "@/components/scheduling/TemplateGrid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +34,7 @@ const CreateTemplateScreen = () => {
   });
 
   const [isShiftEditorOpen, setIsShiftEditorOpen] = useState(false);
+  const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [selectedShift, setSelectedShift] =
     useState<Partial<TemplateShift> | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -73,7 +76,22 @@ const CreateTemplateScreen = () => {
 
   const handleShiftPress = (shift: TemplateShift) => {
     setSelectedShift(shift);
+    setIsActionModalOpen(true);
+  };
+
+  const handleEditShift = () => {
+    setIsActionModalOpen(false);
     setIsShiftEditorOpen(true);
+  };
+
+  const handleDeleteShift = () => {
+    if (!selectedShift?.tempId) return;
+    setTemplate((prev) => ({
+      ...prev,
+      shifts: prev.shifts.filter((s) => s.tempId !== selectedShift.tempId),
+    }));
+    setIsActionModalOpen(false);
+    setSelectedShift(null);
   };
 
   const handleSaveShift = (savedShift: Partial<TemplateShift>) => {
@@ -125,56 +143,72 @@ const CreateTemplateScreen = () => {
         <View className="flex-1 bg-[#212121]">
           {/* Form Area */}
           <View className="flex-1 p-4">
-            <View className="mb-4">
-              <Text className="text-white text-base mb-2">Template Name</Text>
-              <Input
-                placeholder="e.g., Weekend Rush"
-                placeholderTextColor="#9CA3AF"
-                value={template.name}
-                onChangeText={handleNameChange}
-                className="bg-[#303030] border-gray-600 text-white"
-              />
-            </View>
+            <TemplateEditorHeader template={template} defaultOpen={true}>
+              <View className="mb-4">
+                <Text className="text-white text-base mb-2">Template Name</Text>
+                <Input
+                  placeholder="e.g., Weekend Rush"
+                  placeholderTextColor="#9CA3AF"
+                  value={template.name}
+                  onChangeText={handleNameChange}
+                  className="bg-[#212121] border-gray-600 text-white"
+                />
+              </View>
 
-            <View className="mb-4">
-              <Text className="text-white text-base mb-2">Description</Text>
-              <TextInput
-                placeholder="e.g., Full staffing for peak hours on weekends"
-                placeholderTextColor="#9CA3AF"
-                value={template.description}
-                onChangeText={handleDescriptionChange}
-                multiline
-                className="bg-[#303030] border border-gray-600 rounded-lg p-3 text-white min-h-[80px]"
-              />
-            </View>
+              <View className="mb-4">
+                <Text className="text-white text-base mb-2">Description</Text>
+                <TextInput
+                  placeholder="e.g., Full staffing for peak hours on weekends"
+                  placeholderTextColor="#9CA3AF"
+                  value={template.description}
+                  onChangeText={handleDescriptionChange}
+                  multiline
+                  className="bg-[#212121] border border-gray-600 rounded-lg p-3 text-white min-h-[80px]"
+                />
+              </View>
 
-            {/* Tags input */}
-            <View className="mb-4">
-              <Text className="text-white text-base mb-2">Tags</Text>
-              <View className="flex-row flex-wrap gap-2">
-                {PREDEFINED_TAGS.map((tag) => (
-                  <TouchableOpacity
-                    key={tag}
-                    onPress={() => handleToggleTag(tag)}
-                    className={`px-3 py-1.5 rounded-full ${
-                      template.tags.includes(tag)
-                        ? "bg-blue-500"
-                        : "bg-[#303030] border border-gray-600"
-                    }`}
-                  >
-                    <Text
-                      className={`${
+              {/* Tags input */}
+              <View className="mb-4">
+                <Text className="text-white text-base mb-2">Tags</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {PREDEFINED_TAGS.map((tag) => (
+                    <TouchableOpacity
+                      key={tag}
+                      onPress={() => handleToggleTag(tag)}
+                      className={`px-3 py-1.5 rounded-full ${
                         template.tags.includes(tag)
-                          ? "text-white"
-                          : "text-gray-400"
+                          ? "bg-blue-500"
+                          : "bg-gray-700"
                       }`}
                     >
-                      {tag}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text
+                        className={`${
+                          template.tags.includes(tag)
+                            ? "text-white"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {tag}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-            </View>
+
+              {/* Employee Search Input */}
+              <View className="w-full border border-gray-600 rounded-lg p-3">
+                <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-full">
+                  <Search size={16} color="#9CA3AF" />
+                  <TextInput
+                    placeholder="Search employees..."
+                    placeholderTextColor="#9CA3AF"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    className="p-2 text-white flex-1"
+                  />
+                </View>
+              </View>
+            </TemplateEditorHeader>
 
             {/* Employee Search Input */}
             <View className="w-full border border-gray-600 rounded-lg p-3 mb-4">
@@ -228,6 +262,15 @@ const CreateTemplateScreen = () => {
         isTemplateMode={true}
         dayOfWeek={selectedShift?.dayOfWeek}
       />
+      {selectedShift && (
+        <ShiftActionModal
+          open={isActionModalOpen}
+          onOpenChange={setIsActionModalOpen}
+          shift={selectedShift}
+          onEdit={handleEditShift}
+          onDelete={handleDeleteShift}
+        />
+      )}
     </>
   );
 };

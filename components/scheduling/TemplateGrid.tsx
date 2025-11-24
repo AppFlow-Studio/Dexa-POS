@@ -135,6 +135,7 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
                                 shift={shift}
                                 onShiftClick={onShiftPress}
                                 onShiftDrop={handleShiftDrop}
+                                wage={employee.baseWage}
                               />
                             ))}
                           </View>

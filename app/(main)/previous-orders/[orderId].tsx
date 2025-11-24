@@ -29,6 +29,7 @@ const OrderDetailsScreen = () => {
   const canStillRefund = useMemo(() => {
     if (!order) return false;
     if (order.paymentStatus === "Refunded") return false;
+    console.log("order", order);
 
     if (order.paymentStatus === "Partially Refunded") {
       const refundableItems = order.items.filter(
@@ -115,6 +116,31 @@ const OrderDetailsScreen = () => {
                 ${order.total.toFixed(2)}
               </Text>
             </View>
+
+            {order.payments && order.payments.length > 0 && (
+              <View className="mt-4">
+                <Text className="text-2xl font-bold text-white mb-3">
+                  Payments
+                </Text>
+                <View className="gap-y-1.5">
+                  {order.payments.map((payment, index) => (
+                    <DetailRow
+                      key={index}
+                      label={
+                        payment.cardBrand
+                          ? `Via ${payment.cardBrand}`
+                          : payment.method
+                      }
+                      value={
+                        payment.last4
+                          ? `•••• ${payment.last4}`
+                          : `$${payment.amount.toFixed(2)}`
+                      }
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
           </View>
 
           <View className="flex-row gap-3 mt-6 border-t border-gray-700 pt-4">

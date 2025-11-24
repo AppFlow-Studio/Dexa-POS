@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shift } from "@/lib/types";
+import { Shift, TemplateShift } from "@/lib/types";
 import { format, parse, parseISO } from "date-fns";
 import { Clock, FileText, MapPin, Pencil, Trash2 } from "lucide-react-native";
 import React from "react";
@@ -15,10 +15,20 @@ import { Text, View } from "react-native";
 interface ShiftActionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  shift: Shift;
+  shift: Partial<Shift & TemplateShift>;
   onEdit: () => void;
   onDelete: () => void;
 }
+
+const weekDays = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
 
 export function ShiftActionModal({
   open,
@@ -29,15 +39,17 @@ export function ShiftActionModal({
 }: ShiftActionModalProps) {
   if (!shift) return null;
 
+  const title = shift.date
+    ? format(parse(shift.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d")
+    : shift.dayOfWeek !== undefined
+    ? weekDays[shift.dayOfWeek]
+    : "Shift Details";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#1C1C1E] border-gray-700">
         <DialogHeader>
-          <DialogTitle className="text-white">
-            {shift.date
-              ? format(parse(shift.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d")
-              : "No Date"}
-          </DialogTitle>
+          <DialogTitle className="text-white">{title}</DialogTitle>
         </DialogHeader>
 
         <View className="py-4 gap-y-4">
@@ -53,17 +65,19 @@ export function ShiftActionModal({
               <Text className="text-white text-base">
                 {shift.startTime
                   ? format(parseISO(shift.startTime), "h:mm a")
-                  : "N/A"}{' '}
+                  : "N/A"}{" "}
                 –{" "}
                 {shift.endTime
                   ? format(parseISO(shift.endTime), "h:mm a")
                   : "N/A"}
               </Text>
             </View>
-            <View className="flex-row items-center gap-x-3">
-              <MapPin size={20} color="#9CA3AF" />
-              <Text className="text-white text-base">{shift.location}</Text>
-            </View>
+            {shift.location && (
+              <View className="flex-row items-center gap-x-3">
+                <MapPin size={20} color="#9CA3AF" />
+                <Text className="text-white text-base">{shift.location}</Text>
+              </View>
+            )}
             {shift.managerNote && (
               <View className="flex-row items-center gap-x-3">
                 <FileText size={20} color="#9CA3AF" />

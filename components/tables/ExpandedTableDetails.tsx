@@ -3,17 +3,12 @@ import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  Layout,
-} from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
+import { useRouter } from "expo-router";
 
 // --- Helper Functions and Sub-Components remain unchanged ---
 const formatDuration = (milliseconds: number): string => {
@@ -26,22 +21,7 @@ const formatDuration = (milliseconds: number): string => {
   );
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 };
-const StatusIndicator = ({
-  status,
-  isOvertime,
-}: {
-  status: TableType["status"];
-  isOvertime: boolean;
-}) => {
-  const color = isOvertime
-    ? "bg-yellow-500"
-    : status === "Available"
-      ? "bg-green-500"
-      : status === "In Use"
-        ? "bg-blue-500"
-        : "bg-red-500";
-  return <View className={`w-3 h-3 rounded-full ${color}`} />;
-};
+
 const QuickActionButton: React.FC<{
   onPress: () => void;
   label: string;
@@ -162,16 +142,31 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
   }, [table, orders, allTables]);
 };
 
-const ExpandedView: React.FC<{
-  tableData: NonNullable<ReturnType<typeof useTableData>>;
-  onNavigateToOrder: () => void;
-  onToggleExpand: () => void;
-}> = ({ tableData, onNavigateToOrder, onToggleExpand }) => {
+interface ExpandedTableDetailsProps {
+  table: TableType;
+  activeLayoutId: string | null;
+}
+
+const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
+  table,
+  activeLayoutId,
+}) => {
+  const router = useRouter();
+  const tableData = useTableData(table, activeLayoutId);
+
+  if (!tableData) {
+    return null;
+  }
+
   const { layouts, updateTableStatus } = useFloorPlanStore();
   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
   const { menuItems } = useMenuStore();
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+
+  const handleNavigate = () => {
+    router.push(`/tables/${tableData.primaryTableId}`);
+  };
 
   const getCategoryForItem = (itemId: string) => {
     const menuItem = menuItems.find((mi) => mi.id === itemId);
@@ -208,8 +203,7 @@ const ExpandedView: React.FC<{
 
     if (tableData.orders.length === 0) {
       groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
-      onToggleExpand();
-      return;
+      return; // No onToggleExpand here anymore
     }
 
     const allOrdersArePaid = tableData.orders.every(
@@ -264,15 +258,18 @@ const ExpandedView: React.FC<{
     tableData.orders.forEach((order) => voidOrder(order.id));
     groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
     setVoidConfirmOpen(false);
-    onToggleExpand();
+    return; // No onToggleExpand here anymore
   };
 
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(100)}
-      className="mt-3 pl-6"
+      className="mt-3 pl-6 py-2 bg-blue-900/20"
     >
+      <Text className="text-xl font-bold text-white mb-2">
+        {tableData.displayName}
+      </Text>
       <View className="flex-row items-center gap-4 mb-3">
         <Text className="text-sm text-gray-300">
           Server: {tableData.server}
@@ -322,7 +319,7 @@ const ExpandedView: React.FC<{
       <View className="flex-row items-center gap-2">
         <QuickActionButton
           label="Open Table"
-          onPress={onNavigateToOrder}
+          onPress={handleNavigate}
           variant="primary"
         />
         <QuickActionButton label="Print Bill" onPress={() => {}} />
@@ -345,98 +342,4 @@ const ExpandedView: React.FC<{
   );
 };
 
-const TableListItem: React.FC<{
-  table: TableType;
-  isExpanded: boolean;
-  onToggleExpand?: () => void; // Make optional
-  onNavigateToOrder: () => void;
-  activeLayoutId: string | null;
-  handleTablePress: (table: TableType) => void;
-}> = ({
-  table,
-  isExpanded,
-  onToggleExpand = () => {}, // Default to empty function
-  onNavigateToOrder,
-  activeLayoutId,
-  handleTablePress,
-}) => {
-  const tableData = useTableData(table, activeLayoutId);
-  const [isOvertime, setIsOvertime] = useState(false);
-  const [duration, setDuration] = useState("");
-  const { defaultSittingTimeMinutes } = useSettingsStore();
-
-  useEffect(() => {
-    if (tableData?.status !== "In Use" || !tableData.seatedTime) {
-      setIsOvertime(false);
-      setDuration("");
-      return;
-    }
-    const update = () => {
-      const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
-      setDuration(formatDuration(diffMs));
-      setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
-    };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [tableData, defaultSittingTimeMinutes]);
-
-  const handlePress = () => {
-    if (table.status === "In Use") {
-      onToggleExpand(); // This will be called in SeatedPanel
-    } else {
-      handleTablePress(table); // This will be called for Available tables
-    }
-  };
-
-  if (!tableData) return null;
-
-  return (
-    <Animated.View
-      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="border-b border-gray-700 overflow-hidden "
-    >
-      <TouchableOpacity
-        onPress={handlePress}
-        className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
-      >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3 flex-1">
-            <StatusIndicator
-              status={tableData.status}
-              isOvertime={isOvertime}
-            />
-            <Text
-              className="text-lg font-semibold text-white"
-              numberOfLines={1}
-            >
-              {tableData.displayName}
-            </Text>
-          </View>
-          {tableData.status === "In Use" && (
-            <>
-              <Text className="text-base text-gray-300 w-20 text-center">
-                {duration}
-              </Text>
-              <Text className="text-base text-gray-300 w-24 text-center">
-                {tableData.guestCount} Guests
-              </Text>
-              <Text className="text-base font-bold text-white w-24 text-right">
-                ${tableData.total?.toFixed(2) || "0.00"}
-              </Text>
-            </>
-          )}
-        </View>
-        {isExpanded && tableData.status === "In Use" && (
-          <ExpandedView
-            tableData={tableData}
-            onToggleExpand={onToggleExpand}
-            onNavigateToOrder={onNavigateToOrder}
-          />
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-export default TableListItem;
+export default ExpandedTableDetails;
