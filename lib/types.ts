@@ -339,6 +339,7 @@ export interface PreviousOrder {
   refunded?: boolean;
   refundedAmount?: number;
   originalTotal?: number;
+  service_location_id?: string; // Added service_location_id
 }
 
 export type InventoryItemStatus =
@@ -765,6 +766,16 @@ export interface ScheduleTemplate {
   shifts: TemplateShift[];
   lastUsed: Date;
   isActiveForScheduling?: boolean;
+}
+
+export interface WaitlistEntry {
+  id: string;
+  name: string;
+  partySize: number;
+  arrivalTime: Date;
+  quotedTime: number; // minutes
+  notes?: string;
+  phone?: string;
 }
 
 export type ApplyMode = "merge" | "replace-all" | "fill-gaps";

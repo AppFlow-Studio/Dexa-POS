@@ -69,7 +69,7 @@ export const usePaymentStore = create<PaymentState>((set) => ({
       return {
         isOpen: true,
         paymentMethod: method,
-        view: initialView || "review", // Use initialView or default to "review"
+        view: method === "Card" ? "cardOptions" : initialView || "review", // Use initialView or default to "review"
         activeTableId: tableId || null,
       };
     }),
