@@ -136,6 +136,22 @@ const EditTemplateScreen = () => {
     setSelectedShift(null);
   };
 
+  const handleShiftDrop = (
+    draggedShift: TemplateShift,
+    newEmployeeId: string,
+    newDayOfWeek: number
+  ) => {
+    if (!template) return;
+    setTemplate({
+      ...template,
+      shifts: template.shifts.map((s) =>
+        s.tempId === draggedShift.tempId
+          ? { ...s, employeeId: newEmployeeId, dayOfWeek: newDayOfWeek }
+          : s
+      ),
+    });
+  };
+
   const handleSave = () => {
     if (!template) return;
     if (!template.name.trim()) {
@@ -274,10 +290,12 @@ const EditTemplateScreen = () => {
             {/* TemplateGrid */}
             <DropZoneProvider>
               <TemplateGrid
+                templateId={template.id}
                 shifts={template.shifts}
                 employees={filteredEmployees}
                 onShiftPress={handleShiftPress}
                 onAddShift={handleAddShift}
+                onShiftDrop={handleShiftDrop}
               />
             </DropZoneProvider>
           </View>

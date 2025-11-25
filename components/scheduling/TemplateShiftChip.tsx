@@ -1,5 +1,5 @@
 import { TemplateShift } from "@/lib/types";
-import { format, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -8,16 +8,6 @@ interface TemplateShiftChipProps {
   wage?: number; // Add wage prop
   onClick: (shift: TemplateShift) => void;
 }
-
-const formatTime = (isoString: string): string => {
-  if (!isoString) return "N/A";
-  try {
-    return format(parseISO(isoString), "h:mm a");
-  } catch (error) {
-    console.warn(`Invalid ISO string passed to formatTime: ${isoString}`);
-    return "";
-  }
-};
 
 export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({
   shift,
@@ -32,7 +22,8 @@ export const TemplateShiftChip: React.FC<TemplateShiftChipProps> = ({
       <View>
         <Text className="text-white font-semibold text-sm">{shift.role}</Text>
         <Text className="text-blue-200 text-xs">
-          {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
+          {formatInTimeZone(shift.startTime, "UTC", "h:mm a")} -{" "}
+          {formatInTimeZone(shift.endTime, "UTC", "h:mm a")}
         </Text>
         {wage && (
           <Text className="text-gray-400 text-xs mt-1">

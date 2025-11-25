@@ -48,6 +48,8 @@ const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
 const formatTo12Hour = (isoString: string) => {
   if (!isoString) return "";
   try {
+    // We expect an ISO string, which is parsed as UTC by default in modern JS
+    // and correctly by date-fns-tz
     return formatInTimeZone(isoString, "UTC", "h:mm a");
   } catch (error) {
     console.warn(`Invalid ISO string passed to formatTo12Hour: ${isoString}`);
@@ -57,16 +59,18 @@ const formatTo12Hour = (isoString: string) => {
 
 // Helper to combine date and 12-hour time into a UTC ISO string
 const combineToISO = (date: string, time12h: string) => {
+  if (!date || !time12h) return "";
   // The date is yyyy-MM-dd, and time is h:mm a
-  const [year, month, day] = date.split("-").map(Number);
+  const dateTimeString = `${date} ${time12h}`;
+  // Parse the combined string. Assume the inputs are meant for UTC.
+  // We construct a new date object from parts to avoid timezone assumptions.
   const parsedTime = parse(time12h, "h:mm a", new Date());
   const hours = parsedTime.getHours();
   const minutes = parsedTime.getMinutes();
+  const [year, month, day] = date.split("-").map(Number);
 
-  // Create a UTC date object
+  // Create a UTC date
   const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-
-  // Return the date in ISO format (which is always UTC with 'Z')
   return utcDate.toISOString();
 };
 
@@ -130,7 +134,7 @@ export function ShiftEditorModal({
             shift.dayOfWeek !== undefined
               ? shift.dayOfWeek
               : shift.startTime
-                ? parseISO(shift.startTime).getDay()
+                ? parseISO(shift.startTime).getUTCDay() // Use getUTCDay
                 : 0;
           const placeholderDate = getPlaceholderDate(shiftDayOfWeek);
           setDate(placeholderDate);
@@ -197,12 +201,16 @@ export function ShiftEditorModal({
 
   const handleSave = () => {
     if (!validateShift()) return;
-
     if (isTemplateMode) {
       const templateShift: TemplateShift = {
         tempId: shift?.tempId || (uuid.v4() as string), // Use existing tempId or generate new
         employeeId: shift?.employeeId || null,
-        dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : shift?.dayOfWeek || 0,
+        dayOfWeek:
+          dayOfWeek !== undefined
+            ? dayOfWeek
+            : shift?.dayOfWeek !== undefined
+              ? shift.dayOfWeek
+              : parseISO(startTime).getUTCDay(), // Use getUTCDay for safety
         role,
         startTime,
         endTime,
@@ -239,7 +247,12 @@ export function ShiftEditorModal({
       const templateShift: TemplateShift = {
         tempId: uuid.v4() as string, // Always generate new tempId for duplicate
         employeeId: shift?.employeeId || null,
-        dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : shift?.dayOfWeek || 0,
+        dayOfWeek:
+          dayOfWeek !== undefined
+            ? dayOfWeek
+            : shift?.dayOfWeek !== undefined
+              ? shift.dayOfWeek
+              : parseISO(startTime).getUTCDay(), // Use getUTCDay
         role,
         startTime,
         endTime,
