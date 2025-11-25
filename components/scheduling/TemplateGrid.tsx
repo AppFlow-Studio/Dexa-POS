@@ -1,3 +1,4 @@
+import { useDropZoneContext } from "@/contexts/DropZoneContext";
 import { TemplateShift } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
 import {
@@ -9,8 +10,16 @@ import {
   parseISO,
 } from "date-fns";
 import { Plus } from "lucide-react-native";
-import React from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import {
+  findNodeHandle,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  UIManager,
+  View,
+} from "react-native";
+import Animated, { runOnUI, useAnimatedStyle } from "react-native-reanimated";
 import { DraggableTemplateShift } from "./DraggableTemplateShift";
 
 interface TemplateGridProps {
@@ -18,6 +27,11 @@ interface TemplateGridProps {
   employees: EmployeeProfile[];
   onShiftPress: (shift: TemplateShift) => void;
   onAddShift: (employeeId: string, dayOfWeek: number) => void;
+  onShiftDrop: (
+    draggedShift: TemplateShift,
+    newEmployeeId: string,
+    newDayOfWeek: number
+  ) => void; // New prop for handling drops
 }
 
 const startOfWeek = new Date("2024-01-01T00:00:00.000Z");
@@ -26,10 +40,73 @@ function getWeekDates(): Date[] {
   return Array.from({ length: 7 }, (_, i) => addDays(startOfWeek, i));
 }
 
-const TemplateCell = ({ children }: { children: React.ReactNode }) => (
-  <View className="flex-1 min-w-[160px] p-2 border-r border-b border-gray-700 bg-[#2a2a2a]">
-    {children}
-  </View>
+const TemplateCell = React.memo(
+  ({
+    children,
+    employeeId,
+    dayOfWeek,
+    ancestor,
+  }: {
+    children: React.ReactNode;
+    employeeId: string;
+    dayOfWeek: number;
+    ancestor: React.RefObject<ScrollView | null>;
+  }) => {
+    const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey } = useDropZoneContext();
+    const cellKey = `${employeeId}-${dayOfWeek}`;
+    const viewRef = useRef<Animated.View>(null);
+
+    useEffect(() => {
+      const measure = () => {
+        if (viewRef.current && ancestor.current) {
+          const ancestorNodeHandle = findNodeHandle(ancestor.current);
+          const viewNodeHandle = findNodeHandle(viewRef.current);
+
+          if (ancestorNodeHandle && viewNodeHandle) {
+            UIManager.measureLayout(
+              viewNodeHandle,
+              ancestorNodeHandle,
+              () => {}, // onFail
+              (x, y, width, height) => {
+                if (width > 0 && height > 0) {
+                  runOnUI(() => {
+                    "worklet";
+                    const newLayouts = { ...dropZoneLayouts.value };
+                    newLayouts[cellKey] = { x, y, width, height };
+                    dropZoneLayouts.value = newLayouts;
+                  })();
+                }
+              }
+            );
+          }
+        }
+      };
+
+      const timeoutId = setTimeout(measure, 150);
+      return () => clearTimeout(timeoutId);
+    }, [ancestor, cellKey, dropZoneLayouts]);
+
+    const animatedStyle = useAnimatedStyle(() => {
+      const isHovered = hoveredDropZoneKey.value === cellKey;
+      const isDraggingFromThisCell = draggingCellKey.value === cellKey; // Check if this cell is the origin of the drag
+      return {
+        borderColor: isHovered ? "#22c55e" : "#4b5563",
+        borderWidth: isHovered ? 2 : 1,
+        backgroundColor: isHovered ? "#3a3a3a" : "#2a2a2a",
+        zIndex: isDraggingFromThisCell ? 100 : 1, // Elevate zIndex if dragging from this cell
+      };
+    });
+
+    return (
+      <Animated.View
+        ref={viewRef}
+        style={animatedStyle}
+        className="flex-1 min-w-[160px] p-2 border-r border-b"
+      >
+        {children}
+      </Animated.View>
+    );
+  }
 );
 
 const TemplateGrid: React.FC<TemplateGridProps> = ({
@@ -37,8 +114,10 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
   employees,
   onShiftPress,
   onAddShift,
+  onShiftDrop, // Destructure new prop
 }) => {
   const weekDates = getWeekDates();
+  const scrollViewRef = useRef<ScrollView>(null);
 
   const getShiftsForDayAndEmployee = (
     dayOfWeek: number,
@@ -60,13 +139,6 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
         return total + differenceInMinutes(end, start);
       }, 0);
     return (totalMinutes / 60).toFixed(1);
-  };
-
-  const handleShiftDrop = (
-    draggedShift: TemplateShift,
-    newDayOfWeek: number
-  ) => {
-    console.log(`Shift ${draggedShift.tempId} dropped on day ${newDayOfWeek}`);
   };
 
   return (
@@ -91,7 +163,7 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
           </View>
 
           {/* Grid Body */}
-          <ScrollView>
+          <ScrollView ref={scrollViewRef}>
             {employees.map((employee) => (
               <View key={employee.id} className="flex-row items-stretch">
                 <View className="w-56 bg-[#2a2a2a] p-3 flex-row items-center border-r border-b border-gray-700">
@@ -125,7 +197,12 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
                     employee.id
                   );
                   return (
-                    <TemplateCell key={`${employee.id}-${dayOfWeek}`}>
+                    <TemplateCell
+                      key={`${employee.id}-${dayOfWeek}`}
+                      employeeId={employee.id}
+                      dayOfWeek={dayOfWeek}
+                      ancestor={scrollViewRef}
+                    >
                       <View className="flex-1 justify-center">
                         {dayShifts.length > 0 ? (
                           <View className="gap-y-2">
@@ -134,7 +211,7 @@ const TemplateGrid: React.FC<TemplateGridProps> = ({
                                 key={shift.tempId}
                                 shift={shift}
                                 onShiftClick={onShiftPress}
-                                onShiftDrop={handleShiftDrop}
+                                onShiftDrop={onShiftDrop} // Pass prop down
                                 wage={employee.baseWage}
                               />
                             ))}
