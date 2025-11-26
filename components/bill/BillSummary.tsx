@@ -40,7 +40,6 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   return (
     <View className="flex-1 bg-[#212121]">
-
       <View className=" px-6 h-full">
         <View className="flex-row items-center justify-between mb-2">
           <View className="flex-col items-start justify-start">
@@ -85,8 +84,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                 isSent
                                   ? "bg-green-900/30 border border-green-500"
                                   : isActive
-                                  ? "bg-blue-900/30 border border-blue-500"
-                                  : "bg-[#303030] border border-gray-700"
+                                    ? "bg-blue-900/30 border border-blue-500"
+                                    : "bg-[#303030] border border-gray-700"
                               }`}
                             >
                               <Text
@@ -94,8 +93,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                   isSent
                                     ? "text-green-400"
                                     : isActive
-                                    ? "text-blue-400"
-                                    : "text-gray-300"
+                                      ? "text-blue-400"
+                                      : "text-gray-300"
                                 }`}
                               >
                                 Course {course}
@@ -111,8 +110,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                     activeOrder.paid_status === "Paid"
                                       ? "bg-green-900/30 border border-green-500"
                                       : activeOrder.paid_status === "Pending"
-                                      ? "bg-yellow-900/30 border border-yellow-500"
-                                      : "bg-red-900/30 border border-red-500"
+                                        ? "bg-yellow-900/30 border border-yellow-500"
+                                        : "bg-red-900/30 border border-red-500"
                                   }`}
                                 >
                                   <Text
@@ -120,8 +119,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                       activeOrder.paid_status === "Paid"
                                         ? "text-green-400"
                                         : activeOrder.paid_status === "Pending"
-                                        ? "text-yellow-400"
-                                        : "text-red-400"
+                                          ? "text-yellow-400"
+                                          : "text-red-400"
                                     }`}
                                   >
                                     {activeOrder.paid_status}
@@ -134,10 +133,10 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                     activeOrder.order_status === "Building"
                                       ? "bg-blue-900/30 border border-blue-500"
                                       : activeOrder.order_status === "Preparing"
-                                      ? "bg-orange-900/30 border border-orange-500"
-                                      : activeOrder.order_status === "Ready"
-                                      ? "bg-green-900/30 border border-green-500"
-                                      : "bg-gray-900/30 border border-gray-500"
+                                        ? "bg-orange-900/30 border border-orange-500"
+                                        : activeOrder.order_status === "Ready"
+                                          ? "bg-green-900/30 border border-green-500"
+                                          : "bg-gray-900/30 border border-gray-500"
                                   }`}
                                 >
                                   <Text
@@ -145,33 +144,14 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                       activeOrder.order_status === "Building"
                                         ? "text-blue-400"
                                         : activeOrder.order_status ===
-                                          "Preparing"
-                                        ? "text-orange-400"
-                                        : activeOrder.order_status === "Ready"
-                                        ? "text-green-400"
-                                        : "text-gray-400"
+                                            "Preparing"
+                                          ? "text-orange-400"
+                                          : activeOrder.order_status === "Ready"
+                                            ? "text-green-400"
+                                            : "text-gray-400"
                                     }`}
                                   >
                                     {activeOrder.order_status}
-                                  </Text>
-                                </View>
-
-                                {/* Check Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.check_status === "Opened"
-                                      ? "bg-purple-900/30 border border-purple-500"
-                                      : "bg-gray-900/30 border border-gray-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.check_status === "Opened"
-                                        ? "text-purple-400"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
-                                    {activeOrder.check_status}
                                   </Text>
                                 </View>
                               </View>
@@ -185,7 +165,6 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                 className={`rounded-xl mb-1.5 ${
                                   highlight ? "border border-blue-500" : ""
                                 }`}
-
                               >
                                 <BillItem
                                   item={item}

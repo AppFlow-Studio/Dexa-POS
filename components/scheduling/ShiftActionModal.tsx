@@ -7,7 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Shift, TemplateShift } from "@/lib/types";
-import { format, parse, parseISO } from "date-fns";
+import { format, parse } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { Clock, FileText, MapPin, Pencil, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Text, View } from "react-native";
@@ -42,17 +43,17 @@ export function ShiftActionModal({
   const title = shift.date
     ? format(parse(shift.date, "yyyy-MM-dd", new Date()), "EEEE, MMMM d")
     : shift.dayOfWeek !== undefined
-    ? weekDays[shift.dayOfWeek]
-    : "Shift Details";
+      ? weekDays[shift.dayOfWeek]
+      : "Shift Details";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1C1C1E] border-gray-700">
+      <DialogContent className="w-[450px] bg-[#1C1C1E] border-gray-700 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">{title}</DialogTitle>
         </DialogHeader>
 
-        <View className="py-4 gap-y-4">
+        <View className="py-6 gap-y-4">
           <View className="flex-row items-center gap-x-4">
             <View className="px-3 py-1 bg-gray-700 rounded-full">
               <Text className="text-white font-semibold">{shift.role}</Text>
@@ -64,11 +65,11 @@ export function ShiftActionModal({
               <Clock size={20} color="#9CA3AF" />
               <Text className="text-white text-base">
                 {shift.startTime
-                  ? format(parseISO(shift.startTime), "h:mm a")
+                  ? formatInTimeZone(shift.startTime, "UTC", "h:mm a")
                   : "N/A"}{" "}
                 –{" "}
                 {shift.endTime
-                  ? format(parseISO(shift.endTime), "h:mm a")
+                  ? formatInTimeZone(shift.endTime, "UTC", "h:mm a")
                   : "N/A"}
               </Text>
             </View>

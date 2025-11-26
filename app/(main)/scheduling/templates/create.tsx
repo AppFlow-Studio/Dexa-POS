@@ -20,12 +20,14 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import uuid from "react-native-uuid"; // Import uuid to generate id for new template
 
 const CreateTemplateScreen = () => {
   const router = useRouter();
   const { employees } = useEmployeeStore();
   const { show } = useToast();
-  const [template, setTemplate] = useState<Omit<ScheduleTemplate, "id">>({
+  const [template, setTemplate] = useState<ScheduleTemplate>({
+    id: uuid.v4() as string, // Generate ID here for passing to TemplateGrid
     name: "",
     description: "",
     tags: [],
@@ -66,7 +68,7 @@ const CreateTemplateScreen = () => {
     const employee = employees.find((e) => e.id === employeeId);
     if (!employee) return;
     setSelectedShift({
-      tempId: `temp_${Date.now()}`,
+      tempId: uuid.v4() as string, // Ensure unique tempId for new shifts
       employeeId,
       dayOfWeek,
       role: employee.role,
@@ -111,6 +113,21 @@ const CreateTemplateScreen = () => {
     setSelectedShift(null);
   };
 
+  const handleShiftDrop = (
+    draggedShift: TemplateShift,
+    newEmployeeId: string,
+    newDayOfWeek: number
+  ) => {
+    setTemplate((prev) => {
+      const updatedShifts = prev.shifts.map((s) =>
+        s.tempId === draggedShift.tempId
+          ? { ...s, employeeId: newEmployeeId, dayOfWeek: newDayOfWeek }
+          : s
+      );
+      return { ...prev, shifts: updatedShifts };
+    });
+  };
+
   const handleSave = () => {
     if (!template.name.trim()) {
       show({
@@ -120,7 +137,8 @@ const CreateTemplateScreen = () => {
       });
       return;
     }
-    addTemplate(template);
+    // Now addTemplate expects a full ScheduleTemplate, but we already have the id generated
+    addTemplate(template); // No cast needed
     show({
       title: "Template Created",
       message: `The template "${template.name}" has been successfully created.`,
@@ -227,10 +245,12 @@ const CreateTemplateScreen = () => {
             {/* TemplateGrid */}
             <DropZoneProvider>
               <TemplateGrid
+                templateId={template.id} // Pass the template ID
                 shifts={template.shifts}
                 employees={filteredEmployees} // Pass filtered employees
                 onShiftPress={handleShiftPress}
                 onAddShift={handleAddShift}
+                onShiftDrop={handleShiftDrop}
               />
             </DropZoneProvider>
           </View>

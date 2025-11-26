@@ -19,12 +19,13 @@ import React, { useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import {
   Gesture,
@@ -36,7 +37,6 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { Dialog, DialogContent } from "../ui/dialog";
 
 // AddWaitlistEntryModal Component (Themed)
 const AddWaitlistEntryModal: React.FC<{
@@ -69,15 +69,19 @@ const AddWaitlistEntryModal: React.FC<{
   };
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={onClose}
-      
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isOpen}
+      onRequestClose={onClose}
     >
-      <DialogContent className="w-[450px] h-[700px] flex items-center justify-center">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          className="flex-1 justify-center items-center "
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1 justify-center items-center bg-black/70"
+      >
+        <Pressable
+          className="flex-1 justify-center items-center"
+          onPress={onClose}
         >
           <Pressable className="bg-[#303030] border-gray-700 w-[450px] p-6 rounded-lg">
             <View className="flex-row justify-between items-center w-full mb-4">
@@ -140,9 +144,9 @@ const AddWaitlistEntryModal: React.FC<{
               </TouchableOpacity>
             </View>
           </Pressable>
-        </KeyboardAvoidingView>
-      </DialogContent>
-    </Dialog>
+        </Pressable>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
@@ -161,12 +165,16 @@ const TablePickerModal: React.FC<{
   }, [layouts, partySize]);
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={onClose}
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={isOpen}
+      onRequestClose={onClose}
     >
-      <DialogContent className="w-[450px] h-[700px] flex items-center justify-center">
-
+      <Pressable
+        className="flex-1 justify-center items-center bg-black/70"
+        onPress={onClose}
+      >
         <View className="bg-[#303030] border-gray-700 w-[450px] p-6 rounded-lg">
           <Text className="text-xl font-bold text-white mb-4">
             Select an Available Table
@@ -177,7 +185,7 @@ const TablePickerModal: React.FC<{
             renderItem={({ item }) => (
               <TouchableOpacity
                 onPress={() => onSelectTable(item)}
-                className="w-full p-3 mb-2 bg-gray-700 rounded-lg max-h-100"
+                className="w-full p-3 mb-2 bg-gray-700 rounded-lg"
               >
                 <Text className="text-white text-center">
                   {item.name} (Capacity: {item.capacity})
@@ -191,8 +199,8 @@ const TablePickerModal: React.FC<{
             }
           />
         </View>
-      </DialogContent>
-    </Dialog>
+      </Pressable>
+    </Modal>
   );
 };
 
@@ -256,10 +264,11 @@ const WaitlistCard = ({
                     {item.name}
                   </Text>
                   <Text
-                    className={`text-xs font-medium px-2 py-1 rounded-full ${item.quotedTime > 20
-                      ? "bg-orange-500/20 text-orange-400"
-                      : "bg-gray-700 text-gray-300"
-                      }`}
+                    className={`text-xs font-medium px-2 py-1 rounded-full ${
+                      item.quotedTime > 20
+                        ? "bg-orange-500/20 text-orange-400"
+                        : "bg-gray-700 text-gray-300"
+                    }`}
                   >
                     {item.quotedTime}m
                   </Text>

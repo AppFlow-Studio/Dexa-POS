@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Role } from "@/lib/types"; // Assuming types will be in lib/types
-import { format, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { AlertCircle, Clock, Users } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -88,8 +88,8 @@ export const ShiftChip: React.FC<ShiftChipProps> = ({
           className="font-medium text-xs"
           style={{ color: textColors[role] || "#ffffff" }}
         >
-          {format(parseISO(start), "h:mm a")} -{" "}
-          {format(parseISO(end), "h:mm a")}
+          {formatInTimeZone(start, "UTC", "h:mm a")} -{" "}
+          {formatInTimeZone(end, "UTC", "h:mm a")}
         </Text>
       </View>
 
