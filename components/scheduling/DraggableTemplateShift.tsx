@@ -13,6 +13,7 @@ import { TemplateShiftChip } from "./TemplateShiftChip"; // Assuming TemplateShi
 
 interface DraggableTemplateShiftProps {
   shift: TemplateShift;
+  wage?: number;
   onShiftClick: (shift: TemplateShift) => void;
   wage: number; // Assuming template shifts can also have a wage for display
   onShiftDrop: (
@@ -24,6 +25,7 @@ interface DraggableTemplateShiftProps {
 
 export const DraggableTemplateShift: React.FC<DraggableTemplateShiftProps> = ({
   shift,
+  wage,
   onShiftClick,
   wage,
   onShiftDrop,
