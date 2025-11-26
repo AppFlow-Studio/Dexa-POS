@@ -48,12 +48,12 @@ export function ShiftActionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#1C1C1E] border-gray-700">
+      <DialogContent className="w-[450px] bg-[#1C1C1E] border-gray-700 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">{title}</DialogTitle>
         </DialogHeader>
 
-        <View className="py-4 gap-y-4">
+        <View className="py-6 gap-y-4">
           <View className="flex-row items-center gap-x-4">
             <View className="px-3 py-1 bg-gray-700 rounded-full">
               <Text className="text-white font-semibold">{shift.role}</Text>

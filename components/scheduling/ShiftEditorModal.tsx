@@ -15,20 +15,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Role, Shift, TemplateShift } from "@/lib/types"; // Import TemplateShift
-import { addDays, format, parse, parseISO } from "date-fns"; // Import addDays
+import BottomSheet from "@gorhom/bottom-sheet";
+import {
+  addDays,
+  differenceInMinutes,
+  format,
+  isValid,
+  parse,
+  parseISO,
+} from "date-fns"; // Import addDays
 import { formatInTimeZone } from "date-fns-tz";
 import { AlertCircle, Copy } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { RefObject, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
   Switch,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import uuid from "react-native-uuid"; // Import uuid
+import { TimePickerBottomSheet } from "./TimePickerBottomSheet";
 
 interface ShiftEditorModalProps {
   open: boolean;
@@ -80,16 +90,6 @@ const getPlaceholderDate = (dayOfWeek: number): string => {
   return format(addDays(baseDate, dayOfWeek), "yyyy-MM-dd");
 };
 
-const timeSlots = Array.from({ length: 48 }, (_, i) => {
-  const hours = Math.floor(i / 2);
-  const minutes = (i % 2) * 30;
-  const time24 = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(
-    2,
-    "0"
-  )}`;
-  return format(parse(time24, "HH:mm", new Date()), "h:mm a");
-});
-
 export function ShiftEditorModal({
   open,
   onOpenChange,
@@ -109,6 +109,7 @@ export function ShiftEditorModal({
   const [lockAssignment, setLockAssignment] = useState(false);
   const [allowOpenClaims, setAllowOpenClaims] = useState(true);
   const [errors, setErrors] = useState<string[]>([]);
+  const [durationError, setDurationError] = useState<string | null>(null);
   const [breakMinutes, setBreakMinutes] = useState(30);
   const [expectedPace, setExpectedPace] = useState<
     "Moderate" | "Busy" | "Calm"
@@ -117,12 +118,15 @@ export function ShiftEditorModal({
     "May need help" | "Fully staffed"
   >("Fully staffed");
 
+  const startTimeSheetRef = useRef<BottomSheet>(null);
+  const endTimeSheetRef = useRef<BottomSheet>(null);
+
   useEffect(() => {
     if (open) {
       // Only reset when modal opens
       if (shift) {
         // Editing existing shift or template shift
-        setRole("Cashier");
+        setRole(shift.role || "Cashier");
         setNotes(shift.managerNote || shift.notes || "");
         setBreakMinutes(shift.breakMinutes || 30);
         setExpectedPace(shift.expectedPace || "Moderate");
@@ -182,18 +186,33 @@ export function ShiftEditorModal({
     }
   }, [shift, open, isTemplateMode, dayOfWeek]);
 
-  const validateShift = () => {
-    const newErrors: string[] = [];
+  useEffect(() => {
+    if (!startTime || !endTime) return;
     const start = parseISO(startTime);
     const end = parseISO(endTime);
-    const durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+    if (!isValid(start) || !isValid(end)) return;
 
-    if (durationMinutes < 0)
-      newErrors.push("End time must be after start time");
-    if (durationMinutes < 4 * 60)
-      newErrors.push("Shift must be at least 4 hours");
-    if (durationMinutes > 8 * 60) newErrors.push("Shift cannot exceed 8 hours");
-    if (!role) newErrors.push("Role is required");
+    const duration = differenceInMinutes(end, start);
+
+    if (duration > 0 && duration < 240) {
+      setDurationError("Shift must be at least 4 hours.");
+    } else if (duration > 480) {
+      setDurationError("Shift cannot exceed 8 hours.");
+    } else if (duration <= 0) {
+      setDurationError("End time must be after start time.");
+    } else {
+      setDurationError(null);
+    }
+  }, [startTime, endTime]);
+
+  const validateShift = () => {
+    const newErrors: string[] = [];
+    if (durationError) {
+      newErrors.push(durationError);
+    }
+    if (!role) {
+      newErrors.push("Role is required");
+    }
 
     setErrors(newErrors);
     return newErrors.length === 0;
@@ -201,40 +220,37 @@ export function ShiftEditorModal({
 
   const handleSave = () => {
     if (!validateShift()) return;
+    const commonData = {
+      role,
+      startTime,
+      endTime,
+      notes: isTemplateMode ? notes : undefined,
+      managerNote: !isTemplateMode ? notes : undefined,
+      breakMinutes,
+      expectedPace,
+      staffingLevel,
+    };
     if (isTemplateMode) {
-      const templateShift: TemplateShift = {
-        tempId: shift?.tempId || (uuid.v4() as string), // Use existing tempId or generate new
-        employeeId: shift?.employeeId || null,
+      onSave({
+        ...shift,
+        ...commonData,
+        tempId: shift?.tempId || (uuid.v4() as string),
         dayOfWeek:
           dayOfWeek !== undefined
             ? dayOfWeek
             : shift?.dayOfWeek !== undefined
               ? shift.dayOfWeek
-              : parseISO(startTime).getUTCDay(), // Use getUTCDay for safety
-        role,
-        startTime,
-        endTime,
-        notes,
-        breakMinutes,
-        expectedPace,
-        staffingLevel,
-      };
-      onSave(templateShift); // Pass TemplateShift data
+              : parseISO(startTime).getUTCDay(),
+      });
     } else {
       onSave({
+        ...shift,
+        ...commonData,
         id: shift?.id,
-        employeeId: shift?.employeeId,
         periodId,
-        role,
         date,
-        startTime: startTime,
-        endTime: endTime,
-        managerNote: notes,
         locked: lockAssignment,
-        location: "Dexa – 5th Ave", //Update it once location logic is made
-        breakMinutes,
-        expectedPace,
-        staffingLevel,
+        location: "Dexa – 5th Ave", // Placeholder
       });
     }
     onOpenChange(false);
@@ -345,7 +361,7 @@ export function ShiftEditorModal({
               </Select>
             </View>
 
-            {!isTemplateMode && ( // Hide Date field in template mode
+            {!isTemplateMode && (
               <View className="gap-y-2 mb-2">
                 <Text className="text-gray-300 font-semibold">Date</Text>
                 <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
@@ -366,55 +382,30 @@ export function ShiftEditorModal({
                 <Text className="text-gray-300 font-semibold">
                   Start Time *
                 </Text>
-                <Select
-                  onValueChange={(option) =>
-                    option && setStartTime(combineToISO(date, option.value))
-                  }
-                  value={{
-                    label: formatTo12Hour(startTime),
-                    value: formatTo12Hour(startTime),
-                  }}
+                <TouchableOpacity
+                  onPress={() => startTimeSheetRef.current?.expand()}
+                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg justify-center"
                 >
-                  <SelectTrigger className="bg-[#212121]">
-                    <SelectValue
-                      placeholder="Select a time..."
-                      className="text-white"
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#212121] border-gray-600">
-                    <ScrollView className="h-full">
-                      {timeSlots.map((time) => (
-                        <SelectItem key={time} label={time} value={time} />
-                      ))}
-                    </ScrollView>
-                  </SelectContent>
-                </Select>
+                  <Text className="text-white text-base">
+                    {formatTo12Hour(startTime)}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View className="flex-1 gap-y-2">
                 <Text className="text-gray-300 font-semibold">End Time *</Text>
-                <Select
-                  onValueChange={(option) =>
-                    option && setEndTime(combineToISO(date, option.value))
-                  }
-                  value={{
-                    label: formatTo12Hour(endTime),
-                    value: formatTo12Hour(endTime),
-                  }}
+                <TouchableOpacity
+                  onPress={() => endTimeSheetRef.current?.expand()}
+                  className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg justify-center"
                 >
-                  <SelectTrigger className="bg-[#212121]">
-                    <SelectValue
-                      placeholder="Select a time..."
-                      className="text-white"
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#212121] border-gray-600">
-                    <ScrollView className="h-full">
-                      {timeSlots.map((time) => (
-                        <SelectItem key={time} label={time} value={time} />
-                      ))}
-                    </ScrollView>
-                  </SelectContent>
-                </Select>
+                  <Text className="text-white text-base">
+                    {formatTo12Hour(endTime)}
+                  </Text>
+                </TouchableOpacity>
+                {durationError && (
+                  <Text className="text-red-400 text-xs mt-1">
+                    {durationError}
+                  </Text>
+                )}
               </View>
             </View>
 
@@ -547,11 +538,32 @@ export function ShiftEditorModal({
             <Button
               onPress={handleSave}
               className="bg-blue-600 hover:bg-blue-700"
+              disabled={!!durationError}
             >
               <Text className="text-white font-semibold">Save Shift</Text>
             </Button>
           </View>
         </DialogFooter>
+        <TimePickerBottomSheet
+          bottomSheetRef={startTimeSheetRef as RefObject<BottomSheet>}
+          initialTime={formatTo12Hour(startTime)}
+          onDone={(time) => {
+            setStartTime(combineToISO(date, time));
+            startTimeSheetRef.current?.close();
+          }}
+          onClose={() => startTimeSheetRef.current?.close()}
+          title="Select Start Time"
+        />
+        <TimePickerBottomSheet
+          bottomSheetRef={endTimeSheetRef as RefObject<BottomSheet>}
+          initialTime={formatTo12Hour(endTime)}
+          onDone={(time) => {
+            setEndTime(combineToISO(date, time));
+            endTimeSheetRef.current?.close();
+          }}
+          onClose={() => endTimeSheetRef.current?.close()}
+          title="Select End Time"
+        />
       </DialogContent>
     </Dialog>
   );
