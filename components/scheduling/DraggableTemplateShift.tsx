@@ -15,7 +15,6 @@ interface DraggableTemplateShiftProps {
   shift: TemplateShift;
   wage?: number;
   onShiftClick: (shift: TemplateShift) => void;
-  wage: number; // Assuming template shifts can also have a wage for display
   onShiftDrop: (
     shift: TemplateShift,
     newEmployeeId: string,
@@ -27,7 +26,6 @@ export const DraggableTemplateShift: React.FC<DraggableTemplateShiftProps> = ({
   shift,
   wage,
   onShiftClick,
-  wage,
   onShiftDrop,
 }) => {
   const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey, dropResult } =

@@ -6,6 +6,8 @@ import { create } from "zustand";
 interface NewTableData {
   name: string;
   shapeId: keyof typeof TABLE_SHAPES;
+  x?: number; // Make x optional
+  y?: number; // Make y optional
 }
 
 interface FloorPlanState {
@@ -21,6 +23,7 @@ interface FloorPlanState {
 
   // Table Actions (now require layoutId)
   addTable: (layoutId: string, tableData: NewTableData) => void;
+  updateTableName: (layoutId: string, tableId: string, newName: string) => void;
   addMultipleTables: (
     layoutId: string,
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
@@ -203,11 +206,18 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     const activeLayout = get().layouts.find((l) => l.id === layoutId);
     if (!activeLayout) return;
 
-    // *** SMART PLACEMENT LOGIC ***
-    const newPosition = findNextAvailablePosition(activeLayout.tables, {
-      width: shape.width,
-      height: shape.height,
-    });
+    let finalX = tableData.x;
+    let finalY = tableData.y;
+
+    // If x or y are not provided, find the next available position
+    if (finalX === undefined || finalY === undefined) {
+      const newPosition = findNextAvailablePosition(activeLayout.tables, {
+        width: shape.width,
+        height: shape.height,
+      });
+      finalX = newPosition.x;
+      finalY = newPosition.y;
+    }
 
     const newTable: TableType = {
       id: `${layoutId}_table_${Date.now()}`,
@@ -215,8 +225,8 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       capacity: shape.capacity,
       component: shape.component,
       status: shape.type === "table" ? "Available" : "Not in Service",
-      x: newPosition.x, // Use the calculated position
-      y: newPosition.y, // Use the calculated position
+      x: finalX!, // Use the determined position
+      y: finalY!, // Use the determined position
       rotation: 0,
       order: null,
       type: shape.type,
@@ -226,6 +236,21 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
       layouts: state.layouts.map((layout) =>
         layout.id === layoutId
           ? { ...layout, tables: [...layout.tables, newTable] }
+          : layout
+      ),
+    }));
+  },
+
+  updateTableName: (layoutId, tableId, newName) => {
+    set((state) => ({
+      layouts: state.layouts.map((layout) =>
+        layout.id === layoutId
+          ? {
+              ...layout,
+              tables: layout.tables.map((t) =>
+                t.id === tableId ? { ...t, name: newName } : t
+              ),
+            }
           : layout
       ),
     }));

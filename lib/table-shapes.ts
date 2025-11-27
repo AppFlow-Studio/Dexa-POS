@@ -17,6 +17,8 @@ import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
 import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
 import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
 import WallSection from "@/components/tables/svg/WallSection";
+import ZoneRectangle from "@/components/tables/svg/ZoneRectangle"; // Import new component
+import TextLabel from "@/components/tables/svg/TextLabel"; // Import new component
 
 // This object is now the single source of truth for your available table shapes
 export const TABLE_SHAPES = {
@@ -28,6 +30,7 @@ export const TABLE_SHAPES = {
     width: 79,
     height: 97,
     type: "table" as const,
+    category: "table",
   },
   "square-4": {
     label: "4-Seater Square",
@@ -36,6 +39,7 @@ export const TABLE_SHAPES = {
     width: 97,
     height: 97,
     type: "table" as const,
+    category: "table",
   },
   "rectangle-4": {
     label: "4-Seater Rectangle",
@@ -44,6 +48,7 @@ export const TABLE_SHAPES = {
     width: 140,
     height: 90,
     type: "table" as const,
+    category: "table",
   },
   "rectangle-6": {
     label: "6-Seater Rectangle",
@@ -52,6 +57,7 @@ export const TABLE_SHAPES = {
     width: 180,
     height: 90,
     type: "table" as const,
+    category: "table",
   },
   "square-8": {
     label: "8-Seater Long",
@@ -60,6 +66,7 @@ export const TABLE_SHAPES = {
     width: 208,
     height: 97,
     type: "table" as const,
+    category: "table",
   },
   "circle-2": {
     label: "2-Seater Circle",
@@ -68,6 +75,7 @@ export const TABLE_SHAPES = {
     width: 80,
     height: 80,
     type: "table" as const,
+    category: "table",
   },
   "circle-4": {
     label: "4-Seater Circle",
@@ -76,6 +84,7 @@ export const TABLE_SHAPES = {
     width: 90,
     height: 90,
     type: "table" as const,
+    category: "table",
   },
   "circle-6": {
     label: "6-Seater Circle",
@@ -84,6 +93,7 @@ export const TABLE_SHAPES = {
     width: 120,
     height: 120,
     type: "table" as const,
+    category: "table",
   },
   "high-top-2": {
     label: "2-Seater High-Top",
@@ -92,6 +102,7 @@ export const TABLE_SHAPES = {
     width: 60,
     height: 60,
     type: "table" as const,
+    category: "table",
   },
 
   // --- Booths ---
@@ -102,6 +113,7 @@ export const TABLE_SHAPES = {
     width: 70,
     height: 90,
     type: "table" as const,
+    category: "booth",
   },
   "booth-4": {
     label: "4-Person Booth",
@@ -110,6 +122,7 @@ export const TABLE_SHAPES = {
     width: 120,
     height: 90,
     type: "table" as const,
+    category: "booth",
   },
 
   // --- Functional Objects ---
@@ -120,6 +133,7 @@ export const TABLE_SHAPES = {
     width: 170,
     height: 100,
     type: "static-object" as const,
+    category: "functional",
   },
   "cashier-stand": {
     label: "Cashier Stand",
@@ -128,6 +142,7 @@ export const TABLE_SHAPES = {
     width: 100,
     height: 100,
     type: "static-object" as const,
+    category: "functional",
   },
   "host-stand": {
     label: "Host Stand",
@@ -136,6 +151,7 @@ export const TABLE_SHAPES = {
     width: 40,
     height: 35,
     type: "static-object" as const,
+    category: "functional",
   },
   "server-station": {
     label: "Server Station",
@@ -144,6 +160,7 @@ export const TABLE_SHAPES = {
     width: 60,
     height: 40,
     type: "static-object" as const,
+    category: "functional",
   },
   "kitchen-pass": {
     label: "Kitchen Pass",
@@ -152,6 +169,7 @@ export const TABLE_SHAPES = {
     width: 180,
     height: 25,
     type: "static-object" as const,
+    category: "functional",
   },
 
   // --- Architectural & Decorative ---
@@ -162,6 +180,7 @@ export const TABLE_SHAPES = {
     width: 200,
     height: 10,
     type: "static-object" as const,
+    category: "structure",
   },
   pillar: {
     label: "Pillar",
@@ -170,6 +189,7 @@ export const TABLE_SHAPES = {
     width: 40,
     height: 40,
     type: "static-object" as const,
+    category: "structure",
   },
   plant: {
     label: "Decorative Plant",
@@ -178,6 +198,26 @@ export const TABLE_SHAPES = {
     width: 50,
     height: 50,
     type: "static-object" as const,
+    category: "decor",
+  },
+  // --- Zone & Label Placeholders ---
+  "zone-rectangle": {
+    label: "Zone",
+    component: ZoneRectangle,
+    capacity: 0,
+    width: 200,
+    height: 200,
+    type: "static-object" as const,
+    category: "zone",
+  },
+  "label-text": {
+    label: "Text Label",
+    component: TextLabel,
+    capacity: 0,
+    width: 100,
+    height: 50,
+    type: "static-object" as const,
+    category: "zone",
   },
 };
 
