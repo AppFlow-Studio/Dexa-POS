@@ -14,8 +14,16 @@ import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import { default as React, useEffect, useMemo, useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { FlatList, ScrollView, TextInput } from "react-native-gesture-handler";
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import POVendorsSheet from "./_compoenets/POVendorsSheet";
 
@@ -226,170 +234,178 @@ const CreatePurchaseOrderScreen = () => {
 
   return (
     <>
-      <ScrollView
-        bounces={false}
-        className="flex-1 flex-grow h-full"
-        contentContainerStyle={{ flexGrow: 1 }}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
       >
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-2xl font-bold text-white">
-            Create Purchase Order
-          </Text>
-          <View className="flex-row gap-2">
-            <TouchableOpacity
-              onPress={() => router.back()}
-              className="py-3 px-4 bg-gray-600 rounded-lg"
-            >
-              <Text className="text-xl font-bold text-white">Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSave}
-              className="py-3 px-4 bg-gray-600 rounded-lg"
-            >
-              <Text className="text-xl font-bold text-white">Save Draft</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleSubmit}
-              className="py-3 px-4 bg-blue-600 rounded-lg"
-            >
-              <Text className="text-xl font-bold text-white">Submit</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
-          <Text className="text-lg font-medium text-gray-300 mb-1.5">
-            Vendor
-          </Text>
-          <TouchableOpacity
-            className="h-fit border border-gray-600 border-dashed rounded-lg p-3"
-            onPress={() => vendorsSheetRef.current?.expand()}
-          >
-            <Text className="text-xl text-white">
-              {selectedVendorId
-                ? vendorOptions.find((v) => v.value === selectedVendorId)?.label
-                : "Select a vendor..."}
+        <ScrollView
+          bounces={false}
+          className="flex-1 flex-grow h-full"
+          contentContainerStyle={{ flexGrow: 1 }}
+        >
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-2xl font-bold text-white">
+              Create Purchase Order
             </Text>
-          </TouchableOpacity>
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => router.back()}
+                className="py-3 px-4 bg-gray-600 rounded-lg"
+              >
+                <Text className="text-xl font-bold text-white">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSave}
+                className="py-3 px-4 bg-gray-600 rounded-lg"
+              >
+                <Text className="text-xl font-bold text-white">Save Draft</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                className="py-3 px-4 bg-blue-600 rounded-lg"
+              >
+                <Text className="text-xl font-bold text-white">Submit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-          <View className="mt-4">
+          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
             <Text className="text-lg font-medium text-gray-300 mb-1.5">
-              Assigned Employee
+              Vendor
             </Text>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
-                  <View className="flex-row items-center">
-                    <User color="#9CA3AF" size={18} className="mr-1.5" />
-                    <Text className="text-xl text-white">
-                      {selectedEmployeeId
-                        ? employees.find((e) => e.id === selectedEmployeeId)
-                            ?.fullName
-                        : "Select..."}
-                    </Text>
-                  </View>
-                  <ChevronDown color="#9CA3AF" size={18} />
-                </TouchableOpacity>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
-                {employees.map((employee) => (
-                  <DropdownMenuItem
-                    key={employee.id}
-                    onPress={() => setSelectedEmployeeId(employee.id)}
-                    className="flex-row items-center p-2"
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <View className="w-7 h-7 bg-blue-600 rounded-full items-center justify-center mr-2">
-                        <Text className="text-white text-xs font-semibold">
-                          {employee.fullName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()}
-                        </Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-white text-base font-medium">
-                          {employee.fullName}
-                        </Text>
-                        <Text className="text-gray-400 text-xs">
-                          {employee.shiftStatus === "clocked_in"
-                            ? "Clocked In"
-                            : "Clocked Out"}
-                        </Text>
-                      </View>
-                      {selectedEmployeeId === employee.id && (
-                        <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
-                      )}
-                    </View>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </View>
-
-          <View className="mt-4">
-            <Text className="text-xl font-semibold text-white mb-1.5">
-              Items
-            </Text>
-            <FlatList
-              data={lineItems}
-              keyExtractor={(item) => item.inventoryItemId}
-              renderItem={({ item }) => {
-                const invItem = inventoryItems.find(
-                  (i) => i.id === item.inventoryItemId
-                );
-                return (
-                  <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
-                    <Text className="text-xl text-white flex-1">
-                      {invItem?.name}
-                    </Text>
-                    <View className="flex-row items-center gap-x-1.5 w-36">
-                      <TextInput
-                        value={item.quantity.toString()}
-                        onChangeText={(text) =>
-                          handleQuantityChange(item.inventoryItemId, text)
-                        }
-                        keyboardType="number-pad"
-                        className="w-16 bg-[#212121] border border-gray-500 rounded-lg text-lg text-white text-center h-10"
-                      />
-                      <Text className="text-lg text-gray-300">
-                        {invItem?.unit}
-                      </Text>
-                    </View>
-                    <Text className="text-lg text-gray-300 w-36">
-                      ${(item.cost * item.quantity).toFixed(2)}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleRemoveLineItem(item.inventoryItemId)}
-                    >
-                      <Trash2 color="#EF4444" size={20} />
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
-              ListEmptyComponent={
-                <Text className="text-lg text-gray-400 text-center py-4">
-                  No items added yet.
-                </Text>
-              }
-            />
             <TouchableOpacity
-              disabled={!selectedVendorId}
-              onPress={() => itemsSheetRef.current?.expand()}
-              className={`mt-3 py-2 border border-dashed rounded-lg items-center ${
-                selectedVendorId
-                  ? "border-gray-500"
-                  : "border-gray-700 opacity-50"
-              }`}
+              className="h-fit border border-gray-600 border-dashed rounded-lg p-3"
+              onPress={() => vendorsSheetRef.current?.expand()}
             >
-              <Text className="text-lg font-semibold text-gray-300">
-                + Add Item
+              <Text className="text-xl text-white">
+                {selectedVendorId
+                  ? vendorOptions.find((v) => v.value === selectedVendorId)
+                      ?.label
+                  : "Select a vendor..."}
               </Text>
             </TouchableOpacity>
+
+            <View className="mt-4">
+              <Text className="text-lg font-medium text-gray-300 mb-1.5">
+                Assigned Employee
+              </Text>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+                    <View className="flex-row items-center">
+                      <User color="#9CA3AF" size={18} className="mr-1.5" />
+                      <Text className="text-xl text-white">
+                        {selectedEmployeeId
+                          ? employees.find((e) => e.id === selectedEmployeeId)
+                              ?.fullName
+                          : "Select..."}
+                      </Text>
+                    </View>
+                    <ChevronDown color="#9CA3AF" size={18} />
+                  </TouchableOpacity>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+                  {employees.map((employee) => (
+                    <DropdownMenuItem
+                      key={employee.id}
+                      onPress={() => setSelectedEmployeeId(employee.id)}
+                      className="flex-row items-center p-2"
+                    >
+                      <View className="flex-row items-center flex-1">
+                        <View className="w-7 h-7 bg-blue-600 rounded-full items-center justify-center mr-2">
+                          <Text className="text-white text-xs font-semibold">
+                            {employee.fullName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-white text-base font-medium">
+                            {employee.fullName}
+                          </Text>
+                          <Text className="text-gray-400 text-xs">
+                            {employee.shiftStatus === "clocked_in"
+                              ? "Clocked In"
+                              : "Clocked Out"}
+                          </Text>
+                        </View>
+                        {selectedEmployeeId === employee.id && (
+                          <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                        )}
+                      </View>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </View>
+
+            <View className="mt-4">
+              <Text className="text-xl font-semibold text-white mb-1.5">
+                Items
+              </Text>
+              <FlatList
+                data={lineItems}
+                keyExtractor={(item) => item.inventoryItemId}
+                renderItem={({ item }) => {
+                  const invItem = inventoryItems.find(
+                    (i) => i.id === item.inventoryItemId
+                  );
+                  return (
+                    <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
+                      <Text className="text-xl text-white flex-1">
+                        {invItem?.name}
+                      </Text>
+                      <View className="flex-row items-center gap-x-1.5 w-36">
+                        <TextInput
+                          value={item.quantity.toString()}
+                          onChangeText={(text) =>
+                            handleQuantityChange(item.inventoryItemId, text)
+                          }
+                          keyboardType="number-pad"
+                          className="w-16 bg-[#212121] border border-gray-500 rounded-lg text-lg text-white text-center h-10"
+                        />
+                        <Text className="text-lg text-gray-300">
+                          {invItem?.unit}
+                        </Text>
+                      </View>
+                      <Text className="text-lg text-gray-300 w-36">
+                        ${(item.cost * item.quantity).toFixed(2)}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() =>
+                          handleRemoveLineItem(item.inventoryItemId)
+                        }
+                      >
+                        <Trash2 color="#EF4444" size={20} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={
+                  <Text className="text-lg text-gray-400 text-center py-4">
+                    No items added yet.
+                  </Text>
+                }
+              />
+              <TouchableOpacity
+                disabled={!selectedVendorId}
+                onPress={() => itemsSheetRef.current?.expand()}
+                className={`mt-3 py-2 border border-dashed rounded-lg items-center ${
+                  selectedVendorId
+                    ? "border-gray-500"
+                    : "border-gray-700 opacity-50"
+                }`}
+              >
+                <Text className="text-lg font-semibold text-gray-300">
+                  + Add Item
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <BottomSheet
         ref={itemsSheetRef}
@@ -399,187 +415,196 @@ const CreatePurchaseOrderScreen = () => {
         handleIndicatorStyle={{ backgroundColor: "#666" }}
       >
         <BottomSheetView className="h-full flex-grow flex-1">
-          <View className="px-3 pt-1 pb-2 border-b border-gray-700 flex-row items-center justify-between">
-            <Text className="text-white text-lg font-bold">Select Item</Text>
-            <View className="flex-row items-center justify-between gap-1.5">
-              <View className="w-1/2 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
-                <Search color="#9CA3AF" size={16} />
-                <TextInput
-                  value={itemSearch}
-                  onChangeText={setItemSearch}
-                  placeholder="Search..."
-                  className="text-white h-10 w-full text-sm"
-                />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <View className="px-3 pt-1 pb-2 border-b border-gray-700 flex-row items-center justify-between">
+              <Text className="text-white text-lg font-bold">Select Item</Text>
+              <View className="flex-row items-center justify-between gap-1.5">
+                <View className="w-1/2 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
+                  <Search color="#9CA3AF" size={16} />
+                  <TextInput
+                    value={itemSearch}
+                    onChangeText={setItemSearch}
+                    placeholder="Search..."
+                    className="text-white h-10 w-full text-sm"
+                  />
+                </View>
+                <Button
+                  onPress={() => setNewItemModalOpen(true)}
+                  className="bg-blue-600 border flex-row items-center gap-1.5 border-blue-500 px-2 py-1"
+                >
+                  <Plus color="#fff" size={18} />
+                  <Text className="text-white text-sm">New</Text>
+                </Button>
               </View>
-              <Button
-                onPress={() => setNewItemModalOpen(true)}
-                className="bg-blue-600 border flex-row items-center gap-1.5 border-blue-500 px-2 py-1"
-              >
-                <Plus color="#fff" size={18} />
-                <Text className="text-white text-sm">New</Text>
-              </Button>
             </View>
-          </View>
 
-          <View className="px-3 py-2">
-            {!selectedVendorId ? (
-              <Text className="text-gray-400 text-sm">Select a vendor.</Text>
-            ) : vendorItems.length === 0 ? (
-              <Text className="text-gray-400 text-sm">
-                No items for this vendor.
-              </Text>
-            ) : (
-              <>
-                {selectedInventoryItemId && (
-                  <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#303030]">
-                    <Text className="text-white mb-1.5 text-base font-semibold">
-                      Qty -{" "}
-                      {
-                        vendorItems.find(
-                          (i) => i.id === selectedInventoryItemId
-                        )?.name
-                      }{" "}
-                      (
-                      {
-                        vendorItems.find(
-                          (i) => i.id === selectedInventoryItemId
-                        )?.unit
-                      }
-                      )
-                    </Text>
-                    <TextInput
-                      keyboardType="number-pad"
-                      value={selectedQuantity}
-                      onChangeText={setSelectedQuantity}
-                      placeholder="Quantity"
-                      className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 mb-2 h-16"
-                    />
-                    <Button
-                      onPress={addSelectedItemToPO}
-                      className="bg-blue-600 border border-blue-500 py-1.5"
-                    >
-                      <Text className="text-white text-sm">Add to PO</Text>
-                    </Button>
-                  </View>
-                )}
-                <FlatList
-                  data={filteredVendorItems}
-                  contentContainerStyle={{ paddingBottom: 50 }}
-                  keyExtractor={(i: any) => i.id}
-                  renderItem={({ item }: { item: any }) => (
-                    <TouchableOpacity
-                      onPress={() => setSelectedInventoryItemId(item.id)}
-                      className="p-3 border-b border-gray-700"
-                    >
-                      <View className="flex-row justify-between items-center">
-                        <View className="flex-1 pr-2">
-                          <Text className="text-white text-base font-semibold">
-                            {item.name}
-                          </Text>
-                          <Text className="text-gray-400 text-xs">
-                            Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}
+            <View className="px-3 py-2 flex-1">
+              {!selectedVendorId ? (
+                <Text className="text-gray-400 text-sm">Select a vendor.</Text>
+              ) : vendorItems.length === 0 ? (
+                <Text className="text-gray-400 text-sm">
+                  No items for this vendor.
+                </Text>
+              ) : (
+                <>
+                  {selectedInventoryItemId && (
+                    <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#303030]">
+                      <Text className="text-white mb-1.5 text-base font-semibold">
+                        Qty -{" "}
+                        {
+                          vendorItems.find(
+                            (i) => i.id === selectedInventoryItemId
+                          )?.name
+                        }{" "}
+                        (
+                        {
+                          vendorItems.find(
+                            (i) => i.id === selectedInventoryItemId
+                          )?.unit
+                        }
+                        )
+                      </Text>
+                      <TextInput
+                        keyboardType="number-pad"
+                        value={selectedQuantity}
+                        onChangeText={setSelectedQuantity}
+                        placeholder="Quantity"
+                        className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 mb-2 h-16"
+                      />
+                      <Button
+                        onPress={addSelectedItemToPO}
+                        className="bg-blue-600 border border-blue-500 py-1.5"
+                      >
+                        <Text className="text-white text-sm">Add to PO</Text>
+                      </Button>
+                    </View>
+                  )}
+                  <FlatList
+                    data={filteredVendorItems}
+                    contentContainerStyle={{ paddingBottom: 50 }}
+                    keyExtractor={(i: any) => i.id}
+                    renderItem={({ item }: { item: any }) => (
+                      <TouchableOpacity
+                        onPress={() => setSelectedInventoryItemId(item.id)}
+                        className="p-3 border-b border-gray-700"
+                      >
+                        <View className="flex-row justify-between items-center">
+                          <View className="flex-1 pr-2">
+                            <Text className="text-white text-base font-semibold">
+                              {item.name}
+                            </Text>
+                            <Text className="text-gray-400 text-xs">
+                              Unit: {item.unit} • Cost: ${item.cost.toFixed(2)}
+                            </Text>
+                          </View>
+                          <Text className="text-gray-300 text-sm">
+                            Stock: {item.stockQuantity}
                           </Text>
                         </View>
-                        <Text className="text-gray-300 text-sm">
-                          Stock: {item.stockQuantity}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  )}
-                  ListEmptyComponent={
-                    <Text className="text-gray-400 px-3 py-4">
-                      No items match.
-                    </Text>
-                  }
-                />
-              </>
-            )}
-          </View>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                      <Text className="text-gray-400 px-3 py-4">
+                        No items match.
+                      </Text>
+                    }
+                  />
+                </>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </BottomSheetView>
       </BottomSheet>
 
       <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
         <DialogContent>
-          <ScrollView
-            bounces={false}
-            className="rounded-2xl h-fit p-4 w-[550px]"
-            style={{
-              backgroundColor: "#2b2b2b",
-              borderWidth: 1,
-              borderColor: "#4b5563",
-            }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
-            <Text className="text-white text-xl font-bold mb-3">
-              Add Inventory Item
-            </Text>
-            <View className="gap-y-2">
-              <Text className="text-gray-300 text-sm">Vendor</Text>
-              <View className="bg-[#303030] border border-gray-700 rounded-lg p-2">
-                <Text className="text-white text-base">
-                  {
-                    vendorOptions.find((v) => v.value === selectedVendorId)
-                      ?.label
-                  }
-                </Text>
-              </View>
-              <Text className="text-gray-300 mt-2 text-sm">Name</Text>
-              <TextInput
-                value={newItemName}
-                onChangeText={setNewItemName}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
-              <TextInput
-                value={newItemUnit}
-                onChangeText={setNewItemUnit}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                value={newItemCost}
-                onChangeText={setNewItemCost}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemStock}
-                onChangeText={setNewItemStock}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemReorder}
-                onChangeText={setNewItemReorder}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <Text className="text-gray-300 mt-2 text-sm">PO Qty</Text>
-              <TextInput
-                keyboardType="number-pad"
-                value={newItemPOQty}
-                onChangeText={setNewItemPOQty}
-                className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-              />
-              <View className="flex-row gap-2 mt-3">
-                <TouchableOpacity
-                  onPress={() => setNewItemModalOpen(false)}
-                  className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
-                >
-                  <Text className="text-gray-300 text-base">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCreateNewItem}
-                  className="flex-1 py-2 rounded-lg bg-blue-600 border border-blue-500 items-center"
-                >
-                  <Text className="text-white text-base font-semibold">
-                    Add
+            <ScrollView
+              bounces={false}
+              className="rounded-2xl h-fit p-4 w-[550px]"
+              style={{
+                backgroundColor: "#2b2b2b",
+                borderWidth: 1,
+                borderColor: "#4b5563",
+              }}
+            >
+              <Text className="text-white text-xl font-bold mb-3">
+                Add Inventory Item
+              </Text>
+              <View className="gap-y-2">
+                <Text className="text-gray-300 text-sm">Vendor</Text>
+                <View className="bg-[#303030] border border-gray-700 rounded-lg p-2">
+                  <Text className="text-white text-base">
+                    {
+                      vendorOptions.find((v) => v.value === selectedVendorId)
+                        ?.label
+                    }
                   </Text>
-                </TouchableOpacity>
+                </View>
+                <Text className="text-gray-300 mt-2 text-sm">Name</Text>
+                <TextInput
+                  value={newItemName}
+                  onChangeText={setNewItemName}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
+                <TextInput
+                  value={newItemUnit}
+                  onChangeText={setNewItemUnit}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
+                <TextInput
+                  keyboardType="decimal-pad"
+                  value={newItemCost}
+                  onChangeText={setNewItemCost}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  value={newItemStock}
+                  onChangeText={setNewItemStock}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  value={newItemReorder}
+                  onChangeText={setNewItemReorder}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <Text className="text-gray-300 mt-2 text-sm">PO Qty</Text>
+                <TextInput
+                  keyboardType="number-pad"
+                  value={newItemPOQty}
+                  onChangeText={setNewItemPOQty}
+                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                />
+                <View className="flex-row gap-2 mt-3">
+                  <TouchableOpacity
+                    onPress={() => setNewItemModalOpen(false)}
+                    className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
+                  >
+                    <Text className="text-gray-300 text-base">Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleCreateNewItem}
+                    className="flex-1 py-2 rounded-lg bg-blue-600 border border-blue-500 items-center"
+                  >
+                    <Text className="text-white text-base font-semibold">
+                      Add
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </DialogContent>
       </Dialog>
       <POVendorsSheet

@@ -31,7 +31,9 @@ import {
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
   Modal,
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -359,15 +361,14 @@ const InventoryScreen = () => {
     setBulkInventoryReorderThreshold("");
   };
   const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
   return (
@@ -456,17 +457,17 @@ const InventoryScreen = () => {
                     ? header === "Name"
                       ? "w-[20%]"
                       : header === "Vendor"
-                      ? "w-fit"
-                      : header === "In Stock"
-                      ? "w-[20%]"
-                      : header === "Reorder Point"
-                      ? "w-[15%]"
-                      : "w-[15%]"
+                        ? "w-fit"
+                        : header === "In Stock"
+                          ? "w-[20%]"
+                          : header === "Reorder Point"
+                            ? "w-[15%]"
+                            : "w-[15%]"
                     : header === "Select"
-                    ? "w-[6%]"
-                    : header === "Name"
-                    ? "w-[22%]"
-                    : "w-[12%]"
+                      ? "w-[6%]"
+                      : header === "Name"
+                        ? "w-[22%]"
+                        : "w-[12%]"
                 }`}
               >
                 {header === "Select" ? (
@@ -690,169 +691,186 @@ const InventoryScreen = () => {
           animationType="fade"
           onRequestClose={handleCloseStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-4">
-            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
-              <Text className="text-xl font-bold text-white mb-3">
-                Update Stock - {selectedMenuItem?.name}
-              </Text>
-              <View className="mb-3">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Stock Quantity
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <View className="flex-1 bg-black/50 justify-center items-center px-4">
+              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+                <Text className="text-xl font-bold text-white mb-3">
+                  Update Stock - {selectedMenuItem?.name}
                 </Text>
-                <TextInput
-                  value={stockQuantity}
-                  onChangeText={setStockQuantity}
-                  placeholder="Enter quantity"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="mb-4">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Reorder Threshold
-                </Text>
-                <TextInput
-                  value={reorderThreshold}
-                  onChangeText={setReorderThreshold}
-                  placeholder="Enter threshold"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="flex-row gap-2">
-                <TouchableOpacity
-                  onPress={handleCloseStockModal}
-                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Cancel
+                <View className="mb-3">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Stock Quantity
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveStock}
-                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Save
+                  <TextInput
+                    value={stockQuantity}
+                    onChangeText={setStockQuantity}
+                    placeholder="Enter quantity"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="mb-4">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Reorder Threshold
                   </Text>
-                </TouchableOpacity>
+                  <TextInput
+                    value={reorderThreshold}
+                    onChangeText={setReorderThreshold}
+                    placeholder="Enter threshold"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={handleCloseStockModal}
+                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleSaveStock}
+                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Save
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
+        {/* --- MODAL 2: BULK INVENTORY STOCK UPDATE --- */}
         <Modal
           visible={isBulkInventoryStockModalOpen}
           transparent
           animationType="fade"
           onRequestClose={handleCloseBulkInventoryStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-4">
-            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
-              <Text className="text-xl font-bold text-white mb-3">
-                Update Stock ({selectedInventoryIds.length} items)
-              </Text>
-              <View className="mb-3">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Stock Quantity
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <View className="flex-1 bg-black/50 justify-center items-center px-4">
+              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+                <Text className="text-xl font-bold text-white mb-3">
+                  Update Stock ({selectedInventoryIds.length} items)
                 </Text>
-                <TextInput
-                  value={bulkInventoryStockQuantity}
-                  onChangeText={setBulkInventoryStockQuantity}
-                  placeholder="(Optional)"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="mb-4">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Reorder Threshold
-                </Text>
-                <TextInput
-                  value={bulkInventoryReorderThreshold}
-                  onChangeText={setBulkInventoryReorderThreshold}
-                  placeholder="(Optional)"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="flex-row gap-2">
-                <TouchableOpacity
-                  onPress={handleCloseBulkInventoryStockModal}
-                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Cancel
+                <View className="mb-3">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Stock Quantity
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveBulkInventoryStock}
-                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Save
+                  <TextInput
+                    value={bulkInventoryStockQuantity}
+                    onChangeText={setBulkInventoryStockQuantity}
+                    placeholder="(Optional)"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="mb-4">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Reorder Threshold
                   </Text>
-                </TouchableOpacity>
+                  <TextInput
+                    value={bulkInventoryReorderThreshold}
+                    onChangeText={setBulkInventoryReorderThreshold}
+                    placeholder="(Optional)"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={handleCloseBulkInventoryStockModal}
+                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleSaveBulkInventoryStock}
+                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Save
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
+        {/* --- MODAL 3: BULK MENU STOCK UPDATE --- */}
         <Modal
           visible={isBulkStockModalOpen}
           transparent
           animationType="fade"
           onRequestClose={handleCloseBulkStockModal}
         >
-          <View className="flex-1 bg-black/50 justify-center items-center px-4">
-            <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
-              <Text className="text-xl font-bold text-white mb-3">
-                Update Stock ({selectedMenuIds.length} items)
-              </Text>
-              <View className="mb-3">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Stock Quantity
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <View className="flex-1 bg-black/50 justify-center items-center px-4">
+              <View className="bg-[#303030] rounded-xl p-4 w-full max-w-sm">
+                <Text className="text-xl font-bold text-white mb-3">
+                  Update Stock ({selectedMenuIds.length} items)
                 </Text>
-                <TextInput
-                  value={bulkStockQuantity}
-                  onChangeText={setBulkStockQuantity}
-                  placeholder="(Optional)"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="mb-4">
-                <Text className="text-base text-gray-300 mb-1.5">
-                  Reorder Threshold
-                </Text>
-                <TextInput
-                  value={bulkReorderThreshold}
-                  onChangeText={setBulkReorderThreshold}
-                  placeholder="(Optional)"
-                  keyboardType="numeric"
-                  className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
-                />
-              </View>
-              <View className="flex-row gap-2">
-                <TouchableOpacity
-                  onPress={handleCloseBulkStockModal}
-                  className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Cancel
+                <View className="mb-3">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Stock Quantity
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleSaveBulkStock}
-                  className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold text-center">
-                    Save
+                  <TextInput
+                    value={bulkStockQuantity}
+                    onChangeText={setBulkStockQuantity}
+                    placeholder="(Optional)"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="mb-4">
+                  <Text className="text-base text-gray-300 mb-1.5">
+                    Reorder Threshold
                   </Text>
-                </TouchableOpacity>
+                  <TextInput
+                    value={bulkReorderThreshold}
+                    onChangeText={setBulkReorderThreshold}
+                    placeholder="(Optional)"
+                    keyboardType="numeric"
+                    className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2 text-white text-base h-16"
+                  />
+                </View>
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={handleCloseBulkStockModal}
+                    className="flex-1 py-2 px-3 bg-gray-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleSaveBulkStock}
+                    className="flex-1 py-2 px-3 bg-blue-600 rounded-lg"
+                  >
+                    <Text className="text-white text-base font-semibold text-center">
+                      Save
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         <BottomSheet

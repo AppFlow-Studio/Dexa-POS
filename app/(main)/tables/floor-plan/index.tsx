@@ -12,6 +12,8 @@ import { Edit, Plus, Trash2 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -50,40 +52,44 @@ const LayoutNameModal = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
-        <DialogHeader>
-          <DialogTitle className="text-white text-2xl">{title}</DialogTitle>
-        </DialogHeader>
-        <View className="py-3">
-          <Text className="text-lg text-gray-300 font-medium mb-1.5">
-            Room Name
-          </Text>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g., Main Dining, Patio"
-            placeholderTextColor="#9CA3AF"
-            className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-            autoFocus
-          />
-        </View>
-        <DialogFooter className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-gray-300">
-              Cancel
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">{title}</DialogTitle>
+          </DialogHeader>
+          <View className="py-3">
+            <Text className="text-lg text-gray-300 font-medium mb-1.5">
+              Room Name
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="flex-1 py-3 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-white">
-              Save
-            </Text>
-          </TouchableOpacity>
-        </DialogFooter>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g., Main Dining, Patio"
+              placeholderTextColor="#9CA3AF"
+              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+              autoFocus
+            />
+          </View>
+          <DialogFooter className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-gray-300">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              className="flex-1 py-3 bg-blue-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-white">
+                Save
+              </Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

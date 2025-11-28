@@ -16,7 +16,9 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView, // <--- Imported
   Modal,
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -178,274 +180,281 @@ const AddMenuScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1 p-4">
-        <Text className="text-2xl font-bold text-white mb-4">
-          Create New Menu
-        </Text>
-
-        {/* Menu Name Input */}
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Menu Name
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <ScrollView className="flex-1 p-4">
+          <Text className="text-2xl font-bold text-white mb-4">
+            Create New Menu
           </Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            placeholder="e.g., Lunch Menu, Dinner Specials"
-            placeholderTextColor="#9CA3AF"
-            value={menuName}
-            onChangeText={setMenuName}
-            autoFocus
-          />
-        </View>
 
-        {/* Menu Description Input */}
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Description (Optional)
-          </Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            placeholder="Describe this menu..."
-            placeholderTextColor="#9CA3AF"
-            value={menuDescription}
-            onChangeText={setMenuDescription}
-            multiline
-            numberOfLines={3}
-          />
-        </View>
-        <View className="flex-row items-center justify-end mb-3">
-          <TouchableOpacity
-            onPress={() => router.push("/menu/add-category")}
-            className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
-          >
-            <Plus size={18} color="white" />
-            <Text className="text-base text-white font-medium ml-1">
-              Add Category
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Available Categories */}
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-xl font-semibold text-white">
-              Select Categories
-            </Text>
-            <Text className="text-lg text-gray-400">
-              {selectedCategories.length} of {availableCategories.length}{" "}
-              selected
-            </Text>
-          </View>
-
-          {availableCategories.length === 0 ? (
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
-              <Utensils size={36} color="#9CA3AF" />
-              <Text className="text-xl text-gray-400 text-center mt-3">
-                No categories available.
-              </Text>
-              <Text className="text-base text-gray-500 text-center mt-1.5">
-                Create categories to add them to menus.
-              </Text>
-            </View>
-          ) : (
-            <View className="gap-3">
-              {availableCategories.map((category) => {
-                const isSelected = selectedCategories.includes(category.name);
-                const isExpanded = expandedCategories.includes(category.name);
-                const categoryItems = getItemsInCategory(category.name);
-
-                return (
-                  <View
-                    key={category.id}
-                    className={`bg-[#303030] rounded-lg border ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-900/20"
-                        : "border-gray-700"
-                    }`}
-                  >
-                    <TouchableOpacity
-                      onPress={() => toggleCategorySelection(category.name)}
-                      className="p-4"
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-1">
-                          <View className="flex-row items-center gap-2 mb-1.5">
-                            <Text className="text-white font-medium text-2xl">
-                              {category.name}
-                            </Text>
-                            <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
-                              <Text className="text-lg text-gray-300">
-                                {categoryItems.length} items
-                              </Text>
-                            </View>
-                          </View>
-
-                          {!isExpanded && categoryItems.length > 0 && (
-                            <View className="flex-row flex-wrap gap-1.5 w-full">
-                              {categoryItems.slice(0, 3).map((item, index) => (
-                                <View
-                                  key={index}
-                                  className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
-                                >
-                                  <Text className="text-lg text-gray-300">
-                                    {item.name}
-                                  </Text>
-                                </View>
-                              ))}
-                              {categoryItems.length > 3 && (
-                                <TouchableOpacity
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    toggleCategoryExpansion(category.name);
-                                  }}
-                                  className="bg-blue-600/30 border border-blue-500 px-2.5 py-1.5 rounded"
-                                >
-                                  <Text className="text-lg text-blue-300">
-                                    +{categoryItems.length - 3} more
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          )}
-                        </View>
-
-                        <View className="flex-row items-center gap-1.5">
-                          {categoryItems.length > 3 && (
-                            <TouchableOpacity
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                toggleCategoryExpansion(category.name);
-                              }}
-                              className="p-1.5"
-                            >
-                              {isExpanded ? (
-                                <ChevronUp size={20} color="#9CA3AF" />
-                              ) : (
-                                <ChevronDown size={20} color="#9CA3AF" />
-                              )}
-                            </TouchableOpacity>
-                          )}
-
-                          <View
-                            className={`w-7 h-7 rounded-full border-2 items-center justify-center ${
-                              isSelected
-                                ? "bg-blue-600 border-blue-600"
-                                : "border-gray-500"
-                            }`}
-                          >
-                            {isSelected && <Check size={18} color="white" />}
-                          </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-
-                    {isExpanded && categoryItems.length > 0 && (
-                      <View className="border-t border-gray-700 p-4 bg-[#2a2a2a]">
-                        <Text className="text-lg text-gray-400 font-medium mb-2">
-                          All Items in {category.name}:
-                        </Text>
-                        <View className="flex-row flex-wrap gap-2 w-full">
-                          {categoryItems.map((item, index) => (
-                            <View
-                              key={index}
-                              className="bg-gray-600/30 border w-[24%] border-gray-500 px-3 py-2 rounded-lg flex-row items-center gap-2"
-                            >
-                              <View className="w-8 h-8 rounded border border-gray-600 overflow-hidden">
-                                {getImageSource(item.image) ? (
-                                  <Image
-                                    source={getImageSource(item.image)}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <View className="w-full h-full bg-gray-600 items-center justify-center">
-                                    <Utensils color="#9ca3af" size={18} />
-                                  </View>
-                                )}
-                              </View>
-                              <View className="flex-1">
-                                <Text className="text-white text-lg font-medium">
-                                  {item.name}
-                                </Text>
-                                <Text className="text-gray-400 text-base">
-                                  ${item.price.toFixed(2)}
-                                </Text>
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {selectedCategories.length > 0 && (
+          {/* Menu Name Input */}
           <View className="mb-4">
             <Text className="text-xl font-semibold text-white mb-2">
-              Selected Categories ({selectedCategories.length})
+              Menu Name
             </Text>
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
-              <View className="flex-row flex-wrap gap-1.5">
-                {selectedCategories.map((categoryName) => (
-                  <View
-                    key={categoryName}
-                    className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
-                  >
-                    <Text className="text-blue-400 text-lg font-medium">
-                      {categoryName}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => toggleCategorySelection(categoryName)}
-                      className="ml-1.5"
+            <TextInput
+              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              placeholder="e.g., Lunch Menu, Dinner Specials"
+              placeholderTextColor="#9CA3AF"
+              value={menuName}
+              onChangeText={setMenuName}
+              autoFocus
+            />
+          </View>
+
+          {/* Menu Description Input */}
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Description (Optional)
+            </Text>
+            <TextInput
+              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              placeholder="Describe this menu..."
+              placeholderTextColor="#9CA3AF"
+              value={menuDescription}
+              onChangeText={setMenuDescription}
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+          <View className="flex-row items-center justify-end mb-3">
+            <TouchableOpacity
+              onPress={() => router.push("/menu/add-category")}
+              className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
+            >
+              <Plus size={18} color="white" />
+              <Text className="text-base text-white font-medium ml-1">
+                Add Category
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Available Categories */}
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-xl font-semibold text-white">
+                Select Categories
+              </Text>
+              <Text className="text-lg text-gray-400">
+                {selectedCategories.length} of {availableCategories.length}{" "}
+                selected
+              </Text>
+            </View>
+
+            {availableCategories.length === 0 ? (
+              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4 items-center">
+                <Utensils size={36} color="#9CA3AF" />
+                <Text className="text-xl text-gray-400 text-center mt-3">
+                  No categories available.
+                </Text>
+                <Text className="text-base text-gray-500 text-center mt-1.5">
+                  Create categories to add them to menus.
+                </Text>
+              </View>
+            ) : (
+              <View className="gap-3">
+                {availableCategories.map((category) => {
+                  const isSelected = selectedCategories.includes(category.name);
+                  const isExpanded = expandedCategories.includes(category.name);
+                  const categoryItems = getItemsInCategory(category.name);
+
+                  return (
+                    <View
+                      key={category.id}
+                      className={`bg-[#303030] rounded-lg border ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-900/20"
+                          : "border-gray-700"
+                      }`}
                     >
-                      <X size={16} color="#60A5FA" />
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => toggleCategorySelection(category.name)}
+                        className="p-4"
+                      >
+                        <View className="flex-row items-center justify-between">
+                          <View className="flex-1">
+                            <View className="flex-row items-center gap-2 mb-1.5">
+                              <Text className="text-white font-medium text-2xl">
+                                {category.name}
+                              </Text>
+                              <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
+                                <Text className="text-lg text-gray-300">
+                                  {categoryItems.length} items
+                                </Text>
+                              </View>
+                            </View>
+
+                            {!isExpanded && categoryItems.length > 0 && (
+                              <View className="flex-row flex-wrap gap-1.5 w-full">
+                                {categoryItems
+                                  .slice(0, 3)
+                                  .map((item, index) => (
+                                    <View
+                                      key={index}
+                                      className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
+                                    >
+                                      <Text className="text-lg text-gray-300">
+                                        {item.name}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                {categoryItems.length > 3 && (
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      toggleCategoryExpansion(category.name);
+                                    }}
+                                    className="bg-blue-600/30 border border-blue-500 px-2.5 py-1.5 rounded"
+                                  >
+                                    <Text className="text-lg text-blue-300">
+                                      +{categoryItems.length - 3} more
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            )}
+                          </View>
+
+                          <View className="flex-row items-center gap-1.5">
+                            {categoryItems.length > 3 && (
+                              <TouchableOpacity
+                                onPress={(e) => {
+                                  e.stopPropagation();
+                                  toggleCategoryExpansion(category.name);
+                                }}
+                                className="p-1.5"
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp size={20} color="#9CA3AF" />
+                                ) : (
+                                  <ChevronDown size={20} color="#9CA3AF" />
+                                )}
+                              </TouchableOpacity>
+                            )}
+
+                            <View
+                              className={`w-7 h-7 rounded-full border-2 items-center justify-center ${
+                                isSelected
+                                  ? "bg-blue-600 border-blue-600"
+                                  : "border-gray-500"
+                              }`}
+                            >
+                              {isSelected && <Check size={18} color="white" />}
+                            </View>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+
+                      {isExpanded && categoryItems.length > 0 && (
+                        <View className="border-t border-gray-700 p-4 bg-[#2a2a2a]">
+                          <Text className="text-lg text-gray-400 font-medium mb-2">
+                            All Items in {category.name}:
+                          </Text>
+                          <View className="flex-row flex-wrap gap-2 w-full">
+                            {categoryItems.map((item, index) => (
+                              <View
+                                key={index}
+                                className="bg-gray-600/30 border w-[24%] border-gray-500 px-3 py-2 rounded-lg flex-row items-center gap-2"
+                              >
+                                <View className="w-8 h-8 rounded border border-gray-600 overflow-hidden">
+                                  {getImageSource(item.image) ? (
+                                    <Image
+                                      source={getImageSource(item.image)}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <View className="w-full h-full bg-gray-600 items-center justify-center">
+                                      <Utensils color="#9ca3af" size={18} />
+                                    </View>
+                                  )}
+                                </View>
+                                <View className="flex-1">
+                                  <Text className="text-white text-lg font-medium">
+                                    {item.name}
+                                  </Text>
+                                  <Text className="text-gray-400 text-base">
+                                    ${item.price.toFixed(2)}
+                                  </Text>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {selectedCategories.length > 0 && (
+            <View className="mb-4">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Selected Categories ({selectedCategories.length})
+              </Text>
+              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
+                <View className="flex-row flex-wrap gap-1.5">
+                  {selectedCategories.map((categoryName) => (
+                    <View
+                      key={categoryName}
+                      className="flex-row items-center bg-blue-600/20 border border-blue-500 px-3 py-2 rounded-lg"
+                    >
+                      <Text className="text-blue-400 text-lg font-medium">
+                        {categoryName}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => toggleCategorySelection(categoryName)}
+                        className="ml-1.5"
+                      >
+                        <X size={16} color="#60A5FA" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
+
+          {selectedCategories.length > 0 && (
+            <View className="mb-4">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Menu Preview ({totalItems} items)
+              </Text>
+              <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
+                {Object.entries(previewItems).map(([categoryName, items]) => (
+                  <View key={categoryName} className="mb-3 last:mb-0">
+                    <Text className="text-blue-400 font-medium mb-1.5 text-lg">
+                      {categoryName} ({items.length} items)
+                    </Text>
+                    <View className="flex-row flex-wrap gap-1.5">
+                      {items.slice(0, 5).map((item, index) => (
+                        <View
+                          key={index}
+                          className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
+                        >
+                          <Text className="text-lg text-gray-300">
+                            {item.name}
+                          </Text>
+                        </View>
+                      ))}
+                      {items.length > 5 && (
+                        <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
+                          <Text className="text-lg text-gray-300">
+                            +{items.length - 5} more
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                 ))}
               </View>
             </View>
-          </View>
-        )}
-
-        {selectedCategories.length > 0 && (
-          <View className="mb-4">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Menu Preview ({totalItems} items)
-            </Text>
-            <View className="bg-[#303030] border border-gray-600 rounded-lg p-4">
-              {Object.entries(previewItems).map(([categoryName, items]) => (
-                <View key={categoryName} className="mb-3 last:mb-0">
-                  <Text className="text-blue-400 font-medium mb-1.5 text-lg">
-                    {categoryName} ({items.length} items)
-                  </Text>
-                  <View className="flex-row flex-wrap gap-1.5">
-                    {items.slice(0, 5).map((item, index) => (
-                      <View
-                        key={index}
-                        className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded"
-                      >
-                        <Text className="text-lg text-gray-300">
-                          {item.name}
-                        </Text>
-                      </View>
-                    ))}
-                    {items.length > 5 && (
-                      <View className="bg-gray-600/30 border border-gray-500 px-2.5 py-1.5 rounded">
-                        <Text className="text-lg text-gray-300">
-                          +{items.length - 5} more
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={showConfirmation}

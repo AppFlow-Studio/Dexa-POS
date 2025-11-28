@@ -10,7 +10,14 @@ import {
   Utensils,
 } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 // Define the types for our state
 type ReceiptOption = "alwaysPrint" | "alwaysAsk" | "neverPrint";
@@ -78,72 +85,77 @@ const ReceiptAndTippingRulesScreen = () => {
 
         {/* Main Content */}
         <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
-          {/* Main Content Area */}
-          <View className="flex-1 gap-y-4">
-            {/* Tipping Settings */}
-            <View className="bg-[#212121] p-4 pt-3 rounded-2xl border border-gray-600">
-              <SettingsHeader
-                title="Enable Tipping"
-                value={isTippingEnabled}
-                onValueChange={setTippingEnabled}
-              />
-              <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
-                {isTippingEnabled && (
-                  <View className="flex-row gap-3">
-                    <TextInput
-                      value={tip1}
-                      onChangeText={setTip1}
-                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
-                      keyboardType="numeric"
-                      placeholderTextColor="#9CA3AF"
-                    />
-                    <TextInput
-                      value={tip2}
-                      onChangeText={setTip2}
-                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
-                      keyboardType="numeric"
-                      placeholderTextColor="#9CA3AF"
-                    />
-                    <TextInput
-                      value={tip3}
-                      onChangeText={setTip3}
-                      className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
-                      keyboardType="numeric"
-                      placeholderTextColor="#9CA3AF"
-                    />
-                  </View>
-                )}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            {/* Main Content Area */}
+            <View className="flex-1 gap-y-4">
+              {/* Tipping Settings */}
+              <View className="bg-[#212121] p-4 pt-3 rounded-2xl border border-gray-600">
+                <SettingsHeader
+                  title="Enable Tipping"
+                  value={isTippingEnabled}
+                  onValueChange={setTippingEnabled}
+                />
+                <View className="bg-[#303030] p-4 rounded-2xl border border-gray-600">
+                  {isTippingEnabled && (
+                    <View className="flex-row gap-3">
+                      <TextInput
+                        value={tip1}
+                        onChangeText={setTip1}
+                        className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
+                        keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
+                      />
+                      <TextInput
+                        value={tip2}
+                        onChangeText={setTip2}
+                        className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
+                        keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
+                      />
+                      <TextInput
+                        value={tip3}
+                        onChangeText={setTip3}
+                        className="flex-1 p-3 bg-[#212121] rounded-lg text-xl font-semibold text-white border border-gray-600 h-16"
+                        keyboardType="numeric"
+                        placeholderTextColor="#9CA3AF"
+                      />
+                    </View>
+                  )}
+                </View>
               </View>
+
+              {/* Receipt Printing Settings */}
+              <SettingsCard title="Automatic Receipt Printing">
+                <View className="gap-y-3">
+                  <RadioButton
+                    label="Always Print Receipt"
+                    isSelected={receiptOption === "alwaysPrint"}
+                    onPress={() => setReceiptOption("alwaysPrint")}
+                  />
+                  <RadioButton
+                    label="Always Ask Customer"
+                    isSelected={receiptOption === "alwaysAsk"}
+                    onPress={() => setReceiptOption("alwaysAsk")}
+                  />
+                  <RadioButton
+                    label="Never Print (Email Only)"
+                    isSelected={receiptOption === "neverPrint"}
+                    onPress={() => setReceiptOption("neverPrint")}
+                  />
+                </View>
+              </SettingsCard>
             </View>
 
-            {/* Receipt Printing Settings */}
-            <SettingsCard title="Automatic Receipt Printing">
-              <View className="gap-y-3">
-                <RadioButton
-                  label="Always Print Receipt"
-                  isSelected={receiptOption === "alwaysPrint"}
-                  onPress={() => setReceiptOption("alwaysPrint")}
-                />
-                <RadioButton
-                  label="Always Ask Customer"
-                  isSelected={receiptOption === "alwaysAsk"}
-                  onPress={() => setReceiptOption("alwaysAsk")}
-                />
-                <RadioButton
-                  label="Never Print (Email Only)"
-                  isSelected={receiptOption === "neverPrint"}
-                  onPress={() => setReceiptOption("neverPrint")}
-                />
-              </View>
-            </SettingsCard>
-          </View>
-
-          {/* Footer */}
-          <View className="flex-row justify-start pt-3 border-t border-gray-600">
-            <TouchableOpacity className="px-6 py-3 bg-blue-500 rounded-lg">
-              <Text className="text-xl font-bold text-white">Save</Text>
-            </TouchableOpacity>
-          </View>
+            {/* Footer */}
+            <View className="flex-row justify-start pt-3 border-t border-gray-600">
+              <TouchableOpacity className="px-6 py-3 bg-blue-500 rounded-lg">
+                <Text className="text-xl font-bold text-white">Save</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </View>
     </View>

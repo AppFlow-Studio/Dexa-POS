@@ -9,7 +9,14 @@ import {
   Utensils,
 } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const DiningOptionsScreen = () => {
   const { defaultSittingTimeMinutes, setDefaultSittingTimeMinutes } =
@@ -88,35 +95,40 @@ const DiningOptionsScreen = () => {
           currentRoute="/settings/store-operation/dining-options"
         />
         <View className="flex-1 bg-[#303030] rounded-2xl border border-gray-600 p-4">
-          <Text className="text-2xl font-bold text-white mb-1">
-            Dining Options
-          </Text>
-          <Text className="text-lg text-gray-400 mb-4">
-            Configure rules for table seating and duration.
-          </Text>
-
-          <View className="bg-[#212121] p-4 rounded-lg border border-gray-700">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Default Sitting Time
-            </Text>
-            <Text className="text-base text-gray-400 mb-3">
-              Set a time limit in minutes. Overdue tables will be highlighted.
-            </Text>
-            <TextInput
-              value={timeInput}
-              onChangeText={setTimeInput}
-              keyboardType="number-pad"
-              placeholder="e.g., 60"
-              placeholderTextColor="#9CA3AF"
-              className="w-full p-3 border border-gray-600 rounded-lg text-lg text-white h-16"
-            />
-          </View>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="mt-4 py-3 px-6 bg-blue-600 rounded-lg self-start"
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
           >
-            <Text className="text-xl font-bold text-white">Save Changes</Text>
-          </TouchableOpacity>
+            <Text className="text-2xl font-bold text-white mb-1">
+              Dining Options
+            </Text>
+            <Text className="text-lg text-gray-400 mb-4">
+              Configure rules for table seating and duration.
+            </Text>
+
+            <View className="bg-[#212121] p-4 rounded-lg border border-gray-700">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Default Sitting Time
+              </Text>
+              <Text className="text-base text-gray-400 mb-3">
+                Set a time limit in minutes. Overdue tables will be highlighted.
+              </Text>
+              <TextInput
+                value={timeInput}
+                onChangeText={setTimeInput}
+                keyboardType="number-pad"
+                placeholder="e.g., 60"
+                placeholderTextColor="#9CA3AF"
+                className="w-full p-3 border border-gray-600 rounded-lg text-lg text-white h-16"
+              />
+            </View>
+            <TouchableOpacity
+              onPress={handleSave}
+              className="mt-4 py-3 px-6 bg-blue-600 rounded-lg self-start"
+            >
+              <Text className="text-xl font-bold text-white">Save Changes</Text>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
         </View>
       </View>
     </View>

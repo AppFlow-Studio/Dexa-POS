@@ -5,7 +5,14 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Edit3, Plus, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Dialog,
@@ -279,56 +286,60 @@ const OrderDetails: React.FC = () => {
         onOpenChange={setIsCustomerNameModalVisible}
       >
         <DialogContent className="p-0 rounded-t-lg rounded-b-2xl border w-[500px] bg-[#11111A] border-none">
-          {/* Dark Header */}
-          <View className="p-6 rounded-lg ">
-            <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
-              {customerName ? "Edit Customer Name" : "Add Customer Name"}
-            </DialogTitle>
-          </View>
-
-          {/* White Content */}
-          <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
-            <DialogHeader>
-              <Text className="text-accent-500 text-2xl text-center mb-4">
-                Enter the customer's name for this order
-              </Text>
-            </DialogHeader>
-
-            {/* Customer Name Input */}
-            <View className="mb-6">
-              <Text className="text-accent-500 text-xl font-semibold mb-2">
-                Customer Name
-              </Text>
-              <TextInput
-                className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
-                placeholder="Enter customer name"
-                placeholderTextColor="#9CA3AF"
-                value={tempCustomerName}
-                onChangeText={setTempCustomerName}
-                autoFocus
-              />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            {/* Dark Header */}
+            <View className="p-6 rounded-lg ">
+              <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
+                {customerName ? "Edit Customer Name" : "Add Customer Name"}
+              </DialogTitle>
             </View>
 
-            {/* Footer with Buttons */}
-            <DialogFooter className="flex-row gap-4">
-              <TouchableOpacity
-                onPress={handleCancelCustomerName}
-                className="flex-1 py-4 border border-gray-300 rounded-lg"
-              >
-                <Text className="font-bold text-2xl text-gray-700 text-center">
-                  Cancel
+            {/* White Content */}
+            <View className="rounded-t-lg rounded-b-lg p-6 bg-background-100">
+              <DialogHeader>
+                <Text className="text-accent-500 text-2xl text-center mb-4">
+                  Enter the customer's name for this order
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSaveCustomerName}
-                className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
-              >
-                <Text className="font-bold text-2xl text-gray-800 text-center">
-                  {customerName ? "Update" : "Add"}
+              </DialogHeader>
+
+              {/* Customer Name Input */}
+              <View className="mb-6">
+                <Text className="text-accent-500 text-xl font-semibold mb-2">
+                  Customer Name
                 </Text>
-              </TouchableOpacity>
-            </DialogFooter>
-          </View>
+                <TextInput
+                  className="w-full p-4 border border-background-400 rounded-lg text-2xl text-accent-500 h-20"
+                  placeholder="Enter customer name"
+                  placeholderTextColor="#9CA3AF"
+                  value={tempCustomerName}
+                  onChangeText={setTempCustomerName}
+                  autoFocus
+                />
+              </View>
+
+              {/* Footer with Buttons */}
+              <DialogFooter className="flex-row gap-4">
+                <TouchableOpacity
+                  onPress={handleCancelCustomerName}
+                  className="flex-1 py-4 border border-gray-300 rounded-lg"
+                >
+                  <Text className="font-bold text-2xl text-gray-700 text-center">
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveCustomerName}
+                  className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
+                >
+                  <Text className="font-bold text-2xl text-gray-800 text-center">
+                    {customerName ? "Update" : "Add"}
+                  </Text>
+                </TouchableOpacity>
+              </DialogFooter>
+            </View>
+          </KeyboardAvoidingView>
         </DialogContent>
       </Dialog>
     </View>

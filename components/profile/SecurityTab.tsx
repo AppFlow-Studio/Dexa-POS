@@ -2,7 +2,14 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { zodResolver } from "@hookform/resolvers/zod";
 import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { z } from "zod";
 
 // Zod schemas for validation
@@ -124,7 +131,9 @@ const SecurityTab = () => {
   }
 
   return (
-    <View>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <SectionRow
         label="Email"
         value={currentEmployee.email || "Not set"}
@@ -283,7 +292,7 @@ const SecurityTab = () => {
           </TouchableOpacity>
         </View>
       </SectionRow>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -2,7 +2,14 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { ChevronDown, Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const FormInput = ({ label, value, onChangeText, ...props }: any) => (
   <View className="flex-1">
@@ -129,7 +136,10 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   }
 
   return (
-    <View className="p-3 bg-[#303030] rounded-lg border border-gray-600">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="p-3 bg-[#303030] rounded-lg border border-gray-600"
+    >
       <View className="gap-y-3">
         <View className="flex-row gap-3">
           <FormInput
@@ -205,7 +215,7 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
           size={20}
         />
       </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

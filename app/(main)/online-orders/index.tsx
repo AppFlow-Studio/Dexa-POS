@@ -5,7 +5,13 @@ import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Href, Link } from "expo-router";
 import { Search, Table, X } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 
 const PARTNERS = ["All", "Door Dash", "grubhub", "Uber-Eats", "Food Panda"];
@@ -72,11 +78,14 @@ const OnlineOrdersScreen = () => {
     }
 
     // Group by status for Kanban columns
-    return filtered.reduce((acc, order) => {
-      if (!acc[order.status]) acc[order.status] = [];
-      acc[order.status].push(order);
-      return acc;
-    }, {} as Record<string, typeof orders>);
+    return filtered.reduce(
+      (acc, order) => {
+        if (!acc[order.status]) acc[order.status] = [];
+        acc[order.status].push(order);
+        return acc;
+      },
+      {} as Record<string, typeof orders>
+    );
   }, [orders, activePartner, dateRange]);
 
   const filteredForSearch = useMemo(() => {
@@ -191,148 +200,159 @@ const OnlineOrdersScreen = () => {
         onClose={handleSheetClose}
         enablePanDownToClose
       >
-        <BottomSheetScrollView contentContainerStyle={{ padding: 12 }}>
-          <View className="flex-row justify-between items-center mb-3">
-            <Text className="text-white text-xl font-bold">
-              Search Online Orders
-            </Text>
-            <TouchableOpacity onPress={closeSearchSheet} className="p-2">
-              <X size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          </View>
-          <View className="gap-y-2 mb-3">
-            <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
-              <Text className="text-gray-400 mt-2 mb-1 text-sm">
-                Customer Name
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <BottomSheetScrollView contentContainerStyle={{ padding: 12 }}>
+            <View className="flex-row justify-between items-center mb-3">
+              <Text className="text-white text-xl font-bold">
+                Search Online Orders
               </Text>
-              <TextInput
-                value={searchCustomer}
-                onChangeText={setSearchCustomer}
-                placeholder="e.g. John Smith"
-                className="text-white text-base py-2"
-                placeholderTextColor={"#9CA3AF"}
-              />
+              <TouchableOpacity onPress={closeSearchSheet} className="p-2">
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
-            <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
-              <Text className="text-gray-400 mt-2 mb-1 text-sm">Order ID</Text>
-              <TextInput
-                value={searchOrderId}
-                onChangeText={setSearchOrderId}
-                placeholder="#45654"
-                className="text-white text-base py-2"
-                placeholderTextColor={"#9CA3AF"}
-              />
-            </View>
-            <View>
-              <Text className="text-gray-400 mb-1.5 text-sm">Service</Text>
-              <View className="flex-row flex-wrap gap-1.5">
-                {PARTNERS.map((partner) => (
-                  <TouchableOpacity
-                    key={`filter_${partner}`}
-                    onPress={() => setSearchPartner(partner)}
-                    className={`px-2 py-1.5 rounded-lg border ${
-                      searchPartner === partner
-                        ? "bg-blue-900/30 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                    }`}
-                  >
-                    <Text
-                      className={`text-sm ${
+            <View className="gap-y-2 mb-3">
+              <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+                <Text className="text-gray-400 mt-2 mb-1 text-sm">
+                  Customer Name
+                </Text>
+                <TextInput
+                  value={searchCustomer}
+                  onChangeText={setSearchCustomer}
+                  placeholder="e.g. John Smith"
+                  className="text-white text-base py-2"
+                  placeholderTextColor={"#9CA3AF"}
+                />
+              </View>
+              <View className="bg-[#303030] border border-gray-600 rounded-xl px-3">
+                <Text className="text-gray-400 mt-2 mb-1 text-sm">
+                  Order ID
+                </Text>
+                <TextInput
+                  value={searchOrderId}
+                  onChangeText={setSearchOrderId}
+                  placeholder="#45654"
+                  className="text-white text-base py-2"
+                  placeholderTextColor={"#9CA3AF"}
+                />
+              </View>
+              <View>
+                <Text className="text-gray-400 mb-1.5 text-sm">Service</Text>
+                <View className="flex-row flex-wrap gap-1.5">
+                  {PARTNERS.map((partner) => (
+                    <TouchableOpacity
+                      key={`filter_${partner}`}
+                      onPress={() => setSearchPartner(partner)}
+                      className={`px-2 py-1.5 rounded-lg border ${
                         searchPartner === partner
-                          ? "text-blue-400"
-                          : "text-gray-300"
+                          ? "bg-blue-900/30 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
                       }`}
                     >
-                      {partner}
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        className={`text-sm ${
+                          searchPartner === partner
+                            ? "text-blue-400"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {partner}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            <View className="mt-1.5">
+              <Text className="text-gray-300 mb-2 text-sm">
+                Results ({filteredForSearch.length})
+              </Text>
+              <View className="gap-y-2">
+                {filteredForSearch.map((order) => (
+                  <View
+                    key={order.id}
+                    className="bg-[#303030] border border-gray-600 rounded-xl p-3"
+                  >
+                    <View className="flex-row justify-between items-start mb-2">
+                      <View>
+                        <Text className="text-white text-sm font-semibold">
+                          {order.id}
+                        </Text>
+                        <Text className="text-gray-300 text-xs">
+                          {order.customerName} • {order.deliveryPartner}
+                        </Text>
+                        <Text className="text-gray-400 text-[10px] mt-0.5">
+                          Status: {order.status}
+                        </Text>
+                      </View>
+                      <Text className="text-white font-semibold text-sm">
+                        ${order.total.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View className="flex-row flex-wrap gap-1.5">
+                      <TouchableOpacity
+                        onPress={() =>
+                          updateOrderStatus(order.id, "Confirmed/In-Process")
+                        }
+                        className="px-2 py-1.5 rounded-lg bg-green-600/20 border border-green-500/40"
+                      >
+                        <Text className="text-green-400 text-xs">Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => rejectOrder(order.id)}
+                        className="px-2 py-1.5 rounded-lg bg-red-600/20 border border-red-500/40"
+                      >
+                        <Text className="text-red-400 text-xs">Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          updateOrderStatus(order.id, "Ready to Dispatch")
+                        }
+                        className="px-2 py-1.5 rounded-lg bg-purple-600/20 border border-purple-500/40"
+                      >
+                        <Text className="text-purple-300 text-xs">Ready</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() =>
+                          updateOrderStatus(order.id, "Dispatched")
+                        }
+                        className="px-2 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
+                      >
+                        <Text className="text-blue-300 text-xs">
+                          Dispatched
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => archiveOrder(order.id)}
+                        className="px-2 py-1.5 rounded-lg bg-gray-600/20 border border-gray-500/40"
+                      >
+                        <Text className="text-gray-300 text-xs">Archive</Text>
+                      </TouchableOpacity>
+                      <Link
+                        href={
+                          `/online-orders/${order.id.replace("#", "")}` as Href
+                        }
+                        asChild
+                      >
+                        <TouchableOpacity
+                          onPress={() => {
+                            closeSearchSheet();
+                          }}
+                          className="px-2 py-1.5 rounded-lg bg-[#1f2937] border border-gray-600"
+                        >
+                          <Text className="text-white text-xs">Details</Text>
+                        </TouchableOpacity>
+                      </Link>
+                    </View>
+                  </View>
                 ))}
               </View>
             </View>
-          </View>
-
-          <View className="mt-1.5">
-            <Text className="text-gray-300 mb-2 text-sm">
-              Results ({filteredForSearch.length})
-            </Text>
-            <View className="gap-y-2">
-              {filteredForSearch.map((order) => (
-                <View
-                  key={order.id}
-                  className="bg-[#303030] border border-gray-600 rounded-xl p-3"
-                >
-                  <View className="flex-row justify-between items-start mb-2">
-                    <View>
-                      <Text className="text-white text-sm font-semibold">
-                        {order.id}
-                      </Text>
-                      <Text className="text-gray-300 text-xs">
-                        {order.customerName} • {order.deliveryPartner}
-                      </Text>
-                      <Text className="text-gray-400 text-[10px] mt-0.5">
-                        Status: {order.status}
-                      </Text>
-                    </View>
-                    <Text className="text-white font-semibold text-sm">
-                      ${order.total.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View className="flex-row flex-wrap gap-1.5">
-                    <TouchableOpacity
-                      onPress={() =>
-                        updateOrderStatus(order.id, "Confirmed/In-Process")
-                      }
-                      className="px-2 py-1.5 rounded-lg bg-green-600/20 border border-green-500/40"
-                    >
-                      <Text className="text-green-400 text-xs">Accept</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => rejectOrder(order.id)}
-                      className="px-2 py-1.5 rounded-lg bg-red-600/20 border border-red-500/40"
-                    >
-                      <Text className="text-red-400 text-xs">Reject</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        updateOrderStatus(order.id, "Ready to Dispatch")
-                      }
-                      className="px-2 py-1.5 rounded-lg bg-purple-600/20 border border-purple-500/40"
-                    >
-                      <Text className="text-purple-300 text-xs">Ready</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => updateOrderStatus(order.id, "Dispatched")}
-                      className="px-2 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/40"
-                    >
-                      <Text className="text-blue-300 text-xs">Dispatched</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => archiveOrder(order.id)}
-                      className="px-2 py-1.5 rounded-lg bg-gray-600/20 border border-gray-500/40"
-                    >
-                      <Text className="text-gray-300 text-xs">Archive</Text>
-                    </TouchableOpacity>
-                    <Link
-                      href={
-                        `/online-orders/${order.id.replace("#", "")}` as Href
-                      }
-                      asChild
-                    >
-                      <TouchableOpacity
-                        onPress={() => {
-                          closeSearchSheet();
-                        }}
-                        className="px-2 py-1.5 rounded-lg bg-[#1f2937] border border-gray-600"
-                      >
-                        <Text className="text-white text-xs">Details</Text>
-                      </TouchableOpacity>
-                    </Link>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        </BottomSheetScrollView>
+          </BottomSheetScrollView>
+        </KeyboardAvoidingView>
       </BottomSheet>
     </View>
   );

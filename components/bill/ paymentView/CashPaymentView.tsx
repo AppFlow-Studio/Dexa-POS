@@ -1,7 +1,14 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const CashPaymentView = () => {
   const {
@@ -49,7 +56,10 @@ const CashPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]"
+    >
       {/* Dark Header */}
       <View className="p-4">
         <Text className="text-2xl text-white font-bold text-center">
@@ -104,10 +114,16 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={amount}
                   onPress={() => handleSelectAmount(amount)}
-                  className={`py-2 px-4 rounded-lg border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                  className={`py-2 px-4 rounded-lg border ${
+                    isSelected
+                      ? "border-blue-500 bg-blue-900/30"
+                      : "border-gray-600"
+                  }`}
                 >
                   <Text
-                    className={`text-lg font-semibold ${isSelected ? "text-blue-400" : "text-gray-300"}`}
+                    className={`text-lg font-semibold ${
+                      isSelected ? "text-blue-400" : "text-gray-300"
+                    }`}
                   >
                     ${amount}
                   </Text>
@@ -116,10 +132,16 @@ const CashPaymentView = () => {
             })}
             <TouchableOpacity
               onPress={handleSelectExact}
-              className={`py-2 px-4 rounded-lg border ${selectedAmountId === "exact" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+              className={`py-2 px-4 rounded-lg border ${
+                selectedAmountId === "exact"
+                  ? "border-blue-500 bg-blue-600"
+                  : "border-gray-600"
+              }`}
             >
               <Text
-                className={`text-lg font-semibold ${selectedAmountId === "exact" ? "text-white" : "text-gray-300"}`}
+                className={`text-lg font-semibold ${
+                  selectedAmountId === "exact" ? "text-white" : "text-gray-300"
+                }`}
               >
                 Exact Amount
               </Text>
@@ -151,7 +173,9 @@ const CashPaymentView = () => {
             Change Due
           </Text>
           <Text
-            className={`text-3xl font-bold ${changeDue >= 0 ? "text-green-400" : "text-red-400"}`}
+            className={`text-3xl font-bold ${
+              changeDue >= 0 ? "text-green-400" : "text-red-400"
+            }`}
           >
             ${changeDue.toFixed(2)}
           </Text>
@@ -179,9 +203,8 @@ const CashPaymentView = () => {
           </View>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
-
 
 export default CashPaymentView;

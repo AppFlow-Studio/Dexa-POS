@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 // 1. Import the necessary UI components, including the Select parts
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 import {
@@ -58,90 +65,47 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="p-0 rounded-2xl overflow-hidden bg-[#303030] border border-gray-700 max-w-sm">
-        {/* Header */}
-        <View className="p-4 border-b border-gray-700">
-          <DialogTitle className="text-white text-xl font-bold text-center">
-            Add New Printer
-          </DialogTitle>
-        </View>
-
-        {/* Content Area */}
-        <View className="p-4 gap-y-4">
-          <View>
-            <Text className="font-semibold mb-1.5 text-gray-300 text-base">
-              Printer Name
-            </Text>
-            <TextInput
-              value={itemName}
-              onChangeText={setItemName}
-              placeholder="e.g., Kitchen Printer"
-              placeholderTextColor="#6B7280"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
-            />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          {/* Header */}
+          <View className="p-4 border-b border-gray-700">
+            <DialogTitle className="text-white text-xl font-bold text-center">
+              Add New Printer
+            </DialogTitle>
           </View>
 
-          <View>
-            <Text className="font-semibold mb-1.5 text-gray-300 text-base">
-              Connection Type
-            </Text>
-            <Select
-              value={connectionType}
-              onValueChange={(option) => {
-                if (option) {
-                  setConnectionType(option);
-                }
-              }}
-            >
-              <SelectTrigger className="w-full p-2 bg-[#212121] border-gray-600 rounded-lg flex-row justify-between items-center">
-                <SelectValue
-                  className="text-sm text-white"
-                  placeholder="Select..."
-                />
-              </SelectTrigger>
-              <SelectContent
-                insets={contentInsets}
-                className="bg-[#212121] border-gray-600"
-              >
-                <SelectGroup>
-                  {CONNECTION_TYPES.map((type) => (
-                    <SelectItem
-                      key={type.value}
-                      label={type.label}
-                      value={type.value}
-                    >
-                      <Text className="text-white text-lg">{type.label}</Text>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </View>
-
-          {connectionType?.value === "wifi" && (
+          {/* Content Area */}
+          <View className="p-4 gap-y-4">
             <View>
               <Text className="font-semibold mb-1.5 text-gray-300 text-base">
-                IP Address
+                Printer Name
               </Text>
               <TextInput
-                value={ipAddress}
-                onChangeText={setIpAddress}
-                placeholder="Type IP Address"
+                value={itemName}
+                onChangeText={setItemName}
+                placeholder="e.g., Kitchen Printer"
                 placeholderTextColor="#6B7280"
                 className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
               />
             </View>
-          )}
 
-          {connectionType?.value === "bluetooth" && (
             <View>
               <Text className="font-semibold mb-1.5 text-gray-300 text-base">
-                Select Device
+                Connection Type
               </Text>
-              <Select value={selectedDevice} onValueChange={setSelectedDevice}>
-                <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg h-14">
+              <Select
+                value={connectionType}
+                onValueChange={(option) => {
+                  if (option) {
+                    setConnectionType(option);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full p-2 bg-[#212121] border-gray-600 rounded-lg flex-row justify-between items-center">
                   <SelectValue
-                    className="text-lg text-white"
-                    placeholder="Select device..."
+                    className="text-sm text-white"
+                    placeholder="Select..."
                   />
                 </SelectTrigger>
                 <SelectContent
@@ -149,34 +113,84 @@ const AddNewPrinterModal: React.FC<AddNewPrinterModalProps> = ({
                   className="bg-[#212121] border-gray-600"
                 >
                   <SelectGroup>
-                    {MOCK_BLUETOOTH_DEVICES.map((device) => (
+                    {CONNECTION_TYPES.map((type) => (
                       <SelectItem
-                        key={device.value}
-                        label={device.label}
-                        value={device.value}
+                        key={type.value}
+                        label={type.label}
+                        value={type.value}
                       >
-                        <Text className="text-lg text-white">
-                          {device.label}
-                        </Text>
+                        <Text className="text-white text-lg">{type.label}</Text>
                       </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
             </View>
-          )}
 
-          <DialogFooter className="pt-4 mt-2">
-            <TouchableOpacity
-              onPress={() => onAdd({})}
-              className="w-full py-3 bg-blue-600 rounded-lg"
-            >
-              <Text className="font-bold text-white text-center text-lg">
-                Add Printer
-              </Text>
-            </TouchableOpacity>
-          </DialogFooter>
-        </View>
+            {connectionType?.value === "wifi" && (
+              <View>
+                <Text className="font-semibold mb-1.5 text-gray-300 text-base">
+                  IP Address
+                </Text>
+                <TextInput
+                  value={ipAddress}
+                  onChangeText={setIpAddress}
+                  placeholder="Type IP Address"
+                  placeholderTextColor="#6B7280"
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-14"
+                />
+              </View>
+            )}
+
+            {connectionType?.value === "bluetooth" && (
+              <View>
+                <Text className="font-semibold mb-1.5 text-gray-300 text-base">
+                  Select Device
+                </Text>
+                <Select
+                  value={selectedDevice}
+                  onValueChange={setSelectedDevice}
+                >
+                  <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg h-14">
+                    <SelectValue
+                      className="text-lg text-white"
+                      placeholder="Select device..."
+                    />
+                  </SelectTrigger>
+                  <SelectContent
+                    insets={contentInsets}
+                    className="bg-[#212121] border-gray-600"
+                  >
+                    <SelectGroup>
+                      {MOCK_BLUETOOTH_DEVICES.map((device) => (
+                        <SelectItem
+                          key={device.value}
+                          label={device.label}
+                          value={device.value}
+                        >
+                          <Text className="text-lg text-white">
+                            {device.label}
+                          </Text>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </View>
+            )}
+
+            <DialogFooter className="pt-4 mt-2">
+              <TouchableOpacity
+                onPress={() => onAdd({})}
+                className="w-full py-3 bg-blue-600 rounded-lg"
+              >
+                <Text className="font-bold text-white text-center text-lg">
+                  Add Printer
+                </Text>
+              </TouchableOpacity>
+            </DialogFooter>
+          </View>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

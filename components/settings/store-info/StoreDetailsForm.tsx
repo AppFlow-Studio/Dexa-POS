@@ -1,5 +1,11 @@
 import React from "react";
-import { Text, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 interface StoreDetails {
   storeName: string;
@@ -59,7 +65,10 @@ const StoreDetailsForm: React.FC<StoreDetailsFormProps> = ({
   isEditable,
 }) => {
   return (
-    <View className="gap-y-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="gap-y-4"
+    >
       <FormRow>
         <FormField
           label="Store Name"
@@ -126,7 +135,7 @@ const StoreDetailsForm: React.FC<StoreDetailsFormProps> = ({
           isEditable={isEditable}
         />
       </FormRow>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

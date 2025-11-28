@@ -1,5 +1,12 @@
 import React from "react";
-import { KeyboardTypeOptions, Text, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  KeyboardTypeOptions,
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 interface FormFieldProps {
   label: string;
@@ -49,21 +56,25 @@ const TaxAndBusinessForm: React.FC<TaxAndBusinessFormProps> = ({
   isEditable,
 }) => {
   return (
-    <View className="flex-row gap-4">
-      <FormField
-        label="Store Tax ID"
-        value={settings.storeTaxId}
-        onChange={(val) => onUpdate("storeTaxId", val)}
-        isEditable={isEditable}
-      />
-      <FormField
-        label="Default Sales Tax Rate (%)"
-        value={settings.defaultTaxRate.toString()}
-        onChange={(val) => onUpdate("defaultTaxRate", parseFloat(val) || 0)}
-        isEditable={isEditable}
-        keyboardType="numeric"
-      />
-    </View>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <View className="flex-row gap-4">
+        <FormField
+          label="Store Tax ID"
+          value={settings.storeTaxId}
+          onChange={(val) => onUpdate("storeTaxId", val)}
+          isEditable={isEditable}
+        />
+        <FormField
+          label="Default Sales Tax Rate (%)"
+          value={settings.defaultTaxRate.toString()}
+          onChange={(val) => onUpdate("defaultTaxRate", parseFloat(val) || 0)}
+          isEditable={isEditable}
+          keyboardType="numeric"
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 

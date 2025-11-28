@@ -1,7 +1,14 @@
 // /components/menu/ScheduleRuleModal.tsx
 import { Schedule } from "@/lib/types";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { TimeField } from "./ScheduleEditor";
 
@@ -104,89 +111,93 @@ const ScheduleRuleModal: React.FC<ScheduleRuleModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#212121] border-gray-700 w-[600px]">
-        <DialogHeader>
-          <DialogTitle className="text-white text-2xl">
-            {initialData ? "Edit Schedule Rule" : "Add Schedule Rule"}
-          </DialogTitle>
-        </DialogHeader>
-        <View className="py-4 gap-y-4">
-          <View>
-            <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
-              Rule Name
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g., Happy Hour"
-              placeholderTextColor="#6B7280"
-              className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 text-white text-lg h-16"
-            />
-          </View>
-          <View>
-            <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
-              Active Days
-            </Text>
-            <View className="flex-row flex-wrap gap-2">
-              {DAY_ORDER.map((d) => {
-                const active = days.includes(d);
-                return (
-                  <TouchableOpacity
-                    key={d}
-                    onPress={() => toggleDay(d)}
-                    className={`px-4 py-3 rounded-lg border ${
-                      active
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                    }`}
-                  >
-                    <Text
-                      className={`text-xl font-semibold ${
-                        active ? "text-white" : "text-gray-300"
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">
+              {initialData ? "Edit Schedule Rule" : "Add Schedule Rule"}
+            </DialogTitle>
+          </DialogHeader>
+          <View className="py-4 gap-y-4">
+            <View>
+              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
+                Rule Name
+              </Text>
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="e.g., Happy Hour"
+                placeholderTextColor="#6B7280"
+                className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2 text-white text-lg h-16"
+              />
+            </View>
+            <View>
+              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
+                Active Days
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {DAY_ORDER.map((d) => {
+                  const active = days.includes(d);
+                  return (
+                    <TouchableOpacity
+                      key={d}
+                      onPress={() => toggleDay(d)}
+                      className={`px-4 py-3 rounded-lg border ${
+                        active
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#303030] border-gray-600"
                       }`}
                     >
-                      {d}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text
+                        className={`text-xl font-semibold ${
+                          active ? "text-white" : "text-gray-300"
+                        }`}
+                      >
+                        {d}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
+                  Start Time
+                </Text>
+                <TimeField value={startTime} onChange={setStartTime} />
+              </View>
+              <View className="flex-1">
+                <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
+                  End Time
+                </Text>
+                <TimeField value={endTime} onChange={setEndTime} />
+              </View>
+            </View>
+            {error && (
+              <Text className="text-red-400 mt-1.5 text-lg">{error}</Text>
+            )}
           </View>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
-                Start Time
+          <View className="flex-row gap-3 mt-3 pt-4 border-t border-gray-700">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 px-3 py-3 rounded-lg bg-[#303030] border border-gray-600"
+            >
+              <Text className="text-white text-center text-xl font-bold">
+                Cancel
               </Text>
-              <TimeField value={startTime} onChange={setStartTime} />
-            </View>
-            <View className="flex-1">
-              <Text className="text-gray-300 mb-1.5 text-xl font-semibold">
-                End Time
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              className="flex-1 px-3 py-3 rounded-lg bg-blue-600"
+            >
+              <Text className="text-white text-center text-xl font-bold">
+                Save
               </Text>
-              <TimeField value={endTime} onChange={setEndTime} />
-            </View>
+            </TouchableOpacity>
           </View>
-          {error && (
-            <Text className="text-red-400 mt-1.5 text-lg">{error}</Text>
-          )}
-        </View>
-        <View className="flex-row gap-3 mt-3 pt-4 border-t border-gray-700">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 px-3 py-3 rounded-lg bg-[#303030] border border-gray-600"
-          >
-            <Text className="text-white text-center text-xl font-bold">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="flex-1 px-3 py-3 rounded-lg bg-blue-600"
-          >
-            <Text className="text-white text-center text-xl font-bold">
-              Save
-            </Text>
-          </TouchableOpacity>
-        </View>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

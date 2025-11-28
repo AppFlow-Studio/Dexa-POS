@@ -8,7 +8,14 @@ import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Href, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const TablesScreen = () => {
   const router = useRouter();
@@ -134,7 +141,10 @@ const TablesScreen = () => {
 
             {/* Search Bar - Edit button removed from here */}
             <View className="flex-row items-center gap-2">
-              <View className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 max-w-sm">
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 max-w-sm"
+              >
                 <Search color="#9CA3AF" size={20} />
                 <TextInput
                   placeholder="Search table name..."
@@ -143,7 +153,7 @@ const TablesScreen = () => {
                   onChangeText={setSearchText}
                   className="ml-2 text-lg h-12 flex-1 text-white"
                 />
-              </View>
+              </KeyboardAvoidingView>
             </View>
           </View>
 

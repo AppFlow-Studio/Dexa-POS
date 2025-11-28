@@ -27,7 +27,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView, // <--- Imported
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -464,15 +466,14 @@ const EditMenuItemScreen: React.FC = () => {
 
   // Render inventory backdrop
   const renderInventoryBackdrop = useMemo(
-    () => (backdropProps: any) =>
-      (
-        <BottomSheetBackdrop
-          {...backdropProps}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (backdropProps: any) => (
+      <BottomSheetBackdrop
+        {...backdropProps}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
 
@@ -511,169 +512,106 @@ const EditMenuItemScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1 p-4">
-        <View className="flex-row items-center justify-between w-full gap-2">
-          <Text className="text-2xl font-bold text-white">
-            Edit: <Text className=" italic">{formData.name}</Text>
-          </Text>
-          <Text className="text-sm text-gray-400">id:#{itemId}</Text>
-        </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <ScrollView className="flex-1 p-4">
+          <View className="flex-row items-center justify-between w-full gap-2">
+            <Text className="text-2xl font-bold text-white">
+              Edit: <Text className=" italic">{formData.name}</Text>
+            </Text>
+            <Text className="text-sm text-gray-400">id:#{itemId}</Text>
+          </View>
 
-        <View className="flex-row gap-4">
-          {/* Left Column - Form */}
-          <View className="flex-1">
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Name
-              </Text>
-              <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-                placeholder="Item name"
-                placeholderTextColor="#9CA3AF"
-                value={formData.name}
-                onChangeText={(text) =>
-                  setFormData((prev) => ({ ...prev, name: text }))
-                }
-              />
-              {errors.name && (
-                <Text className="text-base text-red-400 mt-1">
-                  {errors.name}
+          <View className="flex-row gap-4">
+            {/* Left Column - Form */}
+            <View className="flex-1">
+              <View className="mb-4">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Name
                 </Text>
-              )}
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Description
-              </Text>
-              <TextInput
-                className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-32"
-                placeholder="Item description"
-                placeholderTextColor="#9CA3AF"
-                value={formData.description}
-                onChangeText={(text) =>
-                  setFormData((prev) => ({ ...prev, description: text }))
-                }
-                multiline
-              />
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Price
-              </Text>
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <TextInput
-                    className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-                    placeholder="0.00"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.price}
-                    onChangeText={(text) =>
-                      setFormData((prev) => ({ ...prev, price: text }))
-                    }
-                    keyboardType="numeric"
-                  />
-                  {errors.price && (
-                    <Text className="text-base text-red-400 mt-1">
-                      {errors.price}
-                    </Text>
-                  )}
-                </View>
-                <View className="flex-1">
-                  <TextInput
-                    className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-                    placeholder="Cash price (opt)"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.cashPrice}
-                    onChangeText={(text) =>
-                      setFormData((prev) => ({ ...prev, cashPrice: text }))
-                    }
-                    keyboardType="numeric"
-                  />
-                  {errors.cashPrice && (
-                    <Text className="text-base text-red-400 mt-1">
-                      {errors.cashPrice}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            </View>
-
-            <View className="mb-4">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-xl font-semibold text-white">
-                  Categories
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.push("/menu/add-category")}
-                  className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
-                >
-                  <Plus size={18} color="white" />
-                  <Text className="text-base text-white font-medium ml-1">
-                    Add
+                <TextInput
+                  className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+                  placeholder="Item name"
+                  placeholderTextColor="#9CA3AF"
+                  value={formData.name}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({ ...prev, name: text }))
+                  }
+                />
+                {errors.name && (
+                  <Text className="text-base text-red-400 mt-1">
+                    {errors.name}
                   </Text>
-                </TouchableOpacity>
+                )}
               </View>
-              <View className="flex-row flex-wrap gap-2">
-                {availableCategories.map((category) => (
-                  <TouchableOpacity
-                    key={category.id}
-                    onPress={() => toggleCategory(category.name)}
-                    className={`px-4 py-3 rounded-lg border ${
-                      formData.categories.includes(category.name)
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#303030] border-gray-600"
-                    }`}
-                  >
-                    <Text
-                      className={`text-lg font-medium ${
-                        formData.categories.includes(category.name)
-                          ? "text-white"
-                          : "text-gray-300"
-                      }`}
-                    >
-                      {category.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
 
-            <View className="mb-4">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-xl font-semibold text-white">
-                  Modifiers
+              <View className="mb-4">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Description
                 </Text>
-                <View className="flex w-fit flex-row items-stretch justify-center gap-x-2">
-                  <View className="w-fit flex-row items-center justify-between gap-x-2 bg-gray-600   rounded-lg">
-                    <View className="w-fit flex-row items-center justify-start gap-x-2">
-                      <View className="items-center pl-2 py-1.5 rounded-lg">
-                        <Search size={18} color="white" />
-                      </View>
-                      <TextInput
-                        value={modifierSearch}
-                        onChangeText={setModifierSearch}
-                        placeholder="Search..."
-                        placeholderTextColor="#9CA3AF"
-                        className="text-white h-10 w-[50%] text-sm 600 rounded-lg px-3 py-1.5"
-                      />
-                    </View>
-                    <TouchableOpacity
-                      className="flex-row items-center px-3 py-1.5 rounded-lg"
-                      onPress={() => {
-                        setModifierSearch("");
-                        setExpandedModifiers({});
-                      }}
-                    >
-                      <X size={18} color="white" />
-                      <Text className="text-base text-white font-medium ml-1">
-                        Cancel
+                <TextInput
+                  className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-32"
+                  placeholder="Item description"
+                  placeholderTextColor="#9CA3AF"
+                  value={formData.description}
+                  onChangeText={(text) =>
+                    setFormData((prev) => ({ ...prev, description: text }))
+                  }
+                  multiline
+                />
+              </View>
+
+              <View className="mb-4">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Price
+                </Text>
+                <View className="flex-row gap-3">
+                  <View className="flex-1">
+                    <TextInput
+                      className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+                      placeholder="0.00"
+                      placeholderTextColor="#9CA3AF"
+                      value={formData.price}
+                      onChangeText={(text) =>
+                        setFormData((prev) => ({ ...prev, price: text }))
+                      }
+                      keyboardType="numeric"
+                    />
+                    {errors.price && (
+                      <Text className="text-base text-red-400 mt-1">
+                        {errors.price}
                       </Text>
-                    </TouchableOpacity>
+                    )}
                   </View>
+                  <View className="flex-1">
+                    <TextInput
+                      className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+                      placeholder="Cash price (opt)"
+                      placeholderTextColor="#9CA3AF"
+                      value={formData.cashPrice}
+                      onChangeText={(text) =>
+                        setFormData((prev) => ({ ...prev, cashPrice: text }))
+                      }
+                      keyboardType="numeric"
+                    />
+                    {errors.cashPrice && (
+                      <Text className="text-base text-red-400 mt-1">
+                        {errors.cashPrice}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+
+              <View className="mb-4">
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-xl font-semibold text-white">
+                    Categories
+                  </Text>
                   <TouchableOpacity
-                    onPress={() => router.push("/menu/add-modifier")}
+                    onPress={() => router.push("/menu/add-category")}
                     className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
                   >
                     <Plus size={18} color="white" />
@@ -682,176 +620,244 @@ const EditMenuItemScreen: React.FC = () => {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-              <View className="flex-col gap-2">
-                {filteredModifierGroups.map((modifier) => {
-                  const selected = formData.modifiers.includes(modifier.id);
-                  const expanded = !!expandedModifiers[modifier.id];
-                  return (
-                    <View
-                      key={modifier.id}
-                      className={`rounded-lg border ${
-                        selected
-                          ? "bg-blue-600/10 border-blue-500"
+                <View className="flex-row flex-wrap gap-2">
+                  {availableCategories.map((category) => (
+                    <TouchableOpacity
+                      key={category.id}
+                      onPress={() => toggleCategory(category.name)}
+                      className={`px-4 py-3 rounded-lg border ${
+                        formData.categories.includes(category.name)
+                          ? "bg-blue-600 border-blue-500"
                           : "bg-[#303030] border-gray-600"
                       }`}
                     >
-                      <View className="flex-row items-center justify-between p-4">
-                        <TouchableOpacity
-                          onPress={() => toggleModifier(modifier.id)}
-                          className="flex-row items-center gap-2 flex-1"
-                        >
-                          <Text
-                            className={`text-xl font-medium ${
-                              selected ? "text-white" : "text-gray-300"
-                            }`}
-                          >
-                            {modifier.name}
-                          </Text>
-                          <Text
-                            className={`px-2.5 py-1.5 rounded-full ${
-                              modifier.type === "required"
-                                ? "bg-red-900 border border-red-500 text-white"
-                                : "bg-blue-900 border border-blue-500 text-white"
-                            }`}
-                          >
-                            {modifier.type}
-                          </Text>
-                          <Text
-                            className={`px-2.5 py-1.5 rounded-full bg-gray-600 text-white`}
-                          >
-                            {modifier.selectionType}{" "}
-                            {modifier.maxSelections
-                              ? `• Max ${modifier.maxSelections}`
-                              : ""}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => toggleModifierExpand(modifier.id)}
-                          className="pl-3 py-1.5"
-                        >
-                          {expanded ? (
-                            <ChevronUp size={20} color="#9CA3AF" />
-                          ) : (
-                            <ChevronDown size={20} color="#9CA3AF" />
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                      {expanded && (
-                        <View className="px-4 pb-4 gap-y-2">
-                          <Text className="text-base text-gray-400">
-                            Options
-                          </Text>
-                          {modifier.options.map((option) => (
-                            <View
-                              key={option.id}
-                              className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-[#303030] p-2"
-                            >
-                              <Text className="text-base text-gray-400">
-                                {option.name}{" "}
-                                <Text className="text-sm">
-                                  {option.isDefault ? "(Default)" : ""}
-                                </Text>
-                              </Text>
-                              <Text
-                                className={`text-base ${
-                                  option.price > 0
-                                    ? "text-green-400"
-                                    : "text-gray-400"
-                                }`}
-                              >
-                                {option.price > 0
-                                  ? `+${option.price.toFixed(2)}`
-                                  : "$0.00"}
-                              </Text>
-                            </View>
-                          ))}
+                      <Text
+                        className={`text-lg font-medium ${
+                          formData.categories.includes(category.name)
+                            ? "text-white"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {category.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View className="mb-4">
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-xl font-semibold text-white">
+                    Modifiers
+                  </Text>
+                  <View className="flex w-fit flex-row items-stretch justify-center gap-x-2">
+                    <View className="w-fit flex-row items-center justify-between gap-x-2 bg-gray-600   rounded-lg">
+                      <View className="w-fit flex-row items-center justify-start gap-x-2">
+                        <View className="items-center pl-2 py-1.5 rounded-lg">
+                          <Search size={18} color="white" />
                         </View>
-                      )}
+                        <TextInput
+                          value={modifierSearch}
+                          onChangeText={setModifierSearch}
+                          placeholder="Search..."
+                          placeholderTextColor="#9CA3AF"
+                          className="text-white h-10 w-[50%] text-sm 600 rounded-lg px-3 py-1.5"
+                        />
+                      </View>
+                      <TouchableOpacity
+                        className="flex-row items-center px-3 py-1.5 rounded-lg"
+                        onPress={() => {
+                          setModifierSearch("");
+                          setExpandedModifiers({});
+                        }}
+                      >
+                        <X size={18} color="white" />
+                        <Text className="text-base text-white font-medium ml-1">
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
                     </View>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Image
-              </Text>
-              <TouchableOpacity
-                onPress={pickImage}
-                className="flex-row items-center bg-blue-600 px-4 py-3 rounded-lg self-start"
-              >
-                <Camera size={20} color="white" />
-                <Text className="text-lg text-white font-medium ml-1.5">
-                  {getImageSource(formData.image) ? "Change" : "Pick"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <View className="mb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Availability
-              </Text>
-              <TouchableOpacity
-                onPress={() =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    availability: !prev.availability,
-                  }))
-                }
-                className={`px-4 py-3 rounded-lg border ${
-                  formData.availability
-                    ? "bg-green-600 border-green-500"
-                    : "bg-red-600 border-red-500"
-                }`}
-              >
-                <Text className="text-lg text-white font-medium">
-                  {formData.availability ? "Available" : "Unavailable"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Right Column - Preview */}
-          <View className="w-80">
-            <Text className="text-xl font-semibold text-white mb-2">
-              Preview
-            </Text>
-            <View className="bg-[#303030] rounded-lg border border-gray-700 p-4">
-              <View className="w-full aspect-square mb-3 rounded border border-gray-600 overflow-hidden">
-                {getImageSource(formData.image) ? (
-                  <Image
-                    source={
-                      typeof getImageSource(formData.image) === "string"
-                        ? MENU_IMAGE_MAP[
-                            formData.image as keyof typeof MENU_IMAGE_MAP
-                          ]
-                        : getImageSource(formData.image)
-                    }
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <View className="w-full h-full bg-gray-600 items-center justify-center">
-                    <Utensils color="#9ca3af" size={20} />
+                    <TouchableOpacity
+                      onPress={() => router.push("/menu/add-modifier")}
+                      className="flex-row items-center bg-green-600 px-3 py-1.5 rounded-lg"
+                    >
+                      <Plus size={18} color="white" />
+                      <Text className="text-base text-white font-medium ml-1">
+                        Add
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                )}
+                </View>
+                <View className="flex-col gap-2">
+                  {filteredModifierGroups.map((modifier) => {
+                    const selected = formData.modifiers.includes(modifier.id);
+                    const expanded = !!expandedModifiers[modifier.id];
+                    return (
+                      <View
+                        key={modifier.id}
+                        className={`rounded-lg border ${
+                          selected
+                            ? "bg-blue-600/10 border-blue-500"
+                            : "bg-[#303030] border-gray-600"
+                        }`}
+                      >
+                        <View className="flex-row items-center justify-between p-4">
+                          <TouchableOpacity
+                            onPress={() => toggleModifier(modifier.id)}
+                            className="flex-row items-center gap-2 flex-1"
+                          >
+                            <Text
+                              className={`text-xl font-medium ${
+                                selected ? "text-white" : "text-gray-300"
+                              }`}
+                            >
+                              {modifier.name}
+                            </Text>
+                            <Text
+                              className={`px-2.5 py-1.5 rounded-full ${
+                                modifier.type === "required"
+                                  ? "bg-red-900 border border-red-500 text-white"
+                                  : "bg-blue-900 border border-blue-500 text-white"
+                              }`}
+                            >
+                              {modifier.type}
+                            </Text>
+                            <Text
+                              className={`px-2.5 py-1.5 rounded-full bg-gray-600 text-white`}
+                            >
+                              {modifier.selectionType}{" "}
+                              {modifier.maxSelections
+                                ? `• Max ${modifier.maxSelections}`
+                                : ""}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => toggleModifierExpand(modifier.id)}
+                            className="pl-3 py-1.5"
+                          >
+                            {expanded ? (
+                              <ChevronUp size={20} color="#9CA3AF" />
+                            ) : (
+                              <ChevronDown size={20} color="#9CA3AF" />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                        {expanded && (
+                          <View className="px-4 pb-4 gap-y-2">
+                            <Text className="text-base text-gray-400">
+                              Options
+                            </Text>
+                            {modifier.options.map((option) => (
+                              <View
+                                key={option.id}
+                                className="flex-row items-center justify-between border rounded-lg border-gray-600 bg-[#303030] p-2"
+                              >
+                                <Text className="text-base text-gray-400">
+                                  {option.name}{" "}
+                                  <Text className="text-sm">
+                                    {option.isDefault ? "(Default)" : ""}
+                                  </Text>
+                                </Text>
+                                <Text
+                                  className={`text-base ${
+                                    option.price > 0
+                                      ? "text-green-400"
+                                      : "text-gray-400"
+                                  }`}
+                                >
+                                  {option.price > 0
+                                    ? `+${option.price.toFixed(2)}`
+                                    : "$0.00"}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
-              <Text className="text-white font-bold text-2xl mb-1">
-                {formData.name || "Item Name"}
-              </Text>
-              {formData.description && (
-                <Text className="text-gray-300 text-lg mb-2">
-                  {formData.description}
+
+              <View className="mb-4">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Image
                 </Text>
-              )}
-              <Text className="text-blue-400 font-bold text-2xl mb-3">
-                ${formData.price || "0.00"}
+                <TouchableOpacity
+                  onPress={pickImage}
+                  className="flex-row items-center bg-blue-600 px-4 py-3 rounded-lg self-start"
+                >
+                  <Camera size={20} color="white" />
+                  <Text className="text-lg text-white font-medium ml-1.5">
+                    {getImageSource(formData.image) ? "Change" : "Pick"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View className="mb-4">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Availability
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      availability: !prev.availability,
+                    }))
+                  }
+                  className={`px-4 py-3 rounded-lg border ${
+                    formData.availability
+                      ? "bg-green-600 border-green-500"
+                      : "bg-red-600 border-red-500"
+                  }`}
+                >
+                  <Text className="text-lg text-white font-medium">
+                    {formData.availability ? "Available" : "Unavailable"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Right Column - Preview */}
+            <View className="w-80">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Preview
               </Text>
+              <View className="bg-[#303030] rounded-lg border border-gray-700 p-4">
+                <View className="w-full aspect-square mb-3 rounded border border-gray-600 overflow-hidden">
+                  {getImageSource(formData.image) ? (
+                    <Image
+                      source={
+                        typeof getImageSource(formData.image) === "string"
+                          ? MENU_IMAGE_MAP[
+                              formData.image as keyof typeof MENU_IMAGE_MAP
+                            ]
+                          : getImageSource(formData.image)
+                      }
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <View className="w-full h-full bg-gray-600 items-center justify-center">
+                      <Utensils color="#9ca3af" size={20} />
+                    </View>
+                  )}
+                </View>
+                <Text className="text-white font-bold text-2xl mb-1">
+                  {formData.name || "Item Name"}
+                </Text>
+                {formData.description && (
+                  <Text className="text-gray-300 text-lg mb-2">
+                    {formData.description}
+                  </Text>
+                )}
+                <Text className="text-blue-400 font-bold text-2xl mb-3">
+                  ${formData.price || "0.00"}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Confirmation Modal */}
       <Modal
@@ -996,8 +1002,8 @@ const EditMenuItemScreen: React.FC = () => {
                       isCurrentlyEditing
                         ? "bg-blue-900 border-blue-600"
                         : isAlreadyInRecipe
-                        ? "bg-gray-800 opacity-50"
-                        : "bg-transparent"
+                          ? "bg-gray-800 opacity-50"
+                          : "bg-transparent"
                     }`}
                   >
                     <View className="flex-row items-center justify-between">
@@ -1007,8 +1013,8 @@ const EditMenuItemScreen: React.FC = () => {
                             isCurrentlyEditing
                               ? "text-blue-300"
                               : isAlreadyInRecipe
-                              ? "text-gray-500"
-                              : "text-white"
+                                ? "text-gray-500"
+                                : "text-white"
                           }`}
                         >
                           {inventoryItem.name}
@@ -1018,8 +1024,8 @@ const EditMenuItemScreen: React.FC = () => {
                             isCurrentlyEditing
                               ? "text-blue-400"
                               : isAlreadyInRecipe
-                              ? "text-gray-600"
-                              : "text-gray-400"
+                                ? "text-gray-600"
+                                : "text-gray-400"
                           }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $

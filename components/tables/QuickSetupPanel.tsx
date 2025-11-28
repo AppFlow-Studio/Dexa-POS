@@ -1,6 +1,8 @@
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import React, { useState } from "react";
 import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -93,46 +95,50 @@ const QuickSetupPanel: React.FC<QuickSetupPanelProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[580px] bg-[#2a2a2a] rounded-xl border border-gray-700 shadow-2xl p-0">
-        <DialogHeader className="p-6">
-          <DialogTitle className="text-xl font-bold text-white">
-            Quick Floor Setup
-          </DialogTitle>
-          <DialogDescription className="text-base text-gray-400 mt-1">
-            Add multiple tables at once to get started quickly.
-          </DialogDescription>
-        </DialogHeader>
-
-        <ScrollView
-          style={{ maxHeight: 420 }}
-          contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <View className="gap-y-4">
-            {tableShapes.map((shape) => (
-              <ShapeInputRow
-                key={shape.id}
-                shape={shape}
-                onQuantityChange={handleQuantityChange}
-              />
-            ))}
-          </View>
-        </ScrollView>
+          <DialogHeader className="p-6">
+            <DialogTitle className="text-xl font-bold text-white">
+              Quick Floor Setup
+            </DialogTitle>
+            <DialogDescription className="text-base text-gray-400 mt-1">
+              Add multiple tables at once to get started quickly.
+            </DialogDescription>
+          </DialogHeader>
 
-        <DialogFooter className="flex-row gap-4 p-6 bg-[#313131] border-t border-gray-700 rounded-b-xl">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-gray-600 rounded-lg items-center"
+          <ScrollView
+            style={{ maxHeight: 420 }}
+            contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 24 }}
           >
-            <Text className="text-base font-bold text-white">
-              Start with Blank Canvas
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleApply}
-            className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
-          >
-            <Text className="text-white text-base font-bold">Add Tables</Text>
-          </TouchableOpacity>
-        </DialogFooter>
+            <View className="gap-y-4">
+              {tableShapes.map((shape) => (
+                <ShapeInputRow
+                  key={shape.id}
+                  shape={shape}
+                  onQuantityChange={handleQuantityChange}
+                />
+              ))}
+            </View>
+          </ScrollView>
+
+          <DialogFooter className="flex-row gap-4 p-6 bg-[#313131] border-t border-gray-700 rounded-b-xl">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 bg-gray-600 rounded-lg items-center"
+            >
+              <Text className="text-base font-bold text-white">
+                Start with Blank Canvas
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleApply}
+              className="flex-1 bg-blue-600 py-3 rounded-lg items-center"
+            >
+              <Text className="text-white text-base font-bold">Add Tables</Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );
