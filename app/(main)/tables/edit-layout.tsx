@@ -12,7 +12,16 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { LinkIcon, Maximize, Minus, Plus, X } from "lucide-react-native";
+// ADDED Undo2, Redo2 imports here
+import {
+  LinkIcon,
+  Maximize,
+  Minus,
+  Plus,
+  Redo2,
+  Undo2,
+  X,
+} from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -65,6 +74,8 @@ const ConnectorLine = ({ fromId, toId }: { fromId: string; toId: string }) => {
 const LayoutEditorScreenContent = () => {
   const router = useRouter();
   const { layoutId } = useLocalSearchParams<{ layoutId: string }>();
+
+  // EXTRACTED undo, redo, past, future
   const {
     layouts,
     selectedTableIds,
@@ -74,6 +85,11 @@ const LayoutEditorScreenContent = () => {
     clearSelection,
     addTable,
     addMultipleTables,
+    undo,
+    redo,
+    past,
+    future,
+    clearHistory,
   } = useFloorPlanStore();
   const { consolidateOrdersForTables } = useOrderStore();
 
@@ -86,8 +102,15 @@ const LayoutEditorScreenContent = () => {
   const originalSnapshotRef = useRef<any | null>(null);
   const hasSavedRef = useRef(false);
 
-  // UPDATED: Store width and height as well
+  // Store width and height as well
   const canvasOffset = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  useEffect(() => {
+    clearHistory(); // Clear on mount (entry)
+
+    return () => {
+      clearHistory(); // Clear on unmount (exit)
+    };
+  }, []);
 
   useEffect(() => {
     if (activeLayout && !originalSnapshotRef.current) {
@@ -124,7 +147,6 @@ const LayoutEditorScreenContent = () => {
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
-      // Divide by scale so panning feels consistent at any zoom level
       translateX.value = savedTranslateX.value + e.translationX / scale.value;
       translateY.value = savedTranslateY.value + e.translationY / scale.value;
     })
@@ -150,7 +172,7 @@ const LayoutEditorScreenContent = () => {
     transform: [
       { translateX: translateX.value },
       { translateY: translateY.value },
-      { scale: scale.value }, // Scale originates from CENTER by default
+      { scale: scale.value },
     ],
   }));
 
@@ -233,7 +255,6 @@ const LayoutEditorScreenContent = () => {
     addTableSheetRef.current?.expand();
   };
 
-  // --- UPDATED DROP LOGIC ---
   const performDrop = (
     shapeId: string,
     absX: number,
@@ -244,30 +265,20 @@ const LayoutEditorScreenContent = () => {
   ) => {
     if (!shapeId || !layoutId) return;
 
-    // 1. Get Shape Info
     const shapeDef = TABLE_SHAPES[shapeId as keyof typeof TABLE_SHAPES];
     if (!shapeDef) return;
     const actualWidth = shapeDef.width || 80;
     const actualHeight = shapeDef.height || 80;
 
-    // 2. Get Canvas Dimensions and Center
     const { x: offX, y: offY, width: vW, height: vH } = canvasOffset.current;
 
-    // Safety check if layout hasn't run yet
     if (vW === 0 || vH === 0) return;
 
-    // 3. Calculate Visual Coordinates (Screen Space relative to Canvas View)
-    //    (Center of the ghost shape)
     const ghostCenterX = absX;
     const ghostCenterY = absY - FINGER_Y_OFFSET;
 
-    //    (Coordinates inside the Canvas View, ignoring scale/translate for a moment)
     const localX = ghostCenterX - offX;
     const localY = ghostCenterY - offY;
-
-    // 4. Apply Inverse Transform Matrix
-    //    Because Transform is: [Translate, Scale] AND Scale is from Center:
-    //    Formula: CanvasPos = ((LocalPos - Center) / Scale) - Translate + Center
 
     const centerX = vW / 2;
     const centerY = vH / 2;
@@ -277,11 +288,9 @@ const LayoutEditorScreenContent = () => {
     const canvasCenterY =
       (localY - centerY) / currentScale - currentTranslateY + centerY;
 
-    // 5. Offset for Top-Left of the new table
     const finalX = canvasCenterX - actualWidth / 2;
     const finalY = canvasCenterY - actualHeight / 2;
 
-    // 6. Name Generation (Same as before)
     let defaultName = "";
     if (shapeDef.type === "table") {
       const existingTableNumbers = tables
@@ -348,13 +357,43 @@ const LayoutEditorScreenContent = () => {
     );
   }
 
+  // --- DERIVED STATE FOR UNDO VISIBILITY ---
+  const hasHistory = past.length > 0;
+  const hasFuture = future.length > 0;
+
   return (
     <View className="flex-1 bg-[#212121]">
       {/* Header */}
       <View className="bg-[#303030] p-4 flex-row justify-between items-center z-10">
-        <Text className="text-2xl font-bold text-white">
-          {activeLayout.name}
-        </Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-2xl font-bold text-white">
+            {activeLayout.name}
+          </Text>
+
+          {/* UNDO / REDO BUTTONS */}
+          {hasHistory && (
+            <View className="flex-row gap-1 ml-4 bg-[#424242] rounded-lg p-1">
+              <TouchableOpacity
+                onPress={undo}
+                className="p-2 rounded hover:bg-gray-600"
+                disabled={!hasHistory}
+                style={{ opacity: hasHistory ? 1 : 0.3 }}
+              >
+                <Undo2 size={20} color="white" />
+              </TouchableOpacity>
+              <View className="w-[1px] bg-gray-500 my-1" />
+              <TouchableOpacity
+                onPress={redo}
+                className="p-2 rounded hover:bg-gray-600"
+                disabled={!hasFuture}
+                style={{ opacity: hasFuture ? 1 : 0.3 }}
+              >
+                <Redo2 size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <View className="flex-row gap-3">
           {canMerge && (
             <TouchableOpacity
@@ -397,7 +436,6 @@ const LayoutEditorScreenContent = () => {
       <GestureDetector gesture={canvasInteractionGesture}>
         <View
           className="flex-1 relative overflow-hidden z-0"
-          // UPDATED: Capture Width and Height here
           onLayout={(event) => {
             canvasOffset.current = {
               x: event.nativeEvent.layout.x,

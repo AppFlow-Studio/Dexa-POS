@@ -6,8 +6,8 @@ import { create } from "zustand";
 interface NewTableData {
   name: string;
   shapeId: keyof typeof TABLE_SHAPES;
-  x?: number; // Make x optional
-  y?: number; // Make y optional
+  x?: number;
+  y?: number;
 }
 
 interface FloorPlanState {
@@ -15,20 +15,25 @@ interface FloorPlanState {
   activeLayoutId: string | null;
   selectedTableIds: string[];
 
-  // Layout Actions
+  // Undo/Redo
+  past: Layout[][];
+  future: Layout[][];
+  undo: () => void;
+  redo: () => void;
+  saveSnapshot: () => void;
+  clearHistory: () => void;
+
+  // Actions
   addLayout: (name: string) => void;
   updateLayoutName: (layoutId: string, newName: string) => void;
   deleteLayout: (layoutId: string) => void;
   setActiveLayout: (layoutId: string | null) => void;
-
-  // Table Actions (now require layoutId)
   addTable: (layoutId: string, tableData: NewTableData) => void;
-  updateTableName: (layoutId: string, tableId: string, newName: string) => void;
   addMultipleTables: (
     layoutId: string,
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
   ) => void;
-
+  updateTableName: (layoutId: string, tableId: string, newName: string) => void;
   updateTablePosition: (
     layoutId: string,
     tableId: string,
@@ -45,20 +50,32 @@ interface FloorPlanState {
     newStatus: TableStatus,
     layoutId?: string
   ) => void;
-
-  // Selection & Merging Actions (operate on active layout)
   toggleTableSelection: (tableId: string) => void;
   mergeTables: (tableIds: string[], primaryOrderId: string) => string | null;
   unmergeTables: (tableId: string) => void;
   clearSelection: () => void;
 }
 
-// Initial state with a default layout containing the mock tables
+// Helper to sanitize layout for history (removes function components)
+const sanitizeForHistory = (layouts: Layout[]) => {
+  return JSON.parse(
+    JSON.stringify(layouts, (key, value) => {
+      if (key === "component") return undefined; // Remove components from history
+      return value;
+    })
+  );
+};
+
+// Initial Mock Setup - ensuring shapeId exists if possible, fallback to 'square-4'
 const initialLayouts: Layout[] = [
   {
     id: "layout_1",
     name: "Main Dining Room",
-    tables: MOCK_TABLES,
+    tables: MOCK_TABLES.map((t) => ({
+      ...t,
+      // Default to a shape if missing in mock data
+      shapeId: (t as any).shapeId || "square-4",
+    })),
   },
 ];
 
@@ -67,10 +84,9 @@ const findNextAvailablePosition = (
   newTableDimensions: { width: number; height: number }
 ): { x: number; y: number } => {
   const GRID_SIZE = 40;
-  const PADDING = 20; // Extra space between tables
-  const CANVAS_WIDTH = 1200; // Assumed width of the floor plan area
+  const PADDING = 20;
+  const CANVAS_WIDTH = 1200;
 
-  // Start scanning from the top-left
   for (let y = GRID_SIZE; y < 800; y += GRID_SIZE) {
     for (let x = GRID_SIZE; x < CANVAS_WIDTH; x += GRID_SIZE) {
       const candidateRect = {
@@ -82,9 +98,13 @@ const findNextAvailablePosition = (
 
       let isOverlapping = false;
       for (const table of existingTables) {
-        const shapeInfo = Object.values(TABLE_SHAPES).find(
-          (shape) => shape.component === table.component
-        );
+        // Look up shape using shapeId if component is missing
+        const shapeInfo = table.shapeId
+          ? TABLE_SHAPES[table.shapeId]
+          : Object.values(TABLE_SHAPES).find(
+              (s) => s.component === table.component
+            );
+
         if (!shapeInfo) continue;
 
         const existingRect = {
@@ -94,7 +114,6 @@ const findNextAvailablePosition = (
           height: shapeInfo.height + PADDING * 2,
         };
 
-        // Basic AABB collision detection
         if (
           candidateRect.x < existingRect.x + existingRect.width &&
           candidateRect.x + candidateRect.width > existingRect.x &&
@@ -102,17 +121,12 @@ const findNextAvailablePosition = (
           candidateRect.y + candidateRect.height > existingRect.y
         ) {
           isOverlapping = true;
-          break; // This position is occupied, try the next one
+          break;
         }
       }
-
-      if (!isOverlapping) {
-        // Found an empty spot
-        return { x, y };
-      }
+      if (!isOverlapping) return { x, y };
     }
   }
-  // Fallback if no space is found (or canvas is full)
   return { x: 50, y: 50 };
 };
 
@@ -120,19 +134,123 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
   layouts: initialLayouts,
   activeLayoutId: initialLayouts[0]?.id || null,
   selectedTableIds: [],
+  past: [],
+  future: [],
 
-  // --- Layout Actions ---
+  // --- HISTORY MANAGEMENT ---
+  saveSnapshot: () => {
+    set((state) => ({
+      past: [...state.past, sanitizeForHistory(state.layouts)],
+      future: [],
+    }));
+  },
+
+  clearHistory: () => {
+    set({ past: [], future: [] });
+  },
+
+  undo: () => {
+    set((state) => {
+      if (state.past.length === 0) return state;
+      const previous = state.past[state.past.length - 1];
+      const newPast = state.past.slice(0, -1);
+      return {
+        layouts: previous, // Restore previous state
+        past: newPast,
+        future: [sanitizeForHistory(state.layouts), ...state.future],
+      };
+    });
+  },
+
+  redo: () => {
+    set((state) => {
+      if (state.future.length === 0) return state;
+      const next = state.future[0];
+      const newFuture = state.future.slice(1);
+      return {
+        layouts: next,
+        past: [...state.past, sanitizeForHistory(state.layouts)],
+        future: newFuture,
+      };
+    });
+  },
+
+  // --- ACTIONS ---
   addLayout: (name) => {
+    get().saveSnapshot();
     const newLayout: Layout = {
       id: `layout_${Date.now()}`,
       name,
       tables: [],
     };
+    set((state) => ({ layouts: [...state.layouts, newLayout] }));
+  },
+
+  updateLayoutName: (layoutId, newName) => {
+    get().saveSnapshot();
     set((state) => ({
-      layouts: [...state.layouts, newLayout],
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId ? { ...l, name: newName } : l
+      ),
     }));
   },
+
+  deleteLayout: (layoutId) => {
+    get().saveSnapshot();
+    set((state) => ({
+      layouts: state.layouts.filter((l) => l.id !== layoutId),
+      activeLayoutId:
+        state.activeLayoutId === layoutId ? null : state.activeLayoutId,
+    }));
+  },
+
+  setActiveLayout: (layoutId) => {
+    set({ activeLayoutId: layoutId });
+  },
+
+  addTable: (layoutId, tableData) => {
+    get().saveSnapshot();
+    const shape = TABLE_SHAPES[tableData.shapeId];
+    if (!shape) return;
+
+    const activeLayout = get().layouts.find((l) => l.id === layoutId);
+    if (!activeLayout) return;
+
+    let finalX = tableData.x;
+    let finalY = tableData.y;
+
+    if (finalX === undefined || finalY === undefined) {
+      const newPosition = findNextAvailablePosition(activeLayout.tables, {
+        width: shape.width,
+        height: shape.height,
+      });
+      finalX = newPosition.x;
+      finalY = newPosition.y;
+    }
+
+    const newTable: TableType = {
+      id: `${layoutId}_table_${Date.now()}`,
+      name: tableData.name,
+      capacity: shape.capacity,
+      component: shape.component, // Don't save component to state
+      shapeId: tableData.shapeId, // Save ID instead
+      status: shape.type === "table" ? "Available" : "Not in Service",
+      x: finalX!,
+      y: finalY!,
+      rotation: 0,
+      order: null,
+      type: shape.type,
+    };
+
+    set((state) => ({
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId ? { ...l, tables: [...l.tables, newTable] } : l
+      ),
+    }));
+  },
+
   addMultipleTables: (layoutId, items) => {
+    get().saveSnapshot();
     let layout = get().layouts.find((l) => l.id === layoutId);
     if (!layout) return;
 
@@ -140,8 +258,6 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     let tempTables = [...layout.tables];
 
     items.forEach((item) => {
-      // This line will now be type-safe because TypeScript knows
-      // item.shapeId is a valid key of TABLE_SHAPES.
       const shape = TABLE_SHAPES[item.shapeId];
       if (!shape) return;
 
@@ -158,6 +274,7 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
           }`,
           capacity: shape.capacity,
           component: shape.component,
+          shapeId: item.shapeId,
           status: "Available",
           x: newPosition.x,
           y: newPosition.y,
@@ -177,140 +294,81 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
     }));
   },
 
-  updateLayoutName: (layoutId, newName) => {
-    set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId ? { ...layout, name: newName } : layout
-      ),
-    }));
-  },
-
-  deleteLayout: (layoutId) => {
-    set((state) => ({
-      layouts: state.layouts.filter((layout) => layout.id !== layoutId),
-      // If the deleted layout was active, reset the active layout
-      activeLayoutId:
-        state.activeLayoutId === layoutId ? null : state.activeLayoutId,
-    }));
-  },
-
-  setActiveLayout: (layoutId) => {
-    set({ activeLayoutId: layoutId });
-  },
-
-  // --- Table Actions (Refactored) ---
-  addTable: (layoutId, tableData) => {
-    const shape = TABLE_SHAPES[tableData.shapeId];
-    if (!shape) return;
-
-    const activeLayout = get().layouts.find((l) => l.id === layoutId);
-    if (!activeLayout) return;
-
-    let finalX = tableData.x;
-    let finalY = tableData.y;
-
-    // If x or y are not provided, find the next available position
-    if (finalX === undefined || finalY === undefined) {
-      const newPosition = findNextAvailablePosition(activeLayout.tables, {
-        width: shape.width,
-        height: shape.height,
-      });
-      finalX = newPosition.x;
-      finalY = newPosition.y;
-    }
-
-    const newTable: TableType = {
-      id: `${layoutId}_table_${Date.now()}`,
-      name: tableData.name,
-      capacity: shape.capacity,
-      component: shape.component,
-      status: shape.type === "table" ? "Available" : "Not in Service",
-      x: finalX!, // Use the determined position
-      y: finalY!, // Use the determined position
-      rotation: 0,
-      order: null,
-      type: shape.type,
-    };
-
-    set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId
-          ? { ...layout, tables: [...layout.tables, newTable] }
-          : layout
-      ),
-    }));
-  },
-
   updateTableName: (layoutId, tableId, newName) => {
+    get().saveSnapshot();
     set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.map((t) =>
+              ...l,
+              tables: l.tables.map((t) =>
                 t.id === tableId ? { ...t, name: newName } : t
               ),
             }
-          : layout
+          : l
       ),
     }));
   },
 
   updateTablePosition: (layoutId, tableId, newPosition) => {
+    // Note: saveSnapshot is handled by the component via gesture onStart
+    // We assume the component calls saveSnapshot() before dragging starts
     set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.map((t) =>
+              ...l,
+              tables: l.tables.map((t) =>
                 t.id === tableId ? { ...t, ...newPosition } : t
               ),
             }
-          : layout
+          : l
       ),
     }));
   },
 
   updateTableRotation: (layoutId, tableId, newRotation) => {
+    // Note: saveSnapshot is handled by component onStart
     set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.map((t) =>
+              ...l,
+              tables: l.tables.map((t) =>
                 t.id === tableId ? { ...t, rotation: newRotation } : t
               ),
             }
-          : layout
+          : l
       ),
     }));
   },
 
   removeTable: (layoutId, tableId) => {
+    get().saveSnapshot();
     set((state) => ({
-      layouts: state.layouts.map((layout) =>
-        layout.id === layoutId
+      layouts: state.layouts.map((l) =>
+        l.id === layoutId
           ? {
-              ...layout,
-              tables: layout.tables.filter((t) => t.id !== tableId),
+              ...l,
+              tables: l.tables.filter((t) => t.id !== tableId),
             }
-          : layout
+          : l
       ),
     }));
   },
 
   updateTableStatus: (tableId, newStatus) => {
+    get().saveSnapshot();
     set((state) => ({
-      layouts: state.layouts.map((layout) => ({
-        ...layout,
-        tables: layout.tables.map((table) =>
-          table.id === tableId ? { ...table, status: newStatus } : table
+      layouts: state.layouts.map((l) => ({
+        ...l,
+        tables: l.tables.map((t) =>
+          t.id === tableId ? { ...t, status: newStatus } : t
         ),
       })),
     }));
   },
 
-  // --- Selection & Merging Actions (Operate on Active Layout) ---
   toggleTableSelection: (tableId) => {
     set((state) => {
       const isSelected = state.selectedTableIds.includes(tableId);
@@ -322,132 +380,57 @@ export const useFloorPlanStore = create<FloorPlanState>((set, get) => ({
   },
 
   mergeTables: (tableIds, primaryOrderId) => {
+    get().saveSnapshot();
     const { activeLayoutId, layouts } = get();
     if (!activeLayoutId || tableIds.length < 2) return null;
 
-    const activeLayout = layouts.find((l) => l.id === activeLayoutId);
-    if (!activeLayout) return null;
-
-    const primaryTableId = tableIds[0];
-    let mergedCapacity = 0;
-
-    const tablesToMerge = activeLayout.tables.filter((t) =>
-      tableIds.includes(t.id)
-    );
-    const allTablesAreAvailable = tablesToMerge.every(
-      (t) => t.status === "Available"
-    );
-
-    const newStatus: TableStatus = allTablesAreAvailable
-      ? "Available"
-      : "In Use";
-
     set((state) => ({
-      layouts: state.layouts.map((layout) => {
-        if (layout.id === activeLayoutId) {
-          const updatedTables = layout.tables.map((table) => {
-            if (tableIds.includes(table.id)) {
-              mergedCapacity += table.capacity;
+      layouts: state.layouts.map((l) => {
+        if (l.id === activeLayoutId) {
+          const updatedTables = l.tables.map((t) => {
+            if (tableIds.includes(t.id)) {
               return {
-                ...table,
-                isPrimary: table.id === primaryTableId,
-                mergedWith: tableIds.filter((id) => id !== table.id),
-                status: newStatus, // *** FIX: Apply the correct status to ALL tables in the group.
-                order:
-                  table.id === primaryTableId && newStatus === "In Use"
-                    ? {
-                        id: primaryOrderId,
-                        customerName: `Group at ${table.name}`,
-                        total: 0,
-                      }
-                    : null, // Assign order only if "In Use", and only to primary.
+                ...t,
+                isPrimary: t.id === tableIds[0],
+                mergedWith: tableIds.filter((id) => id !== t.id),
               };
             }
-            return table;
+            return t;
           });
-
-          // Second pass to update capacity on the primary table
-          return {
-            ...layout,
-            tables: updatedTables.map((t) =>
-              t.id === primaryTableId ? { ...t, capacity: mergedCapacity } : t
-            ),
-          };
+          return { ...l, tables: updatedTables };
         }
-        return layout;
+        return l;
       }),
     }));
-
     get().clearSelection();
-    return primaryTableId;
+    return tableIds[0];
   },
 
   unmergeTables: (tableId) => {
-    const { activeLayoutId, layouts } = get();
+    get().saveSnapshot();
+    const { activeLayoutId } = get();
     if (!activeLayoutId) return;
 
-    const activeLayout = layouts.find((l) => l.id === activeLayoutId);
-    if (!activeLayout) return;
-
-    const table = activeLayout.tables.find((t) => t.id === tableId);
-    if (!table || (!table.isPrimary && !table.mergedWith?.length)) return;
-
-    let groupIds: string[] = [];
-    let primaryId: string | null = null;
-    if (table.isPrimary) {
-      primaryId = table.id;
-      groupIds = [table.id, ...(table.mergedWith || [])];
-    } else {
-      const primaryTable = activeLayout.tables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(tableId)
-      );
-      if (primaryTable) {
-        primaryId = primaryTable.id;
-        groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
-      }
-    }
-
-    if (groupIds.length === 0) return;
-
     set((state) => ({
-      layouts: state.layouts.map((layout) => {
-        if (layout.id === activeLayoutId) {
+      layouts: state.layouts.map((l) => {
+        if (l.id === activeLayoutId) {
           return {
-            ...layout,
-            tables: layout.tables.map((t) => {
-              if (groupIds.includes(t.id)) {
-                // If this is the primary table, only unlink but keep its status and active order
-                if (t.id === primaryId) {
-                  return {
-                    ...t,
-                    isPrimary: undefined,
-                    mergedWith: undefined,
-                    // keep status, name, capacity, and order as-is
-                  } as typeof t;
-                }
-
-                // For connected tables, unlink and reset to available, no active order
-                const originalCapacity =
-                  MOCK_TABLES.find((mt) => mt.id === t.id)?.capacity ||
-                  t.capacity;
+            ...l,
+            tables: l.tables.map((t) => {
+              if (t.id === tableId || t.mergedWith?.includes(tableId)) {
                 return {
                   ...t,
                   isPrimary: undefined,
                   mergedWith: undefined,
-                  status: "Available",
-                  name: `T-${t.id}`,
-                  capacity: originalCapacity,
-                  order: null,
                 };
               }
               return t;
             }),
           };
         }
-        return layout;
+        return l;
       }),
     }));
-
     get().clearSelection();
   },
 

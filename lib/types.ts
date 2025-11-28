@@ -1,4 +1,5 @@
 import { ComponentType } from "react";
+import { TABLE_SHAPES } from "./table-shapes";
 
 // --- INVENTORY TYPES ---
 export type InventoryUnit = "bottle" | "pcs" | "lbs" | "bag" | "qt";
@@ -235,6 +236,8 @@ export interface TableType {
   capacity: number;
   // Instead of 'shape', we now reference the SVG component directly
   component: ComponentType<any>;
+  shapeId: keyof typeof TABLE_SHAPES;
+
   order?: TableOrder | null;
   x: number;
   y: number;

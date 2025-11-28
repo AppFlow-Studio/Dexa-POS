@@ -1,3 +1,4 @@
+import { TABLE_SHAPES } from "@/lib/table-shapes";
 import {
   registerTablePosition,
   unregisterTablePosition,
@@ -13,14 +14,14 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   SharedValue,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
 } from "react-native-reanimated";
 
 interface DraggableTableProps {
   table: TableType;
-  layoutId: string; // Added to know which layout this table belongs to
+  layoutId: string;
   isEditMode: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -29,43 +30,52 @@ interface DraggableTableProps {
 }
 
 const STATUS_COLORS: Record<TableType["status"] | "Overtime", string> = {
-  Available: "#10B981", // Green
-  "In Use": "#3B82F6", // Blue
-  "Needs Cleaning": "#EF4444", // Red
-  "Not in Service": "#6B7280", // Gray
-  Overtime: "#F59E0B", // Yellow-Orange
+  Available: "#10B981",
+  "In Use": "#3B82F6",
+  "Needs Cleaning": "#EF4444",
+  "Not in Service": "#6B7280",
+  Overtime: "#F59E0B",
 };
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
   table,
-  layoutId, // Now receiving the layoutId
+  layoutId,
   isEditMode,
   isSelected,
   onSelect,
   canvasScale,
   onPress,
 }) => {
-  const { layouts, updateTablePosition, updateTableRotation, removeTable } =
-    useFloorPlanStore();
+  const {
+    layouts,
+    updateTablePosition,
+    updateTableRotation,
+    removeTable,
+    saveSnapshot, // Import saveSnapshot
+  } = useFloorPlanStore();
   const { orders } = useOrderStore();
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
   const [duration, setDuration] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
 
+  // --- COMPONENT LOOKUP (Fixes the "Box" issue) ---
+  // If shapeId is missing, try to fallback, or default to a square
+  const shapeDef = TABLE_SHAPES[table.shapeId] || TABLE_SHAPES["square-4"];
+  const TableComponent = shapeDef?.component;
+
   const activeOrderForThisTable = orders.find(
     (o) => o.service_location_id === table.id && o.order_status !== "Voided"
   );
 
   const orderForThisGroup = useMemo(() => {
-    // If the table is part of a merge, find the primary table's order.
     if (table.mergedWith) {
       const allTables = layouts.flatMap((l) => l.tables);
       const primaryTable = table.isPrimary
         ? table
         : allTables.find(
-          (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-        );
+            (t) => t.isPrimary && t.mergedWith?.includes(table.id)
+          );
 
       if (primaryTable) {
         return orders.find(
@@ -76,7 +86,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         );
       }
     }
-    // Otherwise, find the order for this specific table.
     return orders.find(
       (o) =>
         o.service_location_id === table.id &&
@@ -100,38 +109,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
       setDuration(`${diffMins} min`);
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 1000); // Update every second for a smoother timer
+    }, 1000);
 
-    // Run once immediately
-    const startTime = new Date(orderForThisGroup.opened_at);
-    const now = new Date();
-    const diffMs = now.getTime() - startTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    setDuration(`${diffMins} min`);
-    setIsOvertime(diffMins > defaultSittingTimeMinutes);
-
-    return () => clearInterval(timer);
-  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
-
-  // Timer Logic now uses the correct order for the entire group
-  useEffect(() => {
-    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
-      setDuration("");
-      setIsOvertime(false);
-      return;
-    }
-
-    const timer = setInterval(() => {
-      const startTime = new Date(orderForThisGroup.opened_at!);
-      const now = new Date();
-      const diffMs = now.getTime() - startTime.getTime();
-      const diffMins = Math.floor(diffMs / 60000);
-
-      setDuration(`${diffMins} min`);
-      setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 1000); // Update every second for a smoother timer
-
-    // Run once immediately
     const startTime = new Date(orderForThisGroup.opened_at);
     const now = new Date();
     const diffMs = now.getTime() - startTime.getTime();
@@ -144,8 +123,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 
   const displayName = useMemo(() => {
     const allTables = layouts.flatMap((l) => l.tables);
-
-    // Case 1: It's a primary table
     if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
       const mergedNames = table.mergedWith
         .map((id) => allTables.find((t) => t.id === id)?.name)
@@ -153,8 +130,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         .join(", ");
       return `${table.name} (Merged: ${mergedNames})`;
     }
-
-    // Case 2: It's a non-primary merged table
     if (table.mergedWith && !table.isPrimary) {
       const primaryTable = allTables.find(
         (t) => t.isPrimary && t.mergedWith?.includes(table.id)
@@ -163,28 +138,46 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         return `${table.name} (Merged: ${primaryTable.name})`;
       }
     }
-
-    // Case 3: It's a standalone table
     return table.name;
   }, [table, layouts]);
 
+  // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x);
   const translateY = useSharedValue(table.y);
   const rotation = useSharedValue(table.rotation);
   const dragContext = useSharedValue({ x: 0, y: 0 });
   const rotateContext = useSharedValue(0);
 
+  // --- SYNC WITH UNDO/REDO (Fixes Step-by-Step feel) ---
+  // When 'table.x' changes (e.g. from Undo), instantly snap without spring
+  useAnimatedReaction(
+    () => ({ x: table.x, y: table.y, r: table.rotation }),
+    (current, prev) => {
+      // If values changed externally (Undo/Redo), update SharedValues
+      if (
+        !prev ||
+        current.x !== prev.x ||
+        current.y !== prev.y ||
+        current.r !== prev.r
+      ) {
+        translateX.value = current.x;
+        translateY.value = current.y;
+        rotation.value = current.r;
+      }
+    },
+    [table.x, table.y, table.rotation]
+  );
+
   useEffect(() => {
-    translateX.value = withSpring(table.x);
-    translateY.value = withSpring(table.y);
-    rotation.value = withSpring(table.rotation);
     registerTablePosition(table.id, translateX, translateY);
     return () => unregisterTablePosition(table.id);
-  }, [table]);
+  }, [table.id]);
 
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
+      // SAVE SNAPSHOT BEFORE DRAGGING
+      runOnJS(saveSnapshot)();
       dragContext.value = { x: translateX.value, y: translateY.value };
     })
     .onUpdate((event) => {
@@ -194,7 +187,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         dragContext.value.y + event.translationY / canvasScale.value;
     })
     .onEnd(() => {
-      // FIX: Pass layoutId as the first argument
       runOnJS(updateTablePosition)(layoutId, table.id, {
         x: translateX.value,
         y: translateY.value,
@@ -204,6 +196,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const rotateGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
+      // SAVE SNAPSHOT BEFORE ROTATING
+      runOnJS(saveSnapshot)();
       rotateContext.value = rotation.value;
     })
     .onUpdate((event) => {
@@ -213,13 +207,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     })
     .onEnd(() => {
       const snappedRotation = Math.round(rotation.value / 45) * 45;
-      rotation.value = withSpring(snappedRotation);
-      // FIX: Pass layoutId as the first argument
+      rotation.value = snappedRotation; // Snap instantly
       runOnJS(updateTableRotation)(layoutId, table.id, snappedRotation);
     });
 
   const handleDelete = () => {
-    // FIX: Pass layoutId as the first argument
+    // Delete handles its own snapshot in the store
     removeTable(layoutId, table.id);
   };
 
@@ -252,8 +245,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       0
     ) || 0;
 
-  const TableComponent = table.component as any;
-
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
     : STATUS_COLORS[table.status];
@@ -271,19 +262,22 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
               chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
             />
           ) : (
+            // Fallback view if something goes really wrong
             <View
               style={{
                 width: 100,
                 height: 100,
-                backgroundColor: table.type === "table" ? tableColor : "#E5E7EB",
+                backgroundColor:
+                  table.type === "table" ? tableColor : "#E5E7EB",
                 borderRadius: 16,
               }}
             />
           )}
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
-              className={`text-base text-center font-bold ${table.type === "table" ? "text-white" : "text-[#757575]"
-                }`}
+              className={`text-base text-center font-bold ${
+                table.type === "table" ? "text-white" : "text-[#757575]"
+              }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}

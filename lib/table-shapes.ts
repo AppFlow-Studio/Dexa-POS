@@ -16,14 +16,16 @@ import TableRectangle6Chair from "@/components/tables/svg/TableRectangle6Chair";
 import TableSquare2Chair from "@/components/tables/svg/TableSquare2Chair";
 import TableSquare4Chair from "@/components/tables/svg/TableSquare4Chair";
 import TableSquare8Chair from "@/components/tables/svg/TableSquare8Chair";
+import TextLabel from "@/components/tables/svg/TextLabel";
 import WallSection from "@/components/tables/svg/WallSection";
-import ZoneRectangle from "@/components/tables/svg/ZoneRectangle"; // Import new component
-import TextLabel from "@/components/tables/svg/TextLabel"; // Import new component
+import ZoneRectangle from "@/components/tables/svg/ZoneRectangle";
 
-// This object is now the single source of truth for your available table shapes
+// This object is the single source of truth.
+// I have added 'id' to every object so you can access it directly.
 export const TABLE_SHAPES = {
   // --- Standard Tables ---
   "square-2": {
+    id: "square-2",
     label: "2-Seater Square",
     component: TableSquare2Chair,
     capacity: 2,
@@ -33,6 +35,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "square-4": {
+    id: "square-4",
     label: "4-Seater Square",
     component: TableSquare4Chair,
     capacity: 4,
@@ -42,6 +45,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "rectangle-4": {
+    id: "rectangle-4",
     label: "4-Seater Rectangle",
     component: TableRectangle4Chair,
     capacity: 4,
@@ -51,6 +55,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "rectangle-6": {
+    id: "rectangle-6",
     label: "6-Seater Rectangle",
     component: TableRectangle6Chair,
     capacity: 6,
@@ -60,6 +65,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "square-8": {
+    id: "square-8",
     label: "8-Seater Long",
     component: TableSquare8Chair,
     capacity: 8,
@@ -69,6 +75,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "circle-2": {
+    id: "circle-2",
     label: "2-Seater Circle",
     component: TableCircle2Chair,
     capacity: 2,
@@ -78,6 +85,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "circle-4": {
+    id: "circle-4",
     label: "4-Seater Circle",
     component: TableCircle4Chair,
     capacity: 4,
@@ -87,6 +95,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "circle-6": {
+    id: "circle-6",
     label: "6-Seater Circle",
     component: TableCircle6Chair,
     capacity: 6,
@@ -96,6 +105,7 @@ export const TABLE_SHAPES = {
     category: "table",
   },
   "high-top-2": {
+    id: "high-top-2",
     label: "2-Seater High-Top",
     component: TableHighTop,
     capacity: 2,
@@ -107,6 +117,7 @@ export const TABLE_SHAPES = {
 
   // --- Booths ---
   "booth-2": {
+    id: "booth-2",
     label: "2-Person Booth",
     component: Booth2Person,
     capacity: 2,
@@ -116,6 +127,7 @@ export const TABLE_SHAPES = {
     category: "booth",
   },
   "booth-4": {
+    id: "booth-4",
     label: "4-Person Booth",
     component: Booth4Person,
     capacity: 4,
@@ -127,6 +139,7 @@ export const TABLE_SHAPES = {
 
   // --- Functional Objects ---
   "bar-section": {
+    id: "bar-section",
     label: "Bar Section",
     component: BarSection,
     capacity: 0,
@@ -136,6 +149,7 @@ export const TABLE_SHAPES = {
     category: "functional",
   },
   "cashier-stand": {
+    id: "cashier-stand",
     label: "Cashier Stand",
     component: CashierStand,
     capacity: 0,
@@ -145,6 +159,7 @@ export const TABLE_SHAPES = {
     category: "functional",
   },
   "host-stand": {
+    id: "host-stand",
     label: "Host Stand",
     component: HostStand,
     capacity: 0,
@@ -154,6 +169,7 @@ export const TABLE_SHAPES = {
     category: "functional",
   },
   "server-station": {
+    id: "server-station",
     label: "Server Station",
     component: ServerStation,
     capacity: 0,
@@ -163,6 +179,7 @@ export const TABLE_SHAPES = {
     category: "functional",
   },
   "kitchen-pass": {
+    id: "kitchen-pass",
     label: "Kitchen Pass",
     component: KitchenPass,
     capacity: 0,
@@ -174,6 +191,7 @@ export const TABLE_SHAPES = {
 
   // --- Architectural & Decorative ---
   "wall-section": {
+    id: "wall-section",
     label: "Wall Section",
     component: WallSection,
     capacity: 0,
@@ -183,6 +201,7 @@ export const TABLE_SHAPES = {
     category: "structure",
   },
   pillar: {
+    id: "pillar",
     label: "Pillar",
     component: Pillar,
     capacity: 0,
@@ -192,6 +211,7 @@ export const TABLE_SHAPES = {
     category: "structure",
   },
   plant: {
+    id: "plant",
     label: "Decorative Plant",
     component: DecorativePlant,
     capacity: 0,
@@ -202,6 +222,7 @@ export const TABLE_SHAPES = {
   },
   // --- Zone & Label Placeholders ---
   "zone-rectangle": {
+    id: "zone-rectangle",
     label: "Zone",
     component: ZoneRectangle,
     capacity: 0,
@@ -211,6 +232,7 @@ export const TABLE_SHAPES = {
     category: "zone",
   },
   "label-text": {
+    id: "label-text",
     label: "Text Label",
     component: TextLabel,
     capacity: 0,
@@ -221,8 +243,5 @@ export const TABLE_SHAPES = {
   },
 };
 
-// We can also create an array for easy mapping in the UI
-export const SHAPE_OPTIONS = Object.entries(TABLE_SHAPES).map(([id, data]) => ({
-  id,
-  ...data,
-}));
+// We create the array from the object values directly since they now contain the ID
+export const SHAPE_OPTIONS = Object.values(TABLE_SHAPES);

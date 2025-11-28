@@ -17,7 +17,8 @@ export const DraggableShape: React.FC<DraggableShapeProps> = ({
     useDragToAddContext();
 
   const panGesture = Gesture.Pan()
-    .onBegin((e) => {
+    .minDistance(10) // Only activate after moving 10 pixels
+    .onStart((e) => {
       // Set values on the UI thread directly
       draggedShapeId.value = shapeId;
       isDraggingNewObject.value = true;
