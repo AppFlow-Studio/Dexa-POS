@@ -1,16 +1,26 @@
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { TableType } from "@/lib/types";
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, TextInput, TouchableOpacity } from "react-native";
-import { Trash2, X } from "lucide-react-native"; // Import X icon
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import debounce from "lodash.debounce";
+import { Trash2, X } from "lucide-react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface PropertiesPanelProps {
   table: TableType;
   layoutId: string;
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table, layoutId }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
+  table,
+  layoutId,
+}) => {
   const { updateTableName, removeTable, clearSelection } = useFloorPlanStore();
   const [name, setName] = useState(table.name);
 
@@ -40,7 +50,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table, layoutId }) =>
   };
 
   return (
-    <View className="absolute bottom-5 right-5 w-[300px] bg-zinc-800 rounded-2xl p-5 shadow-lg gap-5">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="absolute bottom-5 right-5 w-[300px] bg-zinc-800 rounded-2xl p-5 shadow-lg gap-5"
+    >
       {/* Close Button */}
       <TouchableOpacity
         onPress={clearSelection}
@@ -52,7 +65,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table, layoutId }) =>
       <View className="flex-row justify-between items-center pb-3 border-b border-zinc-700">
         <Text className="text-xl font-bold text-white">Properties</Text>
         <View className="bg-zinc-700 px-3 py-1 rounded-full">
-          <Text className="text-xs font-medium text-zinc-300">{table.name}</Text>
+          <Text className="text-xs font-medium text-zinc-300">
+            {table.name}
+          </Text>
         </View>
       </View>
 
@@ -74,7 +89,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ table, layoutId }) =>
         <Trash2 size={18} color="#fff" />
         <Text className="text-white text-base font-bold">Delete Element</Text>
       </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
