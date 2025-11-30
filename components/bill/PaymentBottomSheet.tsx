@@ -66,7 +66,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 
   const handleConfirmClose = () => {
-    setIsDirty(false);
+    setIsDirty(false); // isDirty should be controlled by the store actions, not directly here.
     setShowConfirmation(false);
     close();
   };

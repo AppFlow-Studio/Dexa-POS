@@ -38,6 +38,11 @@ const PaymentSuccessView = () => {
     appliedRef.current = true;
   }, []);
 
+  // Ensure isDirty is false when this view mounts, as payment is complete
+  useEffect(() => {
+    usePaymentStore.getState().setPaymentClean();
+  }, []);
+
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const items = activeOrder?.items || [];
 
@@ -94,7 +99,6 @@ const PaymentSuccessView = () => {
     ) {
       setTimeout(() => archiveOrder(activeOrder?.id), 500);
     }
-    usePaymentStore.getState().setPaymentClean(); // Set isDirty to false
     close();
   };
 

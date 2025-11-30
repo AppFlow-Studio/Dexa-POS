@@ -17,6 +17,7 @@ export type PaymentView =
   | "split-options" // New view for initial split selection
   | "split-by-item"
   | "split-evenly"
+  | "split"
   | "split-custom-amount";
 
 export interface Split {
@@ -35,6 +36,7 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   "split-options": 2, // Split options is part of method details
   "split-by-item": 2,
   "split-evenly": 2,
+  split: 2,
   "split-custom-amount": 2,
   review: 3,
   success: 4,
@@ -126,17 +128,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // no-op safeguard
       }
       const newView = initialView || "payment-method-selection"; // Default to method selection
-      return {
+      const newPaymentState = {
         paymentMethod: method,
         view: newView,
         activeTableId: tableId || null,
-        isDirty: false,
+        isDirty: false, // isDirty is always false on open
         splits: [],
         progress: {
           currentStep: paymentViewToStepMap[newView],
           totalSteps: totalSteps,
         },
       };
+      return newPaymentState;
     });
   },
   close: () => {
@@ -153,12 +156,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     })),
   setActiveTableId: (tableId) => set({ activeTableId: tableId }),
   clearActiveTableId: () => set({ activeTableId: null }),
-  setIsDirty: (isDirty) => set({ isDirty }),
-  setPaymentClean: () => set({ isDirty: false }), // Implementation of new action
-  markPaymentAsDirty: () => set({ isDirty: true }), // Implementation of new action
+  setIsDirty: (isDirty) => {
+    set({ isDirty });
+  },
+  setPaymentClean: () => {
+    set({ isDirty: false });
+  }, // Implementation of new action
+  markPaymentAsDirty: () => {
+    set({ isDirty: true });
+  }, // Implementation of new action
   addSplit: (customerName) => {
-    set((state) => ({
-      splits: [
+    set((state) => {
+      const newSplits = [
         ...state.splits,
         {
           id: `split_${Date.now()}`,
@@ -166,55 +175,54 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           items: [],
           amount: 0,
         },
-      ],
-      isDirty: true,
-    }));
+      ];
+      return { splits: newSplits, isDirty: true };
+    });
   },
   removeSplit: (splitId) => {
-    set((state) => ({
-      splits: state.splits.filter((s) => s.id !== splitId),
-      isDirty: true,
-    }));
+    set((state) => {
+      const newSplits = state.splits.filter((s) => s.id !== splitId);
+      return { splits: newSplits, isDirty: true };
+    });
   },
   assignItemToSplit: (splitId, item) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
+    set((state) => {
+      const newSplits = state.splits.map((s) =>
         s.id === splitId
           ? { ...s, items: [...s.items, { ...item, quantity: 1 }] } // Assign 1 quantity for now
           : s
-      ),
-      isDirty: true,
-    }));
+      );
+      return { splits: newSplits, isDirty: true };
+    });
   },
   unassignItemFromSplit: (splitId, itemId) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
+    set((state) => {
+      const newSplits = state.splits.map((s) =>
         s.id === splitId
           ? { ...s, items: s.items.filter((item) => item.id !== itemId) }
           : s
-      ),
-      isDirty: true,
-    }));
+      );
+      return { splits: newSplits, isDirty: true };
+    });
   },
   updateSplitAmount: (splitId, amount) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
+    set((state) => {
+      const newSplits = state.splits.map((s) =>
         s.id === splitId ? { ...s, amount } : s
-      ),
-      isDirty: true,
-    }));
+      );
+      return { splits: newSplits, isDirty: true };
+    });
   },
   updateSplitCustomerName: (splitId, newName) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
+    set((state) => {
+      const newSplits = state.splits.map((s) =>
         s.id === splitId ? { ...s, customerName: newName } : s
-      ),
-      isDirty: true,
-    }));
+      );
+      return { splits: newSplits, isDirty: true };
+    });
   },
   splitEvenly: (numberOfPeople, amountPerPerson) => {
     const currentSplits = get().splits;
-    const { addSplit, updateSplitAmount } = get(); // Access other actions
     currentSplits.forEach((s) => get().removeSplit(s.id)); // Clear existing splits
 
     const newSplits = [];

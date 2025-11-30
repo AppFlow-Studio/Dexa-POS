@@ -11,7 +11,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 type PaymentMethod = "Card" | "Split" | "Cash";
 
 const PaymentMethodSelectionView: React.FC = () => {
-  const { setView, close } = usePaymentStore();
+  const { setView, close, markPaymentAsDirty } = usePaymentStore();
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card");
 
   const paymentMethods = [
@@ -41,6 +41,7 @@ const PaymentMethodSelectionView: React.FC = () => {
   const handleProceed = () => {
     const selected = paymentMethods.find((p) => p.name === selectedMethod);
     if (selected) {
+      markPaymentAsDirty(); // Mark as dirty after making a selection
       setView(selected.view);
     }
   };
