@@ -46,9 +46,12 @@ const PaymentMethodSelectionView: React.FC = () => {
   };
 
   return (
+    // 1. Container ensures full height usage
     <View className="flex-1 bg-[#212121]">
+      {/* 2. ScrollView takes all available space (flex-1) */}
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 }}
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 4 }} // Reduced padding since footer isn't absolute
         showsVerticalScrollIndicator={false}
       >
         {/* Title Section */}
@@ -76,8 +79,8 @@ const PaymentMethodSelectionView: React.FC = () => {
                   flex-row items-center p-5 rounded-2xl border-2
                   ${
                     isSelected
-                      ? "border-blue-500 bg-[#252b36]" // Slightly lighter dark blue-gray for active
-                      : "border-[#333333] bg-[#262626]" // Subtle contrast for inactive
+                      ? "border-blue-500 bg-[#252b36]"
+                      : "border-[#333333] bg-[#262626]"
                   }
                 `}
               >
@@ -121,7 +124,7 @@ const PaymentMethodSelectionView: React.FC = () => {
                       color="#3B82F6"
                       fill="#3B82F6"
                       stroke="#fff"
-                    /> // Filled check style
+                    />
                   ) : (
                     <View className="w-6 h-6 rounded-full border-2 border-gray-600" />
                   )}
@@ -132,8 +135,8 @@ const PaymentMethodSelectionView: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Footer Buttons - Fixed at bottom */}
-      <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-4 border-t border-[#333333]">
+      {/* 3. Footer sits naturally at the bottom (No Absolute Positioning) */}
+      <View className="bg-[#212121] pt-4 pb-4 border-t border-[#333333]">
         <View className="flex-row gap-4">
           <TouchableOpacity
             onPress={() => close()}

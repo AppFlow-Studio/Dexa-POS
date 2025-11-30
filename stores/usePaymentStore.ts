@@ -11,7 +11,6 @@ export type PaymentView =
   | "card"
   | "split"
   | "success"
-  | "split"
   | "cardOptions"
   | "manual"
   | "payment-method-selection"
@@ -79,6 +78,9 @@ interface PaymentState {
   setPaymentBottomSheetRef: (
     ref: React.RefObject<BottomSheetMethods> | null
   ) => void; // New action to set ref
+  setPaymentClean: () => void; // New action to set isDirty to false
+  markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
+  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -144,7 +146,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   setView: (view) =>
     set((state) => ({
       view,
-      isDirty: true,
       progress: {
         currentStep: paymentViewToStepMap[view],
         totalSteps: totalSteps,
@@ -153,6 +154,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   setActiveTableId: (tableId) => set({ activeTableId: tableId }),
   clearActiveTableId: () => set({ activeTableId: null }),
   setIsDirty: (isDirty) => set({ isDirty }),
+  setPaymentClean: () => set({ isDirty: false }), // Implementation of new action
+  markPaymentAsDirty: () => set({ isDirty: true }), // Implementation of new action
   addSplit: (customerName) => {
     set((state) => ({
       splits: [
@@ -208,6 +211,24 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       ),
       isDirty: true,
     }));
+  },
+  splitEvenly: (numberOfPeople, amountPerPerson) => {
+    const currentSplits = get().splits;
+    const { addSplit, updateSplitAmount } = get(); // Access other actions
+    currentSplits.forEach((s) => get().removeSplit(s.id)); // Clear existing splits
+
+    const newSplits = [];
+    for (let i = 0; i < numberOfPeople; i++) {
+      const customerName = `Guest ${i + 1}`;
+      const newSplit: Split = {
+        id: `split_${Date.now()}_${i}`,
+        customerName,
+        items: [],
+        amount: amountPerPerson,
+      };
+      newSplits.push(newSplit);
+    }
+    set({ splits: newSplits, isDirty: false }); // Set new splits and mark clean
   },
   setPaymentProgress: (step, total) => {
     set({ progress: { currentStep: step, totalSteps: total } });

@@ -94,6 +94,7 @@ const PaymentSuccessView = () => {
     ) {
       setTimeout(() => archiveOrder(activeOrder?.id), 500);
     }
+    usePaymentStore.getState().setPaymentClean(); // Set isDirty to false
     close();
   };
 

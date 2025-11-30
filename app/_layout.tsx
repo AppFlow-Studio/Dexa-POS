@@ -12,6 +12,7 @@ import { useColorScheme } from "@/lib/useColorScheme";
 import { usePtoStore } from "@/stores/usePtoStore"; // Import usePtoStore
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
   DarkTheme,
   DefaultTheme,
@@ -69,44 +70,46 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView>
-      <SafeAreaProvider>
-        <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
-          <ToastProvider>
-            <StatusBar style={"dark"} translucent />
-            <Stack
-              screenOptions={{ headerShown: false }}
-              initialRouteName="(auth)"
-            />
-            <PortalHost />
-            <SearchBottomSheet />
-            <ItemCustomizationDialog />
-            <ClockInWallModal
-              isOpen={isClockInWallOpen}
-              onClose={hideClockInWall}
-            />
-            <ManagerPinModal />
-            <CustomerSheet />
-            <Toasts
-              defaultStyle={{
-                view: {
-                  backgroundColor: "#ffffff",
-                  borderWidth: 1,
-                  borderColor: "#e5e7eb",
-                  flex: 1,
-                },
-                text: {
-                  color: "#1f2937",
-                  fontWeight: "bold",
-                  fontSize: 24,
-                },
-                indicator: {
-                  backgroundColor: "#659AF0",
-                },
-              }}
-            />
-          </ToastProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      <BottomSheetModalProvider>
+        <SafeAreaProvider>
+          <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
+            <ToastProvider>
+              <StatusBar style={"dark"} translucent />
+              <Stack
+                screenOptions={{ headerShown: false }}
+                initialRouteName="(auth)"
+              />
+              <PortalHost />
+              <SearchBottomSheet />
+              <ItemCustomizationDialog />
+              <ClockInWallModal
+                isOpen={isClockInWallOpen}
+                onClose={hideClockInWall}
+              />
+              <ManagerPinModal />
+              <CustomerSheet />
+              <Toasts
+                defaultStyle={{
+                  view: {
+                    backgroundColor: "#ffffff",
+                    borderWidth: 1,
+                    borderColor: "#e5e7eb",
+                    flex: 1,
+                  },
+                  text: {
+                    color: "#1f2937",
+                    fontWeight: "bold",
+                    fontSize: 24,
+                  },
+                  indicator: {
+                    backgroundColor: "#659AF0",
+                  },
+                }}
+              />
+            </ToastProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </BottomSheetModalProvider>
     </GestureHandlerRootView>
   );
 }

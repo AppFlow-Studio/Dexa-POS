@@ -1,19 +1,18 @@
-import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+// Import BottomSheetScrollView to handle sheet gestures correctly
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowLeft,
   CheckCircle2,
-  ChevronRight,
+  Circle,
   CreditCard,
-  MinusCircle,
   Plus,
-  Trash2,
   User,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ScrollView,
+  ScrollView, // Standard ScrollView for horizontal tabs
   Text,
   TextInput,
   TouchableOpacity,
@@ -21,11 +20,9 @@ import {
 } from "react-native";
 
 const SplitByItemView = () => {
-  // ✅ FIX 1: Use individual selectors to prevent re-renders and potential crashes
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const orders = useOrderStore((state) => state.orders);
 
-  // ✅ FIX 2: Use selectors for PaymentStore as well
   const splits = usePaymentStore((state) => state.splits);
   const addSplit = usePaymentStore((state) => state.addSplit);
   const removeSplit = usePaymentStore((state) => state.removeSplit);
@@ -38,293 +35,279 @@ const SplitByItemView = () => {
   );
   const setView = usePaymentStore((state) => state.setView);
 
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [activeSplitId, setActiveSplitId] = useState<string | null>(null);
 
-  // Optional: Safety check if useToast is causing the context error
-  // const { show } = useToast();
+  useEffect(() => {
+    if (splits.length === 0) {
+      addSplit("Guest 1");
+    } else if (!activeSplitId && splits.length > 0) {
+      setActiveSplitId(splits[0].id);
+    }
+  }, [splits.length]);
 
-  // Get the Master Order
+  useEffect(() => {
+    if (
+      splits.length > 0 &&
+      activeSplitId &&
+      !splits.find((s) => s.id === activeSplitId)
+    ) {
+      setActiveSplitId(splits[0].id);
+    }
+  }, [splits, activeSplitId]);
+
   const activeOrder = useMemo(
     () => orders.find((o) => o.id === activeOrderId),
     [orders, activeOrderId]
   );
-  console.log("activeOrderId:", activeOrderId);
 
   const masterItems = activeOrder?.items || [];
 
-  // --- LOGIC: Calculate Available Quantities ---
-  const availableItems = useMemo(() => {
-    if (!masterItems.length) return [];
+  const itemData = useMemo(() => {
+    return masterItems.map((item) => {
+      const currentSplit = splits.find((s) => s.id === activeSplitId);
+      const qtyInCurrent =
+        currentSplit?.items.find((i) => i.id === item.id)?.quantity || 0;
 
-    const totals = new Map<string, CartItem>();
-
-    // Deep clone items
-    masterItems.forEach((item) => {
-      totals.set(item.id, { ...item });
-    });
-
-    // Subtract items already in splits
-    splits.forEach((split) => {
-      split.items.forEach((splitItem) => {
-        const masterItem = totals.get(splitItem.id);
-        if (masterItem) {
-          masterItem.quantity -= splitItem.quantity;
-        }
+      let totalAssigned = 0;
+      splits.forEach((s) => {
+        const found = s.items.find((i) => i.id === item.id);
+        if (found) totalAssigned += found.quantity;
       });
+
+      const qtyRemaining = item.quantity - totalAssigned;
+
+      return {
+        ...item,
+        qtyInCurrent,
+        qtyRemaining,
+        totalAssigned,
+        isFullyAssigned: item.quantity === totalAssigned,
+      };
     });
+  }, [masterItems, splits, activeSplitId]);
 
-    return Array.from(totals.values()).filter((item) => item.quantity > 0);
-  }, [masterItems, splits]);
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
+  const activeSplitTotal = activeSplit
+    ? activeSplit.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
+    : 0;
 
-  const handleAddSplit = () => {
-    const nextCustomerNumber = splits.length + 1;
-    addSplit(`Guest ${nextCustomerNumber}`);
+  const handleAddGuest = () => {
+    addSplit(`Guest ${splits.length + 1}`);
   };
 
-  const handleAssignItem = (splitId: string) => {
-    if (!selectedItemId) return;
-
-    // Find the item in our *available* list to ensure we have stock
-    const itemToAssign = availableItems.find((i) => i.id === selectedItemId);
-
-    if (itemToAssign) {
-      // Assign 1 unit
-      assignItemToSplit(splitId, { ...itemToAssign, quantity: 1 });
-
-      // Check if we just used the last one
-      // (Logic: itemToAssign.quantity is the snapshot *before* this action)
-      if (itemToAssign.quantity <= 1) {
-        setSelectedItemId(null);
-      }
+  const toggleAssignment = (item: (typeof itemData)[0]) => {
+    if (!activeSplitId) return;
+    if (item.qtyRemaining > 0) {
+      assignItemToSplit(activeSplitId, { ...item, quantity: 1 });
+    } else if (item.qtyInCurrent > 0) {
+      unassignItemFromSplit(activeSplitId, item.id);
     }
   };
 
-  const handlePaySplit = (splitId: string) => {
-    console.log("Pay Split Clicked:", splitId);
-    // show({ title: "Processing", message: "Splitting payment..." });
+  const handlePaySplit = () => {
+    if (activeSplitId) {
+      console.log("Paying for", activeSplitId);
+    }
   };
 
-  const getSplitTotal = (items: CartItem[]) => {
-    return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const handleDone = () => {
+    usePaymentStore.getState().setPaymentClean();
+    setView("success");
   };
 
   return (
     <View className="flex-1 bg-[#212121]">
-      {/* Header */}
-      <View className="flex-row items-center p-4 border-b border-[#333]">
+      {/* 1. Header */}
+      <View className="flex-row items-center justify-between p-4 border-b border-[#333] h-[70px]">
         <TouchableOpacity
           onPress={() => setView("split-options")}
-          className="p-2 bg-[#333] rounded-lg mr-4"
+          className="p-2 bg-[#333] rounded-lg"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
-        <View>
-          <Text className="text-2xl font-bold text-white">Split by Item</Text>
-          <Text className="text-gray-400">
-            Select an item, then tap a guest to assign it.
-          </Text>
-        </View>
+        <Text className="text-xl font-bold text-white">Split by Item</Text>
+        <TouchableOpacity
+          onPress={handleDone}
+          className="bg-[#333] px-3 py-2 rounded-lg"
+        >
+          <Text className="text-green-400 font-bold">Done</Text>
+        </TouchableOpacity>
       </View>
 
-      <View className="flex-1 flex-row">
-        {/* LEFT COLUMN: Unassigned Bill Items */}
-        <View className="flex-[4] border-r border-[#333] bg-[#262626]">
-          <View className="p-4 border-b border-[#333] bg-[#2A2A2A]">
-            <Text className="text-gray-400 font-bold uppercase tracking-wider text-xs">
-              Remaining Items
-            </Text>
-          </View>
+      {/* 2. Guest Tabs - Using .map() inside ScrollView */}
+      <View className="h-[70px] bg-[#1a1a1a] border-b border-[#333]">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            alignItems: "center",
+          }}
+        >
+          {/* Add Button */}
+          <TouchableOpacity
+            onPress={handleAddGuest}
+            className="flex-row items-center px-4 py-2 mx-2 rounded-full border border-[#444] bg-[#2a2a2a]"
+          >
+            <Plus size={18} color="#fff" />
+            <Text className="ml-2 text-white font-semibold">Add</Text>
+          </TouchableOpacity>
 
-          <ScrollView contentContainerStyle={{ padding: 10 }}>
-            {availableItems.length === 0 ? (
-              <View className="p-8 items-center justify-center opacity-50">
-                <CheckCircle2 size={40} color="#10B981" className="mb-2" />
-                <Text className="text-gray-400 text-center">
-                  All items assigned
+          {/* Guest List Map */}
+          {splits.map((split) => {
+            const isActive = split.id === activeSplitId;
+            return (
+              <TouchableOpacity
+                key={split.id}
+                onPress={() => setActiveSplitId(split.id)}
+                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
+                  isActive
+                    ? "bg-blue-600 border-blue-500"
+                    : "bg-[#2a2a2a] border-[#333]"
+                }`}
+              >
+                <User size={16} color={isActive ? "white" : "#9ca3af"} />
+                <Text
+                  className={`ml-2 font-semibold ${
+                    isActive ? "text-white" : "text-gray-400"
+                  }`}
+                >
+                  {split.customerName}
                 </Text>
-              </View>
-            ) : (
-              availableItems.map((item) => {
-                const isSelected = selectedItemId === item.id;
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => setSelectedItemId(item.id)}
-                    className={`
-                        flex-row justify-between items-center p-4 mb-3 rounded-xl border
-                        ${
-                          isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : "bg-[#333] border-[#404040]"
-                        }
-                    `}
-                  >
-                    <View className="flex-1">
-                      <View className="flex-row items-center">
-                        <View
-                          className={`px-2 py-0.5 rounded mr-2 ${isSelected ? "bg-white/20" : "bg-[#444]"}`}
-                        >
-                          <Text
-                            className={`font-bold ${isSelected ? "text-white" : "text-gray-300"}`}
-                          >
-                            {item.quantity}x
-                          </Text>
-                        </View>
-                        <Text
-                          className={`text-lg font-semibold ${isSelected ? "text-white" : "text-gray-200"}`}
-                          numberOfLines={1}
-                        >
-                          {item.name}
-                        </Text>
-                      </View>
-                      <Text
-                        className={`mt-1 ${isSelected ? "text-blue-200" : "text-gray-400"}`}
-                      >
-                        ${item.price.toFixed(2)} ea
-                      </Text>
-                    </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
-                    {isSelected && <ChevronRight color="white" size={20} />}
-                  </TouchableOpacity>
-                );
-              })
-            )}
-          </ScrollView>
-        </View>
-
-        {/* RIGHT COLUMN: Splits / Guest Checks */}
-        <View className="flex-[6] bg-[#1F1F1F]">
-          <View className="p-4 border-b border-[#333] flex-row justify-between items-center bg-[#2A2A2A]">
-            <Text className="text-gray-400 font-bold uppercase tracking-wider text-xs">
-              Guest Checks
+      {/* 3. Active Guest Summary */}
+      {activeSplit && (
+        <View className="flex-row justify-between items-center p-4 bg-[#262626] border-b border-[#333]">
+          <View>
+            <TextInput
+              className="text-2xl font-bold text-white border-b border-[#444] pb-1 min-w-[150px]"
+              value={activeSplit.customerName}
+              onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
+              placeholderTextColor="#555"
+            />
+            <Text className="text-gray-400 text-xs mt-1">
+              Tap items below to assign
             </Text>
-            <TouchableOpacity
-              onPress={handleAddSplit}
-              className="flex-row items-center bg-[#333] px-3 py-1.5 rounded-lg border border-[#444]"
-            >
-              <Plus size={16} color="white" className="mr-1" />
-              <Text className="text-white font-medium text-xs">Add Guest</Text>
-            </TouchableOpacity>
           </View>
+          <View className="items-end">
+            <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+              Total
+            </Text>
+            <Text className="text-2xl font-bold text-blue-400">
+              ${activeSplitTotal.toFixed(2)}
+            </Text>
+          </View>
+        </View>
+      )}
 
-          <ScrollView contentContainerStyle={{ padding: 12 }}>
-            <View className="flex-row flex-wrap gap-3">
-              {splits.map((split) => {
-                const total = getSplitTotal(split.items);
-                const isTarget = !!selectedItemId;
+      {/* 4. Main Item List - Using .map() inside BottomSheetScrollView */}
+      {/* 
+          Using BottomSheetScrollView ensures vertical scrolling works 
+          inside the bottom sheet without conflicting gestures.
+      */}
+      <View className="flex-1 bg-[#1F1F1F]">
+        <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+          {itemData.map((item) => {
+            const isSelected = item.qtyInCurrent > 0;
+            const isFullyAssignedToOthers =
+              item.qtyRemaining === 0 && item.qtyInCurrent === 0;
 
-                return (
-                  <TouchableOpacity
-                    key={split.id}
-                    onPress={() => handleAssignItem(split.id)} // Put logic back
-                    activeOpacity={isTarget ? 0.7 : 1}
-                    disabled={!isTarget} // Disable click if no item selected (optional UX choice)
-                    className={`
-                            w-full mb-2 rounded-2xl border-2 overflow-hidden
-                            ${
-                              isTarget
-                                ? "border-dashed border-blue-500/50 bg-[#2A2A2A]"
-                                : "border-[#333] bg-[#262626]"
-                            }
-                        `}
+            return (
+              <TouchableOpacity
+                key={item.id} // Ensure key is unique
+                onPress={() => toggleAssignment(item)}
+                disabled={isFullyAssignedToOthers}
+                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
+                  isSelected
+                    ? "bg-[#1e3a8a] border-[#2563eb]" // Active Blue Bg
+                    : isFullyAssignedToOthers
+                      ? "bg-[#1A1A1A] opacity-40" // Dimmed
+                      : "bg-[#262626]" // Default
+                }`}
+              >
+                <View className="flex-1">
+                  <Text
+                    className={`text-lg font-semibold ${
+                      isSelected
+                        ? "text-white"
+                        : isFullyAssignedToOthers
+                          ? "text-gray-500"
+                          : "text-gray-200"
+                    }`}
                   >
-                    {/* Split Header */}
-                    <View
-                      className={`px-4 py-3 flex-row justify-between items-center ${isTarget ? "bg-blue-900/20" : "bg-[#303030]"}`}
-                    >
-                      <View className="flex-row items-center flex-1">
-                        <View className="w-8 h-8 rounded-full bg-[#444] items-center justify-center mr-2">
-                          <User size={14} color="#ccc" />
-                        </View>
-                        <TextInput
-                          className="text-lg font-bold text-white min-w-[100px]"
-                          value={split.customerName}
-                          onChangeText={(text) =>
-                            updateSplitCustomerName(split.id, text)
-                          }
-                          placeholder="Guest Name"
-                          placeholderTextColor="#666"
-                        />
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => removeSplit(split.id)}
-                        className="p-2"
-                      >
-                        <Trash2 size={16} color="#666" />
-                      </TouchableOpacity>
-                    </View>
+                    {item.name}
+                  </Text>
+                  <Text
+                    className={`text-sm mt-1 ${
+                      isSelected ? "text-blue-200" : "text-gray-400"
+                    }`}
+                  >
+                    ${item.price.toFixed(2)}
+                  </Text>
+                </View>
 
-                    {/* Split Items List */}
-                    <View className="p-4 min-h-[80px]">
-                      {split.items.length === 0 ? (
-                        <View className="flex-1 items-center justify-center py-4 border-2 border-dashed border-[#333] rounded-lg">
-                          <Text className="text-gray-600 text-sm">
-                            {isTarget
-                              ? "Tap here to add selected item"
-                              : "No items assigned"}
+                <View className="items-end gap-1">
+                  {isFullyAssignedToOthers ? (
+                    <Text className="text-gray-500 italic text-xs">
+                      Assigned
+                    </Text>
+                  ) : (
+                    <View className="flex-row items-center gap-2">
+                      {item.qtyInCurrent > 0 && (
+                        <View className="bg-blue-600 px-2 py-1 rounded-md">
+                          <Text className="text-white text-xs font-bold">
+                            {item.qtyInCurrent}x
                           </Text>
-                        </View>
-                      ) : (
-                        <View className="flex-row flex-wrap gap-2">
-                          {split.items.map((item, idx) => (
-                            <TouchableOpacity
-                              key={`${item.id}-${idx}`}
-                              onPress={() =>
-                                unassignItemFromSplit(split.id, item.id)
-                              }
-                              className="flex-row items-center bg-[#333] pl-3 pr-2 py-1.5 rounded-lg border border-[#444]"
-                            >
-                              <Text className="text-gray-200 text-sm mr-2">
-                                {item.name}
-                              </Text>
-                              <MinusCircle size={14} color="#ef4444" />
-                            </TouchableOpacity>
-                          ))}
                         </View>
                       )}
+                      {isSelected ? (
+                        <CheckCircle2 size={24} color="#3b82f6" fill="white" />
+                      ) : (
+                        <Circle size={24} color="#555" />
+                      )}
                     </View>
+                  )}
+                  {item.qtyRemaining > 0 && (
+                    <Text className="text-blue-400 text-xs font-medium mt-1">
+                      {item.qtyRemaining} left
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </BottomSheetScrollView>
+      </View>
 
-                    {/* Split Footer / Actions */}
-                    <View className="p-3 bg-[#1A1A1A] border-t border-[#333] flex-row justify-between items-center">
-                      <View>
-                        <Text className="text-gray-500 text-xs">Total</Text>
-                        <Text className="text-xl font-bold text-white">
-                          ${total.toFixed(2)}
-                        </Text>
-                      </View>
-
-                      <TouchableOpacity
-                        disabled={total === 0}
-                        onPress={() => handlePaySplit(split.id)}
-                        className={`
-                                    flex-row items-center px-4 py-2 rounded-lg
-                                    ${total > 0 ? "bg-blue-600" : "bg-[#333] opacity-50"}
-                                `}
-                      >
-                        <CreditCard size={16} color="white" className="mr-2" />
-                        <Text className="text-white font-bold">Pay</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {splits.length === 0 && (
-              <View className="items-center justify-center py-20">
-                <Text className="text-gray-500 text-lg">
-                  No guests added yet.
-                </Text>
-                <TouchableOpacity
-                  onPress={handleAddSplit}
-                  className="mt-4 bg-blue-600 px-6 py-3 rounded-xl"
-                >
-                  <Text className="text-white font-bold">Add Guest 1</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </ScrollView>
-        </View>
+      {/* 5. Footer Action */}
+      <View className="p-4 bg-[#212121] border-t border-[#333]">
+        <TouchableOpacity
+          onPress={handlePaySplit}
+          disabled={activeSplitTotal === 0}
+          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
+            activeSplitTotal > 0
+              ? "bg-blue-600 active:bg-blue-700"
+              : "bg-[#333]"
+          }`}
+        >
+          <CreditCard
+            size={20}
+            color={activeSplitTotal > 0 ? "white" : "#666"}
+            className="mr-2"
+          />
+          <Text
+            className={`text-lg font-bold ${
+              activeSplitTotal > 0 ? "text-white" : "text-gray-500"
+            }`}
+          >
+            Pay {activeSplit?.customerName} (${activeSplitTotal.toFixed(2)})
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

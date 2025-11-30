@@ -67,7 +67,7 @@ const CashPaymentView = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View className="items-center py-6">
+        <View className="items-center py-6 pt-2">
           <View className="w-16 h-16 bg-green-900/20 rounded-full items-center justify-center mb-3">
             <Banknote size={32} color="#10B981" />
           </View>
@@ -154,7 +154,7 @@ const CashPaymentView = () => {
       </ScrollView>
 
       {/* Footer Buttons */}
-      <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-4 border-t border-[#333]">
+      <View className="absolute bottom-0 left-0 right-0 bg-[#212121] pt-2 pb-10 border-t border-[#333]">
         <View className="flex-row gap-4 px-4">
           <TouchableOpacity
             onPress={handleBack}

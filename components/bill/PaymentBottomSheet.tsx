@@ -2,7 +2,7 @@ import ConfirmationModal from "@/components/settings/reset-application/Confirmat
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { X } from "lucide-react-native";
@@ -13,7 +13,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native"; // Import standard View
 import CardPaymentView from "./ paymentView/CardPaymentView";
 import CashPaymentView from "./ paymentView/CashPaymentView";
 import ItemsReviewView from "./ paymentView/ItemsReviewView";
@@ -36,42 +36,39 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   const { view, close, isDirty, setIsDirty } = usePaymentStore();
   const [showConfirmation, setShowConfirmation] = useState(false);
 
-  // 1. Create an INTERNAL ref that we fully control
   const internalRef = useRef<BottomSheetMethods>(null);
 
-  // 2. Link the Parent's 'ref' to our 'internalRef'
-  useImperativeHandle(ref, () => {
-    return {
-      snapToIndex: (index: number) => internalRef.current?.snapToIndex(index),
-      expand: () => internalRef.current?.expand(),
-      collapse: () => internalRef.current?.collapse(),
-      close: () => internalRef.current?.close(),
-      forceClose: () => internalRef.current?.forceClose(),
-      // Add any other methods from BottomSheetMethods you need exposed
-    } as BottomSheetMethods;
-  });
+  useImperativeHandle(
+    ref,
+    () =>
+      ({
+        snapToIndex: (index: number) => internalRef.current?.snapToIndex(index),
+        expand: () => internalRef.current?.expand(),
+        collapse: () => internalRef.current?.collapse(),
+        close: () => internalRef.current?.close(),
+        forceClose: () => internalRef.current?.forceClose(),
+      }) as BottomSheetMethods
+  );
 
-  const snapPoints = useMemo(() => ["25%", "50%"], []);
+  // 90% ensures full height on tablets, 50% for quick actions
+  const snapPoints = useMemo(() => ["50%", "90%"], []);
 
   const handleSheetChanges = useCallback(
     (index: number) => {
-      if (index === -1 && isDirty) {
+      if (index === -1 && isDirty && !showConfirmation) {
         setShowConfirmation(true);
-        // 3. Use internalRef for internal logic
         internalRef.current?.snapToIndex(0);
       } else if (index === -1 && !isDirty) {
         close();
       }
     },
-    [isDirty, close]
+    [isDirty, close, showConfirmation]
   );
 
   const handleConfirmClose = () => {
     setIsDirty(false);
     setShowConfirmation(false);
     close();
-    // Use internal ref to actually close UI if needed, though state update might trigger it depending on logic
-    internalRef.current?.close();
   };
 
   const handleCancelClose = () => {
@@ -83,7 +80,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
     if (isDirty) {
       setShowConfirmation(true);
     } else {
-      internalRef.current?.close(); // Use internal ref to close
+      close();
     }
   };
 
@@ -133,7 +130,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   return (
     <>
       <BottomSheet
-        ref={internalRef} // 4. Attach the INTERNAL ref here
+        ref={internalRef}
         index={-1}
         snapPoints={snapPoints}
         enablePanDownToClose={true}
@@ -142,9 +139,9 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         handleIndicatorStyle={{ backgroundColor: "#707070" }}
         backdropComponent={renderBackdrop}
       >
-        <BottomSheetView className="bg-[#212121] flex-1">
+        <BottomSheetScrollView style={styles.container}>
           {/* Header */}
-          <View className="bg-[#212121] p-4 flex-row justify-between items-center">
+          <View className="bg-[#212121] p-4 flex-row justify-between items-center border-b border-[#333]">
             <Text className="text-2xl font-bold text-white">Payment</Text>
             <TouchableOpacity onPress={handleAttemptClose}>
               <X size={24} color="#FFF" />
@@ -156,9 +153,9 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
             <PaymentProgressHeader />
           </View>
 
-          {/* Content */}
-          <View className="flex-1 p-4">{renderContent()}</View>
-        </BottomSheetView>
+          {/* Content Wrapper */}
+          <View style={styles.content}>{renderContent()}</View>
+        </BottomSheetScrollView>
       </BottomSheet>
       <ConfirmationModal
         isOpen={showConfirmation}
@@ -172,6 +169,17 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    height: "100%",
+
+    backgroundColor: "#212121", // Ensure bg color so it's not transparent
+  },
+  content: {
+    flex: 1, // Ensures child views can take up remaining space
+  },
+});
 
 const PaymentBottomSheet = React.forwardRef(PaymentBottomSheetComponent);
 
