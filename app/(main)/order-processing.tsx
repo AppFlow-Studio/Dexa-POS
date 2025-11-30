@@ -1,5 +1,6 @@
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
+import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
@@ -13,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
@@ -32,6 +34,7 @@ const OrderProcessing = () => {
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
+  const paymentBottomSheetRef = useRef<BottomSheetMethods>(null); // Create ref for PaymentBottomSheet
 
   useEffect(() => {
     // Ensure there is at least one active order. If none, create/select a global Building order.
@@ -62,6 +65,13 @@ const OrderProcessing = () => {
     }
   }, [orders, activeOrderId, setActiveOrder, startNewOrder]);
 
+  useEffect(() => {
+    usePaymentStore
+      .getState()
+      .setPaymentBottomSheetRef(
+        paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
+      );
+  }, [paymentBottomSheetRef]);
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
     // Show only orders that are in a "kitchen" state
@@ -110,7 +120,11 @@ const OrderProcessing = () => {
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       <View className="flex-1 flex-row">
-        <BillSection moreOptionsSheetRef={moreOptionsSheetRef} />
+        <BillSection
+          moreOptionsSheetRef={
+            moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
+          }
+        />
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
           <Accordion
@@ -176,8 +190,7 @@ const OrderProcessing = () => {
         </View>
       </View>
       <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
-
-
+      <PaymentBottomSheet ref={paymentBottomSheetRef} />
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}
         onClose={() => setItemsModalOpen(false)}

@@ -1,7 +1,9 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { useEffect, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { CheckCircle2, Wifi } from "lucide-react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 const CardPaymentView = () => {
   const {
@@ -9,6 +11,8 @@ const CardPaymentView = () => {
     activeOrderOutstandingSubtotal,
     activeOrderOutstandingTax,
     activeOrderOutstandingTotal,
+    activeOrderId,
+    addPaymentToOrder,
   } = useOrderStore();
 
   const { close, setView } = usePaymentStore();
@@ -16,110 +20,128 @@ const CardPaymentView = () => {
     "processing"
   );
 
-  const { activeOrderId, addPaymentToOrder } = useOrderStore(); // Add this line
-
+  // Logic: Simulate terminal interaction
   useEffect(() => {
+    // Simulate card read time
     const timer = setTimeout(() => setStatus("success"), 3000);
     return () => clearTimeout(timer);
   }, []);
 
+  // Logic: Handle Success
   useEffect(() => {
-    if (status === "success" && activeOrderId) { // Add activeOrderId check
-      // Add payment to order store
+    if (status === "success" && activeOrderId) {
       addPaymentToOrder({
         orderId: activeOrderId,
         amount: activeOrderOutstandingTotal,
         method: "Card",
       });
-      const timer = setTimeout(() => setView("success"), 1000);
+      // Slight delay to show the green checkmark before switching views
+      const timer = setTimeout(() => setView("success"), 1500);
       return () => clearTimeout(timer);
     }
-  }, [status, activeOrderId, activeOrderOutstandingTotal, addPaymentToOrder, setView]); // Update dependencies
-
-
-  const statusColors = {
-    processing: "bg-yellow-100", // Will be dark themed
-    rejected: "bg-red-100",
-    success: "bg-green-100",
-  };
-
-  const statusTextColors = {
-    processing: "text-yellow-800",
-    rejected: "text-red-800",
-    success: "text-green-800",
-  };
+  }, [
+    status,
+    activeOrderId,
+    activeOrderOutstandingTotal,
+    addPaymentToOrder,
+    setView,
+  ]);
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
-      {/* Dark Header */}
-      <View className="p-4">
-        <Text className="text-2xl text-white font-bold text-center">
-          Card Payment
-        </Text>
-        <Text className="text-xl text-blue-400 font-semibold mt-2 text-center">
-          Please use payment terminal
-        </Text>
-      </View>
+    <View className="flex-1 bg-[#212121]">
+      <View className="flex-1 justify-between p-4">
+        {/* Top Section: Status Indicator */}
+        <View className="items-center justify-center flex-1">
+          {/* Animated Status Icon */}
+          <View className="mb-8">
+            {status === "processing" && (
+              <Animated.View entering={FadeIn} className="items-center">
+                <View className="w-24 h-24 bg-blue-600/10 rounded-full items-center justify-center mb-4 border-2 border-blue-500/20">
+                  <ActivityIndicator size="large" color="#3B82F6" />
+                </View>
+                <View className="flex-row items-center gap-2 bg-[#2A2A2A] px-4 py-2 rounded-full border border-[#333]">
+                  <Wifi size={16} color="#10B981" />
+                  <Text className="text-gray-400 font-medium text-sm">
+                    Terminal Connected
+                  </Text>
+                </View>
+              </Animated.View>
+            )}
 
-      {/* Dark Content */}
-      <View className="p-4 bg-[#303030] rounded-b-2xl">
-        {/* Totals Summary */}
-        <View className="gap-y-2 mb-4">
-          <View className="flex-row justify-between">
-            <Text className="text-lg text-gray-300">Subtotal</Text>
-            <Text className="text-lg text-white">
-              ${activeOrderOutstandingSubtotal.toFixed(2)}
+            {status === "success" && (
+              <Animated.View
+                entering={FadeIn.duration(300)}
+                className="items-center"
+              >
+                <View className="w-24 h-24 bg-green-500/10 rounded-full items-center justify-center mb-4 border-2 border-green-500/20">
+                  <CheckCircle2 size={48} color="#10B981" />
+                </View>
+                <Text className="text-green-400 font-bold text-lg">
+                  Approved
+                </Text>
+              </Animated.View>
+            )}
+          </View>
+
+          {/* Main Status Text */}
+          <Text className="text-3xl font-bold text-white mb-2 text-center">
+            {status === "processing" ? "Present Card" : "Payment Successful"}
+          </Text>
+          <Text className="text-gray-400 text-lg text-center mb-8">
+            {status === "processing"
+              ? "Tap, insert, or swipe on the terminal"
+              : "Transaction completed successfully"}
+          </Text>
+
+          {/* Big Amount Display */}
+          <View className="items-center mb-8">
+            <Text className="text-gray-500 font-medium mb-1">TOTAL AMOUNT</Text>
+            <Text className="text-5xl font-bold text-white">
+              ${activeOrderOutstandingTotal.toFixed(2)}
             </Text>
           </View>
-          {activeOrderDiscount > 0 && (
-            <View className="flex-row justify-between">
-              <Text className="text-lg text-green-400">Discount</Text>
-              <Text className="text-lg text-green-400">
-                -${activeOrderDiscount.toFixed(2)}
+        </View>
+
+        {/* Bottom Section: Receipt Details & Actions */}
+        <Animated.View entering={FadeInDown.delay(200)} className="w-full">
+          {/* Receipt Breakdown Card */}
+          <View className="bg-[#2A2A2A] p-5 rounded-2xl border border-[#333333] mb-6">
+            <View className="flex-row justify-between mb-3">
+              <Text className="text-gray-400 text-base">Subtotal</Text>
+              <Text className="text-white text-base font-medium">
+                ${activeOrderOutstandingSubtotal.toFixed(2)}
               </Text>
             </View>
-          )}
-          <View className="flex-row justify-between">
-            <Text className="text-lg text-gray-300">Tax</Text>
-            <Text className="text-lg text-white">
-              ${activeOrderOutstandingTax.toFixed(2)}
-            </Text>
+
+            {activeOrderDiscount > 0 && (
+              <View className="flex-row justify-between mb-3">
+                <Text className="text-green-500/80 text-base">Discount</Text>
+                <Text className="text-green-500 font-medium text-base">
+                  -${activeOrderDiscount.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            <View className="flex-row justify-between pt-3 border-t border-[#404040]">
+              <Text className="text-gray-400 text-base">Tax</Text>
+              <Text className="text-white text-base font-medium">
+                ${activeOrderOutstandingTax.toFixed(2)}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        {/* Total */}
-        <View className="flex-row justify-between pt-4 border-t border-dashed border-gray-600 mb-4">
-          <Text className="text-2xl font-bold text-white">Total</Text>
-          <Text className="text-2xl font-bold text-white">
-            ${activeOrderOutstandingTotal.toFixed(2)}
-          </Text>
-        </View>
-
-        {/* Payment Status */}
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-lg text-gray-300">Payment Status</Text>
-          <View
-            className={`px-3 py-1 rounded-full ${status === "processing" ? "bg-yellow-500/20" : status === "rejected" ? "bg-red-500/20" : "bg-green-500/20"}`}
-          >
-            <Text
-              className={`text-lg font-semibold capitalize ${status === "processing" ? "text-yellow-400" : status === "rejected" ? "text-red-400" : "text-green-400"}`}
+          {/* Cancel Button (Only show while processing) */}
+          {status === "processing" && (
+            <TouchableOpacity
+              onPress={close}
+              className="w-full py-4 bg-[#2A2A2A] border border-[#404040] rounded-xl active:bg-[#333]"
             >
-              {status}
-            </Text>
-          </View>
-        </View>
-
-        {/* Buttons */}
-        <View className="border-t border-gray-700 pt-4">
-          <TouchableOpacity
-            onPress={close}
-            className="w-full py-3 bg-[#303030] border border-gray-600 rounded-xl items-center"
-          >
-            <Text className="text-lg font-bold text-white text-center">
-              Cancel Payment
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <Text className="text-lg font-bold text-gray-300 text-center">
+                Cancel Transaction
+              </Text>
+            </TouchableOpacity>
+          )}
+        </Animated.View>
       </View>
     </View>
   );

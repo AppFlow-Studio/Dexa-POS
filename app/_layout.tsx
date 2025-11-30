@@ -4,14 +4,13 @@ import { PortalHost } from "@rn-primitives/portal";
 import ClockInWallModal from "@/components/auth/ClockInWallModal";
 import ManagerPinModal from "@/components/auth/ManagerPinModal";
 import CustomerSheet from "@/components/bill/CustomerSheet";
-import PaymentModal from "@/components/bill/PaymentModal";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { usePtoStore } from "@/stores/usePtoStore"; // Import usePtoStore
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
 import {
   DarkTheme,
@@ -80,7 +79,6 @@ export default function RootLayout() {
             />
             <PortalHost />
             <SearchBottomSheet />
-            <PaymentModal />
             <ItemCustomizationDialog />
             <ClockInWallModal
               isOpen={isClockInWallOpen}

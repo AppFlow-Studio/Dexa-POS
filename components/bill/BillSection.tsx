@@ -4,6 +4,7 @@ import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Send } from "lucide-react-native";
@@ -13,7 +14,6 @@ import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
 import DiscountSection from "./DiscountSection";
 import OrderDetails from "./OrderDetails";
-import PaymentMethodDialog from "./PaymentMethodDialog";
 import Totals from "./Totals";
 
 const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
@@ -67,7 +67,6 @@ const BillSection = ({
     (item) => item.kitchen_status === "new" || !item.kitchen_status
   ).length;
 
-  const [isPaymentDialogVisible, setPaymentDialogVisible] = useState(false);
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
   const handleOpenMoreOptions = () => {
@@ -88,7 +87,8 @@ const BillSection = ({
       });
       return;
     }
-    setPaymentDialogVisible(true);
+    // Directly open the payment bottom sheet to the method selection
+    usePaymentStore.getState().open("Card", null, "payment-method-selection");
   };
 
   const handleSendToKitchen = () => {
@@ -114,10 +114,6 @@ const BillSection = ({
     sendNewItemsToKitchen();
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
-  };
-
-  const handleClosePaymentDialog = () => {
-    setPaymentDialogVisible(false);
   };
 
   const handleOpenDiscounts = () => {
@@ -217,10 +213,6 @@ const BillSection = ({
         </View>
       )}
 
-      <PaymentMethodDialog
-        isVisible={isPaymentDialogVisible}
-        onClose={handleClosePaymentDialog}
-      />
       <DiscountOverlay
         isVisible={isDiscountOverlayVisible}
         onClose={handleCloseDiscounts}
