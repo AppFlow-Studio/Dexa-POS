@@ -1,6 +1,8 @@
+import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -9,11 +11,20 @@ import { KeyboardAvoidingView, Platform, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 export default function MainLayout() {
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
+  const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
   const { setSheetRef } = useNotificationSheetStore();
 
   useEffect(() => {
     setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
   }, [setSheetRef]);
+
+  useEffect(() => {
+    usePaymentStore
+      .getState()
+      .setPaymentBottomSheetRef(
+        paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
+      );
+  }, [paymentBottomSheetRef]);
 
   return (
     <KeyboardAvoidingView
@@ -41,6 +52,7 @@ export default function MainLayout() {
           }
           onClose={() => notificationSheetRef.current?.close()}
         />
+        <PaymentBottomSheet ref={paymentBottomSheetRef} />
       </SafeAreaView>
     </KeyboardAvoidingView>
   );

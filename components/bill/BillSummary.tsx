@@ -166,12 +166,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                   highlight ? "border border-blue-500" : ""
                                 }`}
                               >
-                                <BillItem
-                                  item={item}
-                                  isEditable={true}
-                                  expandedItemId={expandedItemId}
-                                  onToggleExpand={onToggleExpand}
-                                />
+                                <BillItem item={item} isEditable={true} />
                               </View>
                             );
                           })}
