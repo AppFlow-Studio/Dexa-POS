@@ -11,6 +11,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/contexts/ToastContext"; // New Import
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
@@ -107,10 +108,44 @@ const OrderProcessing = () => {
     setActiveOrder(orderId);
   };
 
+  // Placeholder functions for MoreOptionsBottomSheet
+  const { show } = useToast();
+
+  const handleCloseCheck = () => {
+    show({
+      title: "Close Check",
+      message:
+        "Close Check functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
+  };
+
+  const handleApplyDiscount = () => {
+    show({
+      title: "Apply Discount",
+      message:
+        "Apply Discount functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
+  };
+
+  const handleApplyVoucher = () => {
+    show({
+      title: "Apply Voucher",
+      message:
+        "Apply Voucher functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
+  };
+
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       <View className="flex-1 flex-row">
-        <BillSection moreOptionsSheetRef={moreOptionsSheetRef} />
+        <BillSection
+          moreOptionsSheetRef={
+            moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
+          }
+        />
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
           <Accordion
@@ -175,8 +210,12 @@ const OrderProcessing = () => {
           <MenuSection />
         </View>
       </View>
-      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
-
+      <MoreOptionsBottomSheet
+        ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+        onCloseCheck={handleCloseCheck}
+        onApplyDiscount={handleApplyDiscount}
+        onApplyVoucher={handleApplyVoucher}
+      />
 
       <OrderLineItemsModal
         isOpen={isItemsModalOpen}

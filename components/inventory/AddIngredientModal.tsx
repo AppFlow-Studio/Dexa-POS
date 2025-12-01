@@ -16,7 +16,14 @@ import {
 import { RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -67,70 +74,74 @@ const AddIngredientModal: React.FC<AddIngredientModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[450px]">
-        <DialogHeader>
-          <DialogTitle className="text-2xl text-white">
-            Add Ingredient
-          </DialogTitle>
-        </DialogHeader>
-        <View className="py-3 gap-y-3">
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Inventory Item
-            </Text>
-            <Select value={selectedItem} onValueChange={setSelectedItem}>
-              <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
-                <SelectValue
-                  className="text-lg text-white"
-                  placeholder="Select an item..."
-                />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <ScrollView>
-                  <SelectGroup>
-                    {inventoryOptions.map((opt) => (
-                      <SelectItem
-                        key={opt.value}
-                        label={opt.label}
-                        value={opt.value}
-                      >
-                        <Text className="text-lg">{opt.label}</Text>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </ScrollView>
-              </SelectContent>
-            </Select>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-2xl text-white">
+              Add Ingredient
+            </DialogTitle>
+          </DialogHeader>
+          <View className="py-3 gap-y-3">
+            <View>
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                Inventory Item
+              </Text>
+              <Select value={selectedItem} onValueChange={setSelectedItem}>
+                <SelectTrigger className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg">
+                  <SelectValue
+                    className="text-lg text-white"
+                    placeholder="Select an item..."
+                  />
+                </SelectTrigger>
+                <SelectContent insets={contentInsets}>
+                  <ScrollView>
+                    <SelectGroup>
+                      {inventoryOptions.map((opt) => (
+                        <SelectItem
+                          key={opt.value}
+                          label={opt.label}
+                          value={opt.value}
+                        >
+                          <Text className="text-lg">{opt.label}</Text>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </ScrollView>
+                </SelectContent>
+              </Select>
+            </View>
+            <View>
+              <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                Quantity
+              </Text>
+              <TextInput
+                value={quantity}
+                onChangeText={setQuantity}
+                keyboardType="numeric"
+                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+              />
+            </View>
           </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Quantity
-            </Text>
-            <TextInput
-              value={quantity}
-              onChangeText={setQuantity}
-              keyboardType="numeric"
-              className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-            />
-          </View>
-        </View>
-        <DialogFooter className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-gray-300">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleAdd}
-            className="flex-1 py-3 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-white">
-              Add
-            </Text>
-          </TouchableOpacity>
-        </DialogFooter>
+          <DialogFooter className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-gray-300">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAdd}
+              className="flex-1 py-3 bg-blue-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-white">
+                Add
+              </Text>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

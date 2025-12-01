@@ -23,6 +23,8 @@ import {
 import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -142,12 +144,12 @@ const VendorScreen = () => {
                 header === "Vendor Name"
                   ? "w-[20%]"
                   : header === "Contact Person"
-                  ? "w-[15%]"
-                  : header === "Email"
-                  ? "w-[30%]"
-                  : header === "Phone"
-                  ? "w-[15%]"
-                  : "w-[0%]"
+                    ? "w-[15%]"
+                    : header === "Email"
+                      ? "w-[30%]"
+                      : header === "Phone"
+                        ? "w-[15%]"
+                        : "w-[0%]"
               }`}
             >
               {header}
@@ -219,18 +221,22 @@ const VendorScreen = () => {
           />
         )}
       >
-        <View className="p-2 border-b border-gray-700">
-          <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-1 border border-gray-600">
-            <Search color="#9CA3AF" size={20} />
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search vendors..."
-              placeholderTextColor="#9CA3AF"
-              className="flex-1 text-white ml-3 p-2 text-lg"
-            />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View className="p-2 border-b border-gray-700">
+            <View className="flex-row items-center bg-[#212121] rounded-lg px-3 py-1 border border-gray-600">
+              <Search color="#9CA3AF" size={20} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search vendors..."
+                placeholderTextColor="#9CA3AF"
+                className="flex-1 text-white ml-3 p-2 text-lg"
+              />
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
         <BottomSheetFlatList
           data={filteredVendors}
           keyExtractor={(item) => item.id}

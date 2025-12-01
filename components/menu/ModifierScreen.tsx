@@ -13,7 +13,9 @@ import React, {
 } from "react";
 import {
   Image,
+  KeyboardAvoidingView, // <--- Imported
   Modal,
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -738,7 +740,10 @@ const ModifierScreen = () => {
   );
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-[#212121]"
+    >
       {/* Header */}
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
         <TouchableOpacity
@@ -1025,7 +1030,7 @@ const ModifierScreen = () => {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

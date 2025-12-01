@@ -3,7 +3,14 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { usePathname, useRouter } from "expo-router";
 import { Search } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface MenuLayoutProps {
   children: React.ReactNode;
@@ -46,7 +53,10 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
     <View className="flex-1 bg-[#212121]">
       <View className="flex-row h-full">
         {/* Sidebar */}
-        <View className="w-80 border-r border-gray-700 h-full bg-[#303030]">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="w-80 border-r border-gray-700 h-full bg-[#303030]"
+        >
           {/* Header */}
           <View className="p-4 border-b border-gray-700">
             <Text className="text-xl font-bold text-white">
@@ -111,7 +121,7 @@ const MenuLayout: React.FC<MenuLayoutProps> = ({ children }) => {
               </TouchableOpacity>
             ))}
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
         {/* Main Content */}
         <View className="flex-1">{children}</View>

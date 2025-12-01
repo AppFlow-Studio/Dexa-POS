@@ -4,6 +4,8 @@ import { X } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   Dimensions,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Pressable,
   ScrollView,
   Text,
@@ -124,104 +126,127 @@ const DiscountOverlay: React.FC<DiscountOverlayProps> = ({
         style={animatedStyle}
         className="absolute bottom-0 left-0 right-0 h-[85%] bg-[#212121] rounded-t-3xl p-4 border-t border-gray-700"
       >
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-2xl font-bold text-white">Discounts</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            className="p-2 bg-[#303030] rounded-full border border-gray-600"
-          >
-            <X color="#9CA3AF" size={20} />
-          </TouchableOpacity>
-        </View>
-
-        <View className="flex-row bg-[#303030] border border-gray-700 p-1.5 rounded-xl self-start mb-4">
-          <TouchableOpacity
-            onPress={() => setActiveTab("check")}
-            className={`py-2 px-3 rounded-lg ${activeTab === "check" ? "bg-[#212121]" : ""}`}
-          >
-            <Text
-              className={`text-lg font-semibold ${activeTab === "check" ? "text-blue-400" : "text-gray-400"}`}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <View className="flex-row justify-between items-center mb-4">
+            <Text className="text-2xl font-bold text-white">Discounts</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              className="p-2 bg-[#303030] rounded-full border border-gray-600"
             >
-              Apply to check
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setActiveTab("items")}
-            className={`py-2 px-3 rounded-lg ${activeTab === "items" ? "bg-[#212121]" : ""}`}
-          >
-            <Text
-              className={`text-lg font-semibold ${activeTab === "items" ? "text-blue-400" : "text-gray-400"}`}
-            >
-              Apply to items
-            </Text>
-          </TouchableOpacity>
-        </View>
+              <X color="#9CA3AF" size={20} />
+            </TouchableOpacity>
+          </View>
 
-        <ScrollView>
-          {activeTab === "check" && (
-            <View className="flex-row flex-wrap justify-between">
-              {mockDiscounts.map((d) => (
-                <TouchableOpacity
-                  key={d.id}
-                  onPress={() => handleApplyCheckDiscount(d)}
-                  className="w-[49%] p-1 border rounded-xl mb-2 items-center justify-center h-20 bg-[#303030] border-gray-600"
-                >
-                  <Text className="text-lg text-wrap w-full overflow-hidden font-bold text-center text-white">
-                    {d.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-          {activeTab === "items" && (
-            <View className="gap-y-3">
-              {itemsWithAvailableDiscounts.length > 0 ? (
-                itemsWithAvailableDiscounts.map((item) => {
-                  const isApplied = !!item.appliedDiscount;
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      onPress={() => handleToggleItemDiscount(item)}
-                      className={`p-4 border rounded-xl flex-row justify-between items-center ${isApplied ? "border-blue-500 bg-blue-900/20" : "bg-[#303030] border-gray-600"}`}
-                    >
-                      <View>
-                        <Text
-                          className={`text-xl font-bold ${isApplied ? "text-blue-400" : "text-white"}`}
-                        >
-                          {item.name}
-                        </Text>
-                        <Text
-                          className={`text-lg w-full overflow-hidden font-semibold text-wrap mt-1 ${isApplied ? "text-blue-300" : "text-gray-400"}`}
-                        >
-                          {item.availableDiscount?.label}
-                        </Text>
-                      </View>
-                      <Text
-                        className={`text-xl font-bold ${isApplied ? "text-blue-400" : "text-white"}`}
+          <View className="flex-row bg-[#303030] border border-gray-700 p-1.5 rounded-xl self-start mb-4">
+            <TouchableOpacity
+              onPress={() => setActiveTab("check")}
+              className={`py-2 px-3 rounded-lg ${
+                activeTab === "check" ? "bg-[#212121]" : ""
+              }`}
+            >
+              <Text
+                className={`text-lg font-semibold ${
+                  activeTab === "check" ? "text-blue-400" : "text-gray-400"
+                }`}
+              >
+                Apply to check
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setActiveTab("items")}
+              className={`py-2 px-3 rounded-lg ${
+                activeTab === "items" ? "bg-[#212121]" : ""
+              }`}
+            >
+              <Text
+                className={`text-lg font-semibold ${
+                  activeTab === "items" ? "text-blue-400" : "text-gray-400"
+                }`}
+              >
+                Apply to items
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView>
+            {activeTab === "check" && (
+              <View className="flex-row flex-wrap justify-between">
+                {mockDiscounts.map((d) => (
+                  <TouchableOpacity
+                    key={d.id}
+                    onPress={() => handleApplyCheckDiscount(d)}
+                    className="w-[49%] p-1 border rounded-xl mb-2 items-center justify-center h-20 bg-[#303030] border-gray-600"
+                  >
+                    <Text className="text-lg text-wrap w-full overflow-hidden font-bold text-center text-white">
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {activeTab === "items" && (
+              <View className="gap-y-3">
+                {itemsWithAvailableDiscounts.length > 0 ? (
+                  itemsWithAvailableDiscounts.map((item) => {
+                    const isApplied = !!item.appliedDiscount;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => handleToggleItemDiscount(item)}
+                        className={`p-4 border rounded-xl flex-row justify-between items-center ${
+                          isApplied
+                            ? "border-blue-500 bg-blue-900/20"
+                            : "bg-[#303030] border-gray-600"
+                        }`}
                       >
-                        {isApplied ? "Applied" : "Apply"}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })
-              ) : (
-                <Text className="text-center text-xl text-gray-500 mt-10">
-                  No items in the cart are eligible for a discount.
-                </Text>
-              )}
-            </View>
-          )}
-        </ScrollView>
-        <View className="flex-row items-center gap-3 mt-4 pt-4 border-t border-gray-700">
-          <TextInput
-            placeholder="Add promo or voucher"
-            className="flex-1 p-3 bg-[#303030] rounded-xl text-xl text-white border border-gray-600 h-16"
-            placeholderTextColor="#6B7280"
-          />
-          <TouchableOpacity className="px-5 py-3 bg-blue-600 rounded-xl">
-            <Text className="text-white text-xl font-bold">Apply</Text>
-          </TouchableOpacity>
-        </View>
+                        <View>
+                          <Text
+                            className={`text-xl font-bold ${
+                              isApplied ? "text-blue-400" : "text-white"
+                            }`}
+                          >
+                            {item.name}
+                          </Text>
+                          <Text
+                            className={`text-lg w-full overflow-hidden font-semibold text-wrap mt-1 ${
+                              isApplied ? "text-blue-300" : "text-gray-400"
+                            }`}
+                          >
+                            {item.availableDiscount?.label}
+                          </Text>
+                        </View>
+                        <Text
+                          className={`text-xl font-bold ${
+                            isApplied ? "text-blue-400" : "text-white"
+                          }`}
+                        >
+                          {isApplied ? "Applied" : "Apply"}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <Text className="text-center text-xl text-gray-500 mt-10">
+                    No items in the cart are eligible for a discount.
+                  </Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+          <View className="flex-row items-center gap-3 mt-4 pt-4 border-t border-gray-700">
+            <TextInput
+              placeholder="Add promo or voucher"
+              className="flex-1 p-3 bg-[#303030] rounded-xl text-xl text-white border border-gray-600 h-16"
+              placeholderTextColor="#6B7280"
+            />
+            <TouchableOpacity className="px-5 py-3 bg-blue-600 rounded-xl">
+              <Text className="text-white text-xl font-bold">Apply</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Animated.View>
     </View>
   );

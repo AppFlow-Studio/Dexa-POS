@@ -15,7 +15,14 @@ import {
 } from "@/components/ui/select";
 import { InventoryItem, InventoryUnit, Vendor } from "@/lib/types";
 import React, { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface InventoryItemFormModalProps {
@@ -123,60 +130,114 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
-        <DialogHeader>
-          <DialogTitle className="text-white text-2xl">
-            {initialData ? "Edit" : "Add New"} Inventory Item
-          </DialogTitle>
-        </DialogHeader>
-        <View className="py-3 gap-y-3">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Item Name
-              </Text>
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-white text-2xl">
+              {initialData ? "Edit" : "Add New"} Inventory Item
+            </DialogTitle>
+          </DialogHeader>
+          <View className="py-3 gap-y-3">
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Item Name
+                </Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Category
+                </Text>
+                <TextInput
+                  value={category}
+                  onChangeText={setCategory}
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                />
+              </View>
             </View>
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Category
-              </Text>
-              <TextInput
-                value={category}
-                onChangeText={setCategory}
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Stock Quantity
+                </Text>
+                <TextInput
+                  value={stockQuantity}
+                  onChangeText={setStockQuantity}
+                  keyboardType="numeric"
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Unit
+                </Text>
+                <Select value={unit} onValueChange={setUnit}>
+                  <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
+                    <SelectValue
+                      className="text-lg text-white"
+                      placeholder="Select a unit..."
+                    />
+                  </SelectTrigger>
+                  <SelectContent insets={contentInsets}>
+                    <SelectGroup>
+                      {UNIT_OPTIONS.map((opt) => (
+                        <SelectItem
+                          key={opt.value}
+                          label={opt.label}
+                          value={opt.value}
+                        >
+                          <Text className="text-lg">{opt.label}</Text>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </View>
             </View>
-          </View>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Stock Quantity
-              </Text>
-              <TextInput
-                value={stockQuantity}
-                onChangeText={setStockQuantity}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Reorder Threshold
+                </Text>
+                <TextInput
+                  value={reorderThreshold}
+                  onChangeText={setReorderThreshold}
+                  keyboardType="numeric"
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-lg text-gray-300 font-medium mb-1.5">
+                  Cost Per Unit
+                </Text>
+                <TextInput
+                  value={cost}
+                  onChangeText={setCost}
+                  keyboardType="numeric"
+                  className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
+                />
+              </View>
             </View>
-            <View className="flex-1">
+            <View>
               <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Unit
+                Default Vendor
               </Text>
-              <Select value={unit} onValueChange={setUnit}>
+              <Select value={vendorId} onValueChange={setVendorId}>
                 <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
                   <SelectValue
                     className="text-lg text-white"
-                    placeholder="Select a unit..."
+                    placeholder="Select a vendor..."
                   />
                 </SelectTrigger>
                 <SelectContent insets={contentInsets}>
                   <SelectGroup>
-                    {UNIT_OPTIONS.map((opt) => (
+                    {vendorOptions.map((opt) => (
                       <SelectItem
                         key={opt.value}
                         label={opt.label}
@@ -190,75 +251,25 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               </Select>
             </View>
           </View>
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Reorder Threshold
+          <DialogFooter className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-gray-300">
+                Cancel
               </Text>
-              <TextInput
-                value={reorderThreshold}
-                onChangeText={setReorderThreshold}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
-            </View>
-            <View className="flex-1">
-              <Text className="text-lg text-gray-300 font-medium mb-1.5">
-                Cost Per Unit
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              className="flex-1 py-3 bg-blue-600 rounded-lg"
+            >
+              <Text className="text-center text-lg font-bold text-white">
+                Save Item
               </Text>
-              <TextInput
-                value={cost}
-                onChangeText={setCost}
-                keyboardType="numeric"
-                className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-16"
-              />
-            </View>
-          </View>
-          <View>
-            <Text className="text-lg text-gray-300 font-medium mb-1.5">
-              Default Vendor
-            </Text>
-            <Select value={vendorId} onValueChange={setVendorId}>
-              <SelectTrigger className="w-full p-3 h-16 bg-[#212121] border border-gray-600 rounded-lg">
-                <SelectValue
-                  className="text-lg text-white"
-                  placeholder="Select a vendor..."
-                />
-              </SelectTrigger>
-              <SelectContent insets={contentInsets}>
-                <SelectGroup>
-                  {vendorOptions.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      label={opt.label}
-                      value={opt.value}
-                    >
-                      <Text className="text-lg">{opt.label}</Text>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </View>
-        </View>
-        <DialogFooter className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-gray-300">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            className="flex-1 py-3 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-center text-lg font-bold text-white">
-              Save Item
-            </Text>
-          </TouchableOpacity>
-        </DialogFooter>
+            </TouchableOpacity>
+          </DialogFooter>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

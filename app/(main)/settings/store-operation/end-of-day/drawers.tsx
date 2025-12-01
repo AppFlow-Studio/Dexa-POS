@@ -16,6 +16,8 @@ import {
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -150,7 +152,10 @@ const DrawerSummaryScreen = () => {
   }, [searchText, dateRange]);
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-[#212121] p-4"
+    >
       {/* Toolbar */}
       <View className="flex-row justify-between items-center mb-4">
         <View className="flex-row items-center bg-[#303030] rounded-lg border border-gray-600 px-3 w-[300px]">
@@ -184,10 +189,10 @@ const DrawerSummaryScreen = () => {
                 h.includes("Name")
                   ? "w-[12%]"
                   : h === "Date Issued"
-                  ? "w-[12%]"
-                  : h === ""
-                  ? "w-[10%]"
-                  : "w-[11%]"
+                    ? "w-[12%]"
+                    : h === ""
+                      ? "w-[10%]"
+                      : "w-[11%]"
               }`}
             >
               {h}
@@ -210,7 +215,7 @@ const DrawerSummaryScreen = () => {
           <ChevronRight color="white" size={20} />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -25,7 +25,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  KeyboardAvoidingView, // <--- Imported
   Modal,
+  Platform, // <--- Imported
   Pressable,
   ScrollView,
   Text,
@@ -429,7 +431,10 @@ const AddMenuItemScreen: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      <View className="flex-1 flex-row">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1 flex-row"
+      >
         {/* Form Section - Left Side */}
         <ScrollView className="flex-1 p-4 bg-[#212121]">
           <Text className="text-2xl font-bold text-white mb-4">
@@ -1074,7 +1079,7 @@ const AddMenuItemScreen: React.FC = () => {
             </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
 
       <Modal
         visible={showConfirmation}

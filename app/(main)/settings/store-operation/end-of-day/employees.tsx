@@ -21,6 +21,8 @@ import {
 import React, { useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -144,7 +146,10 @@ const ViewEmployeesScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-white p-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-white p-4"
+    >
       {/* Toolbar */}
       <View className="flex-row justify-between items-center mb-3">
         <View className="flex-row items-center bg-background-300 rounded-lg border border-background-400 p-3 w-[400px]">
@@ -176,10 +181,10 @@ const ViewEmployeesScreen = () => {
                 h.includes("Name")
                   ? "w-[15%]"
                   : h.includes("Total")
-                  ? "w-[15%]"
-                  : h === ""
-                  ? "w-[10%]"
-                  : "w-[12%]"
+                    ? "w-[15%]"
+                    : h === ""
+                      ? "w-[10%]"
+                      : "w-[12%]"
               }`}
             >
               {h}
@@ -218,7 +223,7 @@ const ViewEmployeesScreen = () => {
         onClose={() => setActiveModal(null)}
         onApprove={handleApproveAction}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

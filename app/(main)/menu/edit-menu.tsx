@@ -9,6 +9,8 @@ import { ArrowLeft } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -187,156 +189,163 @@ const EditMenuScreen: React.FC = () => {
         </View>
       </View>
 
-      <ScrollView className="flex-1 p-4">
-        <Text className="text-2xl font-bold text-white mb-4">Edit Menu</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <ScrollView className="flex-1 p-4">
+          <Text className="text-2xl font-bold text-white mb-4">Edit Menu</Text>
 
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">Name</Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            value={name}
-            onChangeText={setName}
-            placeholder="Menu name"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-2">Name</Text>
+            <TextInput
+              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              value={name}
+              onChangeText={setName}
+              placeholder="Menu name"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
 
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Description
-          </Text>
-          <TextInput
-            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Optional description"
-            placeholderTextColor="#9CA3AF"
-          />
-        </View>
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Description
+            </Text>
+            <TextInput
+              className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-lg text-white h-16"
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Optional description"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
 
-        <View className="mb-4">
-          <Text className="text-xl font-semibold text-white mb-2">
-            Categories
-          </Text>
-          <View className="flex-row flex-wrap gap-2">
-            {allCategoryNames.map((cat) => {
-              const selected = selectedCategories.includes(cat);
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => toggleCategory(cat)}
-                  className={`px-3 py-2 rounded-lg border ${
-                    selected
-                      ? "bg-blue-600 border-blue-500"
-                      : "bg-[#303030] border-gray-600"
-                  }`}
-                >
-                  <Text
-                    className={`text-lg ${
-                      selected ? "text-white" : "text-gray-300"
+          <View className="mb-4">
+            <Text className="text-xl font-semibold text-white mb-2">
+              Categories
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {allCategoryNames.map((cat) => {
+                const selected = selectedCategories.includes(cat);
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => toggleCategory(cat)}
+                    className={`px-3 py-2 rounded-lg border ${
+                      selected
+                        ? "bg-blue-600 border-blue-500"
+                        : "bg-[#303030] border-gray-600"
                     }`}
                   >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {selectedCategories.length > 0 && (
-            <View className="mt-3 gap-3">
-              {selectedCategories
-                .sort((a, b) => a.localeCompare(b))
-                .map((cat) => {
-                  const isExpanded = !!expandedCategories[cat];
-                  const items = getItemsInCategory(cat);
-                  return (
-                    <View
-                      key={cat}
-                      className="bg-[#303030] rounded-lg border border-gray-700"
+                    <Text
+                      className={`text-lg ${
+                        selected ? "text-white" : "text-gray-300"
+                      }`}
                     >
-                      <TouchableOpacity
-                        onPress={() =>
-                          setExpandedCategories((prev) => ({
-                            ...prev,
-                            [cat]: !isExpanded,
-                          }))
-                        }
-                        className="flex-row items-center justify-between p-3"
-                      >
-                        <View className="flex-row items-center gap-2">
-                          <Text className="text-xl text-white font-medium">
-                            {cat}
-                          </Text>
-                          <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded-full">
-                            <Text className="text-lg text-blue-400">
-                              {items.length} items
-                            </Text>
-                          </View>
-                        </View>
-                        <Text className="text-lg text-gray-300">
-                          {isExpanded ? "Hide" : "Show"}
-                        </Text>
-                      </TouchableOpacity>
-                      {isExpanded && (
-                        <View className="border-t border-gray-700 p-3 gap-2">
-                          {items.length === 0 ? (
-                            <Text className="text-lg text-gray-400">
-                              No items in this category.
-                            </Text>
-                          ) : (
-                            <View className="gap-2 flex flex-row flex-wrap">
-                              {items.map((item) => (
-                                <View
-                                  key={item.id}
-                                  className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
-                                >
-                                  <Text className="text-lg text-white">
-                                    {item.name}
-                                  </Text>
-                                  <Text className="text-lg text-gray-300 ml-2">
-                                    ${item.price.toFixed(2)}
-                                  </Text>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          )}
-        </View>
+            {selectedCategories.length > 0 && (
+              <View className="mt-3 gap-3">
+                {selectedCategories
+                  .sort((a, b) => a.localeCompare(b))
+                  .map((cat) => {
+                    const isExpanded = !!expandedCategories[cat];
+                    const items = getItemsInCategory(cat);
+                    return (
+                      <View
+                        key={cat}
+                        className="bg-[#303030] rounded-lg border border-gray-700"
+                      >
+                        <TouchableOpacity
+                          onPress={() =>
+                            setExpandedCategories((prev) => ({
+                              ...prev,
+                              [cat]: !isExpanded,
+                            }))
+                          }
+                          className="flex-row items-center justify-between p-3"
+                        >
+                          <View className="flex-row items-center gap-2">
+                            <Text className="text-xl text-white font-medium">
+                              {cat}
+                            </Text>
+                            <View className="bg-blue-900/30 border border-blue-500 px-2.5 py-1.5 rounded-full">
+                              <Text className="text-lg text-blue-400">
+                                {items.length} items
+                              </Text>
+                            </View>
+                          </View>
+                          <Text className="text-lg text-gray-300">
+                            {isExpanded ? "Hide" : "Show"}
+                          </Text>
+                        </TouchableOpacity>
+                        {isExpanded && (
+                          <View className="border-t border-gray-700 p-3 gap-2">
+                            {items.length === 0 ? (
+                              <Text className="text-lg text-gray-400">
+                                No items in this category.
+                              </Text>
+                            ) : (
+                              <View className="gap-2 flex flex-row flex-wrap">
+                                {items.map((item) => (
+                                  <View
+                                    key={item.id}
+                                    className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
+                                  >
+                                    <Text className="text-lg text-white">
+                                      {item.name}
+                                    </Text>
+                                    <Text className="text-lg text-gray-300 ml-2">
+                                      ${item.price.toFixed(2)}
+                                    </Text>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+              </View>
+            )}
+          </View>
 
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xl font-semibold text-white">Schedules</Text>
-            <TouchableOpacity
-              onPress={() => setIsActive(!isActive)}
-              className={`px-3 py-2 rounded-lg border ${
-                isActive
-                  ? "bg-green-900/30 border-green-500"
-                  : "bg-red-900/30 border-red-500"
-              }`}
-            >
-              <Text
-                className={`text-lg ${
-                  isActive ? "text-green-400" : "text-red-400"
+          <View className="mb-4">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-xl font-semibold text-white">
+                Schedules
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsActive(!isActive)}
+                className={`px-3 py-2 rounded-lg border ${
+                  isActive
+                    ? "bg-green-900/30 border-green-500"
+                    : "bg-red-900/30 border-red-500"
                 }`}
               >
-                {isActive ? "Master: On" : "Master: Off"}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  className={`text-lg ${
+                    isActive ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {isActive ? "Master: On" : "Master: Off"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <ScheduleEditor
+              value={schedules}
+              onChange={setSchedules}
+              onAddPress={handleAddPress}
+              onEditPress={handleEditPress}
+            />
           </View>
-          <ScheduleEditor
-            value={schedules}
-            onChange={setSchedules}
-            onAddPress={handleAddPress}
-            onEditPress={handleEditPress}
-          />
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <ScheduleRuleModal
         isOpen={isScheduleModalOpen}

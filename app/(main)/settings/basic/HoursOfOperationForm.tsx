@@ -1,7 +1,14 @@
 import { DayHours } from "@/lib/types";
 import { StoreSettings } from "@/stores/useStoreSettingsStore";
 import React from "react";
-import { Switch, Text, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
 const DayRow = ({
   day,
@@ -76,7 +83,10 @@ const HoursOfOperationForm = ({
   };
 
   return (
-    <View className="gap-y-1">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="gap-y-1"
+    >
       <View className="flex-row items-center gap-3 py-2">
         <Text className="w-28 text-base text-gray-400">Day</Text>
         <Text className="flex-1 text-base text-gray-400 text-center">
@@ -95,7 +105,7 @@ const HoursOfOperationForm = ({
           isEditable={isEditable}
         />
       ))}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

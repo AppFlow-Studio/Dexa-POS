@@ -1,4 +1,3 @@
-import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { CartItem } from "@/lib/types";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -15,9 +14,6 @@ import Animated, {
 interface BillItemProps {
   item: CartItem;
   isEditable?: boolean;
-  expandedItemId?: string | null;
-  onToggleExpand?: (itemId: string) => void;
-  showStatus?: boolean;
 }
 
 const DELETE_BUTTON_WIDTH = 90;
@@ -25,22 +21,11 @@ const DELETE_BUTTON_WIDTH = 90;
 const BillItem: React.FC<BillItemProps> = ({
   item,
   isEditable = false,
-  expandedItemId,
-  onToggleExpand,
-  showStatus = true,
 }) => {
   const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
-  const { openToEdit, openToView, openFullscreenEdit } =
+  const { openToView, openFullscreenEdit } =
     useModifierSidebarStore();
   const translateX = useSharedValue(0);
-
-  const isExpanded = expandedItemId === item.id;
-
-  const handleItemPress = () => {
-    if (onToggleExpand) {
-      onToggleExpand(item.id);
-    }
-  };
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -77,10 +62,6 @@ const BillItem: React.FC<BillItemProps> = ({
     }
   };
 
-  const imageSource = item.image
-    ? MENU_IMAGE_MAP[item.image as keyof typeof MENU_IMAGE_MAP]
-    : undefined;
-
   // Check if item has any modifiers to show
   const hasModifiers =
     (item.customizations.modifiers &&
@@ -108,42 +89,7 @@ const BillItem: React.FC<BillItemProps> = ({
                   <Text className="font-semibold text-lg text-white">
                     {item.name}
                   </Text>
-                  {item.isDraft && (
-                    <View className="ml-2 px-2 py-1 bg-yellow-100 rounded-full">
-                      <Text className="text-base font-medium text-yellow-700">
-                        Draft
-                      </Text>
-                    </View>
-                  )}
-                  {showStatus &&
-                    item.kitchen_status &&
-                    item.kitchen_status !== "new" && (
-                      <View
-                        className={`ml-2 px-2 py-1 rounded-full ${
-                          item.kitchen_status === "sent"
-                            ? "bg-blue-900/30 border border-blue-500"
-                            : item.kitchen_status === "ready"
-                            ? "bg-orange-900/30 border border-orange-500"
-                            : "bg-gray-900/30 border border-gray-500"
-                        }`}
-                      >
-                        <Text
-                          className={`text-xs font-medium ${
-                            item.kitchen_status === "sent"
-                              ? "text-blue-400"
-                              : item.kitchen_status === "ready"
-                              ? "text-orange-400"
-                              : "text-gray-400"
-                          }`}
-                        >
-                          {item.kitchen_status === "sent"
-                            ? "Sent"
-                            : item.kitchen_status === "ready"
-                            ? "Ready"
-                            : item.kitchen_status}
-                        </Text>
-                      </View>
-                    )}
+                  {/* Status indicators removed */}
                   <Text className="text-base ml-4 text-gray-300">
                     {item.quantity} X
                   </Text>

@@ -2,7 +2,14 @@ import { useToast } from "@/contexts/ToastContext"; // Import useToast
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 import { CartItem } from "@/lib/types";
 import { Minus } from "lucide-react-native";
@@ -457,7 +464,10 @@ const SplitPaymentView = () => {
   };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="rounded-2xl overflow-hidden bg-[#212121] border border-gray-700 w-[550px]"
+    >
       {/* Dark Header */}
       <View className="p-4">
         <Text className="text-2xl text-white font-bold text-center">
@@ -587,7 +597,7 @@ const SplitPaymentView = () => {
           </View>
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

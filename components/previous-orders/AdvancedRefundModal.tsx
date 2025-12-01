@@ -4,6 +4,8 @@ import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Check, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   ScrollView,
   Text,
   TextInput,
@@ -190,259 +192,273 @@ const AdvancedRefundModal: React.FC<AdvancedRefundModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[700px] max-h-[90vh] bg-[#313131] rounded-2xl border border-gray-700 p-0">
-        <DialogHeader className="p-6 border-b border-gray-700">
-          <DialogTitle className="text-2xl font-bold text-white">
-            Process Refund
-          </DialogTitle>
-          <View className="flex-row items-center justify-between mt-1">
-            <Text className="text-lg text-gray-400">
-              Order #{order.orderId} - ${order.total.toFixed(2)}
-            </Text>
-            <View
-              className={`px-2 py-1 rounded-full ${getStatusColor(
-                order.paymentStatus
-              )}`}
-            >
-              <Text
-                className={`font-semibold text-sm ${getStatusColor(
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <DialogHeader className="p-6 border-b border-gray-700">
+            <DialogTitle className="text-2xl font-bold text-white">
+              Process Refund
+            </DialogTitle>
+            <View className="flex-row items-center justify-between mt-1">
+              <Text className="text-lg text-gray-400">
+                Order #{order.orderId} - ${order.total.toFixed(2)}
+              </Text>
+              <View
+                className={`px-2 py-1 rounded-full ${getStatusColor(
                   order.paymentStatus
                 )}`}
               >
-                {order.paymentStatus}
-              </Text>
-            </View>
-          </View>
-        </DialogHeader>
-
-        <ScrollView contentContainerStyle={{ padding: 24 }}>
-          <View className="gap-y-6">
-            {/* Refund Type Section */}
-            <View>
-              <Text className="text-lg font-semibold text-gray-300 mb-2">
-                Refund Type
-              </Text>
-              <View className="flex-row gap-4">
-                <TouchableOpacity
-                  onPress={() => setRefundType("full")}
-                  disabled={!canDoFullRefund}
-                  className={`flex-1 p-4 rounded-lg border-2 ${
-                    refundType === "full"
-                      ? "border-blue-500 bg-blue-900/30"
-                      : "border-gray-600"
-                  } ${!canDoFullRefund && "opacity-50"}`}
+                <Text
+                  className={`font-semibold text-sm ${getStatusColor(
+                    order.paymentStatus
+                  )}`}
                 >
-                  <Text
-                    className={`font-semibold text-center text-xl ${
-                      refundType === "full" ? "text-blue-400" : "text-gray-300"
-                    }`}
-                  >
-                    Full Refund
-                  </Text>
-                  <Text className="text-base text-center text-gray-400 mt-1">
-                    ${order.total.toFixed(2)}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setRefundType("partial")}
-                  className={`flex-1 p-4 rounded-lg border-2 ${
-                    refundType === "partial"
-                      ? "border-blue-500 bg-blue-900/30"
-                      : "border-gray-600"
-                  }`}
-                >
-                  <Text
-                    className={`font-semibold text-center text-xl ${
-                      refundType === "partial"
-                        ? "text-blue-400"
-                        : "text-gray-300"
-                    }`}
-                  >
-                    Partial Refund
-                  </Text>
-                  <Text className="text-base text-center text-gray-400 mt-1">
-                    Select Items
-                  </Text>
-                </TouchableOpacity>
+                  {order.paymentStatus}
+                </Text>
               </View>
             </View>
+          </DialogHeader>
 
-            {/* Refund Method Section */}
-            <View>
-              <Text className="text-lg font-semibold text-gray-300 mb-2">
-                Refund Method
-              </Text>
-              <View className="flex-row gap-4">
-                {(["Card", "Cash"] as PaymentType[]).map((method) => (
+          <ScrollView contentContainerStyle={{ padding: 24 }}>
+            <View className="gap-y-6">
+              {/* Refund Type Section */}
+              <View>
+                <Text className="text-lg font-semibold text-gray-300 mb-2">
+                  Refund Type
+                </Text>
+                <View className="flex-row gap-4">
                   <TouchableOpacity
-                    key={method}
-                    onPress={() => setPaymentMethod(method)}
-                    className={`flex-1 py-4 rounded-lg border-2 ${
-                      paymentMethod === method
+                    onPress={() => setRefundType("full")}
+                    disabled={!canDoFullRefund}
+                    className={`flex-1 p-4 rounded-lg border-2 ${
+                      refundType === "full"
+                        ? "border-blue-500 bg-blue-900/30"
+                        : "border-gray-600"
+                    } ${!canDoFullRefund && "opacity-50"}`}
+                  >
+                    <Text
+                      className={`font-semibold text-center text-xl ${
+                        refundType === "full"
+                          ? "text-blue-400"
+                          : "text-gray-300"
+                      }`}
+                    >
+                      Full Refund
+                    </Text>
+                    <Text className="text-base text-center text-gray-400 mt-1">
+                      ${order.total.toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setRefundType("partial")}
+                    className={`flex-1 p-4 rounded-lg border-2 ${
+                      refundType === "partial"
                         ? "border-blue-500 bg-blue-900/30"
                         : "border-gray-600"
                     }`}
                   >
                     <Text
                       className={`font-semibold text-center text-xl ${
-                        paymentMethod === method
+                        refundType === "partial"
                           ? "text-blue-400"
                           : "text-gray-300"
                       }`}
                     >
-                      {method}
+                      Partial Refund
+                    </Text>
+                    <Text className="text-base text-center text-gray-400 mt-1">
+                      Select Items
                     </Text>
                   </TouchableOpacity>
-                ))}
+                </View>
               </View>
-            </View>
 
-            {/* Reason for Full Refund */}
-            {refundType === "full" && (
+              {/* Refund Method Section */}
               <View>
                 <Text className="text-lg font-semibold text-gray-300 mb-2">
-                  Reason
+                  Refund Method
                 </Text>
-                <TextInput
-                  value={reason}
-                  onChangeText={setReason}
-                  placeholder="Enter reason for the full refund..."
-                  placeholderTextColor="#6B7280"
-                  multiline
-                  className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-24"
-                />
-              </View>
-            )}
-
-            {/* Partial Refund Item Selection */}
-            {refundType === "partial" && (
-              <View>
-                <Text className="text-lg font-semibold text-gray-300 mb-2">
-                  Select Items to Refund
-                </Text>
-                <View className="gap-y-3">
-                  {refundableItems.map((item) => {
-                    const isSelected = selectedItems.some(
-                      (si) => si.itemId === item.id
-                    );
-                    const selectedItem = selectedItems.find(
-                      (si) => si.itemId === item.id
-                    );
-                    const maxRefundable =
-                      item.quantity - (item.refundedQuantity || 0);
-
-                    return (
-                      <View
-                        key={item.id}
-                        className="p-4 bg-[#212121] border border-gray-600 rounded-lg gap-y-3"
+                <View className="flex-row gap-4">
+                  {(["Card", "Cash"] as PaymentType[]).map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      onPress={() => setPaymentMethod(method)}
+                      className={`flex-1 py-4 rounded-lg border-2 ${
+                        paymentMethod === method
+                          ? "border-blue-500 bg-blue-900/30"
+                          : "border-gray-600"
+                      }`}
+                    >
+                      <Text
+                        className={`font-semibold text-center text-xl ${
+                          paymentMethod === method
+                            ? "text-blue-400"
+                            : "text-gray-300"
+                        }`}
                       >
-                        <View className="flex-row items-center justify-between">
-                          <View>
-                            <Text className="font-semibold text-white text-lg">
-                              {item.name}
-                            </Text>
-                            <Text className="text-gray-400 text-base mt-1">
-                              Refundable: {maxRefundable}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => toggleItemSelection(item)}
-                            className={`w-8 h-8 rounded-md items-center justify-center border ${
-                              isSelected
-                                ? "border-red-500 bg-red-500/20"
-                                : "border-green-500 bg-green-500/20"
-                            }`}
-                          >
-                            {isSelected ? (
-                              <X color="#f87171" size={18} />
-                            ) : (
-                              <Check color="#4ade80" size={18} />
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                        {isSelected && (
-                          <View className="gap-y-1.5">
-                            <View className="flex-row items-center gap-1.5">
-                              <Text className="text-lg text-gray-600">
-                                Qty:
+                        {method}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Reason for Full Refund */}
+              {refundType === "full" && (
+                <View>
+                  <Text className="text-lg font-semibold text-gray-300 mb-2">
+                    Reason
+                  </Text>
+                  <TextInput
+                    value={reason}
+                    onChangeText={setReason}
+                    placeholder="Enter reason for the full refund..."
+                    placeholderTextColor="#6B7280"
+                    multiline
+                    className="w-full p-3 bg-[#212121] border border-gray-600 rounded-lg text-lg text-white h-24"
+                  />
+                </View>
+              )}
+
+              {/* Partial Refund Item Selection */}
+              {refundType === "partial" && (
+                <View>
+                  <Text className="text-lg font-semibold text-gray-300 mb-2">
+                    Select Items to Refund
+                  </Text>
+                  <View className="gap-y-3">
+                    {refundableItems.map((item) => {
+                      const isSelected = selectedItems.some(
+                        (si) => si.itemId === item.id
+                      );
+                      const selectedItem = selectedItems.find(
+                        (si) => si.itemId === item.id
+                      );
+                      const maxRefundable =
+                        item.quantity - (item.refundedQuantity || 0);
+
+                      return (
+                        <View
+                          key={item.id}
+                          className="p-4 bg-[#212121] border border-gray-600 rounded-lg gap-y-3"
+                        >
+                          <View className="flex-row items-center justify-between">
+                            <View>
+                              <Text className="font-semibold text-white text-lg">
+                                {item.name}
                               </Text>
-                              <TextInput
-                                value={getSelectedItemQuantity(
-                                  item.id
-                                ).toString()}
-                                onChangeText={(t) =>
-                                  updateItemQuantity(item.id, parseInt(t) || 0)
-                                }
-                                keyboardType="numeric"
-                                className="flex-1 p-2 border border-gray-300 rounded text-center text-lg h-16"
-                              />
-                              <Text className="text-lg text-gray-600">
-                                / {item.quantity}
+                              <Text className="text-gray-400 text-base mt-1">
+                                Refundable: {maxRefundable}
                               </Text>
                             </View>
-                            <TextInput
-                              value={getSelectedItemReason(item.id)}
-                              onChangeText={(t) => updateItemReason(item.id, t)}
-                              placeholder="Reason..."
-                              className="w-full p-2 border border-gray-300 rounded text-base h-16"
-                            />
+                            <TouchableOpacity
+                              onPress={() => toggleItemSelection(item)}
+                              className={`w-8 h-8 rounded-md items-center justify-center border ${
+                                isSelected
+                                  ? "border-red-500 bg-red-500/20"
+                                  : "border-green-500 bg-green-500/20"
+                              }`}
+                            >
+                              {isSelected ? (
+                                <X color="#f87171" size={18} />
+                              ) : (
+                                <Check color="#4ade80" size={18} />
+                              )}
+                            </TouchableOpacity>
                           </View>
-                        )}
-                      </View>
-                    );
-                  })}
+                          {isSelected && (
+                            <View className="gap-y-1.5">
+                              <View className="flex-row items-center gap-1.5">
+                                <Text className="text-lg text-gray-600">
+                                  Qty:
+                                </Text>
+                                <TextInput
+                                  value={getSelectedItemQuantity(
+                                    item.id
+                                  ).toString()}
+                                  onChangeText={(t) =>
+                                    updateItemQuantity(
+                                      item.id,
+                                      parseInt(t) || 0
+                                    )
+                                  }
+                                  keyboardType="numeric"
+                                  className="flex-1 p-2 border border-gray-300 rounded text-center text-lg h-16"
+                                />
+                                <Text className="text-lg text-gray-600">
+                                  / {item.quantity}
+                                </Text>
+                              </View>
+                              <TextInput
+                                value={getSelectedItemReason(item.id)}
+                                onChangeText={(t) =>
+                                  updateItemReason(item.id, t)
+                                }
+                                placeholder="Reason..."
+                                className="w-full p-2 border border-gray-300 rounded text-base h-16"
+                              />
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            {/* Summary Section */}
-            <View className="p-4 bg-[#212121] rounded-lg border border-gray-600">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Summary
-              </Text>
-              <View className="gap-y-1">
-                <View className="flex-row justify-between">
-                  <Text className="text-lg text-gray-400">Original Total:</Text>
-                  <Text className="text-lg font-semibold text-gray-300">
-                    ${order.total.toFixed(2)}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between">
-                  <Text className="text-lg text-red-400">Refund Amount:</Text>
-                  <Text className="font-semibold text-red-400 text-xl">
-                    -${calculateRefundAmount().toFixed(2)}
-                  </Text>
-                </View>
-                <View className="flex-row justify-between border-t border-gray-600 pt-2 mt-2">
-                  <Text className="text-lg text-white">New Total:</Text>
-                  <Text className="font-semibold text-white text-xl">
-                    ${(order.total - calculateRefundAmount()).toFixed(2)}
-                  </Text>
+              {/* Summary Section */}
+              <View className="p-4 bg-[#212121] rounded-lg border border-gray-600">
+                <Text className="text-xl font-semibold text-white mb-2">
+                  Summary
+                </Text>
+                <View className="gap-y-1">
+                  <View className="flex-row justify-between">
+                    <Text className="text-lg text-gray-400">
+                      Original Total:
+                    </Text>
+                    <Text className="text-lg font-semibold text-gray-300">
+                      ${order.total.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <Text className="text-lg text-red-400">Refund Amount:</Text>
+                    <Text className="font-semibold text-red-400 text-xl">
+                      -${calculateRefundAmount().toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between border-t border-gray-600 pt-2 mt-2">
+                    <Text className="text-lg text-white">New Total:</Text>
+                    <Text className="font-semibold text-white text-xl">
+                      ${(order.total - calculateRefundAmount()).toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
 
-        <View className="flex-row gap-4 p-6 border-t border-gray-700">
-          <TouchableOpacity
-            onPress={onClose}
-            className="flex-1 py-3 border border-gray-600 rounded-lg items-center"
-          >
-            <Text className="font-bold text-lg text-gray-300 text-center">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={
-              refundType === "full" ? handleFullRefund : handlePartialRefund
-            }
-            className="flex-1 py-3 bg-red-600 rounded-lg items-center"
-          >
-            <Text className="font-bold text-white text-lg text-center">
-              Process Refund
-            </Text>
-          </TouchableOpacity>
-        </View>
+          <View className="flex-row gap-4 p-6 border-t border-gray-700">
+            <TouchableOpacity
+              onPress={onClose}
+              className="flex-1 py-3 border border-gray-600 rounded-lg items-center"
+            >
+              <Text className="font-bold text-lg text-gray-300 text-center">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={
+                refundType === "full" ? handleFullRefund : handlePartialRefund
+              }
+              className="flex-1 py-3 bg-red-600 rounded-lg items-center"
+            >
+              <Text className="font-bold text-white text-lg text-center">
+                Process Refund
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -45,7 +47,10 @@ const TrackOrderSection = () => {
   };
 
   return (
-    <View className="mt-6">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="mt-6"
+    >
       <View className="flex-row justify-between items-center">
         <Text className="text-3xl font-bold text-white">Track Order</Text>
         <View className="flex-row items-center gap-3">
@@ -89,7 +94,7 @@ const TrackOrderSection = () => {
           </View>
         }
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

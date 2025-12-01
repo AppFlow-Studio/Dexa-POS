@@ -7,7 +7,15 @@ import { CartItem, PreviousOrder } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { DimensionValue, FlatList, Text, TextInput, View } from "react-native";
+import {
+  DimensionValue,
+  FlatList,
+  Text,
+  TextInput,
+  View,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
 
 const columns: { label: string; width: DimensionValue }[] = [
   { label: "# Serial No", width: "8%" },
@@ -138,74 +146,83 @@ const PreviousOrdersScreen = () => {
   };
 
   return (
-    <View className="flex-1 p-4 bg-[#212121]">
-      {/* Toolbar */}
-      <View className="flex-row items-center justify-between mb-4">
-        <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
-          <Search color="#9CA3AF" size={20} />
-          <TextInput
-            placeholder="Search Order ID or Customer..."
-            placeholderTextColor="#9CA3AF"
-            value={searchText}
-            onChangeText={setSearchText}
-            className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1" // Ensure it takes full height
+    >
+      <View className="flex-1 p-4 bg-[#212121]">
+        {/* Toolbar */}
+        <View className="flex-row items-center justify-between mb-4">
+          <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
+            <Search color="#9CA3AF" size={20} />
+            <TextInput
+              placeholder="Search Order ID or Customer..."
+              placeholderTextColor="#9CA3AF"
+              value={searchText}
+              onChangeText={setSearchText}
+              className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
+            />
+          </View>
+          <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
+        </View>
+
+        {/* Table */}
+        <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
+          {/* Table Header */}
+          <View className="flex-row p-4 border-b border-gray-700">
+            {columns.map((col) => (
+              <HeaderCell
+                key={col.label}
+                label={col.label}
+                width={col.width}
+              />
+            ))}
+          </View>
+
+          {/* Table Body */}
+          <FlatList
+            data={filteredOrders}
+            keyExtractor={(item) => item.serialNo}
+            renderItem={({ item }) => (
+              <PreviousOrderRow
+                order={item}
+                onViewNotes={handleOpenNotes}
+                onDelete={() => handleOpenDelete(item)}
+                onPrint={() => handleOpenPrint(item)}
+              />
+            )}
+            ListEmptyComponent={
+              <View className="items-center justify-center py-8">
+                <Text className="text-xl text-gray-500">
+                  No orders found for this date.
+                </Text>
+              </View>
+            }
           />
         </View>
-        <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
-      </View>
 
-      {/* Table */}
-      <View className="flex-1 bg-[#303030] rounded-xl border border-gray-700">
-        {/* Table Header */}
-        <View className="flex-row p-4 border-b border-gray-700">
-          {columns.map((col) => (
-            <HeaderCell key={col.label} label={col.label} width={col.width} />
-          ))}
-        </View>
+        <OrderNotesModal
+          isOpen={activeModal === "notes"}
+          onClose={() => setActiveModal(null)}
+          order={selectedOrder}
+        />
+        <ConfirmationModal
+          isOpen={activeModal === "delete"}
+          onClose={() => setActiveModal(null)}
+          onConfirm={handleConfirmDelete}
+          title="Delete Order"
+          description="This will remove the order from the list and delete the data."
+          confirmText="Delete"
+          variant="destructive"
+        />
 
-        {/* Table Body */}
-        <FlatList
-          data={filteredOrders}
-          keyExtractor={(item) => item.serialNo}
-          renderItem={({ item }) => (
-            <PreviousOrderRow
-              order={item}
-              onViewNotes={handleOpenNotes}
-              onDelete={() => handleOpenDelete(item)}
-              onPrint={() => handleOpenPrint(item)}
-            />
-          )}
-          ListEmptyComponent={
-            <View className="items-center justify-center py-8">
-              <Text className="text-xl text-gray-500">
-                No orders found for this date.
-              </Text>
-            </View>
-          }
+        <PrintReceiptModal
+          isOpen={activeModal === "print"}
+          onClose={() => setActiveModal(null)}
+          order={selectedOrder}
         />
       </View>
-
-      <OrderNotesModal
-        isOpen={activeModal === "notes"}
-        onClose={() => setActiveModal(null)}
-        order={selectedOrder}
-      />
-      <ConfirmationModal
-        isOpen={activeModal === "delete"}
-        onClose={() => setActiveModal(null)}
-        onConfirm={handleConfirmDelete}
-        title="Delete Order"
-        description="This will remove the order from the list and delete the data."
-        confirmText="Delete"
-        variant="destructive"
-      />
-
-      <PrintReceiptModal
-        isOpen={activeModal === "print"}
-        onClose={() => setActiveModal(null)}
-        order={selectedOrder}
-      />
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

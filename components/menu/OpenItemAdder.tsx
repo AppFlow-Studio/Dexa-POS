@@ -1,7 +1,14 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 
 const OpenItemAdder = () => {
@@ -191,43 +198,50 @@ const OpenItemAdder = () => {
   };
 
   return (
-    <ScrollView className="flex-1 bg-[#212121] py-4">
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Open Item Name
-        </Text>
-        <TextInput
-          className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
-          value={openItemName}
-          onChangeText={setOpenItemName}
-          placeholder="Enter item name (default: Custom)"
-          placeholderTextColor="#9CA3AF"
-        />
-      </View>
-
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Open Item Price
-        </Text>
-        <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 items-center">
-          <Text className="text-3xl font-bold text-white">${priceDisplay}</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-[#212121]"
+    >
+      <ScrollView className="flex-1 py-4">
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
+            Open Item Name
+          </Text>
+          <TextInput
+            className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 text-xl text-white h-16"
+            value={openItemName}
+            onChangeText={setOpenItemName}
+            placeholder="Enter item name (default: Custom)"
+            placeholderTextColor="#9CA3AF"
+          />
         </View>
-      </View>
 
-      <View className="mb-4">
-        <Text className="text-xl font-semibold text-white mb-2">
-          Enter Price
-        </Text>
-        {renderNumpad()}
-      </View>
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
+            Open Item Price
+          </Text>
+          <View className="bg-[#303030] border border-gray-600 rounded-lg px-4 py-3 items-center">
+            <Text className="text-3xl font-bold text-white">
+              ${priceDisplay}
+            </Text>
+          </View>
+        </View>
 
-      {/* <TouchableOpacity
+        <View className="mb-4">
+          <Text className="text-xl font-semibold text-white mb-2">
+            Enter Price
+          </Text>
+          {renderNumpad()}
+        </View>
+
+        {/* <TouchableOpacity
         onPress={handleAddOpenItem}
         className="bg-blue-600 rounded-lg py-4 items-center mb-6"
       >
         <Text className="text-xl font-bold text-white">Add Item</Text>
       </TouchableOpacity> */}
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

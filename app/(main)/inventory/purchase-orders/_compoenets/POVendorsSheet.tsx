@@ -4,7 +4,14 @@ import BottomSheet, {
   BottomSheetFlatList,
 } from "@gorhom/bottom-sheet";
 import React, { forwardRef, useMemo, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 type POVendorsSheetProps = {
   onUseTemplate: (poId: string) => void;
@@ -168,32 +175,37 @@ const POVendorsSheet = forwardRef<BottomSheet, POVendorsSheetProps>(
         backgroundStyle={{ backgroundColor: "#303030" }}
         handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
       >
-        <View className="px-3 pb-1.5">
-          <Text className="text-white text-base font-bold mb-1.5">
-            Select Vendor
-          </Text>
-          <View className="bg-[#212121] border border-gray-700 rounded-xl px-2 py-1.5">
-            <TextInput
-              placeholder="Search vendors..."
-              placeholderTextColor="#9CA3AF"
-              value={query}
-              onChangeText={setQuery}
-              className="text-white h-16 text-base"
-            />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <View className="px-3 pb-1.5">
+            <Text className="text-white text-base font-bold mb-1.5">
+              Select Vendor
+            </Text>
+            <View className="bg-[#212121] border border-gray-700 rounded-xl px-2 py-1.5">
+              <TextInput
+                placeholder="Search vendors..."
+                placeholderTextColor="#9CA3AF"
+                value={query}
+                onChangeText={setQuery}
+                className="text-white h-16 text-base"
+              />
+            </View>
           </View>
-        </View>
-        <BottomSheetFlatList
-          data={filteredVendors}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
-          renderItem={({ item }) => (
-            <VendorRow
-              vendorId={item.id}
-              onUseTemplate={onUseTemplate}
-              onSelectVendor={onSelectVendor}
-            />
-          )}
-        />
+          <BottomSheetFlatList
+            data={filteredVendors}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 20 }}
+            renderItem={({ item }) => (
+              <VendorRow
+                vendorId={item.id}
+                onUseTemplate={onUseTemplate}
+                onSelectVendor={onSelectVendor}
+              />
+            )}
+          />
+        </KeyboardAvoidingView>
       </BottomSheet>
     );
   }

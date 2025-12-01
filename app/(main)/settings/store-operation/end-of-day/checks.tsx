@@ -20,6 +20,8 @@ import {
 import React, { useState } from "react";
 import {
   FlatList,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -115,7 +117,10 @@ const ChecksScreen = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#212121] p-4">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-[#212121] p-4"
+    >
       {/* Toolbar */}
       <View className="flex-row justify-between items-center mb-4">
         <View className="flex-row items-center bg-[#303030] rounded-lg border border-gray-600 px-3 w-[400px]">
@@ -147,14 +152,14 @@ const ChecksScreen = () => {
                 h === "Payee"
                   ? "w-[20%]"
                   : h === "Date Issued"
-                  ? "w-[20%]"
-                  : h === "Amount" || h === "Payment Status"
-                  ? "w-[15%]"
-                  : h === "# Serial No"
-                  ? "w-[10%]"
-                  : h === "# Check No"
-                  ? "w-[15%]"
-                  : "w-[5%]"
+                    ? "w-[20%]"
+                    : h === "Amount" || h === "Payment Status"
+                      ? "w-[15%]"
+                      : h === "# Serial No"
+                        ? "w-[10%]"
+                        : h === "# Check No"
+                          ? "w-[15%]"
+                          : "w-[5%]"
               }`}
             >
               {h}
@@ -188,7 +193,7 @@ const ChecksScreen = () => {
         onClose={() => setDetailModalOpen(false)}
         check={selectedCheck}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

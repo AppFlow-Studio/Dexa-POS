@@ -9,7 +9,9 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  View as RNView,
+  KeyboardAvoidingView, // <--- Imported
+  Platform,
+  View as RNView, // <--- Imported
   Text,
   TextInput,
   TouchableOpacity,
@@ -407,58 +409,62 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[550px] max-w-lg bg-[#303030] rounded-2xl border-gray-700 p-0">
-        <View className="p-6 border-b border-gray-700">
-          <View className="flex-row justify-between items-center">
-            <View>
-              <Text className="text-white text-xl font-bold">
-                {periodToEdit ? "Edit" : "Create"} Schedule Period
-              </Text>
-              <Text className="text-gray-400 mt-1">Step {step} of 3</Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View className="p-6 border-b border-gray-700">
+            <View className="flex-row justify-between items-center">
+              <View>
+                <Text className="text-white text-xl font-bold">
+                  {periodToEdit ? "Edit" : "Create"} Schedule Period
+                </Text>
+                <Text className="text-gray-400 mt-1">Step {step} of 3</Text>
+              </View>
+              <TouchableOpacity onPress={onClose} className="p-1">
+                <X size={24} color="#9CA3AF" />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onClose} className="p-1">
-              <X size={24} color="#9CA3AF" />
-            </TouchableOpacity>
           </View>
-        </View>
 
-        <View className="pt-6">{renderStepIndicator()}</View>
+          <View className="pt-6">{renderStepIndicator()}</View>
 
-        <View className="px-6 pb-6 min-h-[300px]">{renderStepContent()}</View>
+          <View className="px-6 pb-6 min-h-[300px]">{renderStepContent()}</View>
 
-        <View className="p-6 border-t border-gray-700 flex-row justify-between items-center">
-          <TouchableOpacity
-            onPress={handleBack}
-            disabled={step === 1}
-            className={`flex-row items-center gap-2 px-4 py-2 rounded-lg ${
-              step === 1 ? "opacity-50" : "bg-gray-700/80"
-            }`}
-          >
-            <ArrowLeft size={18} color="#FFFFFF" />
-            <Text className="text-white font-bold">Back</Text>
-          </TouchableOpacity>
-          {step < 3 ? (
+          <View className="p-6 border-t border-gray-700 flex-row justify-between items-center">
             <TouchableOpacity
-              onPress={handleNext}
-              disabled={!isStepValid()}
+              onPress={handleBack}
+              disabled={step === 1}
               className={`flex-row items-center gap-2 px-4 py-2 rounded-lg ${
-                !isStepValid() ? "opacity-50 bg-gray-600" : "bg-blue-600"
+                step === 1 ? "opacity-50" : "bg-gray-700/80"
               }`}
             >
-              <Text className="text-white font-bold">Next</Text>
-              <ArrowRight size={18} color="#FFFFFF" />
+              <ArrowLeft size={18} color="#FFFFFF" />
+              <Text className="text-white font-bold">Back</Text>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={handleComplete}
-              className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg"
-            >
-              <Check size={18} color="#FFFFFF" />
-              <Text className="text-white font-bold">
-                {periodToEdit ? "Save Changes" : "Create Period"}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+            {step < 3 ? (
+              <TouchableOpacity
+                onPress={handleNext}
+                disabled={!isStepValid()}
+                className={`flex-row items-center gap-2 px-4 py-2 rounded-lg ${
+                  !isStepValid() ? "opacity-50 bg-gray-600" : "bg-blue-600"
+                }`}
+              >
+                <Text className="text-white font-bold">Next</Text>
+                <ArrowRight size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleComplete}
+                className="flex-row items-center gap-2 px-4 py-2 bg-blue-600 rounded-lg"
+              >
+                <Check size={18} color="#FFFFFF" />
+                <Text className="text-white font-bold">
+                  {periodToEdit ? "Save Changes" : "Create Period"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </KeyboardAvoidingView>
       </DialogContent>
     </Dialog>
   );

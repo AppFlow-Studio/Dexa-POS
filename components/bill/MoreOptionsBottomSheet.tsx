@@ -3,13 +3,13 @@ import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Lock, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,9 +21,17 @@ import PinNumpad from "../auth/PinNumpad";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
+interface MoreOptionsBottomSheetProps {
+  onCloseCheck: () => void;
+  onApplyDiscount: () => void;
+  onApplyVoucher: () => void;
+}
+
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
-  BottomSheetMethods
-> = (props, ref) => {
+  BottomSheetMethods,
+  MoreOptionsBottomSheetProps
+> = function MoreOptionsComponent(props, ref) {
+  const { onCloseCheck, onApplyDiscount, onApplyVoucher } = props;
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -199,7 +207,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         backdropComponent={renderBackdrop}
         backgroundStyle={{ backgroundColor: "#212121" }}
       >
-        <BottomSheetView className="flex-1 bg-[#212121] rounded-t-3xl overflow-hidden">
+        <BottomSheetScrollView className="flex-1 bg-[#212121] rounded-t-3xl overflow-hidden">
           <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
             <Text className="text-2xl font-bold text-white">More Options</Text>
             <TouchableOpacity
@@ -213,7 +221,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               <X color="#9CA3AF" size={20} />
             </TouchableOpacity>
           </View>
-          <ScrollView>
+          <View>
             <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
               <Text className="text-xl font-semibold text-white">
                 Cart Actions
@@ -257,15 +265,52 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
               </TouchableOpacity>
             </View>
             <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
-              <Text className="text-xl font-semibold text-white">
-                Customer
-              </Text>
+              <Text className="text-xl font-semibold text-white">Customer</Text>
               <TouchableOpacity
                 onPress={handleAddCustomer}
                 className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-2 rounded-lg"
               >
                 <User color="#9CA3AF" size={16} />
                 <Text className="text-base text-gray-300">Add Customer</Text>
+              </TouchableOpacity>
+            </View>
+            {/* New Financial Actions Section */}
+            <View className="p-4 border-b border-gray-700">
+              <Text className="text-xl font-semibold text-white mb-2">
+                Financial Actions
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  if (ref && "current" in ref && ref.current) {
+                    ref.current.close();
+                  }
+                  onApplyDiscount();
+                }}
+                className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-3 rounded-lg mb-2"
+              >
+                <Text className="text-base text-white">Apply Discount</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  if (ref && "current" in ref && ref.current) {
+                    ref.current.close();
+                  }
+                  onApplyVoucher();
+                }}
+                className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-3 rounded-lg mb-2"
+              >
+                <Text className="text-base text-white">Apply Voucher</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  if (ref && "current" in ref && ref.current) {
+                    ref.current.close();
+                  }
+                  onCloseCheck();
+                }}
+                className="flex-row items-center gap-x-2 bg-[#303030] border border-gray-600 p-3 rounded-lg"
+              >
+                <Text className="text-base text-white">Close Check</Text>
               </TouchableOpacity>
             </View>
             <View className="p-4">
@@ -322,10 +367,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 </TouchableOpacity>
               </View>
             </View>
-          </ScrollView>
-        </BottomSheetView>
+          </View>
+        </BottomSheetScrollView>
       </BottomSheet>
-
       <Dialog
         open={showManagerPin}
         onOpenChange={() => setShowManagerPin(false)}
@@ -389,6 +433,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 };
 
 const MoreOptionsBottomSheet = forwardRef(MoreOptionsComponent);
+MoreOptionsBottomSheet.displayName = "MoreOptionsBottomSheet";
 
 export default MoreOptionsBottomSheet;
-

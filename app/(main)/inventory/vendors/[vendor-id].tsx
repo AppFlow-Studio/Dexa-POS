@@ -10,7 +10,15 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { Edit3, Plus, Search, Trash2 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  KeyboardAvoidingView, // <--- Imported
+  Platform, // <--- Imported
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { TextInput } from "react-native-gesture-handler";
 
 const StatCard = ({
@@ -400,8 +408,8 @@ const VendorDetailsScreen = () => {
                     po.status === "Awaiting Payment"
                       ? "bg-green-600 text-green-100"
                       : po.status === "Pending Delivery"
-                      ? "bg-blue-600"
-                      : "bg-yellow-600";
+                        ? "bg-blue-600"
+                        : "bg-yellow-600";
                   return (
                     <Link
                       key={po.id}
@@ -793,181 +801,194 @@ const VendorDetailsScreen = () => {
           />
         )}
       >
-        <View className="px-4 py-3 border-b border-gray-700 w-full">
-          <View className="flex flex-row gap-2 justify-between">
-            <View className="flex flex-col gap-1">
-              <Text className="text-white text-xl font-bold">Build PO</Text>
-              <Text className="text-gray-300 text-sm">
-                Vendor:
-                <Text className="text-white font-semibold">{vendor?.name}</Text>
-              </Text>
-              {selectedTemplatePo && (
-                <Text className="text-blue-300 text-sm">
-                  Template: {selectedTemplatePo.poNumber}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <View className="px-4 py-3 border-b border-gray-700 w-full">
+            <View className="flex flex-row gap-2 justify-between">
+              <View className="flex flex-col gap-1">
+                <Text className="text-white text-xl font-bold">Build PO</Text>
+                <Text className="text-gray-300 text-sm">
+                  Vendor:
+                  <Text className="text-white font-semibold">
+                    {vendor?.name}
+                  </Text>
                 </Text>
+                {selectedTemplatePo && (
+                  <Text className="text-blue-300 text-sm">
+                    Template: {selectedTemplatePo.poNumber}
+                  </Text>
+                )}
+              </View>
+              <View className="flex-row gap-2 mb-4 w-1/2">
+                <TouchableOpacity
+                  onPress={() => createPurchaseOrder("Draft")}
+                  className="flex-1 bg-gray-600 justify-center border border-gray-500 rounded-lg px-3 py-2 items-center"
+                >
+                  <Text className="text-white text-base font-semibold">
+                    Save Draft
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => createPurchaseOrder("Pending Delivery")}
+                  className="flex-1 bg-blue-600 border justify-center border-blue-500 rounded-lg px-3 py-2 items-center"
+                >
+                  <Text className="text-white text-base font-semibold">
+                    Submit
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <ScrollView className="flex-1 px-4 py-3">
+            <View className="mb-4">
+              <Text className="text-white text-lg font-semibold mb-2">
+                Items ({poLineItems.length})
+              </Text>
+              {poLineItems.length === 0 ? (
+                <View className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-4 items-center">
+                  <Text className="text-gray-400 text-sm">
+                    No items added yet
+                  </Text>
+                </View>
+              ) : (
+                <View className="gap-1">
+                  {poLineItems.map((lineItem) => {
+                    const item = inventoryItems.find(
+                      (i) => i.id === lineItem.inventoryItemId
+                    );
+                    const isEditing =
+                      isEditingItem === lineItem.inventoryItemId;
+                    return (
+                      <View
+                        key={lineItem.inventoryItemId}
+                        className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-3"
+                      >
+                        <View className="flex-row justify-between items-center">
+                          <View className="flex-1 pr-2">
+                            <Text className="text-white text-base font-semibold">
+                              {item?.name || "Unknown"}
+                            </Text>
+                            <Text className="text-gray-400 text-xs">
+                              ${lineItem.cost.toFixed(2)} per {item?.unit}
+                            </Text>
+                          </View>
+                          <View className="flex-row items-center gap-2">
+                            {isEditing ? (
+                              <>
+                                <TextInput
+                                  value={editingQuantity}
+                                  onChangeText={setEditingQuantity}
+                                  keyboardType="number-pad"
+                                  className="bg-[#1a1a1a] border border-gray-600 rounded px-2 py-1 text-white text-center w-14 text-sm"
+                                />
+                                <TouchableOpacity
+                                  onPress={saveEditItem}
+                                  className="bg-green-600 px-2 py-1 rounded"
+                                >
+                                  <Text className="text-white text-xs">
+                                    Save
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={cancelEditItem}
+                                  className="bg-gray-600 px-2 py-1 rounded"
+                                >
+                                  <Text className="text-white text-xs">
+                                    Cancel
+                                  </Text>
+                                </TouchableOpacity>
+                              </>
+                            ) : (
+                              <>
+                                <Text className="text-white text-base">
+                                  Qty: {lineItem.quantity}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    startEditItem(
+                                      lineItem.inventoryItemId,
+                                      lineItem.quantity
+                                    )
+                                  }
+                                  className="p-1.5"
+                                >
+                                  <Edit3 size={14} color="#9CA3AF" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    removeItemFromPO(lineItem.inventoryItemId)
+                                  }
+                                  className="p-1.5"
+                                >
+                                  <Trash2 size={14} color="#EF4444" />
+                                </TouchableOpacity>
+                              </>
+                            )}
+                          </View>
+                        </View>
+                        <Text className="text-white text-right mt-1.5 text-sm">
+                          Total: $
+                          {(lineItem.quantity * lineItem.cost).toFixed(2)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
               )}
             </View>
-            <View className="flex-row gap-2 mb-4 w-1/2">
-              <TouchableOpacity
-                onPress={() => createPurchaseOrder("Draft")}
-                className="flex-1 bg-gray-600 justify-center border border-gray-500 rounded-lg px-3 py-2 items-center"
-              >
-                <Text className="text-white text-base font-semibold">
-                  Save Draft
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => createPurchaseOrder("Pending Delivery")}
-                className="flex-1 bg-blue-600 border justify-center border-blue-500 rounded-lg px-3 py-2 items-center"
-              >
-                <Text className="text-white text-base font-semibold">
-                  Submit
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
 
-        <ScrollView className="flex-1 px-4 py-3">
-          <View className="mb-4">
-            <Text className="text-white text-lg font-semibold mb-2">
-              Items ({poLineItems.length})
-            </Text>
-            {poLineItems.length === 0 ? (
-              <View className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-4 items-center">
-                <Text className="text-gray-400 text-sm">
-                  No items added yet
-                </Text>
+            <View className="mb-4">
+              <Text className="text-white text-lg font-semibold mb-2">
+                Add Items
+              </Text>
+              <View className="flex-row items-center gap-1.5 mb-2">
+                <Search color="#9CA3AF" size={16} />
+                <TextInput
+                  value={itemSearchText}
+                  onChangeText={setItemSearchText}
+                  placeholder="Search items..."
+                  className="flex-1 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-sm"
+                  placeholderTextColor="#9CA3AF"
+                />
               </View>
-            ) : (
-              <View className="gap-1">
-                {poLineItems.map((lineItem) => {
-                  const item = inventoryItems.find(
-                    (i) => i.id === lineItem.inventoryItemId
-                  );
-                  const isEditing = isEditingItem === lineItem.inventoryItemId;
-                  return (
-                    <View
-                      key={lineItem.inventoryItemId}
-                      className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-3"
-                    >
-                      <View className="flex-row justify-between items-center">
-                        <View className="flex-1 pr-2">
-                          <Text className="text-white text-base font-semibold">
-                            {item?.name || "Unknown"}
-                          </Text>
-                          <Text className="text-gray-400 text-xs">
-                            ${lineItem.cost.toFixed(2)} per {item?.unit}
-                          </Text>
-                        </View>
-                        <View className="flex-row items-center gap-2">
-                          {isEditing ? (
-                            <>
-                              <TextInput
-                                value={editingQuantity}
-                                onChangeText={setEditingQuantity}
-                                keyboardType="number-pad"
-                                className="bg-[#1a1a1a] border border-gray-600 rounded px-2 py-1 text-white text-center w-14 text-sm"
-                              />
-                              <TouchableOpacity
-                                onPress={saveEditItem}
-                                className="bg-green-600 px-2 py-1 rounded"
-                              >
-                                <Text className="text-white text-xs">Save</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={cancelEditItem}
-                                className="bg-gray-600 px-2 py-1 rounded"
-                              >
-                                <Text className="text-white text-xs">
-                                  Cancel
-                                </Text>
-                              </TouchableOpacity>
-                            </>
-                          ) : (
-                            <>
-                              <Text className="text-white text-base">
-                                Qty: {lineItem.quantity}
-                              </Text>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  startEditItem(
-                                    lineItem.inventoryItemId,
-                                    lineItem.quantity
-                                  )
-                                }
-                                className="p-1.5"
-                              >
-                                <Edit3 size={14} color="#9CA3AF" />
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                onPress={() =>
-                                  removeItemFromPO(lineItem.inventoryItemId)
-                                }
-                                className="p-1.5"
-                              >
-                                <Trash2 size={14} color="#EF4444" />
-                              </TouchableOpacity>
-                            </>
-                          )}
-                        </View>
+              <BottomSheetFlatList
+                data={filteredItems}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() => addItemToPO(item)}
+                    className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-2 mb-1.5"
+                  >
+                    <View className="flex-row justify-between items-center">
+                      <View className="flex-1 pr-2">
+                        <Text className="text-white text-base font-semibold">
+                          {item.name}
+                        </Text>
+                        <Text className="text-gray-400 text-xs">
+                          {item.category} • ${item.cost.toFixed(2)} per
+                          {item.unit}
+                        </Text>
                       </View>
-                      <Text className="text-white text-right mt-1.5 text-sm">
-                        Total: ${(lineItem.quantity * lineItem.cost).toFixed(2)}
-                      </Text>
+                      <View className="bg-blue-600 px-2 py-1 rounded">
+                        <Text className="text-white text-xs">Add</Text>
+                      </View>
                     </View>
-                  );
-                })}
-              </View>
-            )}
-          </View>
-
-          <View className="mb-4">
-            <Text className="text-white text-lg font-semibold mb-2">
-              Add Items
-            </Text>
-            <View className="flex-row items-center gap-1.5 mb-2">
-              <Search color="#9CA3AF" size={16} />
-              <TextInput
-                value={itemSearchText}
-                onChangeText={setItemSearchText}
-                placeholder="Search items..."
-                className="flex-1 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 text-white text-sm"
-                placeholderTextColor="#9CA3AF"
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View className="items-center justify-center py-4">
+                    <Text className="text-gray-400 text-sm">
+                      No items found
+                    </Text>
+                  </View>
+                }
               />
             </View>
-            <BottomSheetFlatList
-              data={filteredItems}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => addItemToPO(item)}
-                  className="bg-[#2a2a2a] border border-gray-700 rounded-lg p-2 mb-1.5"
-                >
-                  <View className="flex-row justify-between items-center">
-                    <View className="flex-1 pr-2">
-                      <Text className="text-white text-base font-semibold">
-                        {item.name}
-                      </Text>
-                      <Text className="text-gray-400 text-xs">
-                        {item.category} • ${item.cost.toFixed(2)} per
-                        {item.unit}
-                      </Text>
-                    </View>
-                    <View className="bg-blue-600 px-2 py-1 rounded">
-                      <Text className="text-white text-xs">Add</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View className="items-center justify-center py-4">
-                  <Text className="text-gray-400 text-sm">No items found</Text>
-                </View>
-              }
-            />
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </BottomSheet>
     </>
   );

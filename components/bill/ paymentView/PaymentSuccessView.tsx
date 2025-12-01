@@ -1,62 +1,46 @@
 import { useToast } from "@/contexts/ToastContext";
 import { getMenuItemCategory, getMenuItemCostOfGoods } from "@/lib/chartUtils";
 import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
-import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { Printer, ShoppingBag } from "lucide-react-native";
+import { Check, Mail, Printer } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
-
-const ReceiptRow = ({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) => (
-  <View className="flex-row justify-between items-center py-2 border-b border-dashed border-gray-700">
-    <Text className="text-lg text-gray-400">{label}</Text>
-    <Text className="text-lg font-semibold text-white">{value}</Text>
-  </View>
-);
+import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 const PaymentSuccessView = () => {
   const { close, paymentMethod, activeTableId } = usePaymentStore();
   const { updateTableStatus } = useFloorPlanStore();
-  const { clearSelectedTable } = useDineInStore();
-  const { decrementStockFromSale } = useInventoryStore();
   const { show } = useToast();
 
   const {
     activeOrderId,
     orders,
-    activeOrderSubtotal,
-    activeOrderTax,
     activeOrderTotal,
-    activeOrderDiscount,
     activeOrderOutstandingTotal,
     addPaymentToOrder,
   } = useOrderStore();
-  const { categories, menuItems } = useMenuStore();
-
+  const { menuItems } = useMenuStore();
   const { addSaleEvent, forceRefresh } = useAnalyticsStore();
 
   const appliedRef = useRef(false);
   useEffect(() => {
     if (appliedRef.current) return;
-    if (activeOrderId && activeOrderOutstandingTotal > 0) {
-      addPaymentToOrder(
-        activeOrderId,
-        activeOrderOutstandingTotal,
-        (paymentMethod || "Card") as any
-      );
+    if (activeOrderId && activeOrderOutstandingTotal > 0 && paymentMethod) {
+      addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: activeOrderOutstandingTotal,
+        method: paymentMethod,
+      });
     }
     appliedRef.current = true;
+  }, []);
+
+  // Ensure isDirty is false when this view mounts, as payment is complete
+  useEffect(() => {
+    usePaymentStore.getState().setPaymentClean();
   }, []);
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
@@ -72,48 +56,28 @@ const PaymentSuccessView = () => {
       setActiveOrder,
       archiveOrder,
     } = useOrderStore.getState();
-    // decrementStockFromSale(items);
 
-    // Create sale events for analytics tracking
-    const saleEvents = items.map((item) => {
-      const saleEvent = {
-        date: new Date().toISOString(),
-        itemName: item.name,
-        menuItemId: item.menuItemId, // Use the actual menu item ID
-        quantitySold: item.quantity,
-        salePrice: item.price,
-        costOfGoods: getMenuItemCostOfGoods(item.menuItemId, menuItems),
-        category: getMenuItemCategory(item.menuItemId, menuItems),
-        employeeId: activeOrder?.server_name || "Unknown", // Use actual server name
-        paymentMethod: paymentMethod || "Card",
-        orderId: activeOrderId || undefined, // Add order ID for better tracking
-      };
-
-      // Debug logging
-      console.log("🍟 Creating sale event:", {
-        item: item.name,
-        quantity: item.quantity,
-        price: item.price,
-        total: item.price * item.quantity,
-        category: saleEvent.category,
-        date: saleEvent.date,
-      });
-
-      return saleEvent;
-    });
-
-    console.log("📊 Adding sale events to analytics:", saleEvents);
+    // Analytics...
+    const saleEvents = items.map((item) => ({
+      date: new Date().toISOString(),
+      itemName: item.name,
+      menuItemId: item.menuItemId,
+      quantitySold: item.quantity,
+      salePrice: item.price,
+      costOfGoods: getMenuItemCostOfGoods(item.menuItemId, menuItems),
+      category: getMenuItemCategory(item.menuItemId, menuItems),
+      employeeId: activeOrder?.server_name || "Unknown",
+      paymentMethod: paymentMethod || "Card",
+      orderId: activeOrderId || undefined,
+    }));
     addSaleEvent(saleEvents);
-    // Nudge refresh after write to ensure dashboard updates
     setTimeout(() => {
       try {
         forceRefresh();
       } catch {}
     }, 150);
 
-    if (activeOrderId) {
-      markOrderAsPaid(activeOrderId);
-    }
+    if (activeOrderId) markOrderAsPaid(activeOrderId);
 
     if (activeOrder?.order_type === "Dine In" && activeTableId) {
       updateTableStatus(activeTableId, "In Use");
@@ -133,10 +97,7 @@ const PaymentSuccessView = () => {
       activeOrder?.order_type === "Takeaway" &&
       activeOrder.order_status === "Ready"
     ) {
-      // A small delay can improve UX, ensuring the user sees the status change before it disappears.
-      setTimeout(() => {
-        archiveOrder(activeOrder?.id);
-      }, 500); // 0.5 second delay
+      setTimeout(() => archiveOrder(activeOrder?.id), 500);
     }
     close();
   };
@@ -144,118 +105,98 @@ const PaymentSuccessView = () => {
   const handlePrint = () => {
     show({
       title: "Printing Receipt",
-      message: "The receipt has been sent to the designated printer.",
+      message: "Sent to printer.",
       type: "success",
     });
   };
 
-  // Create a simplified summary for the receipt using the correct `items`
-  // Don't group items by name - preserve each unique item with its modifiers
-  const receiptSummary = items.map((item) => ({
-    name: item.name,
-    quantity: item.quantity,
-    totalPrice: item.price * item.quantity,
-    // Include modifier info in the name for clarity
-    displayName:
-      (item.customizations.modifiers &&
-        item.customizations.modifiers.length > 0) ||
-      item.customizations.notes
-        ? `${item.name}${
-            item.customizations.notes ? ` (${item.customizations.notes})` : ""
-          }${
-            item.customizations.modifiers &&
-            item.customizations.modifiers.length > 0
-              ? ` [${item.customizations.modifiers
-                  .map((m) => m.categoryName)
-                  .join(", ")}]`
-              : ""
-          }`
-        : item.name,
-  }));
-
-  const totalItemsCount = items.reduce((acc, item) => acc + item.quantity, 0);
+  const handleEmail = () => {
+    show({
+      title: "Email Sent",
+      message: "Receipt emailed to customer.",
+      type: "success",
+    });
+  };
 
   return (
-    <View className="rounded-2xl overflow-hidden bg-[#2BAE74] w-[550px]">
-      <View className="p-4 items-center">
-        <View className="w-20 h-20 bg-white/20 rounded-full items-center justify-center">
-          <View className="w-16 h-16 bg-white rounded-full items-center justify-center">
-            <ShoppingBag color="#22c55e" size={36} />
-          </View>
-        </View>
-        <Text className="text-3xl font-bold text-white mt-3">
-          Payment Successful
-        </Text>
-      </View>
-
-      <View className="p-4 bg-[#303030] rounded-b-2xl">
-        <ScrollView
-          className="max-h-[350px]"
-          showsVerticalScrollIndicator={false}
+    <View className="flex-1 bg-[#212121] justify-between">
+      {/* Main Content - Centered vertically if possible */}
+      <View className="flex-1 justify-center items-center px-6">
+        {/* Success Icon */}
+        <Animated.View
+          entering={FadeIn.delay(100)}
+          className="items-center mb-6"
         >
-          <ReceiptRow
-            label="Transaction No."
-            value={activeOrder?.id.slice(-10).toUpperCase() || "N/A"}
-          />
-          <ReceiptRow
-            label="Table"
-            value={activeOrder?.service_location_id || "N/A"}
-          />
-          <ReceiptRow label="Payment Method" value={paymentMethod || "N/A"} />
-
-          <View className="mt-3">
-            <ReceiptRow
-              label="Total Items"
-              value={`${totalItemsCount} Items`}
-            />
-            {receiptSummary.map((item, index) => (
-              <ReceiptRow
-                key={`${item.name}_${index}`}
-                label={`${item.name} (${item.quantity}) X`}
-                value={`${item.totalPrice.toFixed(2)}`}
-              />
-            ))}
+          <View className="w-24 h-24 bg-green-500 rounded-full items-center justify-center mb-4 shadow-lg shadow-green-900/20 border-4 border-[#212121]">
+            <Check color="white" size={48} strokeWidth={4} />
           </View>
+          <Text className="text-3xl font-bold text-white mb-1">
+            Payment Successful
+          </Text>
+          <Text className="text-gray-400 text-lg">
+            {paymentMethod || "Card"}
+          </Text>
+        </Animated.View>
 
-          <View className="mt-3">
-            <ReceiptRow
-              label="Subtotal"
-              value={`$${activeOrderSubtotal.toFixed(2)}`}
-            />
-            {activeOrderDiscount > 0 && (
-              <ReceiptRow
-                label="Discount"
-                value={`-$${activeOrderDiscount.toFixed(2)}`}
-              />
-            )}
-            <ReceiptRow label="Tax" value={`$${activeOrderTax.toFixed(2)}`} />
-          </View>
+        {/* Compact Receipt Card */}
+        <Animated.View
+          entering={FadeInUp.delay(200)}
+          className="w-full max-w-sm bg-[#2A2A2A] rounded-2xl border border-[#333] p-6 items-center"
+        >
+          <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+            Total Paid
+          </Text>
+          <Text className="text-5xl font-bold text-white mb-4">
+            ${activeOrderTotal.toFixed(2)}
+          </Text>
 
-          <View className="flex-row justify-between items-center pt-3 border-t border-dashed border-gray-600 mt-3">
-            <Text className="text-2xl font-bold text-white">Total</Text>
-            <Text className="text-2xl font-bold text-white">
-              ${activeOrderTotal.toFixed(2)}
+          <View className="w-full h-[1px] bg-[#404040] mb-4" />
+
+          <View className="flex-row justify-between w-full mb-2">
+            <Text className="text-gray-400">Transaction ID</Text>
+            <Text className="text-gray-200 font-medium">
+              #{activeOrder?.id.slice(-6).toUpperCase()}
             </Text>
           </View>
-        </ScrollView>
+          <View className="flex-row justify-between w-full">
+            <Text className="text-gray-400">Date</Text>
+            <Text className="text-gray-200 font-medium">
+              {new Date().toLocaleDateString()}
+            </Text>
+          </View>
+        </Animated.View>
+      </View>
 
-        <View className="border-t border-gray-700 pt-4 mt-4">
-          <View className="flex-row gap-4 mb-2">
+      {/* Footer Actions - Fixed at Bottom */}
+      <View className="w-full bg-[#212121] pt-2 pb-4 border-t border-[#333]">
+        <View className="px-4 gap-y-3">
+          {/* Secondary Actions Row */}
+          <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={handlePrint}
-              className="flex-1 flex-row justify-center items-center gap-2 py-3 border border-gray-600 rounded-xl bg-[#212121]"
+              className="flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2"
             >
-              <Printer color="#9CA3AF" size={20} />
-              <Text className="text-lg font-bold text-gray-300">
-                Print Receipt
-              </Text>
+              <Printer size={18} color="#9CA3AF" className="mr-2" />
+              <Text className="text-gray-300 font-semibold">Print Receipt</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleEmail}
+              className="flex-1 py-3 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333] gap-2"
+            >
+              <Mail size={18} color="#9CA3AF" className="mr-2" />
+              <Text className="text-gray-300 font-semibold">Email Receipt</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Primary Action */}
           <TouchableOpacity
             onPress={handleDone}
-            className="w-full py-3 bg-blue-600 rounded-xl items-center"
+            className="w-full py-4 bg-blue-600 rounded-xl items-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
           >
-            <Text className="font-bold text-white text-lg">Done</Text>
+            <Text className="text-white font-bold text-xl">
+              Start New Order
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
