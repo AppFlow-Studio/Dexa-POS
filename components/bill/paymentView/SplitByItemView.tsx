@@ -1,18 +1,17 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-// Import BottomSheetScrollView to handle sheet gestures correctly
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowLeft,
   CheckCircle2,
   Circle,
-  CreditCard,
+  Play,
   Plus,
   User,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ScrollView, // Standard ScrollView for horizontal tabs
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -23,20 +22,20 @@ const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const orders = useOrderStore((state) => state.orders);
 
-  const splits = usePaymentStore((state) => state.splits);
-  const addSplit = usePaymentStore((state) => state.addSplit);
-  const removeSplit = usePaymentStore((state) => state.removeSplit);
-  const assignItemToSplit = usePaymentStore((state) => state.assignItemToSplit);
-  const unassignItemFromSplit = usePaymentStore(
-    (state) => state.unassignItemFromSplit
-  );
-  const updateSplitCustomerName = usePaymentStore(
-    (state) => state.updateSplitCustomerName
-  );
-  const setView = usePaymentStore((state) => state.setView);
+  const {
+    splits,
+    addSplit,
+    removeSplit,
+    assignItemToSplit,
+    unassignItemFromSplit,
+    updateSplitCustomerName,
+    setView,
+    startSplitPaymentFlow,
+  } = usePaymentStore();
 
   const [activeSplitId, setActiveSplitId] = useState<string | null>(null);
 
+  // Initialize first guest
   useEffect(() => {
     if (splits.length === 0) {
       addSplit("Guest 1");
@@ -45,6 +44,7 @@ const SplitByItemView = () => {
     }
   }, [splits.length]);
 
+  // Sync active split
   useEffect(() => {
     if (
       splits.length > 0 &&
@@ -62,6 +62,7 @@ const SplitByItemView = () => {
 
   const masterItems = activeOrder?.items || [];
 
+  // --- LOGIC: Calculate Item Distribution ---
   const itemData = useMemo(() => {
     return masterItems.map((item) => {
       const currentSplit = splits.find((s) => s.id === activeSplitId);
@@ -91,6 +92,13 @@ const SplitByItemView = () => {
     ? activeSplit.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
     : 0;
 
+  // Calculate global remaining items to control button state
+  const globalRemainingItems = itemData.reduce(
+    (acc, item) => acc + item.qtyRemaining,
+    0
+  );
+  const isAllAssigned = globalRemainingItems === 0;
+
   const handleAddGuest = () => {
     addSplit(`Guest ${splits.length + 1}`);
   };
@@ -104,37 +112,31 @@ const SplitByItemView = () => {
     }
   };
 
-  const handlePaySplit = () => {
-    if (activeSplitId) {
-      console.log("Paying for", activeSplitId);
+  const handleStartPayment = () => {
+    if (isAllAssigned) {
+      startSplitPaymentFlow("split-by-item");
     }
-  };
-
-  const handleDone = () => {
-    usePaymentStore.getState().setPaymentClean();
-    setView("success");
   };
 
   return (
     <View className="flex-1 bg-[#212121]">
       {/* 1. Header */}
-      <View className="flex-row items-center justify-between p-4 border-b border-[#333] h-[70px]">
+      <View className="flex-row items-center p-4 border-b border-[#333] h-[70px]">
         <TouchableOpacity
           onPress={() => setView("split-options")}
-          className="p-2 bg-[#333] rounded-lg"
+          className="p-2 bg-[#333] rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-white">Split by Item</Text>
-        <TouchableOpacity
-          onPress={handleDone}
-          className="bg-[#333] px-3 py-2 rounded-lg"
-        >
-          <Text className="text-green-400 font-bold">Done</Text>
-        </TouchableOpacity>
+        <View>
+          <Text className="text-xl font-bold text-white">Split by Item</Text>
+          <Text className="text-gray-400 text-xs">Assign items to guests</Text>
+        </View>
+
+        {/* Removed 'Done' button from header */}
       </View>
 
-      {/* 2. Guest Tabs - Using .map() inside ScrollView */}
+      {/* 2. Guest Tabs */}
       <View className="h-[70px] bg-[#1a1a1a] border-b border-[#333]">
         <ScrollView
           horizontal
@@ -144,7 +146,6 @@ const SplitByItemView = () => {
             alignItems: "center",
           }}
         >
-          {/* Add Button */}
           <TouchableOpacity
             onPress={handleAddGuest}
             className="flex-row items-center px-4 py-2 mx-2 rounded-full border border-[#444] bg-[#2a2a2a]"
@@ -153,7 +154,6 @@ const SplitByItemView = () => {
             <Text className="ml-2 text-white font-semibold">Add</Text>
           </TouchableOpacity>
 
-          {/* Guest List Map */}
           {splits.map((split) => {
             const isActive = split.id === activeSplitId;
             return (
@@ -196,7 +196,7 @@ const SplitByItemView = () => {
           </View>
           <View className="items-end">
             <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
-              Total
+              Guest Total
             </Text>
             <Text className="text-2xl font-bold text-blue-400">
               ${activeSplitTotal.toFixed(2)}
@@ -205,11 +205,7 @@ const SplitByItemView = () => {
         </View>
       )}
 
-      {/* 4. Main Item List - Using .map() inside BottomSheetScrollView */}
-      {/* 
-          Using BottomSheetScrollView ensures vertical scrolling works 
-          inside the bottom sheet without conflicting gestures.
-      */}
+      {/* 4. Main Item List */}
       <View className="flex-1 bg-[#1F1F1F]">
         <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 100 }}>
           {itemData.map((item) => {
@@ -219,15 +215,15 @@ const SplitByItemView = () => {
 
             return (
               <TouchableOpacity
-                key={item.id} // Ensure key is unique
+                key={item.id}
                 onPress={() => toggleAssignment(item)}
                 disabled={isFullyAssignedToOthers}
                 className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
                   isSelected
-                    ? "bg-[#1e3a8a] border-[#2563eb]" // Active Blue Bg
+                    ? "bg-[#1e3a8a] border-[#2563eb]"
                     : isFullyAssignedToOthers
-                      ? "bg-[#1A1A1A] opacity-40" // Dimmed
-                      : "bg-[#262626]" // Default
+                      ? "bg-[#1A1A1A] opacity-40"
+                      : "bg-[#262626]"
                 }`}
               >
                 <View className="flex-1">
@@ -284,28 +280,37 @@ const SplitByItemView = () => {
         </BottomSheetScrollView>
       </View>
 
-      {/* 5. Footer Action */}
+      {/* 5. Footer Action: PAY ALL SPLITS */}
       <View className="p-4 bg-[#212121] border-t border-[#333]">
+        <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-gray-400 text-sm">Items Remaining</Text>
+          <Text
+            className={`font-bold ${globalRemainingItems > 0 ? "text-red-400" : "text-green-400"}`}
+          >
+            {globalRemainingItems}
+          </Text>
+        </View>
+
         <TouchableOpacity
-          onPress={handlePaySplit}
-          disabled={activeSplitTotal === 0}
+          onPress={handleStartPayment}
+          disabled={!isAllAssigned}
           className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
-            activeSplitTotal > 0
+            isAllAssigned
               ? "bg-blue-600 active:bg-blue-700"
-              : "bg-[#333]"
+              : "bg-[#333] opacity-80"
           }`}
         >
-          <CreditCard
-            size={20}
-            color={activeSplitTotal > 0 ? "white" : "#666"}
-            className="mr-2"
-          />
+          {isAllAssigned ? (
+            <Play size={20} color="white" fill="white" className="mr-1" />
+          ) : (
+            <Circle size={20} color="#666" className="mr-1" />
+          )}
           <Text
             className={`text-lg font-bold ${
-              activeSplitTotal > 0 ? "text-white" : "text-gray-500"
+              isAllAssigned ? "text-white" : "text-gray-500"
             }`}
           >
-            Pay {activeSplit?.customerName} (${activeSplitTotal.toFixed(2)})
+            {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
           </Text>
         </TouchableOpacity>
       </View>

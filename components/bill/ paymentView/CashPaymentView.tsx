@@ -13,22 +13,23 @@ import {
 } from "react-native";
 
 const CashPaymentView = () => {
-  const { activeOrderId, activeOrderOutstandingTotal, addPaymentToOrder } =
-    useOrderStore();
-  const { close, setView } = usePaymentStore();
+  const { activeOrderOutstandingTotal } = useOrderStore();
+  const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
+    usePaymentStore();
 
   const [amountTendered, setAmountTendered] = useState("");
 
-  const total = activeOrderOutstandingTotal;
+  // --- LOGIC: DETERMINE AMOUNT TO PAY ---
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
+  const total = activeSplit ? activeSplit.amount : activeOrderOutstandingTotal;
+
   const tendered = parseFloat(amountTendered) || 0;
   const changeDue = tendered - total;
   const isSufficient = tendered >= total;
 
-  // Generate smart bill suggestions based on the total
+  // Generate smart bill suggestions
   const suggestions = useMemo(() => {
     const bills = [10, 20, 50, 100];
-    // Filter bills that are relevant (e.g. don't show $10 if total is $80)
-    // But always show the next couple of tiers up
     return bills.filter((bill) => bill >= total || bill === 100 || bill === 50);
   }, [total]);
 
@@ -41,16 +42,8 @@ const CashPaymentView = () => {
   };
 
   const handleProcessCashPayment = () => {
-    if (activeOrderId && total > 0) {
-      addPaymentToOrder({
-        orderId: activeOrderId,
-        amount: total, // We record the sale amount, not the tendered amount usually, or handle change logic in backend
-        method: "Cash",
-      });
-      setView("success");
-    } else {
-      setView("success");
-    }
+    // Use the central handler to manage splits loop
+    handlePaymentCompletion("Cash");
   };
 
   const handleBack = () => {
@@ -73,7 +66,9 @@ const CashPaymentView = () => {
           </View>
           <Text className="text-2xl font-bold text-white">Cash Payment</Text>
           <Text className="text-gray-400">
-            Enter amount received from customer
+            {activeSplit
+              ? `Payment for ${activeSplit.customerName}`
+              : "Enter amount received"}
           </Text>
         </View>
 

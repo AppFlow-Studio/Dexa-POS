@@ -26,7 +26,7 @@ import {
 } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 
-// --- Visual Card Component (Same as before) ---
+// --- Visual Card Component ---
 const VirtualCard = ({
   number,
   name,
@@ -100,7 +100,7 @@ const VirtualCard = ({
 const ErrorText = ({ error }: { error?: string }) => {
   if (!error) return null;
   return (
-    <View className="flex-row items-center mt-1 ml-1">
+    <View className="flex-row items-center mt-1 ml-1 gap-2">
       <AlertCircle size={12} color="#EF4444" className="mr-1" />
       <Text className="text-red-400 text-xs">{error}</Text>
     </View>
@@ -109,7 +109,15 @@ const ErrorText = ({ error }: { error?: string }) => {
 
 const ManualCardEntryView = () => {
   const { activeOrderOutstandingTotal } = useOrderStore();
-  const { setView, processManualCardPayment } = usePaymentStore();
+  // 1. Get Split Data from Store
+  const { setView, processManualCardPayment, activeSplitId, splits } =
+    usePaymentStore();
+
+  // 2. Calculate Amount to Pay
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
+  const amountToPay = activeSplit
+    ? activeSplit.amount
+    : activeOrderOutstandingTotal;
 
   const expiryYearRef = useRef<TextInput>(null);
   const cvvRef = useRef<TextInput>(null);
@@ -156,7 +164,6 @@ const ManualCardEntryView = () => {
   };
 
   const checkFormValidity = () => {
-    // Basic check: Are fields filled?
     if (
       !cardholderName ||
       !cardNumber ||
@@ -166,16 +173,11 @@ const ManualCardEntryView = () => {
       !zipCode
     )
       return false;
-
-    // Advanced check: Are there explicit errors?
-    // We re-run validation on button press logic usually, but here we just check existing errors
-    // Note: A real app would run full validation on press
     const hasErrors = Object.values(errors).some((e) => !!e);
     return !hasErrors;
   };
 
   const handleProcessPayment = async () => {
-    // Touch all fields
     setIsTouched({
       cardholderName: true,
       cardNumber: true,
@@ -184,7 +186,6 @@ const ManualCardEntryView = () => {
       zipCode: true,
     });
 
-    // Quick validation check before processing
     if (!cardholderName || !cardNumber || !expiryMonth || !expiryYear || !cvv)
       return;
 
@@ -231,10 +232,12 @@ const ManualCardEntryView = () => {
             {/* Total Amount Display */}
             <View className="mt-10 items-center">
               <Text className="text-gray-500 font-medium tracking-widest uppercase mb-2">
-                Total Amount
+                {activeSplit
+                  ? `Total for ${activeSplit.customerName}`
+                  : "Total Amount"}
               </Text>
               <Text className="text-5xl font-bold text-white">
-                ${activeOrderOutstandingTotal.toFixed(2)}
+                ${amountToPay.toFixed(2)}
               </Text>
             </View>
           </View>
@@ -282,14 +285,16 @@ const ManualCardEntryView = () => {
                   Card Number
                 </Text>
                 <View
-                  className={`flex-row items-center bg-[#2A2A2A] rounded-xl border ${
+                  className={`flex-row items-center bg-[#2A2A2A] rounded-xl border px-4 ${
                     errors.cardNumber ? "border-red-500" : "border-[#404040]"
                   }`}
                 >
                   <CreditCard size={20} color="#666" className="ml-4" />
                   <TextInput
                     value={formatCardNumber(cardNumber)}
-                    onChangeText={(t) => setCardNumber(t.replace(/\s/g, ""))}
+                    onChangeText={(t) =>
+                      setCardNumber(t.replace(/\D/g, "").replace(/\s/g, ""))
+                    }
                     onBlur={() => handleBlur("cardNumber")}
                     placeholder="0000 0000 0000 0000"
                     keyboardType="numeric"
@@ -315,7 +320,7 @@ const ManualCardEntryView = () => {
                     <TextInput
                       value={expiryMonth}
                       onChangeText={(t) => {
-                        setExpiryMonth(t);
+                        setExpiryMonth(t.replace(/\D/g, ""));
                         if (t.length === 2) expiryYearRef.current?.focus();
                       }}
                       onBlur={() => handleBlur("expiry")}
@@ -330,7 +335,7 @@ const ManualCardEntryView = () => {
                       ref={expiryYearRef}
                       value={expiryYear}
                       onChangeText={(t) => {
-                        setExpiryYear(t);
+                        setExpiryYear(t.replace(/\D/g, ""));
                         if (t.length === 2) cvvRef.current?.focus();
                       }}
                       onBlur={() => handleBlur("expiry")}
@@ -348,12 +353,12 @@ const ManualCardEntryView = () => {
                   <Text className="text-gray-400 mb-2 font-medium ml-1">
                     CVV / CVC
                   </Text>
-                  <View className="flex-row items-center bg-[#2A2A2A] rounded-xl border border-[#404040]">
+                  <View className="flex-row items-center bg-[#2A2A2A] rounded-xl border border-[#404040] px-4">
                     <ShieldCheck size={18} color="#666" className="ml-4" />
                     <TextInput
                       ref={cvvRef}
                       value={cvv}
-                      onChangeText={setCvv}
+                      onChangeText={(t) => setCvv(t.replace(/\D/g, ""))}
                       placeholder="123"
                       keyboardType="numeric"
                       maxLength={4}
@@ -372,7 +377,7 @@ const ManualCardEntryView = () => {
                 </Text>
                 <TextInput
                   value={zipCode}
-                  onChangeText={setZipCode}
+                  onChangeText={(t) => setZipCode(t.replace(/\D/g, ""))}
                   placeholder="12345"
                   keyboardType="numeric"
                   maxLength={5}
@@ -381,7 +386,7 @@ const ManualCardEntryView = () => {
                 />
               </View>
 
-              {/* ACTION BUTTONS (Moved inside ScrollView so they are always accessible) */}
+              {/* ACTION BUTTONS */}
               <View className="flex-row gap-4 pt-8">
                 <TouchableOpacity
                   onPress={() => setView("cardOptions")}
@@ -405,7 +410,7 @@ const ManualCardEntryView = () => {
                     </Text>
                   ) : (
                     <Text className="text-white font-bold text-lg">
-                      Pay ${activeOrderOutstandingTotal.toFixed(2)}
+                      Pay ${amountToPay.toFixed(2)}
                     </Text>
                   )}
                 </TouchableOpacity>

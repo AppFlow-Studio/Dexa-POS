@@ -1,60 +1,73 @@
 import { toastService } from "@/lib/toastService";
 import { CartItem } from "@/lib/types";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types"; // Import BottomSheetMethods
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
 import { useOrderStore } from "./useOrderStore";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
+
 export type PaymentView =
   | "review"
   | "cash"
   | "card"
-  | "split"
   | "success"
   | "cardOptions"
   | "manual"
   | "payment-method-selection"
-  | "split-options" // New view for initial split selection
+  | "split-options"
   | "split-by-item"
   | "split-evenly"
   | "split"
-  | "split-custom-amount";
+  | "split-custom-amount"
+  | "split-payment-success";
 
 export interface Split {
   id: string;
   customerName: string;
   items: CartItem[];
   amount: number;
+  status: "pending" | "paid";
+  // FIXED: Removed splitSourceView from here. It belongs in the global store state, not per-guest.
 }
 
 const paymentViewToStepMap: Record<PaymentView, number> = {
   "payment-method-selection": 1,
   cardOptions: 2,
-  card: 2, // Card payment view is part of method details
-  manual: 2, // Manual card entry is part of method details
-  cash: 2, // Cash payment is part of method details
-  "split-options": 2, // Split options is part of method details
+  card: 2,
+  manual: 2,
+  cash: 2,
+  "split-options": 2,
   "split-by-item": 2,
   "split-evenly": 2,
   split: 2,
   "split-custom-amount": 2,
+  "split-payment-success": 3,
   review: 3,
   success: 4,
 };
-const totalSteps = 4; // Define total steps
+
+const totalSteps = 4;
 
 interface PaymentState {
-  paymentBottomSheetRef: React.RefObject<BottomSheetMethods> | null; // Add ref state
+  paymentBottomSheetRef: React.RefObject<BottomSheetMethods> | null;
   paymentMethod: PaymentMethod | null;
   view: PaymentView;
   activeTableId: string | null;
   isDirty: boolean;
+  isOpen: boolean;
   splits: Split[];
+  activeSplitId: string | null;
+  splitSourceView: PaymentView | null; // FIXED: Added this missing property
   progress: {
     currentStep: number;
     totalSteps: number;
   };
+
   // Actions
+  setPaymentBottomSheetRef: (
+    ref: React.RefObject<BottomSheetMethods> | null
+  ) => void;
   open: (
     method: PaymentMethod,
     tableId?: string | null,
@@ -64,230 +77,281 @@ interface PaymentState {
   setView: (view: PaymentView) => void;
   setActiveTableId: (tableId: string | null) => void;
   clearActiveTableId: () => void;
-  processManualCardPayment(details: {
-    cardBrand: string;
-    last4: string;
-  }): Promise<boolean>;
   setIsDirty: (isDirty: boolean) => void;
+  setPaymentClean: () => void;
+  markPaymentAsDirty: () => void;
+  setPaymentProgress: (step: number, total: number) => void;
+  resetPaymentState: () => void;
+
+  // Split Actions
   addSplit: (customerName: string) => void;
   removeSplit: (splitId: string) => void;
   assignItemToSplit: (splitId: string, item: CartItem) => void;
   unassignItemFromSplit: (splitId: string, itemId: string) => void;
   updateSplitAmount: (splitId: string, amount: number) => void;
   updateSplitCustomerName: (splitId: string, newName: string) => void;
-  setPaymentProgress: (step: number, total: number) => void;
-  resetPaymentState: () => void;
-  setPaymentBottomSheetRef: (
-    ref: React.RefObject<BottomSheetMethods> | null
-  ) => void; // New action to set ref
-  setPaymentClean: () => void; // New action to set isDirty to false
-  markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
-  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
+  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void;
+
+  // Flow Actions
+  startSplitPaymentFlow: (source: PaymentView) => void;
+  handlePaymentCompletion: (method: string) => void;
+  moveToNextSplit: () => void;
+  processManualCardPayment(details: {
+    cardBrand: string;
+    last4: string;
+  }): Promise<boolean>;
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
-  paymentBottomSheetRef: null, // Initial ref state
+  paymentBottomSheetRef: null,
   paymentMethod: null,
   view: "review",
   activeTableId: null,
   isDirty: false,
+  isOpen: false,
   splits: [],
-  progress: { currentStep: 1, totalSteps: totalSteps }, // Initialize progress
+  activeSplitId: null,
+  splitSourceView: null, // Initialized here
+  progress: { currentStep: 1, totalSteps: totalSteps },
 
-  setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }), // Implementation
+  setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
-  open: (
-    method,
-    tableId, // tableId can be undefined or null
-    initialView // Add initialView here
-  ) => {
-    // Imperatively open the bottom sheet via ref
-    get().paymentBottomSheetRef?.current?.expand(); // Or snapToIndex(0) if always starting at first point
-
-    set((state) => {
-      // Normalize paid quantities once on opening modal to avoid recursive loops
-      try {
-        const { activeOrderId } = useOrderStore.getState();
-        if (activeOrderId) {
-          // Use the helper to compute updated items without writing inside setActiveOrder
-          const normalize = (useOrderStore as any).getState()
-            .normalizePaidQuantitiesFromPayments;
-          if (typeof normalize === "function") {
-            const updatedItems = normalize(activeOrderId);
-            if (updatedItems) {
-              // Commit items update safely
-              useOrderStore.setState((prev: any) => ({
-                orders: prev.orders.map((o: any) =>
-                  o.id === activeOrderId ? { ...o, items: updatedItems } : o
-                ),
-              }));
-            }
-          }
-        }
-      } catch (e) {
-        // no-op safeguard
-      }
-      const newView = initialView || "payment-method-selection"; // Default to method selection
-      const newPaymentState = {
-        paymentMethod: method,
-        view: newView,
-        activeTableId: tableId || null,
-        isDirty: false, // isDirty is always false on open
-        splits: [],
-        progress: {
-          currentStep: paymentViewToStepMap[newView],
-          totalSteps: totalSteps,
-        },
-      };
-      return newPaymentState;
+  open: (method, tableId, initialView) => {
+    get().paymentBottomSheetRef?.current?.expand();
+    set({
+      isOpen: true,
+      paymentMethod: method,
+      view: initialView || "payment-method-selection",
+      activeTableId: tableId || null,
+      isDirty: false,
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: null, // Reset source
+      progress: {
+        currentStep:
+          paymentViewToStepMap[initialView || "payment-method-selection"],
+        totalSteps: totalSteps,
+      },
     });
   },
+
   close: () => {
     get().resetPaymentState();
-    get().paymentBottomSheetRef?.current?.close(); // Imperatively close the bottom sheet
+    get().paymentBottomSheetRef?.current?.close();
+    set({ isOpen: false });
   },
+
   setView: (view) =>
     set((state) => ({
       view,
       progress: {
-        currentStep: paymentViewToStepMap[view],
+        currentStep: paymentViewToStepMap[view] || state.progress.currentStep,
         totalSteps: totalSteps,
       },
     })),
+
   setActiveTableId: (tableId) => set({ activeTableId: tableId }),
   clearActiveTableId: () => set({ activeTableId: null }),
-  setIsDirty: (isDirty) => {
-    set({ isDirty });
+  setIsDirty: (isDirty) => set({ isDirty }),
+  setPaymentClean: () => set({ isDirty: false }),
+  markPaymentAsDirty: () => set({ isDirty: true }),
+  setPaymentProgress: (step, total) =>
+    set({ progress: { currentStep: step, totalSteps: total } }),
+
+  resetPaymentState: () => {
+    set({
+      paymentMethod: null,
+      view: "payment-method-selection",
+      activeTableId: null,
+      isDirty: false,
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: null,
+      progress: { currentStep: 1, totalSteps: totalSteps },
+    });
   },
-  setPaymentClean: () => {
-    set({ isDirty: false });
-  }, // Implementation of new action
-  markPaymentAsDirty: () => {
-    set({ isDirty: true });
-  }, // Implementation of new action
+
+  // --- SPLIT ACTIONS ---
+
   addSplit: (customerName) => {
-    set((state) => {
-      const newSplits = [
+    set((state) => ({
+      splits: [
         ...state.splits,
         {
           id: `split_${Date.now()}`,
           customerName,
           items: [],
           amount: 0,
+          status: "pending",
         },
-      ];
-      return { splits: newSplits, isDirty: true };
-    });
+      ],
+      isDirty: true,
+    }));
   },
+
   removeSplit: (splitId) => {
-    set((state) => {
-      const newSplits = state.splits.filter((s) => s.id !== splitId);
-      return { splits: newSplits, isDirty: true };
-    });
+    set((state) => ({
+      splits: state.splits.filter((s) => s.id !== splitId),
+      isDirty: true,
+    }));
   },
+
   assignItemToSplit: (splitId, item) => {
-    set((state) => {
-      const newSplits = state.splits.map((s) =>
+    set((state) => ({
+      splits: state.splits.map((s) =>
         s.id === splitId
-          ? { ...s, items: [...s.items, { ...item, quantity: 1 }] } // Assign 1 quantity for now
+          ? { ...s, items: [...s.items, { ...item, quantity: 1 }] }
           : s
-      );
-      return { splits: newSplits, isDirty: true };
-    });
+      ),
+      isDirty: true,
+    }));
   },
+
   unassignItemFromSplit: (splitId, itemId) => {
-    set((state) => {
-      const newSplits = state.splits.map((s) =>
+    set((state) => ({
+      splits: state.splits.map((s) =>
         s.id === splitId
           ? { ...s, items: s.items.filter((item) => item.id !== itemId) }
           : s
-      );
-      return { splits: newSplits, isDirty: true };
-    });
+      ),
+      isDirty: true,
+    }));
   },
-  updateSplitAmount: (splitId, amount) => {
-    set((state) => {
-      const newSplits = state.splits.map((s) =>
-        s.id === splitId ? { ...s, amount } : s
-      );
-      return { splits: newSplits, isDirty: true };
-    });
-  },
-  updateSplitCustomerName: (splitId, newName) => {
-    set((state) => {
-      const newSplits = state.splits.map((s) =>
-        s.id === splitId ? { ...s, customerName: newName } : s
-      );
-      return { splits: newSplits, isDirty: true };
-    });
-  },
-  splitEvenly: (numberOfPeople, amountPerPerson) => {
-    const currentSplits = get().splits;
-    currentSplits.forEach((s) => get().removeSplit(s.id)); // Clear existing splits
 
-    const newSplits = [];
+  updateSplitAmount: (splitId, amount) => {
+    set((state) => ({
+      splits: state.splits.map((s) =>
+        s.id === splitId ? { ...s, amount } : s
+      ),
+      isDirty: true,
+    }));
+  },
+
+  updateSplitCustomerName: (splitId, newName) => {
+    set((state) => ({
+      splits: state.splits.map((s) =>
+        s.id === splitId ? { ...s, customerName: newName } : s
+      ),
+      isDirty: true,
+    }));
+  },
+
+  splitEvenly: (numberOfPeople, amountPerPerson) => {
+    const newSplits: Split[] = [];
     for (let i = 0; i < numberOfPeople; i++) {
-      const customerName = `Guest ${i + 1}`;
-      const newSplit: Split = {
+      newSplits.push({
         id: `split_${Date.now()}_${i}`,
-        customerName,
+        customerName: `Guest ${i + 1}`,
         items: [],
         amount: amountPerPerson,
-      };
-      newSplits.push(newSplit);
+        status: "pending",
+      });
     }
-    set({ splits: newSplits, isDirty: false }); // Set new splits and mark clean
+    set({ splits: newSplits, isDirty: false });
   },
-  setPaymentProgress: (step, total) => {
-    set({ progress: { currentStep: step, totalSteps: total } });
-  },
-  resetPaymentState: () => {
-    set({
-      paymentMethod: null,
-      view: "payment-method-selection", // Reset to initial method selection view
-      activeTableId: null,
-      isDirty: false,
-      splits: [],
-      progress: { currentStep: 1, totalSteps: totalSteps },
+
+  // --- PAYMENT LOOP LOGIC ---
+
+  startSplitPaymentFlow: (source: PaymentView) => {
+    const { splits } = get();
+
+    // 1. Recalculate amounts if needed (Split by Item logic)
+    const updatedSplits = splits.map((split) => {
+      // If we have items but 0 amount, assume we need to calculate price from items
+      if (split.items.length > 0 && split.amount === 0) {
+        const calculatedAmount = split.items.reduce(
+          (acc, item) => acc + item.price * item.quantity,
+          0
+        );
+        return { ...split, amount: calculatedAmount };
+      }
+      return split;
     });
+
+    set({ splits: updatedSplits });
+
+    const firstPending = updatedSplits.find((s) => s.status === "pending");
+
+    if (firstPending) {
+      set({
+        activeSplitId: firstPending.id,
+        view: "payment-method-selection",
+        isDirty: false,
+        splitSourceView: source, // Save the source here
+      });
+    } else {
+      set({ view: "success" });
+    }
+  },
+
+  handlePaymentCompletion: (method: string) => {
+    const { activeSplitId, splits } = get();
+    const { activeOrderId, addPaymentToOrder, markOrderAsPaid } =
+      useOrderStore.getState();
+
+    if (!activeOrderId) return;
+
+    if (activeSplitId) {
+      // SPLIT FLOW
+      const currentSplit = splits.find((s) => s.id === activeSplitId);
+      if (!currentSplit) return;
+
+      addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: currentSplit.amount,
+        method: method as any,
+      });
+
+      const updatedSplits = splits.map((s) =>
+        s.id === activeSplitId ? { ...s, status: "paid" as const } : s
+      );
+
+      // Find NEXT pending
+      const nextPending = updatedSplits.find((s) => s.status === "pending");
+
+      set({ splits: updatedSplits });
+
+      if (nextPending) {
+        set({ view: "split-payment-success" });
+      } else {
+        markOrderAsPaid(activeOrderId);
+        set({ view: "success", activeSplitId: null });
+      }
+    } else {
+      // STANDARD FLOW
+      const { activeOrderOutstandingTotal } = useOrderStore.getState();
+      addPaymentToOrder({
+        orderId: activeOrderId,
+        amount: activeOrderOutstandingTotal,
+        method: method as any,
+      });
+      markOrderAsPaid(activeOrderId);
+      set({ view: "success" });
+    }
+  },
+
+  moveToNextSplit: () => {
+    const { splits } = get();
+    const nextPending = splits.find((s) => s.status === "pending");
+    if (nextPending) {
+      set({ activeSplitId: nextPending.id, view: "payment-method-selection" });
+    }
   },
 
   processManualCardPayment: async (details) => {
     return new Promise((resolve) => {
       try {
-        const {
-          activeOrderId,
-          activeOrderOutstandingTotal,
-          addPaymentToOrder,
-          markOrderAsPaid,
-        } = useOrderStore.getState();
-
-        if (!activeOrderId) {
-          throw new Error("No active order to process payment for.");
-        }
-
-        // Simulate network delay
         setTimeout(() => {
-          addPaymentToOrder({
-            orderId: activeOrderId,
-            amount: activeOrderOutstandingTotal,
-            method: "Card",
-            cardBrand: details.cardBrand,
-            last4: details.last4,
-          });
-
-          markOrderAsPaid(activeOrderId);
-
-          resolve(true); // Indicate success
+          get().handlePaymentCompletion("Card");
+          resolve(true);
         }, 2000);
       } catch (error: any) {
         toastService.show({
           title: "Payment Failed",
-          message:
-            error.message || "An unexpected error occurred during payment.",
+          message: error.message || "Error processing payment.",
           type: "error",
         });
-        resolve(false); // Indicate failure
+        resolve(false);
       }
     });
   },

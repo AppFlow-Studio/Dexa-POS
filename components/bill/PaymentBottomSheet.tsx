@@ -26,6 +26,7 @@ import PaymentProgressHeader from "./paymentView/PaymentProgressHeader";
 import SplitByItemView from "./paymentView/SplitByItemView";
 import SplitEvenlyView from "./paymentView/SplitEvenlyView";
 import SplitOptionsView from "./paymentView/SplitOptionsView";
+import SplitPaymentSuccessView from "./SplitPaymentSuccessView";
 
 interface PaymentBottomSheetProps {}
 
@@ -108,6 +109,8 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         return <SplitEvenlyView />;
       case "split-custom-amount":
         return <CustomAmountView />;
+      case "split-payment-success":
+        return <SplitPaymentSuccessView />;
       case "success":
         return <PaymentSuccessView />;
       default:
