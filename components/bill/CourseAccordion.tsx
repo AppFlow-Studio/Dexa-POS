@@ -10,6 +10,7 @@ interface CourseAccordionProps {
   sentCourses?: Record<number, boolean>;
   currentCourse?: number;
   onSelectCourse?: (course: number | null) => void;
+  onPressStartNewCourse: () => void; // New prop
 }
 
 const CourseAccordion: React.FC<CourseAccordionProps> = ({
@@ -18,6 +19,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   sentCourses,
   currentCourse,
   onSelectCourse,
+  onPressStartNewCourse, // Destructure new prop
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
 
@@ -55,8 +57,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     );
   }
 
-  const totalItems =
-    activeOrder.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+  // Removed: const totalItems = activeOrder.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
 
   return (
     <View className="flex-1 bg-[#212121] p-4">
@@ -65,7 +66,16 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
         <Text className="text-xl font-bold text-white">
           Order #{activeOrder.id?.substring(0, 8)}
         </Text>
-        <Text className="text-lg text-gray-300">{totalItems} items</Text>
+        {/* Replaced totalItems display with Start New Course button */}
+        <TouchableOpacity
+          onPress={onPressStartNewCourse}
+          className="px-3 py-1.5 rounded-lg bg-green-600 border border-green-500"
+          activeOpacity={0.8}
+        >
+          <Text className="font-semibold text-white text-base">
+            ✨ Start New Course
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>

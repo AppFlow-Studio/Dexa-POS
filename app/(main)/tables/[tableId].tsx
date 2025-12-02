@@ -1,5 +1,4 @@
 import TableBillSection from "@/components/bill/TableBillSection";
-import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useToast } from "@/contexts/ToastContext";
@@ -10,13 +9,12 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
-import BottomActionBar from "@/components/bill/BottomActionBar";
-import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
-import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
-import PricingBreakdownSheet from "@/components/bill/PricingBreakdownSheet";
 import DiscountOverlay from "@/components/bill/DiscountOverlay"; // New Import
+import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types"; // For ref
 
+import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
+import MenuSection from "@/components/menu/MenuSection";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -478,6 +476,19 @@ const UpdateTableScreen = () => {
               coursing.setCurrentCourse(activeOrder.id, courseId);
             }
           }}
+          activeOrder={activeOrder}
+          onPressMore={() => moreOptionsSheetRef.current?.expand()}
+          onPressTotal={() => pricingSheetRef.current?.expand()}
+          onPressReopenCheck={handleReopenCheck}
+          onPressCloseCheck={handleCloseCheck}
+          onPressClearTable={handleClearTable}
+          totalDisplayAmount={activeOrderTotal || 0}
+          pricingSheetRef={
+            pricingSheetRef as React.RefObject<BottomSheetMethods>
+          }
+          onClosePricingSheet={() => pricingSheetRef.current?.close()}
+          onPressProceedToPayment={handleProceedToPayment}
+          onPressStartNewCourse={finalizeCurrentCourse} // ADDED THIS PROP
         />
         <View className="flex-1 p-4 px-3 pt-0">
           {(() => {
@@ -532,22 +543,6 @@ const UpdateTableScreen = () => {
           )}
         />
       )}
-
-      <BottomActionBar
-        activeOrder={activeOrder}
-        onPressMore={() => moreOptionsSheetRef.current?.expand()}
-        onPressTotal={() => pricingSheetRef.current?.expand()}
-        onPressReopenCheck={handleReopenCheck}
-        onPressCloseCheck={handleCloseCheck}
-        onPressClearTable={handleClearTable}
-        totalDisplayAmount={activeOrderTotal || 0}
-      />
-
-      <PricingBreakdownSheet
-        ref={pricingSheetRef}
-        onClose={() => pricingSheetRef.current?.close()}
-        onPressProceedToPayment={handleProceedToPayment}
-      />
 
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef}

@@ -9,7 +9,7 @@ interface BottomActionBarProps {
   onPressReopenCheck: () => void;
   onPressCloseCheck: () => void;
   onPressClearTable: () => void;
-  totalDisplayAmount: number; // Added new prop
+  totalDisplayAmount: number;
 }
 
 const BottomActionBar: React.FC<BottomActionBarProps> = ({
@@ -19,18 +19,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
-  totalDisplayAmount, // Destructure new prop
+  totalDisplayAmount,
 }) => {
-  // Removed internal totalAmount calculation
-
   const renderDefaultButtons = () => (
     <>
       <TouchableOpacity
         onPress={onPressTotal}
-        className="px-6 py-3 rounded-lg bg-blue-500 flex-row items-center gap-2"
+        // Reduced padding and text size
+        className="px-4 py-2 rounded-md bg-blue-500 flex-row items-center gap-2"
       >
-        <Text className="font-semibold text-white text-lg">Total: ${totalDisplayAmount.toFixed(2)}</Text>
-        <Text className="text-white text-lg">💳</Text>
+        <Text className="font-semibold text-white text-base">
+          Total: ${totalDisplayAmount.toFixed(2)}
+        </Text>
+        <Text className="text-white text-base">💳</Text>
       </TouchableOpacity>
     </>
   );
@@ -39,17 +40,17 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     <>
       <TouchableOpacity
         onPress={onPressCloseCheck}
-        className="px-6 py-2 rounded-lg bg-blue-500"
+        // Reduced padding and text size
+        className="px-4 py-2 rounded-md bg-blue-500"
       >
-        <Text className="font-semibold text-white text-base">Close Check</Text>
+        <Text className="font-semibold text-white text-sm">Close Check</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onPressClearTable}
-        className="px-6 py-2 rounded-lg border border-red-500 bg-red-600"
+        // Reduced padding and text size
+        className="px-4 py-2 rounded-md border border-red-500 bg-red-600"
       >
-        <Text className="font-semibold text-red-100 text-base">
-          Clear Table
-        </Text>
+        <Text className="font-semibold text-red-100 text-sm">Clear Table</Text>
       </TouchableOpacity>
     </>
   );
@@ -58,50 +59,47 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     <>
       <TouchableOpacity
         onPress={onPressReopenCheck}
-        className="px-6 py-2 rounded-lg bg-blue-500"
+        // Reduced padding and text size
+        className="px-4 py-2 rounded-md bg-blue-500"
       >
-        <Text className="font-semibold text-white text-base">Reopen Check</Text>
+        <Text className="font-semibold text-white text-sm">Reopen Check</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={onPressClearTable}
-        className="px-6 py-2 rounded-lg border border-red-500 bg-red-600"
+        // Reduced padding and text size
+        className="px-4 py-2 rounded-md border border-red-500 bg-red-600"
       >
-        <Text className="font-semibold text-red-100 text-base">
-          Clear Table
-        </Text>
+        <Text className="font-semibold text-red-100 text-sm">Clear Table</Text>
       </TouchableOpacity>
     </>
   );
 
   const renderButtons = () => {
     if (!activeOrder) {
-      // If there is no active order, we should probably not show anything or show a disabled state.
-      // For now, returning default which will show Total: $0.00
       return renderDefaultButtons();
     }
-    if (activeOrder.check_status === 'Closed') {
+    if (activeOrder.check_status === "Closed") {
       return renderClosedButtons();
     }
-    if (activeOrder.paid_status === 'Paid') {
+    if (activeOrder.paid_status === "Paid") {
       return renderPaidButtons();
     }
     return renderDefaultButtons();
   };
 
   return (
-    <View className="flex-row justify-between items-center p-3 bg-[#303030] border-t border-gray-700">
-      {/* Always render the More button on the left */}
+    // Reduced container padding from p-3 to p-2
+    <View className="flex-row justify-between items-center p-2 bg-[#303030] border-t border-gray-700">
+      {/* More button made smaller */}
       <TouchableOpacity
         onPress={onPressMore}
-        className="px-6 py-3 rounded-lg border border-gray-600 bg-[#212121]"
+        className="px-4 py-2 rounded-md border border-gray-600 bg-[#212121]"
       >
-        <Text className="font-semibold text-white text-lg">More (⋯)</Text>
+        <Text className="font-semibold text-white text-sm">More (⋯)</Text>
       </TouchableOpacity>
 
       {/* Render other buttons grouped on the right */}
-      <View className="flex-row items-center gap-2">
-        {renderButtons()}
-      </View>
+      <View className="flex-row items-center gap-2">{renderButtons()}</View>
     </View>
   );
 };
