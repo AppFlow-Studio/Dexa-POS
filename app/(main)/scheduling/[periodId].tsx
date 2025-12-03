@@ -32,16 +32,21 @@ import {
 
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
+import { OpenShiftChip } from "@/components/scheduling/OpenShiftChip";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
 import { PublishModal } from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
+import { ShiftChip } from "@/components/scheduling/ShiftChip";
 import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
-import { DropZoneProvider } from "@/contexts/DropZoneContext";
+import {
+  DropZoneProvider,
+  useDropZoneContext,
+} from "@/contexts/DropZoneContext";
 import { detectTemplateConflicts } from "@/lib/rules"; // Import detectTemplateConflicts
 import {
   ApplyMode,
@@ -56,6 +61,54 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
 import { addDays, isAfter, isBefore, startOfDay, subDays } from "date-fns";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
+
+const DragOverlay = () => {
+  const { activeDragItem, dragTranslation } = useDropZoneContext();
+
+  const style = useAnimatedStyle(() => {
+    if (!activeDragItem) {
+      return { opacity: 0 };
+    }
+
+    return {
+      // REMOVED position: absolute from here (moved to className)
+      width: activeDragItem.width,
+      height: activeDragItem.height,
+      opacity: 1,
+
+      transform: [
+        { translateX: activeDragItem.startX + dragTranslation.value.x },
+        { translateY: activeDragItem.startY + dragTranslation.value.y },
+      ],
+    };
+  });
+
+  if (!activeDragItem) return null;
+
+  return (
+    // FIX 1: Added 'absolute top-0 left-0 z-50' here.
+    // This forces the view to be absolute IMMEDIATELY, preventing the layout shift.
+    <Animated.View
+      style={style}
+      pointerEvents="none"
+      className="absolute top-0 left-0 z-50"
+    >
+      {activeDragItem.shift.status === "open" ? (
+        <OpenShiftChip shift={activeDragItem.shift} onClick={() => {}} />
+      ) : (
+        <ShiftChip
+          role={activeDragItem.shift.role}
+          start={activeDragItem.shift.startTime}
+          end={activeDragItem.shift.endTime}
+          requiredCount={activeDragItem.shift.requiredCount}
+          wage={activeDragItem.wage}
+          onClick={() => {}}
+        />
+      )}
+    </Animated.View>
+  );
+};
 
 const ScheduleDetail = ({
   currentSchedule,
@@ -291,255 +344,259 @@ const ScheduleDetail = ({
   ]);
 
   return (
-    <View className="flex-1 bg-[#212121]">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        {/* Header */}
-        <View className="border-b border-gray-700 bg-[#303030]">
-          <View className="px-6 py-4">
-            <View className="flex-row items-center justify-between mb-6">
-              <View className="flex-row items-center gap-4">
-                <View>
-                  <Text className="text-white">
-                    Plan and manage weekly schedules
-                  </Text>
+    <DropZoneProvider>
+      <DragOverlay />
+      <View className="flex-1 bg-[#212121]">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          {/* Header */}
+          <View className="border-b border-gray-700 bg-[#303030]">
+            <View className="px-6 py-4">
+              <View className="flex-row items-center justify-between mb-6">
+                <View className="flex-row items-center gap-4">
+                  <View>
+                    <Text className="text-white">
+                      Plan and manage weekly schedules
+                    </Text>
+                  </View>
+                </View>
+
+                <View className="flex-row items-center gap-4">
+                  <Select
+                    defaultValue={{
+                      value: "location-1",
+                      label: "Downtown Location",
+                    }}
+                    className="text-white"
+                  >
+                    <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
+                      <SelectValue
+                        placeholder="Select a location"
+                        className="text-white"
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
+                      <SelectItem
+                        value="location-1"
+                        label="Downtown Location"
+                        className="text-white"
+                      >
+                        <Text className="text-white">Downtown Location</Text>
+                      </SelectItem>
+                      <SelectItem value="location-2" label="Westside Location">
+                        Westside Location
+                      </SelectItem>
+                      <SelectItem value="location-3" label="Airport Location">
+                        Airport Location
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <WeekSelector
+                    startDate={startDate}
+                    onPrevious={handlePreviousWeek}
+                    onNext={handleNextWeek}
+                    minDate={new Date(currentSchedule.schedule.startDate)}
+                    maxDate={new Date(currentSchedule.schedule.endDate)}
+                  />
+
+                  <Badge
+                    className={statusColors[currentSchedule.schedule.status]}
+                  >
+                    <Text
+                      className={
+                        statusTextColor[currentSchedule.schedule.status]
+                      }
+                    >
+                      {currentSchedule.schedule.status.charAt(0).toUpperCase() +
+                        currentSchedule.schedule.status.slice(1)}
+                    </Text>
+                  </Badge>
                 </View>
               </View>
 
-              <View className="flex-row items-center gap-4">
-                <Select
-                  defaultValue={{
-                    value: "location-1",
-                    label: "Downtown Location",
-                  }}
-                  className="text-white"
-                >
-                  <SelectTrigger className="w-[180px] bg-[#212121] border border-gray-600 rounded-lg">
-                    <SelectValue
-                      placeholder="Select a location"
-                      className="text-white"
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#212121] border-gray-600 rounded-lg text-white">
-                    <SelectItem
-                      value="location-1"
-                      label="Downtown Location"
-                      className="text-white"
-                    >
-                      <Text className="text-white">Downtown Location</Text>
-                    </SelectItem>
-                    <SelectItem value="location-2" label="Westside Location">
-                      Westside Location
-                    </SelectItem>
-                    <SelectItem value="location-3" label="Airport Location">
-                      Airport Location
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <WeekSelector
-                  startDate={startDate}
-                  onPrevious={handlePreviousWeek}
-                  onNext={handleNextWeek}
-                  minDate={new Date(currentSchedule.schedule.startDate)}
-                  maxDate={new Date(currentSchedule.schedule.endDate)}
+              {/* Bottom Section */}
+              <View className="flex-row items-center justify-between">
+                <LaborMeter
+                  projectedCost={12500}
+                  forecastSales={45000}
+                  period="week"
                 />
 
-                <Badge
-                  className={statusColors[currentSchedule.schedule.status]}
-                >
-                  <Text
-                    className={statusTextColor[currentSchedule.schedule.status]}
-                  >
-                    {currentSchedule.schedule.status.charAt(0).toUpperCase() +
-                      currentSchedule.schedule.status.slice(1)}
-                  </Text>
-                </Badge>
-              </View>
-            </View>
+                <View className="flex-row items-center gap-2">
+                  {/* Generate Draft Button */}
+                  <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
+                    <Sparkles size={16} color="white" />
 
-            {/* Bottom Section */}
-            <View className="flex-row items-center justify-between">
-              <LaborMeter
-                projectedCost={12500}
-                forecastSales={45000}
-                period="week"
-              />
+                    <Text className="text-white">Generate Draft</Text>
+                  </TouchableOpacity>
+                  {currentSchedule.schedule.status === "draft-edit" ? (
+                    <>
+                      {hasUnsavedChanges && (
+                        <TouchableOpacity
+                          onPress={() => setIsDiscardModalOpen(true)}
+                          disabled={!hasUnsavedChanges}
+                          className={`flex-row items-center gap-2 rounded-md border border-red-500/50 bg-transparent px-3 py-2 ${
+                            !hasUnsavedChanges && "opacity-50"
+                          }`}
+                        >
+                          <X size={16} color="#f87171" />
+                          <Text className="text-red-400">Discard Changes</Text>
+                        </TouchableOpacity>
+                      )}
 
-              <View className="flex-row items-center gap-2">
-                {/* Generate Draft Button */}
-                <TouchableOpacity className="flex-row items-center gap-2 rounded-md border border-gray-600 bg-transparent px-3 py-2">
-                  <Sparkles size={16} color="white" />
-
-                  <Text className="text-white">Generate Draft</Text>
-                </TouchableOpacity>
-                {currentSchedule.schedule.status === "draft-edit" ? (
-                  <>
-                    {hasUnsavedChanges && (
                       <TouchableOpacity
-                        onPress={() => setIsDiscardModalOpen(true)}
-                        disabled={!hasUnsavedChanges}
-                        className={`flex-row items-center gap-2 rounded-md border border-red-500/50 bg-transparent px-3 py-2 ${
-                          !hasUnsavedChanges && "opacity-50"
-                        }`}
+                        onPress={handlePublish}
+                        className="flex-row items-center gap-2 rounded-md bg-blue-600 px-3 py-2"
                       >
-                        <X size={16} color="#f87171" />
-                        <Text className="text-red-400">Discard Changes</Text>
+                        <Send size={16} color="white" />
+                        <Text className="text-white">Publish Changes</Text>
                       </TouchableOpacity>
-                    )}
-
+                    </>
+                  ) : (
                     <TouchableOpacity
                       onPress={handlePublish}
-                      className="flex-row items-center gap-2 rounded-md bg-blue-600 px-3 py-2"
+                      className="flex-row items-center gap-2 rounded-md bg-gray-600 px-3 py-2"
                     >
                       <Send size={16} color="white" />
-                      <Text className="text-white">Publish Changes</Text>
+                      <Text className="text-white">Published</Text>
                     </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    onPress={handlePublish}
-                    className="flex-row items-center gap-2 rounded-md bg-gray-600 px-3 py-2"
-                  >
-                    <Send size={16} color="white" />
-                    <Text className="text-white">Published</Text>
-                  </TouchableOpacity>
-                )}
+                  )}
 
-                {/* Export Button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 bg-transparent flex-row items-center"
-                >
-                  <Download size={16} color="white" />
-                  <Text className="text-white">Export</Text>
-                </Button>
-                {/* Settings Icon Button */}
-                <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-md">
-                  <Settings size={16} color="white" />
-                </TouchableOpacity>
+                  {/* Export Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 bg-transparent flex-row items-center"
+                  >
+                    <Download size={16} color="white" />
+                    <Text className="text-white">Export</Text>
+                  </Button>
+                  {/* Settings Icon Button */}
+                  <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-md">
+                    <Settings size={16} color="white" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Main Content */}
-        <View className="flex-1 flex-row">
-          {/* Left Sidebar */}
-          <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
-            <ScrollView
-              contentContainerStyle={{
-                paddingBottom: overlayTemplateId ? 80 : 0, // Conditional padding for sidebar
-              }}
-            >
-              <View className="gap-y-6">
-                <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
+          {/* Main Content */}
+          <View className="flex-1 flex-row">
+            {/* Left Sidebar */}
+            <View className="w-64 border-r border-gray-700 bg-[#303030] p-4">
+              <ScrollView
+                contentContainerStyle={{
+                  paddingBottom: overlayTemplateId ? 80 : 0, // Conditional padding for sidebar
+                }}
+              >
+                <View className="gap-y-6">
+                  <TemplateDrawer onApplyTemplate={handleApplyTemplate} />
 
-                <View className="border-t border-gray-700 pt-6">
-                  <FiltersPanel
-                    selectedRoles={selectedRoles}
-                    selectedConflicts={selectedConflicts}
-                    onRoleToggle={handleRoleToggle}
-                    onConflictToggle={handleConflictToggle}
-                  />
-                </View>
+                  <View className="border-t border-gray-700 pt-6">
+                    <FiltersPanel
+                      selectedRoles={selectedRoles}
+                      selectedConflicts={selectedConflicts}
+                      onRoleToggle={handleRoleToggle}
+                      onConflictToggle={handleConflictToggle}
+                    />
+                  </View>
 
-                <View className="border-t border-gray-700 pt-6">
-                  <TouchableOpacity
-                    onPress={() => openShiftsSheetRef.current?.expand()}
-                    className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
-                  >
-                    <View className="flex-row items-center gap-2 mb-2">
-                      <Calendar
-                        className="w-4 h-4 text-blue-400"
-                        color={"#60a5fa"}
-                      />
-                      <Text className="text-sm font-semibold text-white">
-                        Open Shifts
-                      </Text>
-                      <Badge
-                        className={`ml-auto ${
-                          currentSchedule.schedule.shifts.filter(
-                            (s) => s.status === "open"
-                          ).length > 0
-                            ? "bg-red-500 text-white"
-                            : "bg-gray-700 text-white"
-                        }`}
-                      >
-                        <Text className="text-white">
-                          {
+                  <View className="border-t border-gray-700 pt-6">
+                    <TouchableOpacity
+                      onPress={() => openShiftsSheetRef.current?.expand()}
+                      className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
+                    >
+                      <View className="flex-row items-center gap-2 mb-2">
+                        <Calendar
+                          className="w-4 h-4 text-blue-400"
+                          color={"#60a5fa"}
+                        />
+                        <Text className="text-sm font-semibold text-white">
+                          Open Shifts
+                        </Text>
+                        <Badge
+                          className={`ml-auto ${
                             currentSchedule.schedule.shifts.filter(
                               (s) => s.status === "open"
-                            ).length
-                          }
-                        </Text>
-                      </Badge>
-                    </View>
-                    <Text className="text-xs text-gray-400">
-                      View and manage open shifts
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                <View className="border-t border-gray-700 pt-6">
-                  <TouchableOpacity
-                    onPress={() => openShiftsSheetRef.current?.expand()} // Also opens the same drawer
-                    className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
-                  >
-                    <View className="flex-row items-center gap-2 mb-2">
-                      <Users
-                        className="w-4 h-4 text-blue-400"
-                        color={"#60a5fa"}
-                      />
-                      <Text className="text-sm font-semibold text-white">
-                        Swaps & Requests
-                      </Text>
-                      <Badge
-                        className={`ml-auto ${
-                          totalPendingRequests > 0
-                            ? "bg-red-500 text-white"
-                            : "bg-gray-700 text-white"
-                        }`}
-                      >
-                        <Text
-                          className={
-                            totalPendingRequests > 0
-                              ? "text-white"
-                              : "text-white"
-                          }
+                            ).length > 0
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-700 text-white"
+                          }`}
                         >
-                          {totalPendingRequests}
+                          <Text className="text-white">
+                            {
+                              currentSchedule.schedule.shifts.filter(
+                                (s) => s.status === "open"
+                              ).length
+                            }
+                          </Text>
+                        </Badge>
+                      </View>
+                      <Text className="text-xs text-gray-400">
+                        View and manage open shifts
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View className="border-t border-gray-700 pt-6">
+                    <TouchableOpacity
+                      onPress={() => openShiftsSheetRef.current?.expand()} // Also opens the same drawer
+                      className="w-full text-left hover:bg-gray-700/50 p-2 rounded-lg transition-colors"
+                    >
+                      <View className="flex-row items-center gap-2 mb-2">
+                        <Users
+                          className="w-4 h-4 text-blue-400"
+                          color={"#60a5fa"}
+                        />
+                        <Text className="text-sm font-semibold text-white">
+                          Swaps & Requests
                         </Text>
-                      </Badge>
-                    </View>
-                    <Text className="text-xs text-gray-400">
-                      Pending swap requests and PTO
-                    </Text>
-                  </TouchableOpacity>
+                        <Badge
+                          className={`ml-auto ${
+                            totalPendingRequests > 0
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-700 text-white"
+                          }`}
+                        >
+                          <Text
+                            className={
+                              totalPendingRequests > 0
+                                ? "text-white"
+                                : "text-white"
+                            }
+                          >
+                            {totalPendingRequests}
+                          </Text>
+                        </Badge>
+                      </View>
+                      <Text className="text-xs text-gray-400">
+                        Pending swap requests and PTO
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            </ScrollView>
-          </View>
-          {/* Schedule Grid */}
-          <View className="flex-1 flex-col overflow-hidden">
-            <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
-              <View className="w-full border border-gray-600 rounded-lg p-3">
-                <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
-                  <Search size={16} color="#9CA3AF" />
-                  <TextInput
-                    placeholder="Search employees..."
-                    placeholderTextColor="#9CA3AF"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    className="p-2 text-white flex-1"
-                  />
-                </View>
-              </View>
+              </ScrollView>
             </View>
-            <DropZoneProvider>
+            {/* Schedule Grid */}
+            <View className="flex-1 flex-col overflow-hidden">
+              <View className="border-b border-gray-700 bg-[#303030] px-6 py-3 flex-row items-center justify-between">
+                <View className="w-full border border-gray-600 rounded-lg p-3">
+                  <View className="flex-row items-center bg-[#212121] border border-gray-600 rounded-lg px-2 w-64">
+                    <Search size={16} color="#9CA3AF" />
+                    <TextInput
+                      placeholder="Search employees..."
+                      placeholderTextColor="#9CA3AF"
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      className="p-2 text-white flex-1"
+                    />
+                  </View>
+                </View>
+              </View>
+
               <ScheduleGrid
                 startDate={startDate}
                 employees={filteredEmployees}
@@ -557,66 +614,66 @@ const ScheduleDetail = ({
                 templateConflictSummary={templateConflictSummary}
                 isApplyTemplateBarVisible={!!overlayTemplateId}
               />
-            </DropZoneProvider>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
 
-      {/* Modals & Drawers */}
-      <ShiftEditorModal
-        open={shiftEditorOpen}
-        onOpenChange={setShiftEditorOpen}
-        shift={selectedShift} // No need to cast here, type is already Partial<Shift & TemplateShift>
-        periodId={currentSchedule.schedule.id!}
-        scheduleType={currentSchedule.type}
-        onSave={handleSaveShift}
-        onSaveAndDuplicate={handleSaveAndDuplicate}
-      />
-      {selectedShift && (
-        <ShiftActionModal
-          open={isActionModalOpen}
-          onOpenChange={setIsActionModalOpen}
-          shift={selectedShift as Shift}
-          onEdit={handleEditShift}
-          onDelete={handleDeleteShift}
+        {/* Modals & Drawers */}
+        <ShiftEditorModal
+          open={shiftEditorOpen}
+          onOpenChange={setShiftEditorOpen}
+          shift={selectedShift} // No need to cast here, type is already Partial<Shift & TemplateShift>
+          periodId={currentSchedule.schedule.id!}
+          scheduleType={currentSchedule.type}
+          onSave={handleSaveShift}
+          onSaveAndDuplicate={handleSaveAndDuplicate}
         />
-      )}
-      <PublishModal
-        open={publishModalOpen}
-        onOpenChange={setPublishModalOpen}
-        scheduleId={currentSchedule.schedule.id}
-        scheduleType={currentSchedule.type}
-        originalScheduleId={currentSchedule.schedule.originalScheduleId}
-      />
-      <OpenShiftsDrawer
-        ref={openShiftsSheetRef}
-        openShifts={currentSchedule.schedule.shifts.filter(
-          (s) => s.status === "open"
+        {selectedShift && (
+          <ShiftActionModal
+            open={isActionModalOpen}
+            onOpenChange={setIsActionModalOpen}
+            shift={selectedShift as Shift}
+            onEdit={handleEditShift}
+            onDelete={handleDeleteShift}
+          />
         )}
-        onAssign={(shiftId, empId) =>
-          console.log(`Assign shift ${shiftId} to ${empId}`)
-        }
-        onCloseShift={(shiftId) => console.log(`Close shift ${shiftId}`)}
-      />
-      <UnsavedChangesDialog
-        isOpen={isDiscardModalOpen}
-        onCancel={() => setIsDiscardModalOpen(false)}
-        onDiscard={handleDiscard}
-      />
-
-      {overlayTemplateId && overlayTemplate && (
-        <ApplyTemplateBar
-          templateName={overlayTemplate.name}
-          shiftsToAdd={templateConflictSummary.shiftsToAdd}
-          conflictsDetected={templateConflictSummary.conflictsDetected}
-          applyMode={applyMode}
-          onApplyModeChange={setApplyMode}
-          onCancel={handleCancelApplyTemplate}
-          onViewDetails={handleViewDetails}
-          onApply={handleApplyTemplateAction}
+        <PublishModal
+          open={publishModalOpen}
+          onOpenChange={setPublishModalOpen}
+          scheduleId={currentSchedule.schedule.id}
+          scheduleType={currentSchedule.type}
+          originalScheduleId={currentSchedule.schedule.originalScheduleId}
         />
-      )}
-    </View>
+        <OpenShiftsDrawer
+          ref={openShiftsSheetRef}
+          openShifts={currentSchedule.schedule.shifts.filter(
+            (s) => s.status === "open"
+          )}
+          onAssign={(shiftId, empId) =>
+            console.log(`Assign shift ${shiftId} to ${empId}`)
+          }
+          onCloseShift={(shiftId) => console.log(`Close shift ${shiftId}`)}
+        />
+        <UnsavedChangesDialog
+          isOpen={isDiscardModalOpen}
+          onCancel={() => setIsDiscardModalOpen(false)}
+          onDiscard={handleDiscard}
+        />
+
+        {overlayTemplateId && overlayTemplate && (
+          <ApplyTemplateBar
+            templateName={overlayTemplate.name}
+            shiftsToAdd={templateConflictSummary.shiftsToAdd}
+            conflictsDetected={templateConflictSummary.conflictsDetected}
+            applyMode={applyMode}
+            onApplyModeChange={setApplyMode}
+            onCancel={handleCancelApplyTemplate}
+            onViewDetails={handleViewDetails}
+            onApply={handleApplyTemplateAction}
+          />
+        )}
+      </View>
+    </DropZoneProvider>
   );
 };
 

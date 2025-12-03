@@ -4,11 +4,12 @@ import {
   CheckCircle2,
   Columns,
   CreditCard,
+  Keyboard,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-type PaymentMethod = "Card" | "Split" | "Cash";
+type PaymentMethod = "Card Reader" | "Manual Key-in" | "Split" | "Cash";
 
 const PaymentMethodSelectionView: React.FC = () => {
   const {
@@ -19,18 +20,25 @@ const PaymentMethodSelectionView: React.FC = () => {
     splits,
     splitSourceView,
   } = usePaymentStore();
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card");
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card Reader");
 
   // Determine if we are paying for a specific split
   const activeSplit = splits.find((s) => s.id === activeSplitId);
 
   const paymentMethods = [
     {
-      name: "Card" as PaymentMethod,
+      name: "Card Reader" as PaymentMethod,
       icon: CreditCard,
-      title: "Card Payment",
+      title: "Card Reader",
       description: "Credit, Debit, or Corporate Cards",
-      view: "cardOptions" as PaymentView,
+      view: "card" as PaymentView,
+    },
+    {
+      name: "Manual Key-in" as PaymentMethod,
+      icon: Keyboard,
+      title: "Manual Key-in",
+      description: "Manually enter card details",
+      view: "manual" as PaymentView,
     },
     {
       name: "Split" as PaymentMethod,

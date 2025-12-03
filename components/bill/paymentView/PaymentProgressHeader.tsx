@@ -12,87 +12,93 @@ const PaymentProgressHeader: React.FC = () => {
   const { view, activeSplitId, splits } = usePaymentStore();
   const { activeOrderTotal, activeOrderOutstandingTotal } = useOrderStore();
 
-  // Animation Value
   const progressWidth = useSharedValue(0);
 
-  // --- LOGIC: HEADCOUNT + FINANCIAL PROGRESS ---
   const targetProgress = useMemo(() => {
-    // 1. Success is always 100%
+    // --- 1. DEFINITIVE END STATE ---
     if (view === "success") return 100;
 
-    // 2. Setup Phase Logic (0% - 20%)
-    const isSetupPhase = [
-      "review",
-      "split-options",
-      "split-by-item",
-      "split-evenly",
-      "split-custom-amount",
-    ].includes(view);
+    // --- 2. DETERMINE PHASE ---
+    // Are we in the "Setup" phase or the "Payment Execution" phase?
 
-    if (isSetupPhase) {
+    // Execution Phase starts if:
+    // a) We have an active split selected (loop started)
+    // b) We have successfully paid some money (partial payment)
+    // c) We are on a direct payment input screen (Cash/Card)
+    const total = activeOrderTotal > 0 ? activeOrderTotal : 1;
+    const paidAmount = total - activeOrderOutstandingTotal;
+
+    const isExecutionPhase =
+      activeSplitId !== null ||
+      paidAmount > 0.01 ||
+      ["card", "cash", "manual", "cardOptions"].includes(view);
+
+    // --- 3. SETUP PHASE LOGIC (0% - 20%) ---
+    if (!isExecutionPhase) {
       switch (view) {
         case "review":
           return 5;
+        case "payment-method-selection":
+          return 10; // Entry point (Lowest)
         case "split-options":
-          return 10;
+          return 15; // Moving forward
         case "split-by-item":
         case "split-evenly":
         case "split-custom-amount":
-          return 15 + (splits.length > 0 ? 5 : 0);
+          return 20; // Configuration done
         default:
           return 10;
       }
     }
 
-    // 3. Execution Phase Logic (20% - 100%)
-    // We determine progress by comparing "Work Done" vs "Total Work"
-    const BASE = 5;
-    const RANGE = 80; // Remaining 80% of the bar
+    // --- 4. EXECUTION PHASE LOGIC (20% - 100%) ---
+    const BASE = 20;
+    const RANGE = 80;
+    let executionRatio = 0;
 
-    let progressRatio = 0;
-
-    // SCENARIO A: SPLIT PAYMENT
+    // SCENARIO A: SPLIT PAYMENT LOOP
     if (splits.length > 0) {
       const totalGuests = splits.length;
-      // Count how many guests are fully paid
-      const paidGuests = splits.filter((s) => s.status === "paid").length;
+      const paidGuestsCount = splits.filter((s) => s.status === "paid").length;
 
-      // Are we currently working on a guest? (Active ID exists)
-      // If yes, we are part-way through THAT specific guest.
-      // Let's give 0.5 points for "Selecting Method" and 0.8 points for "Entering Card/Cash"
-      let currentGuestBonus = 0;
+      // Calculate bonus for the CURRENT working guest (if any)
+      let currentGuestProgress = 0;
 
+      // Only add bonus if the active split is NOT paid yet.
+      // (If it's paid, it's counted in paidGuestsCount already)
       if (activeSplitId) {
-        if (view === "payment-method-selection")
-          currentGuestBonus = 0.1; // Just started this guest
-        else if (["card", "cash", "manual", "cardOptions"].includes(view))
-          currentGuestBonus = 0.5; // Halfway done with this guest
+        const activeSplit = splits.find((s) => s.id === activeSplitId);
+        if (activeSplit && activeSplit.status === "pending") {
+          if (view === "payment-method-selection") {
+            currentGuestProgress = 0.1; // Started selecting
+          } else if (["card", "cash", "manual", "cardOptions"].includes(view)) {
+            currentGuestProgress = 0.5; // Inputting data
+          }
+        }
       }
 
-      // Formula: (Paid Guests + Current Effort) / Total Guests
-      progressRatio = (paidGuests + currentGuestBonus) / totalGuests;
+      // Formula: (Fully Paid Guests + Progress on Current Pending Guest) / Total Guests
+      executionRatio = (paidGuestsCount + currentGuestProgress) / totalGuests;
     }
 
-    // SCENARIO B: SINGLE PAYMENT
+    // SCENARIO B: SINGLE PAYMENT (No Splits)
     else {
-      const total = activeOrderTotal > 0 ? activeOrderTotal : 1;
-      const paid = total - activeOrderOutstandingTotal;
-      const moneyRatio = paid / total;
+      // Simple ratio of money paid
+      const moneyRatio = paidAmount / total;
 
-      // Bonus for being on input screens in single pay mode
       let activityBonus = 0;
-      if (["card", "cash", "manual", "cardOptions"].includes(view)) {
-        // If we haven't paid anything yet but are typing, give visual progress (e.g. 10%)
-        if (moneyRatio < 0.1) activityBonus = 0.1;
+      // If we haven't paid yet but are on input screen, give visual progress
+      if (
+        moneyRatio < 0.01 &&
+        ["card", "cash", "manual", "cardOptions"].includes(view)
+      ) {
+        activityBonus = 0.1;
       }
 
-      progressRatio = moneyRatio + activityBonus;
+      executionRatio = moneyRatio + activityBonus;
     }
 
-    // Calculate final %
-    const final = BASE + progressRatio * RANGE;
-
-    // Cap at 98% (Wait for final success screen for 100%)
+    const final = BASE + executionRatio * RANGE;
     return Math.min(Math.round(final), 98);
   }, [
     view,
@@ -106,23 +112,21 @@ const PaymentProgressHeader: React.FC = () => {
   const progressLabel = useMemo(() => {
     if (view === "success") return "Complete";
 
-    // 1. Split Specific Labels
     if (activeSplitId && splits.length > 0) {
-      const currentGuestIndex = splits.findIndex((s) => s.id === activeSplitId);
-      const guest = splits[currentGuestIndex];
-      // "Paying: Guest 2 of 3"
-      return `Paying: ${guest?.customerName} (${currentGuestIndex + 1}/${splits.length})`;
+      const index = splits.findIndex((s) => s.id === activeSplitId);
+      const guest = splits[index];
+      if (guest) {
+        return `Paying: ${guest.customerName} (${index + 1}/${splits.length})`;
+      }
     }
 
-    // 2. Balance Label
     if (
       activeOrderOutstandingTotal < activeOrderTotal &&
       activeOrderOutstandingTotal > 0.01
     ) {
-      return `Balance: $${activeOrderOutstandingTotal.toFixed(2)}`;
+      return `Balance Due: $${activeOrderOutstandingTotal.toFixed(2)}`;
     }
 
-    // 3. Generic Labels
     switch (view) {
       case "payment-method-selection":
         return "Select Method";
@@ -141,7 +145,7 @@ const PaymentProgressHeader: React.FC = () => {
       case "split-evenly":
         return "Split Evenly";
       case "split-custom-amount":
-        return "Custom Split";
+        return "Custom Amounts";
       case "review":
         return "Review Order";
       default:
@@ -155,7 +159,6 @@ const PaymentProgressHeader: React.FC = () => {
     activeOrderOutstandingTotal,
   ]);
 
-  // Update animation
   useEffect(() => {
     progressWidth.value = withTiming(targetProgress, { duration: 500 });
   }, [targetProgress]);

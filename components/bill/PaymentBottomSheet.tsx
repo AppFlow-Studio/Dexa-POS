@@ -18,7 +18,6 @@ import CardPaymentView from "./ paymentView/CardPaymentView";
 import CashPaymentView from "./ paymentView/CashPaymentView";
 import ItemsReviewView from "./ paymentView/ItemsReviewView";
 import PaymentSuccessView from "./ paymentView/PaymentSuccessView";
-import CardPaymentOptions from "./paymentView/CardPaymentOptions";
 import CustomAmountView from "./paymentView/CustomAmountView";
 import ManualCardEntryView from "./paymentView/ManualCardEntryView";
 import PaymentMethodSelectionView from "./paymentView/PaymentMethodSelectionView";
@@ -91,8 +90,6 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         return <ItemsReviewView />;
       case "payment-method-selection":
         return <PaymentMethodSelectionView />;
-      case "cardOptions":
-        return <CardPaymentOptions />;
       case "card":
         return <CardPaymentView />;
       case "manual":
