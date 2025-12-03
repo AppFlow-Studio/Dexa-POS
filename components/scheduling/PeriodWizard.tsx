@@ -410,7 +410,10 @@ const PeriodWizard: React.FC<PeriodWizardProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[550px] max-w-lg bg-[#303030] rounded-2xl border-gray-700 p-0">
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : "position"}
+          // Add a small offset if needed
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : -100}
+          style={{ width: "100%" }}
         >
           <View className="p-6 border-b border-gray-700">
             <View className="flex-row justify-between items-center">

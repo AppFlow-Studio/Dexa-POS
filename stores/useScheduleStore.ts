@@ -11,10 +11,10 @@ import {
 } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
+  addDays,
   areIntervalsOverlapping,
   format,
   getDay,
-  addDays,
   startOfDay,
 } from "date-fns";
 import { create } from "zustand";
@@ -103,6 +103,7 @@ interface ScheduleRequestState {
     scheduleId: string,
     updates: Partial<WeeklySchedule>
   ) => void;
+  deleteSchedule: (scheduleId: string, scheduleType: "period" | "week") => void; // Added function signature
   checkDateConflicts: (
     startDate: string,
     endDate: string,
@@ -980,6 +981,69 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             });
           },
 
+          deleteSchedule: (scheduleId, scheduleType) => {
+            set((state) => {
+              const targetArray =
+                scheduleType === "period"
+                  ? state.schedulePeriods
+                  : state.weeklySchedules;
+
+              const scheduleToDelete = targetArray.find(
+                (s) => s.id === scheduleId
+              );
+
+              if (!scheduleToDelete) {
+                console.error("Schedule to delete not found");
+                return;
+              }
+
+              // Case 1 & 2: If we are deleting a draft or a draft-edit, just remove it.
+              if (
+                scheduleToDelete.status === "draft" ||
+                scheduleToDelete.status === "draft-edit"
+              ) {
+                if (scheduleType === "period") {
+                  state.schedulePeriods = state.schedulePeriods.filter(
+                    (p) => p.id !== scheduleId
+                  );
+                } else {
+                  state.weeklySchedules = state.weeklySchedules.filter(
+                    (w) => w.id !== scheduleId
+                  );
+                }
+                return;
+              }
+
+              // Case 3 & 4: If we are deleting an original schedule (active/completed)
+              // First, find and delete its draft, if it exists.
+              const draftToDelete = targetArray.find(
+                (s) => s.originalScheduleId === scheduleId
+              );
+              if (draftToDelete) {
+                if (scheduleType === "period") {
+                  state.schedulePeriods = state.schedulePeriods.filter(
+                    (p) => p.id !== draftToDelete.id
+                  );
+                } else {
+                  state.weeklySchedules = state.weeklySchedules.filter(
+                    (w) => w.id !== draftToDelete.id
+                  );
+                }
+              }
+
+              // Finally, delete the original schedule itself.
+              if (scheduleType === "period") {
+                state.schedulePeriods = state.schedulePeriods.filter(
+                  (p) => p.id !== scheduleId
+                );
+              } else {
+                state.weeklySchedules = state.weeklySchedules.filter(
+                  (w) => w.id !== scheduleId
+                );
+              }
+            });
+          },
+
           checkDateConflicts: (startDate, endDate, excludePeriodId) => {
             const periods = get().schedulePeriods.filter(
               (p) => p.id !== excludePeriodId
@@ -1350,7 +1414,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 return;
               }
 
-              const scheduleStartDate = startOfDay(new Date(schedule.startDate));
+              const scheduleStartDate = startOfDay(
+                new Date(schedule.startDate)
+              );
               const scheduleEndDate = startOfDay(new Date(schedule.endDate));
 
               const templateShiftsToApply: Omit<Shift, "id">[] = [];
@@ -1359,7 +1425,9 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 const dayOfWeek = getDay(currentDate);
                 template.shifts.forEach((templateShift) => {
                   if (templateShift.dayOfWeek === dayOfWeek) {
-                    const shiftDateISO = currentDate.toISOString().split("T")[0];
+                    const shiftDateISO = currentDate
+                      .toISOString()
+                      .split("T")[0];
                     const newShift: Omit<Shift, "id"> = {
                       employeeId: templateShift.employeeId,
                       role: templateShift.role,

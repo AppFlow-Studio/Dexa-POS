@@ -1,66 +1,93 @@
 import { WeeklySchedule } from "@/lib/types";
-import { Calendar, Pencil } from "lucide-react-native";
+import { Calendar, Pencil, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface WeeklyScheduleCardProps {
   schedule: WeeklySchedule;
   onEdit: () => void;
+  onDelete: () => void; // Added delete prop
   onPressSchedule: () => void;
 }
+
+const statusStyles = {
+  draft: "bg-yellow-500/10 border-yellow-500/20 text-yellow-500",
+  "draft-edit": "bg-yellow-500/10 border-yellow-500/20 text-yellow-500", // Added draft-edit
+  active: "bg-green-500/10 border-green-500/20 text-green-500",
+  completed: "bg-gray-500/10 border-gray-500/20 text-gray-400",
+};
 
 const WeeklyScheduleCard: React.FC<WeeklyScheduleCardProps> = ({
   schedule,
   onEdit,
+  onDelete,
   onPressSchedule,
 }) => {
-  const statusStyles = {
-    draft: "bg-yellow-500/20",
-    active: "bg-green-500/20",
-    completed: "bg-gray-500/20",
-  };
+  // Default to draft styles if status is unknown
+  const currentStatusStyle =
+    statusStyles[schedule.status] || statusStyles.draft;
 
-  const statusStylesText = {
-    draft: "text-yellow-400",
-    active: "text-green-400",
-    completed: "text-gray-400",
-  };
-
-  const statusStyle = statusStyles[schedule.status] || statusStyles.draft;
-  const statusTextStyle =
-    statusStylesText[schedule.status] || statusStylesText.draft;
   return (
-    <View className="bg-[#303030] border border-gray-700 rounded-2xl p-4">
-      <View className="flex-row justify-between items-start mb-4">
-        <View className="flex-row items-center gap-3">
-          <View className="p-2 bg-blue-600/20 rounded-lg">
-            <Calendar className="text-blue-400" size={20} color={"#60a5fa"} />
+    <View className="bg-[#303030] border border-gray-700 rounded-2xl p-5 mb-4 shadow-sm w-full">
+      {/* --- Header Section --- */}
+      <View className="flex-row justify-between items-start">
+        <View className="flex-row gap-4 flex-1 mr-2">
+          {/* Icon Box */}
+          <View className="w-12 h-12 bg-[#252525] border border-gray-700 rounded-xl items-center justify-center">
+            <Calendar size={24} color="#60A5FA" />
           </View>
-          <View>
-            <Text className="text-white font-bold text-lg">
+
+          {/* Text Content */}
+          <View className="flex-1 justify-center">
+            <Text
+              className="text-white font-bold text-lg leading-tight"
+              numberOfLines={1}
+            >
               {schedule.name}
             </Text>
-            <Text className="text-gray-400 mt-1">
+            <Text className="text-gray-400 text-sm mt-1">
               {schedule.startDate} - {schedule.endDate}
             </Text>
           </View>
         </View>
-        <View className={`px-2 py-1 rounded-full ${statusStyle}`}>
-          <Text className={`text-xs font-bold ${statusTextStyle}`}>
+
+        {/* Status Badge */}
+        <View
+          className={`px-3 py-1 rounded-full border ${currentStatusStyle
+            .split(" ")
+            .slice(0, 2)
+            .join(" ")}`}
+        >
+          <Text
+            className={`text-xs font-bold capitalize ${
+              currentStatusStyle.split(" ")[2]
+            }`}
+          >
             {schedule.status}
           </Text>
         </View>
       </View>
 
-      <View className="flex-row justify-between items-center">
-        <TouchableOpacity
-          onPress={onEdit}
-          className="flex-row items-center gap-2 px-4 py-2 border border-gray-700  rounded-lg"
-        >
-          <Pencil size={16} className="text-gray-300" color={"#d1d5db"} />
-          <Text className="text-white font-semibold">Edit Date</Text>
-        </TouchableOpacity>
+      {/* --- Actions Section --- */}
+      <View className="flex-row items-center justify-between mt-5">
+        <View className="flex-row ">
+          {/* Edit Button */}
+          <TouchableOpacity
+            onPress={onEdit}
+            className="w-11 h-11 border border-gray-600 rounded-xl bg-[#383838] items-center justify-center mr-3 active:bg-[#404040]"
+          >
+            <Pencil size={20} color="#E5E7EB" />
+          </TouchableOpacity>
 
+          {/* Delete Button */}
+          <TouchableOpacity
+            onPress={onDelete}
+            className="w-11 h-11 border border-red-900/30 rounded-xl bg-red-500/10 items-center justify-center mr-3 active:bg-red-500/20"
+          >
+            <Trash2 size={20} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+        {/* Main Action Button */}
         <TouchableOpacity
           onPress={onPressSchedule}
           className="px-4 py-2 bg-blue-600 rounded-lg"
