@@ -52,7 +52,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 
   // 90% ensures full height on tablets, 50% for quick actions
-  const snapPoints = useMemo(() => ["50%", "90%"], []);
+  const snapPoints = useMemo(() => ["50%", "80%"], []);
 
   const handleSheetChanges = useCallback(
     (index: number) => {
@@ -141,6 +141,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         backgroundStyle={{ backgroundColor: "#212121" }}
         handleIndicatorStyle={{ backgroundColor: "#707070" }}
         backdropComponent={renderBackdrop}
+        topInset={60}
       >
         <BottomSheetScrollView style={styles.container}>
           {/* Header */}

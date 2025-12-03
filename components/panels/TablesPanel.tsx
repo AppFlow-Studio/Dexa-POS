@@ -88,7 +88,7 @@ const TablesPanel: React.FC = () => {
   );
 
   return (
-    <View className="h-full flex-col bg-[#212121]">
+    <View className="h-full flex-col bg-[#292929]">
       {/* Capacity Info */}
       <View className="p-4 border-b border-gray-700">
         <View className="flex-row items-center justify-between text-xs text-gray-400 font-medium">

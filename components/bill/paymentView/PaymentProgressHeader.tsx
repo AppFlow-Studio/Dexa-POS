@@ -1,6 +1,6 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -9,101 +9,144 @@ import Animated, {
 } from "react-native-reanimated";
 
 const PaymentProgressHeader: React.FC = () => {
-  const { view, splits, activeSplitId } = usePaymentStore();
+  const { view, activeSplitId, splits } = usePaymentStore();
   const { activeOrderTotal, activeOrderOutstandingTotal } = useOrderStore();
 
   // Animation Value
   const progressWidth = useSharedValue(0);
 
-  // Keep track of the highest progress reached to prevent jittery bouncing
-  // (Optional: remove this ref logic if you want the bar to strictly reflect state)
-  const maxProgressRef = useRef(0);
-
-  // --- LOGIC: Calculate Smart Progress ---
+  // --- LOGIC: HEADCOUNT + FINANCIAL PROGRESS ---
   const targetProgress = useMemo(() => {
     // 1. Success is always 100%
     if (view === "success") return 100;
 
-    // 2. Financial Progress (0.0 to 1.0)
-    const total = activeOrderTotal > 0 ? activeOrderTotal : 1;
-    const paid = total - activeOrderOutstandingTotal;
-    const financialRatio = paid / total; // e.g., 0.5 for 50% paid
+    // 2. Setup Phase Logic (0% - 20%)
+    const isSetupPhase = [
+      "review",
+      "split-options",
+      "split-by-item",
+      "split-evenly",
+      "split-custom-amount",
+    ].includes(view);
 
-    // 3. Determine Context
-    // Are we in the middle of a split payment loop?
-    const isMidFlow = activeSplitId !== null || paid > 0.01;
-
-    let basePercentage = 0;
-
-    if (isMidFlow) {
-      // --- PAYMENT EXECUTION PHASE (30% -> 100%) ---
-      // If we are selecting a method for Guest 1, Guest 2, etc., we are executing.
-      // We start at 30% and fill the remaining 70% based on money collected.
-      basePercentage = 30 + financialRatio * 70;
-    } else {
-      // --- SETUP PHASE (0% -> 30%) ---
+    if (isSetupPhase) {
       switch (view) {
         case "review":
-          basePercentage = 5;
-          break;
-        case "payment-method-selection":
-          // If no split is active and no money paid, this is early setup
-          basePercentage = 15;
-          break;
+          return 5;
         case "split-options":
-          basePercentage = 20;
-          break;
+          return 10;
         case "split-by-item":
         case "split-evenly":
         case "split-custom-amount":
-          // Configuration: 25% + tiny boost for having created splits
-          basePercentage = 25 + (splits.length > 0 ? 2 : 0);
-          break;
+          return 15 + (splits.length > 0 ? 5 : 0);
         default:
-          basePercentage = 10;
+          return 10;
       }
     }
 
-    // Cap at 95% until actually finished
-    const finalVal = Math.min(
-      Math.round(basePercentage),
-      paid >= total ? 100 : 95
-    );
+    // 3. Execution Phase Logic (20% - 100%)
+    // We determine progress by comparing "Work Done" vs "Total Work"
+    const BASE = 5;
+    const RANGE = 80; // Remaining 80% of the bar
 
-    // Logic to prevent "Backwards" movement if it feels jarring:
-    // If you prefer the bar to strictly follow state, remove this Math.max check.
-    // For now, I will let it move backwards only if the difference is large (e.g. hitting actual back button),
-    // but prevent micro-fluctuations.
-    return finalVal;
+    let progressRatio = 0;
+
+    // SCENARIO A: SPLIT PAYMENT
+    if (splits.length > 0) {
+      const totalGuests = splits.length;
+      // Count how many guests are fully paid
+      const paidGuests = splits.filter((s) => s.status === "paid").length;
+
+      // Are we currently working on a guest? (Active ID exists)
+      // If yes, we are part-way through THAT specific guest.
+      // Let's give 0.5 points for "Selecting Method" and 0.8 points for "Entering Card/Cash"
+      let currentGuestBonus = 0;
+
+      if (activeSplitId) {
+        if (view === "payment-method-selection")
+          currentGuestBonus = 0.1; // Just started this guest
+        else if (["card", "cash", "manual", "cardOptions"].includes(view))
+          currentGuestBonus = 0.5; // Halfway done with this guest
+      }
+
+      // Formula: (Paid Guests + Current Effort) / Total Guests
+      progressRatio = (paidGuests + currentGuestBonus) / totalGuests;
+    }
+
+    // SCENARIO B: SINGLE PAYMENT
+    else {
+      const total = activeOrderTotal > 0 ? activeOrderTotal : 1;
+      const paid = total - activeOrderOutstandingTotal;
+      const moneyRatio = paid / total;
+
+      // Bonus for being on input screens in single pay mode
+      let activityBonus = 0;
+      if (["card", "cash", "manual", "cardOptions"].includes(view)) {
+        // If we haven't paid anything yet but are typing, give visual progress (e.g. 10%)
+        if (moneyRatio < 0.1) activityBonus = 0.1;
+      }
+
+      progressRatio = moneyRatio + activityBonus;
+    }
+
+    // Calculate final %
+    const final = BASE + progressRatio * RANGE;
+
+    // Cap at 98% (Wait for final success screen for 100%)
+    return Math.min(Math.round(final), 98);
   }, [
     view,
     activeOrderTotal,
     activeOrderOutstandingTotal,
     activeSplitId,
-    splits.length,
+    splits,
   ]);
 
   // --- LABEL LOGIC ---
   const progressLabel = useMemo(() => {
     if (view === "success") return "Complete";
 
-    // Specific Guest Payment
-    if (activeSplitId) {
-      const guest = splits.find((s) => s.id === activeSplitId);
-      return guest ? `Pay: ${guest.customerName}` : "Processing Split";
+    // 1. Split Specific Labels
+    if (activeSplitId && splits.length > 0) {
+      const currentGuestIndex = splits.findIndex((s) => s.id === activeSplitId);
+      const guest = splits[currentGuestIndex];
+      // "Paying: Guest 2 of 3"
+      return `Paying: ${guest?.customerName} (${currentGuestIndex + 1}/${splits.length})`;
     }
 
-    // Setup Screens
-    if (view === "review") return "Review Items";
-    if (view === "payment-method-selection") return "Select Method";
-    if (view.includes("split")) return "Configure Splits";
-
-    // Partial Payment State
-    if (activeOrderOutstandingTotal < activeOrderTotal) {
-      return `Paid: $${(activeOrderTotal - activeOrderOutstandingTotal).toFixed(2)}`;
+    // 2. Balance Label
+    if (
+      activeOrderOutstandingTotal < activeOrderTotal &&
+      activeOrderOutstandingTotal > 0.01
+    ) {
+      return `Balance: $${activeOrderOutstandingTotal.toFixed(2)}`;
     }
 
-    return "Processing";
+    // 3. Generic Labels
+    switch (view) {
+      case "payment-method-selection":
+        return "Select Method";
+      case "cardOptions":
+        return "Card Options";
+      case "manual":
+        return "Manual Entry";
+      case "card":
+        return "Read Card";
+      case "cash":
+        return "Cash Entry";
+      case "split-options":
+        return "Split Options";
+      case "split-by-item":
+        return "Assign Items";
+      case "split-evenly":
+        return "Split Evenly";
+      case "split-custom-amount":
+        return "Custom Split";
+      case "review":
+        return "Review Order";
+      default:
+        return "Processing";
+    }
   }, [
     view,
     activeSplitId,
@@ -114,7 +157,7 @@ const PaymentProgressHeader: React.FC = () => {
 
   // Update animation
   useEffect(() => {
-    progressWidth.value = withTiming(targetProgress, { duration: 600 });
+    progressWidth.value = withTiming(targetProgress, { duration: 500 });
   }, [targetProgress]);
 
   const animatedStyle = useAnimatedStyle(() => ({

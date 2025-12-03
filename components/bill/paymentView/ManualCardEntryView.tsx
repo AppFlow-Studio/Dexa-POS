@@ -207,9 +207,9 @@ const ManualCardEntryView = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-[#212121]"
+      className=" bg-[#212121]"
     >
-      <View className="flex-1 flex-row">
+      <View className=" flex-row">
         {/* LEFT COLUMN: Visuals (Static) */}
         <View className="w-[40%] bg-[#1A1A1A] border-r border-[#333] p-8 justify-center items-center">
           <View className="w-full max-w-[380px]">
