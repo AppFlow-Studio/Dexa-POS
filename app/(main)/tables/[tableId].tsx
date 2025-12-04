@@ -458,6 +458,11 @@ const UpdateTableScreen = () => {
         <OrderInfoHeader duration={duration} />
       </View>
 
+      {/* <DiscountOverlay
+        isVisible={isDiscountOverlayOpen}
+        onClose={() => setDiscountOverlayOpen(false)}
+      /> */}
+
       <View className="flex-1 flex-row ">
         <TableBillSection
           showOrderDetails={false}

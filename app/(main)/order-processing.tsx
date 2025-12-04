@@ -11,6 +11,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/contexts/ToastContext"; // New Import
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
@@ -105,6 +106,36 @@ const OrderProcessing = () => {
 
   const handleRetrieve = (orderId: string) => {
     setActiveOrder(orderId);
+  };
+
+  // Placeholder functions for MoreOptionsBottomSheet
+  const { show } = useToast();
+
+  const handleCloseCheck = () => {
+    show({
+      title: "Close Check",
+      message:
+        "Close Check functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
+  };
+
+  const handleApplyDiscount = () => {
+    show({
+      title: "Apply Discount",
+      message:
+        "Apply Discount functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
+  };
+
+  const handleApplyVoucher = () => {
+    show({
+      title: "Apply Voucher",
+      message:
+        "Apply Voucher functionality for Order Processing not yet implemented.",
+      type: "success",
+    });
   };
 
   return (

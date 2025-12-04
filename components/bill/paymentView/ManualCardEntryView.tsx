@@ -389,7 +389,7 @@ const ManualCardEntryView = () => {
               {/* ACTION BUTTONS */}
               <View className="flex-row gap-4 pt-8">
                 <TouchableOpacity
-                  onPress={() => setView("cardOptions")}
+                  onPress={() => setView("payment-method-selection")}
                   className="flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] flex-row items-center justify-center active:bg-[#333]"
                 >
                   <ArrowLeft size={20} color="#D1D5DB" className="mr-2" />

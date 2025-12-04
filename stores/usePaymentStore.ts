@@ -6,7 +6,6 @@ import { create } from "zustand";
 import { useOrderStore } from "./useOrderStore";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
-
 export type PaymentView =
   | "review"
   | "cash"
@@ -63,11 +62,10 @@ interface PaymentState {
     currentStep: number;
     totalSteps: number;
   };
-
   // Actions
-  setPaymentBottomSheetRef: (
-    ref: React.RefObject<BottomSheetMethods> | null
-  ) => void;
+  // setPaymentBottomSheetRef: (
+  //   ref: React.RefObject<BottomSheetMethods> | null
+  // ) => void;
   open: (
     method: PaymentMethod,
     tableId?: string | null,
@@ -77,20 +75,20 @@ interface PaymentState {
   setView: (view: PaymentView) => void;
   setActiveTableId: (tableId: string | null) => void;
   clearActiveTableId: () => void;
-  setIsDirty: (isDirty: boolean) => void;
-  setPaymentClean: () => void;
-  markPaymentAsDirty: () => void;
-  setPaymentProgress: (step: number, total: number) => void;
-  resetPaymentState: () => void;
+  // setIsDirty: (isDirty: boolean) => void;
+  // setPaymentClean: () => void;
+  // markPaymentAsDirty: () => void;
+  // setPaymentProgress: (step: number, total: number) => void;
+  // resetPaymentState: () => void;
 
-  // Split Actions
-  addSplit: (customerName: string) => void;
-  removeSplit: (splitId: string) => void;
-  assignItemToSplit: (splitId: string, item: CartItem) => void;
-  unassignItemFromSplit: (splitId: string, itemId: string) => void;
-  updateSplitAmount: (splitId: string, amount: number) => void;
-  updateSplitCustomerName: (splitId: string, newName: string) => void;
-  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void;
+  // // Split Actions
+  // addSplit: (customerName: string) => void;
+  // removeSplit: (splitId: string) => void;
+  // assignItemToSplit: (splitId: string, item: CartItem) => void;
+  // unassignItemFromSplit: (splitId: string, itemId: string) => void;
+  // updateSplitAmount: (splitId: string, amount: number) => void;
+  // updateSplitCustomerName: (splitId: string, newName: string) => void;
+  // splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void;
 
   // Flow Actions
   startSplitPaymentFlow: (source: PaymentView) => void;
@@ -100,6 +98,21 @@ interface PaymentState {
     cardBrand: string;
     last4: string;
   }): Promise<boolean>;
+  setIsDirty: (isDirty: boolean) => void;
+  addSplit: (customerName: string) => void;
+  removeSplit: (splitId: string) => void;
+  assignItemToSplit: (splitId: string, item: CartItem) => void;
+  unassignItemFromSplit: (splitId: string, itemId: string) => void;
+  updateSplitAmount: (splitId: string, amount: number) => void;
+  updateSplitCustomerName: (splitId: string, newName: string) => void;
+  setPaymentProgress: (step: number, total: number) => void;
+  resetPaymentState: () => void;
+  setPaymentBottomSheetRef: (
+    ref: React.RefObject<BottomSheetMethods> | null
+  ) => void; // New action to set ref
+  setPaymentClean: () => void; // New action to set isDirty to false
+  markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
+  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({

@@ -50,6 +50,7 @@ const CashPaymentView = () => {
     setView("payment-method-selection");
   };
 
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
