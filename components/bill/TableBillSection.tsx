@@ -1,46 +1,75 @@
+import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React from "react";
-import { View } from "react-native";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { X } from "lucide-react-native"; // Added X import
+import React, { useRef } from "react";
+import { Text, TouchableOpacity, View } from "react-native"; // Added Text, TouchableOpacity
+import BottomActionBar from "./BottomActionBar";
+import CourseAccordion from "./CourseAccordion";
+import DiscountBottomSheet from "./DiscountBottomSheet";
 import OrderDetails from "./OrderDetails";
-import CourseAccordion from "./CourseAccordion"; // Added import
+import PricingBreakdownSheet from "./PricingBreakdownSheet";
 
 const TableBillSection = ({
   showOrderDetails = true,
-  itemCourseMap, // Will be passed to CourseAccordion
-  sentCourses, // Will be passed to CourseAccordion
-  currentCourse, // Will be passed to CourseAccordion
-  onSelectCourse, // Will be passed to CourseAccordion
+  itemCourseMap,
+  sentCourses,
+  currentCourse,
+  onSelectCourse,
+  onPressStartNewCourse,
+  onDoubleTapCourse,
+  activeOrder: passedActiveOrder,
+  onPressMore,
+  onPressTotal,
+  onPressReopenCheck,
+  onPressCloseCheck,
+  onPressClearTable,
+  totalDisplayAmount,
+  pricingSheetRef,
+  onClosePricingSheet,
+  onPressProceedToPayment,
+  setCurrentCourse,
 }: {
   showOrderDetails?: boolean;
   itemCourseMap?: Record<string, number>;
   sentCourses?: Record<number, boolean>;
   currentCourse?: number;
   onSelectCourse?: (course: number | null) => void;
+  onPressStartNewCourse: () => void;
+  onDoubleTapCourse: (courseId: number) => void;
+  activeOrder?: OrderProfile;
+  onPressMore: () => void;
+  onPressTotal: () => void;
+  onPressReopenCheck: () => void;
+  onPressCloseCheck: () => void;
+  onPressClearTable: () => void;
+  totalDisplayAmount: number;
+  pricingSheetRef: React.RefObject<BottomSheetMethods>;
+  onClosePricingSheet: () => void;
+  onPressProceedToPayment: () => void;
+  setCurrentCourse: (course: number) => void;
 }) => {
-  const { activeOrderId, orders } = useOrderStore();
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // Added removeCheckDiscount to destructuring
+  const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
 
-  const handleChipLayout = (event: LayoutChangeEvent, course: number) => {
-    const { x, width } = event.nativeEvent.layout;
-    setChipLayouts((prev) => ({ ...prev, [course]: { x, width } }));
-  };
+  const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  useEffect(() => {
-    if (currentCourse && chipLayouts[currentCourse] && scrollViewWidth > 0 && contentWidth > 0) {
-      const chip = chipLayouts[currentCourse];
-      const targetX = chip.x - scrollViewWidth / 2 + chip.width / 2;
+  const activeOrder =
+    passedActiveOrder || orders.find((o) => o.id === activeOrderId);
 
-      // Clamp the scroll position to avoid scrolling past the edges
-      const maxScrollX = contentWidth - scrollViewWidth;
-      const clampedX = Math.max(0, Math.min(targetX, maxScrollX > 0 ? maxScrollX : 0));
+  // Derived check discount
+  const appliedDiscount = activeOrder?.checkDiscount;
 
-      scrollViewRef.current?.scrollTo({ x: clampedX, animated: true });
+  // Handler to remove discount
+  const handleRemoveDiscount = () => {
+    if (activeOrder?.id) {
+      removeCheckDiscount(activeOrder.id);
     }
-  }, [currentCourse, chipLayouts, scrollViewWidth, contentWidth]); // Added contentWidth to dependencies
+  };
 
   return (
     <>
-      <View className="max-w-lg  flex-1">
+      <View className="max-w-lg  flex-1 flex-col">
         {showOrderDetails && <OrderDetails />}
 
         {/* CourseAccordion will be rendered here later */}
@@ -50,6 +79,53 @@ const TableBillSection = ({
           sentCourses={sentCourses}
           currentCourse={currentCourse}
           onSelectCourse={onSelectCourse}
+          onPressStartNewCourse={onPressStartNewCourse}
+          onDoubleTapCourse={onDoubleTapCourse}
+        />
+
+        {/* --- INLINED ACTIVE DISCOUNT INDICATOR --- */}
+        {appliedDiscount && (
+          <View className="px-4 pb-2">
+            {/* Using bg-[#303030] to blend with footer area */}
+            <View
+              className="flex-row items-center justify-between p-1.5 pl-3 bg-blue-900/30 border border-blue-500 rounded-xl gap-2"
+              style={{ height: 44 }}
+            >
+              <View className="flex-row items-center">
+                <Text className="text-base font-bold text-blue-400">
+                  {appliedDiscount.label}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleRemoveDiscount}
+                className="p-1.5 bg-blue-600/30 rounded-full"
+              >
+                <X color="#60A5FA" size={20} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+        {/* --------------------------------------- */}
+
+        <BottomActionBar
+          activeOrder={activeOrder}
+          onPressMore={onPressMore}
+          onPressTotal={onPressTotal}
+          onPressReopenCheck={onPressReopenCheck}
+          onPressCloseCheck={onPressCloseCheck}
+          onPressClearTable={onPressClearTable}
+          totalDisplayAmount={totalDisplayAmount}
+          onPressDiscount={() => discountSheetRef.current?.expand()}
+        />
+
+        <PricingBreakdownSheet
+          ref={pricingSheetRef}
+          onClose={onClosePricingSheet}
+          onPressProceedToPayment={onPressProceedToPayment}
+        />
+        <DiscountBottomSheet
+          ref={discountSheetRef}
+          onClose={() => discountSheetRef.current?.close()}
         />
       </View>
     </>

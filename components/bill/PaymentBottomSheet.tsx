@@ -18,7 +18,6 @@ import CardPaymentView from "./ paymentView/CardPaymentView";
 import CashPaymentView from "./ paymentView/CashPaymentView";
 import ItemsReviewView from "./ paymentView/ItemsReviewView";
 import PaymentSuccessView from "./ paymentView/PaymentSuccessView";
-import CardPaymentOptions from "./paymentView/CardPaymentOptions";
 import CustomAmountView from "./paymentView/CustomAmountView";
 import ManualCardEntryView from "./paymentView/ManualCardEntryView";
 import PaymentMethodSelectionView from "./paymentView/PaymentMethodSelectionView";
@@ -26,6 +25,7 @@ import PaymentProgressHeader from "./paymentView/PaymentProgressHeader";
 import SplitByItemView from "./paymentView/SplitByItemView";
 import SplitEvenlyView from "./paymentView/SplitEvenlyView";
 import SplitOptionsView from "./paymentView/SplitOptionsView";
+import SplitPaymentSuccessView from "./SplitPaymentSuccessView";
 
 interface PaymentBottomSheetProps {}
 
@@ -51,7 +51,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   );
 
   // 90% ensures full height on tablets, 50% for quick actions
-  const snapPoints = useMemo(() => ["50%", "90%"], []);
+  const snapPoints = useMemo(() => ["50%", "80%"], []);
 
   const handleSheetChanges = useCallback(
     (index: number) => {
@@ -90,8 +90,6 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         return <ItemsReviewView />;
       case "payment-method-selection":
         return <PaymentMethodSelectionView />;
-      case "cardOptions":
-        return <CardPaymentOptions />;
       case "card":
         return <CardPaymentView />;
       case "manual":
@@ -108,6 +106,8 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         return <SplitEvenlyView />;
       case "split-custom-amount":
         return <CustomAmountView />;
+      case "split-payment-success":
+        return <SplitPaymentSuccessView />;
       case "success":
         return <PaymentSuccessView />;
       default:
@@ -138,6 +138,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         backgroundStyle={{ backgroundColor: "#212121" }}
         handleIndicatorStyle={{ backgroundColor: "#707070" }}
         backdropComponent={renderBackdrop}
+        topInset={60}
       >
         <BottomSheetScrollView style={styles.container}>
           {/* Header */}

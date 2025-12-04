@@ -4,23 +4,41 @@ import {
   CheckCircle2,
   Columns,
   CreditCard,
+  Keyboard,
 } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
-type PaymentMethod = "Card" | "Split" | "Cash";
+type PaymentMethod = "Card Reader" | "Manual Key-in" | "Split" | "Cash";
 
 const PaymentMethodSelectionView: React.FC = () => {
-  const { setView, close, markPaymentAsDirty } = usePaymentStore();
-  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card");
+  const {
+    setView,
+    close,
+    markPaymentAsDirty,
+    activeSplitId,
+    splits,
+    splitSourceView,
+  } = usePaymentStore();
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("Card Reader");
+
+  // Determine if we are paying for a specific split
+  const activeSplit = splits.find((s) => s.id === activeSplitId);
 
   const paymentMethods = [
     {
-      name: "Card" as PaymentMethod,
+      name: "Card Reader" as PaymentMethod,
       icon: CreditCard,
-      title: "Card Payment",
+      title: "Card Reader",
       description: "Credit, Debit, or Corporate Cards",
-      view: "cardOptions" as PaymentView,
+      view: "card" as PaymentView,
+    },
+    {
+      name: "Manual Key-in" as PaymentMethod,
+      icon: Keyboard,
+      title: "Manual Key-in",
+      description: "Manually enter card details",
+      view: "manual" as PaymentView,
     },
     {
       name: "Split" as PaymentMethod,
@@ -38,36 +56,53 @@ const PaymentMethodSelectionView: React.FC = () => {
     },
   ];
 
+  // LOGIC: Filter out 'Split' if we are already inside a split flow
+  const availableMethods = paymentMethods.filter((method) => {
+    if (activeSplit && method.name === "Split") {
+      return false;
+    }
+    return true;
+  });
+
   const handleProceed = () => {
-    const selected = paymentMethods.find((p) => p.name === selectedMethod);
+    const selected = availableMethods.find((p) => p.name === selectedMethod);
     if (selected) {
-      markPaymentAsDirty(); // Mark as dirty after making a selection
+      markPaymentAsDirty();
       setView(selected.view);
     }
   };
 
+  const handleBack = () => {
+    // Stop the payment loop for this specific guest temporarily
+    // and go back to the split management view (Guest Checks)
+    usePaymentStore.setState({ activeSplitId: null });
+    setView(splitSourceView || "split-options");
+  };
+
   return (
-    // 1. Container ensures full height usage
     <View className="flex-1 bg-[#212121]">
-      {/* 2. ScrollView takes all available space (flex-1) */}
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 4 }} // Reduced padding since footer isn't absolute
+        contentContainerStyle={{ paddingBottom: 20, paddingHorizontal: 4 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Title Section */}
         <View className="mb-6 mt-2 items-center">
           <Text className="text-2xl font-bold text-white mb-2">
-            Select Payment Method
+            {activeSplit
+              ? `Payment for ${activeSplit.customerName}`
+              : "Select Payment Method"}
           </Text>
           <Text className="text-gray-400 text-base">
-            Choose how the customer would like to pay
+            {activeSplit
+              ? `Amount Due: $${activeSplit.amount.toFixed(2)}`
+              : "Choose how the customer would like to pay"}
           </Text>
         </View>
 
         {/* Cards Section */}
         <View className="gap-y-4">
-          {paymentMethods.map((method) => {
+          {availableMethods.map((method) => {
             const isSelected = selectedMethod === method.name;
             const Icon = method.icon;
 
@@ -136,18 +171,20 @@ const PaymentMethodSelectionView: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* 3. Footer sits naturally at the bottom (No Absolute Positioning) */}
+      {/* Footer Buttons */}
       <View className="bg-[#212121] pt-4 pb-4 border-t border-[#333333]">
         <View className="flex-row gap-4">
+          {/* Back / Cancel Button */}
           <TouchableOpacity
-            onPress={() => close()}
+            onPress={() => (activeSplit ? handleBack() : close())}
             className="flex-1 py-4 bg-[#2A2A2A] rounded-xl border border-[#404040] active:bg-[#333333]"
           >
             <Text className="text-center font-semibold text-lg text-gray-300">
-              Cancel
+              {activeSplit ? "Back" : "Cancel"}
             </Text>
           </TouchableOpacity>
 
+          {/* Proceed Button */}
           <TouchableOpacity
             onPress={handleProceed}
             className="flex-1 py-4 rounded-xl bg-blue-600 active:bg-blue-700 shadow-sm"

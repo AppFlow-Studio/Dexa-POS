@@ -20,8 +20,14 @@ import {
 } from "react-native";
 
 const CustomAmountView = () => {
-  const { splits, updateSplitAmount, setView, addSplit, removeSplit } =
-    usePaymentStore();
+  const {
+    splits,
+    updateSplitAmount,
+    setView,
+    addSplit,
+    removeSplit,
+    startSplitPaymentFlow,
+  } = usePaymentStore();
   const { activeOrderOutstandingTotal } = useOrderStore();
 
   // --- MATH LOGIC ---
@@ -56,14 +62,13 @@ const CustomAmountView = () => {
   };
 
   const handleProceed = () => {
-    // For now, just navigate to success as requested
-    usePaymentStore.getState().setPaymentClean(); // Set isDirty to false
-    setView("success");
+    // START THE PAYMENT LOOP HERE
+    startSplitPaymentFlow("split-custom-amount");
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
       className="flex-1 bg-[#212121]"
     >
       {/* Header */}
@@ -141,6 +146,7 @@ const CustomAmountView = () => {
             {/* Next Step Button */}
             <TouchableOpacity
               onPress={handleProceed}
+              disabled={!isPerfect}
               className={`w-full py-4 rounded-xl flex-row items-center justify-center shadow-lg 
                         ${isPerfect ? "bg-blue-600 shadow-blue-900/20 active:bg-blue-700" : "bg-[#404040] opacity-80"}`}
             >

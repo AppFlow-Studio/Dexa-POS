@@ -56,7 +56,7 @@ const HistoryPanel = () => {
   };
 
   return (
-    <View className="h-full flex-col bg-[#212121]">
+    <View className="h-full flex-col bg-[#292929]">
       <View className="px-4 py-2 border-b border-gray-700">
         <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
           Recent Activity

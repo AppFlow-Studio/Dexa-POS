@@ -212,9 +212,6 @@ const OrderProcessing = () => {
       </View>
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
-        onCloseCheck={handleCloseCheck}
-        onApplyDiscount={handleApplyDiscount}
-        onApplyVoucher={handleApplyVoucher}
       />
 
       <OrderLineItemsModal

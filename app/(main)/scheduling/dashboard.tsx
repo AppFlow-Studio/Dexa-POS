@@ -3,6 +3,7 @@ import PeriodWizard, { PeriodData } from "@/components/scheduling/PeriodWizard";
 import QuickScheduleModal from "@/components/scheduling/QuickScheduleModal";
 import SchedulePeriodCard from "@/components/scheduling/SchedulePeriodCard";
 import WeeklyScheduleCard from "@/components/scheduling/WeeklyScheduleCard";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { SchedulePeriod, WeeklySchedule } from "@/lib/types";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { addDays, format } from "date-fns";
@@ -24,6 +25,7 @@ const ScheduleManagerDashboard = () => {
     findOrCreateDraft,
     compareSchedules,
     discardDraft,
+    deleteSchedule, // Added deleteSchedule
     schedulePeriods: allSchedulePeriods,
     weeklySchedules: allWeeklySchedules,
   } = useScheduleStore();
@@ -34,6 +36,13 @@ const ScheduleManagerDashboard = () => {
   const [isEditWeeklyModalOpen, setIsEditWeeklyModalOpen] = useState(false);
   const [editingWeeklySchedule, setEditingWeeklySchedule] =
     useState<WeeklySchedule | null>(null);
+
+  // State for delete confirmation
+  const [isDeleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingSchedule, setDeletingSchedule] = useState<{
+    id: string;
+    type: "period" | "week";
+  } | null>(null);
 
   useEffect(() => {
     const allSchedules = [...allSchedulePeriods, ...allWeeklySchedules];
@@ -138,6 +147,23 @@ const ScheduleManagerDashboard = () => {
     }
   };
 
+  // Delete Handlers
+  const handleDeletePress = (
+    scheduleId: string,
+    scheduleType: "period" | "week"
+  ) => {
+    setDeletingSchedule({ id: scheduleId, type: scheduleType });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (deletingSchedule) {
+      deleteSchedule(deletingSchedule.id, deletingSchedule.type);
+    }
+    setDeleteConfirmOpen(false);
+    setDeletingSchedule(null);
+  };
+
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
       <View className="p-4 flex-1">
@@ -177,6 +203,7 @@ const ScheduleManagerDashboard = () => {
               <SchedulePeriodCard
                 period={item as PeriodData} // Cast to PeriodData for now, will update PeriodWizard later
                 onEdit={() => handleEdit(item as PeriodData)}
+                onDelete={() => handleDeletePress(item.id!, "period")} // Added onDelete
                 onPressSchedule={() => handlePressSchedule(item)}
               />
             )}
@@ -204,6 +231,7 @@ const ScheduleManagerDashboard = () => {
               <WeeklyScheduleCard
                 schedule={item}
                 onEdit={() => handleEditWeekly(item)}
+                onDelete={() => handleDeletePress(item.id, "week")} // Added onDelete
                 onPressSchedule={() => handlePressSchedule(item)}
               />
             )}
@@ -238,6 +266,15 @@ const ScheduleManagerDashboard = () => {
           initialDate={editingWeeklySchedule.startDate}
         />
       )}
+      <ConfirmationModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Delete Schedule?"
+        description="This will permanently delete the schedule and any associated drafts. This action cannot be undone."
+        confirmText="Delete"
+        variant="destructive"
+      />
     </SafeAreaView>
   );
 };

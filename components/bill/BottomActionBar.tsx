@@ -1,4 +1,12 @@
 import { OrderProfile } from "@/lib/types";
+import {
+  CheckCircle,
+  CreditCard,
+  MoreHorizontal,
+  Percent,
+  RotateCcw,
+  Trash2,
+} from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -9,7 +17,8 @@ interface BottomActionBarProps {
   onPressReopenCheck: () => void;
   onPressCloseCheck: () => void;
   onPressClearTable: () => void;
-  totalDisplayAmount: number; // Added new prop
+  onPressDiscount: () => void;
+  totalDisplayAmount: number;
 }
 
 const BottomActionBar: React.FC<BottomActionBarProps> = ({
@@ -19,89 +28,116 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
-  totalDisplayAmount, // Destructure new prop
+  onPressDiscount,
+  totalDisplayAmount,
 }) => {
-  // Removed internal totalAmount calculation
+  // Shared styling: flex-1 ensures they all take equal width
+  const buttonBaseClass =
+    "flex-1 flex-row items-center justify-center h-12 px-2 rounded-lg gap-2";
 
   const renderDefaultButtons = () => (
     <>
+      {/* Discount Button: Indigo (Distinct from Blue, fits dark theme) */}
+      <TouchableOpacity
+        onPress={onPressDiscount}
+        className={`${buttonBaseClass} bg-indigo-600`}
+        activeOpacity={0.7}
+      >
+        <Percent size={18} color="white" />
+        <Text className="font-semibold text-white text-base">Discount</Text>
+      </TouchableOpacity>
+
+      {/* Total Button: Blue (Primary Action) */}
       <TouchableOpacity
         onPress={onPressTotal}
-        className="px-6 py-3 rounded-lg bg-blue-500 flex-row items-center gap-2"
+        className={`${buttonBaseClass} bg-blue-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-lg">Total: ${totalDisplayAmount.toFixed(2)}</Text>
-        <Text className="text-white text-lg">💳</Text>
+        {/* Truncate text if it gets too long on small screens */}
+        <Text className="font-semibold text-white text-base" numberOfLines={1}>
+          ${totalDisplayAmount.toFixed(2)}
+        </Text>
+        <CreditCard size={18} color="white" />
       </TouchableOpacity>
     </>
   );
 
   const renderPaidButtons = () => (
     <>
+      {/* Close Check: Emerald Green (Success/Finish) */}
       <TouchableOpacity
         onPress={onPressCloseCheck}
-        className="px-6 py-2 rounded-lg bg-blue-500"
+        className={`${buttonBaseClass} bg-emerald-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-base">Close Check</Text>
+        <CheckCircle size={18} color="white" />
+        <Text className="font-semibold text-white text-base">Close</Text>
       </TouchableOpacity>
+
+      {/* Clear Table: Red (Destructive) */}
       <TouchableOpacity
         onPress={onPressClearTable}
-        className="px-6 py-2 rounded-lg border border-red-500 bg-red-600"
+        className={`${buttonBaseClass} bg-red-900/40 border border-red-500`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-red-100 text-base">
-          Clear Table
-        </Text>
+        <Trash2 size={18} color="#fca5a5" />
+        <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
   );
 
   const renderClosedButtons = () => (
     <>
+      {/* Reopen: Amber (Undo/Correction) */}
       <TouchableOpacity
         onPress={onPressReopenCheck}
-        className="px-6 py-2 rounded-lg bg-blue-500"
+        className={`${buttonBaseClass} bg-amber-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-base">Reopen Check</Text>
+        <RotateCcw size={18} color="white" />
+        <Text className="font-semibold text-white text-base">Reopen</Text>
       </TouchableOpacity>
+
+      {/* Clear Table: Red */}
       <TouchableOpacity
         onPress={onPressClearTable}
-        className="px-6 py-2 rounded-lg border border-red-500 bg-red-600"
+        className={`${buttonBaseClass} bg-red-900/40 border border-red-500`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-red-100 text-base">
-          Clear Table
-        </Text>
+        <Trash2 size={18} color="#fca5a5" />
+        <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
   );
 
   const renderButtons = () => {
     if (!activeOrder) {
-      // If there is no active order, we should probably not show anything or show a disabled state.
-      // For now, returning default which will show Total: $0.00
       return renderDefaultButtons();
     }
-    if (activeOrder.check_status === 'Closed') {
+    if (activeOrder.check_status === "Closed") {
       return renderClosedButtons();
     }
-    if (activeOrder.paid_status === 'Paid') {
+    if (activeOrder.paid_status === "Paid") {
       return renderPaidButtons();
     }
     return renderDefaultButtons();
   };
 
   return (
-    <View className="flex-row justify-between items-center p-3 bg-[#303030] border-t border-gray-700">
-      {/* Always render the More button on the left */}
+    // Container: Removed "justify-between", added "gap-3"
+    <View className="flex-row items-center py-4 px-4 bg-[#303030] border-t border-gray-700 gap-3">
+      {/* More Button: Now has text and uses flex-1 */}
       <TouchableOpacity
         onPress={onPressMore}
-        className="px-6 py-3 rounded-lg border border-gray-600 bg-[#212121]"
+        className={`${buttonBaseClass} bg-[#212121] border border-gray-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-lg">More (⋯)</Text>
+        <MoreHorizontal size={20} color="white" />
+        <Text className="font-semibold text-white text-base">More</Text>
       </TouchableOpacity>
 
-      {/* Render other buttons grouped on the right */}
-      <View className="flex-row items-center gap-2">
-        {renderButtons()}
-      </View>
+      {/* Dynamic Buttons (Discount/Total or Close/Clear) */}
+      {renderButtons()}
     </View>
   );
 };

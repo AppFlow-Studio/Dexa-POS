@@ -430,7 +430,7 @@ const WaitlistPanel = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="h-full flex-col bg-[#212121]">
+      <View className="h-full flex-col bg-[#292929]">
         <View className="p-4 border-b border-gray-700">
           <TouchableOpacity
             onPress={() => setIsAddModalOpen(true)}

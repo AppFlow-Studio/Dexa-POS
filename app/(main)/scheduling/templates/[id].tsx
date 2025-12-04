@@ -1,3 +1,4 @@
+import { DragOverlayTemplate } from "@/components/scheduling/DragOverlayTemplate";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
 import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateEditorHeader from "@/components/scheduling/TemplateEditorHeader";
@@ -193,7 +194,8 @@ const EditTemplateScreen = () => {
   }
 
   return (
-    <>
+    <DropZoneProvider>
+      <DragOverlayTemplate />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -217,9 +219,7 @@ const EditTemplateScreen = () => {
               </View>
 
               <View className="mb-4">
-                <Label className="text-white text-base mb-2">
-                  Description
-                </Label>
+                <Label className="text-white text-base mb-2">Description</Label>
                 <TextInput
                   placeholder="e.g., Full staffing for peak hours on weekends"
                   placeholderTextColor="#9CA3AF"
@@ -288,16 +288,14 @@ const EditTemplateScreen = () => {
             </View>
 
             {/* TemplateGrid */}
-            <DropZoneProvider>
-              <TemplateGrid
-                templateId={template.id}
-                shifts={template.shifts}
-                employees={filteredEmployees}
-                onShiftPress={handleShiftPress}
-                onAddShift={handleAddShift}
-                onShiftDrop={handleShiftDrop}
-              />
-            </DropZoneProvider>
+
+            <TemplateGrid
+              shifts={template.shifts}
+              employees={filteredEmployees}
+              onShiftPress={handleShiftPress}
+              onAddShift={handleAddShift}
+              onShiftDrop={handleShiftDrop}
+            />
           </View>
 
           {/* Footer with Save/Cancel Buttons */}
@@ -336,7 +334,7 @@ const EditTemplateScreen = () => {
           onDelete={handleDeleteShift}
         />
       )}
-    </>
+    </DropZoneProvider>
   );
 };
 

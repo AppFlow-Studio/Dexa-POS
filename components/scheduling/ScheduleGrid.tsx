@@ -41,7 +41,7 @@ import {
 } from "react-native";
 import Animated, { runOnUI, useAnimatedStyle } from "react-native-reanimated";
 import { DraggableShift } from "./DraggableShift";
-import OverlayShiftChip from "./OverlayShiftChip"; // Import OverlayShiftChip
+import OverlayShiftChip from "./OverlayShiftChip";
 
 const ScheduleCell = React.memo(
   ({
@@ -53,7 +53,6 @@ const ScheduleCell = React.memo(
     ancestor,
     overlayShifts,
     conflictingShiftTempIds,
-    isApplyTemplateBarVisible,
   }: {
     children: React.ReactNode;
     employeeId: string;
@@ -107,7 +106,7 @@ const ScheduleCell = React.memo(
       return {
         borderColor: isHovered ? "#22c55e" : "#4b5563", // Green when hovered, otherwise gray
         borderWidth: isHovered ? 2 : 1,
-        zIndex: isDragging ? 100 : 1,
+        zIndex: 1, // Keep cell z-index low
       };
     });
 
@@ -155,7 +154,7 @@ interface ScheduleGridProps {
   overlayTemplateId?: string | null;
   templates?: ScheduleTemplate[];
   templateConflictSummary?: TemplateConflictSummary;
-  isApplyTemplateBarVisible: boolean; // New prop added here
+  isApplyTemplateBarVisible: boolean;
 }
 
 const ScheduleGrid: React.FC<ScheduleGridProps> = ({
@@ -173,7 +172,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   overlayTemplateId,
   templates,
   templateConflictSummary,
-  isApplyTemplateBarVisible, // Destructure new prop here
+  isApplyTemplateBarVisible,
 }) => {
   const [showConflictAlert, setShowConflictAlert] = useState(false);
   const { dropResult } = useDropZoneContext();
@@ -193,7 +192,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   }, [templateConflictSummary]);
 
   const getShiftsForDateAndEmployee = (date: Date, employeeId: string) => {
-    const dateStr = format(date, "yyyy-MM-dd"); // Use format to get local date string
+    const dateStr = format(date, "yyyy-MM-dd");
     const dayShifts = shifts.filter(
       (s) => s.date === dateStr && s.employeeId === employeeId
     );
@@ -214,7 +213,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     });
 
     if (!isCurrentDateInRange) {
-      return []; // Do not show overlay shifts if the date is out of range
+      return [];
     }
 
     return overlayTemplate.shifts.filter(
@@ -236,7 +235,6 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
         return total;
       }
 
-      // Handle overnight shifts
       if (end < start) {
         end = addDays(end, 1);
       }
@@ -252,15 +250,11 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     newEmployeeId: string,
     newDate: string
   ) => {
-    // Extract time part from original ISO strings
     const startTimeStr = format(parseISO(draggedShift.startTime), "HH:mm:ss");
     const endTimeStr = format(parseISO(draggedShift.endTime), "HH:mm:ss");
-
-    // Construct new ISO strings with the new date
     const newStartTime = `${newDate}T${startTimeStr}`;
     const newEndTime = `${newDate}T${endTimeStr}`;
 
-    // Find all shifts for the target employee on the new date, excluding the one being dragged.
     const targetEmployeeShifts = shifts.filter(
       (s) =>
         s.employeeId === newEmployeeId &&
@@ -273,7 +267,6 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       end: parseISO(newEndTime),
     };
 
-    // Check for any overlapping shifts.
     const hasOverlap = targetEmployeeShifts.some((existingShift) =>
       areIntervalsOverlapping(draggedShiftInterval, {
         start: parseISO(existingShift.startTime),
@@ -285,20 +278,21 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
       setShowConflictAlert(true);
       dropResult.value = "failure";
     } else {
-      // When updating, we need to provide the updated start and end times
       updateShift(scheduleId, scheduleType, {
         ...draggedShift,
         employeeId: newEmployeeId,
         date: newDate,
-        startTime: newStartTime, // Pass the new start time
-        endTime: newEndTime, // Pass the new end time
+        startTime: newStartTime,
+        endTime: newEndTime,
       });
       dropResult.value = "success";
     }
   };
 
   return (
-    <View className="flex-1 bg-[#212121]">
+    // Ensure 'relative' so the absolute overlay positions relative to this container if needed,
+    // though normally pageX/Y are screen absolute. If using pageX, this container should be top-level.
+    <View className="flex-1 bg-[#212121] relative">
       <AlertDialog open={showConflictAlert} onOpenChange={setShowConflictAlert}>
         <AlertDialogContent className="bg-[#1C1C1E] border-gray-700">
           <AlertDialogHeader>
@@ -319,12 +313,16 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* The Overlay is placed HERE, as a direct child of the root View, ABOVE the ScrollViews */}
+      {/* <DragOverlay /> */}
+
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
           paddingBottom: isApplyTemplateBarVisible ? 80 : 0,
-        }} // Conditional padding
+        }}
       >
         <View>
           {/* Header */}

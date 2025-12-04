@@ -1,15 +1,16 @@
+import { TemplateShiftChip } from "@/components/scheduling/TemplateShiftChip";
 import { useDropZoneContext } from "@/contexts/DropZoneContext";
 import { TemplateShift } from "@/lib/types";
-import React from "react";
+import React, { useEffect } from "react";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  measure,
   runOnJS,
   useAnimatedReaction,
+  useAnimatedRef,
   useAnimatedStyle,
   useSharedValue,
-  withTiming,
 } from "react-native-reanimated";
-import { TemplateShiftChip } from "./TemplateShiftChip"; // Assuming TemplateShiftChip is the correct component for display
 
 interface DraggableTemplateShiftProps {
   shift: TemplateShift;
@@ -28,118 +29,147 @@ export const DraggableTemplateShift: React.FC<DraggableTemplateShiftProps> = ({
   onShiftClick,
   onShiftDrop,
 }) => {
-  const { dropZoneLayouts, hoveredDropZoneKey, draggingCellKey, dropResult } =
-    useDropZoneContext();
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const isDragging = useSharedValue(false);
+  const {
+    dropZoneLayouts,
+    hoveredDropZoneKey,
+    draggingCellKey,
+    dropResult,
+    setActiveDragItem,
+    dragTranslation,
+  } = useDropZoneContext();
 
-  // Derive initial cell key from the shift's employeeId and dayOfWeek
-  const initialCellKey = `${shift.employeeId}-${shift.dayOfWeek}`;
+  const animatedRef = useAnimatedRef<Animated.View>();
 
-  const panGesture = Gesture.Pan()
-    .onBegin(() => {
-      isDragging.value = true;
-      // Use tempId for template shifts to identify the dragging item uniquely
-      draggingCellKey.value = initialCellKey;
-      dropResult.value = "idle"; // Reset on new drag
-    })
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-      translateY.value = e.translationY;
-    })
-    .onEnd(() => {
-      if (hoveredDropZoneKey.value) {
-        const parts = hoveredDropZoneKey.value.split("-");
-        const newEmployeeId = parts[0];
-        const newDayOfWeek = parseInt(parts[1], 10);
+  // Controls opacity of the original item (0 when dragging, 1 otherwise)
+  const isDraggingLocal = useSharedValue(false);
+  const isDropCommitted = useSharedValue(false);
 
-        // Call the onShiftDrop function provided by the parent (TemplateGrid)
-        runOnJS(onShiftDrop)(shift, newEmployeeId, newDayOfWeek);
-      } else {
-        // Dropped outside a valid zone, so animate back
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
-      }
-    })
-    .onFinalize(() => {
-      isDragging.value = false;
-      draggingCellKey.value = null;
-      hoveredDropZoneKey.value = null;
-    });
+  const itemWidth = useSharedValue(0);
+  const itemHeight = useSharedValue(0);
 
-  // This reaction handles the result of the drop from the JS thread (e.g., if validation fails)
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setActiveDragItem(null);
+    };
+  }, []);
+
+  // Watch for failure to reset
   useAnimatedReaction(
     () => dropResult.value,
     (result) => {
       if (result === "failure") {
-        // Animate back to original position
-        translateX.value = withTiming(0);
-        translateY.value = withTiming(0);
+        isDropCommitted.value = false;
+        isDraggingLocal.value = false;
+        runOnJS(setActiveDragItem)(null);
+        dragTranslation.value = { x: 0, y: 0 };
+        draggingCellKey.value = null;
+        hoveredDropZoneKey.value = null;
       }
     },
     [dropResult]
   );
 
-  // This reaction continuously checks for hovered drop zones while dragging
-  useAnimatedReaction(
-    () => ({
-      isDragging: isDragging.value,
-      tx: translateX.value,
-      ty: translateY.value,
-    }),
-    (current) => {
-      if (current.isDragging) {
-        const layouts = dropZoneLayouts.value;
-        const ownLayout = layouts[initialCellKey]; // Use initialCellKey for own layout
-        if (!ownLayout) return;
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      const measurement = measure(animatedRef);
 
-        // Calculate the current position relative to the ScrollView (assuming top-left of the draggable)
-        const relativeX = ownLayout.x + current.tx;
-        const relativeY = ownLayout.y + current.ty;
+      if (measurement) {
+        isDropCommitted.value = false;
+        itemWidth.value = measurement.width;
+        itemHeight.value = measurement.height;
 
-        let foundZone = false;
-        for (const key in layouts) {
-          const layout = layouts[key];
-          if (
-            relativeX > layout.x &&
-            relativeX < layout.x + layout.width &&
-            relativeY > layout.y &&
-            relativeY < layout.y + layout.height
-          ) {
-            // Only consider it a valid hover if it's a different cell OR the same cell but moved internally
-            // For template shifts, we mostly care about moving to a *different* cell or employee/day
-            // We can refine this logic if needed to prevent self-dropping without change
-            hoveredDropZoneKey.value = key;
-            foundZone = true;
-            break;
-          }
-        }
-        if (!foundZone) {
-          hoveredDropZoneKey.value = null;
+        // 1. Show Overlay
+        runOnJS(setActiveDragItem)({
+          type: "template", // Specify type
+          shift: shift, // Pass the TemplateShift object
+          wage: wage || 0,
+          startX: measurement.pageX,
+          startY: measurement.pageY,
+          width: measurement.width,
+          height: measurement.height,
+        });
+
+        // 2. Hide Local
+        isDraggingLocal.value = true;
+        // Key format: "employeeId-dayOfWeek"
+        draggingCellKey.value = `${shift.employeeId}-${shift.dayOfWeek}`;
+        dropResult.value = "idle";
+        dragTranslation.value = { x: 0, y: 0 };
+      }
+    })
+    .onUpdate((e) => {
+      dragTranslation.value = { x: e.translationX, y: e.translationY };
+
+      const layouts = dropZoneLayouts.value;
+      const ownKey = `${shift.employeeId}-${shift.dayOfWeek}`;
+      const ownLayout = layouts[ownKey];
+      if (!ownLayout) return;
+
+      const CELL_PADDING = 8;
+      const centerX =
+        ownLayout.x + CELL_PADDING + itemWidth.value / 2 + e.translationX;
+      const centerY =
+        ownLayout.y + CELL_PADDING + itemHeight.value / 2 + e.translationY;
+
+      let foundZone = false;
+      for (const key in layouts) {
+        const layout = layouts[key];
+        if (
+          centerX > layout.x &&
+          centerX < layout.x + layout.width &&
+          centerY > layout.y &&
+          centerY < layout.y + layout.height
+        ) {
+          hoveredDropZoneKey.value = key;
+          foundZone = true;
+          break;
         }
       }
-    },
-    [dropZoneLayouts, initialCellKey]
-  );
+      if (!foundZone) {
+        hoveredDropZoneKey.value = null;
+      }
+    })
+    .onEnd(() => {
+      const originalKey = `${shift.employeeId}-${shift.dayOfWeek}`;
+      if (
+        hoveredDropZoneKey.value &&
+        hoveredDropZoneKey.value !== originalKey
+      ) {
+        isDropCommitted.value = true;
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-    ],
-    zIndex: isDragging.value ? 100 : 1, // Bring to front when dragging
+        // Key format: "employeeId-dayOfWeek"
+        const parts = hoveredDropZoneKey.value.split("-");
+        const newEmployeeId = parts[0];
+        const newDayOfWeek = parseInt(parts[1], 10);
+
+        runOnJS(onShiftDrop)(shift, newEmployeeId, newDayOfWeek);
+      }
+    })
+    .onFinalize(() => {
+      if (!isDropCommitted.value) {
+        isDraggingLocal.value = false;
+        runOnJS(setActiveDragItem)(null);
+        draggingCellKey.value = null;
+        hoveredDropZoneKey.value = null;
+        dragTranslation.value = { x: 0, y: 0 };
+      } else {
+        draggingCellKey.value = null;
+        hoveredDropZoneKey.value = null;
+      }
+    });
+
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: isDraggingLocal.value ? 0 : 1,
   }));
 
   return (
     <GestureDetector gesture={panGesture}>
-      <Animated.View style={animatedStyle}>
+      <Animated.View ref={animatedRef} style={containerStyle}>
         <TemplateShiftChip
           shift={shift}
           wage={wage}
           onClick={() => onShiftClick(shift)}
-          // Template shifts don't usually have requiredCount, isOpen, hasConflict etc.
-          // Adjust props for TemplateShiftChip as necessary
         />
       </Animated.View>
     </GestureDetector>

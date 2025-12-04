@@ -5,8 +5,7 @@ import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitEvenlyView = () => {
-  const { setView, splitEvenly } =
-    usePaymentStore();
+  const { setView, splitEvenly, startSplitPaymentFlow } = usePaymentStore();
   const { activeOrderOutstandingTotal } = useOrderStore();
 
   const [numberOfPeople, setNumberOfPeople] = useState(2);
@@ -22,8 +21,11 @@ const SplitEvenlyView = () => {
   };
 
   const handleConfirmSplit = () => {
+    // 1. Logic: Create the splits in the store
     splitEvenly(numberOfPeople, amountPerPerson);
-    setView("success");
+
+    // 2. Flow: Start paying for Guest 1 immediately
+    startSplitPaymentFlow("split-evenly");
   };
 
   return (

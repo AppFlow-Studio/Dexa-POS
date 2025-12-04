@@ -5,30 +5,36 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Lock,
   Users,
   Utensils,
 } from "lucide-react-native";
-import React, { useState } from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native"; // Removed StyleSheet
+import React, { useEffect, useState } from "react";
+import { Image, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import PinDisplay from "../auth/PinDisplay";
+import PinNumpad from "../auth/PinNumpad";
 import HistoryPanel from "../panels/HistoryPanel";
 import SeatedPanel from "../panels/SeatedPanel";
 import TablesPanel from "../panels/TablesPanel";
 import WaitlistPanel from "../panels/WaitlistPanel";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 type TabMode = "tables" | "waitlist" | "seated" | "history";
 
 interface SidebarProps {
-  // Define any props needed from the parent (e.g., activeLayout, layouts, etc.)
   activeLayoutId: string | null;
   setActiveLayout: (id: string) => void;
   layouts: { id: string; name: string }[];
 }
+
+const EXPANDED_WIDTH = 280;
+const COLLAPSED_WIDTH = 72;
 
 const Sidebar: React.FC<SidebarProps> = ({
   activeLayoutId,
@@ -38,22 +44,38 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<TabMode>("tables");
 
-  const sidebarWidth = useSharedValue(320); // Expanded width
-  const animatedWidth = useAnimatedStyle(() => {
-    return {
-      width: withTiming(sidebarWidth.value, {
-        duration: 250,
-        easing: Easing.inOut(Easing.ease),
-      }),
-      height: "100%", // Inline style for sidebarContainer
-      position: "relative", // Inline style for sidebarContainer
-      zIndex: 20, // Inline style for sidebarContainer
+  const [pinDialogOpen, setPinDialogOpen] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [targetTab, setTargetTab] = useState<TabMode | null>(null);
+
+  // Shared values for animations
+  const widthSV = useSharedValue(EXPANDED_WIDTH);
+  const opacitySV = useSharedValue(1);
+
+  useEffect(() => {
+    const config = {
+      duration: 200,
+      easing: Easing.out(Easing.quad),
     };
-  });
+
+    widthSV.value = withTiming(
+      isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH,
+      config
+    );
+    opacitySV.value = withTiming(isExpanded ? 1 : 0, { duration: 150 });
+  }, [isExpanded]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    width: widthSV.value,
+  }));
+
+  const textStyle = useAnimatedStyle(() => ({
+    opacity: opacitySV.value,
+    display: opacitySV.value === 0 ? "none" : "flex",
+  }));
 
   const toggleSidebar = () => {
-    setIsExpanded(!isExpanded);
-    sidebarWidth.value = isExpanded ? 64 : 320; // Collapsed width
+    setIsExpanded((prev) => !prev);
   };
 
   const renderPanel = () => {
@@ -72,79 +94,181 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const navItems = [
-    { id: "tables", icon: Utensils, label: "Tables" },
-    { id: "waitlist", icon: Clock, label: "Waitlist" },
-    { id: "seated", icon: Users, label: "Seated" },
-    { id: "history", icon: BarChart3, label: "History" },
+    { id: "tables", icon: Utensils, label: "Tables", isLocked: false },
+    { id: "waitlist", icon: Clock, label: "Waitlist", isLocked: false },
+    { id: "seated", icon: Users, label: "Seated", isLocked: false },
+    { id: "history", icon: BarChart3, label: "History", isLocked: true },
   ] as const;
 
+  const handleLockedAccess = (tab: TabMode) => {
+    setTargetTab(tab);
+    setPinDialogOpen(true);
+    setCurrentPin("");
+  };
+
+  const handlePinSubmit = () => {
+    // TODO: Implement actual PIN validation logic
+    // For now, we'll accept any 4-digit PIN
+    if (currentPin.length === 4) {
+      setPinDialogOpen(false);
+      if (targetTab) {
+        setActiveTab(targetTab);
+      }
+      setCurrentPin("");
+      setTargetTab(null);
+    }
+  };
+
   return (
-    <Animated.View
-      style={animatedWidth} // Use animatedWidth directly now
-      className="bg-[#212121] border-r border-gray-700 shadow-xl"
-    >
-      {/* Toggle Button */}
-      <TouchableOpacity
-        onPress={toggleSidebar}
-        className="absolute -right-3 top-6 w-6 h-6 bg-white border border-gray-300 rounded-full flex items-center justify-center shadow-sm z-30"
+    <>
+      <Animated.View
+        style={[containerStyle, { height: "100%", zIndex: 20 }]}
+        className="bg-[#292929] border-r border-gray-800 shadow-xl overflow-visible"
       >
-        {isExpanded ? (
-          <ChevronLeft size={16} color="#4B5563" />
-        ) : (
-          <ChevronRight size={16} color="#4B5563" />
-        )}
-      </TouchableOpacity>
+        {/* Floating Toggle Button */}
+        <TouchableOpacity
+          onPress={toggleSidebar}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          activeOpacity={0.7}
+          className="absolute -right-5 top-8 w-9 h-9 bg-[#303030] border border-gray-600 rounded-full flex items-center justify-center shadow-md z-50"
+        >
+          {isExpanded ? (
+            <ChevronLeft size={20} color="#FFFFFF" />
+          ) : (
+            <ChevronRight size={20} color="#FFFFFF" />
+          )}
+        </TouchableOpacity>
 
-      {/* Logo Area */}
-      <View className="h-16 flex items-center justify-center border-b border-gray-700 shrink-0 overflow-hidden">
-        {isExpanded ? (
-          <Text className="text-xl font-bold text-white">DexaPOS</Text>
-        ) : (
-          <Image
-            source={images.dexalogo}
-            style={{ width: 40, height: 40 }} // Inline style for logoCollapsed
-            resizeMode="contain"
-          />
-        )}
-      </View>
-
-      {/* Navigation Tabs */}
-      <View className="flex flex-col gap-1 p-2 shrink-0 border-b border-gray-700">
-        {navItems.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => setActiveTab(item.id)}
-            className={cn(
-              "flex flex-row items-center p-2 rounded-lg transition-all duration-200",
-              activeTab === item.id
-                ? "bg-blue-900/40 text-blue-400"
-                : "text-gray-400 hover:bg-gray-800"
-            )}
-          >
-            <item.icon
-              size={20}
-              color={activeTab === item.id ? "#60A5FA" : "#9CA3AF"}
+        {/* Header */}
+        <TouchableOpacity
+          onPress={toggleSidebar}
+          activeOpacity={0.8}
+          className="h-20 flex-row items-center border-b border-gray-600 shrink-0 px-4"
+        >
+          <View className="w-10 h-10 items-center justify-center">
+            <Image
+              source={images.dexalogo}
+              style={{ width: 32, height: 32 }}
+              resizeMode="contain"
             />
-            {isExpanded && (
-              <Text className="ml-3 text-sm font-medium text-white">
-                {item.label}
-              </Text>
-            )}
-            {activeTab === item.id && (
-              <View className="absolute left-0 w-1 h-6 bg-blue-500 rounded-r-full" />
-            )}
-          </TouchableOpacity>
-        ))}
-      </View>
+          </View>
 
-      {/* Panel Content */}
-      <View
-        style={{ flex: 1 }} // Inline style for panelContent
-        className={isExpanded ? "" : "opacity-0"}
-      >
-        {renderPanel()}
-      </View>
-    </Animated.View>
+          <Animated.View style={[textStyle, { marginLeft: 12, flex: 1 }]}>
+            <Text className="text-lg font-bold text-white" numberOfLines={1}>
+              DexaPOS
+            </Text>
+            <Text className="text-xs text-gray-400" numberOfLines={1}>
+              Main Floor
+            </Text>
+          </Animated.View>
+        </TouchableOpacity>
+
+        {/* Navigation Tabs */}
+        <View className="flex flex-col gap-2 p-3 shrink-0 border-b border-gray-800">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => {
+                  if (item.isLocked) {
+                    handleLockedAccess(item.id);
+                  } else {
+                    setActiveTab(item.id);
+                  }
+                  if (!isExpanded) setIsExpanded(true);
+                }}
+                className={cn(
+                  "flex-row items-center rounded-xl h-12 px-3 transition-all duration-100",
+                  isActive ? "bg-blue-600" : "hover:bg-[#252525]"
+                )}
+              >
+                <View className="w-6 items-center justify-center">
+                  <item.icon
+                    size={22}
+                    color={isActive ? "#FFFFFF" : "#9CA3AF"}
+                  />
+                </View>
+
+                <Animated.View style={[textStyle, { marginLeft: 12, flex: 1 }]}>
+                  <Text
+                    className={cn(
+                      "text-base font-medium",
+                      isActive ? "text-white" : "text-gray-300"
+                    )}
+                    numberOfLines={1}
+                  >
+                    {item.label}
+                  </Text>
+                </Animated.View>
+
+                {/* Lock Icon - Only for locked items when expanded */}
+                {item.isLocked && isExpanded && (
+                  <View className="ml-2">
+                    <Lock size={18} color="#9CA3AF" />
+                  </View>
+                )}
+
+                {!isExpanded && isActive && (
+                  <View className="absolute right-2 top-2 w-2 h-2 bg-blue-400 rounded-full" />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Panel Content */}
+        <Animated.View
+          style={{ flex: 1, opacity: opacitySV }}
+          className="bg-[#181818]"
+        >
+          {isExpanded && renderPanel()}
+        </Animated.View>
+      </Animated.View>
+      <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
+        <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">
+          <DialogHeader>
+            <DialogTitle className="text-center text-3xl font-semibold text-white">
+              Manager Access Required
+            </DialogTitle>
+          </DialogHeader>
+          <View className="py-4">
+            <Text className="text-center text-2xl text-gray-300 mb-6">
+              Enter your manager PIN to access this feature
+            </Text>
+            <PinDisplay pinLength={currentPin.length} maxLength={4} />
+            <PinNumpad
+              onKeyPress={(input) => {
+                if (typeof input === "number") {
+                  if (currentPin.length < 4) {
+                    const newPin = currentPin + input.toString();
+                    setCurrentPin(newPin);
+                    if (newPin.length === 4) {
+                      setTimeout(() => {
+                        handlePinSubmit();
+                      }, 100);
+                    }
+                  }
+                } else if (input === "clear") {
+                  setCurrentPin("");
+                } else if (input === "backspace") {
+                  setCurrentPin(currentPin.slice(0, -1));
+                }
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={handlePinSubmit}
+              className="p-4 bg-blue-600 rounded-lg w-full self-center mt-6"
+            >
+              <Text className="text-center text-2xl font-bold text-white">
+                Enter
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

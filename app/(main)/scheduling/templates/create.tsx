@@ -1,3 +1,4 @@
+import { DragOverlayTemplate } from "@/components/scheduling/DragOverlayTemplate";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
 import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateEditorHeader from "@/components/scheduling/TemplateEditorHeader";
@@ -152,7 +153,8 @@ const CreateTemplateScreen = () => {
   };
 
   return (
-    <>
+    <DropZoneProvider>
+      <DragOverlayTemplate />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -243,16 +245,14 @@ const CreateTemplateScreen = () => {
             </View>
 
             {/* TemplateGrid */}
-            <DropZoneProvider>
-              <TemplateGrid
-                templateId={template.id} // Pass the template ID
-                shifts={template.shifts}
-                employees={filteredEmployees} // Pass filtered employees
-                onShiftPress={handleShiftPress}
-                onAddShift={handleAddShift}
-                onShiftDrop={handleShiftDrop}
-              />
-            </DropZoneProvider>
+
+            <TemplateGrid
+              shifts={template.shifts}
+              employees={filteredEmployees} // Pass filtered employees
+              onShiftPress={handleShiftPress}
+              onAddShift={handleAddShift}
+              onShiftDrop={handleShiftDrop}
+            />
           </View>
 
           {/* Footer with Save/Cancel Buttons */}
@@ -291,7 +291,7 @@ const CreateTemplateScreen = () => {
           onDelete={handleDeleteShift}
         />
       )}
-    </>
+    </DropZoneProvider>
   );
 };
 
