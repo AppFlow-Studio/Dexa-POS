@@ -41,64 +41,7 @@ import {
 } from "react-native";
 import Animated, { runOnUI, useAnimatedStyle } from "react-native-reanimated";
 import { DraggableShift } from "./DraggableShift";
-import { OpenShiftChip } from "./OpenShiftChip";
 import OverlayShiftChip from "./OverlayShiftChip";
-import { ShiftChip } from "./ShiftChip";
-
-// --- DRAG OVERLAY COMPONENT ---
-const DragOverlay = () => {
-  const { activeDragItem, dragTranslation } = useDropZoneContext();
-
-  const style = useAnimatedStyle(() => {
-    if (!activeDragItem) {
-      return { display: "none" };
-    }
-
-    // The overlay is positioned absolutely on the screen (via the root View of ScheduleGrid)
-    // activeDragItem.startX/Y are absolute screen coordinates.
-    // Depending on the nesting of ScheduleGrid, we might need to adjust.
-    // Usually 'top: 0, left: 0' in a relative container aligns with the container.
-
-    // If the overlay appears offset, we can assume startX/Y are page coordinates,
-    // and we are rendering inside a container.
-    // However, since we can't easily measure the container without refs again,
-    // let's try using the coordinates directly.
-
-    return {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: activeDragItem.width,
-      height: activeDragItem.height,
-      zIndex: 9999,
-      elevation: 9999,
-      // We apply the initial position + the drag translation
-      transform: [
-        { translateX: activeDragItem.startX + dragTranslation.value.x },
-        { translateY: activeDragItem.startY + dragTranslation.value.y },
-      ],
-    };
-  });
-
-  if (!activeDragItem) return null;
-
-  return (
-    <Animated.View style={style} pointerEvents="none">
-      {activeDragItem.shift.status === "open" ? (
-        <OpenShiftChip shift={activeDragItem.shift} onClick={() => {}} />
-      ) : (
-        <ShiftChip
-          role={activeDragItem.shift.role}
-          start={activeDragItem.shift.startTime}
-          end={activeDragItem.shift.endTime}
-          requiredCount={activeDragItem.shift.requiredCount}
-          wage={activeDragItem.wage}
-          onClick={() => {}}
-        />
-      )}
-    </Animated.View>
-  );
-};
 
 const ScheduleCell = React.memo(
   ({

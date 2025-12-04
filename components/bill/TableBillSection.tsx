@@ -15,6 +15,7 @@ const TableBillSection = ({
   currentCourse, // Will be passed to CourseAccordion
   onSelectCourse, // Will be passed to CourseAccordion
   onPressStartNewCourse, // NEW: Will be passed to CourseAccordion
+  onDoubleTapCourse, // New prop
   activeOrder: passedActiveOrder,
   onPressMore,
   onPressTotal,
@@ -25,6 +26,7 @@ const TableBillSection = ({
   pricingSheetRef,
   onClosePricingSheet,
   onPressProceedToPayment,
+  setCurrentCourse, // New prop
 }: {
   showOrderDetails?: boolean;
   itemCourseMap?: Record<string, number>;
@@ -32,6 +34,7 @@ const TableBillSection = ({
   currentCourse?: number;
   onSelectCourse?: (course: number | null) => void;
   onPressStartNewCourse: () => void; // NEW PROP
+  onDoubleTapCourse: (courseId: number) => void; // New prop
   activeOrder?: OrderProfile;
   onPressMore: () => void;
   onPressTotal: () => void;
@@ -42,6 +45,7 @@ const TableBillSection = ({
   pricingSheetRef: React.RefObject<BottomSheetMethods>;
   onClosePricingSheet: () => void;
   onPressProceedToPayment: () => void;
+  setCurrentCourse: (course: number) => void; // New prop
 }) => {
   const { activeOrderId, orders } = useOrderStore();
   // Use passed activeOrder if available, otherwise find from store
@@ -60,7 +64,8 @@ const TableBillSection = ({
           sentCourses={sentCourses}
           currentCourse={currentCourse}
           onSelectCourse={onSelectCourse}
-          onPressStartNewCourse={onPressStartNewCourse} // NEW PROP PASSED
+          onPressStartNewCourse={onPressStartNewCourse}
+          onDoubleTapCourse={onDoubleTapCourse}
         />
 
         <BottomActionBar

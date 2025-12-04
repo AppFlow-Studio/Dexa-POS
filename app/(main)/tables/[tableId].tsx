@@ -34,6 +34,7 @@ const UpdateTableScreen = () => {
   const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
     number | null
   >(null);
+  const [courseToResend, setCourseToResend] = useState<number | null>(null);
 
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
@@ -196,7 +197,16 @@ const UpdateTableScreen = () => {
   };
 
   // --- Coursing ---
-  const coursing = useCoursingStore();
+  // Get the full store object
+  const coursingStore = useCoursingStore();
+  // Derive current course safely
+  const currentCourse =
+    coursingStore.byOrderId[activeOrderId || ""]?.currentCourse ?? 1;
+  // Extract setCurrentCourse for direct usage as a variable
+  const { setCurrentCourse } = coursingStore;
+  // Use the full store object as 'coursing' so methods like coursing.getForOrder work
+  const coursing = coursingStore;
+  // --- FIXED SECTION END ---
   const prevItemIdsRef = useRef<string[]>([]);
 
   // Initialize coursing for this order and auto-assign new items
@@ -244,11 +254,11 @@ const UpdateTableScreen = () => {
     });
   };
 
-  const handleSendCourseToKitchen = (course: number) => {
+  const handleSendCourseToKitchen = (course: number, forceResend = false) => {
     if (!activeOrder) return;
 
-    // Use helper function to check if course was already sent
-    if (coursing.isCourseSent(activeOrder.id, course)) {
+    // Modified guard logic: Check if sent, unless forcing resend
+    if (!forceResend && coursing.isCourseSent(activeOrder.id, course)) {
       show({
         title: "Already Sent",
         message: `Course ${course} has already been sent to the kitchen.`,
@@ -274,30 +284,49 @@ const UpdateTableScreen = () => {
       updateActiveOrderDetails({ opened_at: new Date().toISOString() });
     }
 
-    // Update items in the course to "sent" status
+    // Reset status to Preparing (triggers kitchen ticket logic)
     itemsInCourse.forEach((i) => {
-      // Update both kitchen_status and item_status for course items
       updateItemStatusInActiveOrder(i.id, "Preparing");
     });
 
-    // Mark the course as sent
     coursing.markCourseSent(activeOrder.id, course);
 
-    // Update order status if it was building
     if (activeOrder.order_status === "Building") {
       updateOrderStatus(activeOrder.id, "Preparing");
     }
 
-    // Update table status like Take Order
     if (tableId && table?.status !== "In Use") {
       handleAssignToTable();
     }
 
     show({
-      title: "Course Sent",
-      message: `Course ${course} has been sent for preparation.`,
+      title: forceResend ? "Course Resent" : "Course Sent",
+      message: `Course ${course} has been ${forceResend ? "resent" : "sent"} for preparation.`,
       type: "success",
     });
+  };
+
+  const handleDoubleTapCourse = (course: number) => {
+    if (!activeOrder) return;
+
+    // 1. Check if course is already sent
+    const isSent = coursing.isCourseSent(activeOrder.id, course);
+
+    if (isSent) {
+      // Secondary Action: Re-Send Safety -> Open Modal
+      setCourseToResend(course);
+    } else {
+      // Primary Action: Draft -> Send Immediately (No Confirmation)
+      handleSendCourseToKitchen(course, false);
+    }
+  };
+
+  // --- Modal Confirmation Handler ---
+  const handleConfirmResend = () => {
+    if (courseToResend !== null) {
+      handleSendCourseToKitchen(courseToResend, true);
+      setCourseToResend(null);
+    }
   };
 
   // Close/ Void check behavior
@@ -464,18 +493,19 @@ const UpdateTableScreen = () => {
             coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap
           }
           sentCourses={coursing.getForOrder(activeOrder?.id || "")?.sentCourses}
-          currentCourse={
-            coursing.getForOrder(activeOrder?.id || "")?.currentCourse
-          }
+          currentCourse={currentCourse}
           onSelectCourse={(courseId: number | null) => {
-            // This will show/hide the ItemProgressTracker
             setSelectedCourseIdForTracker(courseId);
-
-            // This will set the active course for adding new items, if a course is selected
             if (activeOrder && courseId !== null) {
               coursing.setCurrentCourse(activeOrder.id, courseId);
             }
           }}
+          setCurrentCourse={(course) => {
+            if (activeOrder?.id) {
+              setCurrentCourse(activeOrder.id, course);
+            }
+          }}
+          onDoubleTapCourse={handleDoubleTapCourse}
           activeOrder={activeOrder}
           onPressMore={() => moreOptionsSheetRef.current?.expand()}
           onPressTotal={() => pricingSheetRef.current?.expand()}
@@ -488,7 +518,7 @@ const UpdateTableScreen = () => {
           }
           onClosePricingSheet={() => pricingSheetRef.current?.close()}
           onPressProceedToPayment={handleProceedToPayment}
-          onPressStartNewCourse={finalizeCurrentCourse} // ADDED THIS PROP
+          onPressStartNewCourse={finalizeCurrentCourse}
         />
         <View className="flex-1 p-4 px-3 pt-0">
           {(() => {
@@ -535,7 +565,9 @@ const UpdateTableScreen = () => {
                 ] ?? 1) === selectedCourseIdForTracker
             ) || []
           }
-          onSendCourseToKitchen={handleSendCourseToKitchen}
+          onSendCourseToKitchen={(course) =>
+            handleSendCourseToKitchen(course, false)
+          }
           onMarkAllReady={handleMarkAllReadyForCourse}
           isCourseSent={coursing.isCourseSent(
             activeOrder?.id || "",
@@ -631,6 +663,36 @@ const UpdateTableScreen = () => {
               className="flex-1 py-2 bg-blue-500 rounded-lg items-center"
             >
               <Text className="font-semibold text-white text-base">OK</Text>
+            </TouchableOpacity>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={courseToResend !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setCourseToResend(null);
+        }}
+      >
+        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-[#303030]">
+          <Text className="text-lg font-bold text-white mb-2">
+            Resend Course {courseToResend}?
+          </Text>
+          <Text className="text-sm text-gray-400 mb-4">
+            Are you sure you want to send Course {courseToResend} to the kitchen
+            again?
+          </Text>
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => setCourseToResend(null)}
+              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-[#212121]"
+            >
+              <Text className="font-semibold text-white text-base">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleConfirmResend}
+              className="flex-1 py-2 bg-blue-500 rounded-lg items-center"
+            >
+              <Text className="font-semibold text-white text-base">Resend</Text>
             </TouchableOpacity>
           </View>
         </AlertDialogContent>

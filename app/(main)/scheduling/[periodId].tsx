@@ -30,23 +30,19 @@ import {
   View,
 } from "react-native";
 
+import DragOverlay from "@/components/scheduling/DragOverlay";
 import FiltersPanel from "@/components/scheduling/FiltersPanel";
 import LaborMeter from "@/components/scheduling/LaborMeter";
-import { OpenShiftChip } from "@/components/scheduling/OpenShiftChip";
 import OpenShiftsDrawer from "@/components/scheduling/OpenShiftsDrawer";
 import { PublishModal } from "@/components/scheduling/PublishModal";
 import ScheduleGrid from "@/components/scheduling/ScheduleGrid";
 import { ShiftActionModal } from "@/components/scheduling/ShiftActionModal";
-import { ShiftChip } from "@/components/scheduling/ShiftChip";
 import { ShiftEditorModal } from "@/components/scheduling/ShiftEditorModal";
 import TemplateDrawer from "@/components/scheduling/TemplateDrawer";
 import WeekSelector from "@/components/scheduling/WeekSelector";
 import { Button } from "@/components/ui/button";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
-import {
-  DropZoneProvider,
-  useDropZoneContext,
-} from "@/contexts/DropZoneContext";
+import { DropZoneProvider } from "@/contexts/DropZoneContext";
 import { detectTemplateConflicts } from "@/lib/rules"; // Import detectTemplateConflicts
 import {
   ApplyMode,
@@ -61,54 +57,6 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import { useScheduleTemplateStore } from "@/stores/useScheduleTemplateStore"; // Import template store
 import { addDays, isAfter, isBefore, startOfDay, subDays } from "date-fns";
-import Animated, { useAnimatedStyle } from "react-native-reanimated";
-
-const DragOverlay = () => {
-  const { activeDragItem, dragTranslation } = useDropZoneContext();
-
-  const style = useAnimatedStyle(() => {
-    if (!activeDragItem) {
-      return { opacity: 0 };
-    }
-
-    return {
-      // REMOVED position: absolute from here (moved to className)
-      width: activeDragItem.width,
-      height: activeDragItem.height,
-      opacity: 1,
-
-      transform: [
-        { translateX: activeDragItem.startX + dragTranslation.value.x },
-        { translateY: activeDragItem.startY + dragTranslation.value.y },
-      ],
-    };
-  });
-
-  if (!activeDragItem) return null;
-
-  return (
-    // FIX 1: Added 'absolute top-0 left-0 z-50' here.
-    // This forces the view to be absolute IMMEDIATELY, preventing the layout shift.
-    <Animated.View
-      style={style}
-      pointerEvents="none"
-      className="absolute top-0 left-0 z-50"
-    >
-      {activeDragItem.shift.status === "open" ? (
-        <OpenShiftChip shift={activeDragItem.shift} onClick={() => {}} />
-      ) : (
-        <ShiftChip
-          role={activeDragItem.shift.role}
-          start={activeDragItem.shift.startTime}
-          end={activeDragItem.shift.endTime}
-          requiredCount={activeDragItem.shift.requiredCount}
-          wage={activeDragItem.wage}
-          onClick={() => {}}
-        />
-      )}
-    </Animated.View>
-  );
-};
 
 const ScheduleDetail = ({
   currentSchedule,

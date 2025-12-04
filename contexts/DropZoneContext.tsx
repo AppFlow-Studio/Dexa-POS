@@ -1,4 +1,4 @@
-import { Shift } from "@/lib/types";
+import { Shift, TemplateShift } from "@/lib/types";
 import React, {
   createContext,
   FC,
@@ -19,7 +19,8 @@ type DropResult = "idle" | "success" | "failure";
 
 // Data stored in React State (Safe for complex objects)
 export interface DragItemState {
-  shift: Shift;
+  type: "shift" | "template"; // Add this discriminator
+  shift: Shift | TemplateShift;
   wage: number;
   startX: number;
   startY: number;
