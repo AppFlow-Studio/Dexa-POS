@@ -1,4 +1,12 @@
 import { OrderProfile } from "@/lib/types";
+import {
+  CheckCircle,
+  CreditCard,
+  MoreHorizontal,
+  Percent,
+  RotateCcw,
+  Trash2,
+} from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -9,6 +17,7 @@ interface BottomActionBarProps {
   onPressReopenCheck: () => void;
   onPressCloseCheck: () => void;
   onPressClearTable: () => void;
+  onPressDiscount: () => void; // New Prop
   totalDisplayAmount: number;
 }
 
@@ -19,19 +28,35 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressReopenCheck,
   onPressCloseCheck,
   onPressClearTable,
+  onPressDiscount,
   totalDisplayAmount,
 }) => {
+  // Shared styling for consistent height and alignment
+  const buttonBaseClass =
+    "flex-row items-center justify-center h-12 px-4 rounded-lg gap-2";
+
   const renderDefaultButtons = () => (
     <>
+      {/* Discount Button (New) */}
+      <TouchableOpacity
+        onPress={onPressDiscount}
+        className={`${buttonBaseClass} bg-[#212121] border border-gray-600`}
+        activeOpacity={0.7}
+      >
+        <Percent size={20} color="white" />
+        <Text className="font-semibold text-white text-base">Discount</Text>
+      </TouchableOpacity>
+
+      {/* Total Button */}
       <TouchableOpacity
         onPress={onPressTotal}
-        // Reduced padding and text size
-        className="px-4 py-2 rounded-md bg-blue-500 flex-row items-center gap-2"
+        className={`${buttonBaseClass} bg-blue-600`}
+        activeOpacity={0.7}
       >
         <Text className="font-semibold text-white text-base">
           Total: ${totalDisplayAmount.toFixed(2)}
         </Text>
-        <Text className="text-white text-base">💳</Text>
+        <CreditCard size={20} color="white" />
       </TouchableOpacity>
     </>
   );
@@ -40,17 +65,20 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     <>
       <TouchableOpacity
         onPress={onPressCloseCheck}
-        // Reduced padding and text size
-        className="px-4 py-2 rounded-md bg-blue-500"
+        className={`${buttonBaseClass} bg-blue-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-sm">Close Check</Text>
+        <CheckCircle size={20} color="white" />
+        <Text className="font-semibold text-white text-base">Close Check</Text>
       </TouchableOpacity>
+
       <TouchableOpacity
         onPress={onPressClearTable}
-        // Reduced padding and text size
-        className="px-4 py-2 rounded-md border border-red-500 bg-red-600"
+        className={`${buttonBaseClass} bg-red-600/20 border border-red-500`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-red-100 text-sm">Clear Table</Text>
+        <Trash2 size={20} color="#fca5a5" />
+        <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
   );
@@ -59,17 +87,20 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     <>
       <TouchableOpacity
         onPress={onPressReopenCheck}
-        // Reduced padding and text size
-        className="px-4 py-2 rounded-md bg-blue-500"
+        className={`${buttonBaseClass} bg-blue-600`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-sm">Reopen Check</Text>
+        <RotateCcw size={20} color="white" />
+        <Text className="font-semibold text-white text-base">Reopen</Text>
       </TouchableOpacity>
+
       <TouchableOpacity
         onPress={onPressClearTable}
-        // Reduced padding and text size
-        className="px-4 py-2 rounded-md border border-red-500 bg-red-600"
+        className={`${buttonBaseClass} bg-red-600/20 border border-red-500`}
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-red-100 text-sm">Clear Table</Text>
+        <Trash2 size={20} color="#fca5a5" />
+        <Text className="font-semibold text-red-100 text-base">Clear</Text>
       </TouchableOpacity>
     </>
   );
@@ -88,18 +119,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   };
 
   return (
-    // Reduced container padding from p-3 to p-2
-    <View className="flex-row justify-between items-center p-2 bg-[#303030] border-t border-gray-700">
-      {/* More button made smaller */}
+    // Updated Container: increased vertical padding (py-4) for centering and breathing room
+    <View className="flex-row justify-between items-center py-4 px-4 bg-[#303030] border-t border-gray-700">
+      {/* More Button: Left Side */}
       <TouchableOpacity
         onPress={onPressMore}
-        className="px-4 py-2 rounded-md border border-gray-600 bg-[#212121]"
+        className={`${buttonBaseClass} bg-[#212121] border border-gray-600 w-12 px-0`} // Fixed width for square-ish icon button logic, or remove w-12 for text
+        activeOpacity={0.7}
       >
-        <Text className="font-semibold text-white text-sm">More (⋯)</Text>
+        <MoreHorizontal size={24} color="white" />
       </TouchableOpacity>
 
-      {/* Render other buttons grouped on the right */}
-      <View className="flex-row items-center gap-2">{renderButtons()}</View>
+      {/* Action Group: Right Side (Discount + Total) */}
+      <View className="flex-row items-center gap-3">{renderButtons()}</View>
     </View>
   );
 };

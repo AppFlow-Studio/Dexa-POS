@@ -117,7 +117,7 @@ const TablesScreen = () => {
         <View className="flex-1 p-4">
           <View className="flex-row justify-between items-center mb-3">
             {/* Layout Tabs */}
-            <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl self-start">
+            <View className="flex-row items-center bg-[#303030] border border-gray-600 p-1 rounded-xl self-start ml-2">
               {layouts.map((layout) => (
                 <TouchableOpacity
                   key={layout.id}

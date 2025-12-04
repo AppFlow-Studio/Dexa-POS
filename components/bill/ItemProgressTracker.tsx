@@ -3,7 +3,6 @@ import {
   CheckCheck,
   CheckCircle2,
   Clock,
-  Send,
   UtensilsCrossed,
 } from "lucide-react-native";
 import React from "react";
@@ -12,7 +11,6 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 interface ItemProgressTrackerProps {
   selectedCourse: number;
   itemsInSelectedCourse: CartItem[];
-  onSendCourseToKitchen: (course: number) => void;
   onMarkAllReady: (itemIds: string[]) => void;
   isCourseSent: boolean;
 }
@@ -20,7 +18,6 @@ interface ItemProgressTrackerProps {
 const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   selectedCourse,
   itemsInSelectedCourse,
-  onSendCourseToKitchen,
   onMarkAllReady,
   isCourseSent,
 }) => {
@@ -119,16 +116,7 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
 
       {/* SECTION 3: Action Buttons (Fixed Right) */}
       <View className="flex-row gap-2">
-        {/* Send Button */}
-        {!isCourseSent && (
-          <TouchableOpacity
-            onPress={() => onSendCourseToKitchen(selectedCourse)}
-            className="flex-row items-center bg-blue-600 px-4 py-2.5 rounded-lg active:opacity-80"
-          >
-            <Send size={16} color="white" strokeWidth={2.5} />
-            <Text className="ml-2 font-bold text-white text-sm">Send</Text>
-          </TouchableOpacity>
-        )}
+        {/* Send Button REMOVED */}
 
         {/* Ready Button */}
         {!allItemsReady && anyItemsPreparing && (
@@ -142,7 +130,7 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
           </TouchableOpacity>
         )}
 
-        {/* Empty State Placeholder (Keeps alignment if buttons are hidden) */}
+        {/* Empty State / Completed Placeholder */}
         {isCourseSent && allItemsReady && (
           <View className="px-2 py-2 rounded-lg border border-gray-700 bg-gray-800">
             <Text className="text-gray-400 text-xs font-medium">Completed</Text>

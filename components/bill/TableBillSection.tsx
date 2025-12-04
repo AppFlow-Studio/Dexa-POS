@@ -1,10 +1,11 @@
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import React from "react";
+import React, { useRef } from "react";
 import { View } from "react-native";
 import BottomActionBar from "./BottomActionBar";
 import CourseAccordion from "./CourseAccordion"; // Added import
+import DiscountBottomSheet from "./DiscountBottomSheet";
 import OrderDetails from "./OrderDetails";
 import PricingBreakdownSheet from "./PricingBreakdownSheet";
 
@@ -48,6 +49,8 @@ const TableBillSection = ({
   setCurrentCourse: (course: number) => void; // New prop
 }) => {
   const { activeOrderId, orders } = useOrderStore();
+
+  const discountSheetRef = useRef<BottomSheetMethods>(null);
   // Use passed activeOrder if available, otherwise find from store
   const activeOrder =
     passedActiveOrder || orders.find((o) => o.id === activeOrderId);
@@ -76,12 +79,17 @@ const TableBillSection = ({
           onPressCloseCheck={onPressCloseCheck}
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
+          onPressDiscount={() => discountSheetRef.current?.expand()}
         />
 
         <PricingBreakdownSheet
           ref={pricingSheetRef}
           onClose={onClosePricingSheet}
           onPressProceedToPayment={onPressProceedToPayment}
+        />
+        <DiscountBottomSheet
+          ref={discountSheetRef}
+          onClose={() => discountSheetRef.current?.close()}
         />
       </View>
     </>

@@ -1,3 +1,4 @@
+import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import TableBillSection from "@/components/bill/TableBillSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
@@ -7,11 +8,8 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { useLocalSearchParams, useRouter } from "expo-router";
-
-import DiscountOverlay from "@/components/bill/DiscountOverlay"; // New Import
-import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types"; // For ref
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MenuSection from "@/components/menu/MenuSection";
@@ -30,7 +28,6 @@ const UpdateTableScreen = () => {
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false);
-  const [isDiscountOverlayOpen, setDiscountOverlayOpen] = useState(false); // New State
   const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
     number | null
   >(null);
@@ -446,26 +443,6 @@ const UpdateTableScreen = () => {
     handlePay(); // Call the existing payment logic
   };
 
-  const handleMoreOptionsCloseCheck = () => {
-    moreOptionsSheetRef.current?.close();
-    handleCloseCheck();
-  };
-
-  const handleApplyDiscount = () => {
-    moreOptionsSheetRef.current?.close();
-    setDiscountOverlayOpen(true); // Open the DiscountOverlay
-  };
-
-  const handleApplyVoucher = () => {
-    moreOptionsSheetRef.current?.close();
-    // Logic for applying voucher
-    show({
-      title: "Apply Voucher",
-      message: "Voucher options will appear here.",
-      type: "success",
-    });
-  };
-
   return (
     <View className="flex-1 bg-[#212121]">
       {isOvertime && (
@@ -480,11 +457,6 @@ const UpdateTableScreen = () => {
       <View className="px-2 mt-2">
         <OrderInfoHeader duration={duration} />
       </View>
-
-      <DiscountOverlay
-        isVisible={isDiscountOverlayOpen}
-        onClose={() => setDiscountOverlayOpen(false)}
-      />
 
       <View className="flex-1 flex-row ">
         <TableBillSection
@@ -565,9 +537,6 @@ const UpdateTableScreen = () => {
                 ] ?? 1) === selectedCourseIdForTracker
             ) || []
           }
-          onSendCourseToKitchen={(course) =>
-            handleSendCourseToKitchen(course, false)
-          }
           onMarkAllReady={handleMarkAllReadyForCourse}
           isCourseSent={coursing.isCourseSent(
             activeOrder?.id || "",
@@ -576,12 +545,7 @@ const UpdateTableScreen = () => {
         />
       )}
 
-      <MoreOptionsBottomSheet
-        ref={moreOptionsSheetRef}
-        onCloseCheck={handleMoreOptionsCloseCheck}
-        onApplyDiscount={handleApplyDiscount}
-        onApplyVoucher={handleApplyVoucher}
-      />
+      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
 
       <AlertDialog
         open={isNotReadyConfirmOpen}
