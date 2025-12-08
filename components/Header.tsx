@@ -143,8 +143,8 @@ const Header = () => {
   };
 
   return (
-    <View className="flex-row justify-between items-center ">
-      <View className="flex-row items-center">
+    <View className="flex-row justify-between items-center h-14">
+      <View className="flex-row items-center flex-shrink-0">
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
@@ -156,11 +156,9 @@ const Header = () => {
         <Text className="text-2xl font-bold text-white">{title}</Text>
       </View>
 
-      <View className="">
+      <View className="flex-shrink-0">
         <SessionDock />
       </View>
-
-      {/* <View className="w-32" /> */}
     </View>
   );
 };

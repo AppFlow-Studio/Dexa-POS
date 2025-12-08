@@ -2,13 +2,14 @@ import { CartItem, PreviousOrder } from "@/lib/types";
 import { X } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Easing,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Animated,
+  Easing,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 
 interface OrderNotesModalProps {
@@ -104,6 +105,7 @@ const itemStyles = StyleSheet.create({
 });
 
 const ANIMATION_DURATION = 280;
+const SWIPE_THRESHOLD = 100; // Minimum swipe distance to close
 
 const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
   isOpen,
@@ -113,12 +115,45 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const dragY = useRef(new Animated.Value(0)).current;
   const [isVisible, setIsVisible] = useState(false);
   const [closeButtonPressed, setCloseButtonPressed] = useState(false);
+
+  // Pan responder for drag gesture
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to vertical gestures
+        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Only allow dragging down (positive dy)
+        if (gestureState.dy > 0) {
+          dragY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > SWIPE_THRESHOLD) {
+          // Swipe down past threshold - close the sheet
+          onClose();
+        } else {
+          // Spring back to original position
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 10,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
+      dragY.setValue(0); // Reset drag position
       // Animate in: slide up, scale up, and fade in backdrop
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -163,7 +198,7 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
         setIsVisible(false);
       });
     }
-  }, [isOpen, slideAnim, scaleAnim, fadeAnim]);
+  }, [isOpen, slideAnim, scaleAnim, fadeAnim, dragY]);
 
   if (!isVisible || !order) return null;
 
@@ -181,20 +216,26 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
           {
             transform: [
               {
-                translateY: slideAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 500],
-                }),
+                translateY: Animated.add(
+                  slideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 500],
+                  }),
+                  dragY
+                ),
               },
               { scale: scaleAnim },
             ],
           },
         ]}
       >
-        {/* Drag Handle */}
-        <View style={styles.dragHandleContainer}>
+        {/* Drag Handle - swipe down to close */}
+        <Animated.View
+          style={styles.dragHandleContainer}
+          {...panResponder.panHandlers}
+        >
           <View style={styles.dragHandle} />
-        </View>
+        </Animated.View>
 
         {/* Header */}
         <View style={styles.header}>
@@ -230,6 +271,18 @@ const OrderNotesModal: React.FC<OrderNotesModalProps> = ({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
+            {/* Order-level notes */}
+            {order.notes && (
+              <View style={styles.orderNotesContainer}>
+                <Text style={styles.orderNotesLabel}>Order Notes:</Text>
+                <View style={styles.orderNotesBox}>
+                  <View style={styles.orderNotesAccent} />
+                  <Text style={styles.orderNotesText}>{order.notes}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Items with their notes */}
             <View style={styles.itemsList}>
               {order.items.map((item) => (
                 <ModifierItem key={item.id} item={item} />
@@ -267,7 +320,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: "35%",
+    maxHeight: "80%",
     backgroundColor: "#303030",
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -315,7 +368,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(59, 130, 246, 0.15)",
   },
   content: {
-    flex: 1,
+    flexShrink: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 24,
@@ -356,6 +409,32 @@ const styles = StyleSheet.create({
   },
   itemsList: {
     gap: 12,
+  },
+  orderNotesContainer: {
+    marginBottom: 16,
+  },
+  orderNotesLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    marginBottom: 8,
+  },
+  orderNotesBox: {
+    flexDirection: "row",
+    backgroundColor: "#1a1a1a",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  orderNotesAccent: {
+    width: 3,
+    backgroundColor: "#F59E0B",
+  },
+  orderNotesText: {
+    flex: 1,
+    padding: 12,
+    fontSize: 15,
+    color: "#E5E7EB",
+    fontStyle: "italic",
   },
 });
 

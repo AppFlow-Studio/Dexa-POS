@@ -92,6 +92,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         type: order.order_type || "Dine In",
         total: finalTotal,
         items: order.items,
+        notes: order.notes, // Order-level notes (customer requests, special instructions)
         // Additional fields for refund tracking
         refunded: false,
         refundedAmount: 0,
