@@ -9,9 +9,8 @@ import { Plus, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
-  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -71,7 +70,7 @@ const PurchaseOrderRow: React.FC<{
           {(() => {
             const sty = statusStyles[item.status] || statusStyles["Draft"];
             return (
-              <View className={`px-2.5 py-1 rounded-full self-start ${sty.bg}`}>
+              <View className={`px-2.5 py-1 rounded-lg self-start ${sty.bg}`}>
                 <Text className={`font-bold text-base ${sty.text}`}>
                   {sty.label}
                 </Text>
@@ -196,8 +195,9 @@ const PurchaseOrdersScreen = () => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
     >
-      <ScrollView bounces={false} className="flex-1 flex-grow">
-        {/* Header with Tab Bar */}
+      {/* Changed: Replaced ScrollView with View flex-1 */}
+      <View className="flex-1 flex-col p-2">
+        {/* Header with Tab Bar (Static) */}
         <View className="mb-3">
           <View className="flex-row justify-between items-center mb-3">
             <Text className="text-2xl font-bold text-white">
@@ -266,7 +266,7 @@ const PurchaseOrdersScreen = () => {
 
         {/* Purchase Orders Tab Content */}
         {activeTab === "purchase-orders" && (
-          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
+          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl overflow-hidden">
             <View className="p-3 border-b border-gray-700">
               <View className="gap-2 flex-row w-full justify-between">
                 <View className="flex-1">
@@ -318,9 +318,11 @@ const PurchaseOrdersScreen = () => {
                 </Text>
               ))}
             </View>
+            {/* FlatList is now the direct child of the container, scrolling independently */}
             <FlatList
               data={filtered}
               keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingBottom: 20 }}
               renderItem={({ item }) => (
                 <PurchaseOrderRow
                   item={item}
@@ -343,12 +345,13 @@ const PurchaseOrdersScreen = () => {
 
         {/* External Expenses Tab Content */}
         {activeTab === "expenses" && (
-          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
+          <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl overflow-hidden">
             {externalExpenses.length > 0 ? (
-              <View className="p-4">
+              <View className="flex-1 p-4">
                 <FlatList
                   data={externalExpenses}
                   keyExtractor={(item) => item.id}
+                  contentContainerStyle={{ paddingBottom: 20 }}
                   renderItem={({ item }) => (
                     <View className="bg-[#212121] border border-gray-600 rounded-lg p-3 mb-2">
                       <View className="flex-row justify-between items-start mb-2">
@@ -433,7 +436,7 @@ const PurchaseOrdersScreen = () => {
           confirmText="Delete"
           variant="destructive"
         />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 };

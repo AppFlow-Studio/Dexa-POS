@@ -10,7 +10,11 @@ import { useToast } from "@/contexts/ToastContext";
 import { ExternalExpenseLineItem } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
-import BottomSheet, { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetFlatList,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
 import { ChevronDown, Plus, Search, Trash2, User } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -288,248 +292,360 @@ const CreateExternalExpenseScreen = () => {
   const insets = useSafeAreaInsets();
 
   return (
-    <View className="flex-1">
-      <View className="flex-row justify-between items-center mb-4">
-        <Text className="text-2xl font-bold text-white">
-          Create External Expense
-        </Text>
-        <View className="flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="py-3 px-4 bg-gray-700 rounded-lg"
-          >
-            <Text className="text-xl font-bold text-white">Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleCreateExpense}
-            className="py-3 px-4 bg-blue-600 rounded-lg"
-          >
-            <Text className="text-xl font-bold text-white">Create</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <ScrollView className="flex-1">
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-medium text-gray-300 mb-1.5">
-              Purchased By
-            </Text>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
-                  <View className="flex-row items-center">
-                    <User color="#9CA3AF" size={18} className="mr-1.5" />
-                    <Text className="text-xl text-white">
-                      {selectedEmployeeId
-                        ? employees.find((e) => e.id === selectedEmployeeId)
-                            ?.fullName
-                        : "Select..."}
-                    </Text>
-                  </View>
-                  <ChevronDown color="#9CA3AF" size={18} />
-                </TouchableOpacity>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
-                {employees.map((employee) => (
-                  <DropdownMenuItem
-                    key={employee.id}
-                    onPress={() => setSelectedEmployeeId(employee.id)}
-                    className="flex-row items-center p-2"
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <View className="w-7 h-7 bg-blue-600 rounded-full items-center justify-center mr-2">
-                        <Text className="text-white text-xs font-semibold">
-                          {employee.fullName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()}
-                        </Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-white text-base font-medium">
-                          {employee.fullName}
-                        </Text>
-                        <Text className="text-gray-400 text-xs">
-                          {employee.shiftStatus === "clocked_in"
-                            ? "Clocked In"
-                            : "Clocked Out"}
-                        </Text>
-                      </View>
-                      {selectedEmployeeId === employee.id && (
-                        <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
-                      )}
-                    </View>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </View>
-
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-xl font-semibold text-white mb-1.5">
-              Items
-            </Text>
-            <FlatList
-              data={expenseItems}
-              scrollEnabled={false}
-              keyExtractor={(item, index) => `${item.inventoryItemId}-${index}`}
-              renderItem={({ item, index }) => (
-                <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
-                  <View className="flex-1">
-                    <Text className="text-xl text-white">{item.itemName}</Text>
-                    <Text className="text-lg text-gray-300">
-                      {item.quantity} × ${item.unitPrice.toFixed(2)} = $
-                      {item.totalAmount.toFixed(2)}
-                    </Text>
-                    {item.notes && (
-                      <Text className="text-base text-gray-400">
-                        {item.notes}
-                      </Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleRemoveItemFromExpense(index)}
-                  >
-                    <Trash2 color="#EF4444" size={20} />
-                  </TouchableOpacity>
-                </View>
-              )}
-              ListEmptyComponent={
-                <Text className="text-lg text-gray-400 text-center py-4">
-                  No items added.
-                </Text>
-              }
-            />
+    <>
+      <View className="flex-1">
+        <View className="flex-row justify-between items-center mb-4">
+          <Text className="text-2xl font-bold text-white">
+            Create External Expense
+          </Text>
+          <View className="flex-row gap-2">
             <TouchableOpacity
-              onPress={() => itemsSheetRef.current?.expand()}
-              className="mt-3 py-2 border border-dashed rounded-lg items-center border-gray-500"
+              onPress={() => router.back()}
+              className="py-3 px-4 bg-gray-700 rounded-lg"
             >
-              <Text className="text-lg font-semibold text-gray-300">
-                + Add Item
-              </Text>
+              <Text className="text-xl font-bold text-white">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleCreateExpense}
+              className="py-3 px-4 bg-blue-600 rounded-lg"
+            >
+              <Text className="text-xl font-bold text-white">Create</Text>
             </TouchableOpacity>
           </View>
+        </View>
 
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-medium text-gray-300 mb-1.5">
-              Related PO (Optional)
-            </Text>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
-                  <Text className="text-xl text-white">
-                    {selectedPOId
-                      ? purchaseOrders.find((po) => po.id === selectedPOId)
-                          ?.poNumber
-                      : "Select..."}
-                  </Text>
-                  <ChevronDown color="#9CA3AF" size={18} />
-                </TouchableOpacity>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
-                <DropdownMenuItem
-                  onPress={() => setSelectedPOId(null)}
-                  className="flex-row items-center p-2"
-                >
-                  <Text className="text-white text-base font-medium">None</Text>
-                  {!selectedPOId && (
-                    <View className="w-1.5 h-1.5 bg-blue-600 rounded-full ml-auto" />
-                  )}
-                </DropdownMenuItem>
-                {purchaseOrders.map((po) => (
-                  <DropdownMenuItem
-                    key={po.id}
-                    onPress={() => setSelectedPOId(po.id)}
-                    className="flex-row items-center p-2"
-                  >
-                    <View className="flex-1">
-                      <Text className="text-white text-base font-medium">
-                        {po.poNumber}
-                      </Text>
-                      <Text className="text-gray-400 text-xs">
-                        {po.status} • $
-                        {po.items
-                          .reduce(
-                            (sum, item) => sum + item.cost * item.quantity,
-                            0
-                          )
-                          .toFixed(2)}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          className="flex-1"
+        >
+          <ScrollView className="flex-1">
+            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <Text className="text-lg font-medium text-gray-300 mb-1.5">
+                Purchased By
+              </Text>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+                    <View className="flex-row items-center">
+                      <User color="#9CA3AF" size={18} className="mr-1.5" />
+                      <Text className="text-xl text-white">
+                        {selectedEmployeeId
+                          ? employees.find((e) => e.id === selectedEmployeeId)
+                              ?.fullName
+                          : "Select..."}
                       </Text>
                     </View>
-                    {selectedPOId === po.id && (
-                      <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                    <ChevronDown color="#9CA3AF" size={18} />
+                  </TouchableOpacity>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+                  {employees.map((employee) => (
+                    <DropdownMenuItem
+                      key={employee.id}
+                      onPress={() => setSelectedEmployeeId(employee.id)}
+                      className="flex-row items-center p-2"
+                    >
+                      <View className="flex-row items-center flex-1">
+                        <View className="w-7 h-7 bg-blue-600 rounded-full items-center justify-center mr-2">
+                          <Text className="text-white text-xs font-semibold">
+                            {employee.fullName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()}
+                          </Text>
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-white text-base font-medium">
+                            {employee.fullName}
+                          </Text>
+                          <Text className="text-gray-400 text-xs">
+                            {employee.shiftStatus === "clocked_in"
+                              ? "Clocked In"
+                              : "Clocked Out"}
+                          </Text>
+                        </View>
+                        {selectedEmployeeId === employee.id && (
+                          <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                        )}
+                      </View>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </View>
+
+            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <Text className="text-xl font-semibold text-white mb-1.5">
+                Items
+              </Text>
+              {/* 
+                FIX: Use safe keyExtractor to prevent duplicate key errors 
+                Combining item.inventoryItemId with index ensures uniqueness
+            */}
+              <FlatList
+                data={expenseItems}
+                scrollEnabled={false}
+                keyExtractor={(item, index) =>
+                  `${item.inventoryItemId}-${index}`
+                }
+                renderItem={({ item, index }) => (
+                  <View className="flex-row items-center justify-between p-3 border-b border-gray-600">
+                    <View className="flex-1">
+                      <Text className="text-xl text-white">
+                        {item.itemName}
+                      </Text>
+                      <Text className="text-lg text-gray-300">
+                        {item.quantity} × ${item.unitPrice.toFixed(2)} = $
+                        {item.totalAmount.toFixed(2)}
+                      </Text>
+                      {item.notes && (
+                        <Text className="text-base text-gray-400">
+                          {item.notes}
+                        </Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveItemFromExpense(index)}
+                    >
+                      <Trash2 color="#EF4444" size={20} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <Text className="text-lg text-gray-400 text-center py-4">
+                    No items added.
+                  </Text>
+                }
+              />
+              <TouchableOpacity
+                onPress={() => itemsSheetRef.current?.snapToIndex(1)}
+                className="mt-3 py-2 border border-dashed rounded-lg items-center border-gray-500"
+              >
+                <Text className="text-lg font-semibold text-gray-300">
+                  + Add Item
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <Text className="text-lg font-medium text-gray-300 mb-1.5">
+                Related PO (Optional)
+              </Text>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <TouchableOpacity className="h-fit border border-gray-600 border-dashed rounded-lg p-3 flex-row items-center justify-between">
+                    <Text className="text-xl text-white">
+                      {selectedPOId
+                        ? purchaseOrders.find((po) => po.id === selectedPOId)
+                            ?.poNumber
+                        : "Select..."}
+                    </Text>
+                    <ChevronDown color="#9CA3AF" size={18} />
+                  </TouchableOpacity>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-72 bg-[#303030] border-gray-600">
+                  <DropdownMenuItem
+                    onPress={() => setSelectedPOId(null)}
+                    className="flex-row items-center p-2"
+                  >
+                    <Text className="text-white text-base font-medium">
+                      None
+                    </Text>
+                    {!selectedPOId && (
+                      <View className="w-1.5 h-1.5 bg-blue-600 rounded-full ml-auto" />
                     )}
                   </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </View>
+                  {purchaseOrders.map((po) => (
+                    <DropdownMenuItem
+                      key={po.id}
+                      onPress={() => setSelectedPOId(po.id)}
+                      className="flex-row items-center p-2"
+                    >
+                      <View className="flex-1">
+                        <Text className="text-white text-base font-medium">
+                          {po.poNumber}
+                        </Text>
+                        <Text className="text-gray-400 text-xs">
+                          {po.status} • $
+                          {po.items
+                            .reduce(
+                              (sum, item) => sum + item.cost * item.quantity,
+                              0
+                            )
+                            .toFixed(2)}
+                        </Text>
+                      </View>
+                      {selectedPOId === po.id && (
+                        <View className="w-1.5 h-1.5 bg-blue-600 rounded-full" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </View>
 
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-medium text-gray-300 mb-2">
-              Store Info (Optional)
-            </Text>
-            <View className="gap-3">
-              <View>
-                <Text className="text-white text-base mb-1.5">Store Name</Text>
-                <TextInput
-                  value={storeName}
-                  placeholderTextColor="#9CA3AF"
-                  onChangeText={setStoreName}
-                  placeholder="e.g., Fresh Market"
-                  className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
-                />
-              </View>
-              <View>
-                <Text className="text-white text-base mb-1.5">Location</Text>
-                <TextInput
-                  value={storeLocation}
-                  onChangeText={setStoreLocation}
-                  placeholder="e.g., 123 Main St"
-                  className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
-                  placeholderTextColor="#9CA3AF"
-                />
+            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <Text className="text-lg font-medium text-gray-300 mb-2">
+                Store Info (Optional)
+              </Text>
+              <View className="gap-3">
+                <View>
+                  <Text className="text-white text-base mb-1.5">
+                    Store Name
+                  </Text>
+                  <TextInput
+                    value={storeName}
+                    placeholderTextColor="#9CA3AF"
+                    onChangeText={setStoreName}
+                    placeholder="e.g., Fresh Market"
+                    className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                  />
+                </View>
+                <View>
+                  <Text className="text-white text-base mb-1.5">Location</Text>
+                  <TextInput
+                    value={storeLocation}
+                    onChangeText={setStoreLocation}
+                    placeholder="e.g., 123 Main St"
+                    className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    placeholderTextColor="#9CA3AF"
+                  />
+                </View>
               </View>
             </View>
-          </View>
 
-          <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
-            <Text className="text-lg font-medium text-gray-300 mb-1.5">
-              Notes (Optional)
-            </Text>
-            <TextInput
-              value={expenseNotes}
-              onChangeText={setExpenseNotes}
-              placeholderTextColor="#9CA3AF"
-              placeholder="e.g., Vendor delay"
-              multiline
-              className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 min-h-[80px]"
-            />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+            <View className="bg-[#303030] border border-gray-700 rounded-xl p-4 mb-4">
+              <Text className="text-lg font-medium text-gray-300 mb-1.5">
+                Notes (Optional)
+              </Text>
+              <TextInput
+                value={expenseNotes}
+                onChangeText={setExpenseNotes}
+                placeholderTextColor="#9CA3AF"
+                placeholder="e.g., Vendor delay"
+                multiline
+                className="text-white text-base bg-[#212121] border border-gray-700 rounded-lg px-2 py-1.5 min-h-[80px]"
+              />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
 
+        <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
+          <DialogContent>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
+              <ScrollView
+                bounces={false}
+                className="rounded-2xl h-fit p-4 w-[550px]"
+                style={{
+                  backgroundColor: "#2b2b2b",
+                  borderWidth: 1,
+                  borderColor: "#4b5563",
+                }}
+              >
+                <Text className="text-white text-xl font-bold mb-3">
+                  Add Inventory Item
+                </Text>
+                <View className="gap-y-2">
+                  <Text className="text-gray-300 text-sm">Name</Text>
+                  <TextInput
+                    value={newItemName}
+                    onChangeText={setNewItemName}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
+                  <TextInput
+                    value={newItemUnit}
+                    onChangeText={setNewItemUnit}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
+                  <TextInput
+                    keyboardType="decimal-pad"
+                    value={newItemCost}
+                    onChangeText={setNewItemCost}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    value={newItemStock}
+                    onChangeText={setNewItemStock}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    value={newItemReorder}
+                    onChangeText={setNewItemReorder}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <Text className="text-gray-300 mt-2 text-sm">
+                    Expense Qty
+                  </Text>
+                  <TextInput
+                    keyboardType="number-pad"
+                    value={newItemPOQty}
+                    onChangeText={setNewItemPOQty}
+                    className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
+                  />
+                  <View className="flex-row gap-2 mt-3">
+                    <TouchableOpacity
+                      onPress={() => setNewItemModalOpen(false)}
+                      className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
+                    >
+                      <Text className="text-gray-300 text-base">Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleCreateNewItem}
+                      className="flex-1 py-2 rounded-lg bg-blue-600 border border-blue-500 items-center"
+                    >
+                      <Text className="text-white text-base font-semibold">
+                        Add Item
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </KeyboardAvoidingView>
+          </DialogContent>
+        </Dialog>
+      </View>
       <BottomSheet
         ref={itemsSheetRef}
         index={-1}
         snapPoints={snapPoints}
         backgroundStyle={{ backgroundColor: "#2b2b2b" }}
         handleIndicatorStyle={{ backgroundColor: "#666" }}
+        topInset={60}
+        enablePanDownToClose
+        // 2. Add these props to handle keyboard interaction
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        backdropComponent={(backdropProps) => (
+          <BottomSheetBackdrop
+            {...backdropProps}
+            appearsOnIndex={0}
+            disappearsOnIndex={-1}
+            opacity={0.7}
+          />
+        )}
       >
         <View className="px-3 border-b border-gray-700 flex-row items-center justify-between">
           <Text className="text-white text-lg font-bold">Select Item</Text>
           <View className="mb-2 w-1/3 flex-row items-center gap-1.5 bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5">
             <Search color="#9CA3AF" size={16} />
-            <TextInput
+            {/* 3. Replace TextInput with BottomSheetTextInput */}
+            <BottomSheetTextInput
               value={itemSearch}
               onChangeText={setItemSearch}
               placeholder="Search..."
-              className="text-white h-10 w-full text-sm"
+              className="text-white w-full text-sm h-full"
+              placeholderTextColor={"#e5e7eb"}
+              style={{ color: "white" }} // Explicit color often helps with BottomSheetTextInput
             />
           </View>
           <Button
@@ -540,9 +656,9 @@ const CreateExternalExpenseScreen = () => {
             <Text className="text-white text-sm">New</Text>
           </Button>
         </View>
-        <View className="px-3">
+        <View className="px-3 py-2">
           {selectedInventoryItemId && (
-            <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#8f8f8f]">
+            <View className="mb-3 p-2 rounded-lg border border-gray-700 bg-[#383838]">
               <Text className="text-white mb-1.5 text-base font-semibold">
                 Details -{" "}
                 {
@@ -553,32 +669,37 @@ const CreateExternalExpenseScreen = () => {
               <View className="flex-row gap-2 mb-2">
                 <View className="flex-1">
                   <Text className="text-white text-xs mb-1">Qty</Text>
-                  <TextInput
+                  {/* 4. Replace other TextInputs inside the sheet as well for consistent behavior */}
+                  <BottomSheetTextInput
                     keyboardType="number-pad"
                     value={selectedQuantity}
                     onChangeText={setSelectedQuantity}
                     placeholder="1"
                     className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    style={{ color: "white" }}
                   />
                 </View>
                 <View className="flex-1">
                   <Text className="text-white text-xs mb-1">Unit Price</Text>
-                  <TextInput
+                  <BottomSheetTextInput
                     keyboardType="decimal-pad"
                     value={selectedUnitPrice}
                     onChangeText={setSelectedUnitPrice}
                     placeholder="0.00"
                     className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                    style={{ color: "white" }}
                   />
                 </View>
               </View>
               <View className="mb-2">
                 <Text className="text-white text-xs mb-1">Notes</Text>
-                <TextInput
+                <BottomSheetTextInput
                   value={itemNotes}
                   onChangeText={setItemNotes}
                   placeholder="e.g., Organic"
                   className="text-white text-base bg-[#2a2a2a] border border-gray-700 rounded-lg px-2 py-1.5 h-10"
+                  style={{ color: "white" }}
+                  placeholderTextColor={"#e5e7eb"}
                 />
               </View>
               <Button
@@ -589,9 +710,10 @@ const CreateExternalExpenseScreen = () => {
               </Button>
             </View>
           )}
+
           <BottomSheetFlatList
             data={filteredInventoryItems}
-            keyExtractor={(i: any) => i.id}
+            keyExtractor={(i: any, index) => `${i.id}-${index}`}
             contentContainerStyle={{ paddingBottom: 60 }}
             renderItem={({ item }: { item: any }) => (
               <TouchableOpacity
@@ -622,87 +744,7 @@ const CreateExternalExpenseScreen = () => {
           />
         </View>
       </BottomSheet>
-
-      <Dialog open={newItemModalOpen} onOpenChange={setNewItemModalOpen}>
-        <DialogContent>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <ScrollView
-              bounces={false}
-              className="rounded-2xl h-fit p-4 w-[550px]"
-              style={{
-                backgroundColor: "#2b2b2b",
-                borderWidth: 1,
-                borderColor: "#4b5563",
-              }}
-            >
-              <Text className="text-white text-xl font-bold mb-3">
-                Add Inventory Item
-              </Text>
-              <View className="gap-y-2">
-                <Text className="text-gray-300 text-sm">Name</Text>
-                <TextInput
-                  value={newItemName}
-                  onChangeText={setNewItemName}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <Text className="text-gray-300 mt-2 text-sm">Unit</Text>
-                <TextInput
-                  value={newItemUnit}
-                  onChangeText={setNewItemUnit}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <Text className="text-gray-300 mt-2 text-sm">Cost/Unit</Text>
-                <TextInput
-                  keyboardType="decimal-pad"
-                  value={newItemCost}
-                  onChangeText={setNewItemCost}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <Text className="text-gray-300 mt-2 text-sm">Stock Qty</Text>
-                <TextInput
-                  keyboardType="number-pad"
-                  value={newItemStock}
-                  onChangeText={setNewItemStock}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <Text className="text-gray-300 mt-2 text-sm">Reorder</Text>
-                <TextInput
-                  keyboardType="number-pad"
-                  value={newItemReorder}
-                  onChangeText={setNewItemReorder}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <Text className="text-gray-300 mt-2 text-sm">Expense Qty</Text>
-                <TextInput
-                  keyboardType="number-pad"
-                  value={newItemPOQty}
-                  onChangeText={setNewItemPOQty}
-                  className="text-white text-base bg-[#303030] border border-gray-700 rounded-lg px-2 py-1.5"
-                />
-                <View className="flex-row gap-2 mt-3">
-                  <TouchableOpacity
-                    onPress={() => setNewItemModalOpen(false)}
-                    className="flex-1 py-2 rounded-lg border border-gray-600 items-center"
-                  >
-                    <Text className="text-gray-300 text-base">Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleCreateNewItem}
-                    className="flex-1 py-2 rounded-lg bg-blue-600 border border-blue-500 items-center"
-                  >
-                    <Text className="text-white text-base font-semibold">
-                      Add Item
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        </DialogContent>
-      </Dialog>
-    </View>
+    </>
   );
 };
 

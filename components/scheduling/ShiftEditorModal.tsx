@@ -39,6 +39,7 @@ import {
 import { ScrollView } from "react-native-gesture-handler";
 import uuid from "react-native-uuid"; // Import uuid
 import { TimePickerBottomSheet } from "./TimePickerBottomSheet";
+import { TimePickerDialog } from "./TimePickerDialog";
 
 interface ShiftEditorModalProps {
   open: boolean;
@@ -117,6 +118,7 @@ export function ShiftEditorModal({
   const [staffingLevel, setStaffingLevel] = useState<
     "May need help" | "Fully staffed"
   >("Fully staffed");
+  const [isStartTimePickerOpen, setStartTimePickerOpen] = useState(false);
 
   const startTimeSheetRef = useRef<BottomSheet>(null);
   const endTimeSheetRef = useRef<BottomSheet>(null);
@@ -383,7 +385,7 @@ export function ShiftEditorModal({
                   Start Time *
                 </Text>
                 <TouchableOpacity
-                  onPress={() => startTimeSheetRef.current?.expand()}
+                  onPress={() => setStartTimePickerOpen(true)}
                   className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg justify-center"
                 >
                   <Text className="text-white text-base">
@@ -563,6 +565,17 @@ export function ShiftEditorModal({
           }}
           onClose={() => endTimeSheetRef.current?.close()}
           title="Select End Time"
+        />
+        <TimePickerDialog
+          isOpen={isStartTimePickerOpen}
+          onClose={() => setStartTimePickerOpen(false)}
+          initialTime={formatTo12Hour(startTime)}
+          onTimeSelect={(time) => {
+            setStartTime(combineToISO(date, time));
+            startTimeSheetRef.current?.close();
+            setStartTimePickerOpen(false);
+          }}
+          title="Select Start Time"
         />
       </DialogContent>
     </Dialog>

@@ -1,5 +1,8 @@
 import AddInventoryItemSheet from "@/components/inventory/AddInventoryItemSheet";
 import InventoryItemFormModal from "@/components/inventory/InventoryItemFormModal";
+import InventorySearchSheet from "@/components/inventory/InventorySearchSheet";
+import MenuCatalogRow from "@/components/inventory/MenuCatalogRow";
+import MenuSearchSheet from "@/components/inventory/MenuSearchSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import {
   DropdownMenu,
@@ -12,7 +15,6 @@ import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
   BottomSheetModal,
   BottomSheetModalProvider,
 } from "@gorhom/bottom-sheet";
@@ -21,8 +23,6 @@ import {
   AlertTriangle,
   Check,
   Edit,
-  Eye,
-  EyeOff,
   MoreHorizontal,
   Plus,
   Search,
@@ -31,9 +31,9 @@ import {
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
-  KeyboardAvoidingView, // <--- Imported
+  KeyboardAvoidingView,
   Modal,
-  Platform, // <--- Imported
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -48,13 +48,20 @@ const InventoryCatalogRow: React.FC<{
   const isLowStock = item.stockQuantity <= item.reorderThreshold;
   const vendors = useInventoryStore((state) => state.vendors);
   const vendor = vendors.find((v) => v.id === item.vendorId);
+
   return (
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
-      <TouchableOpacity className="flex-row items-center p-4 border-b border-gray-700">
-        <Text className="w-[20%] text-xl font-semibold text-white">
+      <TouchableOpacity className="flex-row items-center px-4 py-4 border-b border-gray-700">
+        {/* Name: 25% */}
+        <Text
+          className="w-[25%] text-xl font-semibold text-white"
+          numberOfLines={1}
+        >
           {item.name}
         </Text>
-        <View className="w-[20%]">
+
+        {/* Stock: 15% (Centered) */}
+        <View className="w-[15%] items-center justify-center">
           <Text
             className={`text-xl font-semibold ${
               isLowStock ? "text-red-400" : "text-white"
@@ -63,20 +70,31 @@ const InventoryCatalogRow: React.FC<{
             {item?.stockQuantity?.toFixed(0)} {item.unit}
           </Text>
         </View>
-        <Text className="w-[15%] text-xl text-gray-300">
-          {item.reorderThreshold} {item.unit}
-        </Text>
+
+        {/* Reorder: 15% (Centered) */}
+        <View className="w-[15%] items-center justify-center">
+          <Text className="text-xl text-gray-300">
+            {item.reorderThreshold} {item.unit}
+          </Text>
+        </View>
+
+        {/* Cost: 15% */}
         <Text className="w-[15%] text-xl text-gray-300">
           ${item.cost.toFixed(2)}
         </Text>
-        <Text className="w-[18%] text-xl text-gray-300">
+
+        {/* Vendor: 20% */}
+        <Text className="w-[20%] text-xl text-gray-300" numberOfLines={1}>
           {vendor?.name || "Unknown"}
         </Text>
-        <View className="w-[5%] items-end">
+
+        {/* Actions: 10% (Right Aligned) */}
+        <View className="w-[10%] items-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <TouchableOpacity className="p-2">
-                <MoreHorizontal size={20} color="#9CA3AF" />
+              {/* Increased touch area */}
+              <TouchableOpacity className="p-3">
+                <MoreHorizontal size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-48 bg-[#303030] border-gray-600">
@@ -322,6 +340,11 @@ const InventoryScreen = () => {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
+
+  const handleToggleAllInventory = (ids: string[]) => {
+    setSelectedInventoryIds(ids);
+  };
+
   const toggleSelectAllInventory = () => {
     if (isAllInventorySelected) {
       setSelectedInventoryIds([]);
@@ -445,60 +468,108 @@ const InventoryScreen = () => {
         </View>
 
         <View className="flex-1 bg-[#303030] border border-gray-700 rounded-xl">
-          <View className="flex-row py-2 px-3 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
+          {/* --- Header Section --- */}
+          <View className="flex-row py-3 px-4 bg-gray-800/50 rounded-t-xl border-b items-center border-gray-700">
             {(activeTab === "inventory"
               ? TABLE_HEADERS_INVENTORY
               : TABLE_HEADERS_MENU
-            ).map((header) => (
-              <Text
-                key={header}
-                className={`font-bold text-lg text-gray-400 ${
-                  activeTab === "inventory"
-                    ? header === "Name"
-                      ? "w-[20%]"
-                      : header === "Vendor"
-                        ? "w-fit"
-                        : header === "In Stock"
-                          ? "w-[20%]"
-                          : header === "Reorder Point"
-                            ? "w-[15%]"
-                            : "w-[15%]"
-                    : header === "Select"
-                      ? "w-[6%]"
-                      : header === "Name"
-                        ? "w-[22%]"
-                        : "w-[12%]"
-                }`}
-              >
-                {header === "Select" ? (
-                  <TouchableOpacity
-                    onPress={toggleSelectAllMenu}
-                    className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
-                  >
-                    <>{isAllSelected && <Check color="#fff" size={12} />}</>
-                  </TouchableOpacity>
-                ) : (
-                  header
-                )}
-              </Text>
-            ))}
-            <View className="flex-row items-center flex-1 justify-end gap-x-4">
-              <TouchableOpacity
-                onPress={openSearchSheet}
-                className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
-              >
-                <Search color="#9CA3AF" size={18} />
-              </TouchableOpacity>
-              {activeTab === "inventory" && (
-                <TouchableOpacity
-                  onPress={() => addItemSheetRef.current?.expand()}
-                  className="py-2 px-4 bg-blue-600 rounded-lg flex-row items-center justify-center"
+            ).map((header) => {
+              // Helper logic to determine width and alignment based on tab and header name
+              let widthClass = "";
+              let alignClass = "text-left"; // Default alignment
+
+              if (activeTab === "inventory") {
+                switch (header) {
+                  case "Name":
+                    widthClass = "w-[25%]";
+                    break;
+                  case "In Stock":
+                    widthClass = "w-[15%]";
+                    alignClass = "text-center";
+                    break;
+                  case "Reorder Point":
+                    widthClass = "w-[15%]";
+                    alignClass = "text-center";
+                    break;
+                  case "Cost":
+                    widthClass = "w-[15%]";
+                    break;
+                  case "Vendor":
+                    widthClass = "w-[20%]";
+                    break;
+                  default:
+                    widthClass = "w-[10%]"; // Empty column for actions
+                }
+              } else {
+                // Menu Tab
+                switch (header) {
+                  case "Select":
+                    widthClass = "w-[6%]";
+                    break;
+                  case "Name":
+                    widthClass = "w-[24%]";
+                    break;
+                  case "Price":
+                    widthClass = "w-[15%]";
+                    break;
+                  case "Stock":
+                    widthClass = "w-[15%]";
+                    alignClass = "text-center";
+                    break;
+                  case "Reorder Point":
+                    widthClass = "w-[15%]";
+                    alignClass = "text-center";
+                    break;
+                  case "Availability":
+                    widthClass = "w-[15%]";
+                    alignClass = "text-center";
+                    break;
+                  default:
+                    widthClass = "w-[10%]"; // Empty column for actions
+                }
+              }
+
+              return (
+                <Text
+                  key={header}
+                  className={`font-bold text-lg text-gray-400 ${widthClass} ${alignClass}`}
                 >
-                  <Plus color="white" size={18} className="mr-1.5" />
+                  {header === "Select" ? (
+                    <TouchableOpacity
+                      onPress={toggleSelectAllMenu}
+                      className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
+                    >
+                      <>{isAllSelected && <Check color="#fff" size={12} />}</>
+                    </TouchableOpacity>
+                  ) : (
+                    header
+                  )}
+                </Text>
+              );
+            })}
+
+            {/* Header Actions (Search/Add) */}
+            <View className="flex-row items-center flex-1 justify-end gap-x-4 absolute right-4 top-2 bottom-2">
+              <View className="flex-row items-center justify-end gap-x-4 ml-auto">
+                <TouchableOpacity
+                  onPress={openSearchSheet}
+                  className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg p-2"
+                >
+                  <Search color="#9CA3AF" size={18} />
                 </TouchableOpacity>
-              )}
+                {activeTab === "inventory" && (
+                  <TouchableOpacity
+                    onPress={() => addItemSheetRef.current?.expand()}
+                    className="py-2 px-4 bg-blue-600 rounded-lg flex-row items-center justify-center"
+                  >
+                    <Plus color="white" size={18} className="mr-1.5" />
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           </View>
+
+          {/* --- Lists --- */}
           {activeTab === "inventory" ? (
             <FlatList
               data={inventoryItems}
@@ -515,113 +586,19 @@ const InventoryScreen = () => {
             <FlatList
               data={menuItems}
               keyExtractor={(item) => item.name}
-              renderItem={({ item }) => {
-                const isSelected = selectedMenuIds.includes(item.id);
-                return (
-                  <Link href={`/inventory/menu-items/${item.id}`} asChild>
-                    <TouchableOpacity className="flex-row items-center px-4 py-3 border-b border-gray-700">
-                      <View className="w-[6%]">
-                        <TouchableOpacity
-                          onPress={() => toggleSelectMenuItem(item.id)}
-                          className={`h-5 w-5 items-center justify-center border rounded ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-500"
-                              : "border-gray-600"
-                          }`}
-                        >
-                          <>{isSelected && <Check color="#fff" size={12} />}</>
-                        </TouchableOpacity>
-                      </View>
-                      <View className="w-[22%] flex-row items-center">
-                        <Text className="text-white text-xl flex-1">
-                          {item.name}
-                        </Text>
-                      </View>
-                      <Text className="text-gray-300 text-xl w-[12%]">
-                        ${item.price.toFixed(2)}
-                      </Text>
-                      <View className="w-[12%] flex-row items-center">
-                        <Text
-                          className={`text-xl ${
-                            typeof item.stockQuantity === "number" &&
-                            typeof item.reorderThreshold === "number" &&
-                            item.stockQuantity <= item.reorderThreshold
-                              ? "text-red-400"
-                              : "text-gray-300"
-                          }`}
-                        >
-                          {typeof item.stockQuantity === "number"
-                            ? item.stockQuantity
-                            : "—"}
-                        </Text>
-                      </View>
-                      <View className="w-[22%]">
-                        <Text
-                          className={`text-xl w-[60%] text-center ${
-                            typeof item.stockQuantity === "number" &&
-                            typeof item.reorderThreshold === "number" &&
-                            item.stockQuantity <= item.reorderThreshold
-                              ? "text-red-400"
-                              : "text-gray-300"
-                          }`}
-                        >
-                          {typeof item.reorderThreshold === "number"
-                            ? `${item.reorderThreshold}`
-                            : ""}
-                        </Text>
-                      </View>
-                      <View className="w-[12%]">
-                        <Text
-                          className={`text-lg px-1.5 py-0.5 rounded self-start ${
-                            item.availability !== false
-                              ? "bg-green-600 text-green-50"
-                              : "bg-red-600 text-red-50"
-                          }`}
-                        >
-                          {item.availability !== false ? "On" : "Off"}
-                        </Text>
-                      </View>
-                      <View className="w-[12%] items-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <TouchableOpacity className="p-1.5">
-                              <MoreHorizontal color="#9CA3AF" size={18} />
-                            </TouchableOpacity>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent className="bg-[#303030] border-gray-700">
-                            <DropdownMenuItem
-                              onPress={() => handleToggleAvailability(item)}
-                              className="flex-row items-center p-2"
-                            >
-                              <>
-                                {item.availability !== false ? (
-                                  <EyeOff color="#9CA3AF" size={14} />
-                                ) : (
-                                  <Eye color="#9CA3AF" size={14} />
-                                )}
-                              </>
-                              <Text className="text-white ml-1.5 text-sm">
-                                {item.availability !== false
-                                  ? "Make Off"
-                                  : "Make On"}
-                              </Text>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onPress={() => handleOpenStockModal(item)}
-                              className="flex-row items-center p-2"
-                            >
-                              <Edit color="#9CA3AF" size={14} />
-                              <Text className="text-white ml-1.5 text-sm">
-                                Update Stock
-                              </Text>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </View>
-                    </TouchableOpacity>
-                  </Link>
-                );
-              }}
+              // Optional: Optimize window size for faster scrolling
+              initialNumToRender={10}
+              windowSize={5}
+              renderItem={({ item }) => (
+                <MenuCatalogRow
+                  item={item}
+                  // Check parent state for initial value
+                  initialIsSelected={selectedMenuIds.includes(item.id)}
+                  onToggle={toggleSelectMenuItem}
+                  onToggleAvailability={handleToggleAvailability}
+                  onOpenStockModal={handleOpenStockModal}
+                />
+              )}
             />
           )}
         </View>
@@ -873,219 +850,28 @@ const InventoryScreen = () => {
           </KeyboardAvoidingView>
         </Modal>
 
-        <BottomSheet
-          index={-1}
-          ref={menuSearchSheetRef}
-          snapPoints={snapPoints}
-          backgroundStyle={{ backgroundColor: "#303030" }}
-          handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-          backdropComponent={renderBackdrop}
-        >
-          <View className="px-3 pb-1 flex-1 h-full">
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search menu..."
-              className="bg-[#212121] border border-gray-700 rounded-lg px-3 py-2 text-white text-base h-16"
-            />
-          </View>
-          <BottomSheetFlatList
-            data={filteredMenu}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => {
-              const isSelected = selectedMenuIds.includes(item.id);
-              return (
-                <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700">
-                  <View className="w-[6%]">
-                    <TouchableOpacity
-                      onPress={() => toggleSelectMenuItem(item.id)}
-                      className={`h-5 w-5 items-center justify-center border rounded ${
-                        isSelected
-                          ? "bg-blue-600 border-blue-500"
-                          : "border-gray-600"
-                      }`}
-                    >
-                      <>{isSelected && <Check color="#fff" size={12} />}</>
-                    </TouchableOpacity>
-                  </View>
-                  <Text
-                    className="text-white text-base w-[22%]"
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                  <Text
-                    className="text-gray-300 text-base w-[22%]"
-                    numberOfLines={1}
-                  >
-                    {(Array.isArray(item.category)
-                      ? item.category
-                      : [item.category]
-                    ).join(", ")}
-                  </Text>
-                  <Text className="text-gray-300 text-base w-[12%]">
-                    ${item.price.toFixed(2)}
-                  </Text>
-                  <Text
-                    className={`text-base w-[12%] ${
-                      typeof item.stockQuantity === "number" &&
-                      typeof item.reorderThreshold === "number" &&
-                      item.stockQuantity <= item.reorderThreshold
-                        ? "text-red-400"
-                        : "text-gray-300"
-                    }`}
-                  >
-                    {typeof item.stockQuantity === "number"
-                      ? item.stockQuantity
-                      : "—"}
-                  </Text>
-                  <View className="w-[14%]">
-                    <Text
-                      className={`text-[10px] px-1.5 py-0.5 rounded self-start ${
-                        item.availability !== false
-                          ? "bg-green-600 text-green-50"
-                          : "bg-red-600 text-red-50"
-                      }`}
-                    >
-                      {item.availability !== false ? "On" : "Off"}
-                    </Text>
-                  </View>
-                  <View className="w-[12%] items-end">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <TouchableOpacity className="p-1.5">
-                          <MoreHorizontal color="#9CA3AF" size={16} />
-                        </TouchableOpacity>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="bg-[#303030] border-gray-700">
-                        <DropdownMenuItem
-                          onPress={() => handleToggleAvailability(item)}
-                          className="flex-row items-center p-2"
-                        >
-                          <>
-                            {item.availability !== false ? (
-                              <EyeOff color="#9CA3AF" size={14} />
-                            ) : (
-                              <Eye color="#9CA3AF" size={14} />
-                            )}
-                          </>
-                          <Text className="text-white ml-1.5 text-sm">
-                            {item.availability !== false
-                              ? "Make Off"
-                              : "Make On"}
-                          </Text>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onPress={() => handleOpenStockModal(item)}
-                          className="flex-row items-center p-2"
-                        >
-                          <Edit color="#9CA3AF" size={14} />
-                          <Text className="text-white ml-1.5 text-sm">
-                            Update Stock
-                          </Text>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </View>
-                </View>
-              );
-            }}
-          />
-        </BottomSheet>
         <AddInventoryItemSheet ref={addItemSheetRef} />
-        <BottomSheet
-          ref={invSearchSheetRef}
-          index={-1}
-          snapPoints={snapPoints}
-          backgroundStyle={{ backgroundColor: "#303030" }}
-          handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
-          backdropComponent={renderBackdrop}
-        >
-          <View className="px-3 pb-1 flex-1 h-full">
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search inventory..."
-              className="bg-[#212121] border border-gray-700 rounded-lg px-3 py-2 text-white text-base h-16"
-            />
-          </View>
-          <BottomSheetFlatList
-            data={filteredInventory}
-            keyExtractor={(item) => item.id}
-            ListHeaderComponent={() => (
-              <View className="flex-row items-center px-3 py-1.5 border-b border-gray-700">
-                <View className="w-[6%]">
-                  <TouchableOpacity
-                    onPress={toggleSelectAllInventory}
-                    className="h-5 w-5 items-center justify-center border border-gray-600 rounded"
-                  >
-                    <>
-                      {isAllInventorySelected && (
-                        <Check color="#fff" size={12} />
-                      )}
-                    </>
-                  </TouchableOpacity>
-                </View>
-                <Text className="text-gray-400 text-xs">Select All</Text>
-              </View>
-            )}
-            renderItem={({ item }) => {
-              const isSelected = selectedInventoryIds.includes(item.id);
-              return (
-                <View className="flex-row items-center px-3 py-2.5 border-b border-gray-700">
-                  <View className="w-[6%]">
-                    <TouchableOpacity
-                      onPress={() => toggleSelectInventoryItem(item.id)}
-                      className={`h-5 w-5 items-center justify-center border rounded ${
-                        isSelected
-                          ? "bg-blue-600 border-blue-500"
-                          : "border-gray-600"
-                      }`}
-                    >
-                      <>{isSelected && <Check color="#fff" size={12} />}</>
-                    </TouchableOpacity>
-                  </View>
-                  <View className="flex-1">
-                    <InventoryCatalogRow
-                      item={item}
-                      onEdit={() => {
-                        invSearchSheetRef.current?.dismiss();
-                        handleOpenEditModal(item);
-                      }}
-                      onDelete={() => handleOpenDeleteConfirm(item)}
-                    />
-                  </View>
-                </View>
-              );
-            }}
-          />
-          {selectedInventoryIds.length > 0 && (
-            <View className="p-3 border-t border-gray-700 bg-[#303030]">
-              <Text className="text-white text-sm mb-1.5">
-                Selected: {selectedInventoryIds.length}
-              </Text>
-              <View className="flex-row gap-2">
-                <TouchableOpacity
-                  onPress={handleOpenBulkInventoryStockModal}
-                  className="px-3 py-2 bg-blue-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold">
-                    Bulk Update
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={clearInventorySelection}
-                  className="px-3 py-2 bg-gray-600 rounded-lg"
-                >
-                  <Text className="text-white text-base font-semibold">
-                    Clear
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </BottomSheet>
       </View>
+      <MenuSearchSheet
+        ref={menuSearchSheetRef}
+        menuItems={menuItems}
+        selectedIds={selectedMenuIds}
+        onToggle={(itemId) => {
+          toggleSelectMenuItem(itemId);
+        }}
+      />
+      <InventorySearchSheet
+        ref={invSearchSheetRef}
+        inventoryItems={inventoryItems}
+        vendors={vendors}
+        selectedIds={selectedInventoryIds}
+        onToggle={toggleSelectInventoryItem}
+        onToggleAll={handleToggleAllInventory}
+        onClear={clearInventorySelection}
+        onBulkUpdate={handleOpenBulkInventoryStockModal}
+        onEdit={handleOpenEditModal}
+        onDelete={handleOpenDeleteConfirm}
+      />
     </BottomSheetModalProvider>
   );
 };
