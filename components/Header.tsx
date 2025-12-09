@@ -27,7 +27,7 @@ const Header = () => {
     pathname === "/order-processing" ||
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
-    pathname === "/settings" ||
+    pathname.startsWith("/settings") ||
     pathname === "/settings/floor-plan" ||
     pathname.startsWith("/analytics") ||
     (pathname.startsWith("/analytics-dashboard") &&
@@ -40,13 +40,7 @@ const Header = () => {
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
-      pathname.split("/").length === 4) ||
-    (pathname.startsWith("/settings") && pathname.split("/").length === 4) ||
-    pathname === "/settings/store-operation/end-of-day/checks" ||
-    pathname === "/settings/store-operation/end-of-day/drawers" ||
-    pathname === "/settings/store-operation/end-of-day/employees" ||
-    pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||
-    pathname === "/settings/store-operation/end-of-day/sales-summary";
+      pathname.split("/").length === 4);
 
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
