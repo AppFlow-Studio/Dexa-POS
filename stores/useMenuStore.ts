@@ -153,11 +153,28 @@ const getInitialMenus = (): Menu[] => {
   return [
     {
       id: generateMenuId(),
-      name: "Main Menu",
-      description: "Our complete dining experience",
+      name: "Breakfast Details",
+      description: "Morning favorites",
       isActive: true,
-      categories: ["Appetizers", "Main Course", "Dessert"],
-      schedules: [],
+      categories: ["Appetizers", "Main Course"],
+      schedules: [
+        {
+          id: "sch_1",
+          name: "Morning Rush",
+          startTime: "06:00",
+          endTime: "11:00",
+          days: [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+          ],
+          isActive: true,
+        },
+      ],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -167,7 +184,62 @@ const getInitialMenus = (): Menu[] => {
       description: "Quick and delicious lunch options",
       isActive: true,
       categories: ["Main Course", "Sides"],
-      schedules: [],
+      schedules: [
+        {
+          id: "sch_2",
+          name: "Weekday Lunch",
+          startTime: "11:00",
+          endTime: "15:00",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+          isActive: true,
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: generateMenuId(),
+      name: "Dinner Menu",
+      description: "Full course dinner selection",
+      isActive: true,
+      categories: ["Appetizers", "Main Course", "Dessert"],
+      schedules: [
+        {
+          id: "sch_3",
+          name: "Evening Service",
+          startTime: "17:00",
+          endTime: "22:00",
+          days: [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+          ],
+          isActive: true,
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: generateMenuId(),
+      name: "Late Night",
+      description: "Late night bites and snacks",
+      isActive: true,
+      categories: ["Appetizers", "Sides"],
+      schedules: [
+        {
+          id: "sch_4",
+          name: "Weekend Late Night",
+          startTime: "22:00",
+          endTime: "02:00",
+          days: ["Friday", "Saturday"],
+          isActive: true,
+        },
+      ],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -346,8 +418,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-              ? [item.category]
-              : [];
+                ? [item.category]
+                : [];
 
             // Only add if not already present
             if (!currentCategories.includes(categoryName)) {
@@ -372,8 +444,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-              ? [item.category]
-              : [];
+                ? [item.category]
+                : [];
 
             return {
               ...item,
@@ -393,8 +465,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const categories = Array.isArray(item.category)
           ? item.category
           : item.category
-          ? [item.category]
-          : [];
+            ? [item.category]
+            : [];
         return categories.includes(categoryName);
       });
     },
@@ -464,8 +536,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const itemCategories = Array.isArray(item.category)
           ? item.category
           : item.category
-          ? [item.category]
-          : [];
+            ? [item.category]
+            : [];
         return menu.categories.some((categoryName) =>
           itemCategories.includes(categoryName)
         );

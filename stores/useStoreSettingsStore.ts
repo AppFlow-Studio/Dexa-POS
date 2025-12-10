@@ -14,6 +14,32 @@ export interface StoreSettings {
   defaultTaxRate: number;
   ptoAccrualRate: number;
   minimumPtoNoticeDays: number;
+  targetLaborPercent: number;
+
+  // Online Ordering Settings
+  onlineOrderingEnabled: boolean;
+  onlinePauseReason: string | null;
+  autoResumeTime: string | null; // ISO date
+
+  // Order Acceptance
+  autoAcceptOrders: boolean;
+  largeOrderApprovalThreshold: number;
+  rejectWhenBusyThreshold: number; // 0 = disabled
+
+  // Dynamic Prep Times
+  dynamicPrepTimeEnabled: boolean;
+  basePrepTime: number; // minutes
+  prepTimeAdjustments: {
+    kitchenLoad: boolean; // +10m if >25 orders
+    peakHours: boolean; // +5m 5-8PM
+    weather: boolean; // +15m if bad weather (simulated)
+  };
+
+  // Pre-Ordering
+  preOrderingEnabled: boolean;
+  preOrderMaxDays: number;
+  preOrderMinAdvanceMinutes: number;
+  preOrderMaxDaily: number;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -24,6 +50,12 @@ interface StoreSettingsState extends StoreSettings {
     value: StoreSettings[K]
   ) => void;
   setPtoAccrualRate: (rate: number) => void; // New action
+  setTargetLaborPercent: (percent: number) => void;
+  // Generic update for nested objects like prepTimeAdjustments
+  updatePrepAdjustment: (
+    key: keyof StoreSettings["prepTimeAdjustments"],
+    value: boolean
+  ) => void;
   saveChanges: () => void;
   discardChanges: () => void;
 }
@@ -52,7 +84,27 @@ const initialData: StoreSettings = {
   storeTaxId: "US123456789",
   defaultTaxRate: 8.25,
   ptoAccrualRate: 0.0375,
-  minimumPtoNoticeDays: 7, // Default to 7 days
+  minimumPtoNoticeDays: 7,
+  targetLaborPercent: 25,
+
+  // Online Ordering Defaults
+  onlineOrderingEnabled: true,
+  onlinePauseReason: null,
+  autoResumeTime: null,
+  autoAcceptOrders: false,
+  largeOrderApprovalThreshold: 200,
+  rejectWhenBusyThreshold: 35,
+  dynamicPrepTimeEnabled: true,
+  basePrepTime: 25,
+  prepTimeAdjustments: {
+    kitchenLoad: true,
+    peakHours: true,
+    weather: false,
+  },
+  preOrderingEnabled: true,
+  preOrderMaxDays: 30,
+  preOrderMinAdvanceMinutes: 120, // 2 hours
+  preOrderMaxDaily: 25,
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
@@ -84,6 +136,38 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
           initialState: undefined,
           isDirty: undefined,
         });
+      return { ...newState, isDirty };
+    });
+  },
+
+  setTargetLaborPercent: (percent: number) => {
+    set((state) => {
+      const newState = { ...state, targetLaborPercent: percent };
+      const isDirty =
+        JSON.stringify(newState.initialState) !==
+        JSON.stringify({
+          ...newState,
+          initialState: undefined,
+          isDirty: undefined,
+        });
+      return { ...newState, isDirty };
+    });
+  },
+
+  updatePrepAdjustment: (key, value) => {
+    set((state) => {
+      const newAdjustments = { ...state.prepTimeAdjustments, [key]: value };
+      const newState = { ...state, prepTimeAdjustments: newAdjustments };
+
+      // Calculate dirty state
+      const isDirty =
+        JSON.stringify(newState.initialState) !==
+        JSON.stringify({
+          ...newState,
+          initialState: undefined,
+          isDirty: undefined,
+        });
+
       return { ...newState, isDirty };
     });
   },
