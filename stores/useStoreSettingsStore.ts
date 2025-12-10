@@ -16,6 +16,18 @@ export interface StoreSettings {
   minimumPtoNoticeDays: number;
   targetLaborPercent: number;
 
+  // Scheduling
+  scheduling: {
+    autoDetectConflicts: boolean;
+    conflictTypes: {
+      doubleBooked: boolean;
+      overtime: boolean;
+      minStaffing: boolean;
+      backToBack: boolean;
+      // Add other conflict types here as needed
+    };
+  };
+
   // Online Ordering Settings
   onlineOrderingEnabled: boolean;
   onlinePauseReason: string | null;
@@ -56,6 +68,9 @@ interface StoreSettingsState extends StoreSettings {
     key: keyof StoreSettings["prepTimeAdjustments"],
     value: boolean
   ) => void;
+  updateSchedulingSettings: (
+    updates: Partial<StoreSettings["scheduling"]>
+  ) => void;
   saveChanges: () => void;
   discardChanges: () => void;
 }
@@ -86,6 +101,17 @@ const initialData: StoreSettings = {
   ptoAccrualRate: 0.0375,
   minimumPtoNoticeDays: 7,
   targetLaborPercent: 25,
+
+  // Scheduling Defaults
+  scheduling: {
+    autoDetectConflicts: true,
+    conflictTypes: {
+      doubleBooked: true,
+      overtime: true,
+      minStaffing: true,
+      backToBack: true,
+    },
+  },
 
   // Online Ordering Defaults
   onlineOrderingEnabled: true,
@@ -160,6 +186,38 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
       const newState = { ...state, prepTimeAdjustments: newAdjustments };
 
       // Calculate dirty state
+      const isDirty =
+        JSON.stringify(newState.initialState) !==
+        JSON.stringify({
+          ...newState,
+          initialState: undefined,
+          isDirty: undefined,
+        });
+
+      return { ...newState, isDirty };
+    });
+  },
+
+  updateSchedulingSettings: (updates: Partial<StoreSettings["scheduling"]>) => {
+    set((state) => {
+      const newScheduling = { ...state.scheduling, ...updates };
+      // Deep merge for nested conflictTypes if provided
+      if (updates.conflictTypes) {
+        newScheduling.conflictTypes = {
+          ...state.scheduling.conflictTypes,
+          // We can just replace it or merge it. Since we pass the whole object from UI usually, replacing is fine,
+          // but let's be safe and merge if only partial is passed (though Partial<Scheduling> implies top level).
+          // Actually, let's treat conflictTypes as a replacement if present in updates, OR merging carefully.
+          // For simplicity in this specific store pattern, let's assume the UI sends the full object or we merge carefully.
+          // Wait, the updates param is Partial<Scheduling>.
+          // conflictTypes is optional in that partial.
+          // Let's do a merge:
+          ...updates.conflictTypes,
+        };
+      }
+
+      const newState = { ...state, scheduling: newScheduling };
+
       const isDirty =
         JSON.stringify(newState.initialState) !==
         JSON.stringify({

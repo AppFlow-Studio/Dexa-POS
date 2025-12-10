@@ -11,16 +11,25 @@ export const TimeField: React.FC<{
   onChange: (next: string) => void;
 }> = ({ value, onChange }) => {
   const [hours, minutes] = useMemo(() => {
-    const [h = "0", m = "0"] = value?.split(":") ?? [];
-    return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
+    if (!value) return [0, 0];
+    const d = new Date(value);
+    // If invalid date (e.g. old "09:00" format during migration), fallback or parse manually
+    if (isNaN(d.getTime())) {
+      const [h = "0", m = "0"] = value.split(":") ?? [];
+      return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
+    }
+    return [d.getHours(), d.getMinutes()];
   }, [value]);
 
-  const set = (h: number, m: number) =>
-    onChange(
-      `${String((h + 24) % 24).padStart(2, "0")}:${String(
-        (m + 60) % 60
-      ).padStart(2, "0")}`
-    );
+  const set = (h: number, m: number) => {
+    let d = value ? new Date(value) : new Date();
+    if (isNaN(d.getTime())) d = new Date(); // Fallback if invalid
+    d.setHours((h + 24) % 24);
+    d.setMinutes((m + 60) % 60);
+    d.setSeconds(0);
+    d.setMilliseconds(0);
+    onChange(d.toISOString());
+  };
 
   const toAmPm = (h: number, m: number) => {
     const period = h >= 12 ? "PM" : "AM";
@@ -127,7 +136,16 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
-            {rule.days.join(", ")} from {rule.startTime} to {rule.endTime}
+            {rule.days.join(", ")} from{" "}
+            {new Date(rule.startTime).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}{" "}
+            to{" "}
+            {new Date(rule.endTime).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })}
           </Text>
         </TouchableOpacity>
       ))}

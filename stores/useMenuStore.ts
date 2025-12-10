@@ -150,6 +150,12 @@ const getInitialCategories = (): Category[] => {
 
 // Initial menus
 const getInitialMenus = (): Menu[] => {
+  const getIsoTime = (hour: number, minute: number = 0) => {
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    return d.toISOString();
+  };
+
   return [
     {
       id: generateMenuId(),
@@ -161,8 +167,8 @@ const getInitialMenus = (): Menu[] => {
         {
           id: "sch_1",
           name: "Morning Rush",
-          startTime: "06:00",
-          endTime: "11:00",
+          startTime: getIsoTime(6),
+          endTime: getIsoTime(11),
           days: [
             "Monday",
             "Tuesday",
@@ -188,8 +194,8 @@ const getInitialMenus = (): Menu[] => {
         {
           id: "sch_2",
           name: "Weekday Lunch",
-          startTime: "11:00",
-          endTime: "15:00",
+          startTime: getIsoTime(11),
+          endTime: getIsoTime(15),
           days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
           isActive: true,
         },
@@ -207,8 +213,8 @@ const getInitialMenus = (): Menu[] => {
         {
           id: "sch_3",
           name: "Evening Service",
-          startTime: "17:00",
-          endTime: "22:00",
+          startTime: getIsoTime(17),
+          endTime: getIsoTime(22),
           days: [
             "Monday",
             "Tuesday",
@@ -234,8 +240,9 @@ const getInitialMenus = (): Menu[] => {
         {
           id: "sch_4",
           name: "Weekend Late Night",
-          startTime: "22:00",
-          endTime: "02:00",
+          startTime: getIsoTime(22),
+          endTime: getIsoTime(26), // 02:00 next day (handled via overflow logic or date manipulation)
+          // Note: getIsoTime(26) works (sets to 2 AM next day) which preserves the 'crossing midnight' Intent for ISO.
           days: ["Friday", "Saturday"],
           isActive: true,
         },
@@ -879,10 +886,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       // If multiple windows today, return the first window as timeframe (or join)
       const formatTime = (t: string) => {
-        const [h, m] = t.split(":").map(Number);
-        const d = new Date();
-        d.setHours(h, m || 0, 0, 0);
-        return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        return new Date(t).toLocaleTimeString([], {
+          hour: "numeric",
+          minute: "2-digit",
+        });
       };
       let timeframe: string | null = null;
       if (availableToday) {
@@ -926,14 +933,38 @@ function isNowInAnySchedule(schedules: Schedule[], at?: Date): boolean {
   return schedules.some((rule) => {
     if (!rule.isActive) return false;
     if (!rule.days.includes(day)) return false;
-    const [sh, sm] = rule.startTime.split(":").map(Number);
-    const [eh, em] = rule.endTime.split(":").map(Number);
-    const startM = sh * 60 + (sm || 0);
-    const endM = eh * 60 + (em || 0);
-    if (endM >= startM) {
+
+    // Parse ISO strings
+    const start = new Date(rule.startTime);
+    const end = new Date(rule.endTime);
+
+    // Get minutes from beginning of day (Local Time) to match current time check
+    const startM = start.getHours() * 60 + start.getMinutes();
+    let endM = end.getHours() * 60 + end.getMinutes();
+
+    // Handle crossing midnight (e.g. 2 AM < 10 PM)
+    // If endM is less than startM, we assume it's next day, so add 24h
+    if (endM < startM) {
+      endM += 24 * 60;
+    }
+
+    // Now simply check range
+    // Note: If current time 'minutes' is very small (e.g. 1 AM), and schedule is 10PM-2AM,
+    // we need to handle "being in the late night window".
+    // 1 AM = 60 mins. 10 PM = 1320. 2 AM (next day) = 1560.
+    // 60 is NOT >= 1320.
+    // So 'minutes' also needs to adjust if we are early morning?
+    // OR, simpler approach:
+    // Check if we are >= start OR <= end (if overnight).
+
+    if (endM >= 1440) {
+      // It's an overnight shift (e.g. 22:00 to 26:00/02:00)
+      // We are in it if we are >= 22:00 (today) OR <= 02:00 (today)
+      const visibleEndM = endM % 1440;
+      return minutes >= startM || minutes < visibleEndM;
+    } else {
+      // Normal day shift
       return minutes >= startM && minutes < endM;
     }
-    // overnight window case
-    return minutes >= startM || minutes < endM;
   });
 }

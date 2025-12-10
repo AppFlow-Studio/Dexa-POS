@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import CustomSlider from "@/components/ui/custom-slider";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -21,85 +22,15 @@ import {
   PlayCircle,
   Utensils,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
-import {
-  LayoutChangeEvent,
-  PanResponder,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useMemo } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Reuse the stable CustomSlider from financial.tsx
-const CustomSlider = ({
-  value,
-  onValueChange,
-  min = 0,
-  max = 100,
-  step = 1,
-}: {
-  value: number;
-  onValueChange: (val: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-}) => {
-  const [width, setWidth] = useState(0);
-
-  const updateValue = (x: number) => {
-    if (width === 0) return;
-    const percentage = Math.min(Math.max(x / width, 0), 1);
-    let newValue = min + percentage * (max - min);
-    if (step) {
-      newValue = Math.round(newValue / step) * step;
-    }
-    onValueChange(Math.min(Math.max(newValue, min), max));
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        updateValue(evt.nativeEvent.locationX);
-      },
-      onPanResponderMove: (evt) => {
-        updateValue(evt.nativeEvent.locationX);
-      },
-    })
-  ).current;
-
-  const percentage = ((value - min) / (max - min)) * 100;
-
-  return (
-    <View
-      className="h-10 justify-center"
-      onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
-      pointerEvents="box-only"
-      {...panResponder.panHandlers}
-    >
-      <View className="h-2 bg-gray-700 rounded-full w-full overflow-hidden">
-        <View
-          className="h-full bg-blue-500"
-          style={{ width: `${percentage}%` }}
-        />
-      </View>
-      <View
-        className="absolute w-6 h-6 bg-white rounded-full shadow-md border border-gray-300"
-        style={{
-          left: `${Math.min(Math.max(percentage - 2, 0), 96)}%`,
-        }}
-      />
-    </View>
-  );
-};
-
-// Helper to get minutes from "HH:mm"
-const getMinutesFromTime = (time: string) => {
-  const [h, m] = time.split(":").map(Number);
-  return h * 60 + m;
+// Helper to get local minutes from ISO time
+const getMinutesFromTime = (isoTime: string) => {
+  const d = new Date(isoTime);
+  // We use local hours to match visual timeline which typically represents "the day"
+  return d.getHours() * 60 + d.getMinutes();
 };
 
 // Timeline Component
@@ -168,7 +99,10 @@ const MenuTimeline = ({ menus }: { menus: any[] }) => {
   );
 };
 
+import { useRouter } from "expo-router";
+
 const OnlineOrderingScreen = () => {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   // Store Connection
@@ -456,11 +390,11 @@ const OnlineOrderingScreen = () => {
                     />
                   </View>
 
-                  <View className="bg-white p-6 rounded-xl items-center justify-center shadow-lg">
+                  <View className="bg-[#3e3e3e] p-6 rounded-xl items-center justify-center shadow-lg">
                     <Text className="text-gray-500 text-sm uppercase tracking-widest mb-1">
                       Current Quoted Time
                     </Text>
-                    <Text className="text-gray-900 font-black text-5xl">
+                    <Text className="text-[#3b82f6] font-black text-5xl">
                       {currentPrepTime} min
                     </Text>
                     <Text className="text-gray-400 text-xs mt-2">
@@ -496,11 +430,7 @@ const OnlineOrderingScreen = () => {
                           onCheckedChange={(v) =>
                             updatePrepAdjustment(item.key as any, v)
                           }
-                          className={
-                            item.checked
-                              ? "border-primary bg-primary"
-                              : "border-primary"
-                          }
+                          className="border-gray-500 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                         />
                         <Text className="text-gray-300 text-sm">
                           {item.label}
@@ -700,9 +630,31 @@ const OnlineOrderingScreen = () => {
                         const schedule = menu.schedules?.find(
                           (s: any) => s.isActive
                         );
-                        const timeString = schedule
-                          ? `${schedule.startTime} - ${schedule.endTime}`
-                          : "No Active Schedule";
+
+                        // Match colors logic from MenuTimeline
+                        const colors = [
+                          "bg-yellow-500",
+                          "bg-green-500",
+                          "bg-blue-500",
+                          "bg-purple-500",
+                          "bg-red-500",
+                        ];
+                        const dotColor = colors[i % colors.length];
+
+                        // Format ISO string to time (e.g. 5:00 PM)
+                        const formatTime = (iso: string) =>
+                          new Date(iso).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          });
+
+                        let timeString = "No Active Schedule";
+                        if (schedule) {
+                          const start = formatTime(schedule.startTime);
+                          const end = formatTime(schedule.endTime);
+                          timeString = `${start} - ${end}`;
+                        }
+
                         const isActiveNow = useMenuStore
                           .getState()
                           .isMenuAvailableNow(menu.id);
@@ -713,6 +665,10 @@ const OnlineOrderingScreen = () => {
                             className="flex-row justify-between p-3"
                           >
                             <View className="flex-row items-center gap-2">
+                              {/* Colored Dot matching timeline */}
+                              <View
+                                className={`w-3 h-3 rounded-full ${dotColor}`}
+                              />
                               <Clock
                                 size={14}
                                 color={isActiveNow ? "#10b981" : "#6b7280"}
@@ -757,7 +713,10 @@ const OnlineOrderingScreen = () => {
                     );
                   })()}
 
-                  <TouchableOpacity className="bg-[#212121] py-3 rounded-lg border border-gray-600 items-center">
+                  <TouchableOpacity
+                    onPress={() => router.push("/(main)/menu")}
+                    className="bg-[#212121] py-3 rounded-lg border border-gray-600 items-center"
+                  >
                     <Text className="text-gray-300 font-bold">
                       Edit Menu Schedule
                     </Text>

@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import CustomSlider from "@/components/ui/custom-slider";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -31,79 +32,8 @@ import {
   TrendingUp,
 } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
-import {
-  PanResponder,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-// Custom Slider Component (kept from previous version)
-const CustomSlider = ({
-  value,
-  onValueChange,
-  min = 0,
-  max = 100,
-  step = 1,
-}: {
-  value: number;
-  onValueChange: (val: number) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-}) => {
-  const [width, setWidth] = useState(0);
-
-  const updateValue = (x: number) => {
-    if (width === 0) return;
-    const percentage = Math.min(Math.max(x / width, 0), 1);
-    let newValue = min + percentage * (max - min);
-    if (step) {
-      newValue = Math.round(newValue / step) * step;
-    }
-    onValueChange(Math.min(Math.max(newValue, min), max));
-  };
-
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        updateValue(evt.nativeEvent.locationX);
-      },
-      onPanResponderMove: (evt) => {
-        updateValue(evt.nativeEvent.locationX);
-      },
-      onPanResponderRelease: () => {},
-    })
-  ).current;
-
-  const percentage = ((value - min) / (max - min)) * 100;
-
-  return (
-    <View
-      className="h-10 justify-center"
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-      pointerEvents="box-only"
-      {...panResponder.panHandlers}
-    >
-      <View className="h-2 bg-gray-700 rounded-full w-full overflow-hidden">
-        <View
-          className="h-full bg-blue-500"
-          style={{ width: `${percentage}%` }}
-        />
-      </View>
-      <View
-        className="absolute w-6 h-6 bg-white rounded-full shadow-md border border-gray-300"
-        style={{
-          left: `${Math.min(Math.max(percentage - 2, 0), 96)}%`,
-        }}
-      />
-    </View>
-  );
-};
 
 // Quadrant Card
 const QuadrantCard = ({
