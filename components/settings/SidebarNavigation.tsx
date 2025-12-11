@@ -147,17 +147,23 @@ const SETTINGS_SECTIONS: SidebarSection[] = [
 const SidebarNavigation = () => {
   const router = useRouter();
   const pathname = usePathname();
+  // Automatically expand the section that contains the current route on mount
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
-  >({});
+  >(() => {
+    const activeSection = SETTINGS_SECTIONS.find((section) =>
+      section.items.some((item) => pathname.startsWith(item.route))
+    );
+    return activeSection ? { [activeSection.id]: true } : {};
+  });
 
-  // Automatically expand the section that contains the current route
+  // Keep expanding sections if route changes (optional, but good for deep linking or redirects)
   useEffect(() => {
     const activeSection = SETTINGS_SECTIONS.find((section) =>
       section.items.some((item) => pathname.startsWith(item.route))
     );
 
-    if (activeSection) {
+    if (activeSection && !expandedSections[activeSection.id]) {
       setExpandedSections((prev) => ({
         ...prev,
         [activeSection.id]: true,
