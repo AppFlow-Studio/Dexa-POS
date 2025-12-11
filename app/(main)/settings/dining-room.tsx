@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { Href, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import {
   ArrowRight,
   Clock,
@@ -99,7 +99,10 @@ const DiningRoomScreen = () => {
                       </Text>
                       <TouchableOpacity
                         onPress={() =>
-                          router.push("/tables/floor-plan" as Href)
+                          router.push({
+                            pathname: "/tables/floor-plan",
+                            params: { returnTo: "/settings/dining-room" },
+                          })
                         }
                         className="flex-row items-center justify-center bg-gray-700 py-2 rounded-md"
                       >

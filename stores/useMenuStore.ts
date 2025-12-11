@@ -1,5 +1,6 @@
 import { ALL_MODIFIER_GROUPS, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import {
+  Category,
   CustomPricing,
   Menu,
   MenuItemType,
@@ -7,15 +8,6 @@ import {
   Schedule,
 } from "@/lib/types";
 import { create } from "zustand";
-
-export interface Category {
-  id: string;
-  name: string;
-  isActive: boolean;
-  order: number;
-  createdAt: string;
-  schedules?: Schedule[];
-}
 
 interface MenuState {
   // Core menu data

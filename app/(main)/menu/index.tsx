@@ -87,6 +87,55 @@ interface DraggableMenuProps {
   onEdit: () => void;
 }
 
+// Helper to check if now is within a schedule
+const checkAvailability = (schedules: any[]): boolean => {
+  if (!schedules || schedules.length === 0) return true;
+
+  const now = new Date();
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const currentDay = dayNames[now.getDay()];
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  return schedules.some((rule) => {
+    if (!rule.isActive) return false;
+    // Respect the day if it exists and is not empty
+    if (rule.days && rule.days.length > 0 && !rule.days.includes(currentDay)) {
+      return false;
+    }
+
+    let startMinutes = 0;
+    let endMinutes = 0;
+
+    // Helper to get minutes from time string (ISO or HH:MM)
+    const getMinutes = (timeStr: string) => {
+      if (!timeStr) return 0;
+      if (timeStr.includes("T")) {
+        // ISO String: Parse as Date (converts to local time)
+        const date = new Date(timeStr);
+        if (isNaN(date.getTime())) return 0;
+        return date.getHours() * 60 + date.getMinutes();
+      } else if (timeStr.includes(":")) {
+        // HH:MM format
+        const [h, m] = timeStr.split(":").map(Number);
+        return (h || 0) * 60 + (m || 0);
+      }
+      return 0;
+    };
+
+    startMinutes = getMinutes(rule.startTime);
+    endMinutes = getMinutes(rule.endTime);
+
+    // Handle overnight shift (e.g. 22:00 - 02:00)
+    if (endMinutes < startMinutes) {
+      // Available if we are after start (e.g. 23:00) OR before end (e.g. 01:00)
+      return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    }
+
+    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  });
+};
+
 const DraggableMenu: React.FC<DraggableMenuProps> = ({
   menu,
   index,
@@ -138,6 +187,8 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
     };
   });
 
+  const isAvailable = checkAvailability(menu.schedules);
+
   return (
     <Animated.View
       style={animatedStyle}
@@ -153,20 +204,18 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
           <Text className="text-2xl font-semibold text-white">{menu.name}</Text>
           <View
             className={`px-2.5 py-1.5 rounded-full ${
-              menu.isActive && menu.isAvailableNow
+              menu.isActive && isAvailable
                 ? "bg-green-900/30 border border-green-500"
                 : "bg-red-900/30 border border-red-500"
             }`}
           >
             <Text
               className={`text-lg font-medium ${
-                menu.isActive && menu.isAvailableNow
-                  ? "text-green-400"
-                  : "text-red-400"
+                menu.isActive && isAvailable ? "text-green-400" : "text-red-400"
               }`}
             >
               {menu.isActive
-                ? menu.isAvailableNow
+                ? isAvailable
                   ? "Available Now"
                   : "Unavailable Now"
                 : "Inactive"}

@@ -714,7 +714,12 @@ const OnlineOrderingScreen = () => {
                   })()}
 
                   <TouchableOpacity
-                    onPress={() => router.push("/(main)/menu")}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(main)/menu",
+                        params: { returnTo: "/settings/online-ordering" },
+                      })
+                    }
                     className="bg-[#212121] py-3 rounded-lg border border-gray-600 items-center"
                   >
                     <Text className="text-gray-300 font-bold">

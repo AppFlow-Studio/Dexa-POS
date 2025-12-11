@@ -206,6 +206,15 @@ export interface Menu {
   updatedAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  isActive: boolean;
+  order: number;
+  createdAt: string;
+  schedules?: Schedule[];
+}
+
 export interface Schedule {
   id: string;
   name: string;

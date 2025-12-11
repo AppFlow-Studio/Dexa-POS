@@ -1,5 +1,10 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { usePathname, useRouter } from "expo-router";
+import {
+  Href,
+  useGlobalSearchParams,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -9,6 +14,7 @@ const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { layouts } = useFloorPlanStore();
+  const globalParams = useGlobalSearchParams();
 
   const showBackButton =
     pathname === "/open-shifts" ||
@@ -114,6 +120,12 @@ const Header = () => {
   }, [pathname, layouts]);
 
   const handleBackPress = () => {
+    // In handleBackPress:
+    if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
+      router.push(globalParams.returnTo as Href);
+      return;
+    }
+
     const pathParts = pathname.split("/").filter(Boolean);
 
     if (
@@ -126,7 +138,7 @@ const Header = () => {
 
     if (pathname.startsWith("/settings")) {
       if (pathParts.length > 2) {
-        router.push("/settings");
+        // router.push("/settings");
       } else {
         router.push("/home");
       }

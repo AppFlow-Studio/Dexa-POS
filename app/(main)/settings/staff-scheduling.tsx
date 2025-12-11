@@ -51,7 +51,10 @@ const StaffSchedulingScreen = () => {
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
   const handleCreateTemplate = () => {
-    router.push("/(main)/scheduling/templates");
+    router.push({
+      pathname: "/scheduling/templates",
+      params: { returnTo: "/settings/staff-scheduling" },
+    });
   };
 
   const handleUseTemplate = (templateId: string) => {
