@@ -32,34 +32,52 @@ const getMarkedDates = (range: DateRange, activeSelector: "from" | "to") => {
   if (!range.from) return marked;
 
   const fromString = range.from.toISOString().split("T")[0];
-  marked[fromString] = {
-    startingDay: true,
-    color: "#3b82f6",
-    textColor: "white",
-  };
 
   if (range.to) {
     const toString = range.to.toISOString().split("T")[0];
-    let currentDate = new Date(range.from);
-    currentDate.setDate(currentDate.getDate() + 1);
 
-    while (currentDate < range.to) {
-      const dateString = currentDate.toISOString().split("T")[0];
-      marked[dateString] = {
+    // Check if start and end date are the same - make full circle
+    if (fromString === toString) {
+      marked[fromString] = {
+        startingDay: true,
+        endingDay: true,
         color: "#3b82f6",
         textColor: "white",
-        disabled: true,
       };
+    } else {
+      // Different dates - mark range
+      marked[fromString] = {
+        startingDay: true,
+        color: "#3b82f6",
+        textColor: "white",
+      };
+
+      let currentDate = new Date(range.from);
       currentDate.setDate(currentDate.getDate() + 1);
+
+      while (currentDate < range.to) {
+        const dateString = currentDate.toISOString().split("T")[0];
+        marked[dateString] = {
+          color: "#3b82f6",
+          textColor: "white",
+        };
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      marked[toString] = {
+        endingDay: true,
+        color: "#3b82f6",
+        textColor: "white",
+      };
     }
-    marked[toString] = {
+  } else {
+    // Only start date selected - full circle on start
+    marked[fromString] = {
+      startingDay: true,
       endingDay: true,
-      color: "#3b82f6",
+      color: activeSelector === "to" ? "#3b82f6" : "#60a5fa",
       textColor: "white",
     };
-  } else {
-    // Highlight the start date even if no end date is selected
-    marked[fromString].color = activeSelector === "to" ? "#3b82f6" : "#60a5fa";
   }
   return marked;
 };

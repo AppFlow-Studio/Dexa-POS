@@ -8,7 +8,6 @@ import { useRouter } from "expo-router";
 import {
   ArrowLeftRight,
   Bell,
-  ChevronLeft,
   ChevronRight,
   Coffee,
   LogOut,
@@ -17,6 +16,12 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  Layout,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
 import {
@@ -345,6 +350,18 @@ const SessionDock = () => {
   const [isSwitchModalOpen, setSwitchModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
 
+  // Chevron rotation animation
+  const rotation = useSharedValue(180); // Start at 180 since expanded by default
+
+  const rotateStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const toggleExpand = () => {
+    setIsExpanded(!isExpanded);
+    rotation.value = withTiming(isExpanded ? 0 : 180, { duration: 200 });
+  };
+
   const activeSessionId = Object.keys(sessions).find(
     (id) => sessions[id].employeeId === activeEmployeeId
   );
@@ -354,7 +371,10 @@ const SessionDock = () => {
 
   return (
     <>
-      <View className="flex-row items-center p-1 bg-[#303030] rounded-full border border-gray-700">
+      <Animated.View
+        layout={Layout.duration(220)}
+        className="flex-row items-center bg-[#303030] rounded-full border border-gray-700 overflow-hidden"
+      >
         {isExpanded ? (
           <>
             <ScrollView
@@ -373,31 +393,25 @@ const SessionDock = () => {
             >
               <Plus size={20} color="white" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setIsExpanded(false)}
-              className="p-2"
-            >
-              <ChevronLeft size={20} color="white" />
+            <TouchableOpacity onPress={toggleExpand} className="p-2">
+              <Animated.View style={rotateStyle}>
+                <ChevronRight size={20} color="white" />
+              </Animated.View>
             </TouchableOpacity>
           </>
         ) : (
           <>
-            {activeSessionId && <SessionChip sessionId={activeSessionId} />}
-            {/* <TouchableOpacity
-              onPress={() => setSwitchModalOpen(true)}
-              className="p-2 mx-1 bg-gray-600 rounded-full"
-            >
-              <Plus size={20} color="white" />
-            </TouchableOpacity> */}
-            <TouchableOpacity
-              onPress={() => setIsExpanded(true)}
-              className="p-2"
-            >
-              <ChevronRight size={20} color="white" />
+            <View className="p-1">
+              {activeSessionId && <SessionChip sessionId={activeSessionId} />}
+            </View>
+            <TouchableOpacity onPress={toggleExpand} className="p-2">
+              <Animated.View style={rotateStyle}>
+                <ChevronRight size={20} color="white" />
+              </Animated.View>
             </TouchableOpacity>
           </>
         )}
-      </View>
+      </Animated.View>
       <SwitchAccountModal
         isOpen={isSwitchModalOpen}
         onClose={() => setSwitchModalOpen(false)}
