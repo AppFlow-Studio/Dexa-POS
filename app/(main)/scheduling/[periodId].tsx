@@ -19,7 +19,7 @@ import {
   Users,
   X,
 } from "lucide-react-native";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
   Platform, // <--- Imported
@@ -64,6 +64,7 @@ const ScheduleDetail = ({
   pendingSwapRequestsCount,
   pendingPtoRequestsCount,
   pendingDropRequestsCount,
+  applyTemplateId,
 }: {
   currentSchedule: {
     schedule: SchedulePeriod | WeeklySchedule;
@@ -73,6 +74,7 @@ const ScheduleDetail = ({
   pendingSwapRequestsCount: number;
   pendingPtoRequestsCount: number;
   pendingDropRequestsCount: number;
+  applyTemplateId?: string;
 }) => {
   const router = useRouter();
   const {
@@ -106,8 +108,15 @@ const ScheduleDetail = ({
 
   // State for template overlay
   const [overlayTemplateId, setOverlayTemplateId] = useState<string | null>(
-    null
+    applyTemplateId || null
   );
+
+  useEffect(() => {
+    if (applyTemplateId) {
+      setOverlayTemplateId(applyTemplateId);
+    }
+  }, [applyTemplateId]);
+
   const [applyMode, setApplyMode] = useState<ApplyMode>("merge");
 
   // State for filters
@@ -626,7 +635,7 @@ const ScheduleDetail = ({
 };
 
 const ScheduleDetailScreen = () => {
-  const { periodId } = useLocalSearchParams();
+  const { periodId, applyTemplateId } = useLocalSearchParams();
   const {
     schedulePeriods,
     weeklySchedules,
@@ -676,6 +685,10 @@ const ScheduleDetailScreen = () => {
     );
   }
 
+  const initialTemplateId = Array.isArray(applyTemplateId)
+    ? applyTemplateId[0]
+    : applyTemplateId;
+
   return (
     <ScheduleDetail
       currentSchedule={currentSchedule}
@@ -683,6 +696,7 @@ const ScheduleDetailScreen = () => {
       pendingSwapRequestsCount={pendingSwapRequestsCount}
       pendingPtoRequestsCount={pendingPtoRequestsCount}
       pendingDropRequestsCount={pendingDropRequestsCount}
+      applyTemplateId={initialTemplateId}
     />
   );
 };

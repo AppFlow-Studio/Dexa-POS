@@ -56,7 +56,8 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
-            {rule.days.join(", ")} from {rule.startTime} to {rule.endTime}
+            {rule.days.join(", ")} from {formatTime(rule.startTime)} to{" "}
+            {formatTime(rule.endTime)}
           </Text>
         </TouchableOpacity>
       ))}
@@ -70,6 +71,40 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
       </TouchableOpacity>
     </View>
   );
+};
+
+const formatTime = (time: string): string => {
+  if (!time) return "";
+
+  // Handle ISO string (e.g., "2023-01-01T13:00:00.000Z")
+  if (time.includes("T")) {
+    const date = new Date(time);
+    if (!isNaN(date.getTime())) {
+      let hours = date.getHours();
+      const minutes = date.getMinutes();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
+      return `${hours}:${strMinutes} ${ampm}`;
+    }
+  }
+
+  // Handle "HH:mm" format
+  const parts = time.split(":");
+  if (parts.length >= 2) {
+    let hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    if (!isNaN(hours) && !isNaN(minutes)) {
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const strMinutes = minutes < 10 ? "0" + minutes : minutes;
+      return `${hours}:${strMinutes} ${ampm}`;
+    }
+  }
+
+  return time;
 };
 
 export default ScheduleManager;

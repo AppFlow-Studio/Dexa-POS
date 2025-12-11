@@ -1,8 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
-import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useRouter } from "expo-router";
 import {
@@ -73,9 +73,8 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
   return (
     <Text
-      className={`text-xs font-bold ${
-        isOvertime ? "text-red-400" : "text-yellow-400"
-      }`}
+      className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"
+        }`}
     >
       {displayTime}
     </Text>
@@ -87,7 +86,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const { sessions, activeEmployeeId, endBreak, startBreak } =
     useTimeclockStore();
   const { employees, signOut } = useEmployeeStore();
-  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+  const { isBreakAndSwitchEnabled } = useStoreSettingsStore();
   const { markAllAsRead } = useNotificationStore();
   const router = useRouter();
   const { show } = useToast();
@@ -103,8 +102,8 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
   const unreadCount = useNotificationStore((state) =>
     employee
       ? state.notifications.filter(
-          (n) => n.employeeId === employee.id && !n.isRead
-        ).length
+        (n) => n.employeeId === employee.id && !n.isRead
+      ).length
       : 0
   );
 
@@ -296,16 +295,14 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     <>
       <TouchableOpacity
         onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${
-          isOnBreak
+        className={`flex-row items-center p-1.5 rounded-full border ${isOnBreak
             ? "bg-yellow-900/50 border-yellow-600"
             : "bg-gray-700 border-gray-600"
-        }`}
+          }`}
       >
         <View
-          className={`w-8 h-8 rounded-full items-center justify-center ${
-            isOnBreak ? "bg-yellow-500" : "bg-gray-500"
-          }`}
+          className={`w-8 h-8 rounded-full items-center justify-center ${isOnBreak ? "bg-yellow-500" : "bg-gray-500"
+            }`}
         >
           <Text className="text-white text-sm font-bold">
             {employee.fullName
