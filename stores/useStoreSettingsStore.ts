@@ -28,6 +28,9 @@ export interface StoreSettings {
     };
   };
 
+  // Employee Settings
+  isBreakAndSwitchEnabled: boolean;
+
   // Online Ordering Settings
   onlineOrderingEnabled: boolean;
   onlinePauseReason: string | null;
@@ -61,6 +64,7 @@ interface StoreSettingsState extends StoreSettings {
     field: K,
     value: StoreSettings[K]
   ) => void;
+  setIsBreakAndSwitchEnabled: (isEnabled: boolean) => void;
   setPtoAccrualRate: (rate: number) => void; // New action
   setTargetLaborPercent: (percent: number) => void;
   // Generic update for nested objects like prepTimeAdjustments
@@ -113,6 +117,8 @@ const initialData: StoreSettings = {
     },
   },
 
+  isBreakAndSwitchEnabled: true, // Enabled by default
+
   // Online Ordering Defaults
   onlineOrderingEnabled: true,
   onlinePauseReason: null,
@@ -146,6 +152,20 @@ export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
         JSON.stringify({
           ...newState,
           initialState: undefined, // Exclude these from comparison
+          isDirty: undefined,
+        });
+      return { ...newState, isDirty };
+    });
+  },
+
+  setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
+    set((state) => {
+      const newState = { ...state, isBreakAndSwitchEnabled: isEnabled };
+      const isDirty =
+        JSON.stringify(newState.initialState) !==
+        JSON.stringify({
+          ...newState,
+          initialState: undefined,
           isDirty: undefined,
         });
       return { ...newState, isDirty };

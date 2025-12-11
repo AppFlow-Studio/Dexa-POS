@@ -149,20 +149,20 @@ const MultiLocationScreen = () => {
                     {renderSectionHeader("Push Menu Updates", <UploadCloud size={20} color="#f97316" />, "updates")}
                     {expandedSections.updates && (
                         <View className="p-5">
-                            <View className="bg-yellow-500/10 border border-yellow-500/30 p-4 rounded-lg flex-row items-start mb-4">
+                            <View className="bg-yellow-500/10 border border-yellow-500/30 p-5 rounded-lg flex-row items-start mb-6">
                                 <AlertTriangle size={20} color="#eab308" className="mt-0.5" />
-                                <View className="ml-3 flex-1">
+                                <View className="ml-4 flex-1">
                                     <Text className="text-yellow-500 font-bold mb-1">Pending Changes Detected</Text>
                                     <Text className="text-yellow-200/70 text-sm">You have 12 menu changes saved in draft (3 new items, 9 price updates). These have not been pushed to live locations.</Text>
                                 </View>
                             </View>
 
-                            <View className="flex-row gap-3">
+                            <View className="flex-row gap-4">
                                 <TouchableOpacity className="flex-1 bg-[#404040] py-3 rounded-lg border border-gray-600 items-center">
                                     <Text className="text-white font-medium">Preview Changes</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity className="flex-1 bg-blue-600 py-3 rounded-lg items-center flex-row justify-center">
-                                    <RefreshCw size={18} color="white" className="mr-2" />
+                                <TouchableOpacity className="flex-1 bg-blue-600 py-3 rounded-lg items-center flex-row justify-center gap-3">
+                                    <RefreshCw size={18} color="white" />
                                     <Text className="text-white font-bold">Push Updated Menu</Text>
                                 </TouchableOpacity>
                             </View>

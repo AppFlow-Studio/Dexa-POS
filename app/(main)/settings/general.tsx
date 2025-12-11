@@ -1,8 +1,12 @@
-import { Building2, ChevronDown, ChevronUp, Clock, DollarSign, FileText, Globe, MapPin, Percent, Phone, Store, X } from "lucide-react-native";
-import React, { useState } from "react";
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { Switch } from "~/components/ui/switch";
-import { useSettingsPageStore } from "~/stores/useSettingsPageStore";
+import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
+import { Switch } from "@/components/ui/switch";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import BottomSheet from "@gorhom/bottom-sheet";
+import { format, parse } from "date-fns";
+import { Building2, ChevronDown, ChevronUp, Clock, DollarSign, FileText, Globe, MapPin, Percent, Phone, Store } from "lucide-react-native";
+import React, { useRef, useState } from "react";
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -17,21 +21,50 @@ const TIME_OPTIONS = [
   "09:00 PM", "09:30 PM", "10:00 PM", "10:30 PM", "11:00 PM", "11:30 PM",
 ];
 
-const GeneralSettingsScreen = () => {
-  // Zustand store
-  const {
-    businessInfo, setBusinessInfo,
-    operatingHours, updateDayHours,
-    taxSettings, setTaxSettings,
-    serviceCharge, setServiceCharge,
-  } = useSettingsPageStore();
+const formatTo12Hour = (time: string) => {
+  if (!time) return "";
+  try {
+    const parsed = parse(time, "HH:mm", new Date());
+    return format(parsed, "hh:mm a");
+  } catch (e) {
+    return time; // Fallback if already 12h or invalid
+  }
+};
 
-  // Local UI state
-  const [timePickerModal, setTimePickerModal] = useState<{
-    visible: boolean;
-    day: string;
+const formatTo24Hour = (time: string) => {
+  if (!time) return "";
+  try {
+    const parsed = parse(time, "hh:mm a", new Date());
+    return format(parsed, "HH:mm");
+  } catch (e) {
+    return time;
+  }
+};
+
+const GeneralSettingsScreen = () => {
+  // Zustand Store - using useStoreSettingsStore which has business info, hours, tax
+  const storeSettings = useStoreSettingsStore();
+  const { storeName, address, phone, email, website, hours, defaultTaxRate, updateField, saveChanges } = storeSettings;
+
+  // Local state for service charge (can be added to store later)
+  const [serviceCharge, setServiceCharge] = useState({
+    enabled: true,
+    autoGratuity: true,
+    largePartySize: "6",
+    rate: "18.00",
+  });
+
+  // Local state for additional tax settings not in store
+  const [taxLabel, setTaxLabel] = useState("Sales Tax");
+  const [taxInclusive, setTaxInclusive] = useState(false);
+  const [taxEnabled, setTaxEnabled] = useState(true);
+
+  const [timePickerState, setTimePickerState] = useState<{
+    dayIndex: number;
     type: "open" | "close";
-  }>({ visible: false, day: "", type: "open" });
+  }>({ dayIndex: -1, type: "open" });
+
+  const timeSheetRef = useRef<BottomSheet>(null);
 
   const [expandedSections, setExpandedSections] = useState({
     info: true,
@@ -44,18 +77,25 @@ const GeneralSettingsScreen = () => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const toggleDayEnabled = (day: string) => {
-    updateDayHours(day, { enabled: !operatingHours[day].enabled });
+  const toggleDayEnabled = (dayIndex: number) => {
+    const newHours = [...hours];
+    newHours[dayIndex] = { ...newHours[dayIndex], enabled: !newHours[dayIndex].enabled };
+    updateField("hours", newHours);
   };
 
-  const openTimePicker = (day: string, type: "open" | "close") => {
-    setTimePickerModal({ visible: true, day, type });
+  const openTimePicker = (dayIndex: number, type: "open" | "close") => {
+    setTimePickerState({ dayIndex, type });
+    timeSheetRef.current?.expand();
   };
 
-  const selectTime = (time: string) => {
-    const { day, type } = timePickerModal;
-    updateDayHours(day, { [type]: time });
-    setTimePickerModal({ visible: false, day: "", type: "open" });
+  const handleTimeSave = (time: string) => {
+    const { dayIndex, type } = timePickerState;
+    if (dayIndex >= 0) {
+      const newHours = [...hours];
+      const time24 = formatTo24Hour(time);
+      newHours[dayIndex] = { ...newHours[dayIndex], [type]: time24 };
+      updateField("hours", newHours);
+    }
   };
 
   const renderSectionHeader = (title: string, icon: React.ReactNode, section: keyof typeof expandedSections) => (
@@ -89,178 +129,148 @@ const GeneralSettingsScreen = () => {
     </View>
   );
 
-  const renderTimePickerModal = () => (
-    <Modal visible={timePickerModal.visible} transparent animationType="fade" onRequestClose={() => setTimePickerModal({ visible: false, day: "", type: "open" })} statusBarTranslucent>
-      <View className="flex-1 justify-center items-center bg-black/60 px-6">
-        <View className="w-full max-w-[400px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
-          <View className="p-4 border-b border-gray-700 flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-white">
-              Select {timePickerModal.type === "open" ? "Opening" : "Closing"} Time
-            </Text>
-            <TouchableOpacity onPress={() => setTimePickerModal({ visible: false, day: "", type: "open" })} className="p-2">
-              <X size={24} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
-          <View className="p-2">
-            <Text className="text-gray-400 text-sm px-2 pb-2">{timePickerModal.day}</Text>
-            <ScrollView className="max-h-[300px]" showsVerticalScrollIndicator={false}>
-              <View className="flex-row flex-wrap">
-                {TIME_OPTIONS.map((time) => {
-                  const isSelected = operatingHours[timePickerModal.day]?.[timePickerModal.type] === time;
-                  return (
-                    <TouchableOpacity
-                      key={time}
-                      onPress={() => selectTime(time)}
-                      className="w-1/3 p-2"
-                    >
-                      <View className={`py-3 px-2 rounded-lg items-center ${isSelected ? "bg-blue-600" : "bg-[#404040]"}`}>
-                        <Text className={`text-sm font-medium ${isSelected ? "text-white" : "text-gray-300"}`}>{time}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+
+
+  // Format address for display
+  const addressString = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
 
   return (
-    <View className="flex-1 bg-[#212121] p-6">
-      {renderTimePickerModal()}
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View className="flex-1 bg-[#212121] p-6">
 
-      <View className="mb-6">
-        <Text className="text-3xl font-bold text-white">General Settings</Text>
-        <Text className="text-gray-400 mt-2">Manage business information, operating hours, and tax configurations.</Text>
-      </View>
-
-      <View className="h-px w-full bg-gray-700 mb-6" />
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-
-        {/* Business Information */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader("Business Information", <Store size={20} color="#60a5fa" />, "info")}
-          {expandedSections.info && (
-            <View className="p-5">
-              {renderInputField("Business Name", businessInfo.name, (t) => setBusinessInfo({ name: t }), <Building2 size={18} color="#9ca3af" />)}
-              {renderInputField("Address", businessInfo.address, (t) => setBusinessInfo({ address: t }), <MapPin size={18} color="#9ca3af" />)}
-              <View className="flex-row gap-4">
-                <View className="flex-1">
-                  {renderInputField("Phone", businessInfo.phone, (t) => setBusinessInfo({ phone: t }), <Phone size={18} color="#9ca3af" />)}
-                </View>
-                <View className="flex-1">
-                  {renderInputField("Website", businessInfo.website, (t) => setBusinessInfo({ website: t }), <Globe size={18} color="#9ca3af" />)}
-                </View>
-              </View>
-            </View>
-          )}
+        <View className="mb-6">
+          <Text className="text-3xl font-bold text-white">General Settings</Text>
+          <Text className="text-gray-400 mt-2">Manage business information, operating hours, and tax configurations.</Text>
         </View>
 
-        {/* Operating Hours */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader("Operating Hours", <Clock size={20} color="#f97316" />, "hours")}
-          {expandedSections.hours && (
-            <View className="p-5">
-              <Text className="text-gray-400 text-sm mb-4">Tap on times to change. Toggle switch to enable/disable days.</Text>
-              {DAYS.map((day) => {
-                const hours = operatingHours[day];
-                return (
-                  <View key={day} className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${!hours.enabled ? "opacity-50" : ""}`}>
-                    <Text className="text-white font-medium w-24">{day}</Text>
+        <View className="h-px w-full bg-gray-700 mb-6" />
+
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Business Information */}
+          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Business Information", <Store size={20} color="#60a5fa" />, "info")}
+            {expandedSections.info && (
+              <View className="p-5">
+                {renderInputField("Business Name", storeName, (t) => updateField("storeName", t), <Building2 size={18} color="#60a5fa" />)}
+                {renderInputField("Address", addressString, () => { }, <MapPin size={18} color="#f87171" />)}
+                <View className="flex-row gap-4">
+                  <View className="flex-1">
+                    {renderInputField("Phone", phone, (t) => updateField("phone", t), <Phone size={18} color="#4ade80" />)}
+                  </View>
+                  <View className="flex-1">
+                    {renderInputField("Website", website, (t) => updateField("website", t), <Globe size={18} color="#a78bfa" />)}
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Operating Hours */}
+          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Operating Hours", <Clock size={20} color="#f97316" />, "hours")}
+            {expandedSections.hours && (
+              <View className="p-5">
+                <Text className="text-gray-400 text-sm mb-4">Tap on times to change. Toggle switch to enable/disable days.</Text>
+                {hours.map((dayHours, index) => (
+                  <View key={dayHours.day} className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${!dayHours.enabled ? "opacity-50" : ""}`}>
+                    <Text className="text-white font-medium w-24">{dayHours.day}</Text>
                     <View className="flex-row items-center flex-1 justify-end gap-3">
-                      <TouchableOpacity
-                        onPress={() => hours.enabled && openTimePicker(day, "open")}
-                        className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!hours.enabled}
-                      >
-                        <Text className="text-white font-medium">{hours.open}</Text>
+                      <TouchableOpacity onPress={() => dayHours.enabled && openTimePicker(index, "open")} className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600" disabled={!dayHours.enabled}>
+                        <Text className="text-white font-medium">{formatTo12Hour(dayHours.open)}</Text>
                       </TouchableOpacity>
                       <Text className="text-gray-500">-</Text>
-                      <TouchableOpacity
-                        onPress={() => hours.enabled && openTimePicker(day, "close")}
-                        className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!hours.enabled}
-                      >
-                        <Text className="text-white font-medium">{hours.close}</Text>
+                      <TouchableOpacity onPress={() => dayHours.enabled && openTimePicker(index, "close")} className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600" disabled={!dayHours.enabled}>
+                        <Text className="text-white font-medium">{formatTo12Hour(dayHours.close)}</Text>
                       </TouchableOpacity>
                     </View>
                     <View className="ml-4">
-                      <Switch checked={hours.enabled} onCheckedChange={() => toggleDayEnabled(day)} />
+                      <Switch checked={dayHours.enabled} onCheckedChange={() => toggleDayEnabled(index)} />
                     </View>
                   </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-
-        {/* Tax Settings */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader("Tax Configuration", <Percent size={20} color="#4ade80" />, "tax")}
-          {expandedSections.tax && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View>
-                  <Text className="text-white font-medium">Enable Sales Tax</Text>
-                  <Text className="text-gray-400 text-sm">Apply tax to orders based on rate</Text>
-                </View>
-                <Switch checked={taxSettings.enabled} onCheckedChange={(v) => setTaxSettings({ enabled: v })} />
+                ))}
               </View>
+            )}
+          </View>
 
-              <View className="flex-row gap-4 mb-4">
-                <View className="flex-1">
-                  {renderInputField("Tax Name", taxSettings.label, (t) => setTaxSettings({ label: t }), <FileText size={18} color="#9ca3af" />)}
+          {/* Tax Settings */}
+          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Tax Configuration", <Percent size={20} color="#4ade80" />, "tax")}
+            {expandedSections.tax && (
+              <View className="p-5">
+                <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
+                  <View>
+                    <Text className="text-white font-medium">Enable Sales Tax</Text>
+                    <Text className="text-gray-400 text-sm">Apply tax to orders based on rate</Text>
+                  </View>
+                  <Switch checked={taxEnabled} onCheckedChange={setTaxEnabled} />
                 </View>
-                <View className="flex-1">
-                  {renderInputField("Tax Rate (%)", taxSettings.rate, (t) => setTaxSettings({ rate: t }), <Percent size={18} color="#9ca3af" />)}
+                <View className="flex-row gap-4 mb-4">
+                  <View className="flex-1">
+                    {renderInputField("Tax Name", taxLabel, setTaxLabel, <FileText size={18} color="#9ca3af" />)}
+                  </View>
+                  <View className="flex-1">
+                    {renderInputField("Tax Rate (%)", defaultTaxRate.toString(), (t) => updateField("defaultTaxRate", parseFloat(t) || 0), <Percent size={18} color="#9ca3af" />)}
+                  </View>
                 </View>
-              </View>
-
-              <View className="flex-row items-center justify-between py-3">
-                <View>
-                  <Text className="text-white font-medium">Tax Included in Price</Text>
-                  <Text className="text-gray-400 text-sm">Prices displayed on menu already include tax</Text>
-                </View>
-                <Switch checked={taxSettings.inclusive} onCheckedChange={(v) => setTaxSettings({ inclusive: v })} />
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Service Charges */}
-        <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
-          {renderSectionHeader("Service Charges & Gratuity", <DollarSign size={20} color="#facc15" />, "service")}
-          {expandedSections.service && (
-            <View className="p-5">
-              <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
-                <View>
-                  <Text className="text-white font-medium">Enable Auto-Gratuity</Text>
-                  <Text className="text-gray-400 text-sm">Automatically add service charge for large parties</Text>
-                </View>
-                <Switch checked={serviceCharge.autoGratuity} onCheckedChange={(v) => setServiceCharge({ autoGratuity: v })} />
-              </View>
-
-              <View className="flex-row gap-4">
-                <View className="flex-1">
-                  {renderInputField("Party Size Threshold", serviceCharge.largePartySize, (t) => setServiceCharge({ largePartySize: t }), null, "e.g. 6")}
-                </View>
-                <View className="flex-1">
-                  {renderInputField("Gratuity Percentage (%)", serviceCharge.rate, (t) => setServiceCharge({ rate: t }), <Percent size={18} color="#9ca3af" />)}
+                <View className="flex-row items-center justify-between py-3">
+                  <View>
+                    <Text className="text-white font-medium">Tax Included in Price</Text>
+                    <Text className="text-gray-400 text-sm">Prices displayed on menu already include tax</Text>
+                  </View>
+                  <Switch checked={taxInclusive} onCheckedChange={setTaxInclusive} />
                 </View>
               </View>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
 
-        <TouchableOpacity className="w-full bg-blue-600 py-4 rounded-xl items-center mb-10">
-          <Text className="text-white font-bold text-lg">Save Changes</Text>
-        </TouchableOpacity>
+          {/* Service Charges */}
+          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader("Service Charges & Gratuity", <DollarSign size={20} color="#facc15" />, "service")}
+            {expandedSections.service && (
+              <View className="p-5">
+                <View className="flex-row items-center justify-between py-3 border-b border-gray-700 mb-4">
+                  <View>
+                    <Text className="text-white font-medium">Enable Auto-Gratuity</Text>
+                    <Text className="text-gray-400 text-sm">Automatically add service charge for large parties</Text>
+                  </View>
+                  <Switch checked={serviceCharge.autoGratuity} onCheckedChange={(v) => setServiceCharge(prev => ({ ...prev, autoGratuity: v }))} />
+                </View>
+                <View className="flex-row gap-4">
+                  <View className="flex-1">
+                    {renderInputField("Party Size Threshold", serviceCharge.largePartySize, (t) => setServiceCharge(prev => ({ ...prev, largePartySize: t })), null, "e.g. 6")}
+                  </View>
+                  <View className="flex-1">
+                    {renderInputField("Gratuity Percentage (%)", serviceCharge.rate, (t) => setServiceCharge(prev => ({ ...prev, rate: t })), <Percent size={18} color="#9ca3af" />)}
+                  </View>
+                </View>
+              </View>
+            )}
+          </View>
 
-      </ScrollView>
-    </View>
+          <TouchableOpacity onPress={saveChanges} className="w-full bg-blue-600 py-4 rounded-xl items-center mb-10">
+            <Text className="text-white font-bold text-lg">Save Changes</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+
+        <OperatingHoursTimeSheet
+          bottomSheetRef={timeSheetRef}
+          initialTime={
+            timePickerState.dayIndex >= 0
+              ? formatTo12Hour(hours[timePickerState.dayIndex]?.[timePickerState.type])
+              : "09:00 AM"
+          }
+          day={
+            timePickerState.dayIndex >= 0
+              ? hours[timePickerState.dayIndex]?.day
+              : ""
+          }
+          type={timePickerState.type}
+          onSave={handleTimeSave}
+          onClose={() => timeSheetRef.current?.close()}
+        />
+      </View>
+    </GestureHandlerRootView >
   );
 };
 

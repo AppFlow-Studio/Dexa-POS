@@ -1,8 +1,8 @@
+import { Switch } from "@/components/ui/switch";
+import { useSettingsStore } from "@/stores/useSettingsStore";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, CreditCard, DollarSign, Gauge, Lock, MessageSquare, Minus, Monitor, Plus, Send, Shield, Trash2, Zap } from "lucide-react-native";
 import React, { useState } from "react";
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { Switch } from "~/components/ui/switch";
-import { useSettingsPageStore } from "~/stores/useSettingsPageStore";
 
 interface SavedCard {
     id: string;
@@ -26,13 +26,20 @@ const PaymentSystemsScreen = () => {
         dualPricing, setDualPricing,
         surcharging, setSurcharging,
         funding, setFunding,
-        tokenization, setTokenization,
-        textToPay, setTextToPay,
+        tokenizationEnabled,
+        textToPayEnabled,
         throttling, setThrottling,
-        kds, setKds,
-        prepTimes, setPrepTimes,
+        kdsEnabled,
         prepCategories, adjustPrepTime,
-    } = useSettingsPageStore();
+        showPrepTimesToCustomers,
+        autoAdjustPrepTimes,
+        updateDiningSettings,
+    } = useSettingsStore();
+
+    // Local state for features not fully in store yet
+    const [textToPayTestSent, setTextToPayTestSent] = useState(false);
+    const [currentPrepAdjustment] = useState(5);
+
 
     // Local UI state
     const [calculatorAmount, setCalculatorAmount] = useState("100");
@@ -194,7 +201,7 @@ const PaymentSystemsScreen = () => {
                                 <>
                                     <View className="mb-4">
                                         <Text className="text-gray-300 font-medium mb-2">Surcharge Rate (%)</Text>
-                                        <View className="bg-[#404040] border border-gray-600 rounded-lg flex-row items-center overflow-hidden">
+                                        <View className="h-14 bg-[#404040] border border-gray-600 rounded-lg flex-row items-center overflow-hidden">
                                             <TextInput value={surcharging.rate} onChangeText={(t) => setSurcharging({ rate: t })} className="flex-1 p-3 text-white text-base" keyboardType="decimal-pad" />
                                             <View className="px-4 bg-[#505050] h-full justify-center border-l border-gray-600"><Text className="text-white font-bold">%</Text></View>
                                         </View>
@@ -280,7 +287,7 @@ const PaymentSystemsScreen = () => {
                                     <Text className="text-white font-medium">Save Customer Cards</Text>
                                     <Text className="text-gray-400 text-sm">Securely store payment methods</Text>
                                 </View>
-                                <Switch checked={tokenization.enabled} onCheckedChange={(v) => setTokenization({ enabled: v })} />
+                                <Switch checked={tokenizationEnabled} onCheckedChange={(v) => updateDiningSettings({ tokenizationEnabled: v })} />
                             </View>
 
                             <View className="flex-row gap-4 mb-4">
@@ -326,10 +333,10 @@ const PaymentSystemsScreen = () => {
                                     <Text className="text-white font-medium">Enable SMS Payment Links</Text>
                                     <Text className="text-gray-400 text-sm">Send payment links via text</Text>
                                 </View>
-                                <Switch checked={textToPay.enabled} onCheckedChange={(v) => setTextToPay({ enabled: v })} />
+                                <Switch checked={textToPayEnabled} onCheckedChange={(v) => updateDiningSettings({ textToPayEnabled: v })} />
                             </View>
 
-                            {textToPay.enabled && (
+                            {textToPayEnabled && (
                                 <>
                                     <View className="bg-[#404040] p-4 rounded-lg border border-gray-600 mb-4">
                                         <Text className="text-gray-400 text-xs mb-2">SMS Preview</Text>
@@ -338,8 +345,8 @@ const PaymentSystemsScreen = () => {
                                         </View>
                                     </View>
 
-                                    <TouchableOpacity onPress={() => setTextToPay({ testSent: true })} className={`flex-row items-center justify-center py-3 rounded-lg border mb-4 ${textToPay.testSent ? 'bg-green-600/20 border-green-600' : 'border-blue-600'}`}>
-                                        {textToPay.testSent ? (<><Check size={18} color="#4ade80" /><Text className="text-green-400 font-medium ml-2">Test Sent Successfully!</Text></>) : (<><Send size={18} color="#60a5fa" /><Text className="text-blue-400 font-medium ml-2">Send Test SMS</Text></>)}
+                                    <TouchableOpacity onPress={() => setTextToPayTestSent(true)} className={`flex-row items-center justify-center py-3 rounded-lg border mb-4 ${textToPayTestSent ? 'bg-green-600/20 border-green-600' : 'border-blue-600'}`}>
+                                        {textToPayTestSent ? (<><Check size={18} color="#4ade80" /><Text className="text-green-400 font-medium ml-2">Test Sent Successfully!</Text></>) : (<><Send size={18} color="#60a5fa" /><Text className="text-blue-400 font-medium ml-2">Send Test SMS</Text></>)}
                                     </TouchableOpacity>
 
                                     <View className="flex-row gap-4">
@@ -428,10 +435,10 @@ const PaymentSystemsScreen = () => {
                                     <Text className="text-white font-medium">Enable KDS Integration</Text>
                                     <Text className="text-gray-400 text-sm">Connect kitchen display screens</Text>
                                 </View>
-                                <Switch checked={kds.enabled} onCheckedChange={(v) => setKds({ enabled: v })} />
+                                <Switch checked={kdsEnabled} onCheckedChange={(v) => updateDiningSettings({ kdsEnabled: v })} />
                             </View>
 
-                            {kds.enabled && (
+                            {kdsEnabled && (
                                 <>
                                     {kdsDisplays.map(display => (
                                         <View key={display.id} className="bg-[#404040] p-3 rounded-lg border border-gray-600 mb-2 flex-row items-center justify-between">
@@ -467,7 +474,7 @@ const PaymentSystemsScreen = () => {
                                     <Text className="text-white font-medium">Show Prep Times to Customers</Text>
                                     <Text className="text-gray-400 text-sm">Display estimated wait times</Text>
                                 </View>
-                                <Switch checked={prepTimes.showToCustomers} onCheckedChange={(v) => setPrepTimes({ showToCustomers: v })} />
+                                <Switch checked={showPrepTimesToCustomers} onCheckedChange={(v) => updateDiningSettings({ showPrepTimesToCustomers: v })} />
                             </View>
 
                             <Text className="text-gray-300 font-medium mb-3">Category Defaults</Text>
@@ -491,12 +498,12 @@ const PaymentSystemsScreen = () => {
                                     <Text className="text-white font-medium">Auto-Adjust for Load</Text>
                                     <Text className="text-gray-400 text-sm">Increase times when kitchen is busy</Text>
                                 </View>
-                                <Switch checked={prepTimes.autoAdjust} onCheckedChange={(v) => setPrepTimes({ autoAdjust: v })} />
+                                <Switch checked={autoAdjustPrepTimes} onCheckedChange={(v) => updateDiningSettings({ autoAdjustPrepTimes: v })} />
                             </View>
 
-                            {prepTimes.autoAdjust && (
+                            {autoAdjustPrepTimes && (
                                 <View className="bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/30 mt-2">
-                                    <Text className="text-yellow-400 font-medium">Current Adjustment: +{prepTimes.currentAdjustment} min</Text>
+                                    <Text className="text-yellow-400 font-medium">Current Adjustment: +{currentPrepAdjustment} min</Text>
                                     <Text className="text-yellow-200/70 text-xs">Kitchen is moderately busy</Text>
                                 </View>
                             )}
