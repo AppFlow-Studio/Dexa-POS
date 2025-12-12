@@ -603,9 +603,8 @@ const ScheduleDetail = ({
         />
         <OpenShiftsDrawer
           ref={openShiftsSheetRef}
-          openShifts={currentSchedule.schedule.shifts.filter(
-            (s) => s.status === "open"
-          )}
+          scheduleId={currentSchedule.schedule.id}
+          scheduleType={currentSchedule.type}
           onAssign={(shiftId, empId) =>
             console.log(`Assign shift ${shiftId} to ${empId}`)
           }

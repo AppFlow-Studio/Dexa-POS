@@ -84,6 +84,7 @@ export const DraggableShift: React.FC<DraggableShiftProps> = ({
 
         // 1. Show Overlay
         runOnJS(setActiveDragItem)({
+          type: "shift",
           shift: shift,
           wage: wage,
           startX: measurement.pageX,

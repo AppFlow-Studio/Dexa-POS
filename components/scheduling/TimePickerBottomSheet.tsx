@@ -1,18 +1,10 @@
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetFlatList,
-  BottomSheetFlatListMethods,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  Text,
-  TouchableOpacity,
-  View
-} from "react-native";
-
+import { Clock, X } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
 interface TimePickerBottomSheetProps {
   bottomSheetRef: React.RefObject<BottomSheet>;
@@ -22,95 +14,6 @@ interface TimePickerBottomSheetProps {
   title: string;
 }
 
-const hours = Array.from({ length: 12 }, (_, i) => String(i + 1));
-const minutes = ["00", "30"];
-const ampm = ["AM", "PM"];
-
-const ITEM_HEIGHT = 60;
-const VISIBLE_ITEMS = 3;
-
-interface WheelPickerProps {
-  items: string[];
-  value: string;
-  onChange: (val: string) => void;
-}
-
-const WheelPicker: React.FC<WheelPickerProps> = ({
-  items,
-  value,
-  onChange,
-}) => {
-  const flatListRef = useRef<BottomSheetFlatListMethods>(null);
-
-  // 1. Calculate initial index
-  const initialIndex = useMemo(() => {
-    const idx = items.indexOf(value);
-    return idx === -1 ? 0 : idx;
-  }, []);
-
-  // 2. Handle Scroll End (Snapping)
-  const onMomentumScrollEnd = (
-    event: NativeSyntheticEvent<NativeScrollEvent>
-  ) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    const index = Math.round(offsetY / ITEM_HEIGHT);
-    const clampedIndex = Math.max(0, Math.min(index, items.length - 1));
-    onChange(items[clampedIndex]);
-  };
-
-  return (
-    <View style={{ height: ITEM_HEIGHT * VISIBLE_ITEMS, width: 70 }}>
-      <BottomSheetFlatList
-        ref={flatListRef}
-        data={items}
-        keyExtractor={(item) => item}
-        // Layout Config
-        getItemLayout={(_, index) => ({
-          length: ITEM_HEIGHT,
-          offset: ITEM_HEIGHT * index,
-          index,
-        })}
-        initialScrollIndex={initialIndex}
-        // Physics Config - The "Secret Sauce" for Wheel Pickers
-        snapToInterval={ITEM_HEIGHT}
-        // @ts-ignore
-        decelerationRate="fast"
-        bounces={false}
-        overScrollMode="never"
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled={true}
-        // Events
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        // Padding: 1 item height on top, 1 on bottom
-        // This ensures offset 0 places the first item in the middle slot
-        contentContainerStyle={{
-          paddingVertical: ITEM_HEIGHT,
-        }}
-        renderItem={({ item }) => {
-          const isSelected = item === value;
-          return (
-            <View
-              style={{ height: ITEM_HEIGHT }}
-              className="items-center justify-center"
-            >
-              <Text
-                style={{
-                  fontSize: isSelected ? 22 : 18,
-                  fontWeight: isSelected ? "700" : "500",
-                  color: isSelected ? "#FFFFFF" : "#6B7280",
-                  opacity: isSelected ? 1 : 0.4,
-                }}
-              >
-                {item}
-              </Text>
-            </View>
-          );
-        }}
-      />
-    </View>
-  );
-};
-
 export const TimePickerBottomSheet: React.FC<TimePickerBottomSheetProps> = ({
   bottomSheetRef,
   initialTime,
@@ -118,30 +21,68 @@ export const TimePickerBottomSheet: React.FC<TimePickerBottomSheetProps> = ({
   onClose,
   title,
 }) => {
-  const [selectedHour, setSelectedHour] = useState("9");
-  const [selectedMinute, setSelectedMinute] = useState("00");
-  const [selectedAmPm, setSelectedAmPm] = useState("AM");
+  const [hour, setHour] = useState(9);
+  const [minute, setMinute] = useState(0);
+  const [ampm, setAmPm] = useState<"AM" | "PM">("AM");
 
-  const snapPoints = useMemo(() => ["45%"], []);
+  const snapPoints = useMemo(() => ["50%"], []);
 
   useEffect(() => {
     if (initialTime) {
-      const [time, period] = initialTime.split(" ");
-      if (time && period) {
-        let [hour, minute] = time.split(":");
-        if (hour.startsWith("0") && hour.length > 1) hour = hour.substring(1);
+      // Parse "09:00 AM" or similar
+      const parts = initialTime.split(" ");
+      if (parts.length >= 2) {
+        const [timePart, periodPart] = parts;
+        const [hStr, mStr] = timePart.split(":");
+        const h = parseInt(hStr, 10);
+        const m = parseInt(mStr, 10);
 
-        if (hours.includes(hour)) setSelectedHour(hour);
-        if (minutes.includes(minute)) setSelectedMinute(minute);
-        if (ampm.includes(period)) setSelectedAmPm(period);
+        if (!isNaN(h)) setHour(h);
+        if (!isNaN(m)) setMinute(m);
+        if (periodPart === "AM" || periodPart === "PM") {
+          setAmPm(periodPart as "AM" | "PM");
+        }
       }
     }
   }, [initialTime]);
 
-  const handleDone = () => {
-    const newTime = `${selectedHour}:${selectedMinute} ${selectedAmPm}`;
-    onDone(newTime);
+  const changeHour = (delta: number) => {
+    setHour((prev) => {
+      let next = prev + delta;
+      if (next > 12) next = 1;
+      if (next < 1) next = 12;
+      return next;
+    });
   };
+
+  const changeMinute = (delta: number) => {
+    setMinute((prev) => {
+      let next = prev + delta;
+      if (next >= 60) next = 0;
+      if (next < 0) next = 45; // Cycling back from 0 goes to 45 (assuming 15 min steps)
+      return next;
+    });
+  };
+
+  const toggleAmPm = () => {
+    setAmPm((prev) => (prev === "AM" ? "PM" : "AM"));
+  };
+
+  const handleDone = () => {
+    const minStr = String(minute).padStart(2, "0");
+    const hourStr = String(hour).padStart(2, "0");
+    onDone(`${hourStr}:${minStr} ${ampm}`);
+    onClose();
+  };
+
+  const renderBackdrop = (props: any) => (
+    <BottomSheetBackdrop
+      {...props}
+      disappearsOnIndex={-1}
+      appearsOnIndex={0}
+      opacity={0.7}
+    />
+  );
 
   return (
     <BottomSheet
@@ -150,82 +91,79 @@ export const TimePickerBottomSheet: React.FC<TimePickerBottomSheetProps> = ({
       snapPoints={snapPoints}
       enablePanDownToClose
       onClose={onClose}
-      enableContentPanningGesture={false}
-      handleIndicatorStyle={{ backgroundColor: "#4B5563", width: 40 }}
-      backgroundStyle={{ backgroundColor: "#1C1C1E" }}
-      backdropComponent={(props) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.7}
-        />
-      )}
+      handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+      backgroundStyle={{ backgroundColor: "#303030" }}
+      backdropComponent={renderBackdrop}
     >
-      <BottomSheetView className="p-5 flex-1 items-center">
-        <Text className="text-white text-lg font-semibold mb-8 tracking-wide">
-          {title}
-        </Text>
-
-        <View className="flex-row items-center justify-center w-full mb-8 relative">
-          {/* 1. Highlight Lens (Background) */}
-          <View
-            className="absolute w-full bg-[#303030] rounded-xl"
-            style={{
-              height: ITEM_HEIGHT,
-              top: ITEM_HEIGHT, // Exactly centered (60px from top)
-              opacity: 1,
-            }}
-          />
-
-          {/* 2. Pickers */}
-          <View className="flex-row items-center justify-center gap-x-2 z-10">
-            {/* Keys allow re-mount on initialTime change to fix positioning */}
-            <WheelPicker
-              key={`h-${initialTime}`}
-              items={hours}
-              value={selectedHour}
-              onChange={setSelectedHour}
-            />
-            <Text className="text-white text-2xl font-bold pb-1 text-center w-4">
-              :
+      <BottomSheetView className="p-5 flex-1 bg-[#303030]">
+        {/* Header */}
+        <View className="flex-row items-center justify-between mb-6">
+          <View>
+            <Text className="text-xl font-bold text-white max-w-[80%]">
+              {title}
             </Text>
-            <WheelPicker
-              key={`m-${initialTime}`}
-              items={minutes}
-              value={selectedMinute}
-              onChange={setSelectedMinute}
-            />
-            <View className="w-2" />
-            <WheelPicker
-              key={`p-${initialTime}`}
-              items={ampm}
-              value={selectedAmPm}
-              onChange={setSelectedAmPm}
-            />
           </View>
-
-          {/* 3. Gradient Overlays */}
-          <View
-            className="absolute top-0 w-full bg-[#1C1C1E]"
-            style={{ height: ITEM_HEIGHT, opacity: 0.9 }}
-            pointerEvents="none"
-          />
-          <View
-            className="absolute bottom-0 w-full bg-[#1C1C1E]"
-            style={{ height: ITEM_HEIGHT, opacity: 0.9 }}
-            pointerEvents="none"
-          />
+          <TouchableOpacity
+            onPress={onClose}
+            className="p-2 bg-[#404040] rounded-full"
+          >
+            <X size={20} color="#9ca3af" />
+          </TouchableOpacity>
         </View>
 
+        {/* Current Time Context */}
+        <View className="flex-row items-center justify-center mb-6">
+          <Clock size={16} color="#3b82f6" />
+          <Text className="text-blue-500 text-sm font-bold ml-2">
+            SELECTED: {hour}:{String(minute).padStart(2, "0")} {ampm}
+          </Text>
+        </View>
+
+        {/* Custom Time Picker UI */}
+        <View className="flex-row items-center justify-center gap-2 p-4 bg-[#252525] border border-gray-700 rounded-xl self-center mb-8">
+          {/* Hours */}
+          <View className="flex-row items-center">
+            <TouchableOpacity onPress={() => changeHour(-1)} className="p-3">
+              <Text className="text-white text-2xl font-bold">-</Text>
+            </TouchableOpacity>
+            <Text className="text-white text-3xl font-bold w-16 text-center">
+              {hour}
+            </Text>
+            <TouchableOpacity onPress={() => changeHour(1)} className="p-3">
+              <Text className="text-white text-2xl font-bold">+</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text className="text-gray-400 text-3xl font-bold pb-1">:</Text>
+
+          {/* Minutes */}
+          <View className="flex-row items-center">
+            <TouchableOpacity onPress={() => changeMinute(-15)} className="p-3">
+              <Text className="text-white text-2xl font-bold">-</Text>
+            </TouchableOpacity>
+            <Text className="text-white text-3xl font-bold w-16 text-center">
+              {String(minute).padStart(2, "0")}
+            </Text>
+            <TouchableOpacity onPress={() => changeMinute(15)} className="p-3">
+              <Text className="text-white text-2xl font-bold">+</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* AM/PM */}
+          <TouchableOpacity
+            onPress={toggleAmPm}
+            className="ml-4 px-4 py-3 rounded-lg bg-[#353535] border border-gray-600"
+          >
+            <Text className="text-white text-xl font-bold">{ampm}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Save Button */}
         <TouchableOpacity
           onPress={handleDone}
-          className="w-full py-3.5 bg-blue-600 rounded-xl items-center shadow-lg shadow-blue-900/20"
-          activeOpacity={0.8}
+          className="w-full bg-blue-600 py-4 rounded-xl items-center shadow-lg shadow-blue-900/50 mt-auto"
         >
-          <Text className="font-bold text-white text-lg tracking-wide">
-            Done
-          </Text>
+          <Text className="text-white font-bold text-lg">Set Time</Text>
         </TouchableOpacity>
       </BottomSheetView>
     </BottomSheet>

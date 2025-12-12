@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { Shift } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useScheduleStore } from "@/stores/useScheduleStore";
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -23,6 +24,7 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
   onClose,
 }) => {
   const { addDropRequest } = useScheduleStore();
+  const { loggedInEmployee } = useEmployeeStore();
   const [selectedReason, setSelectedReason] = useState("");
   const [note, setNote] = useState("");
   const { show } = useToast();
@@ -30,7 +32,7 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
   const snapPoints = useMemo(() => ["50%", "60%"], []);
 
   const handleSubmit = () => {
-    if (!shift) return;
+    if (!shift || !loggedInEmployee) return;
     if (!selectedReason) {
       show({
         title: "Reason Required",
@@ -44,6 +46,7 @@ const DropShiftBottomSheet: React.FC<DropShiftSheetProps> = ({
       status: "pending",
       submittedAt: new Date().toISOString(),
       note: `${selectedReason}${note ? `: ${note}` : ""}`,
+      ownerId: loggedInEmployee.id,
     });
     show({
       title: "Request Submitted",

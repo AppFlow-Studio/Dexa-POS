@@ -38,6 +38,7 @@ import {
 } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import uuid from "react-native-uuid"; // Import uuid
+import DatePickerBottomSheet from "./DatePickerBottomSheet";
 import { TimePickerBottomSheet } from "./TimePickerBottomSheet";
 
 interface ShiftEditorModalProps {
@@ -50,6 +51,7 @@ interface ShiftEditorModalProps {
   onSaveAndDuplicate?: (data: Partial<Shift & TemplateShift>) => void; // Updated prop type
   isTemplateMode?: boolean; // New prop
   dayOfWeek?: number; // New prop for template mode
+  enableDateChange?: boolean; // New prop to enable date editing
 }
 
 const roles: Role[] = ["Cashier", "Barista", "Line Cook", "Prep", "Supervisor"];
@@ -98,8 +100,9 @@ export function ShiftEditorModal({
   scheduleType,
   onSave,
   onSaveAndDuplicate,
-  isTemplateMode = false, // Default to false
+  isTemplateMode: templateMode = false, // Default to false
   dayOfWeek, // For new template shifts
+  enableDateChange = false, // Default to false
 }: ShiftEditorModalProps) {
   const [role, setRole] = useState<Role>("Cashier");
   const [date, setDate] = useState(""); // This will be a placeholder date in template mode
@@ -120,6 +123,7 @@ export function ShiftEditorModal({
 
   const startTimeSheetRef = useRef<BottomSheet>(null);
   const endTimeSheetRef = useRef<BottomSheet>(null);
+  const datePickerSheetRef = useRef<BottomSheet>(null);
 
   useEffect(() => {
     if (open) {
@@ -132,7 +136,7 @@ export function ShiftEditorModal({
         setExpectedPace(shift.expectedPace || "Moderate");
         setStaffingLevel(shift.staffingLevel || "Fully staffed");
 
-        if (isTemplateMode) {
+        if (templateMode) {
           // For template shifts, extract dayOfWeek and use placeholder date
           const shiftDayOfWeek =
             shift.dayOfWeek !== undefined
@@ -170,7 +174,7 @@ export function ShiftEditorModal({
         setExpectedPace("Moderate");
         setStaffingLevel("Fully staffed");
 
-        if (isTemplateMode && dayOfWeek !== undefined) {
+        if (templateMode && dayOfWeek !== undefined) {
           const placeholderDate = getPlaceholderDate(dayOfWeek);
           setDate(placeholderDate);
           setStartTime(combineToISO(placeholderDate, "09:00 AM"));
@@ -184,7 +188,7 @@ export function ShiftEditorModal({
       }
       setErrors([]);
     }
-  }, [shift, open, isTemplateMode, dayOfWeek]);
+  }, [shift, open, templateMode, dayOfWeek]);
 
   useEffect(() => {
     if (!startTime || !endTime) return;
@@ -224,13 +228,13 @@ export function ShiftEditorModal({
       role,
       startTime,
       endTime,
-      notes: isTemplateMode ? notes : undefined,
-      managerNote: !isTemplateMode ? notes : undefined,
+      notes: templateMode ? notes : undefined,
+      managerNote: !templateMode ? notes : undefined,
       breakMinutes,
       expectedPace,
       staffingLevel,
     };
-    if (isTemplateMode) {
+    if (templateMode) {
       onSave({
         ...shift,
         ...commonData,
@@ -259,7 +263,7 @@ export function ShiftEditorModal({
   const handleSaveAndDuplicate = () => {
     if (!validateShift() || !onSaveAndDuplicate) return;
 
-    if (isTemplateMode) {
+    if (templateMode) {
       const templateShift: TemplateShift = {
         tempId: uuid.v4() as string, // Always generate new tempId for duplicate
         employeeId: shift?.employeeId || null,
@@ -302,7 +306,7 @@ export function ShiftEditorModal({
       <DialogContent className="w-[950px] bg-[#303030] border-gray-700 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {isTemplateMode
+            {templateMode
               ? shift?.tempId
                 ? "Edit Template Shift"
                 : "Create Template Shift"
@@ -361,19 +365,35 @@ export function ShiftEditorModal({
               </Select>
             </View>
 
-            {!isTemplateMode && (
+            {!templateMode && (
               <View className="gap-y-2 mb-2">
                 <Text className="text-gray-300 font-semibold">Date</Text>
-                <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
-                  <Text className="text-white text-base">
-                    {date
-                      ? format(
-                          parse(date, "yyyy-MM-dd", new Date()),
-                          "EEEE, MMMM d"
-                        )
-                      : "No Date"}
-                  </Text>
-                </View>
+                {enableDateChange ? (
+                  <TouchableOpacity
+                    onPress={() => datePickerSheetRef.current?.expand()}
+                    className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center"
+                  >
+                    <Text className="text-white text-base">
+                      {date
+                        ? format(
+                            parse(date, "yyyy-MM-dd", new Date()),
+                            "EEEE, MMMM d"
+                          )
+                        : "No Date"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View className="p-4 h-14 bg-[#212121] border border-gray-600 rounded-lg flex-row justify-between items-center">
+                    <Text className="text-white text-base">
+                      {date
+                        ? format(
+                            parse(date, "yyyy-MM-dd", new Date()),
+                            "EEEE, MMMM d"
+                          )
+                        : "No Date"}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -480,7 +500,7 @@ export function ShiftEditorModal({
               />
             </View>
 
-            {!isTemplateMode && ( // Hide these fields in template mode
+            {!templateMode && ( // Hide these fields in template mode
               <View className="gap-y-1 pt-2 mb-6">
                 <View className="flex-row items-center justify-between py-2">
                   <Label htmlFor="lock" className="text-sm text-white flex-1">
@@ -563,6 +583,30 @@ export function ShiftEditorModal({
           }}
           onClose={() => endTimeSheetRef.current?.close()}
           title="Select End Time"
+        />
+        <DatePickerBottomSheet
+          bottomSheetRef={datePickerSheetRef as RefObject<BottomSheet>}
+          initialDate={date}
+          onDone={(newDate) => {
+            setDate(newDate);
+            // Also update start/end time dates if needed, though they are currently ISO strings
+            // We might strictly only need 'date' updated for the save handler to pick it up?
+            // Yes, handleSave uses 'date'.
+            // However, we should also update the component state if start/end time rely on 'date'
+            // but combineToISO uses the 'date' param explicitly.
+            // Let's ensure start/end times reflect the NEW date.
+            if (startTime) {
+              const timePart = formatTo12Hour(startTime);
+              setStartTime(combineToISO(newDate, timePart));
+            }
+            if (endTime) {
+              const timePart = formatTo12Hour(endTime);
+              setEndTime(combineToISO(newDate, timePart));
+            }
+            datePickerSheetRef.current?.close();
+          }}
+          onClose={() => datePickerSheetRef.current?.close()}
+          title="Select Date"
         />
       </DialogContent>
     </Dialog>
