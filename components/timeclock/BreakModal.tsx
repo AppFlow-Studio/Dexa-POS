@@ -1,4 +1,4 @@
-import { useEmployeeSettingsStore } from "@/stores/useEmployeeSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useRouter } from "expo-router";
 import { Clock, LogOut } from "lucide-react-native";
@@ -16,7 +16,7 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const router = useRouter();
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 
-  const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore();
+  const { isBreakAndSwitchEnabled } = useStoreSettingsStore();
   // Get the functions and state needed from the timeclock store
   const { startBreak, activeEmployeeId, getSession } = useTimeclockStore();
 
@@ -70,9 +70,9 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
           Started break:{" "}
           {breakStartTime
             ? new Date(breakStartTime).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
+              hour: "2-digit",
+              minute: "2-digit",
+            })
             : "..."}
         </Text>
         <TouchableOpacity

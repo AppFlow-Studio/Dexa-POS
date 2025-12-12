@@ -6,7 +6,7 @@ import {
   ShiftHistoryEntry,
 } from "@/lib/types";
 import { create } from "zustand";
-import { useEmployeeSettingsStore } from "./useEmployeeSettingsStore";
+
 import { EmployeeProfile, useEmployeeStore } from "./useEmployeeStore";
 import { usePtoStore } from "./usePtoStore"; // Import usePtoStore
 import { useStoreSettingsStore } from "./useStoreSettingsStore"; // Import useStoreSettingsStore
@@ -115,7 +115,7 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
 
   startBreak: () => {
     const { activeEmployeeId, sessions } = get();
-    const { isBreakAndSwitchEnabled } = useEmployeeSettingsStore.getState();
+    const { isBreakAndSwitchEnabled } = useStoreSettingsStore.getState();
 
     if (!activeEmployeeId || !sessions[activeEmployeeId]) return;
 

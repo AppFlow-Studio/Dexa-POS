@@ -15,6 +15,7 @@ import {
   areIntervalsOverlapping,
   format,
   getDay,
+  parseISO,
   startOfDay,
 } from "date-fns";
 import { create } from "zustand";
@@ -22,6 +23,7 @@ import { devtools, persist } from "zustand/middleware";
 import { immer } from "zustand/middleware/immer";
 import { useNotificationStore } from "./useNotificationStore";
 import { usePtoStore } from "./usePtoStore";
+import { useStoreSettingsStore } from "./useStoreSettingsStore";
 
 // Helper to generate unique IDs
 const generateId = () =>
@@ -94,7 +96,7 @@ interface ScheduleRequestState {
   ) => string;
   addSchedulePeriod: (
     newPeriod: Omit<SchedulePeriod, "id" | "createdAt" | "updatedAt" | "shifts">
-  ) => void;
+  ) => string;
   updateSchedulePeriod: (
     periodId: string,
     updates: Partial<SchedulePeriod>
@@ -138,6 +140,15 @@ interface ScheduleRequestState {
     template: ScheduleTemplate,
     mode: ApplyMode
   ) => void;
+  getAdvancedConflicts: (
+    startDate: string,
+    endDate: string
+  ) => {
+    type: "overtime" | "minStaffing" | "backToBack" | "doubleBooked";
+    details: string;
+    shiftIds?: string[];
+    date?: string;
+  }[];
 }
 
 export const useScheduleStore = create<ScheduleRequestState>()(
@@ -944,9 +955,10 @@ export const useScheduleStore = create<ScheduleRequestState>()(
           },
 
           addSchedulePeriod: (newPeriod) => {
+            const id = generateId();
             const newSchedulePeriod: SchedulePeriod = {
               ...newPeriod,
-              id: generateId(),
+              id,
               shifts: [],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
@@ -955,6 +967,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             set((state) => {
               state.schedulePeriods.push(newSchedulePeriod);
             });
+            return id;
           },
 
           updateSchedulePeriod: (periodId, updates) => {
@@ -1415,19 +1428,18 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               }
 
               const scheduleStartDate = startOfDay(
-                new Date(schedule.startDate)
+                parseISO(schedule.startDate)
               );
-              const scheduleEndDate = startOfDay(new Date(schedule.endDate));
+              const scheduleEndDate = startOfDay(parseISO(schedule.endDate));
 
               const templateShiftsToApply: Omit<Shift, "id">[] = [];
               let currentDate = scheduleStartDate;
               while (currentDate <= scheduleEndDate) {
                 const dayOfWeek = getDay(currentDate);
+
                 template.shifts.forEach((templateShift) => {
                   if (templateShift.dayOfWeek === dayOfWeek) {
-                    const shiftDateISO = currentDate
-                      .toISOString()
-                      .split("T")[0];
+                    const shiftDateISO = format(currentDate, "yyyy-MM-dd");
                     const newShift: Omit<Shift, "id"> = {
                       employeeId: templateShift.employeeId,
                       role: templateShift.role,
@@ -1510,6 +1522,120 @@ export const useScheduleStore = create<ScheduleRequestState>()(
               }
               schedule.updatedAt = new Date().toISOString();
             });
+          },
+
+          getAdvancedConflicts: (startDate, endDate) => {
+            const { scheduling } = useStoreSettingsStore.getState();
+            const { conflictTypes } = scheduling;
+            const state = get();
+            const allShifts = [
+              ...state.schedulePeriods.flatMap((p) => p.shifts),
+              ...state.weeklySchedules.flatMap((w) => w.shifts),
+            ];
+
+            const conflicts: {
+              type: "overtime" | "minStaffing" | "backToBack" | "doubleBooked";
+              details: string;
+              shiftIds?: string[];
+              date?: string;
+            }[] = [];
+
+            // Filter shifts within range
+            const rangeStart = new Date(startDate);
+            const rangeEnd = new Date(endDate);
+            const relevantShifts = allShifts.filter((s) => {
+              const sDate = new Date(s.date);
+              return sDate >= rangeStart && sDate <= rangeEnd;
+            });
+
+            // Group by employee
+            const shiftsByEmployee: Record<string, Shift[]> = {};
+            relevantShifts.forEach((s) => {
+              if (s.employeeId) {
+                if (!shiftsByEmployee[s.employeeId])
+                  shiftsByEmployee[s.employeeId] = [];
+                shiftsByEmployee[s.employeeId].push(s);
+              }
+            });
+
+            // 1. Double Booked & 2. Back to Back (Clopening) & 3. Overtime
+            Object.entries(shiftsByEmployee).forEach(([empId, shifts]) => {
+              // Sort by start time
+              shifts.sort(
+                (a, b) =>
+                  new Date(a.startTime).getTime() -
+                  new Date(b.startTime).getTime()
+              );
+
+              let totalHours = 0;
+
+              for (let i = 0; i < shifts.length; i++) {
+                const current = shifts[i];
+                const start = new Date(current.startTime);
+                const end = new Date(current.endTime);
+                const durationHours =
+                  (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+                totalHours += durationHours;
+
+                if (i < shifts.length - 1) {
+                  const next = shifts[i + 1];
+                  const nextStart = new Date(next.startTime);
+
+                  // Double Booked
+                  if (
+                    conflictTypes.doubleBooked &&
+                    areIntervalsOverlapping(
+                      { start, end },
+                      { start: nextStart, end: new Date(next.endTime) }
+                    )
+                  ) {
+                    conflicts.push({
+                      type: "doubleBooked",
+                      details: `Overlap between ${format(
+                        start,
+                        "HH:mm"
+                      )} and ${format(nextStart, "HH:mm")}`,
+                      shiftIds: [current.id, next.id],
+                      date: current.date,
+                    });
+                  }
+
+                  // Back to Back (Clopening) - say < 10 hours rest
+                  if (conflictTypes.backToBack) {
+                    const restHours =
+                      (nextStart.getTime() - end.getTime()) / (1000 * 60 * 60);
+                    if (restHours < 10 && restHours >= 0) {
+                      // Positive but small rest
+                      conflicts.push({
+                        type: "backToBack",
+                        details: `Only ${restHours.toFixed(
+                          1
+                        )} hours rest between shifts`,
+                        shiftIds: [current.id, next.id],
+                        date: current.date,
+                      });
+                    }
+                  }
+                }
+              }
+
+              if (conflictTypes.overtime && totalHours > 40) {
+                const employeeName =
+                  useEmployeeStore
+                    .getState()
+                    .employees.find((e) => e.id === empId)?.fullName ||
+                  "Unknown";
+                conflicts.push({
+                  type: "overtime",
+                  details: `${employeeName} scheduled for ${totalHours.toFixed(
+                    1
+                  )} hours (exceeds 40)`,
+                  date: startDate, // Just mark the period start or the first shift's date
+                });
+              }
+            });
+
+            return conflicts;
           },
         };
       }),

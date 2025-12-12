@@ -43,7 +43,8 @@ const OnHandReport = () => {
       </View>
       <FlatList
         data={items}
-        keyExtractor={(item) => item.id}
+        // FIX: Combine ID with Index to guarantee uniqueness even with duplicate data
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={({ item }) => (
           <View className="flex-row items-center p-4 border-b border-gray-700">
             <Text className="w-1/6 text-xl text-white">{item.name}</Text>
@@ -92,7 +93,8 @@ const LowStockReport = () => {
       </View>
       <FlatList
         data={lowStockItems}
-        keyExtractor={(item) => item.id}
+        // FIX: Combine ID with Index to guarantee uniqueness even with duplicate data
+        keyExtractor={(item, index) => `${item.id}-${index}`}
         renderItem={({ item }) => (
           <View className="flex-row items-center p-2 border-b border-gray-700">
             <Text className="w-1/5 text-lg text-white">{item.name}</Text>

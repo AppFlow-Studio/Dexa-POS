@@ -1,0 +1,424 @@
+import { AlertTriangle, Banknote, Bluetooth, Building2, CheckCircle2, ChevronDown, ChevronUp, CreditCard, DollarSign, Edit3, Plus, ShieldCheck, Smartphone, SplitSquareHorizontal, Trash2, Wifi, X, XCircle } from "lucide-react-native";
+import React, { useState } from "react";
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
+import { Switch } from "~/components/ui/switch";
+
+interface ProcessorInfo {
+  id: string;
+  name: string;
+  status: "connected" | "disconnected" | "pending";
+  accountId: string;
+  type: "builtin" | "wired" | "bluetooth";
+}
+
+interface PaymentMethods {
+  cash: boolean;
+  credit: boolean;
+  debit: boolean;
+  mobileWallets: boolean;
+  bnpl: boolean;
+}
+
+interface PreAuthSettings {
+  enabled: boolean;
+  amount: string;
+  gateway: string;
+}
+
+interface SplitPaymentOptions {
+  byAmount: boolean;
+  byItem: boolean;
+  evenly: boolean;
+}
+
+type ModalType = "add" | "edit" | "delete" | null;
+
+const PROCESSOR_TYPES = [
+  { value: "builtin", label: "Built-in Processor" },
+  { value: "wired", label: "Wired Card Reader" },
+  { value: "bluetooth", label: "Bluetooth Device" },
+];
+
+const PROCESSOR_PRESETS: Record<string, { name: string; accountPrefix: string }[]> = {
+  builtin: [
+    { name: "Stripe", accountPrefix: "acct_" },
+    { name: "Square", accountPrefix: "sq_" },
+    { name: "PayPal", accountPrefix: "pp_" },
+  ],
+  wired: [
+    { name: "Square Terminal", accountPrefix: "sq_term_" },
+    { name: "Clover Station", accountPrefix: "clv_" },
+    { name: "Verifone", accountPrefix: "vf_" },
+  ],
+  bluetooth: [
+    { name: "Clover Flex", accountPrefix: "clv_bt_" },
+    { name: "Square Reader", accountPrefix: "sq_bt_" },
+    { name: "SumUp", accountPrefix: "sum_" },
+  ],
+};
+
+const PaymentProcessingScreen = () => {
+  const [processors, setProcessors] = useState<ProcessorInfo[]>([
+    { id: "1", name: "Stripe", status: "connected", accountId: "acct_1234567890", type: "builtin" },
+    { id: "2", name: "Square Terminal", status: "connected", accountId: "sq_term_abc123", type: "wired" },
+    { id: "3", name: "Clover Flex", status: "disconnected", accountId: "clv_bt_xyz789", type: "bluetooth" },
+  ]);
+
+  const [modalType, setModalType] = useState<ModalType>(null);
+  const [selectedProcessor, setSelectedProcessor] = useState<ProcessorInfo | null>(null);
+  const [formData, setFormData] = useState({ name: "", type: "builtin" as ProcessorInfo["type"], accountId: "" });
+
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethods>({
+    cash: true, credit: true, debit: true, mobileWallets: true, bnpl: false,
+  });
+
+  const [startingCashAmount, setStartingCashAmount] = useState("200.00");
+  const [preAuthSettings, setPreAuthSettings] = useState<PreAuthSettings>({ enabled: true, amount: "25.00", gateway: "stripe" });
+  const [splitPaymentOptions, setSplitPaymentOptions] = useState<SplitPaymentOptions>({ byAmount: true, byItem: true, evenly: true });
+  const [expandedSections, setExpandedSections] = useState({ builtin: true, wired: true, bluetooth: true });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const openAddModal = (type: ProcessorInfo["type"]) => {
+    setFormData({ name: "", type, accountId: "" });
+    setSelectedProcessor(null);
+    setModalType("add");
+  };
+
+  const openEditModal = (processor: ProcessorInfo) => {
+    setSelectedProcessor(processor);
+    setFormData({ name: processor.name, type: processor.type, accountId: processor.accountId });
+    setModalType("edit");
+  };
+
+  const openDeleteModal = (processor: ProcessorInfo) => {
+    setSelectedProcessor(processor);
+    setModalType("delete");
+  };
+
+  const closeModal = () => {
+    setModalType(null);
+    setSelectedProcessor(null);
+    setFormData({ name: "", type: "builtin", accountId: "" });
+  };
+
+  const handleAddProcessor = () => {
+    if (!formData.name || !formData.accountId) return;
+    const newProcessor: ProcessorInfo = {
+      id: Date.now().toString(),
+      name: formData.name,
+      type: formData.type,
+      accountId: formData.accountId,
+      status: "pending",
+    };
+    setProcessors((prev) => [...prev, newProcessor]);
+    closeModal();
+  };
+
+  const handleEditProcessor = () => {
+    if (!selectedProcessor || !formData.name || !formData.accountId) return;
+    setProcessors((prev) => prev.map((p) => p.id === selectedProcessor.id ? { ...p, name: formData.name, accountId: formData.accountId } : p));
+    closeModal();
+  };
+
+  const handleDeleteProcessor = () => {
+    if (!selectedProcessor) return;
+    setProcessors((prev) => prev.filter((p) => p.id !== selectedProcessor.id));
+    closeModal();
+  };
+
+  const toggleProcessorStatus = (id: string) => {
+    setProcessors((prev) => prev.map((p) => p.id === id ? { ...p, status: p.status === "connected" ? "disconnected" : "connected" } : p));
+  };
+
+  const getStatusColor = (status: ProcessorInfo["status"]) => {
+    switch (status) {
+      case "connected": return "text-green-400";
+      case "disconnected": return "text-red-400";
+      case "pending": return "text-yellow-400";
+    }
+  };
+
+  const getStatusIcon = (status: ProcessorInfo["status"]) => {
+    switch (status) {
+      case "connected": return <CheckCircle2 size={16} color="#4ade80" />;
+      case "disconnected": return <XCircle size={16} color="#f87171" />;
+      case "pending": return <CheckCircle2 size={16} color="#facc15" />;
+    }
+  };
+
+  const getProcessorIcon = (type: ProcessorInfo["type"]) => {
+    switch (type) {
+      case "builtin": return <Building2 size={20} color="#60a5fa" />;
+      case "wired": return <Wifi size={20} color="#a78bfa" />;
+      case "bluetooth": return <Bluetooth size={20} color="#2dd4bf" />;
+    }
+  };
+
+  const renderProcessorCard = (processor: ProcessorInfo) => (
+    <View key={processor.id} className="bg-[#404040] p-4 rounded-xl border border-gray-600 mb-3">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center flex-1">
+          <View className="w-10 h-10 bg-[#505050] rounded-lg items-center justify-center mr-3">{getProcessorIcon(processor.type)}</View>
+          <View className="flex-1">
+            <Text className="text-white font-semibold text-base">{processor.name}</Text>
+            <Text className="text-gray-400 text-sm">{processor.accountId}</Text>
+          </View>
+        </View>
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity onPress={() => toggleProcessorStatus(processor.id)} className="flex-row items-center bg-[#505050] px-3 py-2 rounded-lg">
+            {getStatusIcon(processor.status)}
+            <Text className={`ml-2 text-sm capitalize ${getStatusColor(processor.status)}`}>{processor.status}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openEditModal(processor)} className="p-2 bg-[#505050] rounded-lg">
+            <Edit3 size={18} color="#9ca3af" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => openDeleteModal(processor)} className="p-2 bg-red-500/20 rounded-lg">
+            <Trash2 size={18} color="#f87171" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderProcessorSection = (title: string, description: string, type: ProcessorInfo["type"], sectionKey: keyof typeof expandedSections, icon: React.ReactNode) => {
+    const sectionProcessors = processors.filter((p) => p.type === type);
+    const isExpanded = expandedSections[sectionKey];
+    return (
+      <View className="mb-4">
+        <TouchableOpacity onPress={() => toggleSection(sectionKey)} className="bg-[#353535] p-4 rounded-xl border border-gray-600 flex-row items-center justify-between">
+          <View className="flex-row items-center flex-1">
+            <View className="w-10 h-10 bg-[#454545] rounded-lg items-center justify-center mr-3">{icon}</View>
+            <View className="flex-1">
+              <Text className="text-white font-bold text-lg">{title}</Text>
+              <Text className="text-gray-400 text-sm">{description}</Text>
+            </View>
+          </View>
+          <View className="flex-row items-center">
+            <TouchableOpacity onPress={() => openAddModal(type)} className="p-2 bg-blue-600 rounded-lg mr-2">
+              <Plus size={18} color="white" />
+            </TouchableOpacity>
+            <View className="bg-blue-500/20 px-2 py-1 rounded-full mr-3">
+              <Text className="text-blue-400 text-sm font-medium">{sectionProcessors.length}</Text>
+            </View>
+            {isExpanded ? <ChevronUp size={20} color="#9ca3af" /> : <ChevronDown size={20} color="#9ca3af" />}
+          </View>
+        </TouchableOpacity>
+        {isExpanded && sectionProcessors.length > 0 && <View className="mt-3 ml-4">{sectionProcessors.map(renderProcessorCard)}</View>}
+        {isExpanded && sectionProcessors.length === 0 && (
+          <View className="mt-3 ml-4 bg-[#404040] p-4 rounded-xl border border-gray-600">
+            <Text className="text-gray-400 text-center">No devices connected</Text>
+            <TouchableOpacity onPress={() => openAddModal(type)} className="mt-3 bg-blue-600 py-2 px-4 rounded-lg self-center">
+              <Text className="text-white font-medium">Add Device</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderToggleRow = (label: string, description: string, value: boolean, onToggle: () => void, icon: React.ReactNode) => (
+    <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
+      <View className="flex-row items-center flex-1">
+        <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3">{icon}</View>
+        <View className="flex-1">
+          <Text className="text-white font-medium">{label}</Text>
+          <Text className="text-gray-400 text-sm">{description}</Text>
+        </View>
+      </View>
+      <Switch checked={value} onCheckedChange={onToggle} />
+    </View>
+  );
+
+  const renderFormModal = () => {
+    const isEdit = modalType === "edit";
+    const presets = PROCESSOR_PRESETS[formData.type] || [];
+    return (
+      <Modal visible={modalType === "add" || modalType === "edit"} transparent animationType="fade" onRequestClose={closeModal} statusBarTranslucent>
+        <View className="flex-1 justify-center items-center bg-black/60 px-6">
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="w-full max-w-[500px]" style={{ alignSelf: 'center' }}>
+            <View className="bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden">
+              <View className="p-4 border-b border-gray-700 flex-row items-center justify-between">
+                <Text className="text-xl font-bold text-white">{isEdit ? "Edit Processor" : "Add Processor"}</Text>
+                <TouchableOpacity onPress={closeModal} className="p-2"><X size={24} color="#9ca3af" /></TouchableOpacity>
+              </View>
+              <View className="p-4 gap-y-4">
+                {!isEdit && (
+                  <View>
+                    <Text className="text-gray-300 font-medium mb-2">Processor Type</Text>
+                    <Select value={{ value: formData.type, label: PROCESSOR_TYPES.find((t) => t.value === formData.type)?.label || "" }} onValueChange={(option) => setFormData((prev) => ({ ...prev, type: (option?.value as ProcessorInfo["type"]) || "builtin", name: "" }))}>
+                      <SelectTrigger className="bg-[#404040] border-gray-600"><SelectValue placeholder="Select type" className="text-white" /></SelectTrigger>
+                      <SelectContent className="bg-[#404040] border-gray-600">
+                        {PROCESSOR_TYPES.map((type) => (<SelectItem key={type.value} value={type.value} label={type.label}>{type.label}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </View>
+                )}
+                <View>
+                  <Text className="text-gray-300 font-medium mb-2">Processor Name</Text>
+                  <TextInput value={formData.name} onChangeText={(text) => setFormData((prev) => ({ ...prev, name: text }))} placeholder="Enter processor name" placeholderTextColor="#6b7280" className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white" />
+                </View>
+                <View>
+                  <Text className="text-gray-300 font-medium mb-2">Account ID / Device ID</Text>
+                  <TextInput value={formData.accountId} onChangeText={(text) => setFormData((prev) => ({ ...prev, accountId: text }))} placeholder="Enter account or device ID" placeholderTextColor="#6b7280" className="bg-[#404040] border border-gray-600 rounded-lg p-3 text-white" />
+                  <Text className="text-gray-500 text-sm mt-1">Your merchant account ID or device serial number</Text>
+                </View>
+              </View>
+              <View className="p-4 border-t border-gray-700 flex-row gap-3">
+                <TouchableOpacity onPress={closeModal} className="flex-1 py-3 bg-[#404040] rounded-lg"><Text className="text-white font-medium text-center">Cancel</Text></TouchableOpacity>
+                <TouchableOpacity onPress={isEdit ? handleEditProcessor : handleAddProcessor} disabled={!formData.name || !formData.accountId} className={`flex-1 py-3 rounded-lg ${formData.name && formData.accountId ? "bg-blue-600" : "bg-blue-600/50"}`}>
+                  <Text className="text-white font-medium text-center">{isEdit ? "Save Changes" : "Add Processor"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    );
+  };
+
+  const renderDeleteModal = () => (
+    <Modal visible={modalType === "delete"} transparent animationType="fade" onRequestClose={closeModal} statusBarTranslucent>
+      <View className="flex-1 justify-center items-center bg-black/60 px-6">
+        <View className="w-full max-w-[450px] bg-[#303030] rounded-2xl border border-gray-700 overflow-hidden" style={{ alignSelf: 'center' }}>
+          <View className="p-6 items-center">
+            <View className="w-16 h-16 bg-red-500/20 rounded-full items-center justify-center mb-4"><AlertTriangle size={32} color="#f87171" /></View>
+            <Text className="text-xl font-bold text-white text-center mb-2">Remove Processor?</Text>
+            <Text className="text-gray-400 text-center">Are you sure you want to remove "{selectedProcessor?.name}"? This cannot be undone.</Text>
+          </View>
+          <View className="p-4 border-t border-gray-700 flex-row gap-3">
+            <TouchableOpacity onPress={closeModal} className="flex-1 py-3 bg-[#404040] rounded-lg"><Text className="text-white font-medium text-center">Cancel</Text></TouchableOpacity>
+            <TouchableOpacity onPress={handleDeleteProcessor} className="flex-1 py-3 bg-red-600 rounded-lg"><Text className="text-white font-medium text-center">Remove</Text></TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  return (
+    <View className="flex-1 bg-[#212121] p-6">
+      {renderFormModal()}
+      {renderDeleteModal()}
+      <View className="mb-6">
+        <Text className="text-3xl font-bold text-white">Payment Processing</Text>
+        <Text className="text-gray-400 mt-2">Manage payment methods, gateways, and processing settings.</Text>
+      </View>
+      <View className="h-[1px] w-full bg-gray-700 mb-6" />
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View className="bg-[#303030] p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <CreditCard size={24} color="#60a5fa" />
+            <Text className="text-xl font-bold text-white ml-3">Payment Processors</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Configure and manage your payment processing devices and integrations.</Text>
+          {renderProcessorSection("Built-in Processor", "Software-based payment processing (Stripe, Square API)", "builtin", "builtin", <Building2 size={20} color="#60a5fa" />)}
+          {renderProcessorSection("Wired Card Reader", "USB or ethernet connected terminals", "wired", "wired", <Wifi size={20} color="#a78bfa" />)}
+          {renderProcessorSection("Bluetooth Devices", "Wireless card readers and mobile terminals", "bluetooth", "bluetooth", <Bluetooth size={20} color="#2dd4bf" />)}
+        </View>
+
+        <View className="bg-[#303030] p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <Banknote size={24} color="#4ade80" />
+            <Text className="text-xl font-bold text-white ml-3">Payment Methods</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Enable or disable accepted payment methods for your business.</Text>
+          {renderToggleRow("Cash", "Accept cash payments", paymentMethods.cash, () => setPaymentMethods((prev) => ({ ...prev, cash: !prev.cash })), <Banknote size={16} color="#4ade80" />)}
+          {renderToggleRow("Credit Cards", "Visa, Mastercard, Amex, Discover", paymentMethods.credit, () => setPaymentMethods((prev) => ({ ...prev, credit: !prev.credit })), <CreditCard size={16} color="#60a5fa" />)}
+          {renderToggleRow("Debit Cards", "PIN-based debit transactions", paymentMethods.debit, () => setPaymentMethods((prev) => ({ ...prev, debit: !prev.debit })), <CreditCard size={16} color="#a78bfa" />)}
+          {renderToggleRow("Mobile Wallets", "Apple Pay, Google Pay, Samsung Pay", paymentMethods.mobileWallets, () => setPaymentMethods((prev) => ({ ...prev, mobileWallets: !prev.mobileWallets })), <Smartphone size={16} color="#f472b6" />)}
+          <View className="flex-row items-center justify-between py-3">
+            <View className="flex-row items-center flex-1">
+              <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3"><DollarSign size={16} color="#facc15" /></View>
+              <View className="flex-1">
+                <Text className="text-white font-medium">Buy Now, Pay Later</Text>
+                <Text className="text-gray-400 text-sm">Klarna, Afterpay, Affirm</Text>
+              </View>
+            </View>
+            <Switch checked={paymentMethods.bnpl} onCheckedChange={() => setPaymentMethods((prev) => ({ ...prev, bnpl: !prev.bnpl }))} />
+          </View>
+        </View>
+
+        <View className="bg-[#303030] p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <DollarSign size={24} color="#facc15" />
+            <Text className="text-xl font-bold text-white ml-3">Cash Drawer</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Set the starting cash amount for your drawer at the beginning of each shift.</Text>
+          <View className="bg-[#404040] p-4 rounded-xl border border-gray-600">
+            <Text className="text-gray-300 font-medium mb-2">Starting Cash Amount</Text>
+            <View className="flex-row items-center bg-[#505050] rounded-lg border border-gray-500">
+              <View className="px-4 py-3 border-r border-gray-500"><Text className="text-white font-bold text-lg">$</Text></View>
+              <TextInput value={startingCashAmount} onChangeText={setStartingCashAmount} keyboardType="decimal-pad" className="flex-1 px-4 py-3 text-white text-lg" placeholderTextColor="#6b7280" placeholder="0.00" />
+            </View>
+            <Text className="text-gray-500 text-sm mt-2">This amount will be used as the default starting balance for new shifts.</Text>
+          </View>
+        </View>
+
+        <View className="bg-[#303030] p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <ShieldCheck size={24} color="#a78bfa" />
+            <Text className="text-xl font-bold text-white ml-3">Pre-Authorization</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Configure card pre-authorization for tabs and open orders.</Text>
+          <View className="flex-row items-center justify-between py-3 border-b border-gray-700">
+            <View className="flex-1">
+              <Text className="text-white font-medium">Enable Pre-Authorization</Text>
+              <Text className="text-gray-400 text-sm">Hold funds on customer cards for open tabs</Text>
+            </View>
+            <Switch checked={preAuthSettings.enabled} onCheckedChange={(checked) => setPreAuthSettings((prev) => ({ ...prev, enabled: checked }))} />
+          </View>
+          {preAuthSettings.enabled && (
+            <>
+              <View className="py-4 border-b border-gray-700">
+                <Text className="text-gray-300 font-medium mb-2">Pre-Auth Amount</Text>
+                <View className="flex-row items-center bg-[#404040] rounded-lg border border-gray-600">
+                  <View className="px-4 py-3 border-r border-gray-600"><Text className="text-white font-bold text-lg">$</Text></View>
+                  <TextInput value={preAuthSettings.amount} onChangeText={(text) => setPreAuthSettings((prev) => ({ ...prev, amount: text }))} keyboardType="decimal-pad" className="flex-1 px-4 py-3 text-white text-lg" placeholderTextColor="#6b7280" placeholder="0.00" />
+                </View>
+                <Text className="text-gray-500 text-sm mt-2">Default amount to hold when opening a tab</Text>
+              </View>
+              <View className="py-4">
+                <Text className="text-gray-300 font-medium mb-2">Gateway Selection</Text>
+                <Select value={{ value: preAuthSettings.gateway, label: preAuthSettings.gateway === "stripe" ? "Stripe" : preAuthSettings.gateway === "square" ? "Square" : "Clover" }} onValueChange={(option) => setPreAuthSettings((prev) => ({ ...prev, gateway: option?.value || "stripe" }))}>
+                  <SelectTrigger className="bg-[#404040] border-gray-600"><SelectValue placeholder="Select gateway" className="text-white" /></SelectTrigger>
+                  <SelectContent className="bg-[#404040] border-gray-600">
+                    <SelectItem value="stripe" label="Stripe">Stripe</SelectItem>
+                    <SelectItem value="square" label="Square">Square</SelectItem>
+                    <SelectItem value="clover" label="Clover">Clover</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Text className="text-gray-500 text-sm mt-2">Select which processor handles pre-authorizations</Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View className="bg-[#303030] p-5 rounded-2xl border border-gray-700 mb-6">
+          <View className="flex-row items-center mb-4">
+            <SplitSquareHorizontal size={24} color="#f472b6" />
+            <Text className="text-xl font-bold text-white ml-3">Split Payment Options</Text>
+          </View>
+          <Text className="text-gray-400 mb-4">Configure how customers can split their payments.</Text>
+          {renderToggleRow("Split by Amount", "Allow customers to specify exact amounts per payment", splitPaymentOptions.byAmount, () => setSplitPaymentOptions((prev) => ({ ...prev, byAmount: !prev.byAmount })), <DollarSign size={16} color="#4ade80" />)}
+          {renderToggleRow("Split by Item", "Allow customers to assign items to different payments", splitPaymentOptions.byItem, () => setSplitPaymentOptions((prev) => ({ ...prev, byItem: !prev.byItem })), <SplitSquareHorizontal size={16} color="#60a5fa" />)}
+          <View className="flex-row items-center justify-between py-3">
+            <View className="flex-row items-center flex-1">
+              <View className="w-8 h-8 bg-[#454545] rounded-lg items-center justify-center mr-3"><SplitSquareHorizontal size={16} color="#a78bfa" /></View>
+              <View className="flex-1">
+                <Text className="text-white font-medium">Split Evenly</Text>
+                <Text className="text-gray-400 text-sm">Divide total equally among multiple payments</Text>
+              </View>
+            </View>
+            <Switch checked={splitPaymentOptions.evenly} onCheckedChange={() => setSplitPaymentOptions((prev) => ({ ...prev, evenly: !prev.evenly }))} />
+          </View>
+        </View>
+        <View className="h-6" />
+      </ScrollView>
+    </View>
+  );
+};
+
+export default PaymentProcessingScreen;
