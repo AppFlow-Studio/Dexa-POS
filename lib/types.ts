@@ -206,6 +206,15 @@ export interface Menu {
   updatedAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  isActive: boolean;
+  order: number;
+  createdAt: string;
+  schedules?: Schedule[];
+}
+
 export interface Schedule {
   id: string;
   name: string;
@@ -337,6 +346,7 @@ export interface PreviousOrder {
   type: OrderType;
   total: number;
   items: CartItem[]; // The detailed list of items for the notes modal
+  notes?: string; // Order-level notes (customer requests, special instructions)
   payments?: OrderProfile["payments"]; // Add payments array
   // Refund tracking fields
   refunded?: boolean;
@@ -613,6 +623,7 @@ export interface OrderProfile {
     cardBrand?: string;
     last4?: string;
   }[]; // Example usage
+  notes?: string; // Order-level notes (customer requests, special instructions)
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

@@ -29,7 +29,6 @@ export default function MainLayout() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
       className="flex-1"
     >
       <SafeAreaView edges={["top"]} className="flex-1 bg-[#212121]">
@@ -40,7 +39,7 @@ export default function MainLayout() {
           {/* <Sidebar /> */}
           {/* <ModifierSidebar /> */}
           <View className="flex-1 flex-col">
-            <View className="p-2 px-4">
+            <View className="py-3 px-4 z-50">
               <Header />
             </View>
             <Slot />

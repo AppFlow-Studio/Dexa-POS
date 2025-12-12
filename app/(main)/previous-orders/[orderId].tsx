@@ -1,9 +1,9 @@
 import BillItem from "@/components/bill/BillItem";
-import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModal";
+import AdvancedRefundModal, { AdvancedRefundModalRef } from "@/components/previous-orders/AdvancedRefundModal";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Printer } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const DetailRow = ({
@@ -24,7 +24,7 @@ const OrderDetailsScreen = () => {
   const { orderId } = useLocalSearchParams();
   const { getOrderById, previousOrders } = usePreviousOrdersStore();
   const order = getOrderById(orderId as string);
-  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const refundModalRef = useRef<AdvancedRefundModalRef>(null);
 
   const canStillRefund = useMemo(() => {
     if (!order) return false;
@@ -146,7 +146,7 @@ const OrderDetailsScreen = () => {
           <View className="flex-row gap-3 mt-6 border-t border-gray-700 pt-4">
             {canStillRefund && (
               <TouchableOpacity
-                onPress={() => setIsRefundModalOpen(true)}
+                onPress={() => refundModalRef.current?.open()}
                 className="flex-1 py-3 border border-red-500 rounded-xl items-center bg-red-900/30"
               >
                 <Text className="text-xl font-bold text-red-400">Refund</Text>
@@ -163,8 +163,8 @@ const OrderDetailsScreen = () => {
       </View>
 
       <AdvancedRefundModal
-        isOpen={isRefundModalOpen}
-        onClose={() => setIsRefundModalOpen(false)}
+        ref={refundModalRef}
+        onClose={() => {}}
         order={order}
       />
     </View>

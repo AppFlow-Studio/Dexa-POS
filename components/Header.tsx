@@ -1,5 +1,10 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { usePathname, useRouter } from "expo-router";
+import {
+  Href,
+  useGlobalSearchParams,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -9,6 +14,7 @@ const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { layouts } = useFloorPlanStore();
+  const globalParams = useGlobalSearchParams();
 
   const showBackButton =
     pathname === "/open-shifts" ||
@@ -27,7 +33,7 @@ const Header = () => {
     pathname === "/order-processing" ||
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
-    pathname === "/settings" ||
+    pathname.startsWith("/settings") ||
     pathname === "/settings/floor-plan" ||
     pathname.startsWith("/analytics") ||
     (pathname.startsWith("/analytics-dashboard") &&
@@ -40,13 +46,7 @@ const Header = () => {
       pathname.split("/").length > 2) ||
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
-      pathname.split("/").length === 4) ||
-    (pathname.startsWith("/settings") && pathname.split("/").length === 4) ||
-    pathname === "/settings/store-operation/end-of-day/checks" ||
-    pathname === "/settings/store-operation/end-of-day/drawers" ||
-    pathname === "/settings/store-operation/end-of-day/employees" ||
-    pathname === "/settings/store-operation/end-of-day/add-cash-to-register" ||
-    pathname === "/settings/store-operation/end-of-day/sales-summary";
+      pathname.split("/").length === 4);
 
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
@@ -120,6 +120,12 @@ const Header = () => {
   }, [pathname, layouts]);
 
   const handleBackPress = () => {
+    // In handleBackPress:
+    if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
+      router.push(globalParams.returnTo as Href);
+      return;
+    }
+
     const pathParts = pathname.split("/").filter(Boolean);
 
     if (
@@ -132,7 +138,7 @@ const Header = () => {
 
     if (pathname.startsWith("/settings")) {
       if (pathParts.length > 2) {
-        router.push("/settings");
+        // router.push("/settings");
       } else {
         router.push("/home");
       }
@@ -143,8 +149,8 @@ const Header = () => {
   };
 
   return (
-    <View className="flex-row justify-between items-center ">
-      <View className="flex-row items-center">
+    <View className="flex-row justify-between items-center h-14">
+      <View className="flex-row items-center flex-shrink-0">
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBackPress}
@@ -156,11 +162,9 @@ const Header = () => {
         <Text className="text-2xl font-bold text-white">{title}</Text>
       </View>
 
-      <View className="">
+      <View className="flex-shrink-0">
         <SessionDock />
       </View>
-
-      {/* <View className="w-32" /> */}
     </View>
   );
 };

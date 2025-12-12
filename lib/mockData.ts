@@ -2050,7 +2050,7 @@ export const MOCK_INVENTORY_ITEMS: InventoryItem[] = [
     vendorId: "vendor_2",
   },
   {
-    id: "inv_106",
+    id: "inv_112",
     name: "Breadcrumbs",
     category: "Bakery",
     stockQuantity: 12,
