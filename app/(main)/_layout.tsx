@@ -3,13 +3,21 @@ import Header from "@/components/Header";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useAuth } from "@clerk/clerk-expo";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Slot } from "expo-router";
+import { Redirect, Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef } from "react";
-import { KeyboardAvoidingView, Platform, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 export default function MainLayout() {
+  const { isSignedIn, isLoaded } = useAuth();
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
   const { setSheetRef } = useNotificationSheetStore();
@@ -25,6 +33,20 @@ export default function MainLayout() {
         paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
       );
   }, [paymentBottomSheetRef]);
+
+  // Show loading indicator while Clerk is loading
+  if (!isLoaded) {
+    return (
+      <View className="flex-1 items-center justify-center bg-[#212121]">
+        <ActivityIndicator size="large" color="#3b82f6" />
+      </View>
+    );
+  }
+
+  // Redirect to login if user is not signed in
+  if (!isSignedIn) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <KeyboardAvoidingView
