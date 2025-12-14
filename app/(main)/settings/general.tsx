@@ -110,19 +110,49 @@ const formatTo24Hour = (time: string) => {
 };
 
 const GeneralSettingsScreen = () => {
-  // Zustand Store - using useStoreSettingsStore which has business info, hours, tax
-  const storeSettings = useStoreSettingsStore();
-  const {
-    storeName,
-    address,
-    phone,
-    email,
-    website,
-    hours,
-    defaultTaxRate,
-    updateField,
-    saveChanges,
-  } = storeSettings;
+  // Zustand Store - only selectedStore for business info, tax settings remain local
+  const { defaultTaxRate, updateField, saveChanges, selectedStore } =
+    useStoreSettingsStore();
+
+  // Business info from selectedStore only
+  const displayStoreName = selectedStore?.name || "No store selected";
+  const displayAddress = selectedStore
+    ? `${selectedStore.address_line1}${selectedStore.address_line2 ? ", " + selectedStore.address_line2 : ""}, ${selectedStore.city}, ${selectedStore.state} ${selectedStore.postal_code}`
+    : "Select a store to see address";
+  const displayPhone = selectedStore?.phone || "";
+  const displayEmail = selectedStore?.email || "";
+  const displayWebsite = ""; // Website not in location data
+
+  // Define a type for display hours
+  interface DisplayHour {
+    day: string;
+    open: string;
+    close: string;
+    enabled: boolean;
+  }
+
+  // Convert selected store business hours to the format used by the UI
+  const displayHours: DisplayHour[] = selectedStore?.business_hours
+    ? [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ].map((day) => {
+        const dayKey =
+          day.toLowerCase() as keyof typeof selectedStore.business_hours;
+        const dayHoursData = selectedStore.business_hours[dayKey];
+        return {
+          day: day,
+          open: dayHoursData?.open || "09:00",
+          close: dayHoursData?.close || "17:00",
+          enabled: !dayHoursData?.is_closed,
+        };
+      })
+    : [];
 
   // Local state for service charge (can be added to store later)
   const [serviceCharge, setServiceCharge] = useState({
@@ -156,12 +186,8 @@ const GeneralSettingsScreen = () => {
   };
 
   const toggleDayEnabled = (dayIndex: number) => {
-    const newHours = [...hours];
-    newHours[dayIndex] = {
-      ...newHours[dayIndex],
-      enabled: !newHours[dayIndex].enabled,
-    };
-    updateField("hours", newHours);
+    // TODO: Implement with API when available
+    console.log("Toggle day enabled:", dayIndex);
   };
 
   const openTimePicker = (dayIndex: number, type: "open" | "close") => {
@@ -170,13 +196,9 @@ const GeneralSettingsScreen = () => {
   };
 
   const handleTimeSave = (time: string) => {
+    // TODO: Implement with API when available
     const { dayIndex, type } = timePickerState;
-    if (dayIndex >= 0) {
-      const newHours = [...hours];
-      const time24 = formatTo24Hour(time);
-      newHours[dayIndex] = { ...newHours[dayIndex], [type]: time24 };
-      updateField("hours", newHours);
-    }
+    console.log("Save time:", dayIndex, type, time);
   };
 
   const renderSectionHeader = (
@@ -228,8 +250,8 @@ const GeneralSettingsScreen = () => {
     </View>
   );
 
-  // Format address for display
-  const addressString = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+  // Format address for display (fallback when no store selected)
+  const addressString = displayAddress;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -258,8 +280,8 @@ const GeneralSettingsScreen = () => {
               <View className="p-5">
                 {renderInputField(
                   "Business Name",
-                  storeName,
-                  (t) => updateField("storeName", t),
+                  displayStoreName,
+                  () => {}, // Read-only for now, API integration later
                   <Building2 size={18} color="#60a5fa" />
                 )}
                 {renderInputField(
@@ -272,16 +294,16 @@ const GeneralSettingsScreen = () => {
                   <View className="flex-1">
                     {renderInputField(
                       "Phone",
-                      phone,
-                      (t) => updateField("phone", t),
+                      displayPhone || "",
+                      () => {}, // Read-only for now
                       <Phone size={18} color="#4ade80" />
                     )}
                   </View>
                   <View className="flex-1">
                     {renderInputField(
                       "Website",
-                      website,
-                      (t) => updateField("website", t),
+                      displayWebsite,
+                      () => {}, // Read-only for now
                       <Globe size={18} color="#a78bfa" />
                     )}
                   </View>
@@ -302,42 +324,42 @@ const GeneralSettingsScreen = () => {
                 <Text className="text-gray-400 text-sm mb-4">
                   Tap on times to change. Toggle switch to enable/disable days.
                 </Text>
-                {hours.map((dayHours, index) => (
+                {displayHours.map((dayHoursItem, index) => (
                   <View
-                    key={dayHours.day}
-                    className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${!dayHours.enabled ? "opacity-50" : ""}`}
+                    key={dayHoursItem.day}
+                    className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${!dayHoursItem.enabled ? "opacity-50" : ""}`}
                   >
                     <Text className="text-white font-medium w-24">
-                      {dayHours.day}
+                      {dayHoursItem.day}
                     </Text>
                     <View className="flex-row items-center flex-1 justify-end gap-3">
                       <TouchableOpacity
                         onPress={() =>
-                          dayHours.enabled && openTimePicker(index, "open")
+                          dayHoursItem.enabled && openTimePicker(index, "open")
                         }
                         className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!dayHours.enabled}
+                        disabled={!dayHoursItem.enabled}
                       >
                         <Text className="text-white font-medium">
-                          {formatTo12Hour(dayHours.open)}
+                          {formatTo12Hour(dayHoursItem.open)}
                         </Text>
                       </TouchableOpacity>
                       <Text className="text-gray-500">-</Text>
                       <TouchableOpacity
                         onPress={() =>
-                          dayHours.enabled && openTimePicker(index, "close")
+                          dayHoursItem.enabled && openTimePicker(index, "close")
                         }
                         className="bg-[#404040] px-3 py-2 rounded-lg border border-gray-600"
-                        disabled={!dayHours.enabled}
+                        disabled={!dayHoursItem.enabled}
                       >
                         <Text className="text-white font-medium">
-                          {formatTo12Hour(dayHours.close)}
+                          {formatTo12Hour(dayHoursItem.close)}
                         </Text>
                       </TouchableOpacity>
                     </View>
                     <View className="ml-4">
                       <Switch
-                        checked={dayHours.enabled}
+                        checked={dayHoursItem.enabled}
                         onCheckedChange={() => toggleDayEnabled(index)}
                       />
                     </View>
@@ -487,15 +509,17 @@ const GeneralSettingsScreen = () => {
         <OperatingHoursTimeSheet
           bottomSheetRef={timeSheetRef}
           initialTime={
-            timePickerState.dayIndex >= 0
+            timePickerState.dayIndex >= 0 &&
+            displayHours[timePickerState.dayIndex]
               ? formatTo12Hour(
-                  hours[timePickerState.dayIndex]?.[timePickerState.type]
+                  displayHours[timePickerState.dayIndex]?.[timePickerState.type]
                 )
               : "09:00 AM"
           }
           day={
-            timePickerState.dayIndex >= 0
-              ? hours[timePickerState.dayIndex]?.day
+            timePickerState.dayIndex >= 0 &&
+            displayHours[timePickerState.dayIndex]
+              ? displayHours[timePickerState.dayIndex]?.day
               : ""
           }
           type={timePickerState.type}

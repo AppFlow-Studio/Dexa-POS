@@ -1,3 +1,4 @@
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useAuth } from "@clerk/clerk-expo";
 import { Redirect } from "expo-router";
 import React from "react";
@@ -5,8 +6,10 @@ import { ActivityIndicator, View } from "react-native";
 
 const StartPage = () => {
   const { isSignedIn, isLoaded } = useAuth();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   console.log("isSignedIn", isSignedIn);
   console.log("isLoaded", isLoaded);
+  console.log("selectedStore", selectedStore?.name);
 
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {
@@ -17,9 +20,13 @@ const StartPage = () => {
     );
   }
 
-  // Redirect based on authentication status
+  // Redirect based on authentication status and store selection
   if (isSignedIn) {
-    // User is signed in, redirect to store-select
+    // If store is already selected, go directly to pin-login
+    if (selectedStore) {
+      return <Redirect href="/pin-login" />;
+    }
+    // Otherwise, go to store-select
     return <Redirect href="/store-select" />;
   }
 
