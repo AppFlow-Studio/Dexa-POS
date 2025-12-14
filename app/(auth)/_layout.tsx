@@ -1,6 +1,6 @@
 import { images } from "@/lib/image";
 import { useAuth } from "@clerk/clerk-expo";
-import { Redirect, Slot } from "expo-router";
+import { Slot } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Image, View } from "react-native";
 
@@ -16,10 +16,8 @@ export default function AuthLayout() {
     );
   }
 
-  // Redirect to home/main if user is already signed in
-  if (isSignedIn) {
-    return <Redirect href="/" />;
-  }
+  // Note: We don't redirect signed-in users away from this layout because
+  // store-select and pin-login pages are in this group and require signed-in users
 
   return (
     <View className="flex-1 flex-row items-center justify-center bg-[#212121] p-8">
