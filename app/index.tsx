@@ -5,6 +5,8 @@ import { ActivityIndicator, View } from "react-native";
 
 const StartPage = () => {
   const { isSignedIn, isLoaded } = useAuth();
+  console.log("isSignedIn", isSignedIn);
+  console.log("isLoaded", isLoaded);
 
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {

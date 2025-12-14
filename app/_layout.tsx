@@ -58,7 +58,7 @@ const DARK_THEME: Theme = {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary
+  ErrorBoundary,
 } from "expo-router";
 
 export default function RootLayout() {
@@ -110,10 +110,7 @@ export default function RootLayout() {
             <ThemeProvider value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}>
               <ToastProvider>
                 <StatusBar style={"dark"} translucent />
-                <Stack
-                  screenOptions={{ headerShown: false }}
-                  initialRouteName="(auth)"
-                />
+                <Stack screenOptions={{ headerShown: false }} />
                 <PortalHost />
                 <SearchBottomSheet />
                 <ItemCustomizationDialog />
