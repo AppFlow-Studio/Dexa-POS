@@ -19,34 +19,46 @@ const TimeField: React.FC<{
     return [parseInt(h, 10) || 0, parseInt(m, 10) || 0];
   }, [value]);
 
-  const set = (h: number, m: number) =>
+  const isPm = hours >= 12;
+  const displayHours = hours % 12 || 12;
+
+  const updateTime = (h: number, m: number) => {
     onChange(
       `${String((h + 24) % 24).padStart(2, "0")}:${String(
         (m + 60) % 60
       ).padStart(2, "0")}`
     );
+  };
 
-  const toAmPm = (h: number, m: number) => {
-    const period = h >= 12 ? "PM" : "AM";
-    const hour12 = h % 12 === 0 ? 12 : h % 12;
-    const minutesStr = String(m).padStart(2, "0");
-    return `${hour12}:${minutesStr} ${period}`;
+  const setHour = (newDisplayHour: number) => {
+    let newH24 = newDisplayHour;
+    if (isPm) {
+      if (newDisplayHour !== 12) newH24 = newDisplayHour + 12;
+    } else {
+      if (newDisplayHour === 12) newH24 = 0;
+    }
+    updateTime(newH24, minutes);
+  };
+
+  const toggleAmPm = () => {
+    const newH = (hours + 12) % 24;
+    updateTime(newH, minutes);
   };
 
   return (
     <View className="flex-row items-center gap-2 p-1 bg-[#212121] border border-gray-600 rounded-lg">
       <View className="flex-1 flex-row items-center justify-around">
         <TouchableOpacity
-          onPress={() => set(hours === 0 ? 23 : hours - 1, minutes)}
+          onPress={() => setHour(displayHours === 1 ? 12 : displayHours - 1)}
           className="p-2"
         >
           <Text className="text-white text-xl font-bold">-</Text>
         </TouchableOpacity>
         <Text className="text-white text-xl font-bold">
-          {String(hours).padStart(2, "0")}
+          {String(displayHours).padStart(2, "0")}
         </Text>
         <TouchableOpacity
-          onPress={() => set(hours === 23 ? 0 : hours + 1, minutes)}
+          onPress={() => setHour(displayHours === 12 ? 1 : displayHours + 1)}
           className="p-2"
         >
           <Text className="text-white text-xl font-bold">+</Text>
@@ -55,7 +67,7 @@ const TimeField: React.FC<{
       <Text className="text-white text-xl font-bold">:</Text>
       <View className="flex-1 flex-row items-center justify-around">
         <TouchableOpacity
-          onPress={() => set(hours, (minutes + 45) % 60)}
+          onPress={() => updateTime(hours, (minutes + 45) % 60)}
           className="p-2"
         >
           <Text className="text-white text-xl font-bold">-</Text>
@@ -64,15 +76,20 @@ const TimeField: React.FC<{
           {String(minutes).padStart(2, "0")}
         </Text>
         <TouchableOpacity
-          onPress={() => set(hours, (minutes + 15) % 60)}
+          onPress={() => updateTime(hours, (minutes + 15) % 60)}
           className="p-2"
         >
           <Text className="text-white text-xl font-bold">+</Text>
         </TouchableOpacity>
       </View>
-      <View className="px-2 py-1 rounded bg-[#303030] border border-gray-700">
-        <Text className="text-gray-300 text-lg">{toAmPm(hours, minutes)}</Text>
-      </View>
+      <TouchableOpacity
+        onPress={toggleAmPm}
+        className="px-3 py-2 rounded bg-[#303030] border border-gray-700 min-w-[60px] items-center"
+      >
+        <Text className="text-white text-lg font-bold">
+          {isPm ? "PM" : "AM"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 };
@@ -208,16 +225,14 @@ const ScheduleFormSheet = forwardRef<BottomSheet, ScheduleFormSheetProps>(
                   <TouchableOpacity
                     key={d}
                     onPress={() => toggleDay(d)}
-                    className={`px-3 py-2 rounded-lg border ${
-                      active
+                    className={`px-3 py-2 rounded-lg border ${active
                         ? "bg-blue-600 border-blue-500"
                         : "bg-[#212121] border-gray-600"
-                    }`}
+                      }`}
                   >
                     <Text
-                      className={`text-sm ${
-                        active ? "text-white" : "text-gray-300"
-                      }`}
+                      className={`text-sm ${active ? "text-white" : "text-gray-300"
+                        }`}
                     >
                       {d}
                     </Text>
