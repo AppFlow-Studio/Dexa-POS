@@ -136,7 +136,7 @@ const ScheduleEditor: React.FC<ScheduleEditorProps> = ({
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
-            {rule.days.join(", ")} from{" "}
+            {(rule.days || []).join(", ")} from{" "}
             {new Date(rule.startTime).toLocaleTimeString([], {
               hour: "numeric",
               minute: "2-digit",

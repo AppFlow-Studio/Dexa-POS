@@ -1,4 +1,3 @@
-import { ALL_MODIFIER_GROUPS, MOCK_MENU_ITEMS } from "@/lib/mockData";
 import {
   Category,
   CustomPricing,
@@ -7,10 +6,23 @@ import {
   ModifierCategory,
   Schedule,
 } from "@/lib/types";
+import { MenuWithCategories, PosSyncData, PosSyncState } from "@/types/menu";
 import { create } from "zustand";
 
+// Re-export Category for components that import it from here
+export type { Category } from "@/lib/types";
+
 interface MenuState {
-  // Core menu data
+  // ============================================================
+  // SYNC STATE - Data from API
+  // ============================================================
+  posSyncData: PosSyncData | null;
+  syncState: PosSyncState;
+
+  // ============================================================
+  // DERIVED/LOCAL STATE - For backward compatibility
+  // These are populated from posSyncData or used for local CRUD
+  // ============================================================
   menuItems: MenuItemType[];
   categories: Category[];
   menus: Menu[];
@@ -25,7 +37,23 @@ interface MenuState {
   temporaryActiveMenus: string[]; // IDs of menus unlocked by PIN
   temporaryActiveCategories: string[]; // Names of categories unlocked by PIN
 
-  // CRUD Operations for Items
+  // ============================================================
+  // SYNC ACTIONS
+  // ============================================================
+  setMenuData: (data: PosSyncData) => void;
+  setSyncState: (state: Partial<PosSyncState>) => void;
+  clearMenuData: () => void;
+
+  // ============================================================
+  // GETTERS - Derive data from posSyncData
+  // ============================================================
+  getMenusFromSync: () => MenuWithCategories[];
+  getAllMenuItems: () => MenuItemType[];
+  getAllCategories: () => Category[];
+
+  // ============================================================
+  // CRUD Operations for Items (Optimistic/Local)
+  // ============================================================
   addMenuItem: (item: Omit<MenuItemType, "id">) => void;
   updateMenuItem: (id: string, updates: Partial<MenuItemType>) => void;
   deleteMenuItem: (id: string) => void;
@@ -67,10 +95,12 @@ interface MenuState {
   isMenuAvailableNow: (id: string, at?: Date) => boolean;
   isCategoryAvailableNow: (name: string, at?: Date) => boolean;
   setMenuSchedulingEnabled: (isEnabled: boolean) => void;
+
   // MENU STOCK (optional per-menu-item)
   decreaseMenuItemStock: (itemId: string, quantity: number) => void;
   increaseMenuItemStock: (itemId: string, quantity: number) => void;
   getLowStockMenuItems: () => MenuItemType[];
+
   // Stock tracking mode helpers
   getMenuItemStockTrackingMode: (
     itemId: string
@@ -81,6 +111,7 @@ interface MenuState {
     stockQuantity?: number,
     reorderThreshold?: number
   ) => void;
+
   // Custom Pricing Operations
   addCustomPricing: (
     itemId: string,
@@ -123,128 +154,317 @@ const generateMenuId = () => `menu_${menuId++}`;
 let modifierGroupId = 300;
 const generateModifierGroupId = () => `mod_${modifierGroupId++}`;
 
-// Initial categories from existing menu items
-const getInitialCategories = (): Category[] => {
-  // Flatten all categories from items (since category is now an array)
-  const allCategories = MOCK_MENU_ITEMS.flatMap((item) =>
-    Array.isArray(item.category) ? item.category : [item.category]
-  );
-  const uniqueCategories = Array.from(new Set(allCategories));
-  return uniqueCategories.map((categoryName, index) => ({
-    id: generateCategoryId(),
-    name: categoryName,
-    isActive: true,
-    order: index + 1,
-    createdAt: new Date().toISOString(),
-    schedules: [],
+// ============================================================
+// TRANSFORM FUNCTIONS: Convert API types to legacy types
+// ============================================================
+
+/**
+ * Transform MenuWithCategories[] from API to legacy Menu[] format
+ */
+const transformMenusFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null
+): Menu[] => {
+  if (!syncMenus || !Array.isArray(syncMenus)) return [];
+
+  // Helper to convert day_of_week number to day name
+  // Assuming: 0 = Monday, 1 = Tuesday, ..., 6 = Sunday (confirm with backend)
+  const dayNumberToName = (dayNum: number): string => {
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    return days[dayNum] || "";
+  };
+
+  // Helper to convert HH:MM:SS to ISO string (for now, use today's date)
+  // TODO: Backend should return ISO format directly
+  const timeToISO = (timeStr: string): string => {
+    if (!timeStr) return "";
+    // If already ISO format, return as-is
+    if (timeStr.includes("T")) return timeStr;
+    // Convert HH:MM:SS to ISO
+    const [hours, minutes] = timeStr.split(":");
+    const date = new Date();
+    date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+    return date.toISOString();
+  };
+
+  return syncMenus.map((menu) => ({
+    id: menu.id,
+    name: menu.name,
+    description: menu.description ?? undefined,
+    isActive: menu.is_active,
+    // Extract category names from the nested category object
+    categories: (menu.categories || []).map(
+      (catEntry) => catEntry.category?.name || ""
+    ),
+    // Transform nested schedule structure to legacy format
+    schedules: (menu.schedules || []).map((schEntry) => {
+      const schedule = schEntry.schedule;
+      if (!schedule) {
+        return {
+          id: schEntry.id,
+          name: "",
+          startTime: "",
+          endTime: "",
+          days: [],
+          isActive: false,
+        };
+      }
+
+      // Extract unique days from time_slots
+      const timeSlots = schedule.time_slots || [];
+      const days = [
+        ...new Set(timeSlots.map((slot) => dayNumberToName(slot.day_of_week))),
+      ].filter(Boolean);
+
+      // Use the first time slot's times (assuming consistent times across days)
+      const firstSlot = timeSlots[0];
+
+      return {
+        id: schedule.id,
+        name: schedule.name || "",
+        startTime: firstSlot ? timeToISO(firstSlot.start_time) : "",
+        endTime: firstSlot ? timeToISO(firstSlot.end_time) : "",
+        days,
+        isActive: schedule.is_active,
+      };
+    }),
+    createdAt: menu.created_at,
+    updatedAt: menu.updated_at,
   }));
 };
 
-// Initial menus
-const getInitialMenus = (): Menu[] => {
-  const getIsoTime = (hour: number, minute: number = 0) => {
-    const d = new Date();
-    d.setHours(hour, minute, 0, 0);
-    return d.toISOString();
-  };
+/**
+ * Transform nested categories from all menus to flat Category[] format
+ */
+const transformCategoriesFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null
+): Category[] => {
+  if (!syncMenus || !Array.isArray(syncMenus)) return [];
 
-  return [
-    {
-      id: generateMenuId(),
-      name: "Breakfast Details",
-      description: "Morning favorites",
-      isActive: true,
-      categories: ["Appetizers", "Main Course"],
-      schedules: [
-        {
-          id: "sch_1",
-          name: "Morning Rush",
-          startTime: getIsoTime(6),
-          endTime: getIsoTime(11),
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-          isActive: true,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: generateMenuId(),
-      name: "Lunch Specials",
-      description: "Quick and delicious lunch options",
-      isActive: true,
-      categories: ["Main Course", "Sides"],
-      schedules: [
-        {
-          id: "sch_2",
-          name: "Weekday Lunch",
-          startTime: getIsoTime(11),
-          endTime: getIsoTime(15),
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-          isActive: true,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: generateMenuId(),
-      name: "Dinner Menu",
-      description: "Full course dinner selection",
-      isActive: true,
-      categories: ["Appetizers", "Main Course", "Dessert"],
-      schedules: [
-        {
-          id: "sch_3",
-          name: "Evening Service",
-          startTime: getIsoTime(17),
-          endTime: getIsoTime(22),
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-          isActive: true,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: generateMenuId(),
-      name: "Late Night",
-      description: "Late night bites and snacks",
-      isActive: true,
-      categories: ["Appetizers", "Sides"],
-      schedules: [
-        {
-          id: "sch_4",
-          name: "Weekend Late Night",
-          startTime: getIsoTime(22),
-          endTime: getIsoTime(26), // 02:00 next day (handled via overflow logic or date manipulation)
-          // Note: getIsoTime(26) works (sets to 2 AM next day) which preserves the 'crossing midnight' Intent for ISO.
-          days: ["Fri", "Sat"],
-          isActive: true,
-        },
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
+  const categoryMap = new Map<string, Category>();
+
+  syncMenus.forEach((menu) => {
+    (menu.categories || []).forEach((catEntry) => {
+      const cat = catEntry.category;
+      if (!cat) return;
+
+      if (!categoryMap.has(cat.id)) {
+        categoryMap.set(cat.id, {
+          id: cat.id,
+          name: cat.name,
+          isActive: catEntry.is_active,
+          order: catEntry.display_order,
+          createdAt: new Date().toISOString(), // API doesn't provide this
+          schedules: [], // Categories in API don't have schedules at category level
+        });
+      }
+    });
+  });
+
+  return Array.from(categoryMap.values());
 };
 
-export const useMenuStore = create<MenuState>((set, get) => {
-  // Initial state from mock data
-  const initialCategories = getInitialCategories();
-  const initialMenus = getInitialMenus();
-  const initialModifierGroups = ALL_MODIFIER_GROUPS;
+/**
+ * Transform nested items from all menus to flat MenuItemType[] format
+ */
+const transformMenuItemsFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null
+): MenuItemType[] => {
+  if (!syncMenus || !Array.isArray(syncMenus)) return [];
 
+  const itemMap = new Map<string, MenuItemType>();
+
+  syncMenus.forEach((menu) => {
+    (menu.categories || []).forEach((catEntry) => {
+      const categoryName = catEntry.category?.name || "";
+
+      (catEntry.items || []).forEach((catItem) => {
+        const item = catItem.menu_item;
+        if (!item) return;
+
+        const existingItem = itemMap.get(item.id);
+
+        // Build category array (item can be in multiple categories)
+        const categoryNames = existingItem?.category
+          ? Array.isArray(existingItem.category)
+            ? existingItem.category
+            : [existingItem.category]
+          : [];
+
+        if (categoryName && !categoryNames.includes(categoryName)) {
+          categoryNames.push(categoryName);
+        }
+
+        itemMap.set(item.id, {
+          id: item.id,
+          name: item.name,
+          description: item.description ?? undefined,
+          price: item.effective_price,
+          cashPrice: item.effective_cash_price ?? undefined,
+          image: item.image ?? undefined,
+          meal: (item.meal_types ?? []) as MenuItemType["meal"],
+          category: categoryNames,
+          allergens: item.allergens ?? undefined,
+          cardBgColor: item.card_bg_color ?? undefined,
+          availability: item.effective_availability,
+          stockQuantity: item.current_stock ?? undefined,
+          stockTrackingMode: item.stock_tracking_mode,
+          // Map modifier groups to IDs (legacy format uses IDs)
+          modifierGroupIds: (item.modifier_groups || []).map((mg) => mg.id),
+        });
+      });
+    });
+  });
+
+  return Array.from(itemMap.values());
+};
+
+/**
+ * Transform modifier groups from all menu items to flat ModifierCategory[] format
+ */
+const transformModifierGroupsFromSync = (
+  syncMenus: MenuWithCategories[] | undefined | null
+): ModifierCategory[] => {
+  if (!syncMenus || !Array.isArray(syncMenus)) return [];
+
+  const modifierMap = new Map<string, ModifierCategory>();
+
+  syncMenus.forEach((menu) => {
+    (menu.categories || []).forEach((catEntry) => {
+      (catEntry.items || []).forEach((catItem) => {
+        const menuItem = catItem.menu_item;
+        if (!menuItem) return;
+
+        (menuItem.modifier_groups || []).forEach((mg) => {
+          if (!modifierMap.has(mg.id)) {
+            // Map API structure to legacy ModifierCategory format
+            modifierMap.set(mg.id, {
+              id: mg.id,
+              name: mg.name,
+              // Map is_required + min/max_selections to legacy type/selectionType
+              type: mg.is_required ? "required" : "optional",
+              selectionType: mg.max_selections === 1 ? "single" : "multiple",
+              maxSelections: mg.max_selections,
+              description: undefined, // API doesn't have description in this format
+              // Map items (API) to options (legacy)
+              options: (mg.items || []).map((opt) => ({
+                id: opt.id,
+                name: opt.name,
+                price: opt.price_modifier, // API uses price_modifier
+                isAvailable: opt.is_active,
+                isDefault: false, // API doesn't have this
+              })),
+            });
+          }
+        });
+      });
+    });
+  });
+
+  return Array.from(modifierMap.values());
+};
+
+// ============================================================
+// STORE CREATION
+// ============================================================
+
+export const useMenuStore = create<MenuState>((set, get) => {
   return {
-    menuItems: MOCK_MENU_ITEMS,
-    categories: initialCategories,
-    menus: initialMenus,
-    modifierGroups: initialModifierGroups,
+    // ============================================================
+    // SYNC STATE - Initially empty, populated by API
+    // ============================================================
+    posSyncData: null,
+    syncState: {
+      isLoading: false,
+      isError: false,
+      error: null,
+      lastSyncedAt: null,
+    },
+
+    // ============================================================
+    // DERIVED/LOCAL STATE - Start empty, populated from sync
+    // ============================================================
+    menuItems: [],
+    categories: [],
+    menus: [],
+    modifierGroups: [],
+
     isMenuSchedulingEnabled: true,
     menuCategoryOverrides: {},
     temporaryActiveMenus: [],
     temporaryActiveCategories: [],
-    // // CRUD Operations
+
+    // ============================================================
+    // SYNC ACTIONS
+    // ============================================================
+    setMenuData: (data: PosSyncData) => {
+      // Transform API data to legacy formats for backward compatibility
+      const menus = transformMenusFromSync(data.menus);
+      const categories = transformCategoriesFromSync(data.menus);
+      const menuItems = transformMenuItemsFromSync(data.menus);
+      const modifierGroups = transformModifierGroupsFromSync(data.menus);
+
+      set({
+        posSyncData: data,
+        menus,
+        categories,
+        menuItems,
+        modifierGroups,
+        syncState: {
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: data.synced_at,
+        },
+      });
+
+      console.log("Menu data set from sync:", {
+        menusCount: menus.length,
+        categoriesCount: categories.length,
+        menuItemsCount: menuItems.length,
+        modifierGroupsCount: modifierGroups.length,
+      });
+    },
+
+    setSyncState: (state: Partial<PosSyncState>) => {
+      set((current) => ({
+        syncState: { ...current.syncState, ...state },
+      }));
+    },
+
+    clearMenuData: () => {
+      set({
+        posSyncData: null,
+        menus: [],
+        categories: [],
+        menuItems: [],
+        modifierGroups: [],
+        syncState: {
+          isLoading: false,
+          isError: false,
+          error: null,
+          lastSyncedAt: null,
+        },
+      });
+    },
+
+    // ============================================================
+    // GETTERS
+    // ============================================================
+    getMenusFromSync: () => {
+      return get().posSyncData?.menus ?? [];
+    },
+
+    getAllMenuItems: () => {
+      return get().menuItems;
+    },
+
+    getAllCategories: () => {
+      return get().categories;
+    },
+
+    // ============================================================
+    // CRUD Operations (Optimistic/Local)
+    // ============================================================
     addMenuItem: (itemData) => {
       const newItem: MenuItemType = {
         ...itemData,
