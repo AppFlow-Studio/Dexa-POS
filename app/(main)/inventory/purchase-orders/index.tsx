@@ -6,7 +6,7 @@ import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { Link, useRouter } from "expo-router";
 import { Plus, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -102,7 +102,7 @@ const PurchaseOrdersScreen = () => {
     removeExternalExpense,
     inventoryItems,
   } = useInventoryStore();
-  const { employees, activeEmployeeId, loadMockEmployees } = useEmployeeStore();
+  const { employees, activeEmployeeId } = useEmployeeStore();
   const router = useRouter();
   const { show } = useToast();
 
@@ -118,11 +118,6 @@ const PurchaseOrdersScreen = () => {
 
   // Bottom sheet refs
   const snapPoints = useMemo(() => ["70%", "95%"], []);
-
-  // Load employees on component mount
-  useEffect(() => {
-    loadMockEmployees();
-  }, [loadMockEmployees]);
 
   const handleRemoveExternalExpense = (expenseId: string) => {
     const expenseToRemove = externalExpenses.find((e) => e.id === expenseId);

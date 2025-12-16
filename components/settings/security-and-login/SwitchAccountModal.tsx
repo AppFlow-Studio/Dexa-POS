@@ -1,6 +1,7 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useLoading } from "@/contexts/LoadingContext";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { Clock } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   onClose,
 }) => {
   const { signInWithPin } = useEmployeeStore();
+  const { showLoading, hideLoading } = useLoading();
   const [pin, setPin] = useState("");
   const MAX_PIN_LENGTH = 4;
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +54,16 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
     }
   };
 
-  const handleSwitchUser = () => {
+  const handleSwitchUser = async () => {
     if (pin.length !== MAX_PIN_LENGTH) {
       setError(`PIN must be ${MAX_PIN_LENGTH} digits`);
       return;
     }
 
-    const res = signInWithPin(pin);
+    showLoading("Switching account...");
+    const res = await signInWithPin(pin);
+    hideLoading();
+
     if (!res.ok) {
       // Trigger shake animation for wrong PIN
       shakeX.value = withSequence(

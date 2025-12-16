@@ -6,6 +6,7 @@ import ManagerPinModal from "@/components/auth/ManagerPinModal";
 import CustomerSheet from "@/components/bill/CustomerSheet";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
+import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
 import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
@@ -115,35 +116,37 @@ export default function RootLayout() {
                   value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
                 >
                   <ToastProvider>
-                    <StatusBar style={"dark"} translucent />
-                    <Stack screenOptions={{ headerShown: false }} />
-                    <PortalHost />
-                    <SearchBottomSheet />
-                    <ItemCustomizationDialog />
-                    <ClockInWallModal
-                      isOpen={isClockInWallOpen}
-                      onClose={hideClockInWall}
-                    />
-                    <ManagerPinModal />
-                    <CustomerSheet />
-                    <Toasts
-                      defaultStyle={{
-                        view: {
-                          backgroundColor: "#ffffff",
-                          borderWidth: 1,
-                          borderColor: "#e5e7eb",
-                          flex: 1,
-                        },
-                        text: {
-                          color: "#1f2937",
-                          fontWeight: "bold",
-                          fontSize: 24,
-                        },
-                        indicator: {
-                          backgroundColor: "#659AF0",
-                        },
-                      }}
-                    />
+                    <LoadingProvider>
+                      <StatusBar style={"dark"} translucent />
+                      <Stack screenOptions={{ headerShown: false }} />
+                      <PortalHost />
+                      <SearchBottomSheet />
+                      <ItemCustomizationDialog />
+                      <ClockInWallModal
+                        isOpen={isClockInWallOpen}
+                        onClose={hideClockInWall}
+                      />
+                      <ManagerPinModal />
+                      <CustomerSheet />
+                      <Toasts
+                        defaultStyle={{
+                          view: {
+                            backgroundColor: "#ffffff",
+                            borderWidth: 1,
+                            borderColor: "#e5e7eb",
+                            flex: 1,
+                          },
+                          text: {
+                            color: "#1f2937",
+                            fontWeight: "bold",
+                            fontSize: 24,
+                          },
+                          indicator: {
+                            backgroundColor: "#659AF0",
+                          },
+                        }}
+                      />
+                    </LoadingProvider>
                   </ToastProvider>
                 </ThemeProvider>
               </SafeAreaProvider>

@@ -129,7 +129,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
                     </Text>
                   )}
                   {item.cashPrice && (
-                    <Text className="text-xl text-gray-300 ml-2">
+                    <Text className="text-sm text-gray-300 ml-2">
                       Cash Price: ${item.cashPrice.toFixed(2)}
                     </Text>
                   )}
