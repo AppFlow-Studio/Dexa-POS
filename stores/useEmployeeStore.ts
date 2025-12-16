@@ -1,268 +1,179 @@
-import { Role } from "@/lib/types";
+import { MerchantRole } from "@/lib/types";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import bcrypt from "bcryptjs";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { useTimeclockStore } from "./useTimeclockStore";
 
 export interface EmployeeProfile {
-  id: string;
+  id: string; // location_members.id
+  profileId: string; // staff_profiles.id
   fullName: string;
-  role: Role;
+  displayName: string;
+  role: MerchantRole;
   profilePictureUrl?: string;
-  pin: string; // 4-digit for demo
+  pinHash: string | null; // bcrypt hash (NOT plain PIN)
+  email?: string;
+  phone?: string;
   shiftStatus: "clocked_in" | "clocked_out";
+  // Fields for future backend support:
   dob?: string;
   gender?: string;
   country?: string;
   address?: string;
-  email?: string;
-  phone?: string;
-  clockInAt?: string | null; // ISO string while clocked in
-  baseWage: number;
+  clockInAt?: string | null;
+  baseWage?: number;
 }
 
 interface EmployeeState {
   employees: EmployeeProfile[];
-  activeEmployeeId: string | null; // signed-in employee for terminal session
+  activeEmployeeId: string | null;
+  loggedInEmployee: EmployeeProfile | null;
   isLoading: boolean;
   error: string | null;
-  loggedInEmployee: EmployeeProfile | null;
 
-  // actions
-  loadMockEmployees: (count?: number) => Promise<void>;
+  // Actions
   setEmployees: (employees: EmployeeProfile[]) => void;
+  setSyncState: (state: { isLoading: boolean; error: string | null }) => void;
   updateSecurity: (
     employeeId: string,
-    data: { email?: string; phone?: string; pin?: string }
+    data: { email?: string; phone?: string }
   ) => void;
   clockIn: (employeeId: string) => void;
   clockOut: (employeeId: string) => void;
-  signIn: (
-    employeeId: string,
-    pin: string
-  ) => { ok: true } | { ok: false; reason: "not_clocked_in" | "invalid_pin" };
   signInWithPin: (
     pin: string
-  ) => { ok: true } | { ok: false; reason: "invalid_pin" };
+  ) => Promise<{ ok: true } | { ok: false; reason: "invalid_pin" }>;
   signOut: () => void;
+
+  // Helpers
+  getEmployeeById: (id: string) => EmployeeProfile | undefined;
+  findEmployeeByPin: (pin: string) => Promise<EmployeeProfile | null>;
 }
 
-const MockEmployees: EmployeeProfile[] = [
-  {
-    address: "1388 West Ave, Chelsea",
-    country: "Canada",
-    dob: "2/5/1967",
-    email: "philippe.ennis@example.com",
-    phone: "555-123-4567",
-    fullName: "Philippe Ennis",
-    gender: "male",
-    id: "emp_1759078476073_0",
-    pin: "1111",
-    role: "Manager",
-    profilePictureUrl: "https://randomuser.me/api/portraits/men/33.jpg",
-    shiftStatus: "clocked_out",
-    baseWage: 25.0,
-  },
-  {
-    address: "7860 Pecan Acres Ln, Hobart",
-    country: "Australia",
-    dob: "12/12/1969",
-    email: "richard.holland@example.com",
-    phone: "555-234-5678",
-    fullName: "Richard Holland",
-    gender: "male",
-    id: "emp_1759078476073_1",
-    pin: "2222",
-    role: "Cashier",
-    profilePictureUrl: "https://randomuser.me/api/portraits/men/40.jpg",
-    shiftStatus: "clocked_out",
-    baseWage: 18.0,
-  },
-  {
-    address: "298 Grand Marais Ave, St. George",
-    country: "Canada",
-    dob: "10/22/1981",
-    email: "zackary.young@example.com",
-    phone: "555-345-6789",
-    fullName: "Zackary Young",
-    gender: "male",
-    id: "emp_1759078476073_2",
-    pin: "3333",
-    role: "Barista",
-    profilePictureUrl: "https://randomuser.me/api/portraits/men/28.jpg",
-    shiftStatus: "clocked_out",
-    baseWage: 17.5,
-  },
-  {
-    address: "6730 Avondale Ave, Tweed",
-    country: "Australia",
-    dob: "1/12/1949",
-    email: "rafael.boyd@example.com",
-    phone: "555-456-7890",
-    fullName: "Rafael Boyd",
-    gender: "male",
-    id: "emp_1759078476073_3",
-    pin: "4444",
-    role: "Line Cook",
-    profilePictureUrl: "https://randomuser.me/api/portraits/men/8.jpg",
-    shiftStatus: "clocked_out",
-    baseWage: 19.0,
-  },
-  {
-    address: "4625 20th Ave, Beaumont",
-    country: "Canada",
-    dob: "1/9/1955",
-    email: "alice.gagne@example.com",
-    phone: "555-567-8901",
-    fullName: "Alice Gagné",
-    gender: "female",
-    id: "emp_1759078476073_4",
-    pin: "5555",
-    role: "Prep",
-    profilePictureUrl: "https://randomuser.me/api/portraits/women/48.jpg",
-    shiftStatus: "clocked_out",
-    baseWage: 16.5,
-  },
-];
+export const useEmployeeStore = create<EmployeeState>()(
+  persist(
+    (set, get) => ({
+      employees: [],
+      activeEmployeeId: null,
+      loggedInEmployee: null,
+      isLoading: false,
+      error: null,
 
-export const useEmployeeStore = create<EmployeeState>((set, get) => ({
-  employees: MockEmployees,
-  activeEmployeeId: null,
-  isLoading: false,
-  error: null,
-  loggedInEmployee: MockEmployees[0] || null,
+      getEmployeeById: (id) => get().employees.find((e) => e.id === id),
 
-  setEmployees: (employees) => set({ employees }),
+      findEmployeeByPin: async (pin: string) => {
+        const { employees } = get();
+        for (const emp of employees) {
+          if (!emp.pinHash) continue;
+          const isMatch = await bcrypt.compare(pin, emp.pinHash);
+          if (isMatch) {
+            return emp;
+          }
+        }
+        return null;
+      },
 
-  updateSecurity: (employeeId, data) => {
-    set((state) => ({
-      employees: state.employees.map((e) =>
-        e.id === employeeId ? { ...e, ...data } : e
-      ),
-    }));
-  },
+      setEmployees: (employees) => set({ employees }),
 
-  loadMockEmployees: async (count: number = 8) => {
-    const state = get();
-    if (state.employees.length > 0) return;
-    set({ isLoading: true, error: null });
+      setSyncState: ({ isLoading, error }) => set({ isLoading, error }),
 
-    try {
-      const resp = await fetch(
-        `https://randomuser.me/api/?results=${count}&nat=us,ca,gb,au`
-      );
-      const data = await resp.json();
-      const roles: Role[] = [
-        "Cashier",
-        "Barista",
-        "Line Cook",
-        "Prep",
-        "Supervisor",
-      ];
-      const mapped: EmployeeProfile[] = (data.results || []).map(
-        (u: any, idx: number) => ({
-          id: `emp_${Date.now()}_${idx}`,
-          fullName: `${u.name?.first ?? "User"} ${u.name?.last ?? idx}`,
-          profilePictureUrl: u.picture?.large,
-          pin: (1111 + idx).toString(),
-          shiftStatus: "clocked_out",
-          role: idx === 0 ? "Supervisor" : roles[idx % roles.length],
-          email: u.email,
-          phone: u.phone,
-          dob: u.dob?.date
-            ? new Date(u.dob.date).toLocaleDateString()
-            : undefined,
-          gender: u.gender,
-          country: u.location?.country,
-          address: u.location
-            ? `${u.location.street?.number ?? ""} ${
-                u.location.street?.name ?? ""
-              }, ${u.location.city ?? ""}`.trim()
-            : undefined,
-          baseWage: 15 + Math.floor(Math.random() * 10),
-        })
-      );
-      set({ employees: mapped, isLoading: false });
-    } catch (e: any) {
-      set({
-        isLoading: false,
-        error: e?.message || "Failed to load employees",
-      });
+      updateSecurity: (employeeId, data) => {
+        set((state) => ({
+          employees: state.employees.map((e) =>
+            e.id === employeeId ? { ...e, ...data } : e
+          ),
+        }));
+      },
+
+      clockIn: (employeeId) => {
+        set((state) => ({
+          employees: state.employees.map((e) =>
+            e.id === employeeId
+              ? {
+                  ...e,
+                  shiftStatus: "clocked_in",
+                  clockInAt: new Date().toISOString(),
+                }
+              : e
+          ),
+        }));
+        // Also update timeclock store status
+        useTimeclockStore.getState().clockIn(employeeId);
+      },
+
+      clockOut: (employeeId) => {
+        set((state) => ({
+          employees: state.employees.map((e) =>
+            e.id === employeeId
+              ? { ...e, shiftStatus: "clocked_out", clockInAt: null }
+              : e
+          ),
+        }));
+        // Also update timeclock store status
+        useTimeclockStore.getState().clockOut(employeeId);
+      },
+
+      /**
+       * Sign in with PIN using bcrypt comparison.
+       * Iterates through all employees to find matching PIN hash.
+       */
+      signInWithPin: async (pin: string) => {
+        const { employees, clockIn } = get();
+
+        let foundEmployee: EmployeeProfile | null = null;
+
+        for (const emp of employees) {
+          if (!emp.pinHash) continue;
+
+          // Compare input PIN with stored bcrypt hash
+          const isMatch = await bcrypt.compare(pin, emp.pinHash);
+          if (isMatch) {
+            foundEmployee = emp;
+            break;
+          }
+        }
+
+        if (!foundEmployee) {
+          return { ok: false as const, reason: "invalid_pin" as const };
+        }
+
+        // Check if already clocked in via Timeclock
+        const {
+          getSession,
+          clockIn: timeclockClockIn,
+          setActiveEmployee,
+        } = useTimeclockStore.getState();
+        const existingSession = getSession(foundEmployee.id);
+
+        if (!existingSession) {
+          // Fresh clock-in for the shift
+          clockIn(foundEmployee.id);
+          timeclockClockIn(foundEmployee.id);
+        }
+
+        // Set this employee as active
+        set({
+          activeEmployeeId: foundEmployee.id,
+          loggedInEmployee: foundEmployee,
+        });
+        setActiveEmployee(foundEmployee.id);
+
+        return { ok: true as const };
+      },
+
+      signOut: () => {
+        set({ activeEmployeeId: null, loggedInEmployee: null });
+        useTimeclockStore.getState().setActiveEmployee(null);
+      },
+    }),
+    {
+      name: "dexa-employee-storage",
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        employees: state.employees,
+        // Do NOT persist loggedInEmployee - require fresh login on app restart
+      }),
     }
-  },
-
-  clockIn: (employeeId) => {
-    set((state) => ({
-      employees: state.employees.map((e) =>
-        e.id === employeeId
-          ? {
-              ...e,
-              shiftStatus: "clocked_in",
-              clockInAt: new Date().toISOString(),
-            }
-          : e
-      ),
-    }));
-    // Also update timeclock store status
-    useTimeclockStore.getState().clockIn(employeeId);
-  },
-
-  clockOut: (employeeId) => {
-    set((state) => ({
-      employees: state.employees.map((e) =>
-        e.id === employeeId
-          ? { ...e, shiftStatus: "clocked_out", clockInAt: null }
-          : e
-      ),
-    }));
-    // Also update timeclock store status
-    useTimeclockStore.getState().clockOut(employeeId);
-  },
-
-  signIn: (employeeId, pin) => {
-    const employee = get().employees.find((e) => e.id === employeeId);
-    const session = useTimeclockStore.getState().getSession(employeeId);
-    if (!employee || !session || session.status !== "clockedIn") {
-      return { ok: false as const, reason: "not_clocked_in" as const };
-    }
-    if (employee.pin !== pin) {
-      return { ok: false as const, reason: "invalid_pin" as const };
-    }
-    set({ activeEmployeeId: employeeId, loggedInEmployee: employee });
-    useTimeclockStore.getState().setActiveEmployee(employeeId);
-    return { ok: true as const };
-  },
-
-  // MODIFIED: This logic is now robust for handling existing sessions.
-  signInWithPin: (pin) => {
-    const { employees, clockIn } = get();
-    const employee = employees.find((e) => e.pin === pin);
-
-    if (!employee) {
-      return { ok: false as const, reason: "invalid_pin" as const };
-    }
-
-    const {
-      getSession,
-      clockIn: timeclockClockIn,
-      setActiveEmployee,
-    } = useTimeclockStore.getState();
-    const existingSession = getSession(employee.id);
-
-    if (!existingSession) {
-      // This is a fresh clock-in for the shift.
-      clockIn(employee.id); // Update employee profile status
-      timeclockClockIn(employee.id); // Create a new session in timeclock store
-    }
-
-    // In all cases (new session or existing), set this employee as the active one.
-    set({ activeEmployeeId: employee.id, loggedInEmployee: employee });
-    setActiveEmployee(employee.id);
-
-    return { ok: true as const };
-  },
-
-  signOut: () => {
-    set({ activeEmployeeId: null, loggedInEmployee: null });
-    // Also clear the active employee in the timeclock store so the dock can react.
-    useTimeclockStore.getState().setActiveEmployee(null);
-  },
-}));
+  )
+);

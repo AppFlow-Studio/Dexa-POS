@@ -56,7 +56,7 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({
             </TouchableOpacity>
           </View>
           <Text className="text-base text-gray-400 mt-1.5">
-            {rule.days.join(", ")} from {formatTime(rule.startTime)} to{" "}
+            {(rule.days || []).join(", ")} from {formatTime(rule.startTime)} to{" "}
             {formatTime(rule.endTime)}
           </Text>
         </TouchableOpacity>

@@ -38,7 +38,7 @@ const CreateExternalExpenseScreen = () => {
     purchaseOrders,
     addInventoryItem,
   } = useInventoryStore();
-  const { activeEmployeeId, employees, loadMockEmployees } = useEmployeeStore();
+  const { activeEmployeeId, employees } = useEmployeeStore();
   const { show } = useToast();
 
   // Main expense state
@@ -83,11 +83,6 @@ const CreateExternalExpenseScreen = () => {
   const [newItemStock, setNewItemStock] = useState("");
   const [newItemReorder, setNewItemReorder] = useState("");
   const [newItemPOQty, setNewItemPOQty] = useState("1");
-
-  // Load employees on component mount
-  useEffect(() => {
-    loadMockEmployees();
-  }, [loadMockEmployees]);
 
   // Update selected employee when activeEmployeeId changes
   useEffect(() => {

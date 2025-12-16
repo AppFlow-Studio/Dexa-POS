@@ -10,7 +10,8 @@ interface ScheduleCardProps {
 }
 
 // Helper to format days for display
-const formatDays = (days: string[]): string => {
+const formatDays = (days: string[] | undefined | null): string => {
+  if (!days || !Array.isArray(days)) return "";
   if (days.length === 7) return "Every Day";
   if (days.length === 5 && days.includes("Mon") && days.includes("Fri"))
     return "Weekdays";

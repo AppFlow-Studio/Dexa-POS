@@ -1,4 +1,7 @@
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal"; // Imported ConfirmationModal
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useToast } from "@/contexts/ToastContext";
 import { useUndoableToast } from "@/hooks/useUndoableToast";
 import { PTORequest, Shift, ShiftRequest } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
@@ -7,16 +10,27 @@ import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
-import { ArrowDownCircle, ArrowRightLeft, Calendar } from "lucide-react-native";
+import { format, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import {
+  ArrowDownCircle,
+  ArrowRightLeft,
+  Calendar,
+  Edit2, // Added
+  Plus,
+  Trash2, // Added
+} from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { DenyRequestModal } from "./DenyRequestModal";
 import DropRequestCard from "./DropRequestCard";
 import PTORequestCard from "./PTORequestCard";
+import ShiftEditorModal from "./ShiftEditorModal";
 import SwapRequestCard from "./SwapRequestCard";
 
 interface OpenShiftsDrawerProps {
-  openShifts: Shift[];
+  scheduleId: string;
+  scheduleType: "period" | "week";
   onAssign: (shiftId: string, employeeId: string) => void;
   onCloseShift: (shiftId: string) => void;
 }
@@ -46,9 +60,12 @@ const mockApplicants: Record<string, ShiftApplicant[]> = {
 };
 
 const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
-  ({ openShifts, onAssign, onCloseShift }, ref) => {
+  ({ scheduleId, scheduleType, onAssign, onCloseShift }, ref) => {
     const snapPoints = useMemo(() => ["90%"], []);
     const [selectedShift, setSelectedShift] = useState<string | null>(null);
+    const [editingShift, setEditingShift] = useState<Shift | null>(null); // State for editing shift
+    const [deletingShift, setDeletingShift] = useState<Shift | null>(null); // State for deleting shift
+    const [isDeleteModalOpen, setDeleteModalOpen] = useState(false); // State for delete confirmation modal
     const [activeTab, setActiveTab] = useState("open-shifts");
     const { showUndoableToast } = useUndoableToast();
 
@@ -68,7 +85,11 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       revertPTORequestApproval,
       revertDropRequestApproval,
       revertSwapApproval,
+      addShift,
+      updateShift, // Import updateShift
+      deleteShift, // Import deleteShift
     } = useScheduleStore();
+    const { show } = useToast();
 
     const ptoRequests = useMemo(
       () => allPtoRequests.filter((r) => r.status === "pending"),
@@ -85,6 +106,18 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
       [swapRequests]
     );
 
+    const currentSchedule = useMemo(() => {
+      const schedule =
+        scheduleType === "period"
+          ? schedulePeriods.find((s) => s.id === scheduleId)
+          : weeklySchedules.find((s) => s.id === scheduleId);
+      return schedule;
+    }, [schedulePeriods, weeklySchedules, scheduleId, scheduleType]);
+
+    const openShifts = useMemo(() => {
+      return currentSchedule?.shifts.filter((s) => s.status === "open") || [];
+    }, [currentSchedule]);
+
     // Calculate counts for tabs
     const openShiftsCount = openShifts.length;
     const dropRequestsCount = pendingDrops.length;
@@ -95,6 +128,7 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
     const [requestToDeny, setRequestToDeny] = useState<
       ShiftRequest | PTORequest | null
     >(null);
+    const [isAddShiftModalOpen, setAddShiftModalOpen] = useState(false); // State for add shift modal
 
     const getApplicants = (shiftId: string) => mockApplicants[shiftId] || [];
     const getEmployeeName = (employeeId: string) =>
@@ -108,6 +142,69 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
         if (foundShift) return foundShift;
       }
       return undefined;
+    };
+
+    const handleAddOpenShift = (data: Partial<Shift>) => {
+      if (editingShift) {
+        // Handle Update
+        if (!currentSchedule) return;
+        updateShift(scheduleId, scheduleType, {
+          ...editingShift,
+          ...data,
+          id: editingShift.id,
+        });
+        show({
+          title: "Open Shift Updated",
+          message: "The open shift has been successfully updated.",
+          type: "success",
+        });
+      } else {
+        // Handle Create (Existing logic, slightly adapted)
+        // Note: The previous logic tried to find targetSchedule by date.
+        // Since we now have scheduleId/Type props, we should use them if the date falls within range (or just trust the user aims for this schedule).
+        // However, if the user picks a date completely outside, we might want to warn or switch schedules.
+        // For simplicity, we use passed props as primary target, assuming validation happens or it's acceptable.
+
+        // Use props directly
+        if (!data.date) return;
+        addShift(scheduleId, scheduleType, {
+          ...data,
+          employeeId: null, // Open shift
+          status: "open",
+          location: "Dexa – 5th Ave", // hardcoded for now
+        } as any);
+
+        show({
+          title: "Open Shift Added",
+          message: "The open shift has been successfully created.",
+          type: "success",
+        });
+      }
+      setAddShiftModalOpen(false);
+      setEditingShift(null);
+    };
+
+    const handleEditClick = (shift: Shift) => {
+      setEditingShift(shift);
+      setAddShiftModalOpen(true);
+    };
+
+    const handleDeleteClick = (shift: Shift) => {
+      setDeletingShift(shift);
+      setDeleteModalOpen(true);
+    };
+
+    const handleConfirmDelete = () => {
+      if (deletingShift) {
+        deleteShift(scheduleId, scheduleType, deletingShift.id);
+        show({
+          title: "Shift Deleted",
+          message: "The open shift has been removed.",
+          type: "success",
+        });
+        setDeleteModalOpen(false);
+        setDeletingShift(null);
+      }
     };
 
     const handleAssignBest = (shiftId: string) => {
@@ -152,6 +249,17 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
         case "open-shifts":
           return (
             <View className="p-6 gap-y-4">
+              <Button
+                onPress={() => {
+                  setEditingShift(null); // Ensure we are in create mode
+                  setAddShiftModalOpen(true);
+                }}
+                className="flex-row items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 w-full"
+              >
+                <Plus size={20} color="white" />
+                <Text className="text-white font-semibold">Add Open Shift</Text>
+              </Button>
+
               {openShifts.length === 0 ? (
                 <View className="items-center py-12">
                   <Calendar
@@ -170,7 +278,78 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
                       key={shift.id}
                       className="p-4 bg-[#303030] border-gray-700 gap-y-3"
                     >
-                      {/* ... existing open shift card content ... */}
+                      <View className="flex-row items-start justify-between">
+                        <View className="gap-1">
+                          <Text className="text-white font-bold text-lg">
+                            {shift.role}
+                          </Text>
+                          <Text className="text-gray-400 text-sm">
+                            {format(parseISO(shift.date), "EEE, MMM d")}
+                          </Text>
+                          <Text className="text-gray-400 text-sm">
+                            {formatInTimeZone(shift.startTime, "UTC", "h:mm a")}{" "}
+                            - {formatInTimeZone(shift.endTime, "UTC", "h:mm a")}
+                          </Text>
+                        </View>
+                        <View className="flex-row gap-2">
+                          <TouchableOpacity
+                            onPress={() => handleEditClick(shift)}
+                            className="p-2 bg-gray-700 rounded-md"
+                          >
+                            <Edit2 size={16} color="#9CA3AF" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDeleteClick(shift)}
+                            className="p-2 bg-red-500/10 rounded-md"
+                          >
+                            <Trash2 size={16} color="#f87171" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {/* Applicants Section */}
+                      {applicants.length > 0 && (
+                        <View className="mt-2 pt-2 border-t border-gray-600">
+                          <View className="flex-row justify-between items-center mb-2">
+                            <Text className="text-gray-300 text-sm font-medium">
+                              {applicants.length} Applicants
+                            </Text>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onPress={() => handleAssignBest(shift.id)}
+                              className="h-8"
+                            >
+                              <Text className="text-blue-400 text-xs">
+                                Auto Assign Best
+                              </Text>
+                            </Button>
+                          </View>
+                          <View className="gap-2">
+                            {applicants.map((app) => (
+                              <View
+                                key={app.employeeId}
+                                className="flex-row justify-between items-center bg-[#212121] p-2 rounded"
+                              >
+                                <Text className="text-gray-300 text-sm">
+                                  {getEmployeeName(app.employeeId)}
+                                </Text>
+                                <Button
+                                  size="sm"
+                                  className="h-7 bg-blue-600"
+                                  onPress={() =>
+                                    onAssign(shift.id, app.employeeId)
+                                  }
+                                >
+                                  <Text className="text-white text-xs">
+                                    Assign
+                                  </Text>
+                                </Button>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      )}
                     </Card>
                   );
                 })
@@ -442,6 +621,22 @@ const OpenShiftsDrawer = forwardRef<BottomSheet, OpenShiftsDrawerProps>(
           onConfirm={handleConfirmDeny}
           title="Deny Request"
           description="Are you sure you want to deny this request? You can provide an optional reason below."
+        />
+        <ShiftEditorModal
+          open={isAddShiftModalOpen}
+          onOpenChange={setAddShiftModalOpen}
+          onSave={handleAddOpenShift}
+          shift={editingShift || ({ employeeId: null, role: "Cashier" } as any)}
+          enableDateChange={true}
+        />
+        <ConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setDeleteModalOpen(false)}
+          onConfirm={handleConfirmDelete}
+          title="Delete Shift"
+          description="Are you sure you want to delete this open shift? This action cannot be undone."
+          confirmText="Delete"
+          variant="destructive"
         />
       </>
     );

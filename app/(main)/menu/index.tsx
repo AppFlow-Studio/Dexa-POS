@@ -136,6 +136,19 @@ const checkAvailability = (schedules: any[]): boolean => {
   });
 };
 
+// Helper to format time string for display (e.g. converts ISO to 6:00 AM)
+const formatTimeDisplay = (timeStr: string) => {
+  if (!timeStr) return "";
+
+  if (timeStr.includes("T")) {
+    const date = new Date(timeStr);
+    if (isNaN(date.getTime())) return timeStr;
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  return timeStr;
+};
+
 const DraggableMenu: React.FC<DraggableMenuProps> = ({
   menu,
   index,
@@ -404,7 +417,7 @@ const MenuPage: React.FC = () => {
   const menus = storeMenus.map((storeMenu) => ({
     ...storeMenu,
     // Add display properties for compatibility
-    categories: storeMenu.categories.map((categoryName) => {
+    categories: (storeMenu.categories || []).map((categoryName) => {
       const category = storeCategories.find((cat) => cat.name === categoryName);
       return {
         id: category?.id || `cat_${categoryName}`,
@@ -508,7 +521,7 @@ const MenuPage: React.FC = () => {
     toIndex: number
   ) => {
     const menu = storeMenus.find((m) => m.id === menuId);
-    if (!menu) return;
+    if (!menu || !menu.categories) return;
 
     const newCategories = [...menu.categories];
     const [movedCategory] = newCategories.splice(fromIndex, 1);
@@ -855,7 +868,7 @@ const MenuPage: React.FC = () => {
                           <Text className="text-base text-gray-400">
                             {Array.isArray(item.category)
                               ? item.category.join(", ")
-                              : item.category}{" "}
+                              : item.category || ""}{" "}
                             • ${item.price.toFixed(2)}
                           </Text>
                         </View>
@@ -986,7 +999,9 @@ const MenuPage: React.FC = () => {
                             {r.name || r.id}
                           </Text>
                           <Text className="text-lg text-gray-400">
-                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                            {(r.days || []).join(", ")} •{" "}
+                            {formatTimeDisplay(r.startTime)} -{" "}
+                            {formatTimeDisplay(r.endTime)}
                           </Text>
                         </View>
                       ))}
@@ -1054,7 +1069,9 @@ const MenuPage: React.FC = () => {
                             {r.name || r.id}
                           </Text>
                           <Text className="text-lg text-gray-400">
-                            {r.days.join(", ")} • {r.startTime} - {r.endTime}
+                            {(r.days || []).join(", ")} •{" "}
+                            {formatTimeDisplay(r.startTime)} -{" "}
+                            {formatTimeDisplay(r.endTime)}
                           </Text>
                         </View>
                       ))}

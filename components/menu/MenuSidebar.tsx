@@ -75,7 +75,7 @@ const MenuSidebar: React.FC<MenuSidebarProps> = ({
   // Convert store menus to display format
   const menus = storeMenus.map((storeMenu) => ({
     ...storeMenu,
-    categories: storeMenu.categories.map((categoryName) => {
+    categories: (storeMenu.categories || []).map((categoryName) => {
       const category = storeCategories.find((cat) => cat.name === categoryName);
       return {
         id: category?.id || `cat_${categoryName}`,

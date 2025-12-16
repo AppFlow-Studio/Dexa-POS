@@ -41,15 +41,15 @@ const BillSummary: React.FC<BillSummaryProps> = ({
   return (
     <View className="flex-1 bg-[#212121]">
       <View className=" px-6 h-full">
-        <View className="flex-row items-center justify-between mb-2">
-          <View className="flex-col items-start justify-start">
-            <Text className="text-gray-400 text-base font-medium mb-1">
+        <View className="mb-2">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-gray-400 text-base font-medium">
               {activeOrderId}
             </Text>
-            <Text className="text-3xl font-bold text-white">Cart</Text>
-            <View className="h-1 w-16 bg-blue-600 rounded-full mt-2" />
+            <Text className="text-lg text-blue-400 font-medium">{cart.length} {cart.length === 1 ? 'Item' : 'Items'}</Text>
           </View>
-          <Text className="text-lg text-gray-300">{cart.length} Items</Text>
+          <Text className="text-3xl font-bold text-white mt-1">Order</Text>
+          <View className="h-1 w-16 bg-blue-600 rounded-full mt-2" />
         </View>
         <View className="flex-1 h-full w-full">
           <ScrollView
@@ -78,93 +78,13 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                         currentCourse !== undefined && course === currentCourse;
                       return (
                         <View key={`course-${course}`} className="mb-3">
-                          <View className="flex-row items-center justify-between">
-                            <View
-                              className={`self-start px-2 py-1 rounded-full mb-2 ${
-                                isSent
-                                  ? "bg-green-900/30 border border-green-500"
-                                  : isActive
-                                    ? "bg-blue-900/30 border border-blue-500"
-                                    : "bg-[#303030] border border-gray-700"
-                              }`}
-                            >
-                              <Text
-                                className={`text-xs font-semibold ${
-                                  isSent
-                                    ? "text-green-400"
-                                    : isActive
-                                      ? "text-blue-400"
-                                      : "text-gray-300"
-                                }`}
-                              >
-                                Course {course}
-                                {isSent ? " • Sent" : ""}
-                              </Text>
-                            </View>
-                            {/* Status Badges */}
-                            {activeOrder && (
-                              <View className="flex-row gap-2 ml-2">
-                                {/* Paid Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.paid_status === "Paid"
-                                      ? "bg-green-900/30 border border-green-500"
-                                      : activeOrder.paid_status === "Pending"
-                                        ? "bg-yellow-900/30 border border-yellow-500"
-                                        : "bg-red-900/30 border border-red-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.paid_status === "Paid"
-                                        ? "text-green-400"
-                                        : activeOrder.paid_status === "Pending"
-                                          ? "text-yellow-400"
-                                          : "text-red-400"
-                                    }`}
-                                  >
-                                    {activeOrder.paid_status}
-                                  </Text>
-                                </View>
-
-                                {/* Order Status Badge */}
-                                <View
-                                  className={`px-2 py-1 rounded-full ${
-                                    activeOrder.order_status === "Building"
-                                      ? "bg-blue-900/30 border border-blue-500"
-                                      : activeOrder.order_status === "Preparing"
-                                        ? "bg-orange-900/30 border border-orange-500"
-                                        : activeOrder.order_status === "Ready"
-                                          ? "bg-green-900/30 border border-green-500"
-                                          : "bg-gray-900/30 border border-gray-500"
-                                  }`}
-                                >
-                                  <Text
-                                    className={`text-xs font-semibold ${
-                                      activeOrder.order_status === "Building"
-                                        ? "text-blue-400"
-                                        : activeOrder.order_status ===
-                                            "Preparing"
-                                          ? "text-orange-400"
-                                          : activeOrder.order_status === "Ready"
-                                            ? "text-green-400"
-                                            : "text-gray-400"
-                                    }`}
-                                  >
-                                    {activeOrder.order_status}
-                                  </Text>
-                                </View>
-                              </View>
-                            )}
-                          </View>
                           {grouped[course].map((item, index) => {
                             const highlight = isActive;
                             return (
                               <View
                                 key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-1.5 ${
-                                  highlight ? "border border-blue-500" : ""
-                                }`}
+                                className={`rounded-xl mb-1.5 ${highlight ? "border border-blue-500" : ""
+                                  }`}
                               >
                                 <BillItem item={item} isEditable={true} />
                               </View>
@@ -178,7 +98,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
               })()
             ) : (
               <View className="h-full items-center justify-center">
-                <Text className="text-xl text-gray-400">Cart is empty.</Text>
+                <Text className="text-xl text-gray-400">Order is empty.</Text>
               </View>
             )}
           </ScrollView>

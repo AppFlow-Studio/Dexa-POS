@@ -7,12 +7,11 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Send } from "lucide-react-native";
+import { Send, Tag } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountOverlay from "./DiscountOverlay";
-import DiscountSection from "./DiscountSection";
 import OrderDetails from "./OrderDetails";
 import Totals from "./Totals";
 
@@ -147,24 +146,33 @@ const BillSection = ({
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
 
-      <View className="flex flex-row bg-[#212121] px-6 pb-2 justify-between">
-        <DiscountSection onOpenDiscounts={handleOpenDiscounts} />
-        {activeOrder && (
+      <View className="py-3 px-4 bg-[#212121]">
+        <View className="flex-row gap-4">
+          {/* Discount Button - matching More button style */}
           <TouchableOpacity
-            className={`flex-row items-center gap-2 px-3   bg-[#212121] border border-gray-600 rounded-lg ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
-            }`}
-            style={{ elevation: 2 }} // Set fixed height to match discount button
+            onPress={handleOpenDiscounts}
+            className="flex-1 py-2 flex-row items-center justify-center gap-2 bg-[#303030] rounded-xl border border-gray-600"
+          >
+            <Tag color="#a855f7" size={20} />
+            <Text className="text-center text-xl font-bold text-white">
+              Discounts
+            </Text>
+          </TouchableOpacity>
+
+          {/* Send to Kitchen Button - matching previous colors but with new layout */}
+          <TouchableOpacity
+            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+              }`}
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-base">
-              Send to Kitchen ({activeOrder?.items.length})
+            <Text className="text-center text-xl font-bold text-white">
+              Send to Kitchen ({newItemsCount})
             </Text>
             <Send size={18} color="#9CA3AF" />
           </TouchableOpacity>
-        )}
+        </View>
       </View>
 
       <View className="bg-[#212121]">
@@ -189,22 +197,20 @@ const BillSection = ({
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
               }
-              className={`flex-1 py-2 rounded-xl ${
-                !activeOrder ||
+              className={`flex-1 py-2 rounded-xl ${!activeOrder ||
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
-                  ? "bg-gray-500"
-                  : "bg-blue-600"
-              }`}
+                ? "bg-gray-500"
+                : "bg-blue-600"
+                }`}
             >
               <Text
-                className={`text-center text-xl font-bold ${
-                  !activeOrder ||
+                className={`text-center text-xl font-bold ${!activeOrder ||
                   activeOrder.items.length === 0 ||
                   activeOrder.items.some((item) => item.isDraft)
-                    ? "text-gray-400"
-                    : "text-white"
-                }`}
+                  ? "text-gray-400"
+                  : "text-white"
+                  }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

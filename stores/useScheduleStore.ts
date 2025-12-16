@@ -77,6 +77,7 @@ interface ScheduleRequestState {
     scheduleType: "period" | "week",
     newShift: Omit<Shift, "id">
   ) => void;
+  pickupShift: (shiftId: string, employeeId: string) => void;
   updateShift: (
     scheduleId: string,
     scheduleType: "period" | "week",
@@ -540,6 +541,7 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                 );
                 if (shift) {
                   shift.status = "open";
+                  shift.employeeId = null;
                 }
               }
 
@@ -894,6 +896,24 @@ export const useScheduleStore = create<ScheduleRequestState>()(
             });
           },
 
+          pickupShift: (shiftId, employeeId) => {
+            set((state) => {
+              const allSchedules = [
+                ...state.schedulePeriods,
+                ...state.weeklySchedules,
+              ];
+              for (const schedule of allSchedules) {
+                const shift = schedule.shifts.find((s) => s.id === shiftId);
+                if (shift) {
+                  shift.employeeId = employeeId;
+                  shift.status = "confirmed";
+                  schedule.updatedAt = new Date().toISOString();
+                  return; // Stop searching once found
+                }
+              }
+            });
+          },
+
           updateShift: (scheduleId, scheduleType, updatedShift) => {
             set((state) => {
               const targetArray =
@@ -1177,7 +1197,10 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                       originalScheduleId: undefined,
                     };
                     updatedOriginal.shifts.forEach((shift: Shift) => {
-                      shift.status = "confirmed";
+                      // Only mark as confirmed if it's not an open shift
+                      if (shift.status !== "open") {
+                        shift.status = "confirmed";
+                      }
                       shift.periodId = updatedOriginal.id;
                     });
                     (targetArray as any)[originalIndex] = updatedOriginal;
@@ -1195,7 +1218,10 @@ export const useScheduleStore = create<ScheduleRequestState>()(
                   schedule.status = "active";
                   schedule.updatedAt = new Date().toISOString();
                   schedule.shifts.forEach((shift) => {
-                    shift.status = "confirmed";
+                    // Only mark as confirmed if it's not an open shift
+                    if (shift.status !== "open") {
+                      shift.status = "confirmed";
+                    }
                   });
                 }
 

@@ -38,7 +38,7 @@ const CreatePurchaseOrderScreen = () => {
     purchaseOrders,
     addInventoryItem,
   } = useInventoryStore();
-  const { activeEmployeeId, employees, loadMockEmployees } = useEmployeeStore();
+  const { activeEmployeeId, employees } = useEmployeeStore();
   const [selectedVendorId, setSelectedVendorId] = useState<
     string | undefined
   >();
@@ -61,10 +61,6 @@ const CreatePurchaseOrderScreen = () => {
   const [newItemPOQty, setNewItemPOQty] = useState("1");
   const [itemSearch, setItemSearch] = useState("");
   const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
-
-  useEffect(() => {
-    loadMockEmployees();
-  }, [loadMockEmployees]);
 
   useEffect(() => {
     if (activeEmployeeId && !selectedEmployeeId) {

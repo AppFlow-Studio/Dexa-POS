@@ -1,15 +1,35 @@
 import { toastService } from "@/lib/toastService";
-import { Address, DayHours, SpecialHours } from "@/lib/types"; // We will add these types next
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+// Selected location from Supabase
+export interface SelectedLocation {
+  id: string;
+  merchant_id: string;
+  name: string;
+  code: string | null;
+  phone: string | null;
+  email: string | null;
+  address_line1: string;
+  address_line2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  timezone: string;
+  is_active: boolean;
+  is_accepting_orders: boolean;
+  business_hours: Record<
+    string,
+    { open: string; close: string; is_closed: boolean }
+  >;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface StoreSettings {
-  storeName: string;
-  address: Address;
-  phone: string;
-  email: string;
-  website: string;
-  hours: DayHours[];
-  specialHours: SpecialHours[];
+  // Tax Settings (local app settings)
   storeTaxId: string;
   defaultTaxRate: number;
   ptoAccrualRate: number;
@@ -55,6 +75,9 @@ export interface StoreSettings {
   preOrderMaxDays: number;
   preOrderMinAdvanceMinutes: number;
   preOrderMaxDaily: number;
+
+  // Selected store from database
+  selectedStore: SelectedLocation | null;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -77,29 +100,14 @@ interface StoreSettingsState extends StoreSettings {
   ) => void;
   saveChanges: () => void;
   discardChanges: () => void;
+
+  // Selected store actions
+  setSelectedStore: (store: SelectedLocation) => void;
+  clearSelectedStore: () => void;
 }
 
 const initialData: StoreSettings = {
-  storeName: "John's Gourmet Market",
-  address: {
-    street: "123 Main St",
-    city: "Anytown",
-    state: "CA",
-    zip: "12345",
-  },
-  phone: "555-123-4567",
-  email: "contact@jgourmet.com",
-  website: "https://jgourmet.com",
-  hours: [
-    { day: "Monday", open: "09:00", close: "21:00", enabled: true },
-    { day: "Tuesday", open: "09:00", close: "21:00", enabled: true },
-    { day: "Wednesday", open: "09:00", close: "21:00", enabled: true },
-    { day: "Thursday", open: "09:00", close: "21:00", enabled: true },
-    { day: "Friday", open: "09:00", close: "22:00", enabled: true },
-    { day: "Saturday", open: "10:00", close: "22:00", enabled: true },
-    { day: "Sunday", open: "10:00", close: "20:00", enabled: false },
-  ],
-  specialHours: [],
+  // Tax Settings
   storeTaxId: "US123456789",
   defaultTaxRate: 8.25,
   ptoAccrualRate: 0.0375,
@@ -137,138 +145,184 @@ const initialData: StoreSettings = {
   preOrderMaxDays: 30,
   preOrderMinAdvanceMinutes: 120, // 2 hours
   preOrderMaxDaily: 25,
+
+  // No store selected initially
+  selectedStore: null,
 };
 
-export const useStoreSettingsStore = create<StoreSettingsState>((set, get) => ({
-  ...initialData,
-  initialState: { ...initialData }, // Store a copy for reset/dirty checking
-  isDirty: false,
+export const useStoreSettingsStore = create<StoreSettingsState>()(
+  persist(
+    (set, get) => ({
+      ...initialData,
+      initialState: { ...initialData },
+      isDirty: false,
 
-  updateField: (field, value) => {
-    set((state) => {
-      const newState = { ...state, [field]: value };
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined, // Exclude these from comparison
-          isDirty: undefined,
+      updateField: (field, value) => {
+        set((state) => {
+          const newState = { ...state, [field]: value };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined, // Exclude these from comparison
+              isDirty: undefined,
+            });
+          return { ...newState, isDirty };
         });
-      return { ...newState, isDirty };
-    });
-  },
+      },
 
-  setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
-    set((state) => {
-      const newState = { ...state, isBreakAndSwitchEnabled: isEnabled };
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined,
-          isDirty: undefined,
+      setIsBreakAndSwitchEnabled: (isEnabled: boolean) => {
+        set((state) => {
+          const newState = { ...state, isBreakAndSwitchEnabled: isEnabled };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
+          return { ...newState, isDirty };
         });
-      return { ...newState, isDirty };
-    });
-  },
+      },
 
-  setPtoAccrualRate: (rate: number) => {
-    set((state) => {
-      const newState = { ...state, ptoAccrualRate: rate };
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined,
-          isDirty: undefined,
+      setPtoAccrualRate: (rate: number) => {
+        set((state) => {
+          const newState = { ...state, ptoAccrualRate: rate };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
+          return { ...newState, isDirty };
         });
-      return { ...newState, isDirty };
-    });
-  },
+      },
 
-  setTargetLaborPercent: (percent: number) => {
-    set((state) => {
-      const newState = { ...state, targetLaborPercent: percent };
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined,
-          isDirty: undefined,
+      setTargetLaborPercent: (percent: number) => {
+        set((state) => {
+          const newState = { ...state, targetLaborPercent: percent };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
+          return { ...newState, isDirty };
         });
-      return { ...newState, isDirty };
-    });
-  },
+      },
 
-  updatePrepAdjustment: (key, value) => {
-    set((state) => {
-      const newAdjustments = { ...state.prepTimeAdjustments, [key]: value };
-      const newState = { ...state, prepTimeAdjustments: newAdjustments };
+      updatePrepAdjustment: (key, value) => {
+        set((state) => {
+          const newAdjustments = { ...state.prepTimeAdjustments, [key]: value };
+          const newState = { ...state, prepTimeAdjustments: newAdjustments };
 
-      // Calculate dirty state
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined,
-          isDirty: undefined,
+          // Calculate dirty state
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
+
+          return { ...newState, isDirty };
         });
+      },
 
-      return { ...newState, isDirty };
-    });
-  },
+      updateSchedulingSettings: (
+        updates: Partial<StoreSettings["scheduling"]>
+      ) => {
+        set((state) => {
+          const newScheduling = { ...state.scheduling, ...updates };
+          // Deep merge for nested conflictTypes if provided
+          if (updates.conflictTypes) {
+            newScheduling.conflictTypes = {
+              ...state.scheduling.conflictTypes,
+              // We can just replace it or merge it. Since we pass the whole object from UI usually, replacing is fine,
+              // but let's be safe and merge if only partial is passed (though Partial<Scheduling> implies top level).
+              // Actually, let's treat conflictTypes as a replacement if present in updates, OR merging carefully.
+              // For simplicity in this specific store pattern, let's assume the UI sends the full object or we merge carefully.
+              // Wait, the updates param is Partial<Scheduling>.
+              // conflictTypes is optional in that partial.
+              // Let's do a merge:
+              ...updates.conflictTypes,
+            };
+          }
 
-  updateSchedulingSettings: (updates: Partial<StoreSettings["scheduling"]>) => {
-    set((state) => {
-      const newScheduling = { ...state.scheduling, ...updates };
-      // Deep merge for nested conflictTypes if provided
-      if (updates.conflictTypes) {
-        newScheduling.conflictTypes = {
-          ...state.scheduling.conflictTypes,
-          // We can just replace it or merge it. Since we pass the whole object from UI usually, replacing is fine,
-          // but let's be safe and merge if only partial is passed (though Partial<Scheduling> implies top level).
-          // Actually, let's treat conflictTypes as a replacement if present in updates, OR merging carefully.
-          // For simplicity in this specific store pattern, let's assume the UI sends the full object or we merge carefully.
-          // Wait, the updates param is Partial<Scheduling>.
-          // conflictTypes is optional in that partial.
-          // Let's do a merge:
-          ...updates.conflictTypes,
-        };
-      }
+          const newState = { ...state, scheduling: newScheduling };
 
-      const newState = { ...state, scheduling: newScheduling };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
 
-      const isDirty =
-        JSON.stringify(newState.initialState) !==
-        JSON.stringify({
-          ...newState,
-          initialState: undefined,
-          isDirty: undefined,
+          return { ...newState, isDirty };
         });
+      },
 
-      return { ...newState, isDirty };
-    });
-  },
+      saveChanges: () => {
+        const currentState = get();
+        const updatedState = { ...currentState };
+        delete (updatedState as any).initialState;
+        delete (updatedState as any).isDirty;
 
-  saveChanges: () => {
-    const currentState = get();
-    const updatedState = { ...currentState };
-    delete (updatedState as any).initialState;
-    delete (updatedState as any).isDirty;
+        const newInitialState = { ...updatedState };
 
-    const newInitialState = { ...updatedState };
+        set({ initialState: newInitialState, isDirty: false });
 
-    set({ initialState: newInitialState, isDirty: false });
+        toastService.show({
+          title: "Settings Saved",
+          message: "Store information has been updated successfully.",
+          type: "success",
+        });
+      },
 
-    toastService.show({
-      title: "Settings Saved",
-      message: "Store information has been updated successfully.",
-      type: "success",
-    });
-  },
+      discardChanges: () => {
+        const { initialState } = get();
+        set({ ...initialState, isDirty: false });
+      },
 
-  discardChanges: () => {
-    const { initialState } = get();
-    set({ ...initialState, isDirty: false });
-  },
-}));
+      // Selected store actions
+      setSelectedStore: (store: SelectedLocation) => {
+        set({ selectedStore: store });
+      },
+
+      clearSelectedStore: () => {
+        set({ selectedStore: null });
+      },
+    }),
+    {
+      name: "store-settings-storage",
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        // Only persist these fields
+        selectedStore: state.selectedStore,
+        storeTaxId: state.storeTaxId,
+        defaultTaxRate: state.defaultTaxRate,
+        ptoAccrualRate: state.ptoAccrualRate,
+        minimumPtoNoticeDays: state.minimumPtoNoticeDays,
+        targetLaborPercent: state.targetLaborPercent,
+        scheduling: state.scheduling,
+        isBreakAndSwitchEnabled: state.isBreakAndSwitchEnabled,
+        onlineOrderingEnabled: state.onlineOrderingEnabled,
+        onlinePauseReason: state.onlinePauseReason,
+        autoResumeTime: state.autoResumeTime,
+        autoAcceptOrders: state.autoAcceptOrders,
+        largeOrderApprovalThreshold: state.largeOrderApprovalThreshold,
+        rejectWhenBusyThreshold: state.rejectWhenBusyThreshold,
+        dynamicPrepTimeEnabled: state.dynamicPrepTimeEnabled,
+        basePrepTime: state.basePrepTime,
+        prepTimeAdjustments: state.prepTimeAdjustments,
+        preOrderingEnabled: state.preOrderingEnabled,
+        preOrderMaxDays: state.preOrderMaxDays,
+        preOrderMinAdvanceMinutes: state.preOrderMinAdvanceMinutes,
+        preOrderMaxDaily: state.preOrderMaxDaily,
+      }),
+    }
+  )
+);

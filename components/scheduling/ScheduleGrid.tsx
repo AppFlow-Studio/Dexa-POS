@@ -14,6 +14,7 @@ import {
   Role,
   ScheduleTemplate,
   Shift,
+  ShiftRequest,
   TemplateShift,
 } from "@/lib/types";
 import { EmployeeProfile } from "@/stores/useEmployeeStore";
@@ -50,6 +51,7 @@ const ScheduleCell = React.memo(
     dateStr,
     isDateInRange,
     ptoOnDate,
+    dropOnDate,
     ancestor,
     overlayShifts,
     conflictingShiftTempIds,
@@ -59,6 +61,7 @@ const ScheduleCell = React.memo(
     dateStr: string;
     isDateInRange: boolean;
     ptoOnDate: PTORequest | undefined;
+    dropOnDate: ShiftRequest | undefined;
     ancestor: React.RefObject<ScrollView>;
     overlayShifts: TemplateShift[];
     conflictingShiftTempIds: Set<string>;
@@ -116,7 +119,7 @@ const ScheduleCell = React.memo(
         style={animatedStyle}
         className={`w-40 p-2 min-h-[80px] border-r border-b ${
           isDateInRange ? "bg-[#303030]" : "bg-[#363636]"
-        } ${ptoOnDate ? "bg-purple-900/30" : ""}`}
+        } ${ptoOnDate ? "bg-purple-900/30" : ""} ${dropOnDate ? "bg-orange-900/30" : ""}`}
       >
         {overlayShifts.map((shift) => (
           <OverlayShiftChip
@@ -174,10 +177,11 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
   templateConflictSummary,
   isApplyTemplateBarVisible,
 }) => {
-  const [showConflictAlert, setShowConflictAlert] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
   const { dropResult } = useDropZoneContext();
   const weekDates = getWeekDates(startDate);
   const updateShift = useScheduleStore((state) => state.updateShift);
+  const dropRequests = useScheduleStore((state) => state.dropRequests);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const overlayTemplate = templates?.find((t) => t.id === overlayTemplateId);
@@ -250,6 +254,36 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     newEmployeeId: string,
     newDate: string
   ) => {
+    // Check if target cell has PTO
+    const targetHasPto = approvedPtoRequests.some(
+      (pto) =>
+        pto.employeeId === newEmployeeId &&
+        isWithinInterval(startOfDay(parseISO(newDate)), {
+          start: startOfDay(new Date(pto.startDate)),
+          end: startOfDay(new Date(pto.endDate)),
+        })
+    );
+
+    // Check if target cell has approved drop
+    const targetHasApprovedDrop = dropRequests.some(
+      (dr) =>
+        dr.status === "approved" &&
+        dr.shift.employeeId === newEmployeeId &&
+        dr.shift.date === newDate
+    );
+
+    if (targetHasPto || targetHasApprovedDrop) {
+      if (targetHasPto) {
+        setConflictMessage("This employee is on PTO for this day.");
+      } else {
+        setConflictMessage(
+          "This employee has dropped their shift for this day."
+        );
+      }
+      dropResult.value = "failure";
+      return;
+    }
+
     const startTimeStr = format(parseISO(draggedShift.startTime), "HH:mm:ss");
     const endTimeStr = format(parseISO(draggedShift.endTime), "HH:mm:ss");
     const newStartTime = `${newDate}T${startTimeStr}`;
@@ -275,7 +309,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     );
 
     if (hasOverlap) {
-      setShowConflictAlert(true);
+      setConflictMessage("This employee already has an overlapping shift.");
       dropResult.value = "failure";
     } else {
       updateShift(scheduleId, scheduleType, {
@@ -284,6 +318,9 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
         date: newDate,
         startTime: newStartTime,
         endTime: newEndTime,
+        // If the shift was open, assign it as confirmed now
+        status:
+          draggedShift.status === "open" ? "confirmed" : draggedShift.status,
       });
       dropResult.value = "success";
     }
@@ -293,19 +330,22 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
     // Ensure 'relative' so the absolute overlay positions relative to this container if needed,
     // though normally pageX/Y are screen absolute. If using pageX, this container should be top-level.
     <View className="flex-1 bg-[#212121] relative">
-      <AlertDialog open={showConflictAlert} onOpenChange={setShowConflictAlert}>
+      <AlertDialog
+        open={!!conflictMessage}
+        onOpenChange={(open) => !open && setConflictMessage(null)}
+      >
         <AlertDialogContent className="bg-[#1C1C1E] border-gray-700">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
               Shift Conflict
             </AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
-              This employee already has an overlapping shift.
+              {conflictMessage}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction
-              onPress={() => setShowConflictAlert(false)}
+              onPress={() => setConflictMessage(null)}
               className="bg-blue-600"
             >
               <Text className="text-white">OK</Text>
@@ -395,6 +435,14 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       })
                   );
 
+                  // Find approved drop request for this employee on this date
+                  const dropOnDate = dropRequests.find(
+                    (dr) =>
+                      dr.status === "approved" &&
+                      dr.shift.employeeId === employee.id &&
+                      dr.shift.date === dateStr
+                  );
+
                   return (
                     <ScheduleCell
                       key={`${employee.id}-${i}`}
@@ -402,6 +450,7 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                       dateStr={dateStr}
                       isDateInRange={isDateInRange}
                       ptoOnDate={ptoOnDate}
+                      dropOnDate={dropOnDate}
                       ancestor={scrollViewRef as React.RefObject<ScrollView>}
                       overlayShifts={overlayShifts}
                       conflictingShiftTempIds={conflictingShiftTempIds}
@@ -411,6 +460,12 @@ const ScheduleGrid: React.FC<ScheduleGridProps> = ({
                           <View className="flex-1 h-full w-full items-center justify-center">
                             <Text className="font-bold text-purple-400">
                               PTO
+                            </Text>
+                          </View>
+                        ) : dropOnDate ? (
+                          <View className="flex-1 h-full w-full items-center justify-center">
+                            <Text className="font-bold text-orange-400">
+                              Drop
                             </Text>
                           </View>
                         ) : dayShifts.length > 0 ? (

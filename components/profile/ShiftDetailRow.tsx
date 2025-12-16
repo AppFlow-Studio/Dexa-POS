@@ -27,7 +27,8 @@ interface ShiftDetailRowProps {
   onRequestDrop: (shift: Shift) => void;
   onRequestSwap: (shift: Shift) => void;
   onCancelDropRequest: (shift: Shift) => void;
-  onCancelSwapRequest: (shift: Shift) => void; // New prop
+  onCancelSwapRequest: (shift: Shift) => void;
+  onPickUpShift?: (shift: Shift) => void; // New prop for pickup action
 }
 
 const StatusBadge = ({
@@ -65,13 +66,16 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   onRequestDrop,
   onRequestSwap,
   onCancelDropRequest,
-  onCancelSwapRequest, // Destructure new prop
+  onCancelSwapRequest,
+  onPickUpShift,
 }) => {
   const [isNoteVisible, setNoteVisible] = useState(false);
   const getStatusLabel = () => {
     switch (shift.status) {
       case "confirmed":
         return { label: "Assigned", color: "blue" as const };
+      case "open":
+        return { label: "Open Shift", color: "yellow" as const }; // Use yellow for visibility, or customize
       case "pending-swap":
         return { label: "Pending swap", color: "yellow" as const };
       case "dropped":
@@ -108,7 +112,11 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="p-4 bg-[#212121] rounded-xl border border-gray-700"
+      className={`p-4 bg-[#212121] rounded-xl border ${
+        shift.status === "open"
+          ? "border-orange-500 bg-orange-500/10"
+          : "border-gray-700"
+      }`} // Conditional styling for open shifts
     >
       <View className="flex-row items-center gap-3 mb-3">
         <Text className="text-base font-semibold text-white">{shift.role}</Text>
@@ -187,6 +195,20 @@ const ShiftDetailRow: React.FC<ShiftDetailRowProps> = ({
 
       <View className="flex-row items-center justify-between border-t border-gray-700 pt-3">
         <View className="flex-row items-center gap-4">
+          {shift.status === "open" && onPickUpShift && (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onPickUpShift(shift);
+              }}
+              className="flex-row items-center gap-2 rounded-lg bg-orange-600/50 p-2 border-2 border-orange-500"
+            >
+              <Clock size={16} color="#FDBA74" />
+              <Text className="text-base font-semibold text-orange-200">
+                Pick Up Shift
+              </Text>
+            </TouchableOpacity>
+          )}
           {shift.status === "confirmed" && (
             <>
               <TouchableOpacity
