@@ -747,6 +747,13 @@ export type Role =
   | "Supervisor"
   | "Manager";
 
+// Role codes from Supabase location_members for employee authentication
+export type MerchantRole =
+  | "merchant.cashier"
+  | "merchant.manager"
+  | "merchant.admin"
+  | "merchant.owner";
+
 // --- SCHEDULE TEMPLATE TYPES ---
 
 export interface TemplateShift {

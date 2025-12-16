@@ -51,6 +51,7 @@
     "@shopify/react-native-skia": "v2.0.0-next.4",
     "@supabase/supabase-js": "^2.87.1",
     "@tanstack/react-query": "^5.90.12",
+    "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-shape": "^3.2.0",
@@ -109,6 +110,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@types/bcryptjs": "^2.4.6",
     "@types/d3-shape": "^3.1.7",
     "@types/lodash.debounce": "^4.0.9",
     "@types/react": "~19.0.10",

@@ -1,6 +1,7 @@
 import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useLoading } from "@/contexts/LoadingContext";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
@@ -20,8 +21,13 @@ const PinLoginScreen = () => {
   const [pin, setPin] = useState("");
   const [currentEmployee, setCurrentEmployee] =
     useState<EmployeeProfile | null>(null);
-  const { employees, signInWithPin, clockIn, clockOut } = useEmployeeStore();
-  const canSubmit = useMemo(() => pin.length === MAX_PIN_LENGTH, [pin]);
+  const { showLoading, hideLoading, isLoading } = useLoading();
+  const { signInWithPin, findEmployeeByPin, clockIn, clockOut } =
+    useEmployeeStore();
+  const canSubmit = useMemo(
+    () => pin.length === MAX_PIN_LENGTH && !isLoading,
+    [pin, isLoading]
+  );
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -38,6 +44,16 @@ const PinLoginScreen = () => {
     variant: "success" | "warning" | "error"
   ) => setDialog({ visible: true, title, message, variant });
   const hideDialog = () => setDialog((d) => ({ ...d, visible: false }));
+
+  const triggerShakeAnimation = () => {
+    shakeX.value = withSequence(
+      withTiming(-10, { duration: 100 }),
+      withTiming(10, { duration: 100 }),
+      withTiming(-10, { duration: 100 }),
+      withTiming(10, { duration: 100 }),
+      withTiming(0, { duration: 100 })
+    );
+  };
 
   const handleKeyPress = (input: NumpadInput) => {
     if (typeof input === "number") {
@@ -56,7 +72,7 @@ const PinLoginScreen = () => {
     }
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!canSubmit) {
       showDialog(
         "Invalid PIN",
@@ -65,16 +81,13 @@ const PinLoginScreen = () => {
       );
       return;
     }
-    const res = signInWithPin(pin);
+    console.log("this is working");
+
+    showLoading("Verifying PIN...");
+    const res = await signInWithPin(pin);
+    hideLoading();
     if (!res.ok) {
-      // Trigger shake animation for wrong PIN
-      shakeX.value = withSequence(
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(0, { duration: 100 })
-      );
+      triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
@@ -83,7 +96,7 @@ const PinLoginScreen = () => {
     router.replace("/home");
   };
 
-  const handleClockIn = () => {
+  const handleClockIn = async () => {
     if (!canSubmit) {
       showDialog(
         "Invalid PIN",
@@ -92,16 +105,11 @@ const PinLoginScreen = () => {
       );
       return;
     }
-    const employee = employees.find((e) => e.pin === pin);
+    showLoading("Verifying PIN...");
+    const employee = await findEmployeeByPin(pin);
+    hideLoading();
     if (!employee) {
-      // Trigger shake animation for wrong PIN
-      shakeX.value = withSequence(
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(0, { duration: 100 })
-      );
+      triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
@@ -125,7 +133,7 @@ const PinLoginScreen = () => {
     setPin("");
   };
 
-  const handleClockOut = () => {
+  const handleClockOut = async () => {
     if (!canSubmit) {
       showDialog(
         "Invalid PIN",
@@ -134,16 +142,11 @@ const PinLoginScreen = () => {
       );
       return;
     }
-    const employee = employees.find((e) => e.pin === pin);
+    showLoading("Verifying PIN...");
+    const employee = await findEmployeeByPin(pin);
+    hideLoading();
     if (!employee) {
-      // Trigger shake animation for wrong PIN
-      shakeX.value = withSequence(
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(0, { duration: 100 })
-      );
+      triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
@@ -167,7 +170,7 @@ const PinLoginScreen = () => {
     setPin("");
   };
 
-  const handleOpenTimeclock = () => {
+  const handleOpenTimeclock = async () => {
     if (!canSubmit) {
       showDialog(
         "Invalid PIN",
@@ -176,13 +179,21 @@ const PinLoginScreen = () => {
       );
       return;
     }
-    const employee = employees.find((e) => e.pin === pin);
+    showLoading("Verifying PIN...");
+    const employee = await findEmployeeByPin(pin);
+    hideLoading();
     if (!employee) {
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
     }
-    if (employee.role !== "manager") {
+    // Check for manager-level roles (merchant.manager, merchant.admin, merchant.owner)
+    const managerRoles = [
+      "merchant.manager",
+      "merchant.admin",
+      "merchant.owner",
+    ];
+    if (!managerRoles.includes(employee.role)) {
       showDialog(
         "Permission Denied",
         "Only managers can access the timeclock.",
