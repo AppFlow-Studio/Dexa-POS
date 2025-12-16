@@ -336,14 +336,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 </Button>
               </DialogTrigger>
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
-                <DialogHeader>
+                <DialogHeader className="border-b border-gray-700 pb-4">
                   <DialogTitle className="text-white text-center">
-                    <Text>Select Menu</Text>
+                    <Text className="text-xl font-bold text-white">Select Menu</Text>
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView
                   className="gap-3 mt-4 w-full"
-                  contentContainerStyle={{ gap: 16 }}
+                  contentContainerStyle={{ gap: 12 }}
                 >
                   {menus.map((menu) => {
                     const isAvailable =
@@ -351,45 +351,53 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                       temporaryActiveMenus.includes(menu.name);
                     const isScheduled =
                       menu.schedules && menu.schedules.length > 0;
+                    const isSelected = activeMeal === menu.name;
 
                     return (
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-lg border mb-3 ${activeMeal === menu.name
+                        className={`p-4 rounded-xl border-2 ${isSelected
                           ? "bg-blue-600 border-blue-400"
                           : !isAvailable
-                            ? "bg-gray-700 border-gray-600 opacity-60"
-                            : "bg-[#303030] border-gray-600"
+                            ? "bg-[#252538] border-gray-700 opacity-50"
+                            : "bg-[#252538] border-[#3a3a5c]"
                           }`}
+                        style={isSelected ? {
+                          shadowColor: '#3b82f6',
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: 0.3,
+                          shadowRadius: 8,
+                          elevation: 8,
+                        } : undefined}
                       >
                         <View className="flex-row justify-between items-center">
-                          <Text className="font-semibold text-lg text-white">
+                          <Text className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-gray-100'}`}>
                             {menu.name}
                           </Text>
-                          {isScheduled && <Clock size={16} color="#9CA3AF" />}
+                          {isScheduled && <Clock size={18} color={isSelected ? "#93c5fd" : "#60a5fa"} />}
                         </View>
                         <Text
-                          className={`text-sm mt-1 ${activeMeal === menu.name
+                          className={`text-sm mt-1 ${isSelected
                             ? "text-blue-100"
                             : "text-gray-400"
                             }`}
                         >
                           {menu.description}
                         </Text>
-                        <View className="flex-row flex-wrap gap-1 mt-2">
+                        <View className="flex-row flex-wrap gap-2 mt-3">
                           {menu.categories.map((category, index) => (
                             <View
                               key={index}
-                              className={`px-2 py-1 rounded-full ${activeMeal === menu.name
-                                ? "bg-blue-500"
-                                : "bg-gray-600"
+                              className={`px-3 py-1.5 rounded-full ${isSelected
+                                ? "bg-blue-500/80"
+                                : "bg-blue-900/40 border border-blue-800/50"
                                 }`}
                             >
                               <Text
-                                className={`text-xs ${activeMeal === menu.name
+                                className={`text-xs font-medium ${isSelected
                                   ? "text-white"
-                                  : "text-gray-300"
+                                  : "text-blue-300"
                                   }`}
                               >
                                 {category}
