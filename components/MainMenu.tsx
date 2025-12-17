@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import {
   BarChart3,
   CalendarClock,
+  FlaskConical,
   History,
   Home,
   Lock,
@@ -16,7 +17,6 @@ import { Text, TouchableOpacity, View } from "react-native";
 import PinDisplay from "./auth/PinDisplay";
 import PinNumpad from "./auth/PinNumpad";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
-import { useTimeclockStore } from "@/stores/useTimeclockStore";
 
 interface MenuCardProps {
   icon: React.ReactNode;
@@ -40,9 +40,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
-        isHighlighted ? "bg-blue-50" : "bg-[#303030]"
-      }`}
+      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${isHighlighted ? "bg-blue-50" : "bg-[#303030]"
+        }`}
       style={{ minHeight: 140 }}
     >
       <View className="justify-center h-full w-full flex">
@@ -125,6 +124,14 @@ const MainMenu: React.FC = () => {
       title: "Online Orders",
       subtitle: "Web & App Orders",
       route: "/online-orders",
+      isHighlighted: false,
+    },
+    {
+      id: "order-test",
+      icon: <FlaskConical color="#10b981" size={48} />,
+      title: "Order Test",
+      subtitle: "Test Order Flow",
+      route: "/order-test",
       isHighlighted: false,
     },
     {
