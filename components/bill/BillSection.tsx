@@ -105,7 +105,7 @@ const BillSection = ({
       return;
     }
 
-    if (activeOrder?.order_type === "Dine In" && selectedTable) {
+    if (activeOrder?.order_type === "dine_in" && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id);
       updateTableStatus(selectedTable.id, "In Use");
       clearSelectedTable();
@@ -161,8 +161,9 @@ const BillSection = ({
 
           {/* Send to Kitchen Button - matching previous colors but with new layout */}
           <TouchableOpacity
-            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
-              }`}
+            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${
+              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+            }`}
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
@@ -197,20 +198,22 @@ const BillSection = ({
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
               }
-              className={`flex-1 py-2 rounded-xl ${!activeOrder ||
+              className={`flex-1 py-2 rounded-xl ${
+                !activeOrder ||
                 activeOrder.items.length === 0 ||
                 activeOrder.items.some((item) => item.isDraft)
-                ? "bg-gray-500"
-                : "bg-blue-600"
-                }`}
+                  ? "bg-gray-500"
+                  : "bg-blue-600"
+              }`}
             >
               <Text
-                className={`text-center text-xl font-bold ${!activeOrder ||
+                className={`text-center text-xl font-bold ${
+                  !activeOrder ||
                   activeOrder.items.length === 0 ||
                   activeOrder.items.some((item) => item.isDraft)
-                  ? "text-gray-400"
-                  : "text-white"
-                  }`}
+                    ? "text-gray-400"
+                    : "text-white"
+                }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

@@ -79,7 +79,7 @@ const PaymentSuccessView = () => {
 
     if (activeOrderId) markOrderAsPaid(activeOrderId);
 
-    if (activeOrder?.order_type === "Dine In" && activeTableId) {
+    if (activeOrder?.order_type === "dine_in" && activeTableId) {
       updateTableStatus(activeTableId, "In Use");
     } else {
       setTimeout(() => {
@@ -90,12 +90,12 @@ const PaymentSuccessView = () => {
 
     if (activeOrderId) {
       setOpenedAt(activeOrderId, new Date().toISOString());
-      updateOrderStatus(activeOrderId, "Preparing");
+      updateOrderStatus(activeOrderId, "preparing");
     }
 
     if (
-      activeOrder?.order_type === "Takeaway" &&
-      activeOrder.order_status === "Ready"
+      activeOrder?.order_type === "takeout" &&
+      activeOrder.order_status === "ready"
     ) {
       setTimeout(() => archiveOrder(activeOrder?.id), 500);
     }

@@ -276,12 +276,22 @@ export type DeliveryPartner =
 export interface CartItem {
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
+  locationExclusiveItemId?: string; // Optional location-exclusive item ID
   name: string;
+  category_name?: string; // Category for backend sync
   quantity: number;
   // Tracks how many of the quantity have been fully paid. Defaults to 0.
   paidQuantity?: number;
   // Per-item preparation status tracking for table workflow
-  item_status?: "Preparing" | "Ready" | "Served";
+  // Per-item preparation status tracking for table workflow
+  // Supports both legacy (PascalCase) and backend (lowercase) values
+  item_status?:
+    | "Preparing"
+    | "Ready"
+    | "Served"
+    | "preparing"
+    | "ready"
+    | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
   kitchen_status?: "new" | "sent" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
@@ -573,26 +583,41 @@ export type PaymentType = "Card" | "Cash" | "Split";
 export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
 
+  // Backend sync fields (populated after first backend sync)
+  db_order_id?: string; // UUID from Supabase
+  order_number?: string; // Backend order number "ORD-YYYYMMDD-XXXX"
+  display_number?: string; // "#0042"
+  sync_status?: "pending" | "synced" | "failed"; // Backend sync status
+
   // Link to the physical location. Crucially, this is `string | null`.
   // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
 
   // The current lifecycle stage of the order.
+  // Supports both legacy (PascalCase) and new backend (lowercase) values
+  // Supports only backend values now
   order_status:
-    | "Open"
-    | "Closed"
-    | "Cancelled"
-    | "Preparing"
-    | "Ready"
-    | "Served"
-    | "Building"
-    | "Voided";
+    | "draft"
+    | "pending"
+    | "preparing"
+    | "ready"
+    | "completed"
+    | "cancelled"
+    | "refunded"
+    | "void";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
 
   // The type of fulfillment for this order.
-  order_type?: "Dine In" | "Takeaway" | "Delivery";
+  // Supports both legacy and backend values
+  order_type?:
+    | "Dine In"
+    | "Takeaway"
+    | "Delivery"
+    | "dine_in"
+    | "takeout"
+    | "delivery";
 
   // Payment status for the order
   paid_status: "Paid" | "Pending" | "Unpaid";
@@ -603,6 +628,7 @@ export interface OrderProfile {
   // Timestamps for tracking order lifecycle
   opened_at: string | null; // ISO String format is recommended
   closed_at?: string; // Optional, set when the order is closed
+  sent_to_kitchen_at?: string; // When order was sent to kitchen
 
   // Final calculated values, set upon closing the order
   total_amount?: number;
@@ -618,10 +644,12 @@ export interface OrderProfile {
   checkDiscount?: Discount | null;
   paymentMethod?: PaymentType; // Example usage
   payments?: {
+    id?: string; // Backend payment ID
     amount: number;
     method: PaymentType;
     cardBrand?: string;
     last4?: string;
+    tip_amount?: number;
   }[]; // Example usage
   notes?: string; // Order-level notes (customer requests, special instructions)
 }

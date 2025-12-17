@@ -19,9 +19,12 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
-  // --- NO CHANGES HERE: Your original color logic is preserved ---
+  // --- Color logic updated to use backend status values ---
   const getStatusColor = (status: string, paidStatus: string) => {
-    if (status === "Preparing") {
+    console.log("status", status);
+    console.log("paidStatus", paidStatus);
+
+    if (status === "preparing") {
       if (paidStatus === "Paid") {
         return {
           dot: "#3b82f6", // Teal
@@ -38,7 +41,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
         };
       }
     }
-    if (status === "Ready") {
+    if (status === "ready") {
       return {
         dot: "#10b981", // Green
         bg: "#d1fae5", // Light green
@@ -74,8 +77,10 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
           style={{ color: colors.text }}
           numberOfLines={1}
         >
-          {order.customer_name ? order.customer_name : `#${orderNumber}`} -{" "}
-          {order.order_status}
+          {order.customer_name
+            ? order.customer_name
+            : order.display_number || order.order_number || "New"}{" "}
+          - {order.order_status}
         </Text>
       </TooltipTrigger>
 
@@ -94,7 +99,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </Text>
             <View className="px-2 py-1 rounded-md bg-gray-700/80">
               <Text className="text-sm font-semibold text-gray-300">
-                #{order.id.slice(-4)}
+                {order.display_number || order.order_number || "New"}
               </Text>
             </View>
             <View className="px-2 py-1 rounded-md bg-blue-900/50">
@@ -121,14 +126,14 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </View>
             <View
               className={`px-2 py-1 rounded-md ${
-                order.order_status === "Preparing"
+                order.order_status === "preparing"
                   ? "bg-orange-900/50"
                   : "bg-gray-700/80"
               }`}
             >
               <Text
                 className={`text-sm font-semibold ${
-                  order.order_status === "Preparing"
+                  order.order_status === "preparing"
                     ? "text-orange-400"
                     : "text-gray-300"
                 }`}
@@ -157,7 +162,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
 
         {/* Action Buttons with Dark Theme */}
         <View className="flex-col gap-y-1 p-2">
-          {order.order_status === "Preparing" && (
+          {order.order_status === "preparing" && (
             <TouchableOpacity
               onPress={() => {
                 onMarkReady();

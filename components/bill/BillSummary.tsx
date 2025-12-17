@@ -44,9 +44,13 @@ const BillSummary: React.FC<BillSummaryProps> = ({
         <View className="mb-2">
           <View className="flex-row items-center justify-between">
             <Text className="text-gray-400 text-base font-medium">
-              {activeOrderId}
+              {activeOrder?.display_number ||
+                activeOrder?.order_number ||
+                "New Order"}
             </Text>
-            <Text className="text-lg text-blue-400 font-medium">{cart.length} {cart.length === 1 ? 'Item' : 'Items'}</Text>
+            <Text className="text-lg text-blue-400 font-medium">
+              {cart.length} {cart.length === 1 ? "Item" : "Items"}
+            </Text>
           </View>
           <Text className="text-3xl font-bold text-white mt-1">Order</Text>
           <View className="h-1 w-16 bg-blue-600 rounded-full mt-2" />
@@ -83,8 +87,9 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                             return (
                               <View
                                 key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-1.5 ${highlight ? "border border-blue-500" : ""
-                                  }`}
+                                className={`rounded-xl mb-1.5 ${
+                                  highlight ? "border border-blue-500" : ""
+                                }`}
                               >
                                 <BillItem item={item} isEditable={true} />
                               </View>

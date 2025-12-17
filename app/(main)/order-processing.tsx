@@ -35,15 +35,28 @@ const OrderProcessing = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
   useEffect(() => {
-    // Ensure there is at least one active order. If none, create/select a global Building order.
-    const globalBuilding = orders.find(
-      (o) => o.service_location_id === null && o.order_status === "Building"
+    // Find an existing empty draft order (not assigned to table, no items)
+    const emptyDraft = orders.find(
+      (o) =>
+        o.service_location_id === null &&
+        o.order_status === "draft" &&
+        o.items.length === 0
+    );
+
+    // Find any global draft order (not assigned to table)
+    const globalDraft = orders.find(
+      (o) => o.service_location_id === null && o.order_status === "draft"
     );
 
     if (!activeOrderId) {
-      if (globalBuilding) {
-        setActiveOrder(globalBuilding.id);
+      if (emptyDraft) {
+        // Reuse existing empty draft
+        setActiveOrder(emptyDraft.id);
+      } else if (globalDraft) {
+        // Use global draft with items
+        setActiveOrder(globalDraft.id);
       } else {
+        // Create new draft only if none exist
         const newOrder = startNewOrder();
         setActiveOrder(newOrder.id);
       }
@@ -54,8 +67,10 @@ const OrderProcessing = () => {
     // to set a non-global order as active without being reset by this effect.
     const currentActive = orders.find((o) => o.id === activeOrderId);
     if (!currentActive) {
-      if (globalBuilding) {
-        setActiveOrder(globalBuilding.id);
+      if (emptyDraft) {
+        setActiveOrder(emptyDraft.id);
+      } else if (globalDraft) {
+        setActiveOrder(globalDraft.id);
       } else {
         const newOrder = startNewOrder();
         setActiveOrder(newOrder.id);
@@ -68,15 +83,15 @@ const OrderProcessing = () => {
     // Show only orders that are in a "kitchen" state
     const kitchenOrders = orders.filter(
       (o) =>
-        (o.order_type !== "Dine In" &&
+        (o.order_type !== "dine_in" &&
           // Condition 1: Must be in Preparing state
-          o.order_status === "Preparing" &&
+          o.order_status === "preparing" &&
           // Condition 2: Must have one or more items
           o.items.length > 0) ||
         (o.paid_status === "Unpaid" &&
-          o.order_status !== "Closed" &&
-          o.order_status !== "Building" &&
-          o.order_status !== "Voided")
+          o.order_status !== "completed" &&
+          o.order_status !== "draft" &&
+          o.order_status !== "void")
     );
 
     return kitchenOrders;
@@ -96,7 +111,7 @@ const OrderProcessing = () => {
     markAllItemsAsReady(order.id);
 
     // Then, check if it's a Takeaway order and archive it
-    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
+    if (order.order_type === "takeout" && order.paid_status === "Paid") {
       // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);

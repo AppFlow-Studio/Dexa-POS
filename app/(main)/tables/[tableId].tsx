@@ -77,8 +77,8 @@ const UpdateTableScreen = () => {
   const existingOrderForTable = orders.find(
     (o) =>
       o.service_location_id === tableId &&
-      o.order_status !== "Voided" &&
-      o.order_status !== "Closed"
+      o.order_status !== "void" &&
+      o.order_status !== "completed"
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
@@ -144,7 +144,7 @@ const UpdateTableScreen = () => {
       // This is the key action. It links the active order to the table
       assignOrderToTable(activeOrderId, tableId as string);
       updateTableStatus(tableId as string, "In Use");
-      updateOrderStatus(activeOrderId, "Preparing");
+      updateOrderStatus(activeOrderId, "preparing");
       router.push("/tables");
     }
   };
@@ -153,7 +153,7 @@ const UpdateTableScreen = () => {
     const order = orders.find((o) => o.id === activeOrderId);
     if (order) {
       const anyNotReady = order.items.some(
-        (i) => (i.item_status || "Preparing") !== "Ready"
+        (i) => (i.item_status || "preparing") !== "ready"
       );
       if (anyNotReady) {
         setNotReadyConfirmOpen(true);
@@ -171,7 +171,7 @@ const UpdateTableScreen = () => {
     updateActiveOrderDetails({
       paid_status: "Pending",
       check_status: "Opened",
-      order_status: "Preparing",
+      order_status: "preparing",
     });
 
     // Sync order status based on existing items
@@ -185,7 +185,7 @@ const UpdateTableScreen = () => {
   };
 
   const handleMarkAllReadyForCourse = (itemIds: string[]) => {
-    itemIds.forEach((itemId) => updateItemStatusInActiveOrder(itemId, "Ready"));
+    itemIds.forEach((itemId) => updateItemStatusInActiveOrder(itemId, "ready"));
     show({
       title: "Items Marked Ready",
       message: "All items in the course have been marked as ready.",
@@ -283,13 +283,13 @@ const UpdateTableScreen = () => {
 
     // Reset status to Preparing (triggers kitchen ticket logic)
     itemsInCourse.forEach((i) => {
-      updateItemStatusInActiveOrder(i.id, "Preparing");
+      updateItemStatusInActiveOrder(i.id, "preparing");
     });
 
     coursing.markCourseSent(activeOrder.id, course);
 
-    if (activeOrder.order_status === "Building") {
-      updateOrderStatus(activeOrder.id, "Preparing");
+    if (activeOrder.order_status === "draft") {
+      updateOrderStatus(activeOrder.id, "preparing");
     }
 
     if (tableId && table?.status !== "In Use") {
@@ -341,7 +341,7 @@ const UpdateTableScreen = () => {
     }
 
     // Fallback for other cases (e.g., an empty order)
-    updateOrderStatus(activeOrder.id, "Closed");
+    updateOrderStatus(activeOrder.id, "completed");
     // If it's an empty order, the table becomes available immediately.
     updateTableStatus(tableId as string, "Available");
     router.back();
@@ -349,7 +349,7 @@ const UpdateTableScreen = () => {
 
   const confirmVoid = () => {
     if (!activeOrder) return;
-    updateOrderStatus(activeOrder.id, "Voided");
+    updateOrderStatus(activeOrder.id, "void");
     updateTableStatus(tableId as string, "Available");
     setVoidConfirmOpen(false);
     show({

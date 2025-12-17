@@ -26,11 +26,11 @@ const PaymentActions = () => {
 
   const handlePlaceOrder = () => {
     const tableIdForOrder =
-      activeOrder?.order_type === "Dine In"
+      activeOrder?.order_type === "dine_in"
         ? pendingTableSelection
         : activeOrder?.service_location_id;
 
-    if (activeOrder?.order_type === "Dine In" && !tableIdForOrder) {
+    if (activeOrder?.order_type === "dine_in" && !tableIdForOrder) {
       show({
         title: "Table Not Selected",
         message: "Please select a table before placing a dine-in order.",
@@ -41,7 +41,7 @@ const PaymentActions = () => {
 
     // For dine-in orders, we need to check if the order is paid before assigning to table
     if (
-      activeOrder?.order_type === "Dine In" &&
+      activeOrder?.order_type === "dine_in" &&
       activeOrder.paid_status !== "Paid"
     ) {
       // Open payment modal with the pending table selection

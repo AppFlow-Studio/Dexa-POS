@@ -57,9 +57,9 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
   const orderTypes = [
-    { value: "Dine In", label: "Dine In" },
-    { value: "Takeaway", label: "Takeaway" },
-    { value: "Delivery", label: "Delivery" },
+    { value: "dine_in", label: "Dine In" },
+    { value: "takeout", label: "Takeaway" },
+    { value: "delivery", label: "Delivery" },
   ];
 
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
@@ -115,7 +115,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       // Transfer existing order to the table
       assignOrderToTable(activeOrderId, selectedTable.id);
       updateActiveOrderDetails({
-        order_type: "Dine In",
+        order_type: "dine_in",
         guest_count: guestCount,
       });
       updateTableStatus(selectedTable.id, "In Use");
@@ -235,8 +235,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
           </View>
           <View className="h-[1px] bg-gray-700 w-full mx-auto" />
 
-          {(currentOrderType === "Delivery" ||
-            currentOrderType === "Takeaway") && (
+          {(currentOrderType === "delivery" ||
+            currentOrderType === "takeout") && (
             <View className="mt-4">
               <Text className="text-white font-semibold text-2xl mb-3">
                 Customer Information
@@ -272,7 +272,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                   </>
                 )}
               </TouchableOpacity>
-              {currentOrderType === "Delivery" && (
+              {currentOrderType === "delivery" && (
                 <View className="mt-3">
                   <Text className="text-gray-300 text-lg font-medium mb-1">
                     Delivery Address
@@ -287,7 +287,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
             </View>
           )}
 
-          {currentOrderType === "Dine In" && (
+          {currentOrderType === "dine_in" && (
             <View className="mt-6 flex-1">
               <Text className="text-white font-semibold text-2xl mb-4">
                 Select Table

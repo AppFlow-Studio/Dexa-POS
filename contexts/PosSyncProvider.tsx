@@ -3,6 +3,7 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MerchantRole } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import React, { useCallback, useEffect } from "react";
 
@@ -22,6 +23,17 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
+
+  // Register Supabase client with order store for backend sync
+  useEffect(() => {
+    if (supabase) {
+      setOrderStoreSupabaseClient(supabase);
+      console.log("Supabase client registered with order store");
+    }
+    return () => {
+      setOrderStoreSupabaseClient(null);
+    };
+  }, [supabase]);
 
   // Sync employees from location_members
   const syncEmployees = useCallback(

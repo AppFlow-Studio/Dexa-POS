@@ -23,32 +23,32 @@ const OrderLineSection: React.FC = () => {
     return orders.filter(
       (o) =>
         o.items.length > 0 &&
-        o.order_status !== "Closed" &&
-        o.order_status !== "Building" &&
-        (o.order_status === "Preparing" || o.paid_status !== "Paid") &&
-        o.order_status !== "Voided"
+        o.order_status !== "completed" &&
+        o.order_status !== "draft" &&
+        (o.order_status === "preparing" || o.paid_status !== "Paid") &&
+        o.order_status !== "void"
     );
   }, [orders]);
 
   const orderCounts = useMemo(() => {
     return {
       All: visibleOrders.length,
-      "Dine In": visibleOrders.filter((o) => o.order_type === "Dine In").length,
-      Takeaway: visibleOrders.filter((o) => o.order_type === "Takeaway").length,
-      Delivery: visibleOrders.filter((o) => o.order_type === "Delivery").length,
+      "Dine In": visibleOrders.filter((o) => o.order_type === "dine_in").length,
+      Takeaway: visibleOrders.filter((o) => o.order_type === "takeout").length,
+      Delivery: visibleOrders.filter((o) => o.order_type === "delivery").length,
     };
   }, [visibleOrders]);
 
   const totalOrder = orders.filter(
     (o) =>
-      (o.order_type !== "Dine In" &&
-        // Condition 1: Must be in Preparing state
-        o.order_status === "Preparing" &&
+      (o.order_type !== "dine_in" &&
+        // Condition 1: Must be in preparing state
+        o.order_status === "preparing" &&
         // Condition 2: Must have one or more items
         o.items.length > 0) ||
       (o.paid_status === "Unpaid" &&
-        o.order_status !== "Closed" &&
-        o.order_status !== "Building")
+        o.order_status !== "completed" &&
+        o.order_status !== "draft")
   ).length;
 
   // State to hold the orders that are actually displayed

@@ -1,9 +1,12 @@
-import React, { forwardRef, useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
-import { BottomSheetMethods } from '@gorhom/bottom-sheet/lib/typescript/types';
-import { X } from 'lucide-react-native';
-import { useOrderStore } from '@/stores/useOrderStore'; // Import the store
+import { useOrderStore } from "@/stores/useOrderStore"; // Import the store
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
+import { X } from "lucide-react-native";
+import React, { forwardRef, useMemo } from "react";
+import { Text, TouchableOpacity, View } from "react-native";
 
 interface PricingBreakdownSheetProps {
   onClose: () => void;
@@ -13,8 +16,11 @@ interface PricingBreakdownSheetProps {
 const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
-> = function PricingBreakdownSheetComponent({ onClose, onPressProceedToPayment }, ref) {
-  const snapPoints = useMemo(() => ['50%'], []);
+> = function PricingBreakdownSheetComponent(
+  { onClose, onPressProceedToPayment },
+  ref
+) {
+  const snapPoints = useMemo(() => ["50%"], []);
 
   // Get values directly from the order store
   const {
@@ -51,7 +57,9 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
     >
       <BottomSheetView className="flex-1 bg-[#212121] rounded-t-3xl overflow-hidden">
         <View className="flex-row justify-between items-center p-4 border-b border-gray-700">
-          <Text className="text-2xl font-bold text-white">Pricing Breakdown</Text>
+          <Text className="text-2xl font-bold text-white">
+            Pricing Breakdown
+          </Text>
           <TouchableOpacity
             onPress={onClose}
             className="p-2 bg-[#303030] rounded-full border border-gray-600"
@@ -62,15 +70,21 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         <View className="p-4 flex-1">
           <View className="flex-row justify-between items-center py-2">
             <Text className="text-white text-lg">Subtotal:</Text>
-            <Text className="text-white text-lg">${activeOrderSubtotal.toFixed(2)}</Text>
+            <Text className="text-white text-lg">
+              ${activeOrderSubtotal.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between items-center py-2">
             <Text className="text-white text-lg">Discount:</Text>
-            <Text className="text-white text-lg">-${activeOrderDiscount.toFixed(2)}</Text>
+            <Text className="text-white text-lg">
+              -${activeOrderDiscount.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between items-center py-2">
             <Text className="text-white text-lg">Tax:</Text>
-            <Text className="text-white text-lg">${activeOrderTax.toFixed(2)}</Text>
+            <Text className="text-white text-lg">
+              ${activeOrderTax.toFixed(2)}
+            </Text>
           </View>
           <View className="flex-row justify-between items-center py-2">
             <Text className="text-white text-lg">Voucher:</Text>
@@ -79,14 +93,18 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           <View className="h-[1px] bg-gray-700 my-3" />
           <View className="flex-row justify-between items-center py-2">
             <Text className="text-white text-xl font-bold">Total:</Text>
-            <Text className="text-white text-xl font-bold">${activeOrderTotal.toFixed(2)}</Text>
+            <Text className="text-white text-xl font-bold">
+              ${activeOrderTotal.toFixed(2)}
+            </Text>
           </View>
 
           <TouchableOpacity
             onPress={onPressProceedToPayment}
             className="mt-6 p-3 bg-blue-500 rounded-lg items-center"
           >
-            <Text className="text-white text-lg font-semibold">Proceed to Payment</Text>
+            <Text className="text-white text-lg font-semibold">
+              Proceed to Payment
+            </Text>
           </TouchableOpacity>
         </View>
       </BottomSheetView>

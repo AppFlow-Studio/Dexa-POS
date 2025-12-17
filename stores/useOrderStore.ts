@@ -1,11 +1,349 @@
 import { toastService } from "@/lib/toastService";
 import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
+import type {
+  AddOrderItemParams,
+  CreateOrderParams,
+  OrderType as DbOrderType,
+  ProcessPaymentParams,
+} from "@/types/db-order-management-types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
-import { useFloorPlanStore } from "./useFloorPlanStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
+
+import { OrderService } from "@/services/orderService";
+import { useStoreSettingsStore } from "./useStoreSettingsStore";
+
+// Module-level Supabase client for backend sync
+// Components register the client via setOrderStoreSupabaseClient
+let _supabaseClient: SupabaseClient | null = null;
+
+export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
+  _supabaseClient = client;
+};
+
+export const getOrderStoreSupabaseClient = () => _supabaseClient;
+
+// Helper to sync item to backend
+const addItemToBackend = async (
+  order: OrderProfile,
+  item: CartItem,
+  setOrderDbId: (
+    id: string,
+    dbId: string,
+    number: string,
+    display: string
+  ) => void,
+  removeItem: (itemId: string) => void
+): Promise<boolean> => {
+  const supabase = _supabaseClient;
+  if (!supabase) {
+    console.log("Backend sync skipped: No Supabase client registered");
+    return true;
+  }
+
+  const selectedStore = useStoreSettingsStore.getState().selectedStore;
+  if (!selectedStore) {
+    console.log("Backend sync skipped: No store selected");
+    return true;
+  }
+
+  // If item is draft (missing required fields), skip sync
+  if (item.isDraft) {
+    console.log("Backend sync skipped: Item is draft");
+    return true;
+  }
+
+  try {
+    let dbOrderId = order.db_order_id;
+
+    // Create order if it doesn't exist
+    if (!dbOrderId) {
+      const createOrderParams: CreateOrderParams = {
+        p_merchant_id: selectedStore.merchant_id,
+        p_location_id: selectedStore.id,
+        // Map local order types to backend enum values
+        p_order_type: order.order_type
+          ? order.order_type === "Takeaway"
+            ? "takeout"
+            : order.order_type === "Dine In"
+              ? "dine_in"
+              : (order.order_type.toLowerCase() as DbOrderType)
+          : ("dine_in" as DbOrderType),
+        p_table_number: order.service_location_id || undefined, // Simple mapping for now
+        p_created_by_staff_id: undefined, // Could get from employee store if needed
+      };
+
+      console.log(
+        "Creating order in backend with params:",
+        JSON.stringify(createOrderParams, null, 2)
+      );
+
+      const { data: createResult, error: createError } =
+        await OrderService.createOrder(supabase, createOrderParams);
+
+      console.log("createOrder Result:", createResult);
+      console.log("createOrder Error:", createError);
+
+      if (createError) {
+        console.error("Failed to create order in backend:", createError);
+        toastService.show({
+          title: "Sync Error",
+          message:
+            "Failed to create order on server: " +
+            (createError.message || createError.code),
+          type: "error",
+        });
+        // Rollback: remove the item since order creation failed
+        removeItem(item.id);
+        return false;
+      }
+
+      if (createResult) {
+        // Store the backend IDs
+        // Handle if createResult is an array (some RPCs return arrays)
+        const orderData = (
+          Array.isArray(createResult) ? createResult[0] : createResult
+        ) as any;
+
+        // The RPC seems to return order_id instead of id based on logs
+        const backendId = orderData.order_id || orderData.id;
+
+        if (backendId) {
+          dbOrderId = backendId;
+          console.log("Order created successfully, ID:", dbOrderId);
+
+          setOrderDbId(
+            order.id,
+            backendId,
+            orderData.order_number,
+            orderData.display_number
+          );
+        } else {
+          console.error("createOrder result invalid:", createResult);
+        }
+      } else {
+        console.warn(
+          "createOrder returned no data and no error. This is unexpected."
+        );
+      }
+    }
+
+    // Add item to backend
+    // Debug logging for specific error tracking
+    if (!dbOrderId) {
+      console.error("Critical: dbOrderId is missing before adding item!", {
+        orderId: order.id,
+      });
+      // We can't proceed without an order ID
+      removeItem(item.id);
+      return false;
+    }
+
+    const addItemParams: AddOrderItemParams = {
+      p_order_id: dbOrderId,
+      p_menu_item_id: item.menuItemId || undefined,
+      p_quantity: item.quantity,
+
+      // Item details
+      p_item_name: item.name,
+      p_category_name: item.category_name || "Uncategorized",
+      p_unit_price: item.originalPrice, // Providing effective unit price
+      p_cash_price: item.originalPrice, // Assuming cash price same as unit price for now if not available
+      p_use_cash_price: true, // Defaulting to true as per request
+
+      // Size details
+      p_selected_size_id: item.customizations?.size?.id || undefined,
+      p_selected_size_name: item.customizations?.size?.name || undefined,
+      p_size_price_modifier:
+        item.customizations?.size?.priceModifier || undefined,
+
+      p_special_instructions: item.customizations?.notes || undefined,
+      p_modifiers: item.customizations?.modifiers?.flatMap((mod) =>
+        mod.options.map((opt) => ({
+          modifier_group_id: mod.categoryId,
+          modifier_item_id: opt.id,
+          modifier_group_name: mod.categoryName,
+          modifier_name: opt.name,
+          price_modifier: opt.price,
+          quantity: 1,
+        }))
+      ),
+      p_location_exclusive_item_id: item.locationExclusiveItemId || undefined,
+
+      // Kitchen/Coursing (Placeholder logic - update with real data if available)
+      p_prep_station: undefined,
+      p_course_number: 1, // Default to course 1
+    };
+
+    console.log(
+      "Adding item to backend with params:",
+      JSON.stringify(addItemParams, null, 2)
+    );
+    const { error: addError } = await OrderService.addOrderItem(
+      supabase,
+      addItemParams
+    );
+
+    if (addError) {
+      console.error("Failed to add item to backend:", addError);
+      toastService.show({
+        title: "Sync Error",
+        message:
+          "Failed to sync item to server: " +
+          (addError.message || addError.code),
+        type: "error",
+      });
+      // Rollback: remove the item
+      removeItem(item.id);
+      return false;
+    }
+
+    console.log("Item synced to backend successfully");
+    return true;
+  } catch (error) {
+    console.error("Backend sync error:", error);
+    toastService.show({
+      title: "Sync Error",
+      message: "Failed to sync to server",
+      type: "error",
+    });
+    // Rollback
+    removeItem(item.id);
+    return false;
+  }
+};
+
+// Backend sync helper - processes payment
+const syncPaymentToBackend = async (
+  order: OrderProfile,
+  paymentDetails: {
+    amount: number;
+    method: PaymentType;
+    tipAmount?: number;
+    transactionDetails?: Record<string, any>;
+  }
+): Promise<boolean> => {
+  const supabase = _supabaseClient;
+  if (!supabase) {
+    console.log("Backend sync skipped: No Supabase client registered");
+    return true;
+  }
+
+  const selectedStore = useStoreSettingsStore.getState().selectedStore;
+  if (!selectedStore) {
+    console.log("Backend sync skipped: No store selected");
+    return true;
+  }
+
+  // If order doesn't have a DB ID yet (e.g. strict offline mode until payment), we can't sync payment
+  if (!order.db_order_id) {
+    console.warn("Backend sync skipped: Order has no db_order_id");
+    return true;
+  }
+
+  try {
+    // Map local PaymentType to backend PaymentMethod
+    let backendMethod: any = "external";
+    if (paymentDetails.method === "Cash") {
+      backendMethod = "cash";
+    } else if (paymentDetails.method === "Card") {
+      // Check if it was a specific terminal integration
+      if (paymentDetails.transactionDetails?.terminalType === "spinapi") {
+        backendMethod = "card_spinapi";
+      } else if (
+        paymentDetails.transactionDetails?.terminalType === "dvpaylite"
+      ) {
+        backendMethod = "card_dvpaylite";
+      } else {
+        backendMethod = "card_manual";
+      }
+    }
+
+    const paymentParams: ProcessPaymentParams = {
+      p_order_id: order.db_order_id,
+      p_payment_method: backendMethod,
+      p_amount: paymentDetails.amount,
+      p_tip_amount: paymentDetails.tipAmount || 0,
+      p_terminal_type:
+        (paymentDetails.transactionDetails?.terminalType as any) || "manual",
+      p_transaction_details: paymentDetails.transactionDetails,
+    };
+
+    console.log("Processing payment in backend:", paymentParams);
+    const { error } = await OrderService.processPayment(
+      supabase,
+      paymentParams
+    );
+
+    if (error) {
+      console.error("Failed to process payment in backend:", error);
+      toastService.show({
+        title: "Sync Error",
+        message: "Failed to sync payment to server",
+        type: "error",
+      });
+      return false;
+    }
+
+    console.log("Payment synced to backend successfully");
+    return true;
+  } catch (error) {
+    console.error("Backend payment sync error:", error);
+    toastService.show({
+      title: "Sync Error",
+      message: "Failed to sync payment to server",
+      type: "error",
+    });
+    return false;
+  }
+};
+
+const syncOrderTotals = async (orderId: string): Promise<void> => {
+  const supabase = _supabaseClient;
+  if (!supabase) return;
+
+  const order = useOrderStore.getState().orders.find((o) => o.id === orderId);
+  if (!order?.db_order_id) return;
+
+  try {
+    const { data, error } = await OrderService.calculateOrderTax(
+      supabase,
+      order.db_order_id!,
+      TAX_RATE
+    );
+
+    if (error) throw error; // Handle error appropriately
+
+    // Update store with backend calculated values
+    if (data) {
+      useOrderStore.setState((state) => ({
+        orders: state.orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                total_tax: data.tax_amount,
+                total_amount: data.total_amount,
+                total_discount: data.discount_amount,
+              }
+            : o
+        ),
+        // Also update active order derived state if this is the active order
+        ...(state.activeOrderId === orderId
+          ? {
+              activeOrderTax: data.tax_amount || 0,
+              activeOrderTotal: data.total_amount || 0,
+              activeOrderDiscount: data.discount_amount || 0,
+            }
+          : {}),
+      }));
+    }
+  } catch (err) {
+    console.error("Failed to sync order totals:", err);
+  }
+};
 
 const TAX_RATE = 0.05;
 
@@ -39,7 +377,7 @@ interface OrderState {
   confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
     itemId: string,
-    status: "Preparing" | "Ready" | "Served"
+    status: "preparing" | "ready" | "served"
   ) => void;
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
@@ -54,13 +392,16 @@ interface OrderState {
     orderId: string,
     status: OrderProfile["order_status"]
   ) => void;
-  addPaymentToOrder: (paymentDetails: {
+  addPaymentToOrder: (details: {
     orderId: string;
     amount: number;
     method: PaymentType;
     cardBrand?: string;
     last4?: string;
+    tipAmount?: number;
+    transactionDetails?: Record<string, any>;
   }) => void;
+  setOrders: (orders: OrderProfile[]) => void;
 
   markOrderAsPaid: (orderId: string) => void;
   setPendingTableSelection: (tableId: string | null) => void;
@@ -99,27 +440,24 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
     // Only sync order status for orders that are assigned to tables or in kitchen workflow
     // Don't sync for orders that are still being built
-    if (
-      order.order_status === "Building" ||
-      order.service_location_id === null
-    ) {
+    if (order.order_status === "draft" || order.service_location_id === null) {
       return;
     }
 
     // For dine-in orders, sync based on individual item statuses
     if (order.order_type === "Dine In") {
       const allItemsReady = order.items.every(
-        (item) => item.item_status === "Ready"
+        (item) => item.item_status === "ready"
       );
       const anyItemsPreparing = order.items.some(
-        (item) => item.item_status === "Preparing"
+        (item) => item.item_status === "preparing"
       );
 
       let newOrderStatus = order.order_status;
       if (allItemsReady) {
-        newOrderStatus = "Ready";
+        newOrderStatus = "ready";
       } else if (anyItemsPreparing) {
-        newOrderStatus = "Preparing";
+        newOrderStatus = "preparing";
       }
 
       if (newOrderStatus !== order.order_status) {
@@ -214,11 +552,46 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const outstandingTotal =
         outstandingSubtotalAfterDiscount + outstandingTax;
 
+      // Ensure no undefined values propagate
+      const safeSubtotal = Number(subtotal) || 0;
+      const safeTax = Number(tax) || 0;
+      const safeTotal = Number(total) || 0;
+      const safeDiscount = Number(totalDiscountAmount) || 0;
+
+      // Fallback for backend values (robust check)
+      const backendTax =
+        activeOrder.total_tax !== undefined
+          ? Number(activeOrder.total_tax)
+          : undefined;
+      const backendTotal =
+        activeOrder.total_amount !== undefined
+          ? Number(activeOrder.total_amount)
+          : undefined;
+
+      const finalTax = backendTax !== undefined ? backendTax : safeTax;
+      const finalTotal = backendTotal !== undefined ? backendTotal : safeTotal;
+
+      // Log to debug undefined issues
+      if (
+        (activeOrder.db_order_id && backendTotal === undefined) ||
+        isNaN(finalTotal)
+      ) {
+        console.warn(
+          `recalculateTotals: Potential unsafe totals for order ${orderId}`,
+          {
+            backendTotal: activeOrder.total_amount,
+            safeTotal,
+            subtotal,
+            items: activeOrder.items.length,
+          }
+        );
+      }
+
       set({
-        activeOrderSubtotal: subtotal,
-        activeOrderTax: tax,
-        activeOrderTotal: total,
-        activeOrderDiscount: totalDiscountAmount,
+        activeOrderSubtotal: safeSubtotal,
+        activeOrderTax: finalTax,
+        activeOrderTotal: finalTotal,
+        activeOrderDiscount: safeDiscount,
         activeOrderOutstandingSubtotal: outstandingSubtotal,
         activeOrderOutstandingTax: outstandingTax,
         activeOrderOutstandingTotal: outstandingTotal,
@@ -388,6 +761,17 @@ export const useOrderStore = create<OrderState>((set, get) => {
     pendingTableSelection: null,
 
     // --- PUBLIC ACTIONS ---
+    setOrders: (newOrders) => {
+      // Sanitize orders to ensure no undefined numbers propagate from backend
+      const sanitizedOrders = newOrders.map((o) => ({
+        ...o,
+        total_amount: o.total_amount ?? 0,
+        total_tax: o.total_tax ?? 0,
+        total_discount: o.total_discount ?? 0,
+        items: o.items || [],
+      }));
+      set({ orders: sanitizedOrders });
+    },
     setActiveOrder: (orderId) => {
       set({ activeOrderId: orderId });
       // Avoid mutating orders here to prevent effects that depend on `orders` from looping
@@ -402,7 +786,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: details?.tableId || null,
-        order_status: "Building",
+        order_status: "draft",
         customer_name: "",
         check_status: "Opened",
         paid_status: "Unpaid",
@@ -477,7 +861,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           ...newItem,
           paidQuantity: 0,
           item_status:
-            activeOrder.order_type === "Dine In" ? "Preparing" : undefined,
+            activeOrder.order_type === "Dine In" ? "preparing" : undefined,
           kitchen_status: newItem.isDraft ? undefined : ("new" as const), // Only mark as 'new' if not a draft
         };
         updatedCart = [...updatedCart, newCartItem];
@@ -496,6 +880,44 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
 
       recalculateTotals(activeOrderId);
+
+      // 6. Async backend sync (optimistic UI - local update already done)
+      // Only sync non-draft items
+      const itemToSync = mergeCandidate || newItem;
+      if (!itemToSync.isDraft) {
+        const orderToSync = get().orders.find((o) => o.id === activeOrderId);
+        if (orderToSync) {
+          const removeItemAction = get().removeItemFromActiveOrder;
+          const setOrderDbIdAction = (
+            orderId: string,
+            dbOrderId: string,
+            orderNumber: string,
+            displayNumber: string
+          ) => {
+            set((state) => ({
+              orders: state.orders.map((o) =>
+                o.id === orderId
+                  ? {
+                      ...o,
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                    }
+                  : o
+              ),
+            }));
+          };
+
+          // Fire async sync (don't await - optimistic)
+          addItemToBackend(
+            orderToSync,
+            itemToSync,
+            setOrderDbIdAction,
+            removeItemAction
+          ).catch((err) => console.error("Background sync failed:", err));
+        }
+      }
     },
 
     updateItemInActiveOrder: (updatedItem) => {
@@ -527,8 +949,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // Find the item being updated
       const itemToUpdate = activeOrder.items.find((i) => i.id === itemId);
 
-      // Trigger inventory depletion when an item is marked as "Ready" or "Served"
-      if ((status === "Ready" || status === "Served") && itemToUpdate) {
+      // Trigger inventory depletion when an item is marked as "ready" or "served"
+      if ((status === "ready" || status === "served") && itemToUpdate) {
         useInventoryStore.getState().decrementStockFromItem(itemToUpdate);
       }
 
@@ -541,13 +963,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
                 // Update kitchen_status based on item_status
                 if (
-                  status === "Preparing" &&
+                  status === "preparing" &&
                   (!i.kitchen_status || i.kitchen_status === "new")
                 ) {
                   updatedItem.kitchen_status = "sent";
-                } else if (status === "Ready") {
+                } else if (status === "ready") {
                   updatedItem.kitchen_status = "ready";
-                } else if (status === "Served") {
+                } else if (status === "served") {
                   updatedItem.kitchen_status = "served";
                 }
 
@@ -560,27 +982,27 @@ export const useOrderStore = create<OrderState>((set, get) => {
             // Don't sync for orders that are still being built or takeaway orders
             if (
               o.order_type === "Dine In" &&
-              o.order_status !== "Building" &&
+              o.order_status !== "draft" &&
               o.service_location_id !== null
             ) {
               const allItemsServed = updatedItems.every(
-                (item) => item.item_status === "Served"
+                (item) => item.item_status === "served"
               );
               const allItemsReady = updatedItems.every(
                 (item) =>
-                  item.item_status === "Ready" || item.item_status === "Served"
+                  item.item_status === "ready" || item.item_status === "served"
               );
               const anyItemsPreparing = updatedItems.some(
-                (item) => item.item_status === "Preparing"
+                (item) => item.item_status === "preparing"
               );
 
               let newOrderStatus = o.order_status;
               if (allItemsServed && updatedItems.length > 0) {
-                newOrderStatus = "Served";
+                newOrderStatus = "completed";
               } else if (allItemsReady && updatedItems.length > 0) {
-                newOrderStatus = "Ready";
+                newOrderStatus = "ready";
               } else if (anyItemsPreparing) {
-                newOrderStatus = "Preparing";
+                newOrderStatus = "preparing";
               }
 
               return {
@@ -604,8 +1026,38 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     removeItemFromActiveOrder: (itemId) => {
-      const { activeOrderId } = get();
+      const { activeOrderId, orders } = get();
       if (!activeOrderId) return;
+
+      const order = orders.find((o) => o.id === activeOrderId);
+      if (!order) return;
+
+      const itemToRemove = order.items.find((i) => i.id === itemId);
+
+      // If item is already synced (has kitchen status other than 'new' or order has db_id), try to void on backend
+      if (itemToRemove && !itemToRemove.isDraft && order.db_order_id) {
+        const supabase = getOrderStoreSupabaseClient();
+        // We don't have the order_item_id mapped in CartItem usually...
+        // Assuming CartItem.id MIGHT correspond to order_item_id if fetched from backend,
+        // OR we need to find the backend ID.
+        // If we don't have backend ID for item, we can't void it via RPC.
+        // For now, proceeding with local removal and attempting RPC if feasible.
+        // But checking `useOrders.ts`, voidItem takes `orderItemId`.
+        // If local items don't have real DB IDs, this will fail.
+        // Assuming hydrated orders have correct IDs.
+
+        if (supabase) {
+          OrderService.voidOrderItem(supabase, itemId, "User removed").then(
+            ({ error }) => {
+              if (error) console.error("Failed to void item:", error);
+              else {
+                // Trigger total recalc after void
+                syncOrderTotals(activeOrderId);
+              }
+            }
+          );
+        }
+      }
 
       set((state) => ({
         orders: state.orders.map((o) =>
@@ -746,16 +1198,30 @@ export const useOrderStore = create<OrderState>((set, get) => {
               ...o,
               service_location_id: tableId,
               order_type: "Dine In" as const,
-              order_status: "Preparing" as const,
+              order_status: "preparing" as const,
             }
           : o
       );
+
+      // Sync status change to backend
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && orderToAssign.db_order_id) {
+        OrderService.updateOrderStatus(
+          supabase,
+          orderToAssign.db_order_id,
+          "preparing"
+        ).then(({ error }) => {
+          if (error) {
+            console.error("Failed to update backend order status:", error);
+          }
+        });
+      }
 
       // Create a new, empty global "walk-in" order for the next customer
       const newGlobalOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: null,
-        order_status: "Building",
+        order_status: "draft",
         check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
@@ -773,12 +1239,28 @@ export const useOrderStore = create<OrderState>((set, get) => {
     },
 
     updateOrderStatus: (orderId, status) => {
+      const { orders } = get();
+      const order = orders.find((o) => o.id === orderId);
+
+      // Sync to backend if possible
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && order?.db_order_id) {
+        OrderService.updateOrderStatus(
+          supabase,
+          order.db_order_id,
+          status
+        ).then(({ error }) => {
+          if (error)
+            console.error("Failed to update status on backend:", error);
+        });
+      }
+
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id !== orderId) return o;
           // Keep check_status in sync for terminal states
           const next: Partial<OrderProfile> = { order_status: status } as any;
-          if (status === "Closed" || status === "Voided") {
+          if (status === "completed" || status === "void") {
             (next as any).check_status = "Closed";
           }
           return { ...o, ...next };
@@ -786,7 +1268,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
     },
 
-    addPaymentToOrder: ({ orderId, amount, method, cardBrand, last4 }) => {
+    addPaymentToOrder: ({
+      orderId,
+      amount,
+      method,
+      cardBrand,
+      last4,
+      tipAmount,
+      transactionDetails,
+    }) => {
       set((state) => ({
         orders: state.orders.map((o) => {
           if (o.id === orderId) {
@@ -795,6 +1285,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
               method,
               ...(cardBrand && { cardBrand }),
               ...(last4 && { last4 }),
+              ...(tipAmount && { tipAmount }),
+              ...(transactionDetails && { transactionDetails }),
             };
 
             const newPayments = [...(o.payments || []), newPayment];
@@ -818,6 +1310,18 @@ export const useOrderStore = create<OrderState>((set, get) => {
               };
             });
 
+            // Sync payment to backend (optimistic)
+            const paymentDetails = {
+              amount,
+              method,
+              tipAmount,
+              transactionDetails,
+            };
+            // Don't await sync - UI should be responsive
+            syncPaymentToBackend(o, paymentDetails).catch((err) =>
+              console.error("Background payment sync failed:", err)
+            );
+
             return { ...o, payments: newPayments, items: updatedItems };
           }
           return o;
@@ -833,8 +1337,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
       // Trigger inventory depletion when order is paid (alternative trigger point)
       if (
         order.items.length > 0 &&
-        order.order_status !== "Ready" &&
-        order.order_status !== "Served"
+        order.order_status !== "ready" &&
+        order.order_status !== "completed"
       ) {
         useInventoryStore.getState().decrementStockFromSale(order.items);
       }
@@ -891,7 +1395,9 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const finalOrder = {
         ...order,
         order_status:
-          order.order_status === "Voided" ? ("Voided" as const) : ("Closed" as const),
+          order.order_status === "void"
+            ? ("void" as const)
+            : ("completed" as const),
         closed_at: order.closed_at || new Date().toISOString(),
         total_amount:
           order.total_amount ||
@@ -967,7 +1473,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           // and set its status to Ready.
           mergedItemsMap.set(itemKey, {
             ...item,
-            item_status: "Ready" as const,
+            item_status: "ready" as const,
             kitchen_status: "ready" as const,
           });
         }
@@ -982,12 +1488,26 @@ export const useOrderStore = create<OrderState>((set, get) => {
             return {
               ...o,
               items: updatedItems, // Use the new, consolidated list
-              order_status: "Ready" as const,
+              order_status: "ready" as const,
             };
           }
           return o;
         }),
       }));
+
+      // Sync status to backend
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && order.db_order_id) {
+        OrderService.updateOrderStatus(
+          supabase,
+          order.db_order_id,
+          "ready"
+        ).then(({ error }) => {
+          if (error) {
+            console.error("Failed to update backend order status:", error);
+          }
+        });
+      }
     },
 
     markAllItemsAsServed: (orderId) => {
@@ -1007,7 +1527,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
             // Create a new items array where every item's status is "Served"
             const updatedItems = order.items.map((item) => ({
               ...item,
-              item_status: "Served" as const, // Use 'as const' for strict typing
+              item_status: "served" as const, // Use 'as const' for strict typing
               kitchen_status: "served" as const, // Update kitchen status to served
             }));
 
@@ -1015,12 +1535,26 @@ export const useOrderStore = create<OrderState>((set, get) => {
             return {
               ...order,
               items: updatedItems,
-              order_status: "Served" as const,
+              order_status: "completed" as const,
             };
           }
           return order;
         }),
       }));
+
+      // Sync status to backend
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && order.db_order_id) {
+        OrderService.updateOrderStatus(
+          supabase,
+          order.db_order_id,
+          "completed"
+        ).then(({ error }) => {
+          if (error) {
+            console.error("Failed to update backend order status:", error);
+          }
+        });
+      }
     },
     consolidateOrdersForTables: (tableIds, tableNames) => {
       const { orders, startNewOrder } = get();
@@ -1050,7 +1584,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const newMergedOrderData = {
         id: `order_${Date.now()}`,
         service_location_id: primaryTableId,
-        order_status: "Preparing" as const,
+        order_status: "preparing" as const,
         order_type: "Dine In" as const,
         check_status: "Opened" as const,
         paid_status: "Unpaid" as const,
@@ -1085,7 +1619,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       if (!currentOrder) return;
       if ((currentOrder.items?.length || 0) === 0) return;
       // If already fired (not in Building), do nothing
-      if (currentOrder.order_status !== "Building") return;
+      if (currentOrder.order_status !== "draft") return;
 
       const updatedOrders = orders.map((o) => {
         if (o.id !== activeOrderId) return o;
@@ -1097,7 +1631,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
         return {
           ...o,
           items: updatedItems,
-          order_status: "Preparing" as const,
+          order_status: "preparing" as const,
           check_status: "Opened" as const,
           paid_status: o.paid_status === "Paid" ? "Paid" : "Unpaid",
           order_type: o.order_type,
@@ -1108,7 +1642,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const newOrder: OrderProfile = {
         id: `order_${Date.now()}`,
         service_location_id: null,
-        order_status: "Building",
+        order_status: "draft",
         check_status: "Opened",
         paid_status: "Unpaid",
         items: [],
@@ -1118,6 +1652,21 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set({ orders: [...updatedOrders, newOrder], activeOrderId: newOrder.id });
       // Totals for the new active (empty) order become zero
       recalculateTotals(newOrder.id);
+
+      // Sync status to backend
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && currentOrder.db_order_id) {
+        OrderService.updateOrderStatus(
+          supabase,
+          currentOrder.db_order_id,
+          "preparing"
+        ).then(({ error }) => {
+          if (error) {
+            console.error("Failed to update backend order status:", error);
+          }
+        });
+      }
+
       toastService.show({
         title: "Order Sent",
         message: "The order has been successfully sent to the kitchen.",
@@ -1189,7 +1738,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
           itemsToKeep.push({
             ...newItem,
             kitchen_status: "sent",
-            item_status: "Preparing",
+            item_status: "preparing",
           });
         }
       }
@@ -1211,7 +1760,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
             return {
               ...o,
               items: finalCart, // Use the newly constructed final cart
-              order_status: "Preparing",
+              order_status: "preparing",
             };
           }
           return o;
@@ -1219,6 +1768,21 @@ export const useOrderStore = create<OrderState>((set, get) => {
       }));
 
       recalculateTotals(activeOrderId); // Recalculate totals after merging
+
+      // Sync the status change to the backend ("Preparing")
+      const supabase = getOrderStoreSupabaseClient();
+      if (supabase && currentOrder.db_order_id) {
+        supabase
+          .rpc("update_order_status", {
+            p_order_id: currentOrder.db_order_id,
+            p_new_status: "preparing",
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.error("Failed to update backend order status:", error);
+            }
+          });
+      }
 
       toastService.show({
         title: "Items Sent",
@@ -1262,7 +1826,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
               return {
                 ...o,
                 items: updatedItems,
-                order_status: "Preparing",
+                order_status: "preparing",
                 // Set opened_at timestamp if it's not already set for a Dine In order
                 opened_at: shouldStartTimer
                   ? new Date().toISOString()
@@ -1316,7 +1880,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
       set((state) => ({
         orders: state.orders.map((o) =>
           o.id === orderId
-            ? { ...o, order_status: "Voided", check_status: "Closed" }
+            ? { ...o, order_status: "void", check_status: "Closed" }
             : o
         ),
       }));

@@ -6,10 +6,10 @@ import React, { useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
+  RefreshControl,
   Text,
   TouchableOpacity,
   View,
-  RefreshControl, // New import
 } from "react-native";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 
@@ -84,7 +84,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
   onViewItems,
   onAssignToBill,
 }) => {
-  const isReady = order.order_status === "Ready";
+  const isReady = order.order_status === "ready";
   const statusBg = isReady ? "bg-green-600/20" : "bg-yellow-600/20";
   const statusText = isReady ? "text-green-400" : "text-yellow-400";
   const paidBg =
@@ -196,7 +196,7 @@ const PreviousOrdersSection = () => {
 
   // Get all orders (including completed ones)
   const allOrders = orders.filter(
-    (o) => o.order_status !== "Voided" && o.items.length > 0
+    (o) => o.order_status !== "void" && o.items.length > 0
   );
 
   const totalOrder = allOrders.length;
@@ -280,7 +280,8 @@ const PreviousOrdersSection = () => {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         className="flex-1"
-        refreshControl={ // New prop for pull-to-refresh
+        refreshControl={
+          // New prop for pull-to-refresh
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
         renderItem={({ item }) => (

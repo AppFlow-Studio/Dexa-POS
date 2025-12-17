@@ -1,10 +1,10 @@
 // lib/payments/dvpaylite.ts
-import { Linking } from 'react-native';
-import { OrdersAPI } from '../supabase-orders';
+import { Linking } from "react-native";
 
+// TODO: Backend integration - pass supabase client and call supabase.rpc("process_payment", params)
 interface DVPayLiteRequest {
-  type: 'SALE' | 'RETURN' | 'VOID';
-  applicationType: 'DVPAYLITE';
+  type: "SALE" | "RETURN" | "VOID";
+  applicationType: "DVPAYLITE";
   amount: string; // In cents
   tipAmount?: string; // In cents
   refId: string;
@@ -12,7 +12,7 @@ interface DVPayLiteRequest {
 }
 
 interface DVPayLiteResponse {
-  transactionResult: 'Success' | 'Failure';
+  transactionResult: "Success" | "Failure";
   transactionId?: string;
   authCode?: string;
   cardType?: string;
@@ -29,12 +29,12 @@ export class DVPayLiteClient {
   ): Promise<DVPayLiteResponse> {
     // Build request
     const request: DVPayLiteRequest = {
-      type: 'SALE',
-      applicationType: 'DVPAYLITE',
+      type: "SALE",
+      applicationType: "DVPAYLITE",
       amount: Math.round(amount * 100).toString(), // Convert to cents
       tipAmount: Math.round(tipAmount * 100).toString(),
       refId: orderId,
-      invoiceNumber: orderNumber
+      invoiceNumber: orderNumber,
     };
 
     // Encode and build deep link
@@ -44,7 +44,7 @@ export class DVPayLiteClient {
     // Launch DVPaylite
     const canOpen = await Linking.canOpenURL(deepLinkUrl);
     if (!canOpen) {
-      throw new Error('DVPaylite app not installed');
+      throw new Error("DVPaylite app not installed");
     }
 
     await Linking.openURL(deepLinkUrl);
@@ -52,21 +52,21 @@ export class DVPayLiteClient {
     // Return promise that resolves when DVPaylite returns
     return new Promise((resolve, reject) => {
       // Set up listener for DVPaylite callback
-      const subscription = Linking.addEventListener('url', (event) => {
+      const subscription = Linking.addEventListener("url", (event) => {
         const response = this.parseCallbackUrl(event.url);
         subscription.remove();
-        
-        if (response.transactionResult === 'Success') {
+
+        if (response.transactionResult === "Success") {
           resolve(response);
         } else {
-          reject(new Error(response.errorMessage || 'Payment failed'));
+          reject(new Error(response.errorMessage || "Payment failed"));
         }
       });
 
       // Timeout after 5 minutes
       setTimeout(() => {
         subscription.remove();
-        reject(new Error('Payment timeout'));
+        reject(new Error("Payment timeout"));
       }, 300000);
     });
   }
@@ -74,11 +74,11 @@ export class DVPayLiteClient {
   private parseCallbackUrl(url: string): DVPayLiteResponse {
     // Parse callback URL from DVPaylite
     // Format: myapp://payment-result?data=<encoded_json>
-    const params = new URLSearchParams(url.split('?')[1]);
-    const data = params.get('data');
-    
+    const params = new URLSearchParams(url.split("?")[1]);
+    const data = params.get("data");
+
     if (!data) {
-      throw new Error('Invalid callback from DVPaylite');
+      throw new Error("Invalid callback from DVPaylite");
     }
 
     const decoded = JSON.parse(decodeURIComponent(data));
@@ -104,20 +104,21 @@ export const processCardPaymentDVPayLite = async (
   );
 
   // Step 2: Record in database
-  const paymentResult = await OrdersAPI.processPayment({
-    p_order_id: orderId,
-    p_payment_method: 'card_dvpaylite',
-    p_amount: amount,
-    p_tip_amount: tipAmount,
-    p_terminal_type: 'dejavoo_p18',
-    p_transaction_details: {
-      transaction_id: response.transactionId,
-      authorization_code: response.authCode,
-      card_type: response.cardType,
-      card_last_four: response.lastFour,
-      dvpaylite_request_id: orderId
-    }
-  });
+  // TODO: Integrate with backend - pass supabase client from component
+  // const paymentResult = await supabase.rpc("process_payment", {
+  //   p_order_id: orderId,
+  //   p_payment_method: 'card_dvpaylite',
+  //   p_amount: amount,
+  //   p_tip_amount: tipAmount,
+  //   p_terminal_type: 'dejavoo_p18',
+  //   p_transaction_details: {
+  //     transaction_id: response.transactionId,
+  //     authorization_code: response.authCode,
+  //     card_type: response.cardType,
+  //     card_last_four: response.lastFour,
+  //     dvpaylite_request_id: orderId
+  //   }
+  // });
 
-  return paymentResult;
+  return response; // Return terminal response for now
 };

@@ -23,15 +23,15 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
 }) => {
   // Logic derived from props
   const allItemsReady = itemsInSelectedCourse.every(
-    (item) => item.item_status === "Ready"
+    (item) => item.item_status === "ready"
   );
   const anyItemsPreparing = itemsInSelectedCourse.some(
-    (item) => item.item_status === "Preparing"
+    (item) => item.item_status === "preparing"
   );
 
   const handleMarkAllReady = () => {
     const preparingItemIds = itemsInSelectedCourse
-      .filter((item) => item.item_status === "Preparing")
+      .filter((item) => item.item_status === "preparing")
       .map((item) => item.id);
     if (preparingItemIds.length > 0) {
       onMarkAllReady(preparingItemIds);
@@ -41,14 +41,14 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   // Helper to determine styling based on status
   const getItemStyle = (status: string | undefined) => {
     switch (status) {
-      case "Ready":
+      case "ready":
         return {
           bg: "bg-green-900/20",
           border: "border-green-500/50",
           text: "text-green-400",
           icon: <CheckCircle2 size={12} color="#4ade80" />,
         };
-      case "Preparing":
+      case "preparing":
         return {
           bg: "bg-yellow-900/20",
           border: "border-yellow-500/50",

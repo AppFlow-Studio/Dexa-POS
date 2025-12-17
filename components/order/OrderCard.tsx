@@ -17,21 +17,21 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onRetrieve,
 }) => {
   const isReady =
-    order.order_status === "Ready" || order.order_status === "Closed";
+    order.order_status === "ready" || order.order_status === "completed";
   const statusBg = isReady ? "bg-blue-100" : "bg-[#DC9F1E33]";
   const statusText = isReady ? "text-blue-700" : "text-[#DC9F1E]";
   const paidBg =
     order.paid_status === "Paid"
       ? "bg-green-500/20"
       : order.paid_status === "Pending"
-      ? "bg-yellow-500/20"
-      : "bg-red-500/20";
+        ? "bg-yellow-500/20"
+        : "bg-red-500/20";
   const paidText =
     order.paid_status === "Paid"
       ? "text-green-400"
       : order.paid_status === "Pending"
-      ? "text-yellow-700"
-      : "text-red-700";
+        ? "text-yellow-700"
+        : "text-red-700";
   const isUnpaid = order.paid_status !== "Paid";
   return (
     <View className="bg-[#303030] p-3 rounded-2xl border border-gray-700 w-72 mr-4">

@@ -92,7 +92,11 @@ interface PaymentState {
 
   // Flow Actions
   startSplitPaymentFlow: (source: PaymentView) => void;
-  handlePaymentCompletion: (method: string) => void;
+  handlePaymentCompletion: (
+    method: string,
+    tipAmount?: number,
+    transactionDetails?: Record<string, any>
+  ) => void;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
     cardBrand: string;
@@ -297,7 +301,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
 
-  handlePaymentCompletion: (method: string) => {
+  handlePaymentCompletion: (
+    method: string,
+    tipAmount?: number,
+    transactionDetails?: Record<string, any>
+  ) => {
     const { activeSplitId, splits } = get();
     const { activeOrderId, addPaymentToOrder, markOrderAsPaid } =
       useOrderStore.getState();
@@ -313,6 +321,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         orderId: activeOrderId,
         amount: currentSplit.amount,
         method: method as any,
+        tipAmount,
+        transactionDetails,
       });
 
       const updatedSplits = splits.map((s) =>
@@ -337,6 +347,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         orderId: activeOrderId,
         amount: activeOrderOutstandingTotal,
         method: method as any,
+        tipAmount,
+        transactionDetails,
       });
       markOrderAsPaid(activeOrderId);
       set({ view: "success" });

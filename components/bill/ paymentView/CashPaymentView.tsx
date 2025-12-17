@@ -18,6 +18,7 @@ const CashPaymentView = () => {
     usePaymentStore();
 
   const [amountTendered, setAmountTendered] = useState("");
+  const [tipInput, setTipInput] = useState("");
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
@@ -43,13 +44,13 @@ const CashPaymentView = () => {
 
   const handleProcessCashPayment = () => {
     // Use the central handler to manage splits loop
-    handlePaymentCompletion("Cash");
+    const tipAmount = parseFloat(tipInput) || 0;
+    handlePaymentCompletion("Cash", tipAmount);
   };
 
   const handleBack = () => {
     setView("payment-method-selection");
   };
-
 
   return (
     <KeyboardAvoidingView
@@ -130,6 +131,22 @@ const CashPaymentView = () => {
                   </Text>
                 </TouchableOpacity>
               ))}
+            </View>
+          </View>
+
+          {/* Tip Section */}
+          <View className="p-4 bg-[#262626] border-t border-[#333]">
+            <Text className="text-gray-400 mb-2 font-medium">Tip Amount</Text>
+            <View className="flex-row items-center bg-[#1A1A1A] border border-[#404040] rounded-xl px-4 h-16">
+              <DollarSign size={20} color="#9CA3AF" />
+              <TextInput
+                value={tipInput}
+                onChangeText={setTipInput}
+                placeholder="0.00"
+                keyboardType="numeric"
+                className="flex-1 text-2xl font-bold text-white ml-2 h-full"
+                placeholderTextColor="#525252"
+              />
             </View>
           </View>
 

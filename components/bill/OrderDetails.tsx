@@ -43,7 +43,7 @@ const OrderDetails: React.FC = () => {
   const { openSheet } = useCustomerSheetStore();
   // Find the full active order object
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const currentOrderType = activeOrder?.order_type || "Takeaway";
+  const currentOrderType = activeOrder?.order_type || "takeout";
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
@@ -83,7 +83,7 @@ const OrderDetails: React.FC = () => {
     // Initialize selected table from active order if it exists (only for already assigned tables)
     if (
       activeOrder?.service_location_id &&
-      activeOrder.order_status === "Preparing" &&
+      activeOrder.order_status === "preparing" &&
       !selectedTable
     ) {
       const tableOption = availableTableOptions.find(
@@ -145,7 +145,7 @@ const OrderDetails: React.FC = () => {
 
     // Check if the active order is closed
     const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "Closed") {
+    if (activeOrder?.order_status === "completed") {
       show({
         title: "Order Closed",
         message: "Cannot add items to a closed order. Please reopen it first.",
