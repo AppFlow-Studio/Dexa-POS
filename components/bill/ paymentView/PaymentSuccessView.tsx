@@ -6,7 +6,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { Check, Mail, Printer } from "lucide-react-native";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
@@ -20,23 +20,12 @@ const PaymentSuccessView = () => {
     orders,
     activeOrderTotal,
     activeOrderOutstandingTotal,
-    addPaymentToOrder,
   } = useOrderStore();
   const { menuItems } = useMenuStore();
   const { addSaleEvent, forceRefresh } = useAnalyticsStore();
 
-  const appliedRef = useRef(false);
-  useEffect(() => {
-    if (appliedRef.current) return;
-    if (activeOrderId && activeOrderOutstandingTotal > 0 && paymentMethod) {
-      addPaymentToOrder({
-        orderId: activeOrderId,
-        amount: activeOrderOutstandingTotal,
-        method: paymentMethod,
-      });
-    }
-    appliedRef.current = true;
-  }, []);
+  // NOTE: Payment was already processed by handlePaymentCompletion
+  // before navigating to this view. No need to call addPaymentToOrder again.
 
   // Ensure isDirty is false when this view mounts, as payment is complete
   useEffect(() => {

@@ -7,10 +7,12 @@ import {
 } from "@/lib/card-validation";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import {
   AlertCircle,
   ArrowLeft,
   CreditCard,
+  DollarSign,
   Lock,
   ShieldCheck,
 } from "lucide-react-native";
@@ -128,6 +130,11 @@ const ManualCardEntryView = () => {
   const [expiryYear, setExpiryYear] = useState("");
   const [cvv, setCvv] = useState("");
   const [zipCode, setZipCode] = useState("");
+  const [tipInput, setTipInput] = useState("");
+
+  // Calculate tip and grand total
+  const tipAmount = parseFloat(tipInput) || 0;
+  const grandTotal = amountToPay + tipAmount;
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isTouched, setIsTouched] = useState<Record<string, boolean>>({});
@@ -193,6 +200,7 @@ const ManualCardEntryView = () => {
     const success = await processManualCardPayment({
       cardBrand: cardInfo.cardType || "unknown",
       last4: cardNumber.slice(-4),
+      tipAmount,
     });
 
     if (success) {
@@ -386,6 +394,29 @@ const ManualCardEntryView = () => {
                 />
               </View>
 
+              {/* Tip Amount */}
+              <View>
+                <Text className="text-gray-400 mb-2 font-medium ml-1">
+                  Tip Amount (Optional)
+                </Text>
+                <View className="flex-row items-center bg-[#2A2A2A] rounded-xl border border-[#404040] px-4 w-1/2">
+                  <DollarSign size={18} color="#666" />
+                  <BottomSheetTextInput
+                    value={tipInput}
+                    onChangeText={setTipInput}
+                    placeholder="0.00"
+                    keyboardType="numeric"
+                    placeholderTextColor="#525252"
+                    style={{
+                      flex: 1,
+                      color: "white",
+                      padding: 16,
+                      fontSize: 16,
+                    }}
+                  />
+                </View>
+              </View>
+
               {/* ACTION BUTTONS */}
               <View className="flex-row gap-4 pt-8">
                 <TouchableOpacity
@@ -410,7 +441,7 @@ const ManualCardEntryView = () => {
                     </Text>
                   ) : (
                     <Text className="text-white font-bold text-lg">
-                      Pay ${amountToPay.toFixed(2)}
+                      Pay ${grandTotal.toFixed(2)}
                     </Text>
                   )}
                 </TouchableOpacity>

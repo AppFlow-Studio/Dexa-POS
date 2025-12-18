@@ -36,7 +36,8 @@ const addItemToBackend = async (
     number: string,
     display: string
   ) => void,
-  removeItem: (itemId: string) => void
+  removeItem: (itemId: string) => void,
+  onSyncComplete?: (orderId: string) => void // Callback after successful sync
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
   if (!supabase) {
@@ -202,6 +203,12 @@ const addItemToBackend = async (
     }
 
     console.log("Item synced to backend successfully");
+
+    // Trigger recalculation now that db_order_id is available
+    if (onSyncComplete) {
+      onSyncComplete(order.id);
+    }
+
     return true;
   } catch (error) {
     console.error("Backend sync error:", error);
@@ -267,13 +274,18 @@ const syncPaymentToBackend = async (
       p_payment_method: backendMethod,
       p_amount: paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
+      // Add amount tendered for cash payments (for change calculation)
+      p_amount_tendered: paymentDetails.transactionDetails?.amountTendered,
+      // Add split label for split payments
+      p_split_label: paymentDetails.transactionDetails?.splitLabel,
       p_terminal_type:
         (paymentDetails.transactionDetails?.terminalType as any) || "manual",
+      p_terminal_id: paymentDetails.transactionDetails?.terminalId || "POS-001", // Placeholder
       p_transaction_details: paymentDetails.transactionDetails,
     };
 
     console.log("Processing payment in backend:", paymentParams);
-    const { error } = await OrderService.processPayment(
+    const { data, error } = await OrderService.processPayment(
       supabase,
       paymentParams
     );
@@ -288,7 +300,13 @@ const syncPaymentToBackend = async (
       return false;
     }
 
-    console.log("Payment synced to backend successfully");
+    // Log successful payment with details (payment_id can be used for void)
+    console.log("Payment synced to backend successfully:", {
+      payment_id: data?.payment_id,
+      amount_applied: data?.amount_applied,
+      change_given: data?.change_given,
+      order_fully_paid: data?.order_fully_paid,
+    });
     return true;
   } catch (error) {
     console.error("Backend payment sync error:", error);
@@ -456,10 +474,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
   };
 
   const recalculateTotals = async (orderId: string | null) => {
-    const { orders } = get();
+    const { orders, activeOrderId: currentActiveOrderId } = get();
     const activeOrder = orders.find((o) => o.id === orderId);
 
-    if (activeOrder && activeOrder.items) {
+    // Safety check: Only update derived state if this orderId is still the active order
+    // This prevents stale async calculations from overwriting the current order's totals
+    const isStillActiveOrder = orderId === currentActiveOrderId;
+
+    // Only calculate if order exists and has items - empty orders reset to 0 immediately
+    if (activeOrder && activeOrder.items && activeOrder.items.length > 0) {
       // Get dynamic tax rate from store settings (convert from percentage to decimal)
       const storeSettings = useStoreSettingsStore.getState();
       const taxRateDecimal = (storeSettings.defaultTaxRate || 8.25) / 100;
@@ -497,6 +520,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       // If order has a db_order_id, call backend to calculate tax
       let backendTaxAmount: number | undefined;
+      let backendSubtotal: number | undefined;
       const supabase = _supabaseClient;
       if (supabase && activeOrder.db_order_id) {
         try {
@@ -506,9 +530,12 @@ export const useOrderStore = create<OrderState>((set, get) => {
             taxRateDecimal
           );
 
+          console.log("Backend tax calculation response:", data);
+
           if (!error && data && data.success) {
             backendTaxAmount = data.tax_amount;
-            console.log("Backend tax calculation:", {
+            backendSubtotal = data.subtotal;
+            console.log("Using backend values:", {
               order_id: data.order_id,
               subtotal: data.subtotal,
               tax_rate: data.tax_rate,
@@ -522,9 +549,11 @@ export const useOrderStore = create<OrderState>((set, get) => {
         }
       }
 
-      // Use backend tax if available, otherwise use local calculation
+      // Use backend values if available, otherwise use local calculation
+      const usedSubtotal =
+        backendSubtotal !== undefined ? backendSubtotal : finalSubtotal;
       const tax = backendTaxAmount !== undefined ? backendTaxAmount : localTax;
-      const total = finalSubtotal + tax;
+      const total = usedSubtotal + tax;
 
       // Compute outstanding subtotal (unpaid amount) used for badges/logic
       const outstandingSubtotal = activeOrder.items.reduce((acc, item) => {
@@ -545,31 +574,39 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const outstandingTotal =
         outstandingSubtotalAfterDiscount + outstandingTax;
 
-      // Ensure no undefined values propagate
-      const safeSubtotal = Number(subtotal) || 0;
+      // Ensure no undefined values propagate - use backend subtotal when available
+      const safeSubtotal = Number(usedSubtotal) || 0;
       const safeTax = Number(tax) || 0;
       const safeTotal = Number(total) || 0;
       const safeDiscount = Number(totalDiscountAmount) || 0;
 
-      set({
-        activeOrderSubtotal: safeSubtotal,
-        activeOrderTax: safeTax,
-        activeOrderTotal: safeTotal,
-        activeOrderDiscount: safeDiscount,
-        activeOrderOutstandingSubtotal: outstandingSubtotal,
-        activeOrderOutstandingTax: outstandingTax,
-        activeOrderOutstandingTotal: outstandingTotal,
-      });
+      // RE-CHECK if this order is still the active one AFTER async operations
+      // This is crucial because the active order might have changed while we were awaiting
+      const stillActiveAfterAsync = orderId === get().activeOrderId;
+
+      // Only update active order derived state if this order is still the active one
+      if (stillActiveAfterAsync) {
+        set({
+          activeOrderSubtotal: safeSubtotal,
+          activeOrderTax: safeTax,
+          activeOrderTotal: safeTotal,
+          activeOrderDiscount: safeDiscount,
+          activeOrderOutstandingSubtotal: outstandingSubtotal,
+          activeOrderOutstandingTax: outstandingTax,
+          activeOrderOutstandingTotal: outstandingTotal,
+        });
+      }
 
       // Update order with backend-calculated totals if we got them
-      if (backendTaxAmount !== undefined) {
+      if (backendSubtotal !== undefined || backendTaxAmount !== undefined) {
         set((state) => ({
           orders: state.orders.map((o) =>
             o.id === orderId
               ? {
                   ...o,
-                  total_tax: tax,
-                  total_amount: total,
+                  total_tax: safeTax,
+                  total_amount: safeTotal,
+                  // Store subtotal for reference (if field exists on OrderProfile)
                 }
               : o
           ),
@@ -599,15 +636,18 @@ export const useOrderStore = create<OrderState>((set, get) => {
         }
       }
     } else {
-      set({
-        activeOrderSubtotal: 0,
-        activeOrderTax: 0,
-        activeOrderTotal: 0,
-        activeOrderDiscount: 0,
-        activeOrderOutstandingSubtotal: 0,
-        activeOrderOutstandingTax: 0,
-        activeOrderOutstandingTotal: 0,
-      });
+      // Only reset if this order is still the active one
+      if (isStillActiveOrder) {
+        set({
+          activeOrderSubtotal: 0,
+          activeOrderTax: 0,
+          activeOrderTotal: 0,
+          activeOrderDiscount: 0,
+          activeOrderOutstandingSubtotal: 0,
+          activeOrderOutstandingTax: 0,
+          activeOrderOutstandingTotal: 0,
+        });
+      }
     }
   };
 
@@ -889,11 +929,13 @@ export const useOrderStore = create<OrderState>((set, get) => {
           };
 
           // Fire async sync (don't await - optimistic)
+          // Pass recalculateTotals as callback to be called after sync completes
           addItemToBackend(
             orderToSync,
             itemToSync,
             setOrderDbIdAction,
-            removeItemAction
+            removeItemAction,
+            recalculateTotals // Callback to recalculate totals after db_order_id is available
           ).catch((err) => console.error("Background sync failed:", err));
         }
       }
@@ -1632,9 +1674,19 @@ export const useOrderStore = create<OrderState>((set, get) => {
         opened_at: new Date().toISOString(),
       };
 
-      set({ orders: [...updatedOrders, newOrder], activeOrderId: newOrder.id });
-      // Totals for the new active (empty) order become zero
-      recalculateTotals(newOrder.id);
+      set({
+        orders: [...updatedOrders, newOrder],
+        activeOrderId: newOrder.id,
+        // Reset totals synchronously for the new empty order
+        activeOrderSubtotal: 0,
+        activeOrderTax: 0,
+        activeOrderTotal: 0,
+        activeOrderDiscount: 0,
+        activeOrderOutstandingSubtotal: 0,
+        activeOrderOutstandingTax: 0,
+        activeOrderOutstandingTotal: 0,
+      });
+      // recalculateTotals is no longer needed here since we reset above
 
       // Sync status to backend
       const supabase = getOrderStoreSupabaseClient();

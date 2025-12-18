@@ -1,11 +1,12 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -63,7 +64,15 @@ const CardPaymentView = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
-      <View className="flex-1 justify-between p-4">
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "space-between",
+          padding: 16,
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Top Section: Status Indicator */}
         <View className="items-center justify-center flex-1">
           {/* READY STATE: Tip Input */}
@@ -80,13 +89,19 @@ const CardPaymentView = () => {
                 </Text>
                 <View className="flex-row items-center bg-[#2A2A2A] border border-[#333] rounded-xl px-4 h-16 w-full mb-8">
                   <Text className="text-gray-400 text-xl mr-2">$</Text>
-                  <TextInput
+                  <BottomSheetTextInput
                     value={tipInput}
                     onChangeText={setTipInput}
                     placeholder="0.00"
                     keyboardType="numeric"
-                    className="flex-1 text-2xl font-bold text-white h-full"
                     placeholderTextColor="#525252"
+                    style={{
+                      flex: 1,
+                      fontSize: 24,
+                      fontWeight: "bold",
+                      color: "white",
+                      height: "100%",
+                    }}
                   />
                 </View>
 
@@ -224,7 +239,7 @@ const CardPaymentView = () => {
             </TouchableOpacity>
           )}
         </Animated.View>
-      </View>
+      </ScrollView>
     </View>
   );
 };

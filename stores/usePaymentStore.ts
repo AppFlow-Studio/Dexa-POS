@@ -101,6 +101,7 @@ interface PaymentState {
   processManualCardPayment(details: {
     cardBrand: string;
     last4: string;
+    tipAmount?: number;
   }): Promise<boolean>;
   setIsDirty: (isDirty: boolean) => void;
   addSplit: (customerName: string) => void;
@@ -317,12 +318,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       if (!currentSplit) return;
 
+      // Include splitLabel for backend
+      const detailsWithSplitLabel = {
+        ...transactionDetails,
+        splitLabel: currentSplit.customerName,
+      };
+
       addPaymentToOrder({
         orderId: activeOrderId,
         amount: currentSplit.amount,
         method: method as any,
         tipAmount,
-        transactionDetails,
+        transactionDetails: detailsWithSplitLabel,
       });
 
       const updatedSplits = splits.map((s) =>
@@ -367,7 +374,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     return new Promise((resolve) => {
       try {
         setTimeout(() => {
-          get().handlePaymentCompletion("Card");
+          get().handlePaymentCompletion("Card", details.tipAmount);
           resolve(true);
         }, 2000);
       } catch (error: any) {

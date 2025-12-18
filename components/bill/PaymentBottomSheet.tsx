@@ -139,6 +139,8 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         handleIndicatorStyle={{ backgroundColor: "#707070" }}
         backdropComponent={renderBackdrop}
         topInset={60}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
       >
         <BottomSheetScrollView style={styles.container}>
           {/* Header */}

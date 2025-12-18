@@ -181,10 +181,43 @@ export interface ProcessPaymentParams {
   p_payment_method: PaymentMethod;
   p_amount: number;
   p_tip_amount?: number;
+  p_amount_tendered?: number; // For cash: what customer gave
+  p_split_label?: string; // For splits: "Guest 1", "Guest 2", etc.
   p_terminal_type?: TerminalType;
   p_terminal_id?: string;
   p_device_id?: string;
   p_transaction_details?: Record<string, any>;
+}
+
+export interface ProcessPaymentResult {
+  success: boolean;
+  payment_id: string;
+  payment_method: PaymentMethod;
+  amount_applied: number;
+  tip_amount: number;
+  total_payment: number;
+  amount_tendered?: number;
+  change_given?: number;
+  payment_sequence: number;
+  is_split_payment: boolean;
+  order_total: number;
+  order_amount_paid: number;
+  order_amount_due: number;
+  order_fully_paid: boolean;
+  remaining_balance: number;
+}
+
+export interface CalculateSplitPaymentResult {
+  success: boolean;
+  order_total: number;
+  amount_already_paid: number;
+  remaining_balance: number;
+  split_count: number;
+  suggested_splits: Array<{
+    split_number: number;
+    split_label: string;
+    suggested_amount: number;
+  }>;
 }
 
 export interface CalculateOrderTaxResult {

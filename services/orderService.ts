@@ -1,11 +1,13 @@
 import {
   AddOrderItemParams,
   CalculateOrderTaxResult,
+  CalculateSplitPaymentResult,
   CreateOrderParams,
   Order,
   OrderItem,
   OrderStatus,
   ProcessPaymentParams,
+  ProcessPaymentResult,
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -85,8 +87,38 @@ export class OrderService {
   static async processPayment(
     client: SupabaseClient,
     params: ProcessPaymentParams
-  ): Promise<{ data: any; error: any }> {
+  ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
     const { data, error } = await client.rpc("process_payment", params);
+    return { data, error };
+  }
+
+  /**
+   * Void a payment (for split payment adjustments or cancellations)
+   */
+  static async voidPayment(
+    client: SupabaseClient,
+    paymentId: string,
+    reason: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("void_payment", {
+      p_payment_id: paymentId,
+      p_void_reason: reason,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Calculate suggested split amounts for an order
+   */
+  static async calculateSplitPayment(
+    client: SupabaseClient,
+    orderId: string,
+    splitCount: number
+  ): Promise<{ data: CalculateSplitPaymentResult | null; error: any }> {
+    const { data, error } = await client.rpc("calculate_split_payment", {
+      p_order_id: orderId,
+      p_split_count: splitCount,
+    });
     return { data, error };
   }
 

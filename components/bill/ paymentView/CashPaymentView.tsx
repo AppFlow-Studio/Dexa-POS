@@ -3,8 +3,6 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -45,7 +43,10 @@ const CashPaymentView = () => {
   const handleProcessCashPayment = () => {
     // Use the central handler to manage splits loop
     const tipAmount = parseFloat(tipInput) || 0;
-    handlePaymentCompletion("Cash", tipAmount);
+    const amountTenderedNum = parseFloat(amountTendered) || 0;
+    handlePaymentCompletion("Cash", tipAmount, {
+      amountTendered: amountTenderedNum,
+    });
   };
 
   const handleBack = () => {
@@ -53,10 +54,7 @@ const CashPaymentView = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-[#212121]"
-    >
+    <View className="flex-1 bg-[#212121]">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
@@ -191,7 +189,7 @@ const CashPaymentView = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
