@@ -186,3 +186,11 @@ export interface ProcessPaymentParams {
   p_device_id?: string;
   p_transaction_details?: Record<string, any>;
 }
+
+export interface CalculateOrderTaxResult {
+  success: boolean;
+  order_id: string;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+}

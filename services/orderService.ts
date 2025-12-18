@@ -1,5 +1,6 @@
 import {
   AddOrderItemParams,
+  CalculateOrderTaxResult,
   CreateOrderParams,
   Order,
   OrderItem,
@@ -70,7 +71,7 @@ export class OrderService {
     client: SupabaseClient,
     orderId: string,
     taxRate: number
-  ): Promise<{ data: Order | null; error: any }> {
+  ): Promise<{ data: CalculateOrderTaxResult | null; error: any }> {
     const { data, error } = await client.rpc("calculate_order_tax", {
       p_order_id: orderId,
       p_tax_rate: taxRate,

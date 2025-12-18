@@ -301,51 +301,7 @@ const syncPaymentToBackend = async (
   }
 };
 
-const syncOrderTotals = async (orderId: string): Promise<void> => {
-  const supabase = _supabaseClient;
-  if (!supabase) return;
-
-  const order = useOrderStore.getState().orders.find((o) => o.id === orderId);
-  if (!order?.db_order_id) return;
-
-  try {
-    const { data, error } = await OrderService.calculateOrderTax(
-      supabase,
-      order.db_order_id!,
-      TAX_RATE
-    );
-
-    if (error) throw error; // Handle error appropriately
-
-    // Update store with backend calculated values
-    if (data) {
-      useOrderStore.setState((state) => ({
-        orders: state.orders.map((o) =>
-          o.id === orderId
-            ? {
-                ...o,
-                total_tax: data.tax_amount,
-                total_amount: data.total_amount,
-                total_discount: data.discount_amount,
-              }
-            : o
-        ),
-        // Also update active order derived state if this is the active order
-        ...(state.activeOrderId === orderId
-          ? {
-              activeOrderTax: data.tax_amount || 0,
-              activeOrderTotal: data.total_amount || 0,
-              activeOrderDiscount: data.discount_amount || 0,
-            }
-          : {}),
-      }));
-    }
-  } catch (err) {
-    console.error("Failed to sync order totals:", err);
-  }
-};
-
-const TAX_RATE = 0.05;
+// Tax calculation is now handled in recalculateTotals using dynamic rate from store settings
 
 interface OrderState {
   orders: OrderProfile[];
@@ -499,11 +455,15 @@ export const useOrderStore = create<OrderState>((set, get) => {
     return updatedItems;
   };
 
-  const recalculateTotals = (orderId: string | null) => {
+  const recalculateTotals = async (orderId: string | null) => {
     const { orders } = get();
     const activeOrder = orders.find((o) => o.id === orderId);
 
     if (activeOrder && activeOrder.items) {
+      // Get dynamic tax rate from store settings (convert from percentage to decimal)
+      const storeSettings = useStoreSettingsStore.getState();
+      const taxRateDecimal = (storeSettings.defaultTaxRate || 8.25) / 100;
+
       // Subtotal must reflect modifiers (size/add-ons) captured in item.price
       const subtotal = activeOrder.items.reduce(
         (acc, item) => acc + item.price * item.quantity,
@@ -530,7 +490,40 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       const totalDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
       const finalSubtotal = subtotal - totalDiscountAmount;
-      const tax = finalSubtotal * TAX_RATE;
+
+      // Calculate local tax as fallback
+      let localTax = finalSubtotal * taxRateDecimal;
+      let localTotal = finalSubtotal + localTax;
+
+      // If order has a db_order_id, call backend to calculate tax
+      let backendTaxAmount: number | undefined;
+      const supabase = _supabaseClient;
+      if (supabase && activeOrder.db_order_id) {
+        try {
+          const { data, error } = await OrderService.calculateOrderTax(
+            supabase,
+            activeOrder.db_order_id,
+            taxRateDecimal
+          );
+
+          if (!error && data && data.success) {
+            backendTaxAmount = data.tax_amount;
+            console.log("Backend tax calculation:", {
+              order_id: data.order_id,
+              subtotal: data.subtotal,
+              tax_rate: data.tax_rate,
+              tax_amount: data.tax_amount,
+            });
+          } else if (error) {
+            console.warn("Failed to calculate tax from backend:", error);
+          }
+        } catch (err) {
+          console.warn("Backend tax calculation error:", err);
+        }
+      }
+
+      // Use backend tax if available, otherwise use local calculation
+      const tax = backendTaxAmount !== undefined ? backendTaxAmount : localTax;
       const total = finalSubtotal + tax;
 
       // Compute outstanding subtotal (unpaid amount) used for badges/logic
@@ -543,12 +536,12 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const proportionOfSubtotalOutstanding =
         subtotal > 0 ? outstandingSubtotal / subtotal : 0;
       const outstandingDiscountAmount =
-        totalDiscountAmount * proportionOfSubtotalOutstanding; // This line was causing the redeclaration error
+        totalDiscountAmount * proportionOfSubtotalOutstanding;
 
       // Calculate the final outstanding total, including discounts
       const outstandingSubtotalAfterDiscount =
         outstandingSubtotal - outstandingDiscountAmount;
-      const outstandingTax = outstandingSubtotalAfterDiscount * TAX_RATE;
+      const outstandingTax = outstandingSubtotalAfterDiscount * taxRateDecimal;
       const outstandingTotal =
         outstandingSubtotalAfterDiscount + outstandingTax;
 
@@ -558,44 +551,30 @@ export const useOrderStore = create<OrderState>((set, get) => {
       const safeTotal = Number(total) || 0;
       const safeDiscount = Number(totalDiscountAmount) || 0;
 
-      // Fallback for backend values (robust check)
-      const backendTax =
-        activeOrder.total_tax !== undefined
-          ? Number(activeOrder.total_tax)
-          : undefined;
-      const backendTotal =
-        activeOrder.total_amount !== undefined
-          ? Number(activeOrder.total_amount)
-          : undefined;
-
-      const finalTax = backendTax !== undefined ? backendTax : safeTax;
-      const finalTotal = backendTotal !== undefined ? backendTotal : safeTotal;
-
-      // Log to debug undefined issues
-      if (
-        (activeOrder.db_order_id && backendTotal === undefined) ||
-        isNaN(finalTotal)
-      ) {
-        console.warn(
-          `recalculateTotals: Potential unsafe totals for order ${orderId}`,
-          {
-            backendTotal: activeOrder.total_amount,
-            safeTotal,
-            subtotal,
-            items: activeOrder.items.length,
-          }
-        );
-      }
-
       set({
         activeOrderSubtotal: safeSubtotal,
-        activeOrderTax: finalTax,
-        activeOrderTotal: finalTotal,
+        activeOrderTax: safeTax,
+        activeOrderTotal: safeTotal,
         activeOrderDiscount: safeDiscount,
         activeOrderOutstandingSubtotal: outstandingSubtotal,
         activeOrderOutstandingTax: outstandingTax,
         activeOrderOutstandingTotal: outstandingTotal,
       });
+
+      // Update order with backend-calculated totals if we got them
+      if (backendTaxAmount !== undefined) {
+        set((state) => ({
+          orders: state.orders.map((o) =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  total_tax: tax,
+                  total_amount: total,
+                }
+              : o
+          ),
+        }));
+      }
 
       // Auto-manage paid_status only when there are items and at least one payment
       const hasItems = (activeOrder.items?.length || 0) > 0;
@@ -1052,7 +1031,7 @@ export const useOrderStore = create<OrderState>((set, get) => {
               if (error) console.error("Failed to void item:", error);
               else {
                 // Trigger total recalc after void
-                syncOrderTotals(activeOrderId);
+                recalculateTotals(activeOrderId);
               }
             }
           );
@@ -1351,7 +1330,10 @@ export const useOrderStore = create<OrderState>((set, get) => {
 
       // The final subtotal is the subtotal MINUS the calculated discount
       const finalSubtotal = subtotal - activeOrderDiscount;
-      const tax = finalSubtotal * TAX_RATE;
+      // Use dynamic tax rate from store settings
+      const taxRateDecimal =
+        (useStoreSettingsStore.getState().defaultTaxRate || 8.25) / 100;
+      const tax = finalSubtotal * taxRateDecimal;
       const total = finalSubtotal + tax;
 
       set((state) => ({
@@ -1411,7 +1393,8 @@ export const useOrderStore = create<OrderState>((set, get) => {
           (order.items.reduce(
             (sum, item) => sum + item.price * item.quantity,
             0
-          ) || 0) * TAX_RATE,
+          ) || 0) *
+            ((useStoreSettingsStore.getState().defaultTaxRate || 8.25) / 100),
       };
 
       // Save to previous orders
