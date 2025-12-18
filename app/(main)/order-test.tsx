@@ -485,6 +485,15 @@ const OrderTest = () => {
     const [voidReason, setVoidReason] = useState("");
     const [duplicateQuantity, setDuplicateQuantity] = useState("");
 
+    // Remove & Void Operations State
+    const [removeItemId, setRemoveItemId] = useState("");
+    const [selectedRemoveItemIds, setSelectedRemoveItemIds] = useState<string[]>([]);
+    const [clearOrderId, setClearOrderId] = useState("");
+    const [voidOrderId, setVoidOrderId] = useState("");
+    const [voidOrderReason, setVoidOrderReason] = useState("");
+    const [cancelOrderId, setCancelOrderId] = useState("");
+    const [cancelOrderReason, setCancelOrderReason] = useState("");
+
     // Modifier selection for add operation
     const [selectedModifierForAdd, setSelectedModifierForAdd] = useState<{
         modifierGroupId: string;
@@ -525,6 +534,11 @@ const OrderTest = () => {
         removeModifier: false,
         voidItem: false,
         duplicateItem: false,
+        removeItem: false,
+        removeItemsBatch: false,
+        clearOrderItems: false,
+        voidOrder: false,
+        cancelOrder: false,
     });
 
     // Helper function to add log
@@ -1469,6 +1483,297 @@ const OrderTest = () => {
         }
     };
 
+    // Remove Item (Draft Orders Only)
+    const handleRemoveItem = async () => {
+        if (!removeItemId) {
+            show({
+                title: "Error",
+                message: "Please enter an order item ID.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, removeItem: true }));
+
+        try {
+            const params = {
+                p_order_item_id: removeItemId,
+            };
+
+            addLog("Remove Item", params);
+
+            const result = await callRPC("remove_order_item", params);
+
+            addLog("Remove Item", params, result);
+            show({
+                title: "Success",
+                message: `Item removed. Order ID: ${result?.order_id || "N/A"}`,
+                type: "success",
+            });
+
+            // Refresh items list if this order matches current
+            if (currentOrderId && result?.order_id === currentOrderId) {
+                await handleGetOrderItems();
+            }
+
+            setRemoveItemId("");
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to remove item";
+            addLog("Remove Item", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, removeItem: false }));
+        }
+    };
+
+    // Remove Items Batch
+    const handleRemoveItemsBatch = async () => {
+        if (selectedRemoveItemIds.length === 0) {
+            show({
+                title: "Error",
+                message: "Please select at least one item to remove.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, removeItemsBatch: true }));
+
+        try {
+            const params = {
+                p_order_item_ids: selectedRemoveItemIds,
+            };
+
+            addLog("Remove Items Batch", params);
+
+            const result = await callRPC("remove_order_items_batch", params);
+
+            addLog("Remove Items Batch", params, result);
+            show({
+                title: "Success",
+                message: `Removed ${result?.removed_count || 0} items. Order ID: ${result?.order_id || "N/A"}`,
+                type: "success",
+            });
+
+            // Refresh items list if this order matches current
+            if (currentOrderId && result?.order_id === currentOrderId) {
+                await handleGetOrderItems();
+            }
+
+            setSelectedRemoveItemIds([]);
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to remove items";
+            addLog("Remove Items Batch", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, removeItemsBatch: false }));
+        }
+    };
+
+    // Clear Order Items
+    const handleClearOrderItems = async () => {
+        const orderIdToClear = clearOrderId || currentOrderId;
+
+        if (!orderIdToClear) {
+            show({
+                title: "Error",
+                message: "Please enter an order ID or create/select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        Alert.alert(
+            "Confirm Clear",
+            "This will remove ALL items from the order. This action cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Clear All",
+                    style: "destructive",
+                    onPress: async () => {
+                        setLoading((prev) => ({ ...prev, clearOrderItems: true }));
+
+                        try {
+                            const params = {
+                                p_order_id: orderIdToClear,
+                            };
+
+                            addLog("Clear Order Items", params);
+
+                            const result = await callRPC("clear_order_items", params);
+
+                            addLog("Clear Order Items", params, result);
+                            show({
+                                title: "Success",
+                                message: `Cleared ${result?.removed_count || 0} items from order.`,
+                                type: "success",
+                            });
+
+                            // Refresh items list if this is current order
+                            if (currentOrderId === orderIdToClear) {
+                                await handleGetOrderItems();
+                            }
+
+                            setClearOrderId("");
+                        } catch (error: any) {
+                            const errorMessage = error?.message || "Failed to clear order items";
+                            addLog("Clear Order Items", undefined, undefined, errorMessage);
+                            show({
+                                title: "Error",
+                                message: errorMessage,
+                                type: "error",
+                            });
+                        } finally {
+                            setLoading((prev) => ({ ...prev, clearOrderItems: false }));
+                        }
+                    },
+                },
+            ],
+            { userInterfaceStyle: "dark" }
+        );
+    };
+
+    // Void Order
+    const handleVoidOrder = async () => {
+        const orderIdToVoid = voidOrderId || currentOrderId;
+
+        if (!orderIdToVoid) {
+            show({
+                title: "Error",
+                message: "Please enter an order ID or create/select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const reason = voidOrderReason || "Order voided";
+
+        Alert.alert(
+            "Void Order",
+            `Are you sure you want to void this order?\n\nReason: ${reason}`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Void",
+                    style: "destructive",
+                    onPress: async () => {
+                        setLoading((prev) => ({ ...prev, voidOrder: true }));
+
+                        try {
+                            const params = {
+                                p_order_id: orderIdToVoid,
+                                p_void_reason: reason,
+                            };
+
+                            addLog("Void Order", params);
+
+                            const result = await callRPC("void_order", params);
+
+                            addLog("Void Order", params, result);
+
+                            const refundMsg = result?.refund_amount
+                                ? ` Refund amount: $${result.refund_amount.toFixed(2)}`
+                                : "";
+
+                            show({
+                                title: "Success",
+                                message: `Order voided.${refundMsg} Voided ${result?.voided_items_count || 0} items, ${result?.voided_payments_count || 0} payments.`,
+                                type: "success",
+                            });
+
+                            setVoidOrderId("");
+                            setVoidOrderReason("");
+                        } catch (error: any) {
+                            const errorMessage = error?.message || "Failed to void order";
+                            addLog("Void Order", undefined, undefined, errorMessage);
+                            show({
+                                title: "Error",
+                                message: errorMessage,
+                                type: "error",
+                            });
+                        } finally {
+                            setLoading((prev) => ({ ...prev, voidOrder: false }));
+                        }
+                    },
+                },
+            ],
+            { userInterfaceStyle: "dark" }
+        );
+    };
+
+    // Cancel Order
+    const handleCancelOrder = async () => {
+        const orderIdToCancel = cancelOrderId || currentOrderId;
+
+        if (!orderIdToCancel) {
+            show({
+                title: "Error",
+                message: "Please enter an order ID or create/select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const reason = cancelOrderReason || "Customer cancelled";
+
+        Alert.alert(
+            "Cancel Order",
+            `Are you sure you want to cancel this order?\n\nReason: ${reason}`,
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Cancel Order",
+                    style: "destructive",
+                    onPress: async () => {
+                        setLoading((prev) => ({ ...prev, cancelOrder: true }));
+
+                        try {
+                            const params = {
+                                p_order_id: orderIdToCancel,
+                                p_cancel_reason: reason,
+                            };
+
+                            addLog("Cancel Order", params);
+
+                            const result = await callRPC("cancel_order", params);
+
+                            addLog("Cancel Order", params, result);
+                            show({
+                                title: "Success",
+                                message: `Order cancelled. Action: ${result?.action || "cancelled"}`,
+                                type: "success",
+                            });
+
+                            setCancelOrderId("");
+                            setCancelOrderReason("");
+                        } catch (error: any) {
+                            const errorMessage = error?.message || "Failed to cancel order";
+                            addLog("Cancel Order", undefined, undefined, errorMessage);
+                            show({
+                                title: "Error",
+                                message: errorMessage,
+                                type: "error",
+                            });
+                        } finally {
+                            setLoading((prev) => ({ ...prev, cancelOrder: false }));
+                        }
+                    },
+                },
+            ],
+            { userInterfaceStyle: "dark" }
+        );
+    };
+
     // Complete Flow
     const handleCompleteFlow = async () => {
         if (!selectedStore) {
@@ -1702,6 +2007,8 @@ const OrderTest = () => {
         setDeviceId("");
         setOrderStatus("pending");
         setCurrentOrderId(null);
+        setRemoveItemId("");
+        setSelectedRemoveItemIds([]);
         show({
             title: "Form Reset",
             message: "All fields have been reset to defaults",
@@ -2966,6 +3273,302 @@ const OrderTest = () => {
                                     >
                                         <Text className="text-white font-semibold">
                                             {loading.duplicateItem ? "Duplicating..." : "Duplicate Item"}
+                                        </Text>
+                                    </Button>
+                                </View>
+                            </View>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+
+                {/* Remove & Void Operations Section */}
+                <Accordion type="single" collapsible className="mb-4">
+                    <AccordionItem value="remove-void">
+                        <AccordionTrigger className="py-3">
+                            <Text className="text-xl font-bold text-white">
+                                Remove & Void Operations
+                            </Text>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <View className="space-y-4">
+                                {/* Remove Item (Draft Orders) */}
+                                <View>
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Remove Item (Draft Orders)
+                                    </Text>
+                                    <Text className="text-xs text-gray-400 mb-2">
+                                        Hard delete - only works for draft/pending orders
+                                    </Text>
+                                    {orderItemsList.length > 0 ? (
+                                        <View className="mb-2">
+                                            <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                                Select Item to Remove
+                                            </Text>
+                                            <Select
+                                                value={
+                                                    removeItemId
+                                                        ? {
+                                                            value: removeItemId,
+                                                            label:
+                                                                orderItemsList.find(
+                                                                    (i) => i.id === removeItemId
+                                                                )?.item_name || "Select item",
+                                                        }
+                                                        : undefined
+                                                }
+                                                onValueChange={(option) =>
+                                                    setRemoveItemId(option?.value || "")
+                                                }
+                                            >
+                                                <SelectTrigger className="bg-[#303030] border-gray-600">
+                                                    <SelectValue
+                                                        placeholder="Select item to remove"
+                                                        className="text-white"
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-[#212121] border-gray-600">
+                                                    {orderItemsList.map((item) => (
+                                                        <SelectItem
+                                                            key={item.id}
+                                                            value={item.id}
+                                                            label={`${item.item_name} (Qty: ${item.quantity}, $${item.subtotal.toFixed(2)})`}
+                                                        />
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </View>
+                                    ) : (
+                                        <View className="mb-2 p-3 bg-yellow-900/20 border border-yellow-600 rounded-lg">
+                                            <Text className="text-yellow-400 text-sm">
+                                                No items available. Get order items first.
+                                            </Text>
+                                        </View>
+                                    )}
+                                    <Button
+                                        onPress={handleRemoveItem}
+                                        disabled={loading.removeItem || !removeItemId || orderItemsList.length === 0}
+                                        className="bg-orange-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.removeItem ? "Removing..." : "Remove Item"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Remove Items Batch */}
+                                <View className="border-t border-gray-700 pt-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Remove Items Batch
+                                    </Text>
+                                    <Text className="text-xs text-gray-400 mb-2">
+                                        Remove multiple items at once
+                                    </Text>
+                                    {orderItemsList.length > 0 ? (
+                                        <View className="mb-2">
+                                            <View className="flex-row justify-between items-center mb-3">
+                                                <TouchableOpacity
+                                                    onPress={() =>
+                                                        setSelectedRemoveItemIds(
+                                                            orderItemsList.map((i) => i.id)
+                                                        )
+                                                    }
+                                                    className="bg-blue-600 px-3 py-2 rounded-lg"
+                                                >
+                                                    <Text className="text-white text-sm font-semibold">
+                                                        Select All
+                                                    </Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => setSelectedRemoveItemIds([])}
+                                                    className="bg-gray-600 px-3 py-2 rounded-lg"
+                                                >
+                                                    <Text className="text-white text-sm font-semibold">
+                                                        Deselect All
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                            <ScrollView
+                                                className="max-h-48 mb-2"
+                                                style={{ maxHeight: 192 }}
+                                                nestedScrollEnabled
+                                            >
+                                                {orderItemsList.map((item) => (
+                                                    <View
+                                                        key={item.id}
+                                                        className="flex-row items-center p-2 bg-[#1a1a1a] rounded-lg mb-2"
+                                                    >
+                                                        <Checkbox
+                                                            id={`remove-batch-${item.id}`}
+                                                            checked={selectedRemoveItemIds.includes(
+                                                                item.id
+                                                            )}
+                                                            onCheckedChange={(checked) => {
+                                                                if (checked) {
+                                                                    setSelectedRemoveItemIds([
+                                                                        ...selectedRemoveItemIds,
+                                                                        item.id,
+                                                                    ]);
+                                                                } else {
+                                                                    setSelectedRemoveItemIds(
+                                                                        selectedRemoveItemIds.filter(
+                                                                            (id) => id !== item.id
+                                                                        )
+                                                                    );
+                                                                }
+                                                            }}
+                                                            className="border-blue-400 mr-3"
+                                                        />
+                                                        <Text className="text-white text-sm flex-1">
+                                                            {item.item_name} (Qty: {item.quantity}, $
+                                                            {item.subtotal.toFixed(2)})
+                                                        </Text>
+                                                    </View>
+                                                ))}
+                                            </ScrollView>
+                                            <Text className="text-sm text-gray-400 mb-2">
+                                                {selectedRemoveItemIds.length} item(s) selected
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <View className="mb-2 p-3 bg-yellow-900/20 border border-yellow-600 rounded-lg">
+                                            <Text className="text-yellow-400 text-sm">
+                                                No items available. Get order items first.
+                                            </Text>
+                                        </View>
+                                    )}
+                                    <Button
+                                        onPress={handleRemoveItemsBatch}
+                                        disabled={
+                                            loading.removeItemsBatch ||
+                                            selectedRemoveItemIds.length === 0 ||
+                                            orderItemsList.length === 0
+                                        }
+                                        className="bg-orange-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.removeItemsBatch
+                                                ? "Removing..."
+                                                : "Remove Items Batch"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Clear Order Items */}
+                                <View className="border-t border-gray-700 pt-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Clear Order Items
+                                    </Text>
+                                    <Text className="text-xs text-yellow-400 mb-2">
+                                        ⚠️ This will remove ALL items from the order
+                                    </Text>
+                                    <Text className="text-xs text-gray-400 mb-2">
+                                        Only works for draft/pending orders
+                                    </Text>
+                                    <View className="mb-2">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Order ID (defaults to current order)
+                                        </Text>
+                                        <Input
+                                            value={clearOrderId}
+                                            onChangeText={setClearOrderId}
+                                            placeholder={currentOrderId || "Enter order ID"}
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <Button
+                                        onPress={handleClearOrderItems}
+                                        disabled={loading.clearOrderItems || (!clearOrderId && !currentOrderId)}
+                                        className="bg-red-700"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.clearOrderItems ? "Clearing..." : "Clear All Items"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Void Order */}
+                                <View className="border-t border-gray-700 pt-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Void Order
+                                    </Text>
+                                    <Text className="text-xs text-gray-400 mb-2">
+                                        Voids entire order, all items, and payments. Keeps audit trail.
+                                    </Text>
+                                    <View className="mb-2">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Order ID (defaults to current order)
+                                        </Text>
+                                        <Input
+                                            value={voidOrderId}
+                                            onChangeText={setVoidOrderId}
+                                            placeholder={currentOrderId || "Enter order ID"}
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <View className="mb-2">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Void Reason (Optional - will prompt if not provided)
+                                        </Text>
+                                        <Input
+                                            value={voidOrderReason}
+                                            onChangeText={setVoidOrderReason}
+                                            placeholder="Enter void reason"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <Button
+                                        onPress={handleVoidOrder}
+                                        disabled={loading.voidOrder || (!voidOrderId && !currentOrderId)}
+                                        className="bg-red-800"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.voidOrder ? "Voiding..." : "Void Order"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Cancel Order */}
+                                <View className="border-t border-gray-700 pt-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Cancel Order
+                                    </Text>
+                                    <Text className="text-xs text-gray-400 mb-2">
+                                        Cancels draft orders (hard delete) or voids confirmed orders
+                                    </Text>
+                                    <View className="mb-2">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Order ID (defaults to current order)
+                                        </Text>
+                                        <Input
+                                            value={cancelOrderId}
+                                            onChangeText={setCancelOrderId}
+                                            placeholder={currentOrderId || "Enter order ID"}
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <View className="mb-2">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Cancel Reason (Optional - will prompt if not provided)
+                                        </Text>
+                                        <Input
+                                            value={cancelOrderReason}
+                                            onChangeText={setCancelOrderReason}
+                                            placeholder="Enter cancel reason"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+                                    <Button
+                                        onPress={handleCancelOrder}
+                                        disabled={loading.cancelOrder || (!cancelOrderId && !currentOrderId)}
+                                        className="bg-red-700"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.cancelOrder ? "Cancelling..." : "Cancel Order"}
                                         </Text>
                                     </Button>
                                 </View>

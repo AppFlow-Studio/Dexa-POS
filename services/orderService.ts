@@ -262,4 +262,75 @@ export class OrderService {
     });
     return { data, error };
   }
+
+  // --- Remove & Void Operations ---
+
+  /**
+   * Remove an order item (hard delete - for draft/pending orders only)
+   */
+  static async removeOrderItem(
+    client: SupabaseClient,
+    orderItemId: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("remove_order_item", {
+      p_order_item_id: orderItemId,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Remove multiple order items in batch (hard delete - for draft/pending orders only)
+   */
+  static async removeOrderItemsBatch(
+    client: SupabaseClient,
+    orderItemIds: string[]
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("remove_order_items_batch", {
+      p_order_item_ids: orderItemIds,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Clear all items from an order (hard delete - for draft/pending orders only)
+   */
+  static async clearOrderItems(
+    client: SupabaseClient,
+    orderId: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("clear_order_items", {
+      p_order_id: orderId,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Void an entire order (soft delete - keeps audit trail)
+   */
+  static async voidOrder(
+    client: SupabaseClient,
+    orderId: string,
+    voidReason?: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("void_order", {
+      p_order_id: orderId,
+      p_void_reason: voidReason || "Order cancelled",
+    });
+    return { data, error };
+  }
+
+  /**
+   * Cancel an order (hard delete for draft/pending, void for confirmed)
+   */
+  static async cancelOrder(
+    client: SupabaseClient,
+    orderId: string,
+    cancelReason?: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("cancel_order", {
+      p_order_id: orderId,
+      p_cancel_reason: cancelReason || "Customer cancelled",
+    });
+    return { data, error };
+  }
 }
