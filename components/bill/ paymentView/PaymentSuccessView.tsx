@@ -44,6 +44,7 @@ const PaymentSuccessView = () => {
       startNewOrder,
       setActiveOrder,
       archiveOrder,
+      sendNewItemsToKitchenForOrder,
     } = useOrderStore.getState();
 
     // Analytics...
@@ -79,7 +80,14 @@ const PaymentSuccessView = () => {
 
     if (activeOrderId) {
       setOpenedAt(activeOrderId, new Date().toISOString());
-      updateOrderStatus(activeOrderId, "preparing");
+
+      const currentOrder = useOrderStore
+        .getState()
+        .orders.find((o) => o.id === activeOrderId);
+
+      if (currentOrder?.order_status === "draft") {
+        sendNewItemsToKitchenForOrder(activeOrderId);
+      }
     }
 
     if (

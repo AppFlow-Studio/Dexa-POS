@@ -1,13 +1,20 @@
 import {
   AddOrderItemParams,
+  AddOrderItemResult,
   CalculateOrderTaxResult,
   CalculateSplitPaymentResult,
   CreateOrderParams,
+  DuplicateOrderItemResult,
+  GetOrderItemResult,
   Order,
-  OrderItem,
+  OrderItemModifier,
   OrderStatus,
   ProcessPaymentParams,
   ProcessPaymentResult,
+  ReplaceOrderItemModifiersResult,
+  UpdateOrderItemParams,
+  UpdateOrderItemQuantityResult,
+  UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -29,7 +36,7 @@ export class OrderService {
   static async addOrderItem(
     client: SupabaseClient,
     params: AddOrderItemParams
-  ): Promise<{ data: OrderItem | null; error: any }> {
+  ): Promise<{ data: AddOrderItemResult | null; error: any }> {
     const { data, error } = await client.rpc("add_order_item", params);
     return { data, error };
   }
@@ -150,5 +157,109 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data: data as Order[], error };
+  }
+
+  // --- Order Item CRUD Methods ---
+
+  /**
+   * Update quantity of an order item (auto-recalculates subtotal)
+   */
+  static async updateOrderItemQuantity(
+    client: SupabaseClient,
+    orderItemId: string,
+    quantity: number
+  ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
+    const { data, error } = await client.rpc("update_order_item_quantity", {
+      p_order_item_id: orderItemId,
+      p_quantity: quantity,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Update order item fields (instructions, station, price override, etc.)
+   */
+  static async updateOrderItem(
+    client: SupabaseClient,
+    params: UpdateOrderItemParams
+  ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
+    const { data, error } = await client.rpc("update_order_item", params);
+    return { data, error };
+  }
+
+  /**
+   * Atomically replace all modifiers on an order item
+   */
+  static async replaceOrderItemModifiers(
+    client: SupabaseClient,
+    orderItemId: string,
+    modifiers: OrderItemModifier[]
+  ): Promise<{ data: ReplaceOrderItemModifiersResult | null; error: any }> {
+    const { data, error } = await client.rpc("replace_order_item_modifiers", {
+      p_order_item_id: orderItemId,
+      p_modifiers: modifiers,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Add a single modifier to an order item
+   */
+  static async addOrderItemModifier(
+    client: SupabaseClient,
+    orderItemId: string,
+    modifier: Omit<OrderItemModifier, "id" | "order_item_id" | "total_price">
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("add_order_item_modifier", {
+      p_order_item_id: orderItemId,
+      p_modifier_group_id: modifier.modifier_group_id,
+      p_modifier_item_id: modifier.modifier_item_id,
+      p_modifier_group_name: modifier.modifier_group_name,
+      p_modifier_name: modifier.modifier_name,
+      p_price_modifier: modifier.price_modifier,
+      p_quantity: modifier.quantity,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Remove a single modifier from an order item
+   */
+  static async removeOrderItemModifier(
+    client: SupabaseClient,
+    modifierId: string
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client.rpc("remove_order_item_modifier", {
+      p_modifier_id: modifierId,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Get order item with full details and modifiers
+   */
+  static async getOrderItem(
+    client: SupabaseClient,
+    orderItemId: string
+  ): Promise<{ data: GetOrderItemResult | null; error: any }> {
+    const { data, error } = await client.rpc("get_order_item", {
+      p_order_item_id: orderItemId,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Duplicate an order item (copies modifiers too)
+   */
+  static async duplicateOrderItem(
+    client: SupabaseClient,
+    orderItemId: string,
+    quantity?: number
+  ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
+    const { data, error } = await client.rpc("duplicate_order_item", {
+      p_order_item_id: orderItemId,
+      p_quantity: quantity,
+    });
+    return { data, error };
   }
 }

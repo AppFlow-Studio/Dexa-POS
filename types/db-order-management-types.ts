@@ -176,13 +176,25 @@ export interface AddOrderItemParams {
   p_course_number?: number;
 }
 
+// Result from add_order_item RPC
+export interface AddOrderItemResult {
+  success: boolean;
+  order_item_id: string;
+  item_name: string;
+  quantity: number;
+  unit_price: number;
+  cash_price?: number;
+  price_paid: number;
+  modifier_total: number;
+  subtotal: number;
+}
+
 export interface ProcessPaymentParams {
   p_order_id: string;
   p_payment_method: PaymentMethod;
   p_amount: number;
   p_tip_amount?: number;
   p_amount_tendered?: number; // For cash: what customer gave
-  p_split_label?: string; // For splits: "Guest 1", "Guest 2", etc.
   p_terminal_type?: TerminalType;
   p_terminal_id?: string;
   p_device_id?: string;
@@ -226,4 +238,59 @@ export interface CalculateOrderTaxResult {
   subtotal: number;
   tax_rate: number;
   tax_amount: number;
+}
+
+// --- Order Item CRUD Types ---
+
+export interface UpdateOrderItemQuantityResult {
+  success: boolean;
+  order_item_id: string;
+  quantity: number;
+  price_paid: number;
+  modifier_total: number;
+  new_subtotal: number;
+}
+
+export interface UpdateOrderItemParams {
+  p_order_item_id: string;
+  p_quantity?: number;
+  p_special_instructions?: string | null;
+  p_prep_station?: string;
+  p_course_number?: number;
+  p_price_override?: number; // Requires manager permission
+}
+
+export interface UpdateOrderItemResult {
+  success: boolean;
+  order_item_id: string;
+  updated_fields: Record<string, any>;
+  new_subtotal: number;
+}
+
+// Note: OrderItemModifier is already defined earlier in this file
+
+export interface ReplaceOrderItemModifiersResult {
+  success: boolean;
+  order_item_id: string;
+  modifiers: OrderItemModifier[];
+  new_subtotal: number;
+}
+
+export interface DuplicateOrderItemResult {
+  success: boolean;
+  new_item_id: string;
+  original_item_id: string;
+  quantity: number;
+}
+
+export interface GetOrderItemResult {
+  success: boolean;
+  order_item_id: string;
+  menu_item_id: string;
+  item_name: string;
+  quantity: number;
+  price_paid: number;
+  subtotal: number;
+  special_instructions?: string;
+  modifiers: OrderItemModifier[];
 }

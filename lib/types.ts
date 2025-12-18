@@ -276,6 +276,7 @@ export type DeliveryPartner =
 export interface CartItem {
   id: string; // Unique ID for this cart instance (e.g., menuItemId + timestamp)
   menuItemId: string; // The original ID from the menu data
+  db_order_item_id?: string; // Backend order_item_id after sync (for update/void RPC calls)
   locationExclusiveItemId?: string; // Optional location-exclusive item ID
   name: string;
   category_name?: string; // Category for backend sync
