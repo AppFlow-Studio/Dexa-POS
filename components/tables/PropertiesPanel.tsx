@@ -1,5 +1,5 @@
-import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import debounce from "lodash.debounce";
 import { Trash2, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
@@ -13,24 +13,24 @@ import {
 } from "react-native";
 
 interface PropertiesPanelProps {
-  table: TableType;
+  table: FloorPlanObject;
   layoutId: string;
 }
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   table,
-  layoutId,
+  layoutId, // Kept but unused to avoid breaking prop interface if parent passes it
 }) => {
   const { updateTableName, removeTable, clearSelection } = useFloorPlanStore();
   const [name, setName] = useState(table.name);
 
   const debouncedUpdateName = useCallback(
     debounce((newName: string) => {
-      if (layoutId && table.id && newName) {
-        updateTableName(layoutId, table.id, newName);
+      if (table.id && newName) {
+        updateTableName(table.id, newName);
       }
     }, 300),
-    [layoutId, table.id, updateTableName]
+    [table.id, updateTableName]
   );
 
   useEffect(() => {
@@ -43,8 +43,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   };
 
   const handleDelete = () => {
-    if (layoutId && table.id) {
-      removeTable(layoutId, table.id);
+    if (table.id) {
+      removeTable(table.id);
       clearSelection();
     }
   };

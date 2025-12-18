@@ -13,7 +13,7 @@ import SessionDock from "./SessionDock";
 const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { layouts } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
   const globalParams = useGlobalSearchParams();
 
   const showBackButton =
@@ -87,11 +87,9 @@ const Header = () => {
       pathname.split("/").length === 3
     ) {
       const tableId = pathname.split("/")[2];
-      for (const layout of layouts) {
-        const table = layout.tables.find((t) => t.id === tableId);
-        if (table) {
-          return `Tables / ${table.name}`;
-        }
+      const table = tables.find((t) => t.id === tableId);
+      if (table) {
+        return `Tables / ${table.name}`;
       }
       return "Table Details";
     } else if (
@@ -99,11 +97,9 @@ const Header = () => {
       pathname.split("/").length === 4
     ) {
       const tableId = pathname.split("/")[3];
-      for (const layout of layouts) {
-        const table = layout.tables.find((t) => t.id === tableId);
-        if (table) {
-          return `Clean / ${table.name}`;
-        }
+      const table = tables.find((t) => t.id === tableId);
+      if (table) {
+        return `Clean / ${table.name}`;
       }
       return "Clean Table";
     }
@@ -117,7 +113,7 @@ const Header = () => {
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
     return title;
-  }, [pathname, layouts]);
+  }, [pathname, tables]);
 
   const handleBackPress = () => {
     // In handleBackPress:

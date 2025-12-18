@@ -81,7 +81,6 @@ const PinLoginScreen = () => {
       );
       return;
     }
-    console.log("this is working");
 
     showLoading("Verifying PIN...");
     const res = await signInWithPin(pin);

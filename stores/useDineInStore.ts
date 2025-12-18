@@ -1,9 +1,9 @@
-import { TableType } from "@/lib/types";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { create } from "zustand";
 
 interface DineInState {
-  selectedTable: TableType | null;
-  setSelectedTable: (table: TableType | null) => void;
+  selectedTable: FloorPlanObject | null;
+  setSelectedTable: (table: FloorPlanObject | null) => void;
   clearSelectedTable: () => void;
 }
 

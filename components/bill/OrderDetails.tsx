@@ -27,7 +27,7 @@ import { Label } from "../ui/label";
 type SelectOption = { label: string; value: string };
 
 const OrderDetails: React.FC = () => {
-  const { layouts } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
   const { show } = useToast();
   const {
     activeOrderId,
@@ -65,16 +65,14 @@ const OrderDetails: React.FC = () => {
     useState(false);
   const [tempCustomerName, setTempCustomerName] = useState("");
 
-  const allTables = useMemo(
-    () => layouts.flatMap((layout) => layout.tables),
-    [layouts]
-  );
+  const allTables = useMemo(() => tables, [tables]);
 
   const availableTableOptions = useMemo(() => {
     return allTables
       .filter(
         (t) =>
-          t.status === "Available" || t.id === activeOrder?.service_location_id
+          t.session?.status === "available" ||
+          t.id === activeOrder?.service_location_id
       )
       .map((t) => ({ label: t.name, value: t.id }));
   }, [allTables, activeOrder]);

@@ -1,7 +1,7 @@
 // /components/tables/TableLayoutView.tsx
 
-import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
@@ -21,13 +21,13 @@ import Svg, { Line } from "react-native-svg";
 import DraggableTable from "./DraggableTable";
 
 interface TableLayoutViewProps {
-  tables: TableType[];
+  tables: FloorPlanObject[];
   layoutId: string;
   isEditMode?: boolean;
   showConnections?: boolean;
   className?: string;
   isSelectionMode?: boolean;
-  onTableSelect?: (table: TableType) => void;
+  onTableSelect?: (table: FloorPlanObject) => void;
   selectedTableId?: string; // Added to handle selection state from parent
   activeOrderId?: string | null;
 }
@@ -74,8 +74,8 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
       let maxY = 0;
       tables.forEach((table) => {
         // Approximate width/height of a table for bounding box calculation
-        const tableWidth = 100;
-        const tableHeight = 100;
+        const tableWidth = table.width || 100;
+        const tableHeight = table.height || 100;
         if (table.x + tableWidth > maxX) {
           maxX = table.x + tableWidth;
         }
@@ -190,9 +190,13 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
           {showConnections && (
             <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
               {tables.map((table) => {
-                if (table.isPrimary && table.mergedWith) {
+                const mergedTableIds = table.session?.merged_tables;
+                if (mergedTableIds && mergedTableIds.length > 0) {
                   const primaryCenter = { x: table.x + 50, y: table.y + 50 };
-                  return table.mergedWith.map((mergedId) => {
+                  return mergedTableIds.map((mergedId) => {
+                    // Only draw if this table ID is "less than" the other ID to avoid double drawing
+                    if (table.id >= mergedId) return null;
+
                     const mergedTable = tables.find((t) => t.id === mergedId);
                     if (!mergedTable) return null;
                     const mergedCenter = {
@@ -221,7 +225,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
             <DraggableTable
               key={table.id}
               table={table}
-              layoutId={layoutId}
+              layoutId={layoutId} // Retained but unused
               isEditMode={isEditMode}
               isSelected={selectedTableIds.includes(table.id)}
               onSelect={

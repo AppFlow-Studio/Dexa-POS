@@ -1,4 +1,4 @@
-import ExpandedTableDetails from "@/components/tables/ExpandedTableDetails";
+import TableListItem from "@/components/tables/TableListItem";
 import {
   Collapsible,
   CollapsibleContent,
@@ -8,19 +8,17 @@ import SortDropdown, {
   SortDirection,
   SortOption,
 } from "@/components/ui/SortDropdown";
-import { TableType } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
-type TableWithLayoutId = TableType & { layoutId: string };
-
 const SeatedPanel: React.FC = () => {
-  const { layouts } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
   const { orders } = useOrderStore();
   const { activeEmployeeId } = useTimeclockStore();
   const { employees } = useEmployeeStore();
@@ -39,14 +37,29 @@ const SeatedPanel: React.FC = () => {
     height: 0,
   });
 
-  // FIX: Correctly type the useRef for TouchableOpacity
   const sortButtonRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+
+  // Track expanded state for TableListItems managed by this panel
+  const [expandedTableIds, setExpandedTableIds] = useState<
+    Record<string, boolean>
+  >({});
+
+  const toggleTableExpand = (tableId: string) => {
+    setExpandedTableIds((prev) => ({ ...prev, [tableId]: !prev[tableId] }));
+  };
 
   const getTableOrderData = useCallback(
     (tableId: string) => {
+      // Logic mirrors useTableData but simplified for sorting
+      // Check if table is merged
+      // We rely on service_location_id matching tableId for primary.
       const order = orders.find(
-        (o) => o.service_location_id === tableId && o.order_status !== "Voided"
+        (o) => o.service_location_id === tableId && o.order_status !== "void"
       );
+
+      // If table is part of merge group, we might want aggregate.
+      // But for sorting, primary order data is okay approximation.
+
       return {
         order,
         seatedTime: order?.opened_at ? new Date(order.opened_at).getTime() : 0,
@@ -62,13 +75,23 @@ const SeatedPanel: React.FC = () => {
   );
 
   const sortedSeatedTables = useMemo(() => {
-    const allSeatedTables = layouts.flatMap((layout) =>
-      layout.tables
-        .filter((table) => table.status === "In Use")
-        .map((table) => ({ ...table, layoutId: layout.id }))
-    );
+    // Only consider tables in active plan that are seated/active
+    const activeStates = [
+      "seated",
+      "ordered",
+      "served",
+      "in use",
+      "check_presented",
+      "paid",
+    ];
 
-    return allSeatedTables.sort((a, b) => {
+    const seatedTables = tables.filter((table) => {
+      const status = (table.session?.status || "available").toLowerCase();
+      // Also check 'In Use' for legacy compatibility if DB not updated
+      return activeStates.includes(status);
+    });
+
+    return seatedTables.sort((a, b) => {
       const aData = getTableOrderData(a.id);
       const bData = getTableOrderData(b.id);
 
@@ -90,10 +113,10 @@ const SeatedPanel: React.FC = () => {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [layouts, getTableOrderData, sortOption, sortDirection]);
+  }, [tables, getTableOrderData, sortOption, sortDirection]);
 
   const serversWithTables = useMemo(() => {
-    const serverTableMap: Record<string, TableWithLayoutId[]> = {};
+    const serverTableMap: Record<string, FloorPlanObject[]> = {};
     sortedSeatedTables.forEach((table) => {
       const order = orders.find((o) => o.service_location_id === table.id);
       const serverName = order?.server_name || "Unassigned";
@@ -117,6 +140,8 @@ const SeatedPanel: React.FC = () => {
         (o) => o.server_name === currentUser.fullName
       );
       const myTableIds = new Set(myOrders.map((o) => o.service_location_id));
+      // This strict check assumes order.service_location_id is the table ID (it is).
+      // Merged tables: secondary IDs might not have orders directly, but we only list PRIMARY tables or tables with orders here usually.
       return sortedSeatedTables.filter((t) => myTableIds.has(t.id));
     }
     return [];
@@ -165,9 +190,12 @@ const SeatedPanel: React.FC = () => {
               <CollapsibleContent className="pl-2 pt-2">
                 {tables.map((table) => (
                   <View key={table.id} className="mb-4">
-                    <ExpandedTableDetails
+                    <TableListItem
                       table={table}
-                      activeLayoutId={table.layoutId}
+                      isExpanded={expandedTableIds[table.id] || false}
+                      onToggleExpand={() => toggleTableExpand(table.id)}
+                      onNavigateToOrder={() => {}} // Navigation handled usually by tap if collapsed, or button if expanded
+                      handleTablePress={() => toggleTableExpand(table.id)} // In Seated panel, tap expands
                     />
                   </View>
                 ))}
@@ -192,7 +220,13 @@ const SeatedPanel: React.FC = () => {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View className="mb-4">
-            <ExpandedTableDetails table={item} activeLayoutId={item.layoutId} />
+            <TableListItem
+              table={item}
+              isExpanded={expandedTableIds[item.id] || false}
+              onToggleExpand={() => toggleTableExpand(item.id)}
+              onNavigateToOrder={() => {}}
+              handleTablePress={() => toggleTableExpand(item.id)}
+            />
           </View>
         )}
         contentContainerStyle={{ padding: 12 }}

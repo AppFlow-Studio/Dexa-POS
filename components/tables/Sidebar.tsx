@@ -30,7 +30,7 @@ type TabMode = "tables" | "waitlist" | "seated" | "history";
 interface SidebarProps {
   activeLayoutId: string | null;
   setActiveLayout: (id: string) => void;
-  layouts: { id: string; name: string }[];
+  // layouts prop removed
 }
 
 const EXPANDED_WIDTH = 280;
@@ -39,7 +39,6 @@ const COLLAPSED_WIDTH = 72;
 const Sidebar: React.FC<SidebarProps> = ({
   activeLayoutId,
   setActiveLayout,
-  layouts,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<TabMode>("tables");

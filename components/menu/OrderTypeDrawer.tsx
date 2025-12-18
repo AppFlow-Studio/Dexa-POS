@@ -1,9 +1,10 @@
-import { useToast } from "@/contexts/ToastContext"; // Import useToast
+import { useToast } from "@/contexts/ToastContext";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
 import { useCustomerStore } from "@/stores/useCustomerStore";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { useRouter } from "expo-router";
 import { ChevronDown, Edit3, Plus, User } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -40,8 +41,11 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     incrementOrderCount,
     searchCustomersByPhone,
   } = useCustomerStore();
-  const { layouts, updateTableStatus } = useFloorPlanStore();
-  const { show } = useToast(); // Initialize useToast
+
+  // Use FloorPlanStore correctly
+  const { floorPlans, activeFloorPlanId, setActiveFloorPlan, tables } =
+    useFloorPlanStore();
+  const { show } = useToast();
 
   const { selectedTable, setSelectedTable, clearSelectedTable } =
     useDineInStore();
@@ -51,9 +55,14 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
   const { openSheet } = useCustomerSheetStore();
 
-  // Floor selection state
-  const [selectedFloor, setSelectedFloor] = useState<string | null>(null);
+  // Floor selection state.
+  // We sync selectedFloor with activeFloorPlanId roughly, or allow mismatch?
+  // If we change selectedFloor, we should update activeFloorPlanId so 'tables' updates.
+
   const [showFloorModal, setShowFloorModal] = useState(false);
+  const selectedFloor = activeFloorPlanId;
+  // We use activeFloorPlanId directly as "selected floor".
+
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
 
   const orderTypes = [
@@ -66,18 +75,14 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
 
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
-
-  // Get tables for the selected floor
-  const floorTables = useMemo(() => {
-    if (!selectedFloor) return [];
-    const layout = layouts.find((l) => l.id === selectedFloor);
-    return layout ? layout.tables : [];
-  }, [selectedFloor, layouts]);
+  // Tables are now just 'tables' from store (for active floor)
+  const floorTables = tables;
 
   // Get available tables for the selected floor
   const availableFloorTables = useMemo(() => {
-    return floorTables.filter((table) => table.status === "Available");
+    return floorTables.filter(
+      (table) => (table.session?.status || "available") === "available"
+    );
   }, [floorTables]);
 
   const assignCustomerToOrder = (customer: any) => {
@@ -101,7 +106,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   };
 
   const handleFloorSelect = (floorId: string) => {
-    setSelectedFloor(floorId);
+    setActiveFloorPlan(floorId);
     setShowFloorModal(false);
     // Clear selected table when changing floors
     setSelectedTable(null);
@@ -118,7 +123,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
         order_type: "dine_in",
         guest_count: guestCount,
       });
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
 
       // Start a new order for the order-processing screen
       const newOrder = startNewOrder();
@@ -140,7 +145,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
       // Create a new order and assign it to the table (existing flow)
       const newOrder = startNewOrder({ guestCount, tableId: selectedTable.id });
       setActiveOrder(newOrder.id);
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
 
       // Close all modals/drawers and navigate to the new table screen
       setGuestModalOpen(false);
@@ -151,8 +156,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
     }
   };
 
-  const handleTableSelect = (table: any) => {
-    if (table.status !== "Available") {
+  const handleTableSelect = (table: FloorPlanObject) => {
+    if ((table.session?.status || "available") !== "available") {
       show({
         title: "Table Unavailable",
         message: `Table ${table.name} is currently occupied or unavailable.`,
@@ -175,7 +180,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
   const assignSelectedTableToOrder = () => {
     if (selectedTable && activeOrderId) {
       assignOrderToTable(activeOrderId, selectedTable.id);
-      updateTableStatus(selectedTable.id, "In Use");
+      // updateTableStatus(selectedTable.id, "In Use"); // Removed
       return true;
     }
     return false;
@@ -304,7 +309,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                 >
                   <Text className="text-white text-lg">
                     {selectedFloor
-                      ? layouts.find((l) => l.id === selectedFloor)?.name ||
+                      ? floorPlans.find((l) => l.id === selectedFloor)?.name ||
                         "Select Floor"
                       : "Select Floor"}
                   </Text>
@@ -322,7 +327,8 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     Capacity: {selectedTable.capacity} people
                   </Text>
                   <Text className="text-lg text-green-300">
-                    Floor: {layouts.find((l) => l.id === selectedFloor)?.name}
+                    Floor:{" "}
+                    {floorPlans.find((l) => l.id === selectedFloor)?.name}
                   </Text>
                 </View>
               )}
@@ -336,7 +342,6 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                     isSelectionMode={true}
                     selectedTableId={selectedTable?.id}
                     onTableSelect={handleTableSelect}
-                    activeOrderId={activeOrderId}
                     showConnections={false}
                   />
                 </View>
@@ -393,7 +398,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
 
             {/* Floor List */}
             <ScrollView className="h-[87%]">
-              {layouts.map((layout, index) => (
+              {floorPlans.map((layout, index) => (
                 <TouchableOpacity
                   key={layout.id}
                   onPress={() => handleFloorSelect(layout.id)}
@@ -414,15 +419,17 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                       >
                         {layout.name}
                       </Text>
+                      {/* We don't have tables for inactive floors unless we fetch them. 
+                          For now, just omit counts for inactive floors, or show '?' 
+                          Or rely on 'tables' being correct if we switch. 
+                          BUT here we are listing ALL floors.
+                          The store only has tables for ONE.
+                          So we can't show counts for others.
+                      */}
                       <Text className="text-sm text-gray-400">
-                        {layout.tables.length} tables
-                      </Text>
-                      <Text className="text-sm text-gray-400">
-                        {
-                          layout.tables.filter((t) => t.status === "Available")
-                            .length
-                        }{" "}
-                        available
+                        {selectedFloor === layout.id
+                          ? `${tables.length} tables`
+                          : "Select to view"}
                       </Text>
                     </View>
                     {selectedFloor === layout.id && (
@@ -431,7 +438,7 @@ const OrderTypeDrawer: React.FC<OrderTypeDrawerProps> = ({
                       </View>
                     )}
                   </View>
-                  {index !== layouts.length - 1 && (
+                  {index !== floorPlans.length - 1 && (
                     <Separator orientation="horizontal" />
                   )}
                 </TouchableOpacity>

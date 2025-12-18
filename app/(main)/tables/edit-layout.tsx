@@ -7,33 +7,26 @@ import {
   useDragToAddContext,
 } from "@/contexts/DragToAddContext";
 import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
-import { getTablePositionSV } from "@/lib/tablePositionRegistry";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
-// ADDED Undo2, Redo2 imports here
 import {
-  LinkIcon,
   Maximize,
   Minus,
   Plus,
   Redo2,
   Undo2,
-  X,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
-  useAnimatedProps,
-  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import Svg, { Circle, Defs, Line, Pattern, Rect } from "react-native-svg";
+import Svg, { Circle, Defs, Pattern, Rect } from "react-native-svg";
 
 // --- CONSTANTS ---
 const SHAPE_SIZE = 100;
@@ -51,88 +44,37 @@ const GridPattern = () => (
   </Svg>
 );
 
-const AnimatedSvgLine = (Animated as any).createAnimatedComponent(Line);
-const ConnectorLine = ({ fromId, toId }: { fromId: string; toId: string }) => {
-  const from = getTablePositionSV(fromId);
-  const to = getTablePositionSV(toId);
-  const animatedProps = useAnimatedProps(() => ({
-    x1: (from?.x.value ?? 0) + 50,
-    y1: (from?.y.value ?? 0) + 50,
-    x2: (to?.x.value ?? 0) + 50,
-    y2: (to?.y.value ?? 0) + 50,
-  }));
-  return (
-    <AnimatedSvgLine
-      animatedProps={animatedProps as any}
-      stroke="#F59E0B"
-      strokeWidth="3"
-      strokeDasharray="6, 3"
-    />
-  );
-};
-
 const LayoutEditorScreenContent = () => {
   const router = useRouter();
   const { layoutId } = useLocalSearchParams<{ layoutId: string }>();
 
-  // EXTRACTED undo, redo, past, future
   const {
-    layouts,
+    floorPlans,
+    tables: storeTables,
     selectedTableIds,
     toggleTableSelection,
-    mergeTables,
-    unmergeTables,
     clearSelection,
     addTable,
-    addMultipleTables,
     undo,
     redo,
     past,
     future,
-    clearHistory,
+    setActiveFloorPlan,
   } = useFloorPlanStore();
-  const { consolidateOrdersForTables } = useOrderStore();
 
   const activeLayout = useMemo(
-    () => layouts.find((l) => l.id === layoutId),
-    [layouts, layoutId]
+    () => floorPlans.find((l) => l.id === layoutId),
+    [floorPlans, layoutId]
   );
-  const tables = activeLayout?.tables || [];
-
-  const originalSnapshotRef = useRef<any | null>(null);
-  const hasSavedRef = useRef(false);
-
-  // Store width and height as well
-  const canvasOffset = useRef({ x: 0, y: 0, width: 0, height: 0 });
-  useEffect(() => {
-    clearHistory(); // Clear on mount (entry)
-
-    return () => {
-      clearHistory(); // Clear on unmount (exit)
-    };
-  }, []);
+  
+  const tables = storeTables;
 
   useEffect(() => {
-    if (activeLayout && !originalSnapshotRef.current) {
-      originalSnapshotRef.current = {
-        id: activeLayout.id,
-        name: activeLayout.name,
-        tables: activeLayout.tables.map((t) => ({ ...t })),
-      };
+    if (layoutId && layoutId !== useFloorPlanStore.getState().activeFloorPlanId) {
+        setActiveFloorPlan(layoutId);
     }
-    return () => {
-      if (!hasSavedRef.current && originalSnapshotRef.current) {
-        const snap = originalSnapshotRef.current;
-        useFloorPlanStore.setState((state) => ({
-          layouts: state.layouts.map((l) =>
-            l.id === snap.id
-              ? { ...l, tables: snap.tables.map((t: any) => ({ ...t })) }
-              : l
-          ),
-        }));
-      }
-    };
-  }, [activeLayout?.id]);
+    return () => clearSelection();
+  }, [layoutId]);
 
   const [isQuickSetupOpen, setQuickSetupOpen] = useState(tables.length === 0);
   const scale = useSharedValue(1);
@@ -205,50 +147,23 @@ const LayoutEditorScreenContent = () => {
     savedTranslateY.value = 0;
   };
 
-  useEffect(() => {
-    clearSelection();
-    return () => clearSelection();
-  }, [layoutId]);
-
-  const handleMerge = () => {
-    const selectedTableNames = selectedTableIds
-      .map((id) => tables.find((t) => t.id === id)?.name || "")
-      .filter(Boolean);
-    const newOrderId = consolidateOrdersForTables(
-      selectedTableIds,
-      selectedTableNames
-    );
-    mergeTables(selectedTableIds, newOrderId);
-  };
-
-  const handleUnmerge = () => {
-    if (selectedTableIds.length === 1) {
-      unmergeTables(selectedTableIds[0]);
-    }
-  };
-
   const handleAddMultipleTables = (
     items: { shapeId: keyof typeof TABLE_SHAPES; quantity: number }[]
   ) => {
-    if (layoutId) {
-      addMultipleTables(layoutId, items);
-      setQuickSetupOpen(false);
-    }
+    items.forEach(async (item) => {
+      for (let i = 0; i < item.quantity; i++) {
+        await addTable({
+          shape_id: item.shapeId as string,
+        });
+      }
+    });
+    setQuickSetupOpen(false);
   };
 
   const selectedTable = useMemo(() => {
     if (selectedTableIds.length !== 1) return null;
     return tables.find((t) => t.id === selectedTableIds[0]) || null;
   }, [selectedTableIds, tables]);
-
-  const canUnmerge =
-    selectedTableIds.length === 1 &&
-    (selectedTable?.isPrimary || selectedTable?.mergedWith?.length);
-  const canMerge =
-    selectedTableIds.length >= 2 &&
-    !tables
-      .filter((t) => selectedTableIds.includes(t.id))
-      .some((t) => t.type === "static-object");
 
   const addTableSheetRef = useRef<BottomSheet>(null);
   const handleOpenAddTableSheet = () => {
@@ -270,15 +185,11 @@ const LayoutEditorScreenContent = () => {
     const actualWidth = shapeDef.width || 80;
     const actualHeight = shapeDef.height || 80;
 
-    const { x: offX, y: offY, width: vW, height: vH } = canvasOffset.current;
+    const vW = 1024; // Fallback or measure properly
+    const vH = 768;
 
-    if (vW === 0 || vH === 0) return;
-
-    const ghostCenterX = absX;
-    const ghostCenterY = absY - FINGER_Y_OFFSET;
-
-    const localX = ghostCenterX - offX;
-    const localY = ghostCenterY - offY;
+    const localX = absX - 0; 
+    const localY = absY - FINGER_Y_OFFSET;
 
     const centerX = vW / 2;
     const centerY = vH / 2;
@@ -292,7 +203,7 @@ const LayoutEditorScreenContent = () => {
     const finalY = canvasCenterY - actualHeight / 2;
 
     let defaultName = "";
-    if (shapeDef.type === "table") {
+    if (shapeDef.category === "table") {
       const existingTableNumbers = tables
         .filter((t) => t.name.startsWith("T-"))
         .map((t) => {
@@ -314,9 +225,9 @@ const LayoutEditorScreenContent = () => {
       }
     }
 
-    addTable(layoutId, {
+    addTable({
       name: defaultName,
-      shapeId: shapeId as keyof typeof TABLE_SHAPES,
+      shape_id: shapeId,
       x: finalX,
       y: finalY,
     });
@@ -326,11 +237,9 @@ const LayoutEditorScreenContent = () => {
     dropPending.value = false;
   };
 
-  useAnimatedReaction(
-    () => dropPending.value,
-    (isPending, prevIsPending) => {
-      if (isPending && !prevIsPending && draggedShapeId.value) {
-        runOnJS(performDrop)(
+  const handleCanvasInteraction = () => {
+    if (dropPending.value && draggedShapeId.value) {
+        performDrop(
           draggedShapeId.value,
           dragPosition.value.x,
           dragPosition.value.y,
@@ -338,15 +247,13 @@ const LayoutEditorScreenContent = () => {
           translateX.value,
           translateY.value
         );
-      }
-    },
-    [layoutId, tables.length]
-  );
+    }
+  };
 
   if (!activeLayout) {
     return (
       <View className="flex-1 bg-[#212121] items-center justify-center">
-        <Text className="text-xl text-white">Loading...</Text>
+        <Text className="text-xl text-white">Loading Floor Plan...</Text>
         <TouchableOpacity
           onPress={() => router.back()}
           className="mt-4 p-3 bg-blue-600 rounded-lg"
@@ -357,25 +264,22 @@ const LayoutEditorScreenContent = () => {
     );
   }
 
-  // --- DERIVED STATE FOR UNDO VISIBILITY ---
   const hasHistory = past.length > 0;
   const hasFuture = future.length > 0;
 
   return (
     <View className="flex-1 bg-[#212121]">
-      {/* Header */}
       <View className="bg-[#303030] p-4 flex-row justify-between items-center z-10">
         <View className="flex-row items-center gap-2">
           <Text className="text-2xl font-bold text-white">
-            {activeLayout.name}
+            Testing / {activeLayout.name}
           </Text>
 
-          {/* UNDO / REDO BUTTONS */}
           {hasHistory && (
             <View className="flex-row gap-1 ml-4 bg-[#424242] rounded-lg p-1">
               <TouchableOpacity
                 onPress={undo}
-                className="p-2 rounded hover:bg-gray-600"
+                className="p-2 rounded"
                 disabled={!hasHistory}
                 style={{ opacity: hasHistory ? 1 : 0.3 }}
               >
@@ -384,7 +288,7 @@ const LayoutEditorScreenContent = () => {
               <View className="w-[1px] bg-gray-500 my-1" />
               <TouchableOpacity
                 onPress={redo}
-                className="p-2 rounded hover:bg-gray-600"
+                className="p-2 rounded"
                 disabled={!hasFuture}
                 style={{ opacity: hasFuture ? 1 : 0.3 }}
               >
@@ -395,34 +299,15 @@ const LayoutEditorScreenContent = () => {
         </View>
 
         <View className="flex-row gap-3">
-          {canMerge && (
-            <TouchableOpacity
-              onPress={handleMerge}
-              className="py-3 px-5 rounded-lg flex-row items-center bg-green-500"
-            >
-              <LinkIcon size={20} color="white" className="mr-2" />
-              <Text className="text-lg font-bold text-white">Merge</Text>
-            </TouchableOpacity>
-          )}
-          {canUnmerge && (
-            <TouchableOpacity
-              onPress={handleUnmerge}
-              className="py-3 px-5 rounded-lg flex-row items-center bg-yellow-500"
-            >
-              <X size={20} color="white" className="mr-2" />
-              <Text className="text-lg font-bold text-white">Unmerge</Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             onPress={handleOpenAddTableSheet}
-            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500 text-white"
+            className="py-3 px-5 rounded-lg flex-row items-center bg-blue-500"
           >
             <Plus size={20} color="white" className="mr-1" />
             <Text className="text-lg font-bold text-white">Add Table</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
-              hasSavedRef.current = true;
               router.back();
             }}
             className="py-3 px-5 rounded-lg flex-row items-center bg-gray-600"
@@ -432,58 +317,10 @@ const LayoutEditorScreenContent = () => {
         </View>
       </View>
 
-      {/* Canvas */}
       <GestureDetector gesture={canvasInteractionGesture}>
-        <View
-          className="flex-1 relative overflow-hidden z-0"
-          onLayout={(event) => {
-            canvasOffset.current = {
-              x: event.nativeEvent.layout.x,
-              y: event.nativeEvent.layout.y,
-              width: event.nativeEvent.layout.width,
-              height: event.nativeEvent.layout.height,
-            };
-          }}
-        >
+        <View className="flex-1 relative overflow-hidden z-0">
           <GridPattern />
           <Animated.View style={canvasAnimatedStyle} className="w-full h-full">
-            <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
-              {(() => {
-                const connectors: React.ReactNode[] = [];
-                const idToTable = new Map(
-                  tables.map((t) => [t.id, t] as const)
-                );
-                const seenPairs = new Set<string>();
-                for (const t of tables) {
-                  if (!t.mergedWith || t.mergedWith.length === 0) continue;
-                  const primary = t.isPrimary
-                    ? t
-                    : tables.find(
-                        (x) => x.isPrimary && x.mergedWith?.includes(t.id)
-                      );
-                  const primaryId = primary?.id ?? t.id;
-                  const group = new Set<string>([
-                    primaryId,
-                    ...(primary?.mergedWith || []),
-                  ]);
-                  const ids = Array.from(group);
-                  for (let i = 0; i < ids.length; i++) {
-                    for (let j = i + 1; j < ids.length; j++) {
-                      const a = ids[i];
-                      const b = ids[j];
-                      if (!idToTable.has(a) || !idToTable.has(b)) continue;
-                      const key = a < b ? `${a}-${b}` : `${b}-${a}`;
-                      if (seenPairs.has(key)) continue;
-                      seenPairs.add(key);
-                      connectors.push(
-                        <ConnectorLine key={key} fromId={a} toId={b} />
-                      );
-                    }
-                  }
-                }
-                return connectors;
-              })()}
-            </Svg>
             {tables.map((table) => (
               <DraggableTable
                 key={table.id}

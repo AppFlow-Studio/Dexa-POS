@@ -1,8 +1,8 @@
-import TableListItem from "@/components/tables/TableListItem"; // Our existing TableListItem
+import TableListItem from "@/components/tables/TableListItem";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { Easing, Layout } from "react-native-reanimated";
 
 interface SectionProps {
@@ -48,36 +48,43 @@ const Section: React.FC<SectionProps> = ({
 };
 
 const TablesPanel: React.FC = () => {
-  const { layouts } = useFloorPlanStore();
+  // Use floorPlans and tables (for active plan only)
+  const { floorPlans, tables, activeFloorPlanId } = useFloorPlanStore();
   const [sections, setSections] = useState<{ [key: string]: boolean }>({});
 
-  // Initialize sections state based on available layouts
-  useMemo(() => {
-    const initialSections: { [key: string]: boolean } = {};
-    layouts.forEach((layout) => {
-      initialSections[layout.id] = true; // Start all sections expanded by default
-    });
-    setSections(initialSections);
-  }, [layouts]);
+  const activePlanName = useMemo(() => {
+    return (
+      floorPlans.find((p) => p.id === activeFloorPlanId)?.name || "Dining Area"
+    );
+  }, [floorPlans, activeFloorPlanId]);
 
-  const allTables = useMemo(
-    () => layouts.flatMap((layout) => layout.tables),
-    [layouts]
-  );
+  // Init sections
+  useMemo(() => {
+    if (activeFloorPlanId && sections[activeFloorPlanId] === undefined) {
+      setSections((prev) => ({ ...prev, [activeFloorPlanId]: true }));
+    }
+  }, [activeFloorPlanId]);
+
+  const activeTables = tables; // These are already the tables for the active floor plan.
 
   const occupiedTables = useMemo(
     () =>
-      allTables.filter(
+      activeTables.filter(
         (table) =>
-          table.type === "table" &&
-          (table.status === "In Use" || table.status === "Needs Cleaning")
+          table.category === "table" &&
+          (table.session?.status === "seated" ||
+            table.session?.status === "ordered" ||
+            table.session?.status === "served")
       ),
-    [allTables]
+    [activeTables]
   );
 
-  const totalTables = allTables.filter(
-    (table) => table.type === "table"
-  ).length; // Only count actual tables
+  // Also include cleaning?
+  // Previous logic: 'In Use' or 'Needs Cleaning'.
+
+  const totalTables = activeTables.filter(
+    (table) => table.category === "table"
+  ).length;
 
   const capacityPercentage = useMemo(
     () =>
@@ -105,41 +112,42 @@ const TablesPanel: React.FC = () => {
         </View>
       </View>
 
-      {/* Table Sections */}
-      <FlatList
-        data={layouts}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item: layout }) => (
-          <Section
-            title={layout.name}
-            isOpen={sections[layout.id] || false}
-            onToggle={() =>
-              setSections((s) => ({ ...s, [layout.id]: !s[layout.id] }))
-            }
-          >
-            {layout.tables.filter((t) => t.type === "table").length > 0 ? (
-              layout.tables
-                .filter((t) => t.type === "table")
-                .map((table) => (
-                  <TableListItem
-                    key={table.id}
-                    table={table}
-                    isExpanded={false} // Always false in this panel
-                    onToggleExpand={() => {}} // No expansion here
-                    onNavigateToOrder={() => {}} // No navigation here
-                    activeLayoutId={layout.id}
-                    handleTablePress={() => {}} // No direct table press action here
-                  />
-                ))
-            ) : (
-              <Text className="text-gray-400 text-sm p-2 italic">
-                No tables assigned
-              </Text>
-            )}
-          </Section>
-        )}
-        contentContainerStyle={{ padding: 8 }}
-      />
+      {/* Table Sections (Just one for active plan now) */}
+      <View className="flex-1 p-2">
+        <Section
+          title={activePlanName}
+          isOpen={
+            activeFloorPlanId ? (sections[activeFloorPlanId] ?? true) : true
+          }
+          onToggle={() =>
+            activeFloorPlanId &&
+            setSections((s) => ({
+              ...s,
+              [activeFloorPlanId]: !s[activeFloorPlanId],
+            }))
+          }
+        >
+          {activeTables.filter((t) => t.category === "table").length > 0 ? (
+            activeTables
+              .filter((t) => t.category === "table")
+              .map((table) => (
+                <TableListItem
+                  key={table.id}
+                  table={table}
+                  isExpanded={false}
+                  onToggleExpand={() => {}}
+                  onNavigateToOrder={() => {}}
+                  // activeLayoutId removed
+                  handleTablePress={() => {}}
+                />
+              ))
+          ) : (
+            <Text className="text-gray-400 text-sm p-2 italic">
+              No tables assigned
+            </Text>
+          )}
+        </Section>
+      </View>
     </View>
   );
 };

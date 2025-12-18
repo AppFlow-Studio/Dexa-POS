@@ -3,10 +3,10 @@ import {
   registerTablePosition,
   unregisterTablePosition,
 } from "@/lib/tablePositionRegistry";
-import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { RotateCcw, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -20,8 +20,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 interface DraggableTableProps {
-  table: TableType;
-  layoutId: string;
+  table: FloorPlanObject;
+  layoutId: string; // Kept for prop compatibility, though unused
   isEditMode: boolean;
   isSelected: boolean;
   onSelect: () => void;
@@ -29,12 +29,26 @@ interface DraggableTableProps {
   onPress?: () => void;
 }
 
-const STATUS_COLORS: Record<TableType["status"] | "Overtime", string> = {
+const STATUS_COLORS: Record<string, string> = {
   Available: "#10B981",
+  available: "#10B981", // Lowercase map
   "In Use": "#3B82F6",
   "Needs Cleaning": "#EF4444",
+  cleaning: "#EF4444",
   "Not in Service": "#6B7280",
+  not_in_service: "#6B7280",
   Overtime: "#F59E0B",
+  // Map Session Statuses
+  Seated: "#3B82F6",
+  seated: "#3B82F6",
+  Ordered: "#3B82F6",
+  ordered: "#3B82F6",
+  Served: "#3B82F6",
+  served: "#3B82F6",
+  "Check Presented": "#3B82F6",
+  check_presented: "#3B82F6",
+  Paid: "#10B981",
+  paid: "#10B981",
 };
 
 const DraggableTable: React.FC<DraggableTableProps> = ({
@@ -46,100 +60,89 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   canvasScale,
   onPress,
 }) => {
-  const {
-    layouts,
-    updateTablePosition,
-    updateTableRotation,
-    removeTable,
-    saveSnapshot, // Import saveSnapshot
-  } = useFloorPlanStore();
+  const { tables, updateTablePosition, removeTable, saveSnapshot } =
+    useFloorPlanStore();
   const { orders } = useOrderStore();
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
   const [duration, setDuration] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
 
-  // --- COMPONENT LOOKUP (Fixes the "Box" issue) ---
-  // If shapeId is missing, try to fallback, or default to a square
-  const shapeDef = TABLE_SHAPES[table.shapeId] || TABLE_SHAPES["square-4"];
+  // --- COMPONENT LOOKUP ---
+  const shapeDef =
+    TABLE_SHAPES[table.shape_id as keyof typeof TABLE_SHAPES] ||
+    TABLE_SHAPES["square-4"];
   const TableComponent = shapeDef?.component;
 
   const activeOrderForThisTable = orders.find(
-    (o) => o.service_location_id === table.id && o.order_status !== "Voided"
+    (o) => o.service_location_id === table.id && o.order_status !== "void"
   );
 
   const orderForThisGroup = useMemo(() => {
-    if (table.mergedWith) {
-      const allTables = layouts.flatMap((l) => l.tables);
-      const primaryTable = table.isPrimary
-        ? table
-        : allTables.find(
-            (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-          );
-
-      if (primaryTable) {
-        return orders.find(
-          (o) =>
-            o.service_location_id === primaryTable.id &&
-            o.order_status !== "Voided" &&
-            o.order_status !== "Closed"
-        );
-      }
+    // If table has session, check it.
+    if (table.session?.order_id) {
+      return orders.find((o) => o.id === table.session?.order_id);
     }
-    return orders.find(
-      (o) =>
-        o.service_location_id === table.id &&
-        o.order_status !== "Voided" &&
-        o.order_status !== "Closed"
-    );
-  }, [table, orders, layouts]);
+    return activeOrderForThisTable;
+  }, [table, orders, activeOrderForThisTable]);
 
   useEffect(() => {
-    if (table.status !== "In Use" || !orderForThisGroup?.opened_at) {
+    // Determine if table is effectively "in use" based on session or order
+    const status = table.session?.status?.toLowerCase();
+    const isInUse =
+      status === "seated" ||
+      status === "ordered" ||
+      status === "served" ||
+      status === "check_presented" ||
+      status === "paid" ||
+      activeOrderForThisTable;
+
+    if (!isInUse || !orderForThisGroup?.opened_at) {
       setDuration("");
       setIsOvertime(false);
       return;
     }
 
-    const timer = setInterval(() => {
-      const startTime = new Date(orderForThisGroup.opened_at!);
+    const updateTimer = () => {
+      if (!orderForThisGroup?.opened_at) return;
+      const startTime = new Date(orderForThisGroup.opened_at);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
 
       setDuration(`${diffMins} min`);
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 1000);
+    };
 
-    const startTime = new Date(orderForThisGroup.opened_at);
-    const now = new Date();
-    const diffMs = now.getTime() - startTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    setDuration(`${diffMins} min`);
-    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    updateTimer(); // Initial run
+    const timer = setInterval(updateTimer, 1000);
 
     return () => clearInterval(timer);
-  }, [table.status, orderForThisGroup, defaultSittingTimeMinutes]);
+  }, [
+    table.session,
+    orderForThisGroup,
+    defaultSittingTimeMinutes,
+    activeOrderForThisTable,
+  ]);
 
   const displayName = useMemo(() => {
-    const allTables = layouts.flatMap((l) => l.tables);
-    if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
-      const mergedNames = table.mergedWith
-        .map((id) => allTables.find((t) => t.id === id)?.name)
+    if (
+      table.session &&
+      table.session.merged_tables &&
+      table.session.merged_tables.length > 0
+    ) {
+      const otherTableNames = table.session.merged_tables
+        .filter((id) => id !== table.id)
+        .map((id) => tables.find((obj) => obj.id === id)?.name)
         .filter(Boolean)
         .join(", ");
-      return `${table.name} (Merged: ${mergedNames})`;
-    }
-    if (table.mergedWith && !table.isPrimary) {
-      const primaryTable = allTables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-      );
-      if (primaryTable) {
-        return `${table.name} (Merged: ${primaryTable.name})`;
+
+      if (otherTableNames) {
+        return `${table.name} (Merged: ${otherTableNames})`;
       }
     }
     return table.name;
-  }, [table, layouts]);
+  }, [table, tables]);
 
   // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x);
@@ -148,12 +151,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const dragContext = useSharedValue({ x: 0, y: 0 });
   const rotateContext = useSharedValue(0);
 
-  // --- SYNC WITH UNDO/REDO (Fixes Step-by-Step feel) ---
-  // When 'table.x' changes (e.g. from Undo), instantly snap without spring
+  // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
     () => ({ x: table.x, y: table.y, r: table.rotation }),
     (current, prev) => {
-      // If values changed externally (Undo/Redo), update SharedValues
       if (
         !prev ||
         current.x !== prev.x ||
@@ -162,7 +163,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       ) {
         translateX.value = current.x;
         translateY.value = current.y;
-        rotation.value = current.r;
+        rotation.value = current.r || 0;
       }
     },
     [table.x, table.y, table.rotation]
@@ -176,7 +177,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const dragGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
-      // SAVE SNAPSHOT BEFORE DRAGGING
       runOnJS(saveSnapshot)();
       dragContext.value = { x: translateX.value, y: translateY.value };
     })
@@ -187,16 +187,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         dragContext.value.y + event.translationY / canvasScale.value;
     })
     .onEnd(() => {
-      runOnJS(updateTablePosition)(layoutId, table.id, {
-        x: translateX.value,
-        y: translateY.value,
-      });
+      runOnJS(updateTablePosition)(
+        table.id,
+        translateX.value,
+        translateY.value,
+        rotation.value
+      );
     });
 
   const rotateGesture = Gesture.Pan()
     .enabled(isEditMode)
     .onStart(() => {
-      // SAVE SNAPSHOT BEFORE ROTATING
       runOnJS(saveSnapshot)();
       rotateContext.value = rotation.value;
     })
@@ -207,17 +208,24 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     })
     .onEnd(() => {
       const snappedRotation = Math.round(rotation.value / 45) * 45;
-      rotation.value = snappedRotation; // Snap instantly
-      runOnJS(updateTableRotation)(layoutId, table.id, snappedRotation);
+      rotation.value = snappedRotation;
+      runOnJS(updateTablePosition)(
+        table.id,
+        translateX.value,
+        translateY.value,
+        snappedRotation
+      );
     });
 
   const handleDelete = () => {
-    // Delete handles its own snapshot in the store
-    removeTable(layoutId, table.id);
+    removeTable(table.id);
   };
 
   const animatedStyle = useAnimatedStyle(() => {
-    const isMerged = table.mergedWith && table.mergedWith.length > 0;
+    const isMerged =
+      table.session &&
+      table.session.merged_tables &&
+      table.session.merged_tables.length > 0;
     return {
       position: "absolute",
       top: 0,
@@ -240,14 +248,18 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   });
 
   const orderTotal =
-    orderForThisGroup?.items.reduce(
-      (acc, item) => acc + item.price * item.quantity,
+    orderForThisGroup?.items?.reduce(
+      (acc: number, item: any) => acc + item.price * item.quantity,
       0
     ) || 0;
 
+  const tableStatus = table.session?.status || "available"; // Fallback
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
-    : STATUS_COLORS[table.status];
+    : STATUS_COLORS[tableStatus] || "#10B981";
+
+  // Type check for category is effective if we trust the object
+  const isTableType = table.category === "table" || table.category === "booth";
 
   return (
     <GestureDetector gesture={dragGesture}>
@@ -258,17 +270,15 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         >
           {TableComponent ? (
             <TableComponent
-              color={table.type === "table" ? tableColor : "#E5E7EB"}
-              chairColor={table.type === "table" ? tableColor : "#E5E7EB"}
+              color={isTableType ? tableColor : "#E5E7EB"}
+              chairColor={isTableType ? tableColor : "#E5E7EB"}
             />
           ) : (
-            // Fallback view if something goes really wrong
             <View
               style={{
                 width: 100,
                 height: 100,
-                backgroundColor:
-                  table.type === "table" ? tableColor : "#E5E7EB",
+                backgroundColor: isTableType ? tableColor : "#E5E7EB",
                 borderRadius: 16,
               }}
             />
@@ -276,23 +286,27 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
               className={`text-base text-center font-bold ${
-                table.type === "table" ? "text-white" : "text-[#757575]"
+                isTableType ? "text-white" : "text-[#757575]"
               }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
             </Text>
 
-            {table.type === "table" && table.status === "In Use" && (
-              <>
-                <Text className="text-white font-bold text-base">
-                  ${orderTotal.toFixed(2)}
-                </Text>
-                <Text className="text-white font-semibold text-base">
-                  {duration}
-                </Text>
-              </>
-            )}
+            {isTableType &&
+              (tableStatus === "seated" ||
+                tableStatus === "ordered" ||
+                tableStatus === "served" ||
+                tableStatus === "check_presented") && (
+                <>
+                  <Text className="text-white font-bold text-base">
+                    ${orderTotal.toFixed(2)}
+                  </Text>
+                  <Text className="text-white font-semibold text-base">
+                    {duration}
+                  </Text>
+                </>
+              )}
           </View>
         </TouchableOpacity>
 

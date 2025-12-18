@@ -2,6 +2,10 @@ import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MerchantRole } from "@/lib/types";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import {
+  setFloorPlanSupabaseClient,
+  useFloorPlanStore,
+} from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -24,14 +28,18 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
 
-  // Register Supabase client with order store for backend sync
+  // Register Supabase client with order store and floor plan store for backend sync
   useEffect(() => {
     if (supabase) {
       setOrderStoreSupabaseClient(supabase);
-      console.log("Supabase client registered with order store");
+      setFloorPlanSupabaseClient(supabase);
+      console.log(
+        "Supabase client registered with order and floor plan stores"
+      );
     }
     return () => {
       setOrderStoreSupabaseClient(null);
+      setFloorPlanSupabaseClient(null);
     };
   }, [supabase]);
 
@@ -147,6 +155,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setMenuData(posSyncData);
     }
   }, [posSyncData, setMenuData]);
+
+  // Initialize Floor Plan Store
+  useEffect(() => {
+    if (selectedStore?.id) {
+      useFloorPlanStore.getState().initialize(selectedStore.id);
+    }
+  }, [selectedStore?.id]);
 
   // Update sync state in store
   useEffect(() => {

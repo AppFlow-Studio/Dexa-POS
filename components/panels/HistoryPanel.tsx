@@ -43,11 +43,11 @@ const HistoryCard = ({
 
 const HistoryPanel = () => {
   const { previousOrders } = usePreviousOrdersStore();
-  const { layouts } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
 
   const allTables = useMemo(() => {
-    return layouts.flatMap((layout) => layout.tables);
-  }, [layouts]);
+    return tables;
+  }, [tables]);
 
   const getTableName = (tableId: string | undefined) => {
     if (!tableId) return "N/A";

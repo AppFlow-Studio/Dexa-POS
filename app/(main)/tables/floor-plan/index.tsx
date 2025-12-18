@@ -12,8 +12,8 @@ import { Edit, Plus, Trash2 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
   FlatList,
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -97,31 +97,48 @@ const LayoutNameModal = ({
 
 const FloorPlanManagementScreen = () => {
   const router = useRouter();
-  const { layouts, addLayout, updateLayoutName, deleteLayout } =
-    useFloorPlanStore();
+  const {
+    floorPlans,
+    createFloorPlan,
+    updateFloorPlan,
+    deleteFloorPlan,
+    setActiveFloorPlan,
+  } = useFloorPlanStore();
 
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isEditModalOpen, setEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedLayout, setSelectedLayout] = useState<
-    (typeof layouts)[0] | null
+    (typeof floorPlans)[0] | null
   >(null);
 
-  const handleAddNewLayout = (name: string) => {
-    addLayout(name);
-  };
-
-  const handleEditLayout = (name: string) => {
-    if (selectedLayout) {
-      updateLayoutName(selectedLayout.id, name);
+  const handleAddNewLayout = async (name: string) => {
+    try {
+      await createFloorPlan(name);
+    } catch (error) {
+      console.error("Failed to create floor plan:", error);
     }
   };
 
-  const handleDeleteLayout = () => {
+  const handleEditLayout = async (name: string) => {
     if (selectedLayout) {
-      deleteLayout(selectedLayout.id);
-      setDeleteModalOpen(false);
-      setSelectedLayout(null);
+      try {
+        await updateFloorPlan(selectedLayout.id, name);
+      } catch (error) {
+        console.error("Failed to update floor plan:", error);
+      }
+    }
+  };
+
+  const handleDeleteLayout = async () => {
+    if (selectedLayout) {
+      try {
+        await deleteFloorPlan(selectedLayout.id);
+        setDeleteModalOpen(false);
+        setSelectedLayout(null);
+      } catch (error) {
+        console.error("Failed to delete floor plan:", error);
+      }
     }
   };
 
@@ -139,13 +156,18 @@ const FloorPlanManagementScreen = () => {
       </View>
 
       <FlatList
-        data={layouts}
+        data={floorPlans}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
-            onPress={() =>
-              router.push(`/tables/edit-layout?layoutId=${item.id}` as Href)
-            }
+            onPress={async () => {
+              // When editing, we might want to set this as active to load tables?
+              // The Edit Table screen likely relies on 'activeFloorPlanId'.
+              // Step 129 showed TableLayoutView uses tables from ACTIVE plan.
+              // So we must set active plan before navigating.
+              await setActiveFloorPlan(item.id);
+              router.push(`/tables/edit-layout?layoutId=${item.id}` as Href);
+            }}
             className="flex-row items-center p-4 bg-[#303030] border border-gray-700 rounded-xl mb-3"
           >
             <View className="flex-1">
@@ -153,7 +175,7 @@ const FloorPlanManagementScreen = () => {
                 {item.name}
               </Text>
               <Text className="text-lg text-gray-400 mt-1">
-                {item.tables.length} tables
+                {item.table_count || 0} tables
               </Text>
             </View>
             <View className="flex-row items-center gap-2">

@@ -1,20 +1,13 @@
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { TableType, WaitlistEntry } from "@/lib/types";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useWaitlistStore } from "@/stores/useWaitlistStore";
-import { useRouter } from "expo-router";
 import {
-  Check,
-  Clock,
-  GripVertical,
-  MessageCircle,
-  Trash2,
-  Users,
-  X,
-} from "lucide-react-native";
+  WaitlistEntry as DBWaitlistEntry,
+  FloorPlanObject,
+} from "@/types/db-floor-plan-types";
+import { useRouter } from "expo-router";
+import { Check, GripVertical, Trash2, Users, X } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
@@ -27,16 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  Gesture,
-  GestureDetector,
-  GestureHandlerRootView,
-} from "react-native-gesture-handler";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 // AddWaitlistEntryModal Component (Themed)
 const AddWaitlistEntryModal: React.FC<{
@@ -92,55 +76,61 @@ const AddWaitlistEntryModal: React.FC<{
                 <X size={24} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
-            <TextInput
-              placeholder="Name"
-              placeholderTextColor="#9CA3AF"
-              value={name}
-              onChangeText={setName}
-              className="w-full p-3 mb-3 bg-[#212121] border border-gray-600 text-white rounded-lg"
-            />
-            <TextInput
-              placeholder="Party Size"
-              placeholderTextColor="#9CA3AF"
-              value={partySize}
-              onChangeText={(text) => setPartySize(text.replace(/[^0-9]/g, ""))}
-              keyboardType="numeric"
-              className="w-full p-3 mb-3 bg-[#212121] border border-gray-600 text-white rounded-lg"
-            />
-            <TextInput
-              placeholder="Quoted Time (min)"
-              placeholderTextColor="#9CA3AF"
-              value={quotedTime}
-              onChangeText={(text) =>
-                setQuotedTime(text.replace(/[^0-9]/g, ""))
-              }
-              keyboardType="numeric"
-              className="w-full p-3 mb-3 bg-[#212121] border border-gray-600 text-white rounded-lg"
-            />
-            <TextInput
-              placeholder="Notes (e.g., anniversary, high chair)"
-              placeholderTextColor="#9CA3AF"
-              value={notes}
-              onChangeText={setNotes}
-              multiline
-              className="w-full p-3 mb-4 bg-[#212121] border border-gray-600 text-white rounded-lg h-20"
-            />
-            <View className="flex-row gap-3">
-              <TouchableOpacity
-                onPress={onClose}
-                className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
-              >
-                <Text className="text-center text-xl font-bold text-gray-300">
-                  Cancel
-                </Text>
-              </TouchableOpacity>
+
+            <View className="space-y-4">
+              <View>
+                <Text className="text-gray-400 mb-1">Guest Name</Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Enter name"
+                  placeholderTextColor="#6B7280"
+                  className="bg-[#212121] text-white p-3 rounded-md border border-gray-600"
+                />
+              </View>
+
+              <View className="flex-row gap-4">
+                <View className="flex-1">
+                  <Text className="text-gray-400 mb-1">Party Size</Text>
+                  <TextInput
+                    value={partySize}
+                    onChangeText={setPartySize}
+                    keyboardType="numeric"
+                    placeholder="2"
+                    placeholderTextColor="#6B7280"
+                    className="bg-[#212121] text-white p-3 rounded-md border border-gray-600"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-gray-400 mb-1">Quoted Time (min)</Text>
+                  <TextInput
+                    value={quotedTime}
+                    onChangeText={setQuotedTime}
+                    keyboardType="numeric"
+                    placeholder="15"
+                    placeholderTextColor="#6B7280"
+                    className="bg-[#212121] text-white p-3 rounded-md border border-gray-600"
+                  />
+                </View>
+              </View>
+
+              <View>
+                <Text className="text-gray-400 mb-1">Notes (Optional)</Text>
+                <TextInput
+                  value={notes}
+                  onChangeText={setNotes}
+                  placeholder="Special requests..."
+                  placeholderTextColor="#6B7280"
+                  className="bg-[#212121] text-white p-3 rounded-md border border-gray-600 h-20"
+                  multiline
+                />
+              </View>
+
               <TouchableOpacity
                 onPress={handleSubmit}
-                className="flex-1 py-3 bg-blue-600 rounded-lg"
+                className="bg-blue-600 p-4 rounded-md items-center mt-2"
               >
-                <Text className="text-center text-xl font-bold text-white">
-                  Add Entry
-                </Text>
+                <Text className="text-white font-bold text-lg">Add Party</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -154,340 +144,295 @@ const AddWaitlistEntryModal: React.FC<{
 const TablePickerModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onSelectTable: (table: TableType) => void;
-  partySize: number;
-}> = ({ isOpen, onClose, onSelectTable, partySize }) => {
-  const { layouts } = useFloorPlanStore();
-  const availableTables = useMemo(() => {
-    return layouts
-      .flatMap((l) => l.tables)
-      .filter((t) => t.status === "Available" && t.capacity >= partySize);
-  }, [layouts, partySize]);
+  // Use FloorPlanObject
+  onSelectTable: (table: FloorPlanObject) => void;
+  waitlistEntry: DBWaitlistEntry | null;
+}> = ({ isOpen, onClose, onSelectTable, waitlistEntry }) => {
+  const { tables } = useFloorPlanStore();
+  const availableTables = useMemo(
+    () =>
+      tables.filter(
+        (t) =>
+          (t.session?.status || "available") === "available" &&
+          t.category === "table"
+      ),
+    [tables]
+  );
+  // Match capacity
+  const recommendedTables = useMemo(
+    () =>
+      availableTables.filter(
+        (t) => (t.capacity || 0) >= (waitlistEntry?.party_size || 0)
+      ),
+    [availableTables, waitlistEntry]
+  );
 
   return (
     <Modal
-      animationType="fade"
+      animationType="slide"
       transparent={true}
       visible={isOpen}
       onRequestClose={onClose}
     >
-      <Pressable
-        className="flex-1 justify-center items-center bg-black/70"
-        onPress={onClose}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1 justify-end"
       >
-        <View className="bg-[#303030] border-gray-700 w-[450px] p-6 rounded-lg">
-          <Text className="text-xl font-bold text-white mb-4">
-            Select an Available Table
+        <Pressable className="flex-1 bg-black/50" onPress={onClose} />
+        <View className="bg-[#303030] rounded-t-3xl h-[60%] p-6">
+          <View className="w-12 h-1 bg-gray-600 rounded-full self-center mb-6" />
+          <Text className="text-white text-2xl font-bold mb-2">
+            Seat {waitlistEntry?.party_name}
+          </Text>
+          <Text className="text-gray-400 mb-6">
+            Party Size: {waitlistEntry?.party_size} • Quoted:{" "}
+            {waitlistEntry?.quoted_wait_minutes}m
+          </Text>
+
+          <Text className="text-blue-400 font-semibold mb-3 uppercase text-xs tracking-wider">
+            Recommended Tables
           </Text>
           <FlatList
-            data={availableTables}
+            data={recommendedTables}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity
                 onPress={() => onSelectTable(item)}
-                className="w-full p-3 mb-2 bg-gray-700 rounded-lg"
+                className="bg-[#212121] p-4 rounded-lg mb-2 flex-row justify-between items-center border border-gray-700"
               >
-                <Text className="text-white text-center">
-                  {item.name} (Capacity: {item.capacity})
-                </Text>
+                <View>
+                  <Text className="text-white text-lg font-semibold">
+                    {item.name}
+                  </Text>
+                  <Text className="text-gray-400">
+                    Capacity: {item.capacity}
+                  </Text>
+                </View>
+                <View className="bg-green-600/20 px-3 py-1 rounded-full">
+                  <Text className="text-green-400 font-medium">Select</Text>
+                </View>
               </TouchableOpacity>
             )}
             ListEmptyComponent={
-              <Text className="text-gray-400 text-center">
-                No suitable tables available.
+              <Text className="text-gray-500 italic p-2">
+                No tables match size requirements.
               </Text>
             }
           />
         </View>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
 
-const DELETE_BUTTON_WIDTH = 90;
-
-// Waitlist Card Component
-const WaitlistCard = ({
-  item,
-  onSeat,
-  onDelete,
-}: {
-  item: WaitlistEntry;
-  onSeat: () => void;
-  onDelete: () => void;
-}) => {
-  const translateX = useSharedValue(0);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
-
-  const pan = Gesture.Pan()
-    .onUpdate((e) => {
-      const next = Math.max(-DELETE_BUTTON_WIDTH, Math.min(0, e.translationX));
-      translateX.value = next;
-    })
-    .onEnd(() => {
-      const shouldOpen = translateX.value < -DELETE_BUTTON_WIDTH / 2;
-      translateX.value = withTiming(shouldOpen ? -DELETE_BUTTON_WIDTH : 0);
-    })
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-20, 20]);
-
-  const handleDelete = () => {
-    onDelete();
-    translateX.value = withTiming(0);
-  };
-
-  return (
-    <View className="rounded-xl overflow-hidden bg-[#303030] border-gray-700 mb-3">
-      <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
-        <TouchableOpacity
-          onPress={handleDelete}
-          className="w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center"
-        >
-          <Trash2 color="white" size={20} />
-        </TouchableOpacity>
-      </View>
-      <GestureDetector gesture={pan}>
-        <Animated.View style={animatedStyle} className="bg-[#212121] z-20">
-          <TouchableOpacity
-            className={`p-3 rounded-xl border border-gray-700 bg-gray-800`}
-          >
-            <View className="flex flex-row items-start gap-3">
-              <TouchableOpacity className="mt-1 text-gray-400">
-                <GripVertical size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-              <View className="flex-1">
-                <View className="flex flex-row justify-between items-start mb-1">
-                  <Text className="font-bold text-white text-lg">
-                    {item.name}
-                  </Text>
-                  <Text
-                    className={`text-xs font-medium px-2 py-1 rounded-full ${
-                      item.quotedTime > 20
-                        ? "bg-orange-500/20 text-orange-400"
-                        : "bg-gray-700 text-gray-300"
-                    }`}
-                  >
-                    {item.quotedTime}m
-                  </Text>
-                </View>
-                <View className="flex flex-row items-center gap-4 text-xs text-gray-400 mb-2">
-                  <View className="flex flex-row items-center gap-1">
-                    <Users size={14} color="#9CA3AF" />
-                    <Text className="text-gray-300">{item.partySize}</Text>
-                  </View>
-                  <View className="flex flex-row items-center gap-1">
-                    <Clock size={14} color="#9CA3AF" />
-                    <Text className="text-gray-300">
-                      {item.arrivalTime.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
-                  </View>
-                </View>
-                {item.notes && (
-                  <Text className="text-sm text-gray-400 bg-gray-700/50 p-2 rounded-md mb-2">
-                    {item.notes}
-                  </Text>
-                )}
-                <View className="flex flex-row justify-end items-center gap-2">
-                  <TouchableOpacity className="p-2 rounded-full hover:bg-blue-900/40">
-                    <MessageCircle size={18} color="#60A5FA" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={onSeat}
-                    className="flex-row items-center bg-green-600 px-3 py-2 rounded-lg"
-                  >
-                    <Check size={16} color="white" />
-                    <Text className="text-white font-bold ml-1">Seat</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-      </GestureDetector>
-    </View>
-  );
-};
-
-const WaitlistPanel = () => {
-  const { waitlist, reorderWaitlist, addToWaitlist, removeWaitlistEntry } =
+const WaitlistPanel: React.FC = () => {
+  const { waitlist, addToWaitlist, reorderWaitlist, removeWaitlistEntry } =
     useWaitlistStore();
-  const { orders, startNewOrder, setActiveOrder, updateActiveOrderDetails } =
-    useOrderStore();
-  const { layouts, updateTableStatus } = useFloorPlanStore();
-  const { employees, activeEmployeeId } = useEmployeeStore();
-  const { defaultSittingTimeMinutes } = useSettingsStore();
+  const { startNewOrder, setActiveOrder } = useOrderStore();
+  // updateTableStatus from FloorPlanStore removed. OrderStore handles logic.
+  const { tables } = useFloorPlanStore();
   const router = useRouter();
 
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isTablePickerOpen, setIsTablePickerOpen] = useState(false);
+  const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [selectedWaitlistEntry, setSelectedWaitlistEntry] =
-    useState<WaitlistEntry | null>(null);
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<WaitlistEntry | null>(null);
+    useState<DBWaitlistEntry | null>(null);
+  const [isTablePickerOpen, setTablePickerOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<DBWaitlistEntry | null>(
+    null
+  );
 
   const handleAddEntry = (data: {
     name: string;
     partySize: number;
     quotedTime: number;
     notes: string;
-    phone?: string;
   }) => {
-    addToWaitlist(data);
-    setIsAddModalOpen(false);
+    addToWaitlist({
+      location_id: "loc_demo", // Or fetch from store
+      party_name: data.name,
+      party_size: data.partySize,
+      quoted_wait_minutes: data.quotedTime,
+      notes: data.notes,
+    });
+    setAddModalOpen(false);
   };
 
-  const handleOpenTablePicker = (entry: WaitlistEntry) => {
-    setSelectedWaitlistEntry(entry);
-    setIsTablePickerOpen(true);
-  };
-
-  const handleSelectTable = (table: TableType) => {
+  const handleSelectTable = (table: FloorPlanObject) => {
     if (!selectedWaitlistEntry) return;
 
-    const server = employees.find((e) => e.id === activeEmployeeId);
-
+    // 1. Create Order / Assign Table
+    // Existing logic assumes 'startNewOrder' handles it.
+    // We pass guest count and table ID.
     const newOrder = startNewOrder({
+      guestCount: selectedWaitlistEntry.party_size,
       tableId: table.id,
-      guestCount: selectedWaitlistEntry.partySize,
     });
 
+    // Set active order
     setActiveOrder(newOrder.id);
 
-    updateActiveOrderDetails({
-      customer_name: selectedWaitlistEntry.name,
-      server_name: server?.fullName || "Unassigned",
-      opened_at: new Date().toISOString(),
-    });
-
-    updateTableStatus(table.id, "In Use");
+    // 2. Remove from waitlist
     removeWaitlistEntry(selectedWaitlistEntry.id);
-    setIsTablePickerOpen(false);
 
+    // 3. Mark Table as In Use -> Handled by OrderStore integration implicitly when order added
+
+    // 4. Navigate
     router.push(`/tables/${table.id}`);
+
+    setTablePickerOpen(false);
+    setSelectedWaitlistEntry(null);
   };
 
-  const handleDeletePress = (item: WaitlistEntry) => {
-    setItemToDelete(item);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleConfirmDelete = () => {
+  const confirmDelete = () => {
     if (itemToDelete) {
       removeWaitlistEntry(itemToDelete.id);
+      setItemToDelete(null);
     }
-    setIsDeleteModalOpen(false);
-    setItemToDelete(null);
   };
 
-  const tableSuggestion = useMemo(() => {
-    if (waitlist.length === 0) return null;
-    const nextParty = waitlist[0];
+  const RenderWaitlistItem = ({
+    item,
+    drag,
+    isActive,
+  }: {
+    item: DBWaitlistEntry;
+    drag?: () => void;
+    isActive?: boolean;
+  }) => {
+    const elapsed = Math.floor(
+      (new Date().getTime() - new Date(item.created_at).getTime()) / 60000
+    );
+    const isOverdue = elapsed > item.quoted_wait_minutes;
 
-    const seatedTables = layouts
-      .flatMap((l) => l.tables)
-      .filter((t) => t.status === "In Use");
-
-    let bestSuggestion: { tableName: string; minutesRemaining: number } | null =
-      null;
-
-    for (const table of seatedTables) {
-      const order = orders.find((o) => o.service_location_id === table.id);
-      if (order?.opened_at) {
-        const seatedTime = new Date(order.opened_at).getTime();
-        const estimatedEndTime =
-          seatedTime + defaultSittingTimeMinutes * 60 * 1000;
-        const now = new Date().getTime();
-
-        if (estimatedEndTime > now) {
-          const minutesRemaining = Math.round(
-            (estimatedEndTime - now) / (60 * 1000)
-          );
-          if (table.capacity >= nextParty.partySize) {
-            if (
-              !bestSuggestion ||
-              minutesRemaining < bestSuggestion.minutesRemaining
-            ) {
-              bestSuggestion = { tableName: table.name, minutesRemaining };
-            }
-          }
-        }
-      }
-    }
-
-    if (bestSuggestion) {
-      return `Table ${bestSuggestion.tableName} opens in ${bestSuggestion.minutesRemaining} min - Good fit for ${nextParty.name}`;
-    }
-
-    return null;
-  }, [waitlist, layouts, orders, defaultSittingTimeMinutes]);
-
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View className="h-full flex-col bg-[#292929]">
-        <View className="p-4 border-b border-gray-700">
-          <TouchableOpacity
-            onPress={() => setIsAddModalOpen(true)}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-sm py-3 rounded-lg flex items-center justify-center"
+    return (
+      <View
+        className={`bg-[#333] mb-2 rounded-lg p-3 flex-row items-center justify-between border ${
+          isActive ? "border-blue-500 bg-[#404040]" : "border-gray-700"
+        }`}
+      >
+        <View className="flex-row items-center gap-3 flex-1">
+          <GestureDetector
+            gesture={Gesture.LongPress().onStart(() => {
+              if (drag) drag();
+            })}
           >
-            <Text className="text-white font-bold text-base">
-              Add to Waitlist
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity onPressIn={drag} className="p-2">
+              <GripVertical size={20} color="#6B7280" />
+            </TouchableOpacity>
+          </GestureDetector>
 
-        {tableSuggestion && (
-          <View className="p-4 bg-emerald-900/30 border-b border-emerald-500/30">
-            <Text className="text-xs font-medium text-emerald-400 flex items-center gap-2">
-              <Text className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse mr-2" />
-              {tableSuggestion}
+          <View className="w-10 h-10 bg-gray-700 rounded-full items-center justify-center">
+            <Text className="text-white font-bold text-lg">
+              {item.party_size}
             </Text>
           </View>
-        )}
+          <View>
+            <Text className="text-white font-semibold text-lg">
+              {item.party_name}
+            </Text>
+            <Text className="text-gray-400 text-xs">
+              Quoted: {item.quoted_wait_minutes}m • Waited: {elapsed}m
+            </Text>
+            {item.notes ? (
+              <Text className="text-gray-500 text-xs italic" numberOfLines={1}>
+                {item.notes}
+              </Text>
+            ) : null}
+          </View>
+        </View>
 
-        <FlatList
-          data={waitlist}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <WaitlistCard
-              item={item}
-              onSeat={() => handleOpenTablePicker(item)}
-              onDelete={() => handleDeletePress(item)}
-            />
-          )}
-          contentContainerStyle={{ padding: 12 }}
-        />
+        <View className="flex-row items-center gap-2">
+          <View
+            className={`px-2 py-1 rounded-full ${
+              isOverdue ? "bg-red-900/50" : "bg-green-900/50"
+            }`}
+          >
+            <Text
+              className={`text-xs font-bold ${
+                isOverdue ? "text-red-400" : "text-green-400"
+              }`}
+            >
+              {isOverdue ? "OVERDUE" : "ON TIME"}
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedWaitlistEntry(item);
+              setTablePickerOpen(true);
+            }}
+            className="p-2 bg-blue-600 rounded-md"
+          >
+            <Check size={18} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setItemToDelete(item)}
+            className="p-2 bg-red-600/20 rounded-md"
+          >
+            <Trash2 size={18} color="#F87171" />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <View className="flex-1 bg-[#292929] w-full h-full">
+      <View className="p-4 border-b border-gray-700 flex-row justify-between items-center bg-[#292929]">
+        <View>
+          <Text className="text-xl font-bold text-white">Waitlist</Text>
+          <Text className="text-gray-400 text-sm">
+            {waitlist.length} parties waiting
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => setAddModalOpen(true)}
+          className="bg-blue-600 p-2 rounded-full"
+        >
+          <Users size={20} color="white" />
+        </TouchableOpacity>
+      </View>
+
+      <View className="flex-1 bg-[#292929]">
+        {waitlist.length > 0 ? (
+          <FlatList
+            data={waitlist}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <RenderWaitlistItem item={item} />}
+            contentContainerStyle={{ padding: 12 }}
+          />
+        ) : (
+          <View className="flex-1 items-center justify-center">
+            <Text className="text-gray-500 italic">Waitlist is empty</Text>
+          </View>
+        )}
       </View>
 
       <AddWaitlistEntryModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => setAddModalOpen(false)}
         onSubmit={handleAddEntry}
       />
+
       {selectedWaitlistEntry && (
         <TablePickerModal
           isOpen={isTablePickerOpen}
-          onClose={() => setIsTablePickerOpen(false)}
+          onClose={() => setTablePickerOpen(false)}
           onSelectTable={handleSelectTable}
-          partySize={selectedWaitlistEntry.partySize}
+          waitlistEntry={selectedWaitlistEntry}
         />
       )}
+
       <ConfirmationModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleConfirmDelete}
-        title="Delete Waitlist Entry"
-        description={`Are you sure you want to remove ${itemToDelete?.name} from the waitlist? This action cannot be undone.`}
-        confirmText="Delete"
+        isOpen={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={confirmDelete}
+        title="Remove from Waitlist?"
+        description={`Are you sure you want to remove ${itemToDelete?.party_name}?`}
+        confirmText="Remove"
         variant="destructive"
       />
-    </GestureHandlerRootView>
+    </View>
   );
 };
 

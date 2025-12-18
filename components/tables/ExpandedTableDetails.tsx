@@ -1,16 +1,16 @@
 import { useToast } from "@/contexts/ToastContext";
-import { TableType } from "@/lib/types";
+import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useRouter } from "expo-router";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
-import { useRouter } from "expo-router";
 
-// --- Helper Functions and Sub-Components remain unchanged ---
+// --- Helper Functions and Sub-Components ---
 const formatDuration = (milliseconds: number): string => {
   if (isNaN(milliseconds) || milliseconds < 0) return "0m";
   const totalSeconds = Math.floor(milliseconds / 1000);
@@ -42,25 +42,26 @@ const QuickActionButton: React.FC<{
       disabled={disabled}
       className={`${baseStyle} ${variantStyle} ${disabledStyle}`}
     >
-      {label.startsWith("Send") && <Send size={14} color="white" />}
       <Text className="text-white font-semibold text-sm">{label}</Text>
     </TouchableOpacity>
   );
 };
 
-const useTableData = (table: TableType, activeLayoutId: string | null) => {
+const useTableData = (table: TableType) => {
   const { orders } = useOrderStore();
-  const { layouts } = useFloorPlanStore();
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+  const { tables } = useFloorPlanStore();
 
   return useMemo(() => {
-    // If table is not in use, don't fetch order data.
-    if (table.status !== "In Use") {
+    const session = table.session;
+    const sessionStatus = session?.status || "available";
+    const isInUse = sessionStatus !== "available" && sessionStatus !== "cleaning";
+
+    if (!isInUse) {
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
+        status: sessionStatus,
         guestCount: 0,
         total: 0,
         seatedTime: null,
@@ -69,96 +70,72 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
       };
     }
 
-    const isMergedPrimary =
-      table.isPrimary && (table.mergedWith?.length ?? 0) > 0;
+    const mergedTableIds = session?.merged_tables || [];
+    const isMerged = mergedTableIds.length > 0;
 
-    if (!isMergedPrimary && !table.mergedWith?.length) {
+    if (!isMerged) {
       const order = orders.find(
-        (o) => o.service_location_id === table.id && o.order_status !== "Voided"
+        (o) => o.service_location_id === table.id && o.order_status !== "void" && o.order_status !== "completed"
       );
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
+        status: sessionStatus,
         guestCount: order?.guest_count || 0,
-        total:
-          order?.items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-          ) || 0,
+        total: order?.items.reduce((sum, item) => sum + item.price * item.quantity, 0) || 0,
         seatedTime: order?.opened_at ? new Date(order.opened_at) : null,
         server: order?.server_name || "N/A",
         orders: order ? [order] : [],
       };
     }
 
-    const primary = table.isPrimary
-      ? table
-      : allTables.find((t) => t.isPrimary && t.mergedWith?.includes(table.id));
-    if (!primary) return null;
-
-    const groupIds = [primary.id, ...(primary.mergedWith || [])];
-    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
+    const groupTables = tables.filter((t) => mergedTableIds.includes(t.id));
     const groupOrders = orders.filter(
-      (o) => o.service_location_id && groupIds.includes(o.service_location_id)
+      (o) => o.service_location_id && mergedTableIds.includes(o.service_location_id) && o.order_status !== "void" && o.order_status !== "completed"
     );
+
     const earliestSeated = groupOrders.reduce((earliest, o) => {
       if (!o.opened_at) return earliest;
       const seated = new Date(o.opened_at).getTime();
       return seated < earliest ? seated : earliest;
     }, Infinity);
 
-    const servers = [
-      ...new Set(groupOrders.map((o) => o.server_name).filter(Boolean)),
-    ];
-    const hostServer =
-      orders.find((o) => o.service_location_id === primary.id)?.server_name ||
-      servers[0];
-    const assistServers = servers.filter((s) => s !== hostServer);
-    let serverDisplay = hostServer || "N/A";
-    if (assistServers.length > 0) {
-      serverDisplay = `Host: ${hostServer} / Assist: ${assistServers.join(
-        ", "
-      )}`;
-    }
+    const servers = [...new Set(groupOrders.map((o) => o.server_name).filter(Boolean))];
+    const serverDisplay = servers.length > 0 ? servers.join(", ") : "N/A";
 
     return {
       isMerged: true,
-      primaryTableId: primary.id,
-      displayName: `${groupTables.map((t) => t.name).join(" + ")}`,
-      status: "In Use" as const,
+      primaryTableId: table.id,
+      displayName: groupTables.map((t) => t.name).sort().join(" + "),
+      status: sessionStatus,
       guestCount: groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0),
       total: groupOrders.reduce(
-        (sum, o) =>
-          sum +
-          o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
+        (sum, o) => sum + o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
         0
       ),
       seatedTime: earliestSeated === Infinity ? null : new Date(earliestSeated),
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, orders, allTables]);
+  }, [table, orders, tables]);
 };
 
 interface ExpandedTableDetailsProps {
   table: TableType;
-  activeLayoutId: string | null;
 }
 
 const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
   table,
-  activeLayoutId,
 }) => {
   const router = useRouter();
-  const tableData = useTableData(table, activeLayoutId);
+  const tableData = useTableData(table);
 
   if (!tableData) {
     return null;
   }
 
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+  const { tables, updateSessionStatus } = useFloorPlanStore();
   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
   const { menuItems } = useMenuStore();
   const { show } = useToast();
@@ -189,21 +166,12 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
     return groups;
   }, [tableData.orders, menuItems]);
 
-  const handleCloseTable = () => {
-    if (!tableData) return;
-
-    // Get all tables belonging to this group
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+  const handleCloseTable = async () => {
+    if (!tableData || !table.session?.id) return;
 
     if (tableData.orders.length === 0) {
-      groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
-      return; // No onToggleExpand here anymore
+      await updateSessionStatus(table.session.id, "available");
+      return; 
     }
 
     const allOrdersArePaid = tableData.orders.every(
@@ -220,7 +188,7 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
 
       if (allItemsInGroupAreReady) {
         tableData.orders.forEach((order) => archiveOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Needs Cleaning"));
+        await updateSessionStatus(table.session.id, "cleaning");
         show({
           title: "Tables Cleared",
           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
@@ -240,25 +208,17 @@ const ExpandedTableDetails: React.FC<ExpandedTableDetailsProps> = ({
         setVoidConfirmOpen(true);
       } else {
         tableData.orders.forEach((order) => deleteOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+        await updateSessionStatus(table.session.id, "available");
       }
     }
   };
 
-  const onConfirmVoid = () => {
-    if (!tableData) return;
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+  const onConfirmVoid = async () => {
+    if (!tableData || !table.session?.id) return;
 
     tableData.orders.forEach((order) => voidOrder(order.id));
-    groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+    await updateSessionStatus(table.session.id, "available");
     setVoidConfirmOpen(false);
-    return; // No onToggleExpand here anymore
   };
 
   return (

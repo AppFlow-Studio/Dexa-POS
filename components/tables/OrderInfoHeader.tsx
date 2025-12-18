@@ -1,15 +1,16 @@
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
-import { ChevronDown, Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { FloorPlanObject as TableType } from "@/types/db-floor-plan-types";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { ChevronDown, Minus, Plus } from "lucide-react-native";
 
 const FormInput = ({ label, value, onChangeText, ...props }: any) => (
   <View className="flex-1">
@@ -30,7 +31,7 @@ interface OrderInfoHeaderProps {
 const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
-  const { layouts } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
@@ -43,14 +44,8 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
 
   const table = useMemo(() => {
     if (!activeOrder?.service_location_id) return null;
-    for (const layout of layouts) {
-      const foundTable = layout.tables.find(
-        (t) => t.id === activeOrder.service_location_id
-      );
-      if (foundTable) return foundTable;
-    }
-    return null;
-  }, [layouts, activeOrder?.service_location_id]);
+    return tables.find((t) => t.id === activeOrder.service_location_id) || null;
+  }, [tables, activeOrder?.service_location_id]);
 
   const handleCustomerNameChange = (name: string) => {
     if (activeOrder) {
@@ -74,23 +69,15 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
 
   const getTableDisplayName = () => {
     if (!table) return "N/A";
-    const allTables = layouts.flatMap((l) => l.tables);
+    const session = table.session;
 
-    if (table.isPrimary && table.mergedWith && table.mergedWith.length > 0) {
-      const mergedNames = table.mergedWith
-        .map((id) => allTables.find((t) => t.id === id)?.name)
-        .filter(Boolean)
+    if (session?.merged_tables && session.merged_tables.length > 0) {
+      const mergedNames = tables
+        .filter((t) => session.merged_tables?.includes(t.id) && t.id !== table.id)
+        .map((t) => t.name)
         .join(", ");
-      return `${table.name} (Merged with ${mergedNames})`;
-    }
-
-    if (table.mergedWith && !table.isPrimary) {
-      const primaryTable = allTables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(table.id)
-      );
-      if (primaryTable) {
-        return `${table.name} (Merged to ${primaryTable.name})`;
-      }
+      
+      return mergedNames ? `${table.name} (Merged with ${mergedNames})` : table.name;
     }
 
     return table.name;

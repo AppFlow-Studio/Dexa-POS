@@ -7,56 +7,70 @@ import { Text, TouchableOpacity, View } from "react-native";
 const CleanTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+  const { tables, updateSessionStatus } = useFloorPlanStore();
 
-  const { table, allTablesInGroup, displayNames } = useMemo(() => {
-    if (!tableId)
-      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
+  const { table, allTablesInGroup, displayNames, sessionId } = useMemo(() => {
+    if (!tableId || typeof tableId !== "string")
+      return {
+        table: null,
+        allTablesInGroup: [],
+        displayNames: "N/A",
+        sessionId: null,
+      };
 
-    const allTables = layouts.flatMap((l) => l.tables);
-    const foundTable = allTables.find((t) => t.id === tableId);
+    const foundTable = tables.find((t) => t.id === tableId);
 
     if (!foundTable) {
-      return { table: null, allTablesInGroup: [], displayNames: "N/A" };
+      return {
+        table: null,
+        allTablesInGroup: [],
+        displayNames: "N/A",
+        sessionId: null,
+      };
     }
 
-    // Determine the primary table and all associated tables
+    // Determine the session and associated tables
     let primaryTable = foundTable;
-    if (!foundTable.isPrimary && foundTable.mergedWith) {
-      const primary = allTables.find(
-        (t) => t.isPrimary && t.mergedWith?.includes(foundTable.id)
-      );
-      if (primary) primaryTable = primary;
-    }
+    const session = foundTable.session;
 
-    const groupIds = [primaryTable.id, ...(primaryTable.mergedWith || [])];
-    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
+    // If we have a session with merged tables, find all of them
+    let groupTables = [foundTable];
+    if (session?.merged_tables && session.merged_tables.length > 0) {
+      groupTables = tables.filter((t) => session.merged_tables?.includes(t.id));
+    }
 
     // Create the display name
-    const primaryName = primaryTable.name;
-    const secondaryNames = groupTables
-      .filter((t) => !t.isPrimary)
-      .map((t) => t.name)
-      .join(", ");
+    // For merged tables, usually one is the 'anchor' or we list all.
+    // The previous logic distinguished 'primary'. Now we stick to the Session logic.
+    // We can just list all names.
+    const names = groupTables.map((t) => t.name).join(", ");
 
-    const finalDisplayName = secondaryNames
-      ? `${primaryName} (Merged with ${secondaryNames})`
-      : primaryName;
+    // Total capacity
+    // const totalCapacity = groupTables.reduce((acc, t) => acc + (t.capacity || 0), 0);
 
     return {
       table: foundTable,
       allTablesInGroup: groupTables,
-      displayNames: finalDisplayName,
+      displayNames: names,
+      sessionId: session?.id,
     };
-  }, [layouts, tableId]);
+  }, [tables, tableId]);
 
-  const handleCleanTable = () => {
-    if (allTablesInGroup.length > 0) {
-      // Update the status for every table in the group
-      allTablesInGroup.forEach((t) => {
-        updateTableStatus(t.id, "Available");
-      });
-      router.back(); // Go back to the floor plan
+  const handleCleanTable = async () => {
+    if (sessionId) {
+      try {
+        await updateSessionStatus(sessionId, "available");
+        router.back();
+      } catch (error) {
+        console.error("Failed to clean table:", error);
+      }
+    } else if (table) {
+      // Fallback if no session but we want to mark it available?
+      // If there is no session, it's already available or we can't update session status.
+      // But if it's 'cleaning' it MUST have a session in the new model?
+      // Actually, 'cleaning' is a session status. So sessionId must exist.
+      console.warn("No session found for table to clean");
+      router.back();
     }
   };
 
@@ -69,7 +83,7 @@ const CleanTableScreen = () => {
   }
 
   const totalCapacity = allTablesInGroup.reduce(
-    (acc, t) => acc + t.capacity,
+    (acc, t) => acc + (t.capacity || 0),
     0
   );
 

@@ -25,23 +25,40 @@ const DiningRoomScreen = () => {
   const router = useRouter();
 
   // Stores
-  const { layouts, addLayout } = useFloorPlanStore();
+  const { floorPlans, createFloorPlan, tables, setActiveFloorPlan } =
+    useFloorPlanStore();
   const settings = useSettingsStore();
 
-  const handleCreateFloorPlan = () => {
-    addLayout("New Floor Plan");
+  const handleCreateFloorPlan = async () => {
+    try {
+      await createFloorPlan("New Floor Plan");
+    } catch (error) {
+      console.error("Failed to create floor plan:", error);
+    }
   };
 
   // Calculate live table stats
+  // Note: This only calculates stats for the currently loaded tables (Active Floor Plan)
+  // because we don't load all tables for all floor plans at once anymore.
   const tableStats = useMemo(() => {
-    const allTables = layouts.flatMap((l) => l.tables);
+    const allTables = tables;
     return {
       total: allTables.length,
-      available: allTables.filter((t) => t.status === "Available").length,
-      inUse: allTables.filter((t) => t.status === "In Use").length,
-      cleaning: allTables.filter((t) => t.status === "Needs Cleaning").length,
+      available: allTables.filter(
+        (t) =>
+          (t.session?.status || "available") === "available" &&
+          t.category === "table"
+      ).length,
+      inUse: allTables.filter(
+        (t) =>
+          (t.session?.status || "available") !== "available" &&
+          t.session?.status !== "cleaning" &&
+          t.category === "table"
+      ).length,
+      cleaning: allTables.filter((t) => t.session?.status === "cleaning")
+        .length,
     };
-  }, [layouts]);
+  }, [tables]);
 
   return (
     <View className="flex-1 bg-[#212121] p-6">
@@ -68,7 +85,7 @@ const DiningRoomScreen = () => {
               </View>
             </CardHeader>
             <CardContent className="gap-4">
-              {layouts.length === 0 ? (
+              {floorPlans.length === 0 ? (
                 <View className="p-8 items-center justify-center border border-dashed border-gray-600 rounded-lg">
                   <Text className="text-gray-400 mb-4">
                     No floor plans created yet.
@@ -83,7 +100,7 @@ const DiningRoomScreen = () => {
                 </View>
               ) : (
                 <View className="flex-row flex-wrap gap-4">
-                  {layouts.map((layout) => (
+                  {floorPlans.map((layout) => (
                     <View
                       key={layout.id}
                       className="w-[48%] bg-[#212121] p-4 rounded-lg border border-gray-700"
@@ -95,15 +112,16 @@ const DiningRoomScreen = () => {
                         </Text>
                       </View>
                       <Text className="text-gray-400 text-sm mb-4">
-                        {layout.tables.length} Tables configured
+                        {layout.table_count || 0} Tables configured
                       </Text>
                       <TouchableOpacity
-                        onPress={() =>
+                        onPress={async () => {
+                          await setActiveFloorPlan(layout.id);
                           router.push({
                             pathname: "/tables/floor-plan",
                             params: { returnTo: "/settings/dining-room" },
-                          })
-                        }
+                          });
+                        }}
                         className="flex-row items-center justify-center bg-gray-700 py-2 rounded-md"
                       >
                         <Text className="text-white font-medium mr-2">

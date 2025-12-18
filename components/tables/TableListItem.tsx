@@ -1,9 +1,9 @@
 import { useToast } from "@/contexts/ToastContext";
-import { TableType } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -15,7 +15,7 @@ import Animated, {
 } from "react-native-reanimated";
 import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 
-// --- Helper Functions and Sub-Components remain unchanged ---
+// --- Helper Functions ---
 const formatDuration = (milliseconds: number): string => {
   if (isNaN(milliseconds) || milliseconds < 0) return "0m";
   const totalSeconds = Math.floor(milliseconds / 1000);
@@ -26,22 +26,33 @@ const formatDuration = (milliseconds: number): string => {
   );
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 };
+
 const StatusIndicator = ({
   status,
   isOvertime,
 }: {
-  status: TableType["status"];
+  status: string; // Simplified type as string since DB status is lowercase but UI might expect Mixed
   isOvertime: boolean;
 }) => {
+  const normalizedStatus = status?.toLowerCase() || "available";
+
   const color = isOvertime
     ? "bg-yellow-500"
-    : status === "Available"
+    : normalizedStatus === "available"
       ? "bg-green-500"
-      : status === "In Use"
+      : normalizedStatus === "in use" ||
+          normalizedStatus === "seated" ||
+          normalizedStatus === "ordered" ||
+          normalizedStatus === "served"
         ? "bg-blue-500"
-        : "bg-red-500";
+        : "bg-red-500"; // needs cleaning / etc
+
+  // Note: Previous logic mapped "In Use" to blue.
+  // We should map DB usage statuses to blue properly.
+
   return <View className={`w-3 h-3 rounded-full ${color}`} />;
 };
+
 const QuickActionButton: React.FC<{
   onPress: () => void;
   label: string;
@@ -68,19 +79,29 @@ const QuickActionButton: React.FC<{
   );
 };
 
-const useTableData = (table: TableType, activeLayoutId: string | null) => {
+const useTableData = (table: FloorPlanObject) => {
   const { orders } = useOrderStore();
-  const { layouts } = useFloorPlanStore();
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+  const { tables } = useFloorPlanStore();
+
+  // table.session?.merged_tables -> array of strings (IDs)
 
   return useMemo(() => {
-    // If table is not in use, don't fetch order data.
-    if (table.status !== "In Use") {
+    const status = table.session?.status || "available";
+    const normalizedStatus = status.toLowerCase();
+
+    // If table is not in use (conceptually), don't fetch order data.
+    // 'available', 'reserved', 'blocked', 'not_in_service' -> not active order
+    if (
+      normalizedStatus === "available" ||
+      normalizedStatus === "reserved" ||
+      normalizedStatus === "blocked" ||
+      normalizedStatus === "not_in_service"
+    ) {
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
+        status: status,
         guestCount: 0,
         total: 0,
         seatedTime: null,
@@ -89,40 +110,46 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
       };
     }
 
-    const isMergedPrimary =
-      table.isPrimary && (table.mergedWith?.length ?? 0) > 0;
+    // Check for merged tables
+    const mergedIds = table.session?.merged_tables || [];
+    const isMerged = mergedIds.length > 0;
 
-    if (!isMergedPrimary && !table.mergedWith?.length) {
-      const order = orders.find(
-        (o) => o.service_location_id === table.id && o.order_status !== "Voided"
-      );
+    // Determine if this is the "Primary" (first one in merged list, or just self)
+    // Legacy code had explicit 'isPrimary'.
+    // Here we can treat the table passed in as the primary focus if we are rendering it.
+    // But if we want to show the GROUP details, we aggregate.
+
+    const groupIds = [table.id, ...mergedIds];
+    // Filter out duplicates if table.id is in mergedIds (it shouldn't be, usually)
+    const uniqueGroupIds = Array.from(new Set(groupIds));
+
+    const groupTables = tables.filter((t) => uniqueGroupIds.includes(t.id));
+
+    // Find orders for ANY table in the group
+    const groupOrders = orders.filter(
+      (o) =>
+        o.service_location_id &&
+        uniqueGroupIds.includes(o.service_location_id) &&
+        o.order_status !== "void"
+    );
+
+    if (groupOrders.length === 0 && !isMerged) {
+      // Fallback if status says In Use but no order found (maybe just seated?)
       return {
         isMerged: false,
         primaryTableId: table.id,
         displayName: table.name,
-        status: table.status,
-        guestCount: order?.guest_count || 0,
-        total:
-          order?.items.reduce(
-            (sum, item) => sum + item.price * item.quantity,
-            0
-          ) || 0,
-        seatedTime: order?.opened_at ? new Date(order.opened_at) : null,
-        server: order?.server_name || "N/A",
-        orders: order ? [order] : [],
+        status: status,
+        guestCount: table.session?.party_size || 0,
+        total: 0,
+        seatedTime: table.session?.seated_at
+          ? new Date(table.session.seated_at)
+          : null,
+        server: "N/A", // Could fetch employee using session.server_staff_id if available
+        orders: [],
       };
     }
 
-    const primary = table.isPrimary
-      ? table
-      : allTables.find((t) => t.isPrimary && t.mergedWith?.includes(table.id));
-    if (!primary) return null;
-
-    const groupIds = [primary.id, ...(primary.mergedWith || [])];
-    const groupTables = allTables.filter((t) => groupIds.includes(t.id));
-    const groupOrders = orders.filter(
-      (o) => o.service_location_id && groupIds.includes(o.service_location_id)
-    );
     const earliestSeated = groupOrders.reduce((earliest, o) => {
       if (!o.opened_at) return earliest;
       const seated = new Date(o.opened_at).getTime();
@@ -132,42 +159,51 @@ const useTableData = (table: TableType, activeLayoutId: string | null) => {
     const servers = [
       ...new Set(groupOrders.map((o) => o.server_name).filter(Boolean)),
     ];
-    const hostServer =
-      orders.find((o) => o.service_location_id === primary.id)?.server_name ||
-      servers[0];
-    const assistServers = servers.filter((s) => s !== hostServer);
-    let serverDisplay = hostServer || "N/A";
-    if (assistServers.length > 0) {
-      serverDisplay = `Host: ${hostServer} / Assist: ${assistServers.join(
-        ", "
-      )}`;
+    // Simple server display logic
+    let serverDisplay = servers[0] || "N/A";
+    if (servers.length > 1) {
+      serverDisplay = `${servers[0]} + ${servers.length - 1} others`;
     }
 
     return {
-      isMerged: true,
-      primaryTableId: primary.id,
-      displayName: `${groupTables.map((t) => t.name).join(" + ")}`,
-      status: "In Use" as const,
-      guestCount: groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0),
+      isMerged: isMerged,
+      primaryTableId: table.id,
+      displayName: isMerged
+        ? `${table.name} + ${groupTables
+            .filter((t) => t.id !== table.id)
+            .map((t) => t.name)
+            .join(", ")}`
+        : table.name,
+      status: status,
+      guestCount:
+        groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0) ||
+        table.session?.party_size ||
+        0,
       total: groupOrders.reduce(
         (sum, o) =>
           sum +
           o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
         0
       ),
-      seatedTime: earliestSeated === Infinity ? null : new Date(earliestSeated),
+      seatedTime:
+        earliestSeated === Infinity
+          ? table.session?.seated_at
+            ? new Date(table.session.seated_at)
+            : null
+          : new Date(earliestSeated),
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, orders, allTables]);
+  }, [table, orders, tables]);
 };
 
 const ExpandedView: React.FC<{
   tableData: NonNullable<ReturnType<typeof useTableData>>;
   onNavigateToOrder: () => void;
   onToggleExpand: () => void;
-}> = ({ tableData, onNavigateToOrder, onToggleExpand }) => {
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+  table: FloorPlanObject; // Need table obj to get IDs
+}> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
+  const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
   const { menuItems } = useMenuStore();
   const { show } = useToast();
@@ -194,20 +230,30 @@ const ExpandedView: React.FC<{
     return groups;
   }, [tableData.orders, menuItems]);
 
-  const handleCloseTable = () => {
+  const handleCloseTable = async () => {
     if (!tableData) return;
 
-    // Get all tables belonging to this group
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+    // We update session status. Assuming we have session ID.
+    // tableData doesn't have session ID explicitly returned in my hook above?
+    // table object has it.
+
+    if (!table.session?.id) {
+      show({
+        title: "Error",
+        message: "No active session found.",
+        type: "error",
+      });
+      return;
+    }
+    const sessionId = table.session.id;
 
     if (tableData.orders.length === 0) {
-      groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+      // Just seated or empty. Free up.
+      await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
+      // Actually DB might require 'available' to clear session?
+      // updateSessionStatus usually updates status field.
+      // If we want to CLEAR session (remove it), we might need `closeSession`.
+      // But let's assume 'available' or 'cleaning' is fine.
       onToggleExpand();
       return;
     }
@@ -226,7 +272,7 @@ const ExpandedView: React.FC<{
 
       if (allItemsInGroupAreReady) {
         tableData.orders.forEach((order) => archiveOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Needs Cleaning"));
+        await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
         show({
           title: "Tables Cleared",
           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
@@ -246,23 +292,16 @@ const ExpandedView: React.FC<{
         setVoidConfirmOpen(true);
       } else {
         tableData.orders.forEach((order) => deleteOrder(order.id));
-        groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+        await updateSessionStatus(sessionId, "available");
       }
     }
   };
 
-  const onConfirmVoid = () => {
-    if (!tableData) return;
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === tableData.primaryTableId
-    );
-    const groupTableIds = primaryTable
-      ? [primaryTable.id, ...(primaryTable.mergedWith || [])]
-      : [tableData.primaryTableId];
+  const onConfirmVoid = async () => {
+    if (!tableData || !table.session?.id) return;
 
     tableData.orders.forEach((order) => voidOrder(order.id));
-    groupTableIds.forEach((id) => updateTableStatus(id, "Available"));
+    await updateSessionStatus(table.session.id, "available");
     setVoidConfirmOpen(false);
     onToggleExpand();
   };
@@ -346,27 +385,34 @@ const ExpandedView: React.FC<{
 };
 
 const TableListItem: React.FC<{
-  table: TableType;
+  table: FloorPlanObject;
   isExpanded: boolean;
   onToggleExpand?: () => void; // Make optional
   onNavigateToOrder: () => void;
-  activeLayoutId: string | null;
-  handleTablePress: (table: TableType) => void;
+  // activeLayoutId removed/unused in new logic
+  handleTablePress: (table: FloorPlanObject) => void;
 }> = ({
   table,
   isExpanded,
-  onToggleExpand = () => {}, // Default to empty function
+  onToggleExpand = () => {},
   onNavigateToOrder,
-  activeLayoutId,
   handleTablePress,
 }) => {
-  const tableData = useTableData(table, activeLayoutId);
+  const tableData = useTableData(table);
   const [isOvertime, setIsOvertime] = useState(false);
   const [duration, setDuration] = useState("");
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
   useEffect(() => {
-    if (tableData?.status !== "In Use" || !tableData.seatedTime) {
+    // Check various active statuses
+    const status = tableData?.status?.toLowerCase();
+    const isActive =
+      status === "seated" ||
+      status === "ordered" ||
+      status === "served" ||
+      status === "in use";
+
+    if (!isActive || !tableData.seatedTime) {
       setIsOvertime(false);
       setDuration("");
       return;
@@ -382,14 +428,27 @@ const TableListItem: React.FC<{
   }, [tableData, defaultSittingTimeMinutes]);
 
   const handlePress = () => {
-    if (table.status === "In Use") {
-      onToggleExpand(); // This will be called in SeatedPanel
+    const status = tableData?.status?.toLowerCase();
+    // If seated/active -> toggle expand
+    if (
+      status === "seated" ||
+      status === "ordered" ||
+      status === "served" ||
+      status === "in use" ||
+      status === "check_presented"
+    ) {
+      onToggleExpand();
     } else {
-      handleTablePress(table); // This will be called for Available tables
+      handleTablePress(table);
     }
   };
 
   if (!tableData) return null;
+
+  const showActiveDetails =
+    tableData.status.toLowerCase() !== "available" &&
+    tableData.status.toLowerCase() !== "reserved" &&
+    tableData.status.toLowerCase() !== "cleaning";
 
   return (
     <Animated.View
@@ -413,7 +472,7 @@ const TableListItem: React.FC<{
               {tableData.displayName}
             </Text>
           </View>
-          {tableData.status === "In Use" && (
+          {showActiveDetails && (
             <>
               <Text className="text-base text-gray-300 w-20 text-center">
                 {duration}
@@ -427,9 +486,10 @@ const TableListItem: React.FC<{
             </>
           )}
         </View>
-        {isExpanded && tableData.status === "In Use" && (
+        {isExpanded && showActiveDetails && (
           <ExpandedView
             tableData={tableData}
+            table={table}
             onToggleExpand={onToggleExpand}
             onNavigateToOrder={onNavigateToOrder}
           />

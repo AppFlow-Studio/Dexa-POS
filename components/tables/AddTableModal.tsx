@@ -77,10 +77,9 @@ export const AddTableModal: React.FC<AddTableModalProps> = ({
     keyof typeof TABLE_SHAPES
   >(SHAPE_OPTIONS[0].id as keyof typeof TABLE_SHAPES);
 
-  const { layouts, activeLayoutId } = useFloorPlanStore();
+  const { tables } = useFloorPlanStore();
   const { show } = useToast();
-  const activeLayout = layouts.find((layout) => layout.id === activeLayoutId);
-  const tablesInCurrentLayout = activeLayout?.tables || [];
+  const tablesInCurrentLayout = tables;
 
   const handleAddPress = () => {
     if (!name || !selectedShapeId) {

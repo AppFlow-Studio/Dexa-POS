@@ -1,5 +1,7 @@
+import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import TableBillSection from "@/components/bill/TableBillSection";
+import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useToast } from "@/contexts/ToastContext";
@@ -8,12 +10,9 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types"; // For ref
+import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
-
-import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
-import MenuSection from "@/components/menu/MenuSection";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
@@ -36,11 +35,11 @@ const UpdateTableScreen = () => {
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { layouts, updateTableStatus } = useFloorPlanStore();
+  const { tables, updateSessionStatus } = useFloorPlanStore();
   const {
     orders,
     activeOrderId,
-    activeOrderTotal, // <--- Add this
+    activeOrderTotal,
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
@@ -51,32 +50,27 @@ const UpdateTableScreen = () => {
     archiveOrder,
     deleteOrder,
   } = useOrderStore();
+
   const {
     setActiveTableId,
     clearActiveTableId,
     open: openPaymentSheet,
   } = usePaymentStore();
 
-  const allTables = useMemo(() => layouts.flatMap((l) => l.tables), [layouts]);
+  const currentTableId = typeof tableId === "string" ? tableId : "";
+  const initialTable = tables.find((t) => t.id === currentTableId);
 
-  const initialTable = allTables.find((t) => t.id === tableId);
-  let primaryTableId = tableId;
+  // Logic to find primary table if this is a merged table
+  // In the new system, tables are merged via session.merged_tables or similar logic
+  // For now, we rely on the implementation where tables have a session
+  const table = initialTable;
 
-  if (initialTable && initialTable.mergedWith && !initialTable.isPrimary) {
-    const primary = allTables.find(
-      (t) => t.isPrimary && t.mergedWith?.includes(initialTable.id)
-    );
-    if (primary) {
-      primaryTableId = primary.id;
-    }
-  }
-
-  const table = allTables.find((t) => t.id === primaryTableId);
+  const tableStatus = table?.session?.status || "available";
 
   // Find if an order is ALREADY assigned to this table (including closed orders)
   const existingOrderForTable = orders.find(
     (o) =>
-      o.service_location_id === tableId &&
+      o.service_location_id === currentTableId &&
       o.order_status !== "void" &&
       o.order_status !== "completed"
   );
@@ -87,39 +81,41 @@ const UpdateTableScreen = () => {
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
 
   useEffect(() => {
-    if (table?.status !== "In Use" || !activeOrder?.opened_at) {
+    if (
+      (tableStatus !== "seated" &&
+        tableStatus !== "ordered" &&
+        tableStatus !== "served" &&
+        tableStatus !== "check_presented" &&
+        tableStatus !== "paid") ||
+      !activeOrder?.opened_at
+    ) {
       setDuration("");
       setIsOvertime(false);
       return;
     }
 
-    const timer = setInterval(() => {
-      const startTime = new Date(activeOrder.opened_at!);
+    const updateDuration = () => {
+      if (!activeOrder?.opened_at) return;
+      const startTime = new Date(activeOrder.opened_at);
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
-
       setDuration(`${diffMins} min`);
       setIsOvertime(diffMins > defaultSittingTimeMinutes);
-    }, 60000);
+    };
 
-    // Run once immediately
-    const startTime = new Date(activeOrder.opened_at);
-    const now = new Date();
-    const diffMs = now.getTime() - startTime.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    setDuration(`${diffMins} min`);
-    setIsOvertime(diffMins > defaultSittingTimeMinutes);
+    updateDuration(); // Run immediately
 
+    const timer = setInterval(updateDuration, 60000);
     return () => clearInterval(timer);
-  }, [table?.status, activeOrder, defaultSittingTimeMinutes]);
+  }, [tableStatus, activeOrder?.opened_at, defaultSittingTimeMinutes]);
 
   useEffect(() => {
-    if (table?.status === "Needs Cleaning") {
+    if (tableStatus === "cleaning") {
       router.push("/tables");
       return;
     }
-  }, []);
+  }, [tableStatus]);
 
   useEffect(() => {
     if (existingOrderForTable) {
@@ -127,24 +123,32 @@ const UpdateTableScreen = () => {
       setActiveOrder(existingOrderForTable.id);
     }
     return () => setActiveOrder(null);
-  }, [primaryTableId, existingOrderForTable, setActiveOrder, startNewOrder]);
+  }, [currentTableId, existingOrderForTable, setActiveOrder]);
 
   useEffect(() => {
-    if (tableId) {
-      setActiveTableId(tableId as string);
+    if (currentTableId) {
+      setActiveTableId(currentTableId);
     }
 
     return () => {
       clearActiveTableId();
     };
-  }, [tableId]);
+  }, [currentTableId]);
 
-  const handleAssignToTable = () => {
-    if (activeOrderId && tableId) {
+  const handleAssignToTable = async () => {
+    if (activeOrderId && currentTableId && table?.session?.id) {
       // This is the key action. It links the active order to the table
-      assignOrderToTable(activeOrderId, tableId as string);
-      updateTableStatus(tableId as string, "In Use");
+      assignOrderToTable(activeOrderId, currentTableId);
+      await updateSessionStatus(table.session.id, "ordered");
       updateOrderStatus(activeOrderId, "preparing");
+      router.push("/tables");
+    } else if (activeOrderId && currentTableId && !table?.session?.id) {
+      // Fallback if no session exists - this might be an issue with data sync or flow
+      // Ideally should create a session first or use an existing one.
+      // Assuming session creation happens on seating.
+      console.warn("Cannot assign order: Table has no session");
+      // Try to assign anyway for Order behavior
+      assignOrderToTable(activeOrderId, currentTableId);
       router.push("/tables");
     }
   };
@@ -160,9 +164,7 @@ const UpdateTableScreen = () => {
         return;
       }
     }
-    console.log("we came here");
-
-    openPaymentSheet("Card", tableId as string, "payment-method-selection");
+    openPaymentSheet("Card", currentTableId, "payment-method-selection");
   };
 
   const handleReopenCheck = () => {
@@ -194,25 +196,19 @@ const UpdateTableScreen = () => {
   };
 
   // --- Coursing ---
-  // Get the full store object
   const coursingStore = useCoursingStore();
-  // Derive current course safely
   const currentCourse =
     coursingStore.byOrderId[activeOrderId || ""]?.currentCourse ?? 1;
-  // Extract setCurrentCourse for direct usage as a variable
   const { setCurrentCourse } = coursingStore;
-  // Use the full store object as 'coursing' so methods like coursing.getForOrder work
   const coursing = coursingStore;
-  // --- FIXED SECTION END ---
   const prevItemIdsRef = useRef<string[]>([]);
 
-  // Initialize coursing for this order and auto-assign new items
   useEffect(() => {
     if (!activeOrder) return;
     coursing.initializeForOrder(activeOrder.id);
     const currentIds = activeOrder.items.map((i) => i.id);
     const prevIds = prevItemIdsRef.current;
-    // On initial mount, don't auto-assign existing items. Preserve stored mapping.
+
     if (prevIds.length === 0) {
       prevItemIdsRef.current = currentIds;
       return;
@@ -221,7 +217,6 @@ const UpdateTableScreen = () => {
     if (newIds.length > 0) {
       const state = coursing.getForOrder(activeOrder.id);
       const useCourse = state?.currentCourse ?? 1;
-      // Only assign a course to truly unmapped items
       newIds.forEach((id) => {
         if (state?.itemCourseMap?.[id] === undefined) {
           coursing.setItemCourse(activeOrder.id, id, useCourse);
@@ -231,11 +226,6 @@ const UpdateTableScreen = () => {
     prevItemIdsRef.current = currentIds;
   }, [activeOrder?.items]);
 
-  const setItemCourse = (itemId: string, course: number) => {
-    if (!activeOrder) return;
-    coursing.setItemCourse(activeOrder.id, itemId, Math.max(1, course));
-  };
-
   const finalizeCurrentCourse = () => {
     if (!activeOrder) return;
     const nextCourse = coursing.finalizeCurrentCourse(
@@ -244,9 +234,7 @@ const UpdateTableScreen = () => {
     );
     show({
       title: "Course Finalized",
-      message: `Course ${
-        nextCourse - 1
-      } complete. New items added to Course ${nextCourse}.`,
+      message: `Course ${nextCourse - 1} complete. New items added to Course ${nextCourse}.`,
       type: "success",
     });
   };
@@ -254,7 +242,6 @@ const UpdateTableScreen = () => {
   const handleSendCourseToKitchen = (course: number, forceResend = false) => {
     if (!activeOrder) return;
 
-    // Modified guard logic: Check if sent, unless forcing resend
     if (!forceResend && coursing.isCourseSent(activeOrder.id, course)) {
       show({
         title: "Already Sent",
@@ -281,7 +268,6 @@ const UpdateTableScreen = () => {
       updateActiveOrderDetails({ opened_at: new Date().toISOString() });
     }
 
-    // Reset status to Preparing (triggers kitchen ticket logic)
     itemsInCourse.forEach((i) => {
       updateItemStatusInActiveOrder(i.id, "preparing");
     });
@@ -292,8 +278,8 @@ const UpdateTableScreen = () => {
       updateOrderStatus(activeOrder.id, "preparing");
     }
 
-    if (tableId && table?.status !== "In Use") {
-      handleAssignToTable();
+    if (currentTableId && table?.session?.id) {
+      updateSessionStatus(table.session.id, "ordered");
     }
 
     show({
@@ -305,20 +291,14 @@ const UpdateTableScreen = () => {
 
   const handleDoubleTapCourse = (course: number) => {
     if (!activeOrder) return;
-
-    // 1. Check if course is already sent
     const isSent = coursing.isCourseSent(activeOrder.id, course);
-
     if (isSent) {
-      // Secondary Action: Re-Send Safety -> Open Modal
       setCourseToResend(course);
     } else {
-      // Primary Action: Draft -> Send Immediately (No Confirmation)
       handleSendCourseToKitchen(course, false);
     }
   };
 
-  // --- Modal Confirmation Handler ---
   const handleConfirmResend = () => {
     if (courseToResend !== null) {
       handleSendCourseToKitchen(courseToResend, true);
@@ -326,31 +306,31 @@ const UpdateTableScreen = () => {
     }
   };
 
-  // Close/ Void check behavior
-  const handleCloseCheck = () => {
-    if (!activeOrder || !tableId) return;
-    // If the order is already paid, "closing" it means clearing the table for the next customer.
+  const handleCloseCheck = async () => {
+    if (!activeOrder || !currentTableId) return;
     if (activeOrder.paid_status === "Paid") {
-      handleClearTable();
+      await handleClearTable();
       return;
     }
-    // If the order is unpaid AND has items, prompt to void it.
     if (!hasPayments && hasAnyItems) {
       setVoidConfirmOpen(true);
       return;
     }
 
-    // Fallback for other cases (e.g., an empty order)
     updateOrderStatus(activeOrder.id, "completed");
-    // If it's an empty order, the table becomes available immediately.
-    updateTableStatus(tableId as string, "Available");
+    if (table?.session?.id) {
+      await updateSessionStatus(table.session.id, "available");
+    }
     router.back();
   };
 
-  const confirmVoid = () => {
+  const confirmVoid = async () => {
     if (!activeOrder) return;
     updateOrderStatus(activeOrder.id, "void");
-    updateTableStatus(tableId as string, "Available");
+    if (table?.session?.id) {
+      await updateSessionStatus(table.session.id, "available");
+    }
+
     setVoidConfirmOpen(false);
     show({
       title: "Check Voided",
@@ -360,26 +340,13 @@ const UpdateTableScreen = () => {
     router.back();
   };
 
-  const handleClearTable = () => {
+  const handleClearTable = async () => {
     if (!activeOrderId || !activeOrder) return;
 
-    // Find the primary table for the current order
-    const allTables = layouts.flatMap((l) => l.tables);
-    const primaryTable = allTables.find(
-      (t) => t.id === activeOrder.service_location_id
-    );
-
-    if (!primaryTable) {
-      show({
-        title: "Table Not Found",
-        message: "Could not find the table for this order.",
-        type: "error",
-      });
-      return;
-    }
-
     const allItemsReady = activeOrder.items.every(
-      (item) => (item.item_status || "Preparing") === "Ready"
+      (item) =>
+        (item.item_status || "preparing") === "ready" ||
+        item.item_status === "served"
     );
 
     if (!allItemsReady) {
@@ -392,25 +359,15 @@ const UpdateTableScreen = () => {
       return;
     }
 
-    // Determine all tables that need to be cleaned
-    const tablesToClean = [primaryTable.id];
-    if (primaryTable.isPrimary && primaryTable.mergedWith) {
-      tablesToClean.push(...primaryTable.mergedWith);
+    if (table?.session?.id) {
+      await updateSessionStatus(table.session.id, "cleaning");
     }
 
-    // Update status for all tables in the group
-    tablesToClean.forEach((id) => {
-      updateTableStatus(id, "Needs Cleaning");
-    });
-
-    // Archive the order and navigate back
     archiveOrder(activeOrderId);
     router.back();
     show({
       title: "Table Cleared",
-      message: `Table(s) ${tablesToClean
-        .map((id) => allTables.find((t) => t.id === id)?.name)
-        .join(", ")} marked for cleaning.`,
+      message: `Table marked for cleaning.`,
       type: "success",
     });
   };
@@ -418,10 +375,11 @@ const UpdateTableScreen = () => {
   const checkOrderClosedAndWarn = () => {
     if (activeOrder?.check_status === "Closed") {
       setOrderClosedWarningOpen(true);
-      return true; // Order is closed
+      return true;
     }
-    return false; // Order is not closed
+    return false;
   };
+
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center bg-[#212121]">
@@ -430,17 +388,9 @@ const UpdateTableScreen = () => {
     );
   }
 
-  const handleCloseEmptyOrder = () => {
-    if (activeOrder && activeOrder.items.length === 0) {
-      deleteOrder(activeOrder.id); // Remove the empty order
-      updateTableStatus(tableId as string, "Available"); // Set table back to Available
-      router.back(); // Go back to the floor plan
-    }
-  };
-
   const handleProceedToPayment = () => {
-    pricingSheetRef.current?.close(); // Close the sheet first
-    handlePay(); // Call the existing payment logic
+    pricingSheetRef.current?.close();
+    handlePay();
   };
 
   return (
@@ -457,11 +407,6 @@ const UpdateTableScreen = () => {
       <View className="px-2 mt-2">
         <OrderInfoHeader duration={duration} />
       </View>
-
-      {/* <DiscountOverlay
-        isVisible={isDiscountOverlayOpen}
-        onClose={() => setDiscountOverlayOpen(false)}
-      /> */}
 
       <View className="flex-1 flex-row ">
         <TableBillSection
@@ -507,7 +452,6 @@ const UpdateTableScreen = () => {
             );
 
             if (isCurrentCourseSent) {
-              // Show "Start New Course" button when current course is sent
               return (
                 <View className="flex-1 justify-center items-center">
                   <TouchableOpacity
@@ -522,7 +466,6 @@ const UpdateTableScreen = () => {
                 </View>
               );
             } else {
-              // Show normal menu section
               return (
                 <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
               );
@@ -576,7 +519,7 @@ const UpdateTableScreen = () => {
                 pricingSheetRef.current?.close();
                 openPaymentSheet(
                   "Card",
-                  tableId as string,
+                  currentTableId,
                   "payment-method-selection"
                 );
               }}

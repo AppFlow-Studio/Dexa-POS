@@ -1,10 +1,20 @@
+import { WaitlistEntry } from "@/types/db-floor-plan-types";
 import { create } from "zustand";
-import { WaitlistEntry } from "@/lib/types"; // Ensure WaitlistEntry is imported from types
 
 interface WaitlistState {
   waitlist: WaitlistEntry[];
 
-  addToWaitlist: (newEntry: Omit<WaitlistEntry, "id" | "arrivalTime">) => void;
+  addToWaitlist: (
+    newEntry: Omit<
+      WaitlistEntry,
+      | "id"
+      | "status"
+      | "created_at"
+      | "position"
+      | "quoted_wait_minutes"
+      | "location_id"
+    > & { quoted_wait_minutes?: number }
+  ) => void;
   reorderWaitlist: (newWaitlist: WaitlistEntry[]) => void;
   deleteFromWaitlist: (entryId: string) => void;
   removeWaitlistEntry: (entryId: string) => void; // Added for semantic clarity
@@ -15,10 +25,19 @@ export const useWaitlistStore = create<WaitlistState>((set, get) => ({
 
   addToWaitlist: (newEntryData) => {
     const newEntry: WaitlistEntry = {
-      ...newEntryData,
       id: `wl_${Date.now()}`, // Generate a unique ID
-      arrivalTime: new Date(), // Set current time for arrival
+      location_id: "loc_demo", // Mock location
+      status: "waiting",
+      created_at: new Date().toISOString(),
+      position: get().waitlist.length + 1,
+      quoted_wait_minutes: newEntryData.quoted_wait_minutes || 15, // Default quote
+      ...newEntryData,
     };
+
+    // Ensure required fields
+    if (!newEntry.party_size) newEntry.party_size = 2;
+    if (!newEntry.party_name) newEntry.party_name = "Guest";
+
     set((state) => ({
       waitlist: [...state.waitlist, newEntry],
     }));
