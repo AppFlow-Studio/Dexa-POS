@@ -10,6 +10,8 @@ import {
   Settings,
   ShoppingBag,
   Table,
+  Table2,
+  TestTube,
   UtensilsCrossed,
 } from "lucide-react-native";
 import React, { useState } from "react";
@@ -141,6 +143,15 @@ const MainMenu: React.FC = () => {
       subtitle: "Time Management",
       route: "/scheduling",
       isLocked: true,
+      isHighlighted: false,
+    },
+    {
+      id: "floorplan-test",
+      icon: <Table2 color="#10b981" size={48} />,
+      title: "Floor Plan Test",
+      subtitle: "Test Floor Plan",
+      route: "/floor-plan-test",
+      isLocked: false,
       isHighlighted: false,
     },
 
