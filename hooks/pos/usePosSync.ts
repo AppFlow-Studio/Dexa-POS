@@ -28,8 +28,6 @@ export const usePosSync = (locationId: string | null) => {
         console.error("POS SYNC FAILED:", error);
         throw error;
       }
-
-      console.log("POS SYNC SUCCESS:", data);
       return data as unknown as PosSyncData;
     },
 

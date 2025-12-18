@@ -1,6 +1,7 @@
 import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MerchantRole } from "@/lib/types";
+import { FloorPlanService } from "@/services/floorPlanService";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   setFloorPlanSupabaseClient,
@@ -102,25 +103,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         setEmployeeSyncState({ isLoading: false, error: null });
 
         // Send to debug server in development
-        if (DEBUG_EMPLOYEES_URL && data) {
-          fetch(DEBUG_EMPLOYEES_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ employees: data, locationId }),
-          })
-            .then((res) => res.json())
-            .then((result) => {
-              if (result.success) {
-                console.log(
-                  "✅ Employee data sent to debug server:",
-                  result.path
-                );
-              }
-            })
-            .catch((err) => {
-              console.log("Debug server not running (optional):", err.message);
-            });
-        }
+        // if (DEBUG_EMPLOYEES_URL && data) {
+        //   fetch(DEBUG_EMPLOYEES_URL, {
+        //     method: "POST",
+        //     headers: { "Content-Type": "application/json" },
+        //     body: JSON.stringify({ employees: data, locationId }),
+        //   })
+        //     .then((res) => res.json())
+        //     .then((result) => {
+        //       if (result.success) {
+        //         console.log(
+        //           "✅ Employee data sent to debug server:",
+        //           result.path
+        //         );
+        //       }
+        //     })
+        //     .catch((err) => {
+        //       console.log("Debug server not running (optional):", err.message);
+        //     });
+        // }
       } catch (err: any) {
         console.error("Employee sync failed:", err);
         setEmployeeSyncState({
@@ -132,12 +133,81 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     [supabase, setEmployees, setEmployeeSyncState]
   );
 
-  // Sync employees when store is selected
+  // Sync floor plans from backend
+  const syncFloorPlans = useCallback(
+    async (locationId: string) => {
+      try {
+        // Load floor plans for location
+        const { data: floorPlans, error: fpError } =
+          await FloorPlanService.getLocationFloorPlans(supabase, locationId);
+
+        if (fpError) throw fpError;
+
+        // Find default or first floor plan
+        const defaultPlan =
+          floorPlans?.find((fp) => fp.is_default) || floorPlans?.[0];
+
+        // Set floor plans in store
+        useFloorPlanStore.setState({ locationId });
+        useFloorPlanStore.getState().setFloorPlans(floorPlans || []);
+        useFloorPlanStore
+          .getState()
+          .setActiveFloorPlanId(defaultPlan?.id || null);
+
+        // Debug server logging
+        const DEBUG_FLOOR_PLANS_URL = __DEV__
+          ? "http://192.168.29.134:3456/debug/sync-data"
+          : null;
+
+        if (DEBUG_FLOOR_PLANS_URL && floorPlans) {
+          fetch(DEBUG_FLOOR_PLANS_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ floorPlans: floorPlans, locationId }),
+          })
+            .then((res) => res.json())
+            .then((result) => {
+              if (result.success) {
+                console.log(
+                  "✅ Floor plan data sent to debug server:",
+                  result.path
+                );
+              }
+            })
+            .catch((err) => {
+              console.log("Debug server not running (optional):", err.message);
+            });
+        }
+
+        // Load status if we have a floor plan
+        if (defaultPlan?.id) {
+          await useFloorPlanStore.getState().setActiveFloorPlan(defaultPlan.id);
+        }
+
+        // Load waitlist and reservations
+        await Promise.all([
+          useFloorPlanStore.getState().loadWaitlist(),
+          useFloorPlanStore.getState().loadReservations(),
+        ]);
+
+        // Setup realtime subscriptions
+        useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
+
+        console.log("Floor plans synced successfully");
+      } catch (error: any) {
+        console.error("Floor plan sync failed:", error);
+      }
+    },
+    [supabase]
+  );
+
+  // Sync employees and floor plans when store is selected (parallel)
   useEffect(() => {
     if (selectedStore?.id) {
       syncEmployees(selectedStore.id);
+      syncFloorPlans(selectedStore.id);
     }
-  }, [selectedStore?.id, syncEmployees]);
+  }, [selectedStore?.id, syncEmployees, syncFloorPlans]);
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -156,12 +226,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [posSyncData, setMenuData]);
 
-  // Initialize Floor Plan Store
-  useEffect(() => {
-    if (selectedStore?.id) {
-      useFloorPlanStore.getState().initialize(selectedStore.id);
-    }
-  }, [selectedStore?.id]);
+  // Floor plan sync is now handled in the combined useEffect above
 
   // Update sync state in store
   useEffect(() => {

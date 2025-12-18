@@ -12,7 +12,7 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
@@ -68,11 +68,16 @@ const UpdateTableScreen = () => {
   const tableStatus = table?.session?.status || "available";
 
   // Find if an order is ALREADY assigned to this table (including closed orders)
-  const existingOrderForTable = orders.find(
-    (o) =>
-      o.service_location_id === currentTableId &&
-      o.order_status !== "void" &&
-      o.order_status !== "completed"
+  // Memoized to prevent infinite loop - only recalculates when orders array or currentTableId changes
+  const existingOrderForTable = useMemo(
+    () =>
+      orders.find(
+        (o) =>
+          o.service_location_id === currentTableId &&
+          o.order_status !== "void" &&
+          o.order_status !== "completed"
+      ),
+    [orders, currentTableId]
   );
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 

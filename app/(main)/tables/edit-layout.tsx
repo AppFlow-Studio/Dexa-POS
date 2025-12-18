@@ -10,18 +10,13 @@ import { SHAPE_OPTIONS, TABLE_SHAPES } from "@/lib/table-shapes";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import {
-  Maximize,
-  Minus,
-  Plus,
-  Redo2,
-  Undo2,
-} from "lucide-react-native";
+import { Maximize, Minus, Plus, Redo2, Undo2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -66,12 +61,15 @@ const LayoutEditorScreenContent = () => {
     () => floorPlans.find((l) => l.id === layoutId),
     [floorPlans, layoutId]
   );
-  
+
   const tables = storeTables;
 
   useEffect(() => {
-    if (layoutId && layoutId !== useFloorPlanStore.getState().activeFloorPlanId) {
-        setActiveFloorPlan(layoutId);
+    if (
+      layoutId &&
+      layoutId !== useFloorPlanStore.getState().activeFloorPlanId
+    ) {
+      setActiveFloorPlan(layoutId);
     }
     return () => clearSelection();
   }, [layoutId]);
@@ -188,7 +186,7 @@ const LayoutEditorScreenContent = () => {
     const vW = 1024; // Fallback or measure properly
     const vH = 768;
 
-    const localX = absX - 0; 
+    const localX = absX - 0;
     const localY = absY - FINGER_Y_OFFSET;
 
     const centerX = vW / 2;
@@ -239,7 +237,24 @@ const LayoutEditorScreenContent = () => {
 
   const handleCanvasInteraction = () => {
     if (dropPending.value && draggedShapeId.value) {
-        performDrop(
+      performDrop(
+        draggedShapeId.value,
+        dragPosition.value.x,
+        dragPosition.value.y,
+        scale.value,
+        translateX.value,
+        translateY.value
+      );
+    }
+  };
+
+  // Watch for drop events and process them
+  useAnimatedReaction(
+    () => dropPending.value,
+    (isPending, wasPending) => {
+      if (isPending && !wasPending && draggedShapeId.value) {
+        // Inline the drop logic to avoid reference issues
+        runOnJS(performDrop)(
           draggedShapeId.value,
           dragPosition.value.x,
           dragPosition.value.y,
@@ -247,8 +262,10 @@ const LayoutEditorScreenContent = () => {
           translateX.value,
           translateY.value
         );
-    }
-  };
+      }
+    },
+    []
+  );
 
   if (!activeLayout) {
     return (

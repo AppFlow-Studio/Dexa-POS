@@ -57,7 +57,8 @@ interface FloorPlanState {
   realtimeChannel: RealtimeChannel | null;
 
   // Actions
-  initialize: (locationId: string) => Promise<void>;
+  setFloorPlans: (floorPlans: FloorPlan[]) => void;
+  setActiveFloorPlanId: (floorPlanId: string | null) => void;
   cleanup: () => void;
   setupRealtimeSubscriptions: (locationId: string) => void;
 
@@ -189,50 +190,20 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         realtimeChannel: null,
 
         // ====================================================================
-        // INITIALIZATION & CLEANUP
+        // SETTER ACTIONS (for external sync)
         // ====================================================================
 
-        initialize: async (locationId: string) => {
-          set({ isLoading: true, locationId, error: null });
-          const supabase = getClient();
-          if (!supabase) return;
-
-          try {
-            // Load floor plans for location
-            const { data: floorPlans, error: fpError } =
-              await FloorPlanService.getLocationFloorPlans(
-                supabase,
-                locationId
-              );
-
-            if (fpError) throw fpError;
-
-            // Find default or first floor plan
-            const defaultPlan =
-              floorPlans?.find((fp) => fp.is_default) || floorPlans?.[0];
-
-            set({
-              floorPlans: floorPlans || [],
-              activeFloorPlanId: defaultPlan?.id || null,
-            });
-
-            // Load status if we have a floor plan
-            if (defaultPlan?.id) {
-              await get().setActiveFloorPlan(defaultPlan.id);
-            }
-
-            // Load waitlist and reservations
-            await Promise.all([get().loadWaitlist(), get().loadReservations()]);
-
-            // Setup realtime subscriptions
-            get().setupRealtimeSubscriptions(locationId);
-
-            set({ isLoading: false, lastSyncAt: new Date().toISOString() });
-          } catch (error: any) {
-            set({ isLoading: false, error: error.message });
-            throw error;
-          }
+        setFloorPlans: (floorPlans: FloorPlan[]) => {
+          set({ floorPlans });
         },
+
+        setActiveFloorPlanId: (floorPlanId: string | null) => {
+          set({ activeFloorPlanId: floorPlanId });
+        },
+
+        // ====================================================================
+        // REALTIME SUBSCRIPTIONS
+        // ====================================================================
 
         setupRealtimeSubscriptions: (locationId: string) => {
           const supabase = getClient();
