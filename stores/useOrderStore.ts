@@ -1410,6 +1410,8 @@ export const useOrderStore = create<OrderState>()(
                 },
               },
             }));
+
+            recalculateTotals(activeOrderId);
           },
 
           removeItemFromActiveOrder: (itemId) => {
@@ -2505,6 +2507,8 @@ export const useOrderStore = create<OrderState>()(
               message: "New items have been sent to the kitchen.",
               type: "success",
             });
+
+            recalculateTotals(orderId);
           },
 
           generateCartItemId: (menuItemId, customizations, isDraft = false) => {
