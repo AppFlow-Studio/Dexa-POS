@@ -73,18 +73,18 @@ const UpdateTableScreen = () => {
 
   // Find if an order is ALREADY assigned to this table (including closed orders)
   // Memoized to prevent infinite loop - only recalculates when orders array or currentTableId changes
-  // Ignore local-only orders (without db_order_id) to prevent stale drafts from blocking auto-seat
-  const existingOrderForTable = useMemo(
-    () =>
-      orders.find(
+  // STRICT SYNC: Only return an order if it matches the active session.
+  // If no session exists, we pretend no order exists so we can auto-create one.
+  const existingOrderForTable = useMemo(() => {
+    if (table?.session?.order_id) {
+      return orders.find(
         (o) =>
-          o.service_location_id === currentTableId &&
-          o.order_status !== "void" &&
-          o.order_status !== "completed" &&
-          o.db_order_id // Only consider orders synced to backend
-      ),
-    [orders, currentTableId]
-  );
+          o.db_order_id === table.session!.order_id ||
+          o.id === table.session!.order_id
+      );
+    }
+    return undefined;
+  }, [orders, table?.session?.order_id]);
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
   // --- Derived helpers ---
@@ -183,6 +183,12 @@ const UpdateTableScreen = () => {
             setActiveOrder(foundOrder.id);
           }
         } else {
+          // Don't fetch order if table is being cleared/cleaned
+          if (tableStatus === "cleaning" || tableStatus === "available") {
+            console.log("Skipping order fetch for cleared/available table");
+            return;
+          }
+
           // Fetch missing order from backend
           console.log(
             "Fetching missing order from backend:",
@@ -572,6 +578,8 @@ const UpdateTableScreen = () => {
     }
 
     archiveOrder(activeOrderId);
+    setActiveOrder(null); // Explicitly clear active order to prevent zombie state
+
     router.back();
     show({
       title: "Table Cleared",

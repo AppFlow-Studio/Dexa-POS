@@ -67,19 +67,22 @@ const PaymentSuccessView = () => {
       } catch {}
     }, 150);
 
-    if (activeOrderId) markOrderAsPaid(activeOrderId);
-
+    // For dine-in orders on a table, we just want to close the sheet
+    // The payment is already processed and status is set optimistically
     if (activeOrder?.order_type === "dine_in" && activeTableId) {
-      // Table session updates are handled by the floor plan store's session management
-      // updateSessionStatus would need a sessionId, which we may not have here
-    } else {
-      setTimeout(() => {
-        const newOrder = startNewOrder();
-        setActiveOrder(newOrder.id);
-      }, 100);
+      close();
+      return;
     }
 
-    if (activeOrderId) {
+    // For quick service / takeout, start a new order immediately
+    setTimeout(() => {
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+    }, 100);
+
+    // Only update these for non-completed orders (which shouldn't happen here anyway)
+    // but kept for safety if flow changes
+    if (activeOrderId && activeOrder?.check_status !== "Closed") {
       setOpenedAt(activeOrderId, new Date().toISOString());
 
       const currentOrder = useOrderStore

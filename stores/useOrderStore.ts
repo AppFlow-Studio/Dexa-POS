@@ -430,6 +430,21 @@ const syncPaymentToBackend = async (
       change_given: data?.change_given,
       order_fully_paid: data?.order_fully_paid,
     });
+
+    // If backend says order is NOT fully paid, revert optimistic status
+    if (data?.order_fully_paid === false) {
+      useOrderStore.setState((state) => ({
+        ordersById: {
+          ...state.ordersById,
+          [order.id]: {
+            ...state.ordersById[order.id],
+            paid_status: "Unpaid" as const,
+            check_status: "Opened" as const,
+          },
+        },
+      }));
+    }
+
     return true;
   } catch (error) {
     console.error("Backend payment sync error:", error);
@@ -1870,7 +1885,7 @@ export const useOrderStore = create<OrderState>()(
               taxRate
             );
 
-            // Single atomic update
+            // Single atomic update with optimistic payment status
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -1881,6 +1896,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Optimistic update: assume payment completes the order
+                  paid_status: "Paid" as const,
+                  check_status: "Closed" as const,
                 },
               },
               ...(orderId === get().activeOrderId
