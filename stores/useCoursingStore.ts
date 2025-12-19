@@ -597,7 +597,12 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           p_order_id: dbOrderId,
           p_course_number: courseNumber,
         });
-        console.log("Fired course on server:", courseNumber);
+        console.log(
+          "Fired course on server:",
+          courseNumber,
+          "dbOrderId:",
+          dbOrderId
+        );
         console.log("Error:", error);
 
         if (error) throw error;

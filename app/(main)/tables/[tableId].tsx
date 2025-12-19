@@ -73,13 +73,15 @@ const UpdateTableScreen = () => {
 
   // Find if an order is ALREADY assigned to this table (including closed orders)
   // Memoized to prevent infinite loop - only recalculates when orders array or currentTableId changes
+  // Ignore local-only orders (without db_order_id) to prevent stale drafts from blocking auto-seat
   const existingOrderForTable = useMemo(
     () =>
       orders.find(
         (o) =>
           o.service_location_id === currentTableId &&
           o.order_status !== "void" &&
-          o.order_status !== "completed"
+          o.order_status !== "completed" &&
+          o.db_order_id // Only consider orders synced to backend
       ),
     [orders, currentTableId]
   );
@@ -273,13 +275,7 @@ const UpdateTableScreen = () => {
     };
 
     handleAutoCreateSession();
-  }, [
-    currentTableId,
-    tableStatus,
-    table?.session?.order_id,
-    existingOrderForTable,
-    activeOrderId,
-  ]);
+  }, [currentTableId, tableStatus, table?.session?.order_id]);
 
   const handleAssignToTable = async () => {
     if (activeOrderId && currentTableId && table?.session?.id) {
@@ -334,6 +330,11 @@ const UpdateTableScreen = () => {
 
   const handleMarkAllReadyForCourse = (itemIds: string[]) => {
     itemIds.forEach((itemId) => updateItemStatusInActiveOrder(itemId, "ready"));
+
+    if (activeOrderId && selectedCourseIdForTracker !== null) {
+      coursingStore.markCourseServed(activeOrderId, selectedCourseIdForTracker);
+    }
+
     show({
       title: "Items Marked Ready",
       message: "All items in the course have been marked as ready.",
