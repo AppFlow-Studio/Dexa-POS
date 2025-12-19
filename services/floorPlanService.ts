@@ -149,7 +149,12 @@ export class FloorPlanService {
     client: SupabaseClient,
     params: UpdateTableSessionStatusParams
   ): Promise<{ error: any }> {
-    const { error } = await client.rpc("update_table_session_status", params);
+    const { data, error } = await client.rpc(
+      "update_table_session_status",
+      params
+    );
+    console.log("updateTableSessionStatus", data, error);
+
     return { error };
   }
 

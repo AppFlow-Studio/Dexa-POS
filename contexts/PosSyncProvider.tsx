@@ -6,6 +6,7 @@ import {
   initializeOfflineSync,
   setOfflineSyncSupabaseClient,
 } from "@/services/offlineSyncInit";
+import { setCoursingSupabaseClient } from "@/stores/useCoursingStore";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   setFloorPlanSupabaseClient,
@@ -34,11 +35,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
   const offlineSyncInitialized = useRef(false);
 
-  // Register Supabase client with order store, floor plan store, and offline sync
+  // Register Supabase client with order store, floor plan store, coursing store, and offline sync
   useEffect(() => {
     if (supabase) {
       setOrderStoreSupabaseClient(supabase);
       setFloorPlanSupabaseClient(supabase);
+      setCoursingSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
 
       // Initialize offline sync service (only once)
@@ -50,12 +52,13 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log(
-        "Supabase client registered with order, floor plan, and offline sync"
+        "Supabase client registered with order, floor plan, coursing, and offline sync"
       );
     }
     return () => {
       setOrderStoreSupabaseClient(null);
       setFloorPlanSupabaseClient(null);
+      setCoursingSupabaseClient(null);
     };
   }, [supabase]);
 

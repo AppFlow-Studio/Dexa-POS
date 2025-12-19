@@ -5,9 +5,14 @@ import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useToast } from "@/contexts/ToastContext";
+import { OrderProfile } from "@/lib/types";
+import { OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  getOrderStoreSupabaseClient,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
@@ -48,7 +53,6 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    deleteOrder,
   } = useOrderStore();
 
   const {
@@ -122,13 +126,16 @@ const UpdateTableScreen = () => {
     }
   }, [tableStatus]);
 
+  // Use stable ID instead of object reference to prevent loops
+  const existingOrderId = existingOrderForTable?.id;
+
   useEffect(() => {
-    if (existingOrderForTable) {
+    if (existingOrderId) {
       // If we navigated to a table that's already in use, make its order active.
-      setActiveOrder(existingOrderForTable.id);
+      setActiveOrder(existingOrderId);
     }
     return () => setActiveOrder(null);
-  }, [currentTableId, existingOrderForTable, setActiveOrder]);
+  }, [currentTableId, existingOrderId, setActiveOrder]);
 
   useEffect(() => {
     if (currentTableId) {
@@ -139,6 +146,140 @@ const UpdateTableScreen = () => {
       clearActiveTableId();
     };
   }, [currentTableId]);
+
+  // --- Auto-Session & Order Sync Logic ---
+  useEffect(() => {
+    const handleAutoCreateSession = async () => {
+      console.log("handleAutoCreateSession");
+      console.log("currentTableId", currentTableId);
+      console.log("table", table);
+      console.log("tableStatus", tableStatus);
+      console.log("existingOrderForTable", existingOrderForTable);
+
+      console.log(
+        "existingOrderForTable",
+        existingOrderForTable ? existingOrderForTable.id : "null"
+      );
+
+      if (!currentTableId || !table) return;
+
+      // Case 1: Session exists, but local order sync might be missing activeOrderId
+      if (table.session?.order_id) {
+        // If we found the order locally, good. If not, we might need to fetch it (future/real sync).
+        // Check both local ID and db_order_id because session usually has the UUID
+        const foundOrder = orders.find(
+          (o) =>
+            o.id === table.session!.order_id ||
+            o.db_order_id === table.session!.order_id
+        );
+        if (foundOrder) {
+          if (activeOrderId !== foundOrder.id) {
+            console.log(
+              "Found existing local order for session. Setting active.",
+              foundOrder.id
+            );
+            setActiveOrder(foundOrder.id);
+          }
+        } else {
+          // Fetch missing order from backend
+          console.log(
+            "Fetching missing order from backend:",
+            table.session.order_id
+          );
+          const supabase = getOrderStoreSupabaseClient();
+          if (supabase) {
+            const { data: fetchedOrder, error } =
+              await OrderService.fetchOrderById(
+                supabase,
+                table.session.order_id
+              );
+
+            if (fetchedOrder && !error) {
+              console.log("Fetched order from backend:", fetchedOrder.id);
+              // Transform to local OrderProfile
+              const newOrderProfile: OrderProfile = {
+                id: `order_${Date.now()}`, // Local ID
+                db_order_id: fetchedOrder.id,
+                service_location_id: currentTableId,
+                order_status: (fetchedOrder.status as any) || "preparing",
+                check_status:
+                  fetchedOrder.status === "completed" ? "Closed" : "Opened",
+                paid_status:
+                  (fetchedOrder.payment_status as string) === "paid" // Cast to string to avoid overlap error with strict Enum
+                    ? ("Paid" as const)
+                    : ("Unpaid" as const),
+                order_type: "Dine In",
+                items:
+                  (fetchedOrder as any).order_items?.map((item: any) => ({
+                    id: `item_${Date.now()}_${Math.random()}`, // New local ID
+                    isDraft: false,
+                    menuItemId: item.menu_item_id,
+                    name: item.item_name,
+                    price: item.unit_price,
+                    originalPrice: item.unit_price,
+                    quantity: item.quantity,
+                    db_order_item_id: item.id,
+                    item_status: item.status || "ordered",
+                    kitchen_status: item.status || "ordered",
+                    customizations: {
+                      notes: item.special_instructions,
+                      modifiers: [], // TODO: Map modifiers if needed for display
+                    },
+                  })) || [],
+                payments: [], // TODO: Fetch payments if needed
+                opened_at: fetchedOrder.created_at,
+              };
+
+              // Inject into store
+              useOrderStore.setState((state) => ({
+                ordersById: {
+                  ...state.ordersById,
+                  [newOrderProfile.id]: newOrderProfile,
+                },
+                orderIds: [...state.orderIds, newOrderProfile.id],
+              }));
+              setActiveOrder(newOrderProfile.id);
+            } else {
+              console.error("Failed to fetch order:", error);
+            }
+          }
+        }
+        return;
+      }
+
+      // Case 2: No Session, and No Active Order for this table.
+      // The user expects the "Order Started" state just by navigating here.
+      // So we Auto-Seat / Create Session.
+      // FIX: Ignored existingOrderForTable if table.session is null, because backend is source of truth.
+      if (!table.session && tableStatus === "available") {
+        console.log("Auto-creating session for table", currentTableId);
+        try {
+          // Default party size 1, no name. Just to get the ID.
+          const { sessionId, orderId } = await useFloorPlanStore
+            .getState()
+            .seatGuests({
+              tableIds: [currentTableId],
+              partySize: 1,
+              createOrder: true,
+            });
+
+          console.log("Auto-created session:", sessionId, "Order:", orderId);
+          // Force active order to the new one, overriding any stale local state
+          setActiveOrder(orderId || null);
+        } catch (err) {
+          console.error("Failed to auto-seat guests:", err);
+        }
+      }
+    };
+
+    handleAutoCreateSession();
+  }, [
+    currentTableId,
+    tableStatus,
+    table?.session?.order_id,
+    existingOrderForTable,
+    activeOrderId,
+  ]);
 
   const handleAssignToTable = async () => {
     if (activeOrderId && currentTableId && table?.session?.id) {
@@ -203,15 +344,25 @@ const UpdateTableScreen = () => {
   // --- Coursing ---
   const coursingStore = useCoursingStore();
   const currentCourse =
-    coursingStore.byOrderId[activeOrderId || ""]?.currentCourse ?? 1;
+    coursingStore.byOrderId[activeOrderId || ""]?.workingCourse ?? 1;
   const { setCurrentCourse } = coursingStore;
   const coursing = coursingStore;
   const prevItemIdsRef = useRef<string[]>([]);
 
+  // Use stable item count and IDs to prevent infinite loops
+  const itemCount = activeOrder?.items?.length ?? 0;
+  const itemIds = useMemo(
+    () => activeOrder?.items?.map((i) => i.id).join(",") ?? "",
+    [activeOrder?.items]
+  );
+  const orderId = activeOrder?.id;
+
   useEffect(() => {
-    if (!activeOrder) return;
-    coursing.initializeForOrder(activeOrder.id);
-    const currentIds = activeOrder.items.map((i) => i.id);
+    if (!orderId) return;
+    // Pass db_order_id for backend RPC calls (use UUID, not local ID)
+    coursing.initializeForOrder(orderId, activeOrder?.db_order_id);
+
+    const currentIds = itemIds.split(",").filter(Boolean);
     const prevIds = prevItemIdsRef.current;
 
     if (prevIds.length === 0) {
@@ -220,16 +371,58 @@ const UpdateTableScreen = () => {
     }
     const newIds = currentIds.filter((id) => !prevIds.includes(id));
     if (newIds.length > 0) {
-      const state = coursing.getForOrder(activeOrder.id);
-      const useCourse = state?.currentCourse ?? 1;
+      const state = coursing.getForOrder(orderId);
+      const useCourse = state?.workingCourse ?? 1;
       newIds.forEach((id) => {
         if (state?.itemCourseMap?.[id] === undefined) {
-          coursing.setItemCourse(activeOrder.id, id, useCourse);
+          const item = activeOrder?.items?.find((i) => i.id === id);
+          coursing.setItemCourse(
+            orderId,
+            id,
+            useCourse,
+            item?.db_order_item_id
+          );
         }
       });
     }
     prevItemIdsRef.current = currentIds;
-  }, [activeOrder?.items]);
+  }, [orderId, itemIds, coursing, activeOrder?.db_order_id]);
+
+  // Ref to track which DB items have been synced to coursing backend
+  const syncedDbItemsRef = useRef<Set<string>>(new Set());
+
+  // Effect to sync items to backend once they have a DB ID
+  const dbItemIdsHash = useMemo(
+    () =>
+      activeOrder?.items
+        ?.map((i) => i.db_order_item_id)
+        .filter(Boolean)
+        .join(",") ?? "",
+    [activeOrder?.items]
+  );
+
+  useEffect(() => {
+    if (!orderId || !activeOrder?.items) return;
+
+    activeOrder.items.forEach((item) => {
+      // If item has a DB ID and hasn't been synced yet
+      if (
+        item.db_order_item_id &&
+        !syncedDbItemsRef.current.has(item.db_order_item_id)
+      ) {
+        // Get the course meant for this item from local state
+        const state = coursing.getForOrder(orderId);
+        const course =
+          state?.itemCourseMap?.[item.id] ?? state?.workingCourse ?? 1;
+
+        // Sync item course with DB ID
+        coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id);
+
+        // Mark as synced
+        syncedDbItemsRef.current.add(item.db_order_item_id);
+      }
+    });
+  }, [orderId, dbItemIdsHash, coursing]); // activeOrder.items is covered by dbItemIdsHash change
 
   const finalizeCurrentCourse = () => {
     if (!activeOrder) return;
@@ -244,7 +437,10 @@ const UpdateTableScreen = () => {
     });
   };
 
-  const handleSendCourseToKitchen = (course: number, forceResend = false) => {
+  const handleSendCourseToKitchen = async (
+    course: number,
+    forceResend = false
+  ) => {
     if (!activeOrder) return;
 
     if (!forceResend && coursing.isCourseSent(activeOrder.id, course)) {
@@ -283,8 +479,14 @@ const UpdateTableScreen = () => {
       updateOrderStatus(activeOrder.id, "preparing");
     }
 
+    // Update table session status to "ordered" via backend RPC
     if (currentTableId && table?.session?.id) {
-      updateSessionStatus(table.session.id, "ordered");
+      try {
+        await updateSessionStatus(table.session.id, "ordered");
+        console.log("Table session status updated to 'ordered'");
+      } catch (error) {
+        console.error("Failed to update table session status:", error);
+      }
     }
 
     show({
@@ -419,7 +621,17 @@ const UpdateTableScreen = () => {
           itemCourseMap={
             coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap
           }
-          sentCourses={coursing.getForOrder(activeOrder?.id || "")?.sentCourses}
+          sentCourses={(() => {
+            // Convert courses to sentCourses format for backward compatibility
+            const courseData = coursing.getForOrder(activeOrder?.id || "");
+            const sentMap: Record<number, boolean> = {};
+            if (courseData?.courses) {
+              Object.entries(courseData.courses).forEach(([num, info]) => {
+                sentMap[Number(num)] = info.status !== "open";
+              });
+            }
+            return sentMap;
+          })()}
           currentCourse={currentCourse}
           onSelectCourse={(courseId: number | null) => {
             setSelectedCourseIdForTracker(courseId);
@@ -450,10 +662,10 @@ const UpdateTableScreen = () => {
         <View className="flex-1 p-4 px-3 pt-0">
           {(() => {
             const coursingState = coursing.getForOrder(activeOrder?.id || "");
-            const currentCourse = coursingState?.currentCourse ?? 1;
+            const workingCourse = coursingState?.workingCourse ?? 1;
             const isCurrentCourseSent = coursing.isCourseSent(
               activeOrder?.id || "",
-              currentCourse
+              workingCourse
             );
 
             if (isCurrentCourseSent) {

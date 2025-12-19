@@ -37,7 +37,40 @@ export class OrderService {
     client: SupabaseClient,
     params: AddOrderItemParams
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
-    const { data, error } = await client.rpc("add_order_item", params);
+    // Workaround for broken add_order_item_with_course RPC
+    // Fallback: 1. Add item (standard) -> 2. specific set_item_course call
+
+    // 1. Strip extra params that add_order_item might reject
+    // Explicitly omit p_price_paid as the RPC does not support it
+    const { p_course_number, p_price_paid, ...standardParams } = params;
+
+    // 2. Call standard add_order_item
+    console.log(
+      "Calling standard add_order_item params keys:",
+      Object.keys(standardParams)
+    );
+    const { data, error } = await client.rpc("add_order_item", standardParams);
+
+    if (error || !data) {
+      console.error("Standard add_order_item failed", error);
+      return { data, error };
+    }
+
+    // 3. If course number is provided, set it immediately
+    if (p_course_number !== undefined && data.order_item_id) {
+      console.log(
+        `Setting course ${p_course_number} for new item ${data.order_item_id}`
+      );
+      const { error: courseError } = await client.rpc("set_item_course", {
+        p_order_item_id: data.order_item_id,
+        p_course_number: p_course_number,
+      });
+
+      if (courseError) {
+        console.error("Failed to set course after adding item:", courseError);
+      }
+    }
+
     return { data, error };
   }
 
@@ -157,6 +190,30 @@ export class OrderService {
 
     const { data, error } = await query;
     return { data: data as Order[], error };
+  }
+
+  /**
+   * Fetch a single order by ID with all relations
+   */
+  static async fetchOrderById(
+    client: SupabaseClient,
+    orderId: string
+  ): Promise<{ data: Order | null; error: any }> {
+    const { data, error } = await client
+      .from("orders")
+      .select(
+        `
+        *,
+        order_items (
+          *,
+          order_item_modifiers (*)
+        )
+      `
+      )
+      .eq("id", orderId)
+      .single();
+
+    return { data: data as Order, error };
   }
 
   // --- Order Item CRUD Methods ---

@@ -148,6 +148,7 @@ export interface AddOrderItemParams {
   // Pre-calculated prices
   p_unit_price: number; // effective_price
   p_cash_price?: number; // effective_cash_price
+  p_price_paid?: number; // Real amount paid per item (usually unit_price unless discounted)
   p_use_cash_price?: boolean; // Default true
 
   // Quantity
