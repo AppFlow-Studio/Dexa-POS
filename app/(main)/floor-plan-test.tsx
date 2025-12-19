@@ -15,23 +15,31 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/contexts/ToastContext";
+import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
+import { useMenuStore } from "@/stores/useMenuStore";
+import { setOrderStoreSupabaseClient, useOrderStore, type CartItem } from "@/stores/useOrderStoreOptimized";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
     FloorPlan,
+    FloorPlanObject,
     Reservation,
     TableSession,
     TableStatus,
-    TableWithSession,
     WaitlistEntry
-} from "@/stores/useFloorPlanTables";
-import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+} from "@/types/db-floor-plan-types";
+import type { MenuItemDetails, MenuWithCategories } from "@/types/menu";
 import { useRouter } from "expo-router";
 import {
+    ChevronDown,
+    ChevronUp,
+    Minus,
+    Plus,
     RotateCcw,
     Trash2
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
     Alert,
     ScrollView,
@@ -56,6 +64,56 @@ const FloorPlanTest = () => {
     const supabase = useSupabaseClient();
     const router = useRouter();
     const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+    const orderStore = useOrderStore();
+
+    // Initialize order store with supabase client
+    React.useEffect(() => {
+        setOrderStoreSupabaseClient(supabase);
+    }, [supabase]);
+
+    // Fetch menu data
+    const { data: posSyncData, isLoading: isLoadingMenu } = usePosSync(
+        selectedStore?.id || null
+    );
+    const { getAllMenuItems } = useMenuStore();
+
+    // Get all menu items from store
+    const allMenuItems = useMemo(() => {
+        return getAllMenuItems();
+    }, [getAllMenuItems]);
+
+    // Flatten menu items from sync data with category information
+    interface MenuItemWithCategory {
+        menu_item: MenuItemDetails;
+        category_name: string;
+    }
+
+    const menuItemsFromSync = useMemo(() => {
+        if (!posSyncData?.menus) return [];
+        const items: MenuItemWithCategory[] = [];
+        posSyncData.menus.forEach((menu: MenuWithCategories) => {
+            menu.categories.forEach((category) => {
+                category.items.forEach((item) => {
+                    items.push({
+                        menu_item: item.menu_item,
+                        category_name: category.category?.name || "Uncategorized",
+                    });
+                });
+            });
+        });
+        return items;
+    }, [posSyncData]);
+
+    // Get first available menu item as default
+    const defaultMenuItem = useMemo(() => {
+        return menuItemsFromSync.length > 0 ? menuItemsFromSync[0].menu_item : null;
+    }, [menuItemsFromSync]);
+
+    const defaultCategoryName = useMemo(() => {
+        return menuItemsFromSync.length > 0
+            ? menuItemsFromSync[0].category_name
+            : "";
+    }, [menuItemsFromSync]);
 
     // Location & Floor Plan State
     const [locationId, setLocationId] = useState<string | null>(selectedStore?.id || null);
@@ -121,8 +179,40 @@ const FloorPlanTest = () => {
     const [checkTime, setCheckTime] = useState("");
     const [checkPartySize, setCheckPartySize] = useState("2");
 
+    // Order & Coursing State
+    const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+    const [selectedCourseNumber, setSelectedCourseNumber] = useState("1");
+    const [itemName, setItemName] = useState("");
+    const [itemPrice, setItemPrice] = useState("10.00");
+    const [itemQuantity, setItemQuantity] = useState("1");
+    const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+    const [targetCourseNumber, setTargetCourseNumber] = useState("2");
+    const [courseToFire, setCourseToFire] = useState("1");
+    const [courseToServe, setCourseToServe] = useState("1");
+
+    // Menu Item Configuration State
+    const [selectedMenuItem, setSelectedMenuItem] = useState<MenuItemDetails | null>(null);
+    const [selectedCategoryName, setSelectedCategoryName] = useState<string>("");
+    const [useCashPrice, setUseCashPrice] = useState<boolean>(true);
+    const [menuItemId, setMenuItemId] = useState("");
+    const [locationExclusiveItemId, setLocationExclusiveItemId] = useState("");
+    const [selectedSizeId, setSelectedSizeId] = useState("");
+    const [selectedSizeName, setSelectedSizeName] = useState<string>("");
+    const [sizePriceModifier, setSizePriceModifier] = useState<number>(0);
+    const [itemSpecialInstructions, setItemSpecialInstructions] = useState("");
+
+    // Modifier Selection State: { [groupId]: { [itemId]: { selected: boolean, quantity: number } } }
+    const [modifierSelections, setModifierSelections] = useState<
+        Record<string, Record<string, { selected: boolean; quantity: number }>>
+    >({});
+
+    // Expanded modifier groups for UI
+    const [expandedModifierGroups, setExpandedModifierGroups] = useState<
+        Record<string, boolean>
+    >({});
+
     // Data Lists
-    const [tables, setTables] = useState<TableWithSession[]>([]);
+    const [tables, setTables] = useState<FloorPlanObject[]>([]);
     const [sessions, setSessions] = useState<TableSession[]>([]);
     const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
     const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -157,6 +247,14 @@ const FloorPlanTest = () => {
         assignReservationTables: false,
         seatReservation: false,
         checkAvailability: false,
+        createOrderForSession: false,
+        linkOrderToSession: false,
+        setWorkingCourse: false,
+        createNextCourse: false,
+        addItemToOrder: false,
+        fireCourse: false,
+        markCourseServed: false,
+        moveItemToCourse: false,
     });
 
     // Helper function to add log
@@ -1401,6 +1499,759 @@ const FloorPlanTest = () => {
         }
     };
 
+    // ==========================================================================
+    // ORDER & COURSING OPERATIONS
+    // ==========================================================================
+
+    const handleCreateOrderForSession = async () => {
+        if (!selectedSessionId) {
+            show({
+                title: "Error",
+                message: "Please select a table session first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const session = sessions.find((s) => s.id === selectedSessionId);
+        if (!session) {
+            show({
+                title: "Error",
+                message: "Session not found.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, createOrderForSession: true }));
+
+        try {
+            // Get table ID from session (first table if merged)
+            const tableIds = tables
+                .filter((t) => t.session?.id === selectedSessionId)
+                .map((t) => t.id);
+
+            if (tableIds.length === 0) {
+                throw new Error("No tables found for this session");
+            }
+
+            const tableId = tableIds[0];
+
+            // Create new order
+            const newOrder = orderStore.startNewOrder({
+                tableId,
+                guestCount: session.party_size || 2,
+            });
+
+            // Set as active order
+            orderStore.setActiveOrder(newOrder.id);
+            setSelectedOrderId(newOrder.id);
+
+            addLog("Create Order for Session", { sessionId: selectedSessionId, tableId, orderId: newOrder.id }, { orderId: newOrder.id });
+            show({
+                title: "Success",
+                message: `Order created: ${newOrder.id}`,
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to create order";
+            addLog("Create Order for Session", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, createOrderForSession: false }));
+        }
+    };
+
+    const handleLinkOrderToSession = async () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        if (!selectedSessionId) {
+            show({
+                title: "Error",
+                message: "Please select a table session first.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, linkOrderToSession: true }));
+
+        try {
+            const order = orderStore.getOrder(selectedOrderId);
+            if (!order) {
+                throw new Error("Order not found");
+            }
+
+            if (!order.db_order_id) {
+                throw new Error("Order must be synced to server first");
+            }
+
+            const params = {
+                p_session_id: selectedSessionId,
+                p_order_id: order.db_order_id,
+            };
+
+            addLog("Link Order to Session", params);
+
+            const result = await callRPC("link_order_to_session", params);
+
+            addLog("Link Order to Session", params, result);
+            show({
+                title: "Success",
+                message: "Order linked to session",
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to link order to session";
+            addLog("Link Order to Session", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, linkOrderToSession: false }));
+        }
+    };
+
+    const handleSetWorkingCourse = () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const courseNumber = parseInt(selectedCourseNumber);
+        if (isNaN(courseNumber) || courseNumber < 1) {
+            show({
+                title: "Error",
+                message: "Please enter a valid course number.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, setWorkingCourse: true }));
+
+        try {
+            orderStore.setWorkingCourse(selectedOrderId, courseNumber);
+            addLog("Set Working Course", { orderId: selectedOrderId, courseNumber }, { success: true });
+            show({
+                title: "Success",
+                message: `Working course set to ${courseNumber}`,
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to set working course";
+            addLog("Set Working Course", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, setWorkingCourse: false }));
+        }
+    };
+
+    const handleCreateNextCourse = () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, createNextCourse: true }));
+
+        try {
+            const nextCourse = orderStore.createNextCourse(selectedOrderId);
+            addLog("Create Next Course", { orderId: selectedOrderId }, { nextCourse });
+            show({
+                title: "Success",
+                message: `Course ${nextCourse} created`,
+                type: "success",
+            });
+            setSelectedCourseNumber(nextCourse.toString());
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to create next course";
+            addLog("Create Next Course", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, createNextCourse: false }));
+        }
+    };
+
+    // ==========================================================================
+    // MODIFIER HELPER FUNCTIONS
+    // ==========================================================================
+
+    // Helper function to toggle modifier selection
+    const handleModifierToggle = (groupId: string, itemId: string) => {
+        const group = selectedMenuItem?.modifier_groups.find(
+            (g) => g.id === groupId
+        );
+        if (!group) return;
+
+        setModifierSelections((prev) => {
+            const newSelections = { ...prev };
+            if (!newSelections[groupId]) {
+                newSelections[groupId] = {};
+            }
+
+            const currentSelections = newSelections[groupId];
+            const isCurrentlySelected = currentSelections[itemId]?.selected || false;
+            const currentSelectedCount = Object.values(currentSelections).filter(
+                (sel) => sel.selected
+            ).length;
+
+            // Handle single selection (max_selections = 1)
+            if (group.max_selections === 1) {
+                // Clear all other selections in this group
+                Object.keys(currentSelections).forEach((key) => {
+                    currentSelections[key] = { selected: false, quantity: 1 };
+                });
+                // Toggle the selected item
+                currentSelections[itemId] = {
+                    selected: !isCurrentlySelected,
+                    quantity: 1,
+                };
+            } else {
+                // Multiple selection - check max limit
+                if (
+                    !isCurrentlySelected &&
+                    currentSelectedCount >= group.max_selections
+                ) {
+                    // Max reached, don't allow selection
+                    return prev;
+                }
+
+                // Toggle selection
+                currentSelections[itemId] = {
+                    selected: !isCurrentlySelected,
+                    quantity: currentSelections[itemId]?.quantity || 1,
+                };
+            }
+
+            return newSelections;
+        });
+    };
+
+    // Helper function to update modifier quantity
+    const handleModifierQuantityChange = (
+        groupId: string,
+        itemId: string,
+        delta: number
+    ) => {
+        setModifierSelections((prev) => {
+            const newSelections = { ...prev };
+            if (!newSelections[groupId]) {
+                newSelections[groupId] = {};
+            }
+
+            const current = newSelections[groupId][itemId];
+            if (!current || !current.selected) return prev;
+
+            const newQuantity = Math.max(1, (current.quantity || 1) + delta);
+            newSelections[groupId][itemId] = {
+                ...current,
+                quantity: newQuantity,
+            };
+
+            return newSelections;
+        });
+    };
+
+    // Helper function to convert modifier selections to CartItem customizations format
+    const convertModifiersToCustomizations = () => {
+        if (!selectedMenuItem) return { addOns: [], modifiers: [] };
+
+        const addOns: Array<{ id: string; name: string; price: number }> = [];
+        const modifiers: Array<{
+            categoryId: string;
+            categoryName: string;
+            options: Array<{ id: string; name: string; price: number }>;
+        }> = [];
+
+        Object.entries(modifierSelections).forEach(([groupId, items]) => {
+            const group = selectedMenuItem.modifier_groups.find(
+                (g) => g.id === groupId
+            );
+            if (!group) return;
+
+            const selectedOptions: Array<{ id: string; name: string; price: number }> = [];
+
+            Object.entries(items).forEach(([itemId, selection]) => {
+                if (selection.selected) {
+                    const modifierItem = group.items.find((item) => item.id === itemId);
+                    if (modifierItem) {
+                        const option = {
+                            id: modifierItem.id,
+                            name: modifierItem.name,
+                            price: modifierItem.price_modifier,
+                        };
+
+                        // If quantity > 1, add multiple times or handle differently
+                        for (let i = 0; i < (selection.quantity || 1); i++) {
+                            selectedOptions.push(option);
+                        }
+                    }
+                }
+            });
+
+            if (selectedOptions.length > 0) {
+                modifiers.push({
+                    categoryId: group.id,
+                    categoryName: group.name,
+                    options: selectedOptions,
+                });
+            }
+        });
+
+        return { addOns, modifiers };
+    };
+
+    // Helper function to validate modifier selections
+    const validateModifierSelections = (): { valid: boolean; error?: string } => {
+        if (!selectedMenuItem) return { valid: true };
+
+        for (const group of selectedMenuItem.modifier_groups) {
+            const selections = modifierSelections[group.id] || {};
+            const selectedCount = Object.values(selections).filter(
+                (sel) => sel.selected
+            ).length;
+
+            // Check required groups
+            if (group.is_required && selectedCount < group.min_selections) {
+                return {
+                    valid: false,
+                    error: `${group.name} is required. Please select at least ${group.min_selections} item(s).`,
+                };
+            }
+
+            // Check min selections
+            if (selectedCount > 0 && selectedCount < group.min_selections) {
+                return {
+                    valid: false,
+                    error: `${group.name} requires at least ${group.min_selections} selection(s).`,
+                };
+            }
+
+            // Check max selections
+            if (selectedCount > group.max_selections) {
+                return {
+                    valid: false,
+                    error: `${group.name} allows a maximum of ${group.max_selections} selection(s).`,
+                };
+            }
+        }
+
+        return { valid: true };
+    };
+
+    // Helper function to clear all modifiers
+    const handleClearModifiers = () => {
+        setModifierSelections({});
+        show({
+            title: "Modifiers Cleared",
+            message: "All modifier selections have been cleared",
+            type: "success",
+        });
+    };
+
+    // Helper function to calculate total modifier price impact
+    const calculateModifierPriceImpact = (): number => {
+        if (!selectedMenuItem) return 0;
+
+        let total = 0;
+        Object.entries(modifierSelections).forEach(([groupId, items]) => {
+            const group = selectedMenuItem.modifier_groups.find(
+                (g) => g.id === groupId
+            );
+            if (!group) return;
+
+            Object.entries(items).forEach(([itemId, selection]) => {
+                if (selection.selected) {
+                    const modifierItem = group.items.find((item) => item.id === itemId);
+                    if (modifierItem) {
+                        total += modifierItem.price_modifier * (selection.quantity || 1);
+                    }
+                }
+            });
+        });
+
+        return total;
+    };
+
+    // Helper function to calculate effective item price
+    const calculateEffectiveItemPrice = (): number => {
+        if (!selectedMenuItem) return parseFloat(itemPrice) || 0;
+
+        let price = useCashPrice && selectedMenuItem.effective_cash_price
+            ? selectedMenuItem.effective_cash_price
+            : selectedMenuItem.effective_price;
+
+        // Add size modifier
+        if (sizePriceModifier) {
+            price += sizePriceModifier;
+        }
+
+        // Add modifier prices
+        price += calculateModifierPriceImpact();
+
+        return Math.round(price * 100) / 100;
+    };
+
+    const handleAddItemToOrder = () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        // Validate menu item selection
+        if (!menuItemId && !locationExclusiveItemId) {
+            show({
+                title: "Error",
+                message: "Please provide either menu_item_id or location_exclusive_item_id",
+                type: "error",
+            });
+            return;
+        }
+
+        // Validate that we have a selected menu item with required data
+        if (!selectedMenuItem) {
+            show({
+                title: "Error",
+                message: "Please select a menu item",
+                type: "error",
+            });
+            return;
+        }
+
+        // Validate modifier selections
+        const validation = validateModifierSelections();
+        if (!validation.valid) {
+            show({
+                title: "Invalid Modifier Selection",
+                message: validation.error || "Please fix modifier selections",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, addItemToOrder: true }));
+
+        try {
+            const order = orderStore.getOrder(selectedOrderId);
+            if (!order) {
+                throw new Error("Order not found");
+            }
+
+            const quantity = parseInt(itemQuantity) || 1;
+            if (quantity <= 0) {
+                throw new Error("Invalid quantity");
+            }
+
+            // Calculate effective price
+            const effectivePrice = calculateEffectiveItemPrice();
+
+            // Set as active order to add item
+            orderStore.setActiveOrder(selectedOrderId);
+
+            // Build customizations
+            const customizations: CartItem["customizations"] = {
+                notes: itemSpecialInstructions || undefined,
+            };
+
+            // Add size if selected
+            if (selectedSizeId && selectedSizeName) {
+                customizations.size = {
+                    id: selectedSizeId,
+                    name: selectedSizeName,
+                    priceModifier: sizePriceModifier,
+                };
+            }
+
+            // Add modifiers from selections
+            const modifierCustomizations = convertModifiersToCustomizations();
+            if (modifierCustomizations.addOns.length > 0) {
+                customizations.addOns = modifierCustomizations.addOns;
+            }
+            if (modifierCustomizations.modifiers.length > 0) {
+                customizations.modifiers = modifierCustomizations.modifiers;
+            }
+
+            // Generate item ID
+            const itemId = orderStore.generateCartItemId(
+                menuItemId || locationExclusiveItemId || "unknown",
+                customizations
+            );
+
+            const newItem: CartItem = {
+                id: itemId,
+                menuItemId: menuItemId || "",
+                locationExclusiveItemId: locationExclusiveItemId || undefined,
+                name: selectedMenuItem.name,
+                category_name: selectedCategoryName || "Uncategorized",
+                originalPrice: useCashPrice && selectedMenuItem.effective_cash_price
+                    ? selectedMenuItem.effective_cash_price
+                    : selectedMenuItem.effective_price,
+                price: effectivePrice,
+                quantity: quantity,
+                paidQuantity: 0,
+                course_number: order.working_course,
+                customizations: customizations,
+                synced: false,
+                syncing: false,
+                kitchen_status: "new",
+            };
+
+            orderStore.addItemToActiveOrder(newItem);
+
+            addLog("Add Item to Order", { orderId: selectedOrderId, item: newItem.name, course: order.working_course }, { success: true });
+            show({
+                title: "Success",
+                message: `${newItem.name} added to course ${order.working_course}`,
+                type: "success",
+            });
+
+            // Clear form
+            setItemName("");
+            setItemPrice("10.00");
+            setItemQuantity("1");
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to add item";
+            addLog("Add Item to Order", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, addItemToOrder: false }));
+        }
+    };
+
+    const handleFireCourse = async () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const courseNumber = parseInt(courseToFire);
+        if (isNaN(courseNumber) || courseNumber < 1) {
+            show({
+                title: "Error",
+                message: "Please enter a valid course number.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, fireCourse: true }));
+
+        try {
+            await orderStore.fireCourse(selectedOrderId, courseNumber);
+            const order = orderStore.getOrder(selectedOrderId);
+            const itemsInCourse = order?.items.filter((i) => i.course_number === courseNumber) || [];
+            addLog("Fire Course", { orderId: selectedOrderId, courseNumber }, { itemCount: itemsInCourse.length });
+            show({
+                title: "Success",
+                message: `Course ${courseNumber} fired (${itemsInCourse.length} items)`,
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to fire course";
+            addLog("Fire Course", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, fireCourse: false }));
+        }
+    };
+
+    const handleMarkCourseServed = () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const courseNumber = parseInt(courseToServe);
+        if (isNaN(courseNumber) || courseNumber < 1) {
+            show({
+                title: "Error",
+                message: "Please enter a valid course number.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, markCourseServed: true }));
+
+        try {
+            orderStore.markCourseServed(selectedOrderId, courseNumber);
+            addLog("Mark Course Served", { orderId: selectedOrderId, courseNumber }, { success: true });
+            show({
+                title: "Success",
+                message: `Course ${courseNumber} marked as served`,
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to mark course served";
+            addLog("Mark Course Served", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, markCourseServed: false }));
+        }
+    };
+
+    const handleMoveItemToCourse = () => {
+        if (!selectedOrderId) {
+            show({
+                title: "Error",
+                message: "Please select an order first.",
+                type: "error",
+            });
+            return;
+        }
+
+        if (!selectedItemId) {
+            show({
+                title: "Error",
+                message: "Please select an item first.",
+                type: "error",
+            });
+            return;
+        }
+
+        const targetCourse = parseInt(targetCourseNumber);
+        if (isNaN(targetCourse) || targetCourse < 1) {
+            show({
+                title: "Error",
+                message: "Please enter a valid target course number.",
+                type: "error",
+            });
+            return;
+        }
+
+        setLoading((prev) => ({ ...prev, moveItemToCourse: true }));
+
+        try {
+            orderStore.setItemCourse(selectedOrderId, selectedItemId, targetCourse);
+            const order = orderStore.getOrder(selectedOrderId);
+            const item = order?.items.find((i) => i.id === selectedItemId);
+            addLog("Move Item to Course", { orderId: selectedOrderId, itemId: selectedItemId, targetCourse }, { itemName: item?.name });
+            show({
+                title: "Success",
+                message: `${item?.name || "Item"} moved to course ${targetCourse}`,
+                type: "success",
+            });
+        } catch (error: any) {
+            const errorMessage = error?.message || "Failed to move item";
+            addLog("Move Item to Course", undefined, undefined, errorMessage);
+            show({
+                title: "Error",
+                message: errorMessage,
+                type: "error",
+            });
+        } finally {
+            setLoading((prev) => ({ ...prev, moveItemToCourse: false }));
+        }
+    };
+
+    // ==========================================================================
+    // DISPLAY HELPERS
+    // ==========================================================================
+
+    const getOrderDisplayInfo = (orderId: string) => {
+        const order = orderStore.getOrder(orderId);
+        if (!order) return null;
+
+        return {
+            id: order.id,
+            tableId: order.service_location_id,
+            status: order.order_status,
+            subtotal: order.subtotal,
+            tax: order.tax_amount,
+            total: order.total_amount,
+            amountPaid: order.amount_paid,
+            amountDue: order.amount_due,
+            courseCount: Object.keys(order.courses || {}).length,
+            workingCourse: order.working_course,
+            itemCount: order.items.length,
+        };
+    };
+
+    const getCoursesDisplayInfo = (orderId: string) => {
+        const order = orderStore.getOrder(orderId);
+        if (!order) return [];
+
+        return Object.values(order.courses || {}).map((course) => {
+            const itemsInCourse = order.items.filter((i) => i.course_number === course.course_number);
+            return {
+                courseNumber: course.course_number,
+                status: course.status,
+                itemCount: itemsInCourse.length,
+                firedAt: course.fired_at ? new Date(course.fired_at).toLocaleString() : undefined,
+                servedAt: course.served_at ? new Date(course.served_at).toLocaleString() : undefined,
+            };
+        }).sort((a, b) => a.courseNumber - b.courseNumber);
+    };
+
+    const getItemsByCourse = (orderId: string) => {
+        const order = orderStore.getOrder(orderId);
+        if (!order) return {};
+
+        const grouped: Record<number, CartItem[]> = {};
+        order.items.forEach((item) => {
+            if (!grouped[item.course_number]) {
+                grouped[item.course_number] = [];
+            }
+            grouped[item.course_number].push(item);
+        });
+
+        return grouped;
+    };
+
     // Helper to extract sessions from tables
     React.useEffect(() => {
         const extractedSessions: TableSession[] = [];
@@ -1467,6 +2318,26 @@ const FloorPlanTest = () => {
         setCheckDate("");
         setCheckTime("");
         setCheckPartySize("2");
+        setSelectedOrderId(null);
+        setSelectedCourseNumber("1");
+        setItemName("");
+        setItemPrice("10.00");
+        setItemQuantity("1");
+        setSelectedItemId(null);
+        setTargetCourseNumber("2");
+        setCourseToFire("1");
+        setCourseToServe("1");
+        setSelectedMenuItem(null);
+        setSelectedCategoryName("");
+        setUseCashPrice(true);
+        setMenuItemId("");
+        setLocationExclusiveItemId("");
+        setSelectedSizeId("");
+        setSelectedSizeName("");
+        setSizePriceModifier(0);
+        setItemSpecialInstructions("");
+        setModifierSelections({});
+        setExpandedModifierGroups({});
         show({
             title: "Form Reset",
             message: "All fields have been reset",
@@ -1862,8 +2733,8 @@ const FloorPlanTest = () => {
                                                                 setTableIdsInput(newIds.join(", "));
                                                             }}
                                                             className={`px-3 py-1 rounded border ${selectedTableIds.includes(table.id)
-                                                                    ? "bg-blue-600 border-blue-400"
-                                                                    : "bg-[#1a1a1a] border-gray-700"
+                                                                ? "bg-blue-600 border-blue-400"
+                                                                : "bg-[#1a1a1a] border-gray-700"
                                                                 }`}
                                                         >
                                                             <Text className={`text-xs ${selectedTableIds.includes(table.id) ? "text-white" : "text-gray-300"
@@ -2751,6 +3622,926 @@ const FloorPlanTest = () => {
                     </AccordionItem>
                 </Accordion>
 
+                {/* Order & Coursing Testing Section */}
+                <Accordion type="single" collapsible className="mb-4">
+                    <AccordionItem value="order-coursing">
+                        <AccordionTrigger className="py-3">
+                            <Text className="text-xl font-bold text-white">
+                                Order & Coursing Testing
+                            </Text>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                            <View className="space-y-4">
+                                {/* Order Creation & Linking */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Order Creation & Linking
+                                    </Text>
+
+                                    {sessions.length > 0 && (
+                                        <View className="mb-3">
+                                            <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                                Select Table Session
+                                            </Text>
+                                            <Select
+                                                value={
+                                                    selectedSessionId
+                                                        ? {
+                                                            value: selectedSessionId,
+                                                            label: sessions.find((s) => s.id === selectedSessionId)?.session_number || "Select",
+                                                        }
+                                                        : undefined
+                                                }
+                                                onValueChange={(option) => {
+                                                    setSelectedSessionId(option?.value || null);
+                                                    const session = sessions.find((s) => s.id === option?.value);
+                                                    if (session?.order_id) {
+                                                        // Auto-select order if session has one
+                                                        setSelectedOrderId(session.order_id);
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger className="bg-[#303030] border-gray-600">
+                                                    <SelectValue
+                                                        placeholder="Select session"
+                                                        className="text-white"
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-[#212121] border-gray-600">
+                                                    {sessions.map((session) => (
+                                                        <SelectItem
+                                                            key={session.id}
+                                                            value={session.id}
+                                                            label={`${session.session_number} - ${session.guest_name || "Guest"} ${session.order_id ? "(Has Order)" : ""}`}
+                                                        />
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </View>
+                                    )}
+
+                                    <View className="flex-row gap-2 mb-3">
+                                        <Button
+                                            onPress={handleCreateOrderForSession}
+                                            disabled={loading.createOrderForSession || !selectedSessionId}
+                                            className="flex-1 bg-green-600"
+                                        >
+                                            <Text className="text-white font-semibold text-xs">
+                                                {loading.createOrderForSession ? "Creating..." : "Create Order"}
+                                            </Text>
+                                        </Button>
+
+                                        <Button
+                                            onPress={handleLinkOrderToSession}
+                                            disabled={loading.linkOrderToSession || !selectedOrderId || !selectedSessionId}
+                                            className="flex-1 bg-blue-600"
+                                        >
+                                            <Text className="text-white font-semibold text-xs">
+                                                {loading.linkOrderToSession ? "Linking..." : "Link Order"}
+                                            </Text>
+                                        </Button>
+                                    </View>
+
+                                    {/* Order Selection */}
+                                    <View>
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Select Order
+                                        </Text>
+                                        <Select
+                                            value={
+                                                selectedOrderId
+                                                    ? {
+                                                        value: selectedOrderId,
+                                                        label: orderStore.getOrder(selectedOrderId)?.id || "Select",
+                                                    }
+                                                    : undefined
+                                            }
+                                            onValueChange={(option) => setSelectedOrderId(option?.value || null)}
+                                        >
+                                            <SelectTrigger className="bg-[#303030] border-gray-600">
+                                                <SelectValue
+                                                    placeholder="Select order"
+                                                    className="text-white"
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-[#212121] border-gray-600">
+                                                {orderStore.orderIds.map((orderId) => {
+                                                    const order = orderStore.getOrder(orderId);
+                                                    return (
+                                                        <SelectItem
+                                                            key={orderId}
+                                                            value={orderId}
+                                                            label={`${order?.id || orderId} - Table: ${order?.service_location_id || "N/A"} - $${order?.total_amount?.toFixed(2) || "0.00"}`}
+                                                        />
+                                                    );
+                                                })}
+                                            </SelectContent>
+                                        </Select>
+                                    </View>
+
+                                    {/* Order Summary */}
+                                    {selectedOrderId && (() => {
+                                        const orderInfo = getOrderDisplayInfo(selectedOrderId);
+                                        if (!orderInfo) return null;
+                                        return (
+                                            <View className="mt-3 p-3 bg-blue-900/20 border border-blue-600 rounded-lg">
+                                                <Text className="text-blue-400 text-sm font-semibold mb-2">
+                                                    Order Summary
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    ID: {orderInfo.id}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Table: {orderInfo.tableId || "N/A"}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Status: {orderInfo.status}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Subtotal: ${orderInfo.subtotal.toFixed(2)}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Tax: ${orderInfo.tax.toFixed(2)}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Total: ${orderInfo.total.toFixed(2)}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Paid: ${orderInfo.amountPaid.toFixed(2)} | Due: ${orderInfo.amountDue.toFixed(2)}
+                                                </Text>
+                                                <Text className="text-white text-xs mb-1">
+                                                    Working Course: {orderInfo.workingCourse} | Total Courses: {orderInfo.courseCount}
+                                                </Text>
+                                                <Text className="text-white text-xs">
+                                                    Items: {orderInfo.itemCount}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
+                                </View>
+
+                                {/* Working Course Management */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Working Course Management
+                                    </Text>
+
+                                    {selectedOrderId && (() => {
+                                        const order = orderStore.getOrder(selectedOrderId);
+                                        if (!order) return null;
+                                        return (
+                                            <View className="mb-3 p-3 bg-gray-800 rounded-lg">
+                                                <Text className="text-white text-sm font-semibold mb-1">
+                                                    Current Working Course: {order.working_course}
+                                                </Text>
+                                                <Text className="text-gray-400 text-xs">
+                                                    Status: {order.courses[order.working_course]?.status || "open"}
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
+
+                                    <View className="flex-row gap-2 mb-3">
+                                        <View className="flex-1">
+                                            <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                                Course Number
+                                            </Text>
+                                            <Input
+                                                value={selectedCourseNumber}
+                                                onChangeText={setSelectedCourseNumber}
+                                                placeholder="1"
+                                                keyboardType="numeric"
+                                                className="bg-[#303030] border-gray-600 text-white"
+                                                placeholderTextColor="#9CA3AF"
+                                            />
+                                        </View>
+                                        <View className="flex-1 justify-end">
+                                            <Button
+                                                onPress={handleSetWorkingCourse}
+                                                disabled={loading.setWorkingCourse || !selectedOrderId}
+                                                className="bg-purple-600"
+                                            >
+                                                <Text className="text-white font-semibold text-xs">
+                                                    {loading.setWorkingCourse ? "Setting..." : "Set Working Course"}
+                                                </Text>
+                                            </Button>
+                                        </View>
+                                    </View>
+
+                                    <Button
+                                        onPress={handleCreateNextCourse}
+                                        disabled={loading.createNextCourse || !selectedOrderId}
+                                        className="bg-indigo-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.createNextCourse ? "Creating..." : "Create Next Course"}
+                                        </Text>
+                                    </Button>
+
+                                    {/* Courses Overview */}
+                                    {selectedOrderId && (() => {
+                                        const coursesInfo = getCoursesDisplayInfo(selectedOrderId);
+                                        if (coursesInfo.length === 0) return null;
+                                        return (
+                                            <View className="mt-3">
+                                                <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                                    Courses Overview
+                                                </Text>
+                                                {coursesInfo.map((course) => {
+                                                    const isOpen = course.status === "open";
+                                                    const isFired = course.status === "fired";
+                                                    const isServed = course.status === "served";
+                                                    return (
+                                                        <View
+                                                            key={course.courseNumber}
+                                                            className={`mb-2 p-2 rounded border ${isOpen ? "border-green-600 bg-green-900/20" :
+                                                                isFired ? "border-yellow-600 bg-yellow-900/20" :
+                                                                    "border-blue-600 bg-blue-900/20"
+                                                                }`}
+                                                        >
+                                                            <Text className={`text-xs font-semibold ${isOpen ? "text-green-400" :
+                                                                isFired ? "text-yellow-400" :
+                                                                    "text-blue-400"
+                                                                }`}>
+                                                                Course {course.courseNumber} - {course.status.toUpperCase()}
+                                                            </Text>
+                                                            <Text className="text-white text-xs">
+                                                                Items: {course.itemCount}
+                                                            </Text>
+                                                            {course.firedAt && (
+                                                                <Text className="text-gray-400 text-xs">
+                                                                    Fired: {course.firedAt}
+                                                                </Text>
+                                                            )}
+                                                            {course.servedAt && (
+                                                                <Text className="text-gray-400 text-xs">
+                                                                    Served: {course.servedAt}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    );
+                                                })}
+                                            </View>
+                                        );
+                                    })()}
+                                </View>
+
+                                {/* Add Items to Order */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Add Items to Order
+                                    </Text>
+
+                                    {selectedOrderId && (() => {
+                                        const order = orderStore.getOrder(selectedOrderId);
+                                        if (!order) return null;
+                                        return (
+                                            <View className="mb-3 p-2 bg-gray-800 rounded">
+                                                <Text className="text-gray-300 text-xs">
+                                                    Items will be added to Course {order.working_course} ({order.courses[order.working_course]?.status || "open"})
+                                                </Text>
+                                            </View>
+                                        );
+                                    })()}
+
+                                    {/* Menu Item Selection */}
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Menu Item
+                                        </Text>
+                                        {isLoadingMenu ? (
+                                            <View className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2">
+                                                <Text className="text-gray-400">
+                                                    Loading menu items...
+                                                </Text>
+                                            </View>
+                                        ) : menuItemsFromSync.length > 0 ? (
+                                            <Select
+                                                value={
+                                                    selectedMenuItem
+                                                        ? {
+                                                            value: selectedMenuItem.id,
+                                                            label: `${selectedMenuItem.name} - $${selectedMenuItem.effective_price.toFixed(2)}`,
+                                                        }
+                                                        : undefined
+                                                }
+                                                onValueChange={(option) => {
+                                                    const itemWithCategory = menuItemsFromSync.find(
+                                                        (mi) => mi.menu_item.id === option?.value
+                                                    );
+                                                    if (itemWithCategory) {
+                                                        setSelectedMenuItem(itemWithCategory.menu_item);
+                                                        setSelectedCategoryName(
+                                                            itemWithCategory.category_name
+                                                        );
+                                                        setMenuItemId(itemWithCategory.menu_item.id);
+                                                        console.log(itemWithCategory)
+                                                    } else {
+                                                        setSelectedMenuItem(null);
+                                                        setSelectedCategoryName("");
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger className="bg-[#303030] border-gray-600">
+                                                    <SelectValue
+                                                        placeholder="Select a menu item"
+                                                        className="text-white"
+                                                    />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-[#212121] border-gray-600">
+                                                    {menuItemsFromSync.map((itemWithCategory) => (
+                                                        <SelectItem
+                                                            key={itemWithCategory.menu_item.id}
+                                                            value={itemWithCategory.menu_item.id}
+                                                            label={`${itemWithCategory.menu_item.name} - $${itemWithCategory.menu_item.effective_price.toFixed(2)}`}
+                                                        />
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            <View className="bg-[#303030] border border-gray-600 rounded-lg px-3 py-2">
+                                                <Text className="text-gray-400">
+                                                    No menu items available
+                                                </Text>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {/* Manual Override Fields */}
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Menu Item ID (Manual Override)
+                                        </Text>
+                                        <Input
+                                            value={menuItemId}
+                                            onChangeText={setMenuItemId}
+                                            placeholder="Enter menu item ID manually"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                        <Text className="text-xs text-gray-500 mt-1">
+                                            Current: {menuItemId || "None"}
+                                        </Text>
+                                    </View>
+
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Location Exclusive Item ID (Optional)
+                                        </Text>
+                                        <Input
+                                            value={locationExclusiveItemId}
+                                            onChangeText={setLocationExclusiveItemId}
+                                            placeholder="Enter location exclusive item ID"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    {/* Quantity */}
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Quantity
+                                        </Text>
+                                        <Input
+                                            value={itemQuantity}
+                                            onChangeText={setItemQuantity}
+                                            placeholder="1"
+                                            keyboardType="numeric"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    {/* Cash vs Card Price */}
+                                    {selectedMenuItem && selectedMenuItem.effective_cash_price && (
+                                        <View className="flex-row items-center gap-3 p-3 bg-[#1a1a1a] rounded-lg border border-gray-700 mb-3">
+                                            <Checkbox
+                                                id="use-cash-price"
+                                                checked={useCashPrice}
+                                                onCheckedChange={setUseCashPrice}
+                                                className="border-blue-400"
+                                            />
+                                            <View className="flex-1">
+                                                <Text className="text-white text-sm font-medium">
+                                                    Use Cash Price
+                                                </Text>
+                                                <Text className="text-gray-400 text-xs">
+                                                    Card: ${selectedMenuItem.effective_price.toFixed(2)} |
+                                                    Cash: ${selectedMenuItem.effective_cash_price.toFixed(2)}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    )}
+
+                                    {/* Size Selection */}
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Selected Size ID (Optional)
+                                        </Text>
+                                        <Input
+                                            value={selectedSizeId}
+                                            onChangeText={setSelectedSizeId}
+                                            placeholder="Enter size ID"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    {/* Special Instructions */}
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Item Special Instructions (Optional)
+                                        </Text>
+                                        <Input
+                                            value={itemSpecialInstructions}
+                                            onChangeText={setItemSpecialInstructions}
+                                            placeholder="Special instructions for this item"
+                                            multiline
+                                            numberOfLines={2}
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    {/* Modifiers Section */}
+                                    {selectedMenuItem &&
+                                        selectedMenuItem.modifier_groups.length > 0 && (
+                                            <View className="mb-3">
+                                                <View className="flex-row items-center justify-between mb-3">
+                                                    <Text className="text-sm font-semibold text-gray-300">
+                                                        Modifiers
+                                                    </Text>
+                                                    <TouchableOpacity
+                                                        onPress={handleClearModifiers}
+                                                        className="flex-row items-center gap-1 px-2 py-1 bg-red-900/30 border border-red-600 rounded"
+                                                    >
+                                                        <Trash2 size={14} color="#ef4444" />
+                                                        <Text className="text-red-400 text-xs">
+                                                            Clear All
+                                                        </Text>
+                                                    </TouchableOpacity>
+                                                </View>
+
+                                                {selectedMenuItem.modifier_groups.map((group) => {
+                                                    const isExpanded =
+                                                        expandedModifierGroups[group.id] ?? true;
+                                                    const selections = modifierSelections[group.id] || {};
+                                                    const selectedCount = Object.values(selections).filter(
+                                                        (sel) => sel.selected
+                                                    ).length;
+                                                    const isValidSelection =
+                                                        (!group.is_required ||
+                                                            selectedCount >= group.min_selections) &&
+                                                        selectedCount <= group.max_selections &&
+                                                        (selectedCount === 0 ||
+                                                            selectedCount >= group.min_selections);
+
+                                                    return (
+                                                        <View
+                                                            key={group.id}
+                                                            className={`mb-3 rounded-lg border ${isValidSelection
+                                                                ? "bg-[#1a1a1a] border-gray-700"
+                                                                : "bg-red-900/10 border-red-600"
+                                                                }`}
+                                                        >
+                                                            {/* Group Header */}
+                                                            <TouchableOpacity
+                                                                onPress={() =>
+                                                                    setExpandedModifierGroups((prev) => ({
+                                                                        ...prev,
+                                                                        [group.id]: !isExpanded,
+                                                                    }))
+                                                                }
+                                                                className="flex-row items-center justify-between p-3"
+                                                            >
+                                                                <View className="flex-1">
+                                                                    <View className="flex-row items-center gap-2 mb-1">
+                                                                        <Text className="text-white font-semibold">
+                                                                            {group.name}
+                                                                        </Text>
+                                                                        {group.is_required && (
+                                                                            <View className="bg-red-900/30 border border-red-500 px-2 py-0.5 rounded">
+                                                                                <Text className="text-red-400 text-xs font-medium">
+                                                                                    Required
+                                                                                </Text>
+                                                                            </View>
+                                                                        )}
+                                                                        {!group.is_required && (
+                                                                            <View className="bg-blue-900/30 border border-blue-500 px-2 py-0.5 rounded">
+                                                                                <Text className="text-blue-400 text-xs font-medium">
+                                                                                    Optional
+                                                                                </Text>
+                                                                            </View>
+                                                                        )}
+                                                                    </View>
+                                                                    <Text className="text-gray-400 text-xs">
+                                                                        {group.max_selections === 1
+                                                                            ? "Select 1 item"
+                                                                            : `Select ${group.min_selections}-${group.max_selections} item(s)`}
+                                                                        {selectedCount > 0 && (
+                                                                            <Text className="text-green-400 ml-1">
+                                                                                ({selectedCount} selected)
+                                                                            </Text>
+                                                                        )}
+                                                                    </Text>
+                                                                    {!isValidSelection && selectedCount > 0 && (
+                                                                        <Text className="text-red-400 text-xs mt-1">
+                                                                            {selectedCount < group.min_selections
+                                                                                ? `Minimum ${group.min_selections} selection(s) required`
+                                                                                : `Maximum ${group.max_selections} selection(s) allowed`}
+                                                                        </Text>
+                                                                    )}
+                                                                </View>
+                                                                {isExpanded ? (
+                                                                    <ChevronUp size={20} color="#9ca3af" />
+                                                                ) : (
+                                                                    <ChevronDown size={20} color="#9ca3af" />
+                                                                )}
+                                                            </TouchableOpacity>
+
+                                                            {/* Modifier Items */}
+                                                            {isExpanded && (
+                                                                <View className="px-3 pb-3 border-t border-gray-700">
+                                                                    {group.items.map((modifierItem) => {
+                                                                        const isSelected =
+                                                                            selections[modifierItem.id]?.selected ||
+                                                                            false;
+                                                                        const modifierQuantity =
+                                                                            selections[modifierItem.id]?.quantity || 1;
+                                                                        const isMaxReached =
+                                                                            group.max_selections > 1 &&
+                                                                            selectedCount >= group.max_selections &&
+                                                                            !isSelected;
+
+                                                                        return (
+                                                                            <View
+                                                                                key={modifierItem.id}
+                                                                                className={`flex-row items-center justify-between py-2 border-b border-gray-800 last:border-b-0 ${isSelected ? "bg-blue-900/10" : ""
+                                                                                    }`}
+                                                                            >
+                                                                                <View className="flex-row items-center gap-3 flex-1">
+                                                                                    <Checkbox
+                                                                                        id={`modifier-${group.id}-${modifierItem.id}`}
+                                                                                        checked={isSelected}
+                                                                                        onCheckedChange={() =>
+                                                                                            handleModifierToggle(
+                                                                                                group.id,
+                                                                                                modifierItem.id
+                                                                                            )
+                                                                                        }
+                                                                                        disabled={isMaxReached}
+                                                                                        className="border-blue-400"
+                                                                                    />
+                                                                                    <View className="flex-1">
+                                                                                        <Text
+                                                                                            className={`text-sm ${isSelected
+                                                                                                ? "text-white font-medium"
+                                                                                                : "text-gray-300"
+                                                                                                }`}
+                                                                                        >
+                                                                                            {modifierItem.name}
+                                                                                        </Text>
+                                                                                        <Text className="text-gray-400 text-xs">
+                                                                                            {modifierItem.price_modifier >= 0
+                                                                                                ? `+$${modifierItem.price_modifier.toFixed(2)}`
+                                                                                                : `$${modifierItem.price_modifier.toFixed(2)}`}
+                                                                                        </Text>
+                                                                                    </View>
+                                                                                </View>
+
+                                                                                {/* Quantity Selector (only show if selected and multiple allowed) */}
+                                                                                {isSelected &&
+                                                                                    group.max_selections > 1 && (
+                                                                                        <View className="flex-row items-center gap-2">
+                                                                                            <TouchableOpacity
+                                                                                                onPress={() =>
+                                                                                                    handleModifierQuantityChange(
+                                                                                                        group.id,
+                                                                                                        modifierItem.id,
+                                                                                                        -1
+                                                                                                    )
+                                                                                                }
+                                                                                                className="bg-gray-700 p-1 rounded"
+                                                                                                disabled={modifierQuantity <= 1}
+                                                                                            >
+                                                                                                <Minus
+                                                                                                    size={16}
+                                                                                                    color={
+                                                                                                        modifierQuantity <= 1
+                                                                                                            ? "#6b7280"
+                                                                                                            : "#ffffff"
+                                                                                                    }
+                                                                                                />
+                                                                                            </TouchableOpacity>
+                                                                                            <Text className="text-white text-sm w-8 text-center">
+                                                                                                {modifierQuantity}
+                                                                                            </Text>
+                                                                                            <TouchableOpacity
+                                                                                                onPress={() =>
+                                                                                                    handleModifierQuantityChange(
+                                                                                                        group.id,
+                                                                                                        modifierItem.id,
+                                                                                                        1
+                                                                                                    )
+                                                                                                }
+                                                                                                className="bg-gray-700 p-1 rounded"
+                                                                                            >
+                                                                                                <Plus size={16} color="#ffffff" />
+                                                                                            </TouchableOpacity>
+                                                                                        </View>
+                                                                                    )}
+                                                                            </View>
+                                                                        );
+                                                                    })}
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                    );
+                                                })}
+
+                                                {/* Modifier Price Summary */}
+                                                {Object.keys(modifierSelections).length > 0 && (
+                                                    <View className="mt-3 p-3 bg-green-900/20 border border-green-600 rounded-lg">
+                                                        <Text className="text-green-400 text-sm font-semibold mb-1">
+                                                            Modifier Price Impact
+                                                        </Text>
+                                                        <Text className="text-white text-lg font-bold">
+                                                            {calculateModifierPriceImpact() >= 0 ? "+" : ""}$
+                                                            {calculateModifierPriceImpact().toFixed(2)}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                        )}
+
+                                    {/* Selected Item Details */}
+                                    {selectedMenuItem && (
+                                        <View className="bg-blue-900/20 border border-blue-600 rounded-lg p-3 mb-3">
+                                            <Text className="text-blue-400 text-sm font-semibold mb-1">
+                                                Selected Item Details
+                                            </Text>
+                                            <Text className="text-white text-sm">
+                                                Name: {selectedMenuItem.name}
+                                            </Text>
+                                            {selectedCategoryName && (
+                                                <Text className="text-white text-sm">
+                                                    Category: {selectedCategoryName}
+                                                </Text>
+                                            )}
+                                            <Text className="text-white text-sm">
+                                                Card Price: ${selectedMenuItem.effective_price.toFixed(2)}
+                                            </Text>
+                                            {selectedMenuItem.effective_cash_price && (
+                                                <Text className="text-white text-sm">
+                                                    Cash Price: ${selectedMenuItem.effective_cash_price.toFixed(2)}
+                                                </Text>
+                                            )}
+                                            <Text className="text-white text-sm">
+                                                Price Used:{" "}
+                                                {useCashPrice && selectedMenuItem.effective_cash_price
+                                                    ? "Cash"
+                                                    : "Card"}
+                                            </Text>
+                                            <Text className="text-white text-sm">
+                                                Available:{" "}
+                                                {selectedMenuItem.effective_availability ? "Yes" : "No"}
+                                            </Text>
+                                            {selectedMenuItem.description && (
+                                                <Text className="text-white text-sm mt-1">
+                                                    {selectedMenuItem.description}
+                                                </Text>
+                                            )}
+                                            <Text className="text-white text-sm mt-1 font-semibold">
+                                                Effective Price: ${calculateEffectiveItemPrice().toFixed(2)}
+                                            </Text>
+                                        </View>
+                                    )}
+
+                                    <Button
+                                        onPress={handleAddItemToOrder}
+                                        disabled={loading.addItemToOrder || !selectedOrderId || !selectedMenuItem || (!menuItemId && !locationExclusiveItemId)}
+                                        className="bg-green-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.addItemToOrder ? "Adding..." : "Add Item to Working Course"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Fire Course */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Fire Course
+                                    </Text>
+
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Course Number to Fire
+                                        </Text>
+                                        <Input
+                                            value={courseToFire}
+                                            onChangeText={setCourseToFire}
+                                            placeholder="1"
+                                            keyboardType="numeric"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    {selectedOrderId && (() => {
+                                        const courseNum = parseInt(courseToFire);
+                                        if (isNaN(courseNum)) return null;
+                                        const order = orderStore.getOrder(selectedOrderId);
+                                        if (!order) return null;
+                                        const itemsInCourse = order.items.filter((i) => i.course_number === courseNum);
+                                        const courseInfo = order.courses[courseNum];
+                                        return (
+                                            <View className="mb-3 p-2 bg-gray-800 rounded">
+                                                <Text className="text-gray-300 text-xs mb-1">
+                                                    Course {courseNum} Status: {courseInfo?.status || "open"}
+                                                </Text>
+                                                <Text className="text-gray-300 text-xs">
+                                                    Items in course: {itemsInCourse.length}
+                                                </Text>
+                                                {itemsInCourse.length > 0 && (
+                                                    <View className="mt-2">
+                                                        {itemsInCourse.map((item) => (
+                                                            <Text key={item.id} className="text-white text-xs">
+                                                                • {item.name} (x{item.quantity})
+                                                            </Text>
+                                                        ))}
+                                                    </View>
+                                                )}
+                                            </View>
+                                        );
+                                    })()}
+
+                                    <Button
+                                        onPress={handleFireCourse}
+                                        disabled={loading.fireCourse || !selectedOrderId || !courseToFire}
+                                        className="bg-orange-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.fireCourse ? "Firing..." : "Fire Course"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Mark Course Served */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Mark Course Served
+                                    </Text>
+
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Course Number
+                                        </Text>
+                                        <Input
+                                            value={courseToServe}
+                                            onChangeText={setCourseToServe}
+                                            placeholder="1"
+                                            keyboardType="numeric"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    <Button
+                                        onPress={handleMarkCourseServed}
+                                        disabled={loading.markCourseServed || !selectedOrderId || !courseToServe}
+                                        className="bg-teal-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.markCourseServed ? "Marking..." : "Mark Course Served"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Move Items Between Courses */}
+                                <View className="border-b border-gray-700 pb-4">
+                                    <Text className="text-lg font-bold text-white mb-3">
+                                        Move Items Between Courses
+                                    </Text>
+
+                                    {selectedOrderId && (() => {
+                                        const order = orderStore.getOrder(selectedOrderId);
+                                        if (!order || order.items.length === 0) {
+                                            return (
+                                                <Text className="text-gray-400 text-sm mb-3">
+                                                    No items in order
+                                                </Text>
+                                            );
+                                        }
+                                        return (
+                                            <View className="mb-3">
+                                                <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                                    Select Item
+                                                </Text>
+                                                <Select
+                                                    value={
+                                                        selectedItemId
+                                                            ? {
+                                                                value: selectedItemId,
+                                                                label: order.items.find((i) => i.id === selectedItemId)?.name || "Select",
+                                                            }
+                                                            : undefined
+                                                    }
+                                                    onValueChange={(option) => setSelectedItemId(option?.value || null)}
+                                                >
+                                                    <SelectTrigger className="bg-[#303030] border-gray-600">
+                                                        <SelectValue
+                                                            placeholder="Select item"
+                                                            className="text-white"
+                                                        />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="bg-[#212121] border-gray-600">
+                                                        {order.items.map((item) => {
+                                                            const courseInfo = order.courses[item.course_number];
+                                                            const canModify = !courseInfo || courseInfo.status === "open";
+                                                            return (
+                                                                <SelectItem
+                                                                    key={item.id}
+                                                                    value={item.id}
+                                                                    label={`${item.name} (Course ${item.course_number} - ${courseInfo?.status || "open"}) ${!canModify ? "🔒" : ""}`}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </SelectContent>
+                                                </Select>
+                                            </View>
+                                        );
+                                    })()}
+
+                                    <View className="mb-3">
+                                        <Text className="text-sm font-semibold text-gray-300 mb-2">
+                                            Target Course Number
+                                        </Text>
+                                        <Input
+                                            value={targetCourseNumber}
+                                            onChangeText={setTargetCourseNumber}
+                                            placeholder="2"
+                                            keyboardType="numeric"
+                                            className="bg-[#303030] border-gray-600 text-white"
+                                            placeholderTextColor="#9CA3AF"
+                                        />
+                                    </View>
+
+                                    <Button
+                                        onPress={handleMoveItemToCourse}
+                                        disabled={loading.moveItemToCourse || !selectedOrderId || !selectedItemId || !targetCourseNumber}
+                                        className="bg-cyan-600"
+                                    >
+                                        <Text className="text-white font-semibold">
+                                            {loading.moveItemToCourse ? "Moving..." : "Move Item to Course"}
+                                        </Text>
+                                    </Button>
+                                </View>
+
+                                {/* Items by Course Display */}
+                                {selectedOrderId && (() => {
+                                    const itemsByCourse = getItemsByCourse(selectedOrderId);
+                                    const courseNumbers = Object.keys(itemsByCourse).map(Number).sort((a, b) => a - b);
+                                    if (courseNumbers.length === 0) return null;
+                                    return (
+                                        <View>
+                                            <Text className="text-lg font-bold text-white mb-3">
+                                                Items by Course
+                                            </Text>
+                                            {courseNumbers.map((courseNum) => {
+                                                const order = orderStore.getOrder(selectedOrderId);
+                                                const courseInfo = order?.courses[courseNum];
+                                                const items = itemsByCourse[courseNum];
+                                                return (
+                                                    <View key={courseNum} className="mb-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+                                                        <Text className="text-white font-semibold mb-2">
+                                                            Course {courseNum} - {courseInfo?.status || "open"}
+                                                            {courseInfo && courseInfo.status !== "open" && " 🔒"}
+                                                        </Text>
+                                                        {items.map((item) => (
+                                                            <View key={item.id} className="mb-2 p-2 bg-gray-900 rounded">
+                                                                <Text className="text-white text-sm font-medium">
+                                                                    {item.name}
+                                                                </Text>
+                                                                <Text className="text-gray-400 text-xs">
+                                                                    Qty: {item.quantity} × ${item.price.toFixed(2)} = ${(item.price * item.quantity).toFixed(2)}
+                                                                </Text>
+                                                                <Text className="text-gray-500 text-xs">
+                                                                    Kitchen Status: {item.kitchen_status || "new"}
+                                                                </Text>
+                                                            </View>
+                                                        ))}
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    );
+                                })()}
+                            </View>
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+
                 {/* Helper Buttons */}
                 <View className="bg-[#303030] rounded-lg p-4 mb-4">
                     <View className="flex-row gap-3">
@@ -2792,8 +4583,8 @@ const FloorPlanTest = () => {
                                 <View
                                     key={log.id}
                                     className={`mb-3 p-3 rounded-lg border ${log.success
-                                            ? "bg-green-900/20 border-green-600"
-                                            : "bg-red-900/20 border-red-600"
+                                        ? "bg-green-900/20 border-green-600"
+                                        : "bg-red-900/20 border-red-600"
                                         }`}
                                 >
                                     <View className="flex-row items-center justify-between mb-2">
