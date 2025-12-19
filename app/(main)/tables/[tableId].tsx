@@ -4,6 +4,7 @@ import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
+import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
@@ -28,6 +29,7 @@ const UpdateTableScreen = () => {
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
   const { show } = useToast();
+  const { showLoading, hideLoading } = useLoading();
 
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
@@ -189,18 +191,25 @@ const UpdateTableScreen = () => {
             return;
           }
 
-          // Fetch missing order from backend
           console.log(
             "Fetching missing order from backend:",
             table.session.order_id
           );
+
+          showLoading("Restoring table session...");
+
           const supabase = getOrderStoreSupabaseClient();
+          if (!supabase) {
+            hideLoading();
+          }
           if (supabase) {
             const { data: fetchedOrder, error } =
               await OrderService.fetchOrderById(
                 supabase,
                 table.session.order_id
               );
+
+            hideLoading(); // Hide immediately after fetch
 
             if (fetchedOrder && !error) {
               console.log("Fetched order from backend:", fetchedOrder.id);
@@ -261,6 +270,7 @@ const UpdateTableScreen = () => {
       // FIX: Ignored existingOrderForTable if table.session is null, because backend is source of truth.
       if (!table.session && tableStatus === "available") {
         console.log("Auto-creating session for table", currentTableId);
+        showLoading("Creating session...");
         try {
           // Default party size 1, no name. Just to get the ID.
           const { sessionId, orderId } = await useFloorPlanStore
@@ -276,6 +286,8 @@ const UpdateTableScreen = () => {
           setActiveOrder(orderId || null);
         } catch (err) {
           console.error("Failed to auto-seat guests:", err);
+        } finally {
+          hideLoading();
         }
       }
     };
