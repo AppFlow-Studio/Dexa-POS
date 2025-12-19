@@ -2,7 +2,6 @@ import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
@@ -55,7 +54,7 @@ const BillSection = ({
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
-  const { updateTableStatus } = useFloorPlanStore();
+  // Note: updateTableStatus removed - table session management handled via session-based APIs
   const { show } = useToast();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
@@ -107,7 +106,7 @@ const BillSection = ({
 
     if (activeOrder?.order_type === "dine_in" && selectedTable) {
       assignOrderToTable(activeOrderId!, selectedTable.id);
-      updateTableStatus(selectedTable.id, "In Use");
+      // Table session status updates are now handled through session-based APIs
       clearSelectedTable();
     }
     sendNewItemsToKitchen();

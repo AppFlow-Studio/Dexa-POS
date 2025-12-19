@@ -12,7 +12,7 @@ import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 const PaymentSuccessView = () => {
   const { close, paymentMethod, activeTableId } = usePaymentStore();
-  const { updateTableStatus } = useFloorPlanStore();
+  const { updateSessionStatus } = useFloorPlanStore();
   const { show } = useToast();
 
   const {
@@ -70,7 +70,8 @@ const PaymentSuccessView = () => {
     if (activeOrderId) markOrderAsPaid(activeOrderId);
 
     if (activeOrder?.order_type === "dine_in" && activeTableId) {
-      updateTableStatus(activeTableId, "In Use");
+      // Table session updates are handled by the floor plan store's session management
+      // updateSessionStatus would need a sessionId, which we may not have here
     } else {
       setTimeout(() => {
         const newOrder = startNewOrder();

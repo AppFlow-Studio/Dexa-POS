@@ -2,6 +2,10 @@ import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
+import {
+  initializeOfflineSync,
+  setOfflineSyncSupabaseClient,
+} from "@/services/offlineSyncInit";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import {
   setFloorPlanSupabaseClient,
@@ -10,7 +14,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -28,14 +32,25 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
+  const offlineSyncInitialized = useRef(false);
 
-  // Register Supabase client with order store and floor plan store for backend sync
+  // Register Supabase client with order store, floor plan store, and offline sync
   useEffect(() => {
     if (supabase) {
       setOrderStoreSupabaseClient(supabase);
       setFloorPlanSupabaseClient(supabase);
+      setOfflineSyncSupabaseClient(supabase);
+
+      // Initialize offline sync service (only once)
+      if (!offlineSyncInitialized.current) {
+        offlineSyncInitialized.current = true;
+        initializeOfflineSync().then(() => {
+          console.log("Offline sync service initialized");
+        });
+      }
+
       console.log(
-        "Supabase client registered with order and floor plan stores"
+        "Supabase client registered with order, floor plan, and offline sync"
       );
     }
     return () => {
