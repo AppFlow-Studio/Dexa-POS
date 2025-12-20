@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 const CashPaymentView = () => {
-  const { activeOrderOutstandingTotal } = useOrderStore();
+  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
 
@@ -20,7 +20,12 @@ const CashPaymentView = () => {
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
-  const total = activeSplit ? activeSplit.amount : activeOrderOutstandingTotal;
+  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveOutstandingTotal =
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrderTotal;
+  const total = activeSplit ? activeSplit.amount : effectiveOutstandingTotal;
 
   const tendered = parseFloat(amountTendered) || 0;
   const changeDue = tendered - total;

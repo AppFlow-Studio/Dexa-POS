@@ -118,6 +118,7 @@ interface PaymentState {
   setPaymentClean: () => void; // New action to set isDirty to false
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
+  resetSplits: () => void; // Action to clear splits when going back
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -266,6 +267,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       });
     }
     set({ splits: newSplits, isDirty: false });
+  },
+
+  resetSplits: () => {
+    set({ splits: [], activeSplitId: null, isDirty: false });
   },
 
   // --- PAYMENT LOOP LOGIC ---

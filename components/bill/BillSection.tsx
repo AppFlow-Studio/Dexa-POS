@@ -6,10 +6,11 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Send, Tag } from "lucide-react-native";
+import { Plus, Send } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
+import DiscountBottomSheet from "./DiscountBottomSheet";
 import DiscountOverlay from "./DiscountOverlay";
 import OrderDetails from "./OrderDetails";
 import Totals from "./Totals";
@@ -37,10 +38,12 @@ const BillSection = ({
   showOrderDetails = true,
   showPlaymentActions = true,
   moreOptionsSheetRef,
+  discountSheetRef,
 }: {
   showOrderDetails?: boolean;
   showPlaymentActions?: boolean;
   moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
+  discountSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
   const {
     activeOrderId,
@@ -51,7 +54,7 @@ const BillSection = ({
     assignOrderToTable,
     setActiveOrder,
   } = useOrderStore();
-  console.log(activeOrderId)
+  console.log(activeOrderId);
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
@@ -65,8 +68,15 @@ const BillSection = ({
   const newItemsCount = cart.filter(
     (item) => item.kitchen_status === "new" || !item.kitchen_status
   ).length;
-
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
+
+  const handleOpenDiscounts = () => {
+    setDiscountOverlayVisible(true);
+  };
+
+  const handleCloseDiscounts = () => {
+    setDiscountOverlayVisible(false);
+  };
 
   const handleOpenMoreOptions = () => {
     moreOptionsSheetRef?.current?.expand();
@@ -115,12 +125,9 @@ const BillSection = ({
     setActiveOrder(newOrder.id);
   };
 
-  const handleOpenDiscounts = () => {
-    setDiscountOverlayVisible(true);
-  };
-
-  const handleCloseDiscounts = () => {
-    setDiscountOverlayVisible(false);
+  const handleStartNewOrder = () => {
+    const newOrder = startNewOrder();
+    setActiveOrder(newOrder.id);
   };
 
   if (!activeOrderId)
@@ -145,17 +152,16 @@ const BillSection = ({
     <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
       <BillSectionContent cart={cart} />
-
       <View className="py-3 px-4 bg-[#212121]">
         <View className="flex-row gap-4">
-          {/* Discount Button - matching More button style */}
+          {/* Start New Order Button */}
           <TouchableOpacity
-            onPress={handleOpenDiscounts}
+            onPress={handleStartNewOrder}
             className="flex-1 py-2 flex-row items-center justify-center gap-2 bg-[#303030] rounded-xl border border-gray-600"
           >
-            <Tag color="#a855f7" size={20} />
+            <Plus color="#22c55e" size={20} />
             <Text className="text-center text-xl font-bold text-white">
-              Discounts
+              New Order
             </Text>
           </TouchableOpacity>
 
@@ -175,11 +181,9 @@ const BillSection = ({
           </TouchableOpacity>
         </View>
       </View>
-
       <View className="bg-[#212121]">
         <View className="h-[0.5px] w-[90%] self-center bg-gray-600" />
       </View>
-
       {showPlaymentActions && (
         <View className="py-3 px-4 bg-[#212121]">
           <View className="flex-row gap-4">
@@ -221,10 +225,13 @@ const BillSection = ({
           </View>
         </View>
       )}
-
       <DiscountOverlay
         isVisible={isDiscountOverlayVisible}
         onClose={handleCloseDiscounts}
+      />
+      <DiscountBottomSheet
+        ref={discountSheetRef}
+        onClose={() => discountSheetRef?.current?.close()}
       />
     </View>
   );

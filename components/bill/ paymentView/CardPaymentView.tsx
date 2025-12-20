@@ -18,6 +18,7 @@ const CardPaymentView = () => {
     activeOrderOutstandingSubtotal,
     activeOrderOutstandingTax,
     activeOrderOutstandingTotal,
+    activeOrderTotal,
     activeOrderId,
   } = useOrderStore();
 
@@ -30,9 +31,14 @@ const CardPaymentView = () => {
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
+  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveOutstandingTotal =
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrderTotal;
   const totalToPay = activeSplit
     ? activeSplit.amount
-    : activeOrderOutstandingTotal;
+    : effectiveOutstandingTotal;
 
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;

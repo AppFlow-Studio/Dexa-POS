@@ -2,7 +2,7 @@ import { OrderProfile } from "@/lib/types";
 import { CheckCircle, CreditCard, Eye } from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import Popover from "react-native-popover-view";
 
 interface OrderBadgeProps {
   order: OrderProfile;
@@ -21,9 +21,6 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
 
   // --- Color logic updated to use backend status values ---
   const getStatusColor = (status: string, paidStatus: string) => {
-    console.log("status", status);
-    console.log("paidStatus", paidStatus);
-
     if (status === "preparing") {
       if (paidStatus === "Paid") {
         return {
@@ -58,35 +55,39 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
   };
 
   const colors = getStatusColor(order.order_status, order.paid_status);
-  return (
-    <Tooltip onOpenChange={setShowTooltip}>
-      <TooltipTrigger
-        className={`flex-row items-center px-3 py-2 rounded-lg border`}
-        style={{
-          backgroundColor: colors.bg,
-          borderColor: colors.border,
-        }}
-      >
-        <View
-          className={`w-2.5 h-2.5 rounded-full mr-2`}
-          style={{ backgroundColor: colors.dot }}
-        />
-        <Text
-          className={`font-medium text-base`}
-          style={{ color: colors.text }}
-          numberOfLines={1}
-        >
-          {order.customer_name
-            ? order.customer_name
-            : order.display_number || order.order_number || "New"}{" "}
-          - {order.order_status}
-        </Text>
-      </TooltipTrigger>
 
-      <TooltipContent
-        side="bottom"
-        className="bg-[#313131] rounded-xl shadow-lg border border-gray-600 z-50 w-[380px] p-0"
-      >
+  return (
+    <Popover
+      isVisible={showTooltip}
+      onRequestClose={() => setShowTooltip(false)}
+      popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
+      from={
+        <TouchableOpacity
+          onPress={() => setShowTooltip(true)}
+          className="flex-row items-center px-3 py-2 rounded-lg border"
+          style={{
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+          }}
+        >
+          <View
+            className="w-2.5 h-2.5 rounded-full mr-2"
+            style={{ backgroundColor: colors.dot }}
+          />
+          <Text
+            className="font-medium text-base"
+            style={{ color: colors.text }}
+            numberOfLines={1}
+          >
+            {order.customer_name
+              ? order.customer_name
+              : order.display_number || order.order_number || "New"}{" "}
+            - {order.order_status}
+          </Text>
+        </TouchableOpacity>
+      }
+    >
+      <View className="bg-[#313131] rounded-xl shadow-lg border border-gray-600 w-[380px]">
         <View className="p-4 border-b border-gray-600">
           {/* Flexible Header that wraps */}
           <View className="flex-row flex-wrap items-center gap-2 mb-3">
@@ -167,7 +168,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
                 onMarkReady();
                 setShowTooltip(false);
               }}
-              className="flex-row items-center p-3 rounded-lg hover:bg-green-500/10"
+              className="flex-row items-center p-3 rounded-lg"
             >
               <CheckCircle color="#22c55e" size={20} />
               <Text className="ml-3 font-semibold text-green-300 text-lg">
@@ -181,7 +182,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
               onViewItems();
               setShowTooltip(false);
             }}
-            className="flex-row items-center p-3 rounded-lg hover:bg-gray-500/10"
+            className="flex-row items-center p-3 rounded-lg"
           >
             <Eye color="#a1a1aa" size={20} />
             <Text className="ml-3 font-semibold text-gray-300 text-lg">
@@ -195,7 +196,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
                 onRetrieve();
                 setShowTooltip(false);
               }}
-              className="flex-row items-center p-3 rounded-lg hover:bg-blue-500/10"
+              className="flex-row items-center p-3 rounded-lg"
             >
               <CreditCard color="#60a5fa" size={20} />
               <Text className="ml-3 font-semibold text-blue-400 text-lg">
@@ -204,8 +205,8 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </TouchableOpacity>
           )}
         </View>
-      </TooltipContent>
-    </Tooltip>
+      </View>
+    </Popover>
   );
 };
 

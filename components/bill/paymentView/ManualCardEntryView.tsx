@@ -110,16 +110,21 @@ const ErrorText = ({ error }: { error?: string }) => {
 };
 
 const ManualCardEntryView = () => {
-  const { activeOrderOutstandingTotal } = useOrderStore();
+  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
   // 1. Get Split Data from Store
   const { setView, processManualCardPayment, activeSplitId, splits } =
     usePaymentStore();
 
   // 2. Calculate Amount to Pay
   const activeSplit = splits.find((s) => s.id === activeSplitId);
+  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveOutstandingTotal =
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrderTotal;
   const amountToPay = activeSplit
     ? activeSplit.amount
-    : activeOrderOutstandingTotal;
+    : effectiveOutstandingTotal;
 
   const expiryYearRef = useRef<TextInput>(null);
   const cvvRef = useRef<TextInput>(null);

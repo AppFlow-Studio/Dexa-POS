@@ -1,3 +1,4 @@
+import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import TableBillSection from "@/components/bill/TableBillSection";
@@ -18,8 +19,9 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { AlertTriangle } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
@@ -38,11 +40,16 @@ const UpdateTableScreen = () => {
     number | null
   >(null);
   const [courseToResend, setCourseToResend] = useState<number | null>(null);
+  const [notReadyItems, setNotReadyItems] = useState<
+    { id: string; name: string; quantity: number }[]
+  >([]);
 
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
+  const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { tables, updateSessionStatus, loadFloorPlanStatus } = useFloorPlanStore();
+  const { tables, updateSessionStatus, loadFloorPlanStatus } =
+    useFloorPlanStore();
 
   const {
     orders,
@@ -318,10 +325,17 @@ const UpdateTableScreen = () => {
   const handlePay = () => {
     const order = orders.find((o) => o.id === activeOrderId);
     if (order) {
-      const anyNotReady = order.items.some(
+      const preparingItems = order.items.filter(
         (i) => (i.item_status || "preparing") !== "ready"
       );
-      if (anyNotReady) {
+      if (preparingItems.length > 0) {
+        setNotReadyItems(
+          preparingItems.map((i) => ({
+            id: i.id,
+            name: i.name,
+            quantity: i.quantity,
+          }))
+        );
         setNotReadyConfirmOpen(true);
         return;
       }
@@ -733,25 +747,69 @@ const UpdateTableScreen = () => {
         />
       )}
 
-      <MoreOptionsBottomSheet ref={moreOptionsSheetRef} />
+      <MoreOptionsBottomSheet
+        ref={moreOptionsSheetRef}
+        discountSheetRef={
+          discountSheetRef as React.RefObject<BottomSheetMethods>
+        }
+      />
+      <DiscountBottomSheet
+        ref={discountSheetRef}
+        onClose={() => discountSheetRef.current?.close()}
+      />
 
       <AlertDialog
         open={isNotReadyConfirmOpen}
         onOpenChange={setNotReadyConfirmOpen}
       >
-        <AlertDialogContent className="w-[450px] p-4 rounded-2xl bg-[#303030]">
-          <Text className="text-lg font-bold text-white mb-2">
-            Items not ready
+        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-[#1C1C1E] border border-[#333333]">
+          {/* Warning Icon */}
+          <View className="items-center mb-4">
+            <View className="w-16 h-16 rounded-full bg-amber-500/20 items-center justify-center">
+              <AlertTriangle size={32} color="#f59e0b" />
+            </View>
+          </View>
+
+          {/* Title */}
+          <Text className="text-xl font-bold text-white text-center mb-2">
+            Items Still Preparing
           </Text>
-          <Text className="text-sm text-gray-400 mb-4">
-            Not all items are marked as ready. Proceed to payment?
+
+          {/* Item Count */}
+          <Text className="text-sm text-gray-400 text-center mb-3">
+            {notReadyItems.length} item{notReadyItems.length !== 1 ? "s" : ""}{" "}
+            not ready yet:
           </Text>
-          <View className="flex-row gap-2">
+
+          {/* Item List */}
+          <ScrollView
+            className="max-h-32 mb-4 bg-[#252528] rounded-xl p-3"
+            showsVerticalScrollIndicator={false}
+          >
+            {notReadyItems.map((item) => (
+              <View key={item.id} className="flex-row items-center py-1">
+                <Text className="text-amber-400 mr-2">•</Text>
+                <Text className="text-gray-300 text-sm">
+                  {item.quantity}x {item.name}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Question */}
+          <Text className="text-sm text-gray-400 text-center mb-4">
+            Proceed to payment anyway?
+          </Text>
+
+          {/* Buttons */}
+          <View className="flex-row gap-3">
             <TouchableOpacity
               onPress={() => setNotReadyConfirmOpen(false)}
-              className="flex-1 py-2 border border-gray-600 rounded-lg items-center bg-[#212121]"
+              className="flex-1 py-3 rounded-xl items-center"
             >
-              <Text className="font-semibold text-white text-base">Cancel</Text>
+              <Text className="font-semibold text-gray-400 text-base">
+                Cancel
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -763,10 +821,10 @@ const UpdateTableScreen = () => {
                   "payment-method-selection"
                 );
               }}
-              className="flex-1 py-2 bg-blue-500 rounded-lg items-center"
+              className="flex-1 py-3 bg-amber-600 rounded-xl items-center"
             >
               <Text className="font-semibold text-white text-base">
-                Continue
+                Pay Anyway
               </Text>
             </TouchableOpacity>
           </View>

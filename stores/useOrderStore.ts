@@ -1014,9 +1014,19 @@ export const useOrderStore = create<OrderState>()(
           },
 
           setActiveOrder: (orderId) => {
-            set({ activeOrderId: orderId });
-            // Avoid mutating orders here to prevent effects that depend on `orders` from looping
-            // Totals are derived and safe to compute
+            // Immediately reset totals to 0 before async recalculation
+            // This ensures UI shows 0 for new/empty orders without delay
+            set({
+              activeOrderId: orderId,
+              activeOrderSubtotal: 0,
+              activeOrderTax: 0,
+              activeOrderTotal: 0,
+              activeOrderDiscount: 0,
+              activeOrderOutstandingSubtotal: 0,
+              activeOrderOutstandingTax: 0,
+              activeOrderOutstandingTotal: 0,
+            });
+            // Then recalculate actual values async
             recalculateTotals(orderId);
           },
 
@@ -2558,18 +2568,37 @@ export const useOrderStore = create<OrderState>()(
             });
           },
           voidOrder: (orderId: string) => {
-            const { archiveOrder } = get();
+            const { archiveOrder, ordersById } = get();
+            const order = ordersById[orderId];
 
-            // Update the order's status
+            // 1. Sync to backend first (fire-and-forget)
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order?.db_order_id) {
+              OrderService.voidOrder(
+                supabase,
+                order.db_order_id,
+                "Order voided"
+              )
+                .then(({ error }) => {
+                  if (error)
+                    console.error("Failed to void order in backend:", error);
+                })
+                .catch((err) => console.error("Void order sync failed:", err));
+            }
+
+            // 2. Update the order's status locally
             set((state) => ({
-              orders: state.orders.map((o) =>
-                o.id === orderId
-                  ? { ...o, order_status: "void", check_status: "Closed" }
-                  : o
-              ),
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  order_status: "void",
+                  check_status: "Closed",
+                },
+              },
             }));
 
-            // Directly call archiveOrder after the state has been updated
+            // 3. Archive the order
             archiveOrder(orderId);
           },
         };
@@ -2583,6 +2612,21 @@ export const useOrderStore = create<OrderState>()(
           orderIds: state.orderIds,
           activeOrderId: state.activeOrderId,
         }),
+        onRehydrateStorage: () => {
+          return (state, error) => {
+            if (error) {
+              console.error("Error rehydrating order store:", error);
+              return;
+            }
+            // After hydration, recalculate totals for the active order
+            if (state?.activeOrderId) {
+              // Small delay to ensure orders array is synced by subscription
+              setTimeout(() => {
+                useOrderStore.getState().setActiveOrder(state.activeOrderId);
+              }, 100);
+            }
+          };
+        },
       }
     )
   )

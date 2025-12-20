@@ -33,6 +33,7 @@ const OrderProcessing = () => {
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
+  const discountSheetRef = useRef<BottomSheetMethods>(null);
 
   useEffect(() => {
     // Find an existing empty draft order (not assigned to table, no items)
@@ -160,6 +161,9 @@ const OrderProcessing = () => {
           moreOptionsSheetRef={
             moreOptionsSheetRef as React.RefObject<BottomSheetMethods>
           }
+          discountSheetRef={
+            discountSheetRef as React.RefObject<BottomSheetMethods>
+          }
         />
 
         <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
@@ -227,6 +231,9 @@ const OrderProcessing = () => {
       </View>
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef as React.RefObject<BottomSheetMethods>}
+        discountSheetRef={
+          discountSheetRef as React.RefObject<BottomSheetMethods>
+        }
       />
 
       <OrderLineItemsModal

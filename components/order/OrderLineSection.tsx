@@ -20,8 +20,6 @@ const OrderLineSection: React.FC = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   const visibleOrders = useMemo(() => {
-    console.log("orders", orders);
-
     return orders.filter(
       (o) =>
         o.items.length > 0 &&

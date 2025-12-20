@@ -141,6 +141,11 @@ const Header = () => {
       return;
     }
 
+    if (pathname === "/tables") {
+      router.push("/home");
+      return;
+    }
+
     router.back();
   };
 

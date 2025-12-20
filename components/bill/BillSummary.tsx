@@ -91,7 +91,13 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                                   highlight ? "border border-blue-500" : ""
                                 }`}
                               >
-                                <BillItem item={item} isEditable={true} />
+                                <BillItem
+                                  item={item}
+                                  isEditable={
+                                    item.kitchen_status === "new" ||
+                                    !item.kitchen_status
+                                  }
+                                />
                               </View>
                             );
                           })}

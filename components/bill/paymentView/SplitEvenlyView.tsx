@@ -5,12 +5,18 @@ import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitEvenlyView = () => {
-  const { setView, splitEvenly, startSplitPaymentFlow } = usePaymentStore();
-  const { activeOrderOutstandingTotal } = useOrderStore();
+  const { setView, splitEvenly, startSplitPaymentFlow, resetSplits } =
+    usePaymentStore();
+  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
 
   const [numberOfPeople, setNumberOfPeople] = useState(2);
 
-  const amountPerPerson = activeOrderOutstandingTotal / numberOfPeople;
+  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveTotal =
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrderTotal;
+  const amountPerPerson = effectiveTotal / numberOfPeople;
 
   const handleIncrement = () => {
     if (numberOfPeople < 20) setNumberOfPeople((p) => p + 1);
@@ -18,6 +24,11 @@ const SplitEvenlyView = () => {
 
   const handleDecrement = () => {
     if (numberOfPeople > 2) setNumberOfPeople((p) => p - 1);
+  };
+
+  const handleGoBack = () => {
+    resetSplits();
+    setView("split-options");
   };
 
   const handleConfirmSplit = () => {
@@ -33,7 +44,7 @@ const SplitEvenlyView = () => {
       {/* Header */}
       <View className="flex-row items-center p-4 border-b border-[#333] shrink-0">
         <TouchableOpacity
-          onPress={() => setView("split-options")}
+          onPress={handleGoBack}
           className="p-2 bg-[#333] rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />
@@ -96,7 +107,7 @@ const SplitEvenlyView = () => {
                 Total Bill
               </Text>
               <Text className="text-3xl font-bold text-gray-300">
-                ${activeOrderOutstandingTotal.toFixed(2)}
+                ${effectiveTotal.toFixed(2)}
               </Text>
             </View>
 

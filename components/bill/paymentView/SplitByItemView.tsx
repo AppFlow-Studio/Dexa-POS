@@ -31,6 +31,7 @@ const SplitByItemView = () => {
     updateSplitCustomerName,
     setView,
     startSplitPaymentFlow,
+    resetSplits,
   } = usePaymentStore();
 
   const [activeSplitId, setActiveSplitId] = useState<string | null>(null);
@@ -118,12 +119,17 @@ const SplitByItemView = () => {
     }
   };
 
+  const handleGoBack = () => {
+    resetSplits();
+    setView("split-options");
+  };
+
   return (
     <View className="flex-1 bg-[#212121]">
       {/* 1. Header */}
       <View className="flex-row items-center p-4 border-b border-[#333] h-[70px]">
         <TouchableOpacity
-          onPress={() => setView("split-options")}
+          onPress={handleGoBack}
           className="p-2 bg-[#333] rounded-lg mr-4"
         >
           <ArrowLeft size={20} color="white" />

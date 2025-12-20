@@ -67,7 +67,7 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
 
   return (
     <View
-      className="flex-row items-center bg-[#1E1E1E] border-t border-[#333] px-3 py-3 shadow-lg z-50"
+      className="flex-row items-center bg-[#1E1E1E] border-t border-[#333] px-3 py-3 shadow-lg"
       style={{ height: 72 }} // Fixed compact height
     >
       {/* SECTION 1: Course Label (Fixed Left) */}

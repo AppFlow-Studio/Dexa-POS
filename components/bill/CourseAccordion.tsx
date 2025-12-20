@@ -108,7 +108,11 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
       {isExpanded && (
         <View className="mt-2 pl-4 gap-y-2">
           {items.map((item) => (
-            <BillItem key={item.id} item={item} isEditable={true} />
+            <BillItem
+              key={item.id}
+              item={item}
+              isEditable={item.kitchen_status === "new" || !item.kitchen_status}
+            />
           ))}
         </View>
       )}

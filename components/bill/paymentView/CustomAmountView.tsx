@@ -28,14 +28,20 @@ const CustomAmountView = () => {
     removeSplit,
     startSplitPaymentFlow,
   } = usePaymentStore();
-  const { activeOrderOutstandingTotal } = useOrderStore();
+  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
+
+  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveTotal =
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrderTotal;
 
   // --- MATH LOGIC ---
   const totalAllocated = useMemo(() => {
     return splits.reduce((sum, split) => sum + (split.amount || 0), 0);
   }, [splits]);
 
-  const remaining = activeOrderOutstandingTotal - totalAllocated;
+  const remaining = effectiveTotal - totalAllocated;
 
   // Logic to determine status color
   const isPerfect = Math.abs(remaining) < 0.01;
@@ -99,7 +105,7 @@ const CustomAmountView = () => {
             <View className="flex-row justify-between mb-4">
               <Text className="text-gray-400 text-lg">Total Bill</Text>
               <Text className="text-white font-bold text-lg">
-                ${activeOrderOutstandingTotal.toFixed(2)}
+                ${effectiveTotal.toFixed(2)}
               </Text>
             </View>
 
