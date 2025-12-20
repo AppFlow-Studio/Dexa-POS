@@ -564,6 +564,7 @@ export const useOrderStore = create<OrderState>()(
         // Helper function to sync order status based on item statuses
         const syncOrderStatus = (orderId: string) => {
           const { orders } = get();
+          // console.log('[syncOrderStatus] orders', orders)
           const order = orders.find((o) => o.id === orderId);
           if (!order || !order.items.length) return;
 

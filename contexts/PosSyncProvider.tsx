@@ -55,11 +55,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         "Supabase client registered with order, floor plan, coursing, and offline sync"
       );
     }
-    return () => {
-      setOrderStoreSupabaseClient(null);
-      setFloorPlanSupabaseClient(null);
-      setCoursingSupabaseClient(null);
-    };
+    // return () => {
+    //   setOrderStoreSupabaseClient(null);
+    //   setFloorPlanSupabaseClient(null);
+    //   setCoursingSupabaseClient(null);
+    // };
   }, [supabase]);
 
   // Sync employees from location_members

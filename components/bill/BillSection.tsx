@@ -51,6 +51,7 @@ const BillSection = ({
     assignOrderToTable,
     setActiveOrder,
   } = useOrderStore();
+  console.log(activeOrderId)
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
@@ -59,7 +60,7 @@ const BillSection = ({
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cart = activeOrder?.items || [];
   const hasDraftItems = cart.some((item) => item.isDraft);
-
+  // console.log('[BillSection] orders', orders)
   // Count new items that haven't been sent to kitchen yet
   const newItemsCount = cart.filter(
     (item) => item.kitchen_status === "new" || !item.kitchen_status

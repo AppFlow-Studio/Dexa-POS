@@ -10,7 +10,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
-import {
+import { 
   createJSONStorage,
   persist,
   subscribeWithSelector,
@@ -205,8 +205,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // REALTIME SUBSCRIPTIONS
         // ====================================================================
 
-        setupRealtimeSubscriptions: (locationId: string) => {
+        setupRealtimeSubscriptions: async (locationId: string) => {
           const supabase = getClient();
+          await supabase.realtime.setAuth() // Needed for Realtime Authorization
           if (!supabase) return;
 
           // Clean up existing subscription
@@ -216,15 +217,16 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           }
 
           // Subscribe to table sessions (most frequent updates)
+          console.log('[setupRealtimeSubscriptions] ', locationId)
           const channel = supabase
             .channel(`floor-plan-${locationId}`)
             .on(
-              "postgres_changes",
+              "broadcast",
               {
                 event: "*",
-                schema: "public",
-                table: "table_sessions",
-                filter: `location_id=eq.${locationId}`,
+                // schema: "public",
+                // table: "table_sessions",
+                // filter: `location_id=eq.${locationId}`,
               },
               (payload) => {
                 console.log("Table session change:", payload);
@@ -232,61 +234,62 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 get().loadFloorPlanStatus();
               }
             )
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "table_session_tables",
-              },
-              () => {
-                get().loadFloorPlanStatus();
-              }
-            )
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "waitlist",
-                filter: `location_id=eq.${locationId}`,
-              },
-              () => {
-                get().loadWaitlist();
-              }
-            )
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "reservations",
-                filter: `location_id=eq.${locationId}`,
-              },
-              () => {
-                get().loadReservations();
-              }
-            )
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "floor_plan_objects",
-                filter: `location_id=eq.${locationId}`,
-              },
-              () => {
-                // Only reload in design mode or if objects change significantly
-                if (get().isDesignMode) {
-                  get().loadFloorPlanStatus();
-                }
-              }
-            )
+            // .on(
+            //   "postgres_changes",
+            //   {
+            //     event: "*",
+            //     schema: "public",
+            //     table: "table_session_tables",
+            //   },
+            //   () => {
+            //     get().loadFloorPlanStatus();
+            //   }
+            // )
+            // .on(
+            //   "postgres_changes",
+            //   {
+            //     event: "*",
+            //     schema: "public",
+            //     table: "waitlist",
+            //     filter: `location_id=eq.${locationId}`,
+            //   },
+            //   () => {
+            //     get().loadWaitlist();
+            //   }
+            // )
+            // .on(
+            //   "postgres_changes",
+            //   {
+            //     event: "*",
+            //     schema: "public",
+            //     table: "reservations",
+            //     filter: `location_id=eq.${locationId}`,
+            //   },
+            //   () => {
+            //     get().loadReservations();
+            //   }
+            // )
+            // .on(
+            //   "postgres_changes",
+            //   {
+            //     event: "*",
+            //     schema: "public",
+            //     table: "floor_plan_objects",
+            //     filter: `location_id=eq.${locationId}`,
+            //   },
+            //   () => {
+            //     // Only reload in design mode or if objects change significantly
+            //     if (get().isDesignMode) {
+            //       get().loadFloorPlanStatus();
+            //     }
+            //   }
+            // )
             .subscribe((status) => {
               set({ isOnline: status === "SUBSCRIBED" });
             });
 
           set({ realtimeChannel: channel });
+          return true
         },
 
         cleanup: () => {
@@ -406,7 +409,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             set({ error: error.message });
             return;
           }
-
+          console.log('[]', data?.tables)
           set({
             tables: data?.tables || [],
             lastSyncAt: new Date().toISOString(),
@@ -519,11 +522,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               const update = updates.find((u) => u.id === t.id);
               return update
                 ? {
-                    ...t,
-                    x: update.x,
-                    y: update.y,
-                    rotation: update.rotation ?? t.rotation,
-                  }
+                  ...t,
+                  x: update.x,
+                  y: update.y,
+                  rotation: update.rotation ?? t.rotation,
+                }
                 : t;
             }),
           }));
@@ -612,9 +615,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tables: state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                    ...t,
-                    session: { ...t.session!, status },
-                  }
+                  ...t,
+                  session: { ...t.session!, status },
+                }
                 : t
             ),
           }));
@@ -680,12 +683,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tables: state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                    ...t,
-                    session: {
-                      ...t.session!,
-                      current_course: data.current_course,
-                    },
-                  }
+                  ...t,
+                  session: {
+                    ...t.session!,
+                    current_course: data.current_course,
+                  },
+                }
                 : t
             ),
           }));

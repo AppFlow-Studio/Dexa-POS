@@ -48,7 +48,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
         </View>
       </View>
       <Text className="text-xl font-bold text-white mt-2">
-        {order.customer_name || "Walk-In"} #{order.id.slice(-5)}
+        {order.customer_name || "Walk-In"} #{order?.id?.slice(-5)}
       </Text>
       <View className="flex-row justify-between mt-2">
         <Text className="text-lg text-gray-400 ">

@@ -42,7 +42,8 @@ const UpdateTableScreen = () => {
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { tables, updateSessionStatus } = useFloorPlanStore();
+  const { tables, updateSessionStatus, loadFloorPlanStatus } = useFloorPlanStore();
+
   const {
     orders,
     activeOrderId,
@@ -153,6 +154,7 @@ const UpdateTableScreen = () => {
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
+    loadFloorPlanStatus();
     const handleAutoCreateSession = async () => {
       console.log("handleAutoCreateSession");
       console.log("currentTableId", currentTableId);

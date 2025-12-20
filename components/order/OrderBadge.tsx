@@ -58,7 +58,6 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
   };
 
   const colors = getStatusColor(order.order_status, order.paid_status);
-  const orderNumber = order.id.slice(-4); // Last 4 digits
   return (
     <Tooltip onOpenChange={setShowTooltip}>
       <TooltipTrigger

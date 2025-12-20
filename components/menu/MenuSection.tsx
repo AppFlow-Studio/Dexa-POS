@@ -68,6 +68,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const { requestPinOverride } = usePinOverrideStore();
 
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
+
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
 

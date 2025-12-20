@@ -117,7 +117,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
             </View>
           </View>
           <Text className="text-lg font-bold text-white mb-1">
-            {order.customer_name || "Walk-In"} #{order.id.slice(-5)}
+            {order.customer_name || "Walk-In"} #{order?.id?.slice(-5)}
           </Text>
           <Text className="text-sm text-gray-400">
             {order.order_type}
