@@ -51,12 +51,10 @@ const TableBillSection = ({
 }) => {
   // Added removeCheckDiscount to destructuring
   const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
-
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
   const activeOrder =
     passedActiveOrder || orders.find((o) => o.id === activeOrderId);
-
   // Derived check discount
   const appliedDiscount = activeOrder?.checkDiscount;
 

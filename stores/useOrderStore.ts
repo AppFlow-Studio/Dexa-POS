@@ -22,6 +22,7 @@ import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 import { queueOperation } from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useFloorPlanStore } from "./useFloorPlanStore";
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (No async, no side effects)
@@ -676,8 +677,8 @@ export const useOrderStore = create<OrderState>()(
                     return (
                       acc +
                       item.originalPrice *
-                        item.appliedDiscount.value *
-                        item.quantity
+                      item.appliedDiscount.value *
+                      item.quantity
                     );
                   }
                   return acc;
@@ -797,11 +798,11 @@ export const useOrderStore = create<OrderState>()(
                   orders: state.orders.map((o) =>
                     o.id === orderId
                       ? {
-                          ...o,
-                          total_tax: safeTax,
-                          total_amount: safeTotal,
-                          // Store subtotal for reference (if field exists on OrderProfile)
-                        }
+                        ...o,
+                        total_tax: safeTax,
+                        total_amount: safeTotal,
+                        // Store subtotal for reference (if field exists on OrderProfile)
+                      }
                       : o
                   ),
                 }));
@@ -1092,7 +1093,7 @@ export const useOrderStore = create<OrderState>()(
               }
               const existingItemCourse =
                 coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
-                  cartItem.id
+                cartItem.id
                 ] ?? 1;
               if (existingItemCourse !== currentCourse) {
                 return false;
@@ -1586,14 +1587,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1624,14 +1625,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1669,14 +1670,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1711,14 +1712,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1914,14 +1915,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
 
@@ -2017,8 +2018,8 @@ export const useOrderStore = create<OrderState>()(
                   (sum, item) => sum + item.price * item.quantity,
                   0
                 ) || 0) *
-                  ((useStoreSettingsStore.getState().defaultTaxRate || 8.25) /
-                    100),
+                ((useStoreSettingsStore.getState().defaultTaxRate || 8.25) /
+                  100),
             };
 
             // Save to previous orders
@@ -2465,9 +2466,8 @@ export const useOrderStore = create<OrderState>()(
 
             toastService.show({
               title: "Items Sent",
-              message: `${newItems.length} new item${
-                newItems.length > 1 ? "s" : ""
-              } sent to the kitchen.`,
+              message: `${newItems.length} new item${newItems.length > 1 ? "s" : ""
+                } sent to the kitchen.`,
               type: "success",
             });
           },
@@ -2571,7 +2571,33 @@ export const useOrderStore = create<OrderState>()(
             const { archiveOrder, ordersById } = get();
             const order = ordersById[orderId];
 
-            // 1. Sync to backend first (fire-and-forget)
+
+            // 1. Update the order's status locally
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  order_status: "void",
+                  check_status: "Closed",
+                  items: state.ordersById[orderId].items.map((item) => ({
+                    ...item,
+                    is_voided: true,
+                    void_reason: "Order voided",
+                  })),
+                },
+              },
+
+              ...(state.activeOrderId === orderId && {
+                activeOrderId: null,
+                activeOrderSubtotal: 0,
+                activeOrderTax: 0,
+                activeOrderTotal: 0,
+                activeOrderDiscount: 0,
+              }),
+            }));
+
+            // 2. Sync to backend first (fire-and-forget)
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order?.db_order_id) {
               OrderService.voidOrder(
@@ -2580,26 +2606,44 @@ export const useOrderStore = create<OrderState>()(
                 "Order voided"
               )
                 .then(({ error }) => {
-                  if (error)
-                    console.error("Failed to void order in backend:", error);
+                  if (error) {
+
+                    console.error("[useOrderStore.voidOrder] DB error:", error);
+                    // Rollback optimistic update on failure
+                    set((state) => ({
+                      ordersById: {
+                        ...state.ordersById,
+                        [orderId]: order, // Restore original
+                      },
+                    }));
+                    return false;
+
+                  }
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
             }
-
-            // 2. Update the order's status locally
-            set((state) => ({
-              ordersById: {
-                ...state.ordersById,
-                [orderId]: {
-                  ...state.ordersById[orderId],
-                  order_status: "void",
-                  check_status: "Closed",
-                },
-              },
-            }));
-
             // 3. Archive the order
             archiveOrder(orderId);
+            // Offline mode - queue for sync
+            // const syncQueue = get()._syncQueue || [];
+            // set({
+            //   _syncQueue: [
+            //     ...syncQueue,
+            //     {
+            //       type: "VOID_ORDER",
+            //       orderId,
+            //       voidReason,
+            //       timestamp: Date.now(),
+            //     },
+            //   ],
+            // });
+            
+            // CRITICAL: Force floor plan refresh after void
+            setTimeout(() => {
+              useFloorPlanStore.getState().loadFloorPlanStatus();
+            }, 100);
+            return true;
+
           },
         };
       },

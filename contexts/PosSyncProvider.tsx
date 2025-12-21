@@ -33,6 +33,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
+  const floorPlanLocationId = useFloorPlanStore((state) => state.locationId);
   const offlineSyncInitialized = useRef(false);
 
   // Register Supabase client with order store, floor plan store, coursing store, and offline sync
@@ -208,9 +209,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           useFloorPlanStore.getState().loadReservations(),
         ]);
 
-        // Setup realtime subscriptions
-        useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
-
         console.log("Floor plans synced successfully");
       } catch (error: any) {
         console.error("Floor plan sync failed:", error);
@@ -247,13 +245,45 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   // Floor plan sync is now handled in the combined useEffect above
 
   // Update sync state in store
+  // useEffect(() => {
+  //   setSyncState({
+  //     isLoading: isSyncing,
+  //     isError: isSyncError,
+  //     error: syncError instanceof Error ? syncError : null,
+  //   });
+  // }, [isSyncing, isSyncError, syncError, setSyncState]);
+
+  // Setup and cleanup realtime subscriptions for floor plans
+  // useEffect(() => {
+  //   // Use store's locationId if available, otherwise use selectedStore.id
+  //   const activeLocationId = floorPlanLocationId || selectedStore?.id;
+
+  //   if (!activeLocationId) {
+  //     return;
+  //   }
+
+  //   // Setup realtime subscriptions
+  //   useFloorPlanStore.getState().setupRealtimeSubscriptions(activeLocationId);
+
+  //   console.log('[PosSyncProvider] setupRealtimeSubscriptions', activeLocationId)
+  //   // Cleanup function
+  //   return () => {
+  //     useFloorPlanStore.getState().cleanup();
+  //   };
+  // }, [selectedStore?.id, floorPlanLocationId]);
+
   useEffect(() => {
-    setSyncState({
-      isLoading: isSyncing,
-      isError: isSyncError,
-      error: syncError instanceof Error ? syncError : null,
-    });
-  }, [isSyncing, isSyncError, syncError, setSyncState]);
+    if (selectedStore?.id) {
+      // Clear potentially stale floor plan data before fresh sync
+      useFloorPlanStore.setState({
+        tables: [],
+        lastSyncAt: null,
+      });
+
+      syncEmployees(selectedStore.id);
+      syncFloorPlans(selectedStore.id);
+    }
+  }, [selectedStore?.id, syncEmployees, syncFloorPlans]);
 
   return <>{children}</>;
 }

@@ -1,4 +1,5 @@
 import { useToast } from "@/contexts/ToastContext";
+import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -41,9 +42,9 @@ const StatusIndicator = ({
     : normalizedStatus === "available"
       ? "bg-green-500"
       : normalizedStatus === "in use" ||
-          normalizedStatus === "seated" ||
-          normalizedStatus === "ordered" ||
-          normalizedStatus === "served"
+        normalizedStatus === "seated" ||
+        normalizedStatus === "ordered" ||
+        normalizedStatus === "served"
         ? "bg-blue-500"
         : "bg-red-500"; // needs cleaning / etc
 
@@ -80,7 +81,8 @@ const QuickActionButton: React.FC<{
 };
 
 const useTableData = (table: FloorPlanObject) => {
-  const { orders } = useOrderStore();
+  console.log(`[TableListItem] useTableData ${table.name}`, table)
+  const { orders, ordersById } = useOrderStore();
   const { tables } = useFloorPlanStore();
 
   // table.session?.merged_tables -> array of strings (IDs)
@@ -114,27 +116,12 @@ const useTableData = (table: FloorPlanObject) => {
     const mergedIds = table.session?.merged_tables || [];
     const isMerged = mergedIds.length > 0;
 
-    // Determine if this is the "Primary" (first one in merged list, or just self)
-    // Legacy code had explicit 'isPrimary'.
-    // Here we can treat the table passed in as the primary focus if we are rendering it.
-    // But if we want to show the GROUP details, we aggregate.
+    // For merged tables, they all share the same session_id and order_id
+    // So we just need to check the current table's session
+    const sessionOrderId = table.session?.order_id;
 
-    const groupIds = [table.id, ...mergedIds];
-    // Filter out duplicates if table.id is in mergedIds (it shouldn't be, usually)
-    const uniqueGroupIds = Array.from(new Set(groupIds));
-
-    const groupTables = tables.filter((t) => uniqueGroupIds.includes(t.id));
-
-    // Find orders for ANY table in the group
-    const groupOrders = orders.filter(
-      (o) =>
-        o.service_location_id &&
-        uniqueGroupIds.includes(o.service_location_id) &&
-        o.order_status !== "void"
-    );
-
-    if (groupOrders.length === 0 && !isMerged) {
-      // Fallback if status says In Use but no order found (maybe just seated?)
+    // If no session or no order_id, return empty orders (seated but not ordered yet)
+    if (!table.session || !sessionOrderId) {
       return {
         isMerged: false,
         primaryTableId: table.id,
@@ -145,56 +132,76 @@ const useTableData = (table: FloorPlanObject) => {
         seatedTime: table.session?.seated_at
           ? new Date(table.session.seated_at)
           : null,
-        server: "N/A", // Could fetch employee using session.server_staff_id if available
+        server: "N/A",
         orders: [],
       };
     }
 
-    const earliestSeated = groupOrders.reduce((earliest, o) => {
-      if (!o.opened_at) return earliest;
-      const seated = new Date(o.opened_at).getTime();
-      return seated < earliest ? seated : earliest;
-    }, Infinity);
-
-    const servers = [
-      ...new Set(groupOrders.map((o) => o.server_name).filter(Boolean)),
-    ];
-    // Simple server display logic
-    let serverDisplay = servers[0] || "N/A";
-    if (servers.length > 1) {
-      serverDisplay = `${servers[0]} + ${servers.length - 1} others`;
+    // O(1) lookup using ordersById - try by id first, then by db_order_id
+    let order: OrderProfile | undefined = ordersById[sessionOrderId];
+    if (!order) {
+      // Fallback: search by db_order_id if session.order_id is the backend UUID
+      order = Object.values(ordersById).find(
+        (o) => o.db_order_id === sessionOrderId
+      );
     }
+
+    // Get merged table names for display
+    const groupIds = [table.id, ...mergedIds];
+    const uniqueGroupIds = Array.from(new Set(groupIds));
+    const groupTables = tables.filter((t) => uniqueGroupIds.includes(t.id));
+
+    // If order not found in store or is voided, return empty (might need backend fetch)
+    if (!order || order.order_status === "void") {
+      return {
+        isMerged: isMerged,
+        primaryTableId: table.id,
+        displayName: isMerged
+          ? `${table.name} + ${groupTables
+            .filter((t) => t.id !== table.id)
+            .map((t) => t.name)
+            .join(", ")}`
+          : table.name,
+        status: status,
+        guestCount: table.session?.party_size || 0,
+        total: 0,
+        seatedTime: table.session?.seated_at
+          ? new Date(table.session.seated_at)
+          : null,
+        server: "N/A",
+        orders: [],
+      };
+    }
+
+    // Found order - merged tables share the same order, so return single order in array
+    const groupOrders = [order];
+
+    console.log(`[TableListItem] groupOrders ${table.name}`, groupOrders.length);
+
+    // Calculate display values from the single order
+    const seatedTime = order.opened_at ? new Date(order.opened_at) : null;
+    const serverDisplay = order.server_name || "N/A";
 
     return {
       isMerged: isMerged,
       primaryTableId: table.id,
       displayName: isMerged
         ? `${table.name} + ${groupTables
-            .filter((t) => t.id !== table.id)
-            .map((t) => t.name)
-            .join(", ")}`
+          .filter((t) => t.id !== table.id)
+          .map((t) => t.name)
+          .join(", ")}`
         : table.name,
       status: status,
-      guestCount:
-        groupOrders.reduce((sum, o) => sum + (o.guest_count || 0), 0) ||
-        table.session?.party_size ||
-        0,
-      total: groupOrders.reduce(
-        (sum, o) =>
-          sum +
-          o.items.reduce((itemSum, i) => itemSum + i.price * i.quantity, 0),
+      guestCount: order.guest_count || table.session?.party_size || 0,
+      total: order.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
         0
       ),
-      seatedTime:
-        earliestSeated === Infinity
-          ? table.session?.seated_at
-            ? new Date(table.session.seated_at)
-            : null
-          : new Date(earliestSeated),
+      seatedTime: seatedTime || (table.session?.seated_at ? new Date(table.session.seated_at) : null),
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, orders, tables]);
+  }, [table, ordersById, tables]);
 };
 
 const ExpandedView: React.FC<{
@@ -339,12 +346,12 @@ const ExpandedView: React.FC<{
                 <View className="ml-2">
                   {(item.item_status === "Ready" ||
                     item.item_status === "Served") && (
-                    <CheckCircle size={14} color="#22C55E" />
-                  )}
+                      <CheckCircle size={14} color="#22C55E" />
+                    )}
                   {(item.kitchen_status === "sent" ||
                     item.item_status === "Preparing") && (
-                    <Clock size={14} color="#F59E0B" />
-                  )}
+                      <Clock size={14} color="#F59E0B" />
+                    )}
                 </View>
               </View>
             ))}
@@ -364,7 +371,7 @@ const ExpandedView: React.FC<{
           onPress={onNavigateToOrder}
           variant="primary"
         />
-        <QuickActionButton label="Print Bill" onPress={() => {}} />
+        <QuickActionButton label="Print Bill" onPress={() => { }} />
         <QuickActionButton
           label="Close Table"
           onPress={handleCloseTable}
@@ -394,109 +401,109 @@ const TableListItem: React.FC<{
 }> = ({
   table,
   isExpanded,
-  onToggleExpand = () => {},
+  onToggleExpand = () => { },
   onNavigateToOrder,
   handleTablePress,
 }) => {
-  const tableData = useTableData(table);
-  const [isOvertime, setIsOvertime] = useState(false);
-  const [duration, setDuration] = useState("");
-  const { defaultSittingTimeMinutes } = useSettingsStore();
+    const tableData = useTableData(table);
+    const [isOvertime, setIsOvertime] = useState(false);
+    const [duration, setDuration] = useState("");
+    const { defaultSittingTimeMinutes } = useSettingsStore();
 
-  useEffect(() => {
-    // Check various active statuses
-    const status = tableData?.status?.toLowerCase();
-    const isActive =
-      status === "seated" ||
-      status === "ordered" ||
-      status === "served" ||
-      status === "in use";
+    useEffect(() => {
+      // Check various active statuses
+      const status = tableData?.status?.toLowerCase();
+      const isActive =
+        status === "seated" ||
+        status === "ordered" ||
+        status === "served" ||
+        status === "in use";
 
-    if (!isActive || !tableData.seatedTime) {
-      setIsOvertime(false);
-      setDuration("");
-      return;
-    }
-    const update = () => {
-      const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
-      setDuration(formatDuration(diffMs));
-      setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
+      if (!isActive || !tableData.seatedTime) {
+        setIsOvertime(false);
+        setDuration("");
+        return;
+      }
+      const update = () => {
+        const diffMs = new Date().getTime() - tableData.seatedTime!.getTime();
+        setDuration(formatDuration(diffMs));
+        setIsOvertime(Math.floor(diffMs / 60000) > defaultSittingTimeMinutes);
+      };
+      update();
+      const timer = setInterval(update, 1000);
+      return () => clearInterval(timer);
+    }, [tableData, defaultSittingTimeMinutes]);
+
+    const handlePress = () => {
+      const status = tableData?.status?.toLowerCase();
+      // If seated/active -> toggle expand
+      if (
+        status === "seated" ||
+        status === "ordered" ||
+        status === "served" ||
+        status === "in use" ||
+        status === "check_presented"
+      ) {
+        onToggleExpand();
+      } else {
+        handleTablePress(table);
+      }
     };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [tableData, defaultSittingTimeMinutes]);
 
-  const handlePress = () => {
-    const status = tableData?.status?.toLowerCase();
-    // If seated/active -> toggle expand
-    if (
-      status === "seated" ||
-      status === "ordered" ||
-      status === "served" ||
-      status === "in use" ||
-      status === "check_presented"
-    ) {
-      onToggleExpand();
-    } else {
-      handleTablePress(table);
-    }
-  };
+    if (!tableData) return null;
 
-  if (!tableData) return null;
+    const showActiveDetails =
+      tableData.status.toLowerCase() !== "available" &&
+      tableData.status.toLowerCase() !== "reserved" &&
+      tableData.status.toLowerCase() !== "cleaning";
 
-  const showActiveDetails =
-    tableData.status.toLowerCase() !== "available" &&
-    tableData.status.toLowerCase() !== "reserved" &&
-    tableData.status.toLowerCase() !== "cleaning";
-
-  return (
-    <Animated.View
-      layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-      className="border-b border-gray-700 overflow-hidden "
-    >
-      <TouchableOpacity
-        onPress={handlePress}
-        className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
+    return (
+      <Animated.View
+        layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
+        className="border-b border-gray-700 overflow-hidden "
       >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-3 flex-1">
-            <StatusIndicator
-              status={tableData.status}
-              isOvertime={isOvertime}
-            />
-            <Text
-              className="text-lg font-semibold text-white"
-              numberOfLines={1}
-            >
-              {tableData.displayName}
-            </Text>
+        <TouchableOpacity
+          onPress={handlePress}
+          className={`p-3 ${isExpanded ? "bg-blue-900/20" : "bg-transparent"}`}
+        >
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3 flex-1">
+              <StatusIndicator
+                status={tableData.status}
+                isOvertime={isOvertime}
+              />
+              <Text
+                className="text-lg font-semibold text-white"
+                numberOfLines={1}
+              >
+                {tableData.displayName}
+              </Text>
+            </View>
+            {showActiveDetails && (
+              <>
+                <Text className="text-base text-gray-300 w-20 text-center">
+                  {duration}
+                </Text>
+                <Text className="text-base text-gray-300 w-24 text-center">
+                  {tableData.guestCount} Guests
+                </Text>
+                <Text className="text-base font-bold text-white w-24 text-right">
+                  ${tableData.total?.toFixed(2) || "0.00"}
+                </Text>
+              </>
+            )}
           </View>
-          {showActiveDetails && (
-            <>
-              <Text className="text-base text-gray-300 w-20 text-center">
-                {duration}
-              </Text>
-              <Text className="text-base text-gray-300 w-24 text-center">
-                {tableData.guestCount} Guests
-              </Text>
-              <Text className="text-base font-bold text-white w-24 text-right">
-                ${tableData.total?.toFixed(2) || "0.00"}
-              </Text>
-            </>
+          {isExpanded && showActiveDetails && (
+            <ExpandedView
+              tableData={tableData}
+              table={table}
+              onToggleExpand={onToggleExpand}
+              onNavigateToOrder={onNavigateToOrder}
+            />
           )}
-        </View>
-        {isExpanded && showActiveDetails && (
-          <ExpandedView
-            tableData={tableData}
-            table={table}
-            onToggleExpand={onToggleExpand}
-            onNavigateToOrder={onNavigateToOrder}
-          />
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
 
 export default TableListItem;

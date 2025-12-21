@@ -10,7 +10,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
-import { 
+import {
   createJSONStorage,
   persist,
   subscribeWithSelector,
@@ -205,9 +205,104 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         // REALTIME SUBSCRIPTIONS
         // ====================================================================
 
+        // setupRealtimeSubscriptions: async (locationId: string) => {
+        //   const supabase = getClient();
+        //   await supabase.realtime.setAuth() // Needed for Realtime Authorization
+        //   if (!supabase) return;
+
+        //   // Clean up existing subscription
+        //   const existingChannel = get().realtimeChannel;
+        //   if (existingChannel) {
+        //     supabase.removeChannel(existingChannel);
+        //   }
+        //   const config = {
+        //     private: true,
+        //     broadcast: {
+        //       replay: {
+        //         since: 1697472000000, // Unix timestamp in milliseconds
+        //         limit: 10
+        //       }
+        //     }
+        //   }
+
+        //   // Subscribe to table sessions (most frequent updates)
+        //   console.log('[setupRealtimeSubscriptions] ', locationId)
+        //   const channel = supabase
+        //     .channel(`floor-plan-${locationId}`, { config })
+        //     .on(
+        //       "broadcast",
+        //       {
+        //         event: "*",
+        //         // schema: "public",
+        //         // table: "table_sessions",
+        //         // filter: `location_id=eq.${locationId}`,
+        //       },
+        //       (payload) => {
+        //         console.log("Table session change:", payload);
+        //         // Reload floor plan status
+        //         get().loadFloorPlanStatus();
+        //       }
+        //     )
+        //     // .on(
+        //     //   "postgres_changes",
+        //     //   {
+        //     //     event: "*",
+        //     //     schema: "public",
+        //     //     table: "table_session_tables",
+        //     //   },
+        //     //   () => {
+        //     //     get().loadFloorPlanStatus();
+        //     //   }
+        //     // )
+        //     // .on(
+        //     //   "postgres_changes",
+        //     //   {
+        //     //     event: "*",
+        //     //     schema: "public",
+        //     //     table: "waitlist",
+        //     //     filter: `location_id=eq.${locationId}`,
+        //     //   },
+        //     //   () => {
+        //     //     get().loadWaitlist();
+        //     //   }
+        //     // )
+        //     // .on(
+        //     //   "postgres_changes",
+        //     //   {
+        //     //     event: "*",
+        //     //     schema: "public",
+        //     //     table: "reservations",
+        //     //     filter: `location_id=eq.${locationId}`,
+        //     //   },
+        //     //   () => {
+        //     //     get().loadReservations();
+        //     //   }
+        //     // )
+        //     // .on(
+        //     //   "postgres_changes",
+        //     //   {
+        //     //     event: "*",
+        //     //     schema: "public",
+        //     //     table: "floor_plan_objects",
+        //     //     filter: `location_id=eq.${locationId}`,
+        //     //   },
+        //     //   () => {
+        //     //     // Only reload in design mode or if objects change significantly
+        //     //     if (get().isDesignMode) {
+        //     //       get().loadFloorPlanStatus();
+        //     //     }
+        //     //   }
+        //     // )
+        //     .subscribe((status) => {
+        //       console.log('[setupRealtimeSubscriptions] status', status)
+        //       set({ isOnline: status === "SUBSCRIBED" });
+        //     });
+
+        //   set({ realtimeChannel: channel });
+        //   return true
+        // },
         setupRealtimeSubscriptions: async (locationId: string) => {
           const supabase = getClient();
-          await supabase.realtime.setAuth() // Needed for Realtime Authorization
           if (!supabase) return;
 
           // Clean up existing subscription
@@ -216,81 +311,96 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             supabase.removeChannel(existingChannel);
           }
 
-          // Subscribe to table sessions (most frequent updates)
-          console.log('[setupRealtimeSubscriptions] ', locationId)
+          await supabase.realtime.setAuth();
+
+          // Use postgres_changes for automatic DB change detection
           const channel = supabase
             .channel(`floor-plan-${locationId}`)
+            // Listen to table_sessions changes (most important!)
             .on(
-              "broadcast",
+              "postgres_changes",
               {
                 event: "*",
-                // schema: "public",
-                // table: "table_sessions",
-                // filter: `location_id=eq.${locationId}`,
+                schema: "public",
+                table: "table_sessions",
+                filter: `location_id=eq.${locationId}`,
               },
               (payload) => {
-                console.log("Table session change:", payload);
-                // Reload floor plan status
-                get().loadFloorPlanStatus();
+                console.log("[Realtime] table_sessions change:", payload);
+                // Debounce to avoid rapid reloads
+                get()._debouncedRefresh();
               }
             )
-            // .on(
-            //   "postgres_changes",
-            //   {
-            //     event: "*",
-            //     schema: "public",
-            //     table: "table_session_tables",
-            //   },
-            //   () => {
-            //     get().loadFloorPlanStatus();
-            //   }
-            // )
-            // .on(
-            //   "postgres_changes",
-            //   {
-            //     event: "*",
-            //     schema: "public",
-            //     table: "waitlist",
-            //     filter: `location_id=eq.${locationId}`,
-            //   },
-            //   () => {
-            //     get().loadWaitlist();
-            //   }
-            // )
-            // .on(
-            //   "postgres_changes",
-            //   {
-            //     event: "*",
-            //     schema: "public",
-            //     table: "reservations",
-            //     filter: `location_id=eq.${locationId}`,
-            //   },
-            //   () => {
-            //     get().loadReservations();
-            //   }
-            // )
-            // .on(
-            //   "postgres_changes",
-            //   {
-            //     event: "*",
-            //     schema: "public",
-            //     table: "floor_plan_objects",
-            //     filter: `location_id=eq.${locationId}`,
-            //   },
-            //   () => {
-            //     // Only reload in design mode or if objects change significantly
-            //     if (get().isDesignMode) {
-            //       get().loadFloorPlanStatus();
-            //     }
-            //   }
-            // )
+            // Listen to table_session_tables changes (for merges/transfers)
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "table_session_tables",
+              },
+              (payload) => {
+                console.log("[Realtime] table_session_tables change:", payload);
+                get()._debouncedRefresh();
+              }
+            )
+            // Listen to orders changes (for void/complete status)
+            .on(
+              "postgres_changes",
+              {
+                event: "UPDATE",
+                schema: "public",
+                table: "orders",
+                filter: `location_id=eq.${locationId}`,
+              },
+              (payload) => {
+                console.log("[Realtime] orders change:", payload);
+                // Only refresh if status changed to void/completed
+                const newStatus = (payload.new as any)?.status;
+                if (newStatus === "void" || newStatus === "completed") {
+                  get()._debouncedRefresh();
+                }
+              }
+            )
+            // Listen to waitlist and reservations
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "waitlist",
+                filter: `location_id=eq.${locationId}`,
+              },
+              () => get().loadWaitlist()
+            )
+            .on(
+              "postgres_changes",
+              {
+                event: "*",
+                schema: "public",
+                table: "reservations",
+                filter: `location_id=eq.${locationId}`,
+              },
+              () => get().loadReservations()
+            )
             .subscribe((status) => {
+              console.log("[Realtime] Subscription status:", status);
               set({ isOnline: status === "SUBSCRIBED" });
             });
 
-          set({ realtimeChannel: channel });
-          return true
+          set({ realtimeChannel: channel, locationId });
         },
+
+        // Add debounced refresh helper (prevents rapid reloads)
+        _debouncedRefresh: (() => {
+          let timeoutId: NodeJS.Timeout | null = null;
+          return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+              useFloorPlanStore.getState().loadFloorPlanStatus();
+            }, 300); // 300ms debounce
+          };
+        })(),
 
         cleanup: () => {
           const supabase = getClient();
@@ -409,10 +519,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             set({ error: error.message });
             return;
           }
-          console.log('[]', data?.tables)
+          console.log('[loadFloorPlanStatus] data', data?.tables)
           set({
             tables: data?.tables || [],
             lastSyncAt: new Date().toISOString(),
+            error: null,
           });
         },
 

@@ -43,6 +43,7 @@ const TablesScreen = () => {
     clearSelection();
   }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection]);
 
+
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
 
@@ -122,6 +123,7 @@ const TablesScreen = () => {
     clearSelection();
     router.push(`/tables/${primaryTableId}`);
   };
+  console.log('[TablesScreen] tables', tables)
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">

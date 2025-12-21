@@ -23,12 +23,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
+  onVoidSuccess?: () => void;
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
-> = function MoreOptionsComponent({ discountSheetRef }, ref) {
+> = function MoreOptionsComponent({ discountSheetRef, onVoidSuccess }, ref) {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -52,7 +53,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
 
   // FIX: Get the active order directly without using orders array
   const activeOrder = useOrderStore((state) =>
-    state.orders.find((o) => o.id === state.activeOrderId)
+    state.ordersById[state?.activeOrderId || ""]
   );
 
   const handleClearCart = () => {
@@ -90,6 +91,7 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
         message: "The current order has been successfully voided.",
         type: "success",
       });
+      onVoidSuccess?.();
     }
   };
 
@@ -192,8 +194,9 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   // FIX: Use optional chaining to prevent errors
   const canVoid =
     activeOrder &&
-    activeOrder.items?.length > 0 &&
-    activeOrder.paid_status !== "Paid";
+    (activeOrder.items?.length > 0 &&
+    activeOrder.paid_status !== "Paid")
+    || activeOrder?.db_order_id;
 
   // Animated style for shake effect
   const shakeStyle = useAnimatedStyle(() => {

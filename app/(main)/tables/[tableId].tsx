@@ -1,3 +1,4 @@
+// /(main)/tables/[tableId].tsx
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
@@ -27,6 +28,8 @@ const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
   const [duration, setDuration] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
+  const isNavigatingAwayRef = useRef(false);
+  const hasInitializedRef = useRef(false);
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
@@ -73,7 +76,6 @@ const UpdateTableScreen = () => {
 
   const currentTableId = typeof tableId === "string" ? tableId : "";
   const initialTable = tables.find((t) => t.id === currentTableId);
-
   // Logic to find primary table if this is a merged table
   // In the new system, tables are merged via session.merged_tables or similar logic
   // For now, we rely on the implementation where tables have a session
@@ -95,7 +97,7 @@ const UpdateTableScreen = () => {
     }
     return undefined;
   }, [orders, table?.session?.order_id]);
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = existingOrderForTable ? existingOrderForTable : orders.find((o) => o.id === activeOrderId);
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
@@ -159,66 +161,211 @@ const UpdateTableScreen = () => {
     };
   }, [currentTableId]);
 
-  // --- Auto-Session & Order Sync Logic ---
-  useEffect(() => {
-    loadFloorPlanStatus();
-    const handleAutoCreateSession = async () => {
-      console.log("handleAutoCreateSession");
-      console.log("currentTableId", currentTableId);
-      console.log("table", table);
-      console.log("tableStatus", tableStatus);
-      console.log("existingOrderForTable", existingOrderForTable);
+  // // --- Auto-Session & Order Sync Logic ---
+  // useEffect(() => {
+  //   loadFloorPlanStatus();
+  //   const handleAutoCreateSession = async () => {
+  //     console.log("handleAutoCreateSession");
+  //     console.log("currentTableId", currentTableId);
+  //     console.log("table", table);
+  //     console.log("tableStatus", tableStatus);
+  //     console.log("existingOrderForTable", existingOrderForTable);
 
-      console.log(
-        "existingOrderForTable",
-        existingOrderForTable ? existingOrderForTable.id : "null"
-      );
+  //     console.log(
+  //       "existingOrderForTable",
+  //       existingOrderForTable ? existingOrderForTable.id : "null"
+  //     );
+
+  //     if (!currentTableId || !table) return;
+
+  //     // Case 1: Session exists, but local order sync might be missing activeOrderId
+  //     if (table.session?.order_id) {
+  //       // If we found the order locally, good. If not, we might need to fetch it (future/real sync).
+  //       // Check both local ID and db_order_id because session usually has the UUID
+  //       const foundOrder = orders.find(
+  //         (o) =>
+  //           o.id === table.session!.order_id ||
+  //           o.db_order_id === table.session!.order_id
+  //       );
+  //       if (foundOrder) {
+  //         if (activeOrderId !== foundOrder.id) {
+  //           console.log(
+  //             "Found existing local order for session. Setting active.",
+  //             foundOrder.id
+  //           );
+  //           setActiveOrder(foundOrder.id);
+  //         }
+  //       } else {
+  //         // Don't fetch order if table is being cleared/cleaned
+  //         if (tableStatus === "cleaning" || tableStatus === "available") {
+  //           console.log("Skipping order fetch for cleared/available table");
+  //           return;
+  //         }
+
+  //         console.log(
+  //           "Fetching missing order from backend:",
+  //           table.session.order_id
+  //         );
+
+  //         showLoading("Restoring table session...");
+
+  //         const supabase = getOrderStoreSupabaseClient();
+  //         if (!supabase) {
+  //           hideLoading();
+  //         }
+  //         if (supabase) {
+  //           const { data: fetchedOrder, error } =
+  //             await OrderService.fetchOrderById(
+  //               supabase,
+  //               table.session.order_id
+  //             );
+
+  //           hideLoading(); // Hide immediately after fetch
+
+  //           if (fetchedOrder && !error) {
+  //             console.log("Fetched order from backend:", fetchedOrder.id);
+  //             // Transform to local OrderProfile
+  //             const newOrderProfile: OrderProfile = {
+  //               id: `order_${Date.now()}`, // Local ID
+  //               db_order_id: fetchedOrder.id,
+  //               service_location_id: currentTableId,
+  //               order_status: (fetchedOrder.status as any) || "preparing",
+  //               check_status:
+  //                 fetchedOrder.status === "completed" ? "Closed" : "Opened",
+  //               paid_status:
+  //                 (fetchedOrder.payment_status as string) === "paid" // Cast to string to avoid overlap error with strict Enum
+  //                   ? ("Paid" as const)
+  //                   : ("Unpaid" as const),
+  //               order_type: "Dine In",
+  //               items:
+  //                 (fetchedOrder as any).order_items?.map((item: any) => ({
+  //                   id: `item_${Date.now()}_${Math.random()}`, // New local ID
+  //                   isDraft: false,
+  //                   menuItemId: item.menu_item_id,
+  //                   name: item.item_name,
+  //                   price: item.unit_price,
+  //                   originalPrice: item.unit_price,
+  //                   quantity: item.quantity,
+  //                   db_order_item_id: item.id,
+  //                   item_status: item.status || "ordered",
+  //                   kitchen_status: item.status || "ordered",
+  //                   customizations: {
+  //                     notes: item.special_instructions,
+  //                     modifiers: [], // TODO: Map modifiers if needed for display
+  //                   },
+  //                 })) || [],
+  //               payments: [], // TODO: Fetch payments if needed
+  //               opened_at: fetchedOrder.created_at,
+  //             };
+
+  //             // Inject into store
+  //             useOrderStore.setState((state) => ({
+  //               ordersById: {
+  //                 ...state.ordersById,
+  //                 [newOrderProfile.id]: newOrderProfile,
+  //               },
+  //               orderIds: [...state.orderIds, newOrderProfile.id],
+  //             }));
+  //             setActiveOrder(newOrderProfile.id);
+  //           } else {
+  //             console.error("Failed to fetch order:", error);
+  //           }
+  //         }
+  //       }
+  //       return;
+  //     }
+
+  //     // Case 2: No Session, and No Active Order for this table.
+  //     // The user expects the "Order Started" state just by navigating here.
+  //     // So we Auto-Seat / Create Session.
+  //     // FIX: Ignored existingOrderForTable if table.session is null, because backend is source of truth.
+  //     if (!table.session && tableStatus === "available") {
+  //       console.log("Auto-creating session for table", currentTableId);
+  //       showLoading("Creating session...");
+  //       try {
+  //         // Default party size 1, no name. Just to get the ID.
+  //         const { sessionId, orderId } = await useFloorPlanStore
+  //           .getState()
+  //           .seatGuests({
+  //             tableIds: [currentTableId],
+  //             partySize: 1,
+  //             createOrder: true,
+  //           });
+
+  //         console.log("Auto-created session:", sessionId, "Order:", orderId);
+  //         // Force active order to the new one, overriding any stale local state
+  //         setActiveOrder(orderId || null);
+  //       } catch (err) {
+  //         console.error("Failed to auto-seat guests:", err);
+  //       } finally {
+  //         hideLoading();
+  //       }
+  //     }
+  //   };
+
+  //   handleAutoCreateSession();
+  // }, [currentTableId, tableStatus, table?.session?.order_id]);
+  useEffect(() => {
+    // Skip if we're navigating away
+    if (isNavigatingAwayRef.current) {
+      console.log("[AutoSession] Skipping - navigating away");
+      return;
+    }
+
+    loadFloorPlanStatus();
+
+    const handleAutoCreateSession = async () => {
+      // Double-check navigation guard (async timing)
+      if (isNavigatingAwayRef.current) {
+        console.log("[AutoSession] Skipping async - navigating away");
+        return;
+      }
+
+      console.log("[handleAutoCreateSession] Starting...");
+      console.log("  currentTableId:", currentTableId);
+      console.log("  tableStatus:", tableStatus);
+      console.log("  table?.session:", table?.session?.id);
+      console.log("  existingOrderForTable:", existingOrderForTable?.id);
 
       if (!currentTableId || !table) return;
 
-      // Case 1: Session exists, but local order sync might be missing activeOrderId
+      // Case 1: Session exists with an order
       if (table.session?.order_id) {
-        // If we found the order locally, good. If not, we might need to fetch it (future/real sync).
-        // Check both local ID and db_order_id because session usually has the UUID
         const foundOrder = orders.find(
           (o) =>
             o.id === table.session!.order_id ||
             o.db_order_id === table.session!.order_id
         );
+
         if (foundOrder) {
           if (activeOrderId !== foundOrder.id) {
-            console.log(
-              "Found existing local order for session. Setting active.",
-              foundOrder.id
-            );
+            console.log("[AutoSession] Found existing order, setting active:", foundOrder.id);
             setActiveOrder(foundOrder.id);
           }
         } else {
-          // Don't fetch order if table is being cleared/cleaned
-          if (tableStatus === "cleaning" || tableStatus === "available") {
-            console.log("Skipping order fetch for cleared/available table");
+          // Don't fetch if navigating away or table is being cleared
+          if (isNavigatingAwayRef.current || tableStatus === "cleaning" || tableStatus === "available") {
+            console.log("[AutoSession] Skipping fetch - table being cleared or navigating");
             return;
           }
 
-          console.log(
-            "Fetching missing order from backend:",
-            table.session.order_id
-          );
-
+          console.log("[AutoSession] Fetching missing order:", table.session.order_id);
           showLoading("Restoring table session...");
 
           const supabase = getOrderStoreSupabaseClient();
-          if (!supabase) {
-            hideLoading();
-          }
           if (supabase) {
-            const { data: fetchedOrder, error } =
-              await OrderService.fetchOrderById(
-                supabase,
-                table.session.order_id
-              );
+            const { data: fetchedOrder, error } = await OrderService.fetchOrderById(
+              supabase,
+              table.session.order_id
+            );
 
-            hideLoading(); // Hide immediately after fetch
+            hideLoading();
+
+            // Check again after async operation
+            if (isNavigatingAwayRef.current) {
+              console.log("[AutoSession] Skipping order restore - navigated away");
+              return;
+            }
 
             if (fetchedOrder && !error) {
               console.log("Fetched order from backend:", fetchedOrder.id);
@@ -265,23 +412,29 @@ const UpdateTableScreen = () => {
                 orderIds: [...state.orderIds, newOrderProfile.id],
               }));
               setActiveOrder(newOrderProfile.id);
-            } else {
-              console.error("Failed to fetch order:", error);
             }
+          } else {
+            hideLoading();
           }
         }
         return;
       }
 
-      // Case 2: No Session, and No Active Order for this table.
-      // The user expects the "Order Started" state just by navigating here.
-      // So we Auto-Seat / Create Session.
-      // FIX: Ignored existingOrderForTable if table.session is null, because backend is source of truth.
-      if (!table.session && tableStatus === "available") {
-        console.log("Auto-creating session for table", currentTableId);
+      // Case 2: No Session - Auto-create ONLY on first mount
+      // CRITICAL: Only auto-create once per screen mount, not on every status change
+      if (!table.session && tableStatus === "available" && !hasInitializedRef.current) {
+        hasInitializedRef.current = true;
+
+        // Final guard check
+        if (isNavigatingAwayRef.current) {
+          console.log("[AutoSession] Skipping auto-create - navigating away");
+          return;
+        }
+
+        console.log("[AutoSession] Auto-creating session for table", currentTableId);
         showLoading("Creating session...");
+
         try {
-          // Default party size 1, no name. Just to get the ID.
           const { sessionId, orderId } = await useFloorPlanStore
             .getState()
             .seatGuests({
@@ -290,11 +443,14 @@ const UpdateTableScreen = () => {
               createOrder: true,
             });
 
-          console.log("Auto-created session:", sessionId, "Order:", orderId);
-          // Force active order to the new one, overriding any stale local state
-          setActiveOrder(orderId || null);
+          console.log("[AutoSession] Created session:", sessionId, "Order:", orderId);
+
+          // Only set active if we haven't navigated away
+          if (!isNavigatingAwayRef.current) {
+            setActiveOrder(orderId || null);
+          }
         } catch (err) {
-          console.error("Failed to auto-seat guests:", err);
+          console.error("[AutoSession] Failed to auto-seat:", err);
         } finally {
           hideLoading();
         }
@@ -303,6 +459,17 @@ const UpdateTableScreen = () => {
 
     handleAutoCreateSession();
   }, [currentTableId, tableStatus, table?.session?.order_id]);
+
+  useEffect(() => {
+    if (tableStatus === "cleaning" || tableStatus === "available") {
+      // If we HAD a session and now we don't, we're being cleaned/voided
+      if (hasInitializedRef.current && !table?.session) {
+        console.log("[Navigation] Table cleared, navigating away");
+        isNavigatingAwayRef.current = true;
+        router.replace("/tables"); // Use replace to prevent back-navigation
+      }
+    }
+  }, [tableStatus, table?.session]);
 
   const handleAssignToTable = async () => {
     if (activeOrderId && currentTableId && table?.session?.id) {
@@ -554,7 +721,8 @@ const UpdateTableScreen = () => {
       await handleClearTable();
       return;
     }
-    if (!hasPayments && hasAnyItems) {
+    if ((!hasPayments && hasAnyItems) || existingOrderForTable?.db_order_id) {
+
       setVoidConfirmOpen(true);
       return;
     }
@@ -566,21 +734,115 @@ const UpdateTableScreen = () => {
     router.back();
   };
 
+  // const confirmVoid = async () => {
+  //   if (!activeOrder) return;
+  //   updateOrderStatus(activeOrder.id, "void");
+  //   if (table?.session?.id) {
+  //     await updateSessionStatus(table.session.id, "cleaning");
+  //   }
+
+  //   setVoidConfirmOpen(false);
+  //   show({
+  //     title: "Check Voided",
+  //     message: "The order has been successfully voided.",
+  //     type: "success",
+  //   });
+  //   router.back();
+  // };
+
+
   const confirmVoid = async () => {
     if (!activeOrder) return;
-    updateOrderStatus(activeOrder.id, "void");
-    if (table?.session?.id) {
-      await updateSessionStatus(table.session.id, "available");
-    }
 
-    setVoidConfirmOpen(false);
-    show({
-      title: "Check Voided",
-      message: "The order has been successfully voided.",
-      type: "success",
-    });
-    router.back();
+    // SET NAVIGATION GUARD FIRST
+    isNavigatingAwayRef.current = true;
+
+    try {
+      // Call the proper void function
+      const dbOrderId = activeOrder.db_order_id;
+
+      if (dbOrderId) {
+        const supabase = getOrderStoreSupabaseClient();
+        if (supabase) {
+          const { error } = await supabase.rpc("void_order", {
+            p_order_id: dbOrderId,
+            p_void_reason: "Order voided by staff",
+          });
+
+          if (error) {
+            console.error("[confirmVoid] RPC error:", error);
+            isNavigatingAwayRef.current = false; // Reset on error
+            show({
+              title: "Void Failed",
+              message: error.message,
+              type: "error",
+            });
+            return;
+          }
+        }
+      }
+
+      // Update local state
+      updateOrderStatus(activeOrder.id, "void");
+
+      // Clear active order BEFORE navigating
+      setActiveOrder(null);
+
+      setVoidConfirmOpen(false);
+
+      show({
+        title: "Check Voided",
+        message: "The order has been successfully voided. Table marked for cleaning.",
+        type: "success",
+      });
+
+      // Use replace instead of back to prevent re-entry
+      router.replace("/tables");
+
+    } catch (error) {
+      console.error("[confirmVoid] Error:", error);
+      isNavigatingAwayRef.current = false; // Reset on error
+      show({
+        title: "Void Failed",
+        message: "An unexpected error occurred.",
+        type: "error",
+      });
+    }
   };
+
+  // const handleClearTable = async () => {
+  //   if (!activeOrderId || !activeOrder) return;
+
+  //   const allItemsReady = activeOrder.items.every(
+  //     (item) =>
+  //       (item.item_status || "preparing") === "ready" ||
+  //       item.item_status === "served"
+  //   );
+
+  //   if (!allItemsReady) {
+  //     show({
+  //       title: "Items Not Ready",
+  //       message:
+  //         "Cannot clear the table as some items are still being prepared.",
+  //       type: "warning",
+  //     });
+  //     return;
+  //   }
+
+  //   if (table?.session?.id) {
+  //     await updateSessionStatus(table.session.id, "cleaning");
+  //   }
+
+  //   archiveOrder(activeOrderId);
+  //   setActiveOrder(null); // Explicitly clear active order to prevent zombie state
+
+  //   router.back();
+  //   show({
+  //     title: "Table Cleared",
+  //     message: `Table marked for cleaning.`,
+  //     type: "success",
+  //   });
+  // };
 
   const handleClearTable = async () => {
     if (!activeOrderId || !activeOrder) return;
@@ -594,24 +856,27 @@ const UpdateTableScreen = () => {
     if (!allItemsReady) {
       show({
         title: "Items Not Ready",
-        message:
-          "Cannot clear the table as some items are still being prepared.",
+        message: "Cannot clear the table as some items are still being prepared.",
         type: "warning",
       });
       return;
     }
+
+    // SET NAVIGATION GUARD
+    isNavigatingAwayRef.current = true;
 
     if (table?.session?.id) {
       await updateSessionStatus(table.session.id, "cleaning");
     }
 
     archiveOrder(activeOrderId);
-    setActiveOrder(null); // Explicitly clear active order to prevent zombie state
+    setActiveOrder(null);
 
-    router.back();
+    router.replace("/tables"); // Use replace
+    
     show({
       title: "Table Cleared",
-      message: `Table marked for cleaning.`,
+      message: "Table marked for cleaning.",
       type: "success",
     });
   };
@@ -749,6 +1014,34 @@ const UpdateTableScreen = () => {
 
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef}
+        onVoidSuccess={async () => {
+          // setVoidConfirmOpen(false);
+          // show({
+          //   title: "Order Voided",
+          //   message: "The order has been successfully voided.",
+          //   type: "success",
+          // });
+          // router.back();
+          // Force session status update
+          // Update local state
+          updateOrderStatus(activeOrder?.id || "", "void");
+
+          // Clear active order BEFORE navigating
+          setActiveOrder(null);
+
+          setVoidConfirmOpen(false);
+
+          show({
+            title: "Check Voided",
+            message: "The order has been successfully voided. Table marked for cleaning.",
+            type: "success",
+          });
+
+          // Use replace instead of back to prevent re-entry
+          router.replace("/tables");
+
+        }
+        }
         discountSheetRef={
           discountSheetRef as React.RefObject<BottomSheetMethods>
         }

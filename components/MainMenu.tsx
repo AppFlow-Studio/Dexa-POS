@@ -137,6 +137,14 @@ const MainMenu: React.FC = () => {
       isHighlighted: false,
     },
     {
+      id: "order-store-test",
+      icon: <TestTube color="#10b981" size={48} />,
+      title: "Order Store Test",
+      subtitle: "Debug Order Store",
+      route: "/order-store-test",
+      isHighlighted: false,
+    },
+    {
       id: "scheduling",
       icon: <CalendarClock color="#3b82f6" size={48} />,
       title: "Scheduling",

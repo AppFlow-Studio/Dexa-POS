@@ -62,7 +62,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
 }) => {
   const { tables, updateTablePosition, removeTable, saveSnapshot } =
     useFloorPlanStore();
-  const { orders } = useOrderStore();
+  const { orders, ordersById } = useOrderStore();
   const { defaultSittingTimeMinutes } = useSettingsStore();
 
   const [duration, setDuration] = useState("");
@@ -77,14 +77,17 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const activeOrderForThisTable = orders.find(
     (o) => o.service_location_id === table.id && o.order_status !== "void"
   );
+  // console.log('[DraggableTable] activeOrderForThisTable', activeOrderForThisTable)
 
   const orderForThisGroup = useMemo(() => {
     // If table has session, check it.
     if (table.session?.order_id) {
-      return orders.find((o) => o.id === table.session?.order_id);
+      console.log('[DraggableTable] orderForThisGroup', `${table.name == 'Family Bar' && table.session?.order_id}`)
+      return ordersById[table.session?.order_id];
     }
-    return activeOrderForThisTable;
+    // return activeOrderForThisTable;
   }, [table, orders, activeOrderForThisTable]);
+  console.log(`[DraggableTable] orderForThisGroup ${table.name}`, orderForThisGroup)
 
   useEffect(() => {
     // Determine if table is effectively "in use" based on session or order
@@ -103,9 +106,12 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       return;
     }
 
+
     const updateTimer = () => {
       if (!orderForThisGroup?.opened_at) return;
+
       const startTime = new Date(orderForThisGroup.opened_at);
+
       const now = new Date();
       const diffMs = now.getTime() - startTime.getTime();
       const diffMins = Math.floor(diffMs / 60000);
@@ -254,9 +260,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ) || 0;
 
   const tableStatus = table.session?.status || "available"; // Fallback
+  console.log('[DraggableTable] tableStatus', `${table.name == 'Family Bar' && tableStatus}`)
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
-    : STATUS_COLORS[tableStatus] || "#10B981";
+    : STATUS_COLORS[tableStatus];
 
   // Type check for category is effective if we trust the object
   const isTableType = table.category === "table" || table.category === "booth";
@@ -285,9 +292,8 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
-              className={`text-base text-center font-bold ${
-                isTableType ? "text-white" : "text-[#757575]"
-              }`}
+              className={`text-base text-center font-bold ${isTableType ? "text-white" : "text-[#757575]"
+                }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
