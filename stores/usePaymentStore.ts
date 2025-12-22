@@ -354,7 +354,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
     } else {
       // STANDARD FLOW
-      const { activeOrderOutstandingTotal } = useOrderStore.getState();
+      const {
+        activeOrderOutstandingTotal,
+        orders,
+        sendNewItemsToKitchenForOrder,
+      } = useOrderStore.getState();
+      const currentOrder = orders.find((o) => o.id === activeOrderId);
+
       addPaymentToOrder({
         orderId: activeOrderId,
         amount: activeOrderOutstandingTotal,
@@ -363,6 +369,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         transactionDetails,
       });
       markOrderAsPaid(activeOrderId);
+
+      // If order was in draft status, send it to kitchen
+      if (currentOrder?.order_status === "draft") {
+        sendNewItemsToKitchenForOrder(activeOrderId);
+      }
+
       set({ view: "success" });
     }
   },

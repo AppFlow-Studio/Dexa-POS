@@ -1,4 +1,3 @@
-// /(main)/tables/[tableId].tsx
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
@@ -37,6 +36,8 @@ const UpdateTableScreen = () => {
   const { showLoading, hideLoading } = useLoading();
 
   const [isNotReadyConfirmOpen, setNotReadyConfirmOpen] = useState(false);
+  const [isClearNotReadyConfirmOpen, setClearNotReadyConfirmOpen] =
+    useState(false);
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
   const [isOrderClosedWarningOpen, setOrderClosedWarningOpen] = useState(false);
   const [selectedCourseIdForTracker, setSelectedCourseIdForTracker] = useState<
@@ -97,7 +98,9 @@ const UpdateTableScreen = () => {
     }
     return undefined;
   }, [orders, table?.session?.order_id]);
-  const activeOrder = existingOrderForTable ? existingOrderForTable : orders.find((o) => o.id === activeOrderId);
+  const activeOrder = existingOrderForTable
+    ? existingOrderForTable
+    : orders.find((o) => o.id === activeOrderId);
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
@@ -339,31 +342,46 @@ const UpdateTableScreen = () => {
 
         if (foundOrder) {
           if (activeOrderId !== foundOrder.id) {
-            console.log("[AutoSession] Found existing order, setting active:", foundOrder.id);
+            console.log(
+              "[AutoSession] Found existing order, setting active:",
+              foundOrder.id
+            );
             setActiveOrder(foundOrder.id);
           }
         } else {
           // Don't fetch if navigating away or table is being cleared
-          if (isNavigatingAwayRef.current || tableStatus === "cleaning" || tableStatus === "available") {
-            console.log("[AutoSession] Skipping fetch - table being cleared or navigating");
+          if (
+            isNavigatingAwayRef.current ||
+            tableStatus === "cleaning" ||
+            tableStatus === "available"
+          ) {
+            console.log(
+              "[AutoSession] Skipping fetch - table being cleared or navigating"
+            );
             return;
           }
 
-          console.log("[AutoSession] Fetching missing order:", table.session.order_id);
+          console.log(
+            "[AutoSession] Fetching missing order:",
+            table.session.order_id
+          );
           showLoading("Restoring table session...");
 
           const supabase = getOrderStoreSupabaseClient();
           if (supabase) {
-            const { data: fetchedOrder, error } = await OrderService.fetchOrderById(
-              supabase,
-              table.session.order_id
-            );
+            const { data: fetchedOrder, error } =
+              await OrderService.fetchOrderById(
+                supabase,
+                table.session.order_id
+              );
 
             hideLoading();
 
             // Check again after async operation
             if (isNavigatingAwayRef.current) {
-              console.log("[AutoSession] Skipping order restore - navigated away");
+              console.log(
+                "[AutoSession] Skipping order restore - navigated away"
+              );
               return;
             }
 
@@ -422,7 +440,11 @@ const UpdateTableScreen = () => {
 
       // Case 2: No Session - Auto-create ONLY on first mount
       // CRITICAL: Only auto-create once per screen mount, not on every status change
-      if (!table.session && tableStatus === "available" && !hasInitializedRef.current) {
+      if (
+        !table.session &&
+        tableStatus === "available" &&
+        !hasInitializedRef.current
+      ) {
         hasInitializedRef.current = true;
 
         // Final guard check
@@ -431,19 +453,33 @@ const UpdateTableScreen = () => {
           return;
         }
 
-        console.log("[AutoSession] Auto-creating session for table", currentTableId);
+        console.log(
+          "[AutoSession] Auto-creating session for table",
+          currentTableId
+        );
         showLoading("Creating session...");
 
         try {
+          // For fallback cases (direct URL navigation), try to use existing local order's guest count
+          const existingLocalOrder = orders.find(
+            (o) => o.service_location_id === currentTableId
+          );
+          const partySize = existingLocalOrder?.guest_count || 1;
+
           const { sessionId, orderId } = await useFloorPlanStore
             .getState()
             .seatGuests({
               tableIds: [currentTableId],
-              partySize: 1,
+              partySize: partySize,
               createOrder: true,
             });
 
-          console.log("[AutoSession] Created session:", sessionId, "Order:", orderId);
+          console.log(
+            "[AutoSession] Created session:",
+            sessionId,
+            "Order:",
+            orderId
+          );
 
           // Only set active if we haven't navigated away
           if (!isNavigatingAwayRef.current) {
@@ -722,7 +758,6 @@ const UpdateTableScreen = () => {
       return;
     }
     if ((!hasPayments && hasAnyItems) || existingOrderForTable?.db_order_id) {
-
       setVoidConfirmOpen(true);
       return;
     }
@@ -749,7 +784,6 @@ const UpdateTableScreen = () => {
   //   });
   //   router.back();
   // };
-
 
   const confirmVoid = async () => {
     if (!activeOrder) return;
@@ -792,13 +826,13 @@ const UpdateTableScreen = () => {
 
       show({
         title: "Check Voided",
-        message: "The order has been successfully voided. Table marked for cleaning.",
+        message:
+          "The order has been successfully voided. Table marked for cleaning.",
         type: "success",
       });
 
       // Use replace instead of back to prevent re-entry
       router.replace("/tables");
-
     } catch (error) {
       console.error("[confirmVoid] Error:", error);
       isNavigatingAwayRef.current = false; // Reset on error
@@ -844,25 +878,10 @@ const UpdateTableScreen = () => {
   //   });
   // };
 
-  const handleClearTable = async () => {
-    if (!activeOrderId || !activeOrder) return;
-
-    const allItemsReady = activeOrder.items.every(
-      (item) =>
-        (item.item_status || "preparing") === "ready" ||
-        item.item_status === "served"
-    );
-
-    if (!allItemsReady) {
-      show({
-        title: "Items Not Ready",
-        message: "Cannot clear the table as some items are still being prepared.",
-        type: "warning",
-      });
-      return;
-    }
-
-    // SET NAVIGATION GUARD
+  // Extracted clearing logic for reuse
+  const doClearTable = async () => {
+    if (!activeOrderId) return;
+    showLoading("Clearing table...");
     isNavigatingAwayRef.current = true;
 
     if (table?.session?.id) {
@@ -872,13 +891,40 @@ const UpdateTableScreen = () => {
     archiveOrder(activeOrderId);
     setActiveOrder(null);
 
-    router.replace("/tables"); // Use replace
-    
+    hideLoading();
+    router.replace("/tables");
+
     show({
       title: "Table Cleared",
       message: "Table marked for cleaning.",
       type: "success",
     });
+  };
+
+  const handleClearTable = async () => {
+    if (!activeOrderId || !activeOrder) return;
+
+    const preparingItems = activeOrder.items.filter(
+      (item) =>
+        (item.item_status || "preparing") !== "ready" &&
+        item.item_status !== "served"
+    );
+
+    if (preparingItems.length > 0) {
+      // Show alert with items list and "Proceed Anyway" option
+      setNotReadyItems(
+        preparingItems.map((i) => ({
+          id: i.id,
+          name: i.name,
+          quantity: i.quantity,
+        }))
+      );
+      setClearNotReadyConfirmOpen(true);
+      return;
+    }
+
+    // All items ready, proceed with clearing
+    await doClearTable();
   };
 
   const checkOrderClosedAndWarn = () => {
@@ -1033,15 +1079,14 @@ const UpdateTableScreen = () => {
 
           show({
             title: "Check Voided",
-            message: "The order has been successfully voided. Table marked for cleaning.",
+            message:
+              "The order has been successfully voided. Table marked for cleaning.",
             type: "success",
           });
 
           // Use replace instead of back to prevent re-entry
           router.replace("/tables");
-
-        }
-        }
+        }}
         discountSheetRef={
           discountSheetRef as React.RefObject<BottomSheetMethods>
         }
@@ -1118,6 +1163,75 @@ const UpdateTableScreen = () => {
             >
               <Text className="font-semibold text-white text-base">
                 Pay Anyway
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear Table - Items Not Ready Alert */}
+      <AlertDialog
+        open={isClearNotReadyConfirmOpen}
+        onOpenChange={setClearNotReadyConfirmOpen}
+      >
+        <AlertDialogContent className="w-[450px] p-5 rounded-2xl bg-[#1C1C1E] border border-[#333333]">
+          {/* Warning Icon */}
+          <View className="items-center mb-4">
+            <View className="w-16 h-16 rounded-full bg-amber-500/20 items-center justify-center">
+              <AlertTriangle size={32} color="#f59e0b" />
+            </View>
+          </View>
+
+          {/* Title */}
+          <Text className="text-xl font-bold text-white text-center mb-2">
+            Items Still Preparing
+          </Text>
+
+          {/* Item Count */}
+          <Text className="text-sm text-gray-400 text-center mb-3">
+            {notReadyItems.length} item{notReadyItems.length !== 1 ? "s" : ""}{" "}
+            not ready yet:
+          </Text>
+
+          {/* Item List */}
+          <ScrollView
+            className="max-h-32 mb-4 bg-[#252528] rounded-xl p-3"
+            showsVerticalScrollIndicator={false}
+          >
+            {notReadyItems.map((item) => (
+              <View key={item.id} className="flex-row items-center py-1">
+                <Text className="text-amber-400 mr-2">•</Text>
+                <Text className="text-gray-300 text-sm">
+                  {item.quantity}x {item.name}
+                </Text>
+              </View>
+            ))}
+          </ScrollView>
+
+          {/* Question */}
+          <Text className="text-sm text-gray-400 text-center mb-4">
+            Proceed to clear table anyway?
+          </Text>
+
+          {/* Buttons */}
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={() => setClearNotReadyConfirmOpen(false)}
+              className="flex-1 py-3 rounded-xl items-center"
+            >
+              <Text className="font-semibold text-gray-400 text-base">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={async () => {
+                setClearNotReadyConfirmOpen(false);
+                await doClearTable();
+              }}
+              className="flex-1 py-3 bg-amber-600 rounded-xl items-center"
+            >
+              <Text className="font-semibold text-white text-base">
+                Clear Anyway
               </Text>
             </TouchableOpacity>
           </View>

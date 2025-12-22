@@ -1,8 +1,13 @@
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
 import Sidebar from "@/components/tables/Sidebar"; // Import the new Sidebar
 import TableLayoutView from "@/components/tables/TableLayoutView";
+import { OrderProfile } from "@/lib/types";
+import { OrderService } from "@/services/orderService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  getOrderStoreSupabaseClient,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
@@ -42,7 +47,6 @@ const TablesScreen = () => {
     }
     clearSelection();
   }, [activeFloorPlanId, floorPlans, setActiveFloorPlan, clearSelection]);
-
 
   // activePlan logic is now handled by store loading 'tables' only for active plan.
   // tables = current active tables.
@@ -103,27 +107,92 @@ const TablesScreen = () => {
     }
   };
 
-  const handleGuestCountSubmit = (guestCount: number) => {
+  const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0];
     if (!primaryTableId) return;
 
-    // We assume backend handles session creation via OrderStore/FloorPlanService integration
-    // OR we explicitly call seatGuests here.
-    // Existing code uses startNewOrder.
+    try {
+      // Create backend session with correct guest count
+      const { sessionId, orderId } = await useFloorPlanStore
+        .getState()
+        .seatGuests({
+          tableIds: [primaryTableId],
+          partySize: guestCount,
+          createOrder: true,
+        });
 
-    const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
-    setActiveOrder(newOrder.id);
+      console.log(
+        "[GuestCountSubmit] Created session:",
+        sessionId,
+        "Order:",
+        orderId
+      );
 
-    // selectedTableIds.forEach((tableId) => {
-    //   updateTableStatus(tableId, "In Use");
-    // });
-    // UPDATE STATUS REMOVED. Relies on OrderStore state to drive UI.
+      // Fetch full order details from backend and create local order
+      if (orderId) {
+        const supabase = getOrderStoreSupabaseClient();
+        if (supabase) {
+          const { data: backendOrder, error } =
+            await OrderService.fetchOrderById(supabase, orderId);
+
+          if (backendOrder && !error) {
+            console.log(
+              "[GuestCountSubmit] Fetched backend order:",
+              backendOrder.order_number
+            );
+
+            // Create local OrderProfile with backend data
+            const localOrderId = `order_${Date.now()}`;
+            const newOrderProfile: OrderProfile = {
+              id: localOrderId,
+              db_order_id: backendOrder.id,
+              order_number: backendOrder.order_number,
+              display_number: backendOrder.display_number,
+              sync_status: "synced",
+              service_location_id: primaryTableId,
+              order_status: backendOrder.status || "draft",
+              check_status: "Opened",
+              paid_status: "Unpaid",
+              order_type: "Dine In",
+              items: [],
+              opened_at: backendOrder.created_at,
+              guest_count: guestCount,
+            };
+
+            // Inject into store
+            useOrderStore.setState((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [localOrderId]: newOrderProfile,
+              },
+              orderIds: [...state.orderIds, localOrderId],
+            }));
+
+            setActiveOrder(localOrderId);
+          } else {
+            console.error(
+              "[GuestCountSubmit] Failed to fetch backend order:",
+              error
+            );
+            // Fallback: use orderId directly (might not work for lookups)
+            setActiveOrder(orderId);
+          }
+        } else {
+          setActiveOrder(orderId);
+        }
+      }
+    } catch (err) {
+      console.error("[GuestCountSubmit] Failed to seat guests:", err);
+      // Fallback to local order creation if backend fails
+      const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
+      setActiveOrder(newOrder.id);
+    }
 
     setGuestModalOpen(false);
     clearSelection();
     router.push(`/tables/${primaryTableId}`);
   };
-  console.log('[TablesScreen] tables', tables)
+  console.log("[TablesScreen] tables", tables);
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">

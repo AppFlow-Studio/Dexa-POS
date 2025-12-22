@@ -80,14 +80,23 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   // console.log('[DraggableTable] activeOrderForThisTable', activeOrderForThisTable)
 
   const orderForThisGroup = useMemo(() => {
-    // If table has session, check it.
     if (table.session?.order_id) {
-      console.log('[DraggableTable] orderForThisGroup', `${table.name == 'Family Bar' && table.session?.order_id}`)
-      return ordersById[table.session?.order_id];
+      // Try direct lookup first (if session.order_id matches local id)
+      let order: (typeof ordersById)[string] | undefined =
+        ordersById[table.session.order_id];
+      if (!order) {
+        // Fallback: search by db_order_id if session.order_id is the backend UUID
+        order = Object.values(ordersById).find(
+          (o) => o.db_order_id === table.session?.order_id
+        );
+      }
+      return order;
     }
-    // return activeOrderForThisTable;
-  }, [table, orders, activeOrderForThisTable]);
-  console.log(`[DraggableTable] orderForThisGroup ${table.name}`, orderForThisGroup)
+  }, [table.session?.order_id, ordersById]);
+  console.log(
+    `[DraggableTable] orderForThisGroup ${table.name}`,
+    orderForThisGroup
+  );
 
   useEffect(() => {
     // Determine if table is effectively "in use" based on session or order
@@ -105,7 +114,6 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       setIsOvertime(false);
       return;
     }
-
 
     const updateTimer = () => {
       if (!orderForThisGroup?.opened_at) return;
@@ -260,7 +268,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ) || 0;
 
   const tableStatus = table.session?.status || "available"; // Fallback
-  console.log('[DraggableTable] tableStatus', `${table.name == 'Family Bar' && tableStatus}`)
+  console.log(
+    "[DraggableTable] tableStatus",
+    `${table.name == "Family Bar" && tableStatus}`
+  );
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
     : STATUS_COLORS[tableStatus];
@@ -292,8 +303,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
           )}
           <View className="absolute inset-0 items-center justify-center px-1">
             <Text
-              className={`text-base text-center font-bold ${isTableType ? "text-white" : "text-[#757575]"
-                }`}
+              className={`text-base text-center font-bold ${
+                isTableType ? "text-white" : "text-[#757575]"
+              }`}
               numberOfLines={1}
             >
               {displayName ? displayName : table.name}
