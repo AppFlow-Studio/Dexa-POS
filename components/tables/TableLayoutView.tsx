@@ -46,11 +46,11 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const { toggleTableSelection, selectedTableIds: globallySelectedTableIds } =
     useFloorPlanStore();
 
-  // Use the correct selection state based on mode
-  const selectedTableIds = isSelectionMode
-    ? selectedTableId
-      ? [selectedTableId]
-      : []
+  // Use the correct selection state:
+  // - In selection mode: use global store (supports multi-select for merge)
+  // - Otherwise: use global store or fall back to single selectedTableId prop
+  const selectedTableIds = selectedTableId
+    ? [selectedTableId]
     : globallySelectedTableIds;
 
   const [containerDims, setContainerDims] = useState({ width: 0, height: 0 });

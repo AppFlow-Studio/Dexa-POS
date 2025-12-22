@@ -36,7 +36,7 @@ export default function GiftedChartsSalesTrendChart() {
 
   const formattedData = processedData.map((item) => ({
     value: item.value || item.revenue || item.quantity || 0,
-    label: format(item.dateObj, "MMM d"),
+    label: format(item.dateObj, "M/d"),
     date: format(item.dateObj, "yyyy-MM-dd"),
   }));
 
@@ -74,7 +74,7 @@ export default function GiftedChartsSalesTrendChart() {
   }
 
   return (
-    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 overflow-hidden">
+    <View className="h-[300px] w-full flex justify-end bg-[#303030] rounded-2xl border border-gray-600 p-4 overflow-hidden pb-8">
       <LineChart
         data={formattedData}
         areaChart
@@ -120,6 +120,7 @@ export default function GiftedChartsSalesTrendChart() {
         xAxisColor={"#374151"}
         xAxisLabelTextStyle={{ color: "white" }}
         xAxisLabelTexts={xAxisLabels.filter((l) => l)}
+        rotateLabel
         xAxisIndicesHeight={10}
         xAxisIndicesColor="white"
         yAxisColor={"#374151"}

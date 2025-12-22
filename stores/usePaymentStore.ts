@@ -119,6 +119,7 @@ interface PaymentState {
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
   resetSplits: () => void; // Action to clear splits when going back
+  handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -188,6 +189,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       splitSourceView: null,
       progress: { currentStep: 1, totalSteps: totalSteps },
     });
+  },
+
+  // Called when success view is dismissed by dragging down
+  handleSuccessClose: () => {
+    const { activeTableId } = get();
+    const { activeOrderId, orders, startNewOrder, setActiveOrder } =
+      useOrderStore.getState();
+
+    const activeOrder = orders.find((o) => o.id === activeOrderId);
+
+    // For dine-in orders on a table, just close (table keeps the paid order)
+    if (activeOrder?.order_type === "Dine In" && activeTableId) {
+      get().close();
+      return;
+    }
+
+    // For quick service / takeout, start a new order immediately
+    setTimeout(() => {
+      const newOrder = startNewOrder();
+      setActiveOrder(newOrder.id);
+    }, 100);
+
+    get().close();
   },
 
   // --- SPLIT ACTIONS ---

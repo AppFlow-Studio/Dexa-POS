@@ -81,14 +81,12 @@ const OrderProcessing = () => {
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
-    // Show only orders that are in a "kitchen" state
+    // Show orders that are in a "kitchen" state (preparing) or unpaid
     const kitchenOrders = orders.filter(
       (o) =>
-        (o.order_type !== "dine_in" &&
-          // Condition 1: Must be in Preparing state
-          o.order_status === "preparing" &&
-          // Condition 2: Must have one or more items
-          o.items.length > 0) ||
+        // Condition 1: Any "preparing" order with items (includes Dine In, Takeaway, Delivery)
+        (o.order_status === "preparing" && o.items.length > 0) ||
+        // Condition 2: Unpaid orders that need payment
         (o.paid_status === "Unpaid" &&
           o.order_status !== "completed" &&
           o.order_status !== "draft" &&

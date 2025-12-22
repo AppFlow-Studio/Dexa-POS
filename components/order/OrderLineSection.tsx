@@ -33,15 +33,22 @@ const OrderLineSection: React.FC = () => {
   const orderCounts = useMemo(() => {
     return {
       All: visibleOrders.length,
-      "Dine In": visibleOrders.filter((o) => o.order_type === "dine_in").length,
-      Takeaway: visibleOrders.filter((o) => o.order_type === "takeout").length,
-      Delivery: visibleOrders.filter((o) => o.order_type === "delivery").length,
+      "Dine In": visibleOrders.filter(
+        (o) => o.order_type === "dine_in" || o.order_type === "Dine In"
+      ).length,
+      Takeaway: visibleOrders.filter(
+        (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
+      ).length,
+      Delivery: visibleOrders.filter(
+        (o) => o.order_type === "delivery" || o.order_type === "Delivery"
+      ).length,
     };
   }, [visibleOrders]);
 
   const totalOrder = orders.filter(
     (o) =>
       (o.order_type !== "dine_in" &&
+        o.order_type !== "Dine In" &&
         // Condition 1: Must be in preparing state
         o.order_status === "preparing" &&
         // Condition 2: Must have one or more items
@@ -51,12 +58,20 @@ const OrderLineSection: React.FC = () => {
         o.order_status !== "draft")
   ).length;
 
+  // Map tab names to order_type values for filtering
+  const tabToOrderType: Record<string, string[]> = {
+    "Dine In": ["dine_in", "Dine In"],
+    Takeaway: ["takeout", "Takeaway"],
+    Delivery: ["delivery", "Delivery"],
+  };
+
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
     if (activeTab === "All") {
       return visibleOrders;
     }
-    return visibleOrders.filter((o) => o.order_type === activeTab);
+    const orderTypes = tabToOrderType[activeTab] || [activeTab];
+    return visibleOrders.filter((o) => orderTypes.includes(o.order_type ?? ""));
   }, [visibleOrders, activeTab]);
 
   // Ref to control the FlatList for scrolling

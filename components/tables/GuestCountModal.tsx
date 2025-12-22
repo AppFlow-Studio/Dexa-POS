@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import {
   Dialog,
@@ -22,6 +22,14 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
 }) => {
   const [count, setCount] = useState("1");
 
+  // Reset count when modal closes (not during close animation)
+  useEffect(() => {
+    if (!isOpen) {
+      // Delay reset to allow modal animation to complete
+      const timer = setTimeout(() => setCount("1"), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
   const handleInput = (value: string) => {
     // Clear all
     if (value === "clear") {
@@ -58,7 +66,7 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
     const guestCount = parseInt(count, 10);
     if (!isNaN(guestCount) && guestCount > 0) {
       onSubmit(guestCount);
-      setCount("1"); // Reset for next time
+      // Count reset handled by useEffect when modal closes
     }
   };
 
@@ -72,7 +80,9 @@ export const GuestCountModal: React.FC<GuestCountModalProps> = ({
         </DialogHeader>
         <View className="py-4">
           <View className="bg-[#212121] border border-gray-600 rounded-lg p-4 mb-4">
-            <Text className="text-center text-4xl font-bold text-white">{count}</Text>
+            <Text className="text-center text-4xl font-bold text-white">
+              {count}
+            </Text>
           </View>
           <GuestCountNumpad onKeyPress={handleInput} />
         </View>

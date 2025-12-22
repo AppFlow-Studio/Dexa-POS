@@ -166,6 +166,9 @@ interface FloorPlanState {
   undo: () => void;
   redo: () => void;
   saveSnapshot: () => void;
+
+  // Internal helpers
+  _debouncedRefresh: () => void;
 }
 
 export const useFloorPlanStore = create<FloorPlanState>()(
@@ -393,7 +396,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         // Add debounced refresh helper (prevents rapid reloads)
         _debouncedRefresh: (() => {
-          let timeoutId: NodeJS.Timeout | null = null;
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
           return () => {
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
@@ -519,7 +522,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             set({ error: error.message });
             return;
           }
-          console.log('[loadFloorPlanStatus] data', data?.tables)
+          console.log("[loadFloorPlanStatus] data", data?.tables);
           set({
             tables: data?.tables || [],
             lastSyncAt: new Date().toISOString(),
@@ -633,11 +636,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               const update = updates.find((u) => u.id === t.id);
               return update
                 ? {
-                  ...t,
-                  x: update.x,
-                  y: update.y,
-                  rotation: update.rotation ?? t.rotation,
-                }
+                    ...t,
+                    x: update.x,
+                    y: update.y,
+                    rotation: update.rotation ?? t.rotation,
+                  }
                 : t;
             }),
           }));
@@ -726,9 +729,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tables: state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: { ...t.session!, status },
-                }
+                    ...t,
+                    session: { ...t.session!, status },
+                  }
                 : t
             ),
           }));
@@ -794,12 +797,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tables: state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: {
-                    ...t.session!,
-                    current_course: data.current_course,
-                  },
-                }
+                    ...t,
+                    session: {
+                      ...t.session!,
+                      current_course: data.current_course,
+                    },
+                  }
                 : t
             ),
           }));

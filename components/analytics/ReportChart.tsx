@@ -79,6 +79,7 @@ export default function ReportChart({
             disableScroll
             spacing={20}
             frontColor={"#60a5fa"}
+            rotateLabel
             xAxisLabelTextStyle={{
               color: "white",
               fontSize: 10,
@@ -116,7 +117,7 @@ export default function ReportChart({
 
         const formattedData = processedData.map((item) => ({
           value: item.value || item.revenue || item.quantity || 0,
-          label: format(item.dateObj, "MMM d"),
+          label: format(item.dateObj, "M/d"),
           date: format(item.dateObj, "yyyy-MM-dd"),
           originalData: item,
         }));
@@ -155,6 +156,7 @@ export default function ReportChart({
             yAxisColor={"#374151"}
             rulesColor={"#374151"}
             hideDataPoints
+            rotateLabel
             xAxisLabelTexts={xAxisLabels}
             pointerConfig={{
               pointerStripHeight: 160,

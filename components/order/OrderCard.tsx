@@ -1,6 +1,7 @@
 import { OrderProfile } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { ArrowUpRight } from "lucide-react-native";
-import React from "react";
+import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 interface OrderCardProps {
@@ -16,6 +17,15 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onComplete,
   onRetrieve,
 }) => {
+  const { tables } = useFloorPlanStore();
+
+  // Look up table name from service_location_id
+  const tableName = useMemo(() => {
+    if (!order.service_location_id) return null;
+    const table = tables.find((t) => t.id === order.service_location_id);
+    return table?.name || null;
+  }, [order.service_location_id, tables]);
+
   const isReady =
     order.order_status === "ready" || order.order_status === "completed";
   const statusBg = isReady ? "bg-blue-100" : "bg-[#DC9F1E33]";
@@ -53,9 +63,7 @@ const OrderCard: React.FC<OrderCardProps> = ({
       <View className="flex-row justify-between mt-2">
         <Text className="text-lg text-gray-400 ">
           {order.order_type}
-          {order.service_location_id && (
-            <> • Table {order.service_location_id}</>
-          )}
+          {tableName && <> • Table {tableName}</>}
         </Text>
         <Text className="text-lg text-gray-400">
           {new Date(order.opened_at!).toLocaleTimeString("en-US", {

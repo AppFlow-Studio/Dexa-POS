@@ -250,12 +250,11 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         { rotate: `${rotation.value}deg` },
       ],
       borderWidth: 2,
-      borderColor:
-        isSelected && isEditMode
-          ? "#3B82F6"
-          : isMerged
-            ? "#F59E0B"
-            : "transparent",
+      borderColor: isSelected
+        ? "#3B82F6"
+        : isMerged
+          ? "#F59E0B"
+          : "transparent",
       borderRadius: 18,
       padding: 4,
     };

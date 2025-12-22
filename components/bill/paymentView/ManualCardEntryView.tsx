@@ -13,6 +13,8 @@ import {
   ArrowLeft,
   CreditCard,
   DollarSign,
+  Eye,
+  EyeOff,
   Lock,
   ShieldCheck,
 } from "lucide-react-native";
@@ -136,6 +138,7 @@ const ManualCardEntryView = () => {
   const [cvv, setCvv] = useState("");
   const [zipCode, setZipCode] = useState("");
   const [tipInput, setTipInput] = useState("");
+  const [showCvv, setShowCvv] = useState(false);
 
   // Calculate tip and grand total
   const tipAmount = parseFloat(tipInput) || 0;
@@ -375,10 +378,20 @@ const ManualCardEntryView = () => {
                       placeholder="123"
                       keyboardType="numeric"
                       maxLength={4}
-                      secureTextEntry
+                      secureTextEntry={!showCvv}
                       className="flex-1 text-white p-4 font-mono text-lg"
                       placeholderTextColor="#525252"
                     />
+                    <TouchableOpacity
+                      onPress={() => setShowCvv(!showCvv)}
+                      className="p-2"
+                    >
+                      {showCvv ? (
+                        <EyeOff size={20} color="#666" />
+                      ) : (
+                        <Eye size={20} color="#666" />
+                      )}
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>

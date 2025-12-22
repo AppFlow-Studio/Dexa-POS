@@ -1,6 +1,8 @@
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
-import Sidebar from "@/components/tables/Sidebar"; // Import the new Sidebar
+import Sidebar from "@/components/tables/Sidebar";
 import TableLayoutView from "@/components/tables/TableLayoutView";
+import { useLoading } from "@/contexts/LoadingContext";
+import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -11,7 +13,7 @@ import {
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
-import { Search } from "lucide-react-native";
+import { GitMerge, Search, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -28,16 +30,20 @@ const TablesScreen = () => {
     floorPlans,
     activeFloorPlanId,
     setActiveFloorPlan,
-    tables, // active plan tables
+    tables,
     selectedTableIds,
     toggleTableSelection,
     clearSelection,
-    // updateTableStatus removed
+    mergeTable,
+    unmergeTable,
   } = useFloorPlanStore();
-  const { startNewOrder, setActiveOrder } = useOrderStore();
+  const { startNewOrder, setActiveOrder, ordersById } = useOrderStore();
+  const { show } = useToast();
+  const { showLoading, hideLoading } = useLoading();
 
   const [searchText, setSearchText] = useState("");
   const [isGuestModalOpen, setGuestModalOpen] = useState(false);
+  const [isMergeMode, setMergeMode] = useState(false);
 
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
 
@@ -63,60 +69,185 @@ const TablesScreen = () => {
       return;
     }
 
-    let targetTable = table;
-    // Check if merged (and not the "primary" visually, though FloorPlanObject doesn't store isPrimary on obj directly anymore, logic inferred by session)
-    // Actually, if we tap a table that is part of a merge group, we should open the session for that group.
+    const status = (table.session?.status || "available").toLowerCase();
 
-    // session.merged_tables contains IDs.
-    // Simply check status.
-    const status = (targetTable.session?.status || "available").toLowerCase();
+    // MERGE MODE: Multi-select behavior
+    if (isMergeMode) {
+      toggleTableSelection(table.id);
+      return;
+    }
 
+    // NORMAL MODE: Original behavior
     switch (status) {
       case "available":
         clearSelection();
-        // Handle selection for merge later? Or just select single.
-        // Legacy code selected merged group if primary.
-        // New logic: just select the table. Merging is done in design mode or separate flow?
-        // Or if we select multiple AVAILABLE tables, we can merge-seat them.
-
-        // For now, simple selection.
-        if (selectedTableIds.includes(targetTable.id)) {
-          toggleTableSelection(targetTable.id);
-        } else {
-          // Single select mode for immediate seating usually clears others unless multi-select enabled.
-          // Legacy toggleTableSelection allows multi.
-          toggleTableSelection(targetTable.id);
-        }
-
+        toggleTableSelection(table.id);
         setGuestModalOpen(true);
         break;
       case "seated":
       case "ordered":
       case "served":
-      case "in use": // Legacy fallback
+      case "in use":
       case "check_presented":
       case "paid":
-        router.push(`/tables/${targetTable.id}`);
+        router.push(`/tables/${table.id}`);
         break;
       case "cleaning":
-        router.push(`/tables/clean-table/${targetTable.id}`);
+        router.push(`/tables/clean-table/${table.id}`);
         break;
       default:
-        // 'blocked', 'reserved' might need handling
         break;
     }
+  };
+
+  // Analyze selected tables for merge actions
+  const selectedTables = useMemo(
+    () => tables.filter((t) => selectedTableIds.includes(t.id)),
+    [tables, selectedTableIds]
+  );
+  const availableSelectedTables = selectedTables.filter(
+    (t) => !t.session || t.session.status === "available"
+  );
+  const inUseSelectedTables = selectedTables.filter(
+    (t) => t.session && t.session.status !== "available"
+  );
+
+  // Determine which merge action is valid
+  const canMergeAndSeat =
+    availableSelectedTables.length >= 2 && inUseSelectedTables.length === 0;
+  const canAddToSession =
+    inUseSelectedTables.length === 1 && availableSelectedTables.length >= 1;
+  const canUnmerge =
+    selectedTables.length === 1 &&
+    selectedTables[0]?.session?.merged_tables &&
+    selectedTables[0].session.merged_tables.length > 0;
+
+  // Check if unmerge is blocked due to pending items
+  const checkUnmergeAllowed = (): boolean => {
+    if (!canUnmerge) return false;
+
+    // If table is in "cleaning" status, always allow unmerge
+    const tableStatus = selectedTables[0]?.session?.status?.toLowerCase();
+    if (tableStatus === "cleaning") return true;
+
+    const sessionOrderId = selectedTables[0]?.session?.order_id;
+    if (!sessionOrderId) return true;
+
+    // Find the order
+    let order: (typeof ordersById)[string] | undefined =
+      ordersById[sessionOrderId];
+    if (!order) {
+      order = Object.values(ordersById).find(
+        (o) => o.db_order_id === sessionOrderId
+      );
+    }
+    if (!order) return true;
+
+    // Check for pending items
+    const hasPendingItems = order.items.some(
+      (item) =>
+        item.item_status !== "ready" &&
+        item.item_status !== "served" &&
+        item.item_status !== "Ready" &&
+        item.item_status !== "Served"
+    );
+    return !hasPendingItems;
+  };
+
+  const handleMergeAndSeat = () => {
+    if (availableSelectedTables.length < 2) {
+      show({
+        title: "Select More Tables",
+        message: "Please select at least 2 tables to merge.",
+        type: "warning",
+      });
+      return;
+    }
+    setGuestModalOpen(true);
+  };
+
+  const handleAddToSession = async () => {
+    if (inUseSelectedTables.length !== 1 || availableSelectedTables.length < 1)
+      return;
+
+    const targetSession = inUseSelectedTables[0].session;
+    if (!targetSession?.id) return;
+
+    try {
+      for (const table of availableSelectedTables) {
+        await mergeTable(targetSession.id, table.id);
+      }
+      show({
+        title: "Tables Merged",
+        message: `Added ${availableSelectedTables.length} table(s) to the session.`,
+        type: "success",
+      });
+      clearSelection();
+      setMergeMode(false);
+    } catch (err) {
+      console.error("Failed to merge tables:", err);
+      show({
+        title: "Merge Failed",
+        message: "Could not merge tables. Please try again.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleUnmerge = async () => {
+    if (!canUnmerge) return;
+
+    if (!checkUnmergeAllowed()) {
+      show({
+        title: "Cannot Unmerge",
+        message: "This table has pending items. Complete them first.",
+        type: "error",
+      });
+      return;
+    }
+
+    const table = selectedTables[0];
+    if (!table.session?.id) return;
+
+    try {
+      await unmergeTable(table.session.id, table.id);
+      show({
+        title: "Table Unmerged",
+        message: `${table.name} has been removed from the session.`,
+        type: "success",
+      });
+      clearSelection();
+      setMergeMode(false);
+    } catch (err) {
+      console.error("Failed to unmerge table:", err);
+      show({
+        title: "Unmerge Failed",
+        message: "Could not unmerge table. Please try again.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleCancelMerge = () => {
+    clearSelection();
+    setMergeMode(false);
   };
 
   const handleGuestCountSubmit = async (guestCount: number) => {
     const primaryTableId = selectedTableIds[0];
     if (!primaryTableId) return;
 
+    // Use all selected tables if in merge mode, otherwise just the primary
+    const tableIdsToSeat = isMergeMode ? selectedTableIds : [primaryTableId];
+
+    showLoading("Creating session...");
+
     try {
       // Create backend session with correct guest count
       const { sessionId, orderId } = await useFloorPlanStore
         .getState()
         .seatGuests({
-          tableIds: [primaryTableId],
+          tableIds: tableIdsToSeat,
           partySize: guestCount,
           createOrder: true,
         });
@@ -186,10 +317,13 @@ const TablesScreen = () => {
       // Fallback to local order creation if backend fails
       const newOrder = startNewOrder({ guestCount, tableId: primaryTableId });
       setActiveOrder(newOrder.id);
+    } finally {
+      hideLoading();
     }
 
     setGuestModalOpen(false);
     clearSelection();
+    setMergeMode(false);
     router.push(`/tables/${primaryTableId}`);
   };
   console.log("[TablesScreen] tables", tables);
@@ -258,13 +392,95 @@ const TablesScreen = () => {
               layoutId={activeFloorPlanId || ""}
             />
 
-            {/* NEW: Edit Layout Button (Top Right) */}
-            <TouchableOpacity
-              onPress={() => router.push(`/tables/floor-plan` as Href)}
-              className="absolute top-4 right-4 z-10 py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 shadow-md border border-blue-500"
-            >
-              <Text className="text-lg font-bold text-white">Edit Layout</Text>
-            </TouchableOpacity>
+            {/* Top Right Buttons: Merge + Edit Layout */}
+            <View className="absolute top-4 right-4 z-10 flex-row gap-2">
+              {/* Merge Tables Toggle Button */}
+              <TouchableOpacity
+                onPress={() => {
+                  if (isMergeMode) {
+                    handleCancelMerge();
+                  } else {
+                    clearSelection();
+                    setMergeMode(true);
+                  }
+                }}
+                className={`py-2 px-4 flex-row items-center justify-center rounded-lg shadow-md border ${
+                  isMergeMode
+                    ? "bg-gray-600 border-gray-500"
+                    : "bg-amber-600 border-amber-500"
+                }`}
+              >
+                {isMergeMode ? (
+                  <X color="white" size={20} />
+                ) : (
+                  <GitMerge color="white" size={20} />
+                )}
+                <Text className="text-lg font-bold text-white ml-2">
+                  {isMergeMode ? "Cancel" : "Merge Tables"}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Edit Layout Button */}
+              <TouchableOpacity
+                onPress={() => router.push(`/tables/floor-plan` as Href)}
+                className="py-2 px-4 flex-row items-center justify-center rounded-lg bg-blue-600 shadow-md border border-blue-500"
+              >
+                <Text className="text-lg font-bold text-white">
+                  Edit Layout
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Merge Mode Action Bar */}
+            {isMergeMode && selectedTableIds.length > 0 && (
+              <View className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex-row items-center gap-3 p-3 rounded-xl bg-[#1c1c1c]/95 border border-gray-600">
+                {/* Selected Count */}
+                <View className="bg-gray-700 px-3 py-2 rounded-lg">
+                  <Text className="text-white font-semibold">
+                    {selectedTableIds.length} table
+                    {selectedTableIds.length !== 1 ? "s" : ""} selected
+                  </Text>
+                </View>
+
+                {/* Merge & Seat Button */}
+                {canMergeAndSeat && (
+                  <TouchableOpacity
+                    onPress={handleMergeAndSeat}
+                    className="py-2 px-4 bg-green-600 rounded-lg"
+                  >
+                    <Text className="text-white font-bold">Merge & Seat</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Add to Session Button */}
+                {canAddToSession && (
+                  <TouchableOpacity
+                    onPress={handleAddToSession}
+                    className="py-2 px-4 bg-blue-600 rounded-lg"
+                  >
+                    <Text className="text-white font-bold">Add to Session</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Unmerge Button */}
+                {canUnmerge && (
+                  <TouchableOpacity
+                    onPress={handleUnmerge}
+                    className="py-2 px-4 bg-red-600 rounded-lg"
+                  >
+                    <Text className="text-white font-bold">Unmerge</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Cancel Button */}
+                <TouchableOpacity
+                  onPress={handleCancelMerge}
+                  className="py-2 px-4 bg-gray-600 rounded-lg"
+                >
+                  <Text className="text-white font-bold">Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Status Indicators (Bottom Left) */}
             <View className="absolute bottom-3 left-4 self-center flex-row items-center gap-4 p-2 rounded-full bg-[#1c1c1c]/90 border border-gray-600">

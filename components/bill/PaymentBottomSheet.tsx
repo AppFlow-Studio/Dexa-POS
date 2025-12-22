@@ -33,7 +33,8 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PaymentBottomSheetProps
 > = (props, ref) => {
-  const { view, close, isDirty, setIsDirty } = usePaymentStore();
+  const { view, close, isDirty, setIsDirty, handleSuccessClose } =
+    usePaymentStore();
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   const internalRef = useRef<BottomSheetMethods>(null);
@@ -59,10 +60,15 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         setShowConfirmation(true);
         internalRef.current?.snapToIndex(0);
       } else if (index === -1 && !isDirty) {
-        close();
+        // If on success view, run Done logic; otherwise just close
+        if (view === "success") {
+          handleSuccessClose();
+        } else {
+          close();
+        }
       }
     },
-    [isDirty, close, showConfirmation]
+    [isDirty, close, showConfirmation, view, handleSuccessClose]
   );
 
   const handleConfirmClose = () => {
