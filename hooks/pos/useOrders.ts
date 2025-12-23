@@ -178,8 +178,8 @@ export const useOrder = (orderId?: string) => {
 
         try {
             const { data, error: taxError } = await supabase.rpc('calculate_order_tax', {
-                p_order_id: orderId,
-                p_tax_rate: taxRate
+                p_order_id: orderId
+                // p_tax_rate: taxRate
             });
 
             if (taxError) throw taxError;

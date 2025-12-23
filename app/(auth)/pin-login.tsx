@@ -2,10 +2,13 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useTimeClock } from "@/hooks/useTimeclock";
+import { getDeviceId } from "@/lib/deviceId";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -21,13 +24,31 @@ const PinLoginScreen = () => {
   const [pin, setPin] = useState("");
   const [currentEmployee, setCurrentEmployee] =
     useState<EmployeeProfile | null>(null);
+  const [deviceId, setDeviceId] = useState<string>("");
   const { showLoading, hideLoading, isLoading } = useLoading();
-  const { signInWithPin, findEmployeeByPin, clockIn, clockOut } =
-    useEmployeeStore();
+  const { signInWithPin, findEmployeeByPin } = useEmployeeStore();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const timeClock = useTimeClock({
+    onSuccess: (type, employeeName) => {
+      // Additional success handling if needed
+      if (type === 'clock_in' && employeeName) {
+        setCurrentEmployee(null); // Reset after successful action
+      }
+    },
+    onError: (type, error) => {
+      // Additional error handling if needed
+      console.error(`Time clock error (${type}):`, error);
+    },
+  });
   const canSubmit = useMemo(
-    () => pin.length === MAX_PIN_LENGTH && !isLoading,
-    [pin, isLoading]
+    () => pin.length === MAX_PIN_LENGTH && !isLoading && !!deviceId && !!selectedStore,
+    [pin, isLoading, deviceId, selectedStore]
   );
+
+  // Get device ID on mount
+  useEffect(() => {
+    getDeviceId().then(setDeviceId);
+  }, []);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -82,15 +103,44 @@ const PinLoginScreen = () => {
       return;
     }
 
+    if (!selectedStore) {
+      showDialog(
+        "No Store Selected",
+        "Please select a store first.",
+        "error"
+      );
+      return;
+    }
+
     showLoading("Verifying PIN...");
-    const res = await signInWithPin(pin);
-    hideLoading();
-    if (!res.ok) {
+    const employee = await findEmployeeByPin(pin);
+    if (!employee) {
+      hideLoading();
       triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
     }
+
+    // Sign in with PIN (this handles employee store state)
+    const res = await signInWithPin(pin);
+    if (!res.ok) {
+      hideLoading();
+      triggerShakeAnimation();
+      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      setPin("");
+      return;
+    }
+
+    // Clock in using the time clock hook (database-backed)
+    try {
+      await timeClock.clockIn(pin, selectedStore.id, deviceId);
+    } catch (error) {
+      console.error("Error clocking in during login:", error);
+      // Continue with login even if clock in fails
+    }
+
+    hideLoading();
     setPin("");
     router.replace("/home");
   };
@@ -104,16 +154,30 @@ const PinLoginScreen = () => {
       );
       return;
     }
+
+    if (!selectedStore) {
+      showDialog(
+        "No Store Selected",
+        "Please select a store first.",
+        "error"
+      );
+      return;
+    }
+
     showLoading("Verifying PIN...");
     const employee = await findEmployeeByPin(pin);
     hideLoading();
+
     if (!employee) {
       triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
     }
+
     setCurrentEmployee(employee);
+
+    // Check if already clocked in (local check - database will also validate)
     if (employee.shiftStatus === "clocked_in") {
       showDialog(
         "Already Clocked In",
@@ -123,13 +187,28 @@ const PinLoginScreen = () => {
       setPin("");
       return;
     }
-    clockIn(employee.id);
-    showDialog(
-      "Clock In Successful",
-      `Welcome, ${employee.fullName}!`,
-      "success"
-    );
-    setPin("");
+
+    // Use the time clock hook for database-backed clock in
+    showLoading("Clocking in...");
+    try {
+      await timeClock.clockIn(pin, selectedStore.id, deviceId);
+      // Success toast is handled by the hook
+      showDialog(
+        "Clock In Successful",
+        `Welcome, ${employee.fullName}!`,
+        "success"
+      );
+    } catch (error) {
+      // Error toast is handled by the hook, but show dialog too
+      showDialog(
+        "Clock In Failed",
+        "Unable to clock in. Please try again.",
+        "error"
+      );
+    } finally {
+      hideLoading();
+      setPin("");
+    }
   };
 
   const handleClockOut = async () => {
@@ -141,32 +220,61 @@ const PinLoginScreen = () => {
       );
       return;
     }
+
+    if (!selectedStore) {
+      showDialog(
+        "No Store Selected",
+        "Please select a store first.",
+        "error"
+      );
+      return;
+    }
+
     showLoading("Verifying PIN...");
     const employee = await findEmployeeByPin(pin);
     hideLoading();
+
     if (!employee) {
       triggerShakeAnimation();
       showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
       setPin("");
       return;
     }
+
     setCurrentEmployee(employee);
-    if (employee.shiftStatus === "clocked_out") {
+
+    // Check if already clocked out (local check - database will also validate)
+    // if (employee.shiftStatus === "clocked_out") {
+    //   showDialog(
+    //     "Already Clocked Out",
+    //     `${employee.fullName} is already off the clock.`,
+    //     "warning"
+    //   );
+    //   setPin("");
+    //   return;
+    // }
+
+    // Use the time clock hook for database-backed clock out
+    showLoading("Clocking out...");
+    try {
+      await timeClock.clockOut(pin, selectedStore.id, deviceId);
+      // Success toast is handled by the hook
       showDialog(
-        "Already Clocked Out",
-        `${employee.fullName} is already off the clock.`,
-        "warning"
+        "Clock Out Successful",
+        `Goodbye, ${employee.fullName}!`,
+        "success"
       );
+    } catch (error) {
+      // Error toast is handled by the hook, but show dialog too
+      showDialog(
+        "Clock Out Failed",
+        "Unable to clock out. Please try again.",
+        "error"
+      );
+    } finally {
+      hideLoading();
       setPin("");
-      return;
     }
-    clockOut(employee.id);
-    showDialog(
-      "Clock Out Successful",
-      `Goodbye, ${employee.fullName}!`,
-      "success"
-    );
-    setPin("");
   };
 
   const handleOpenTimeclock = async () => {
@@ -228,9 +336,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
           </TouchableOpacity>
@@ -238,9 +345,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
           </TouchableOpacity>
@@ -248,9 +354,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
           </TouchableOpacity>
@@ -283,13 +388,12 @@ const PinLoginScreen = () => {
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${
-                dialog.variant === "success"
-                  ? "text-green-400"
-                  : dialog.variant === "warning"
-                    ? "text-yellow-400"
-                    : "text-red-400"
-              }`}
+              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
+                ? "text-green-400"
+                : dialog.variant === "warning"
+                  ? "text-yellow-400"
+                  : "text-red-400"
+                }`}
             >
               {dialog.title}
             </Text>

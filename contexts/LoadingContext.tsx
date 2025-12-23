@@ -36,6 +36,7 @@ export const LoadingProvider = ({ children }: { children: ReactNode }) => {
   const hideLoading = useCallback(() => {
     setIsLoading(false);
     setMessage(undefined);
+    console.log("[hideLoading] isLoading", isLoading);
   }, []);
 
   return (

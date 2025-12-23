@@ -326,7 +326,7 @@ const TablesScreen = () => {
     setMergeMode(false);
     router.push(`/tables/${primaryTableId}`);
   };
-  console.log("[TablesScreen] tables", tables);
+  // console.log("[TablesScreen] tables", tables);
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">

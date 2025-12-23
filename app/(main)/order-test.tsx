@@ -782,7 +782,7 @@ const OrderTest = () => {
             const taxRateNum = parseFloat(taxRate) || 0.0825;
             const params = {
                 p_order_id: currentOrderId,
-                p_tax_rate: taxRateNum,
+                // p_tax_rate: taxRateNum,
             };
 
             addLog("Calculate Tax", params);
@@ -1882,7 +1882,7 @@ const OrderTest = () => {
                 const taxRateNum = parseFloat(taxRate) || 0.0825;
                 const taxParams = {
                     p_order_id: orderId,
-                    p_tax_rate: taxRateNum,
+                    // p_tax_rate: taxRateNum,
                 };
 
                 addLog("Calculate Tax (Complete Flow)", taxParams);

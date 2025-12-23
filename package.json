@@ -106,6 +106,7 @@
     "react-native-calendars": "^1.1313.0",
     "react-native-date-picker": "^5.0.13",
     "react-native-gesture-handler": "~2.24.0",
+    "react-native-get-random-values": "^2.0.0",
     "react-native-gifted-charts": "^1.4.64",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-popover-view": "^6.1.0",

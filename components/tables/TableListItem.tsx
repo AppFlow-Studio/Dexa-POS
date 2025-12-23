@@ -81,7 +81,7 @@ const QuickActionButton: React.FC<{
 };
 
 const useTableData = (table: FloorPlanObject) => {
-  console.log(`[TableListItem] useTableData ${table.name}`, table)
+  // console.log(`[TableListItem] useTableData ${table.name}`, table)
   const { orders, ordersById } = useOrderStore();
   const { tables } = useFloorPlanStore();
 
@@ -176,7 +176,7 @@ const useTableData = (table: FloorPlanObject) => {
     // Found order - merged tables share the same order, so return single order in array
     const groupOrders = [order];
 
-    console.log(`[TableListItem] groupOrders ${table.name}`, groupOrders.length);
+    // console.log(`[TableListItem] groupOrders ${table.name}`, groupOrders.length);
 
     // Calculate display values from the single order
     const seatedTime = order.opened_at ? new Date(order.opened_at) : null;

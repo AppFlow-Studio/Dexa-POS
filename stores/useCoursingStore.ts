@@ -391,6 +391,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     ) {
       return;
     }
+    console.log("[setItemCourse] orderData", orderData);
 
     set((prev) => ({
       byOrderId: {

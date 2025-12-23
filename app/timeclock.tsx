@@ -87,7 +87,7 @@ const DailyShiftReportScreen = () => {
     <View className="flex-1 bg-[#212121]">
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700">
         <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="mr-3 p-2">
+          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace("/(auth)/pin-login")} className="mr-3 p-2">
             <ArrowLeft color="#9CA3AF" size={22} />
           </TouchableOpacity>
           <View>

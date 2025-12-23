@@ -83,6 +83,8 @@ export interface MenuItemDetails {
 
   // Modifiers (resolved, full objects)
   modifier_groups: ModifierGroup[];
+  is_tax_exempt: boolean;
+  tax_category: string | null;
 }
 
 // Junction table entry: category_item

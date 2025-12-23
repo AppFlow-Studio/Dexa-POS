@@ -101,7 +101,7 @@ export class OrderService {
   ): Promise<{ data: CalculateOrderTaxResult | null; error: any }> {
     const { data, error } = await client.rpc("calculate_order_tax", {
       p_order_id: orderId,
-      p_tax_rate: taxRate,
+      // p_tax_rate: taxRate,
     });
     return { data, error };
   }

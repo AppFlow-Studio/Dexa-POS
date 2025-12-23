@@ -93,10 +93,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       return order;
     }
   }, [table.session?.order_id, ordersById]);
-  console.log(
-    `[DraggableTable] orderForThisGroup ${table.name}`,
-    orderForThisGroup
-  );
+  // console.log(
+  //   `[DraggableTable] orderForThisGroup ${table.name}`,
+  //   orderForThisGroup
+  // );
 
   useEffect(() => {
     // Determine if table is effectively "in use" based on session or order
@@ -267,10 +267,10 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ) || 0;
 
   const tableStatus = table.session?.status || "available"; // Fallback
-  console.log(
-    "[DraggableTable] tableStatus",
-    `${table.name == "Family Bar" && tableStatus}`
-  );
+  // console.log(
+  //   "[DraggableTable] tableStatus",
+  //   `${table.name == "Family Bar" && tableStatus}`
+  // );
   const tableColor = isOvertime
     ? STATUS_COLORS.Overtime
     : STATUS_COLORS[tableStatus];

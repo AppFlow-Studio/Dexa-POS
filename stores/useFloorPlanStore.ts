@@ -522,7 +522,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             set({ error: error.message });
             return;
           }
-          console.log("[loadFloorPlanStatus] data", data?.tables);
+          // console.log("[loadFloorPlanStatus] data", data?.tables);
           set({
             tables: data?.tables || [],
             lastSyncAt: new Date().toISOString(),
@@ -724,6 +724,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           if (error) throw error;
 
+          console.log("[updateSessionStatus] sessionId & status", sessionId, status);
           // Optimistic update
           set((state) => ({
             tables: state.tables.map((t) =>
@@ -735,6 +736,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                 : t
             ),
           }));
+
+          await get().loadFloorPlanStatus();
         },
 
         transferSession: async (sessionId: string, newTableIds: string[]) => {
@@ -777,7 +780,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             }
           );
 
+
+          console.log("[unmergeTable] error", error);
           if (error) throw error;
+
 
           await get().loadFloorPlanStatus();
         },

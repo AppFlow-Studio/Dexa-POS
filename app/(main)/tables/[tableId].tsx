@@ -52,7 +52,7 @@ const UpdateTableScreen = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { tables, updateSessionStatus, loadFloorPlanStatus } =
+  const { tables, updateSessionStatus, loadFloorPlanStatus, unmergeTable } =
     useFloorPlanStore();
 
   const {
@@ -764,7 +764,7 @@ const UpdateTableScreen = () => {
 
     updateOrderStatus(activeOrder.id, "completed");
     if (table?.session?.id) {
-      await updateSessionStatus(table.session.id, "available");
+      await updateSessionStatus(table.session.id, "cleaning");
     }
     router.back();
   };
@@ -886,6 +886,7 @@ const UpdateTableScreen = () => {
 
     if (table?.session?.id) {
       await updateSessionStatus(table.session.id, "cleaning");
+      // await unmergeTable(table.session.id, tableId as string);
     }
 
     archiveOrder(activeOrderId);
