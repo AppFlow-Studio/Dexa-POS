@@ -3,7 +3,6 @@ import {
   formatCardNumber,
   validateCardNumber,
   validateExpiry,
-  validateName,
 } from "@/lib/card-validation";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
@@ -154,11 +153,11 @@ const ManualCardEntryView = () => {
 
   // Validation Logic
   useEffect(() => {
-    if (isTouched.cardholderName) {
-      const { isValid, error } = validateName(cardholderName);
-      setErrors((p) => ({ ...p, cardholderName: isValid ? "" : error || "" }));
+    if (isTouched.cardNumber) {
+      const { isValid, error } = validateCardNumber(cardNumber);
+      setErrors((p) => ({ ...p, cardNumber: isValid ? "" : error || "" }));
     }
-  }, [cardholderName, isTouched.cardholderName]);
+  }, [cardNumber, isTouched.cardNumber]);
 
   useEffect(() => {
     if (isTouched.cardNumber) {
@@ -179,14 +178,7 @@ const ManualCardEntryView = () => {
   };
 
   const checkFormValidity = () => {
-    if (
-      !cardholderName ||
-      !cardNumber ||
-      !expiryMonth ||
-      !expiryYear ||
-      !cvv ||
-      !zipCode
-    )
+    if (!cardNumber || !expiryMonth || !expiryYear || !cvv || !zipCode)
       return false;
     const hasErrors = Object.values(errors).some((e) => !!e);
     return !hasErrors;
@@ -194,15 +186,13 @@ const ManualCardEntryView = () => {
 
   const handleProcessPayment = async () => {
     setIsTouched({
-      cardholderName: true,
       cardNumber: true,
       expiry: true,
       cvv: true,
       zipCode: true,
     });
 
-    if (!cardholderName || !cardNumber || !expiryMonth || !expiryYear || !cvv)
-      return;
+    if (!cardNumber || !expiryMonth || !expiryYear || !cvv) return;
 
     setStatus("processing");
     const success = await processManualCardPayment({
@@ -275,10 +265,10 @@ const ManualCardEntryView = () => {
             </Text>
 
             <View className="gap-y-6 max-w-[600px]">
-              {/* Name */}
+              {/* Name (Optional) */}
               <View>
                 <Text className="text-gray-400 mb-2 font-medium ml-1">
-                  Cardholder Name
+                  Cardholder Name (Optional)
                 </Text>
                 <TextInput
                   value={cardholderName}
@@ -451,7 +441,11 @@ const ManualCardEntryView = () => {
                   onPress={handleProcessPayment}
                   disabled={status === "processing"}
                   className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-lg shadow-blue-900/20 
-                                ${status === "processing" ? "bg-blue-900" : "bg-blue-600 active:bg-blue-700"}`}
+                                ${
+                                  status === "processing"
+                                    ? "bg-blue-900"
+                                    : "bg-blue-600 active:bg-blue-700"
+                                }`}
                 >
                   {status === "processing" ? (
                     <Text className="text-blue-200 font-bold text-lg">

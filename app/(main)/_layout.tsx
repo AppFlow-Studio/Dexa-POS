@@ -73,7 +73,20 @@ export default function MainLayout() {
           }
           onClose={() => notificationSheetRef.current?.close()}
         />
-        <PaymentBottomSheet ref={paymentBottomSheetRef} />
+        {/* Payment sheet needs highest z-index to overlay header */}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 100,
+          }}
+          pointerEvents="box-none"
+        >
+          <PaymentBottomSheet ref={paymentBottomSheetRef} />
+        </View>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );

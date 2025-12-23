@@ -31,7 +31,7 @@ const PinLoginScreen = () => {
   const timeClock = useTimeClock({
     onSuccess: (type, employeeName) => {
       // Additional success handling if needed
-      if (type === 'clock_in' && employeeName) {
+      if (type === "clock_in" && employeeName) {
         setCurrentEmployee(null); // Reset after successful action
       }
     },
@@ -41,7 +41,11 @@ const PinLoginScreen = () => {
     },
   });
   const canSubmit = useMemo(
-    () => pin.length === MAX_PIN_LENGTH && !isLoading && !!deviceId && !!selectedStore,
+    () =>
+      pin.length === MAX_PIN_LENGTH &&
+      !isLoading &&
+      !!deviceId &&
+      !!selectedStore,
     [pin, isLoading, deviceId, selectedStore]
   );
 
@@ -104,11 +108,7 @@ const PinLoginScreen = () => {
     }
 
     if (!selectedStore) {
-      showDialog(
-        "No Store Selected",
-        "Please select a store first.",
-        "error"
-      );
+      showDialog("No Store Selected", "Please select a store first.", "error");
       return;
     }
 
@@ -132,13 +132,10 @@ const PinLoginScreen = () => {
       return;
     }
 
-    // Clock in using the time clock hook (database-backed)
-    try {
-      await timeClock.clockIn(pin, selectedStore.id, deviceId);
-    } catch (error) {
-      console.error("Error clocking in during login:", error);
-      // Continue with login even if clock in fails
-    }
+    // Note: We do NOT call clockIn here anymore.
+    // The SIGN IN button only authenticates the user.
+    // Use the explicit CLOCK IN button to clock in.
+    // This allows users who are on break to sign in without trying to clock in again.
 
     hideLoading();
     setPin("");
@@ -156,11 +153,7 @@ const PinLoginScreen = () => {
     }
 
     if (!selectedStore) {
-      showDialog(
-        "No Store Selected",
-        "Please select a store first.",
-        "error"
-      );
+      showDialog("No Store Selected", "Please select a store first.", "error");
       return;
     }
 
@@ -222,11 +215,7 @@ const PinLoginScreen = () => {
     }
 
     if (!selectedStore) {
-      showDialog(
-        "No Store Selected",
-        "Please select a store first.",
-        "error"
-      );
+      showDialog("No Store Selected", "Please select a store first.", "error");
       return;
     }
 
@@ -336,8 +325,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
           </TouchableOpacity>
@@ -345,8 +335,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
           </TouchableOpacity>
@@ -354,8 +345,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
           </TouchableOpacity>
@@ -383,17 +375,18 @@ const PinLoginScreen = () => {
                 dialog.variant === "success"
                   ? "#059669"
                   : dialog.variant === "warning"
-                    ? "#F59E0B"
-                    : "#EF4444",
+                  ? "#F59E0B"
+                  : "#EF4444",
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
-                ? "text-green-400"
-                : dialog.variant === "warning"
+              className={`text-2xl font-semibold mb-2 ${
+                dialog.variant === "success"
+                  ? "text-green-400"
+                  : dialog.variant === "warning"
                   ? "text-yellow-400"
                   : "text-red-400"
-                }`}
+              }`}
             >
               {dialog.title}
             </Text>
@@ -406,8 +399,8 @@ const PinLoginScreen = () => {
                   dialog.variant === "success"
                     ? "#065F46"
                     : dialog.variant === "warning"
-                      ? "#92400E"
-                      : "#7F1D1D",
+                    ? "#92400E"
+                    : "#7F1D1D",
               }}
             >
               <Text className="text-white text-lg font-medium">OK</Text>

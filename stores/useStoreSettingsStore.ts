@@ -52,6 +52,7 @@ export interface StoreSettings {
 
   // Employee Settings
   isBreakAndSwitchEnabled: boolean;
+  breakDurationMinutes: number; // Break duration in minutes
 
   // Online Ordering Settings
   onlineOrderingEnabled: boolean;
@@ -109,6 +110,9 @@ interface StoreSettingsState extends StoreSettings {
 
   // Tax rates actions
   setTaxRates: (rates: TaxRate[]) => void;
+
+  // Break duration action
+  setBreakDurationMinutes: (minutes: number) => void;
 }
 
 const initialData: StoreSettings = {
@@ -132,6 +136,7 @@ const initialData: StoreSettings = {
   },
 
   isBreakAndSwitchEnabled: true, // Enabled by default
+  breakDurationMinutes: 30, // Default 30 minute breaks
 
   // Online Ordering Defaults
   onlineOrderingEnabled: true,
@@ -208,6 +213,20 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       setTargetLaborPercent: (percent: number) => {
         set((state) => {
           const newState = { ...state, targetLaborPercent: percent };
+          const isDirty =
+            JSON.stringify(newState.initialState) !==
+            JSON.stringify({
+              ...newState,
+              initialState: undefined,
+              isDirty: undefined,
+            });
+          return { ...newState, isDirty };
+        });
+      },
+
+      setBreakDurationMinutes: (minutes: number) => {
+        set((state) => {
+          const newState = { ...state, breakDurationMinutes: minutes };
           const isDirty =
             JSON.stringify(newState.initialState) !==
             JSON.stringify({

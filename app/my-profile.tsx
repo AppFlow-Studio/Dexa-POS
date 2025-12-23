@@ -6,6 +6,7 @@ import SecurityTab from "@/components/profile/SecurityTab";
 import UserProfileCard from "@/components/timeclock/UserProfileCard";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Link, router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Calendar, Menu } from "lucide-react-native";
@@ -18,15 +19,31 @@ const TABS: TabName[] = ["Profile Info", "My Schedule", "Security", "History"];
 
 const MyProfileScreen = () => {
   const { activeEmployeeId, employees } = useEmployeeStore();
+  const { sessions, activeEmployeeId: timeclockActiveId } = useTimeclockStore();
   const { tab, date } = useLocalSearchParams<{
     tab: string;
     date: string;
   }>();
+
+  // Find current employee - check multiple sources
   const currentEmployee = React.useMemo(() => {
-    return activeEmployeeId
-      ? employees.find((e) => e.id === activeEmployeeId)
-      : employees.find((e) => e.shiftStatus === "clocked_in");
-  }, [activeEmployeeId, employees]);
+    // 1. First try activeEmployeeId from employee store
+    if (activeEmployeeId) {
+      return employees.find((e) => e.id === activeEmployeeId);
+    }
+    // 2. Then try activeEmployeeId from timeclock store
+    if (timeclockActiveId) {
+      return employees.find((e) => e.id === timeclockActiveId);
+    }
+    // 3. Check if any employee has an active session (clocked in or on break)
+    const sessionEmployeeIds = Object.values(sessions).map((s) => s.employeeId);
+    for (const id of sessionEmployeeIds) {
+      const emp = employees.find((e) => e.id === id);
+      if (emp) return emp;
+    }
+    // 4. Fallback to any clocked in employee
+    return employees.find((e) => e.shiftStatus === "clocked_in");
+  }, [activeEmployeeId, timeclockActiveId, employees, sessions]);
 
   const [activeTab, setActiveTab] = useState<TabName | null>(null); // Initialize to null
   const notificationSheetRef = useRef<BottomSheetMethods | null>(null);

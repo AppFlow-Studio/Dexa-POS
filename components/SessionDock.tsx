@@ -1,4 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useTimeClock } from "@/hooks/useTimeclock";
+import { getDeviceId } from "@/lib/deviceId";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
 import { useNotificationStore } from "@/stores/useNotificationStore";
@@ -24,6 +26,7 @@ import Animated, {
 } from "react-native-reanimated";
 import SwitchAccountModal from "./settings/security-and-login/SwitchAccountModal";
 import BreakEndedModal from "./timeclock/BreakEndedModal";
+import PinInputModal from "./timeclock/PinInputModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -73,8 +76,9 @@ const BreakCountdown = ({ startTime }: { startTime: Date }) => {
 
   return (
     <Text
-      className={`text-xs font-bold ${isOvertime ? "text-red-400" : "text-yellow-400"
-        }`}
+      className={`text-xs font-bold ${
+        isOvertime ? "text-red-400" : "text-yellow-400"
+      }`}
     >
       {displayTime}
     </Text>
@@ -95,15 +99,26 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
   const [isPinModalOpen, setPinModalOpen] = useState(false);
   const [isBreakEndedModalOpen, setBreakEndedModalOpen] = useState(false);
+  const [isBreakPinModalOpen, setBreakPinModalOpen] = useState(false);
+  const [deviceId, setDeviceId] = useState<string>("unknown");
+
+  // Backend hook for time clock actions
+  const timeClock = useTimeClock();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+
+  // Get device ID on mount
+  useEffect(() => {
+    getDeviceId().then(setDeviceId);
+  }, []);
 
   const session = sessions[sessionId];
-  const employee = employees.find((e) => e.id === session.employeeId);
+  const employee = employees.find((e) => e.id === session?.employeeId);
 
   const unreadCount = useNotificationStore((state) =>
     employee
       ? state.notifications.filter(
-        (n) => n.employeeId === employee.id && !n.isRead
-      ).length
+          (n) => n.employeeId === employee.id && !n.isRead
+        ).length
       : 0
   );
 
@@ -133,23 +148,43 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
   const handleStartBreak = () => {
     if (isClockedIn) {
-      startBreak();
+      // Show PIN modal for backend verification
+      setBreakPinModalOpen(true);
+    }
+  };
 
-      if (isBreakAndSwitchEnabled) {
-        show({
-          title: "Break Started",
-          message: "Your break has started. Ready for the next user to log in.",
-          type: "success",
-        });
-        signOut();
-        router.replace("/pin-login");
-      } else {
-        show({
-          title: "Break Started",
-          message: "Your break has started.",
-          type: "success",
-        });
-      }
+  const handleBreakPinConfirm = async (pin: string) => {
+    setBreakPinModalOpen(false);
+
+    const locationId = selectedStore?.id;
+    if (!locationId) {
+      show({
+        title: "Error",
+        message: "No location selected",
+        type: "error",
+      });
+      return;
+    }
+
+    // Call backend
+    await timeClock.startBreak(pin, locationId, deviceId);
+    // Also update old store for local UI sync
+    startBreak();
+
+    if (isBreakAndSwitchEnabled) {
+      show({
+        title: "Break Started",
+        message: "Your break has started. Ready for the next user to log in.",
+        type: "success",
+      });
+      signOut();
+      router.replace("/pin-login");
+    } else {
+      show({
+        title: "Break Started",
+        message: "Your break has started.",
+        type: "success",
+      });
     }
   };
 
@@ -282,6 +317,13 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
           }}
           shift={session}
         />
+        <PinInputModal
+          isOpen={isBreakPinModalOpen}
+          title="Start Break"
+          subtitle="Enter your PIN to confirm"
+          onConfirm={handleBreakPinConfirm}
+          onCancel={() => setBreakPinModalOpen(false)}
+        />
         {/* <NotificationBottomSheet
           bottomSheetRef={notificationSheetRef}
           onClose={() => notificationSheetRef.current?.close()}
@@ -295,14 +337,16 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
     <>
       <TouchableOpacity
         onPress={handlePress}
-        className={`flex-row items-center p-1.5 rounded-full border ${isOnBreak
+        className={`flex-row items-center p-1.5 rounded-full border ${
+          isOnBreak
             ? "bg-yellow-900/50 border-yellow-600"
             : "bg-gray-700 border-gray-600"
-          }`}
+        }`}
       >
         <View
-          className={`w-8 h-8 rounded-full items-center justify-center ${isOnBreak ? "bg-yellow-500" : "bg-gray-500"
-            }`}
+          className={`w-8 h-8 rounded-full items-center justify-center ${
+            isOnBreak ? "bg-yellow-500" : "bg-gray-500"
+          }`}
         >
           <Text className="text-white text-sm font-bold">
             {employee.fullName

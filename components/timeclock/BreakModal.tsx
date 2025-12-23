@@ -1,4 +1,5 @@
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useRouter } from "expo-router";
 import { Clock, LogOut } from "lucide-react-native";
@@ -10,15 +11,18 @@ interface BreakModalProps {
   isOpen: boolean;
   onEndBreak: () => void;
 }
-const BREAK_DURATION_MS = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
   const router = useRouter();
+  const { breakDurationMinutes, isBreakAndSwitchEnabled } =
+    useStoreSettingsStore();
+  const BREAK_DURATION_MS = breakDurationMinutes * 60 * 1000;
   const [timeLeft, setTimeLeft] = useState(BREAK_DURATION_MS);
 
-  const { isBreakAndSwitchEnabled } = useStoreSettingsStore();
   // Get the functions and state needed from the timeclock store
   const { startBreak, activeEmployeeId, getSession } = useTimeclockStore();
+  // Also check the new store for break start time
+  const newBreakStartTime = useTimeClockStore((state) => state.breakStartTime);
 
   // Get the specific session for the currently active employee
   const activeSession = useMemo(() => {
@@ -26,7 +30,10 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
     return getSession(activeEmployeeId);
   }, [activeEmployeeId, getSession, isOpen]); // Rerun when isOpen changes
 
-  const breakStartTime = activeSession?.breakStartTime;
+  // Use break start time from new store if available, otherwise from old store
+  const breakStartTime = newBreakStartTime
+    ? new Date(newBreakStartTime)
+    : activeSession?.breakStartTime;
   // --- END OF CORRECTION ---
 
   // This handler is now correct. It calls the store action which handles the logic.
@@ -48,7 +55,7 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
       }, 1000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, breakStartTime, onEndBreak]);
+  }, [isOpen, breakStartTime, onEndBreak, BREAK_DURATION_MS]);
 
   const formatTime = (ms: number) => {
     const minutes = String(Math.floor((ms / 1000 / 60) % 60)).padStart(2, "0");
@@ -70,9 +77,9 @@ const BreakModal: React.FC<BreakModalProps> = ({ isOpen, onEndBreak }) => {
           Started break:{" "}
           {breakStartTime
             ? new Date(breakStartTime).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })
+                hour: "2-digit",
+                minute: "2-digit",
+              })
             : "..."}
         </Text>
         <TouchableOpacity
