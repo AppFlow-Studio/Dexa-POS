@@ -6,7 +6,7 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -24,6 +24,13 @@ const PinLoginScreen = () => {
   const [pin, setPin] = useState("");
   const [currentEmployee, setCurrentEmployee] =
     useState<EmployeeProfile | null>(null);
+
+  // Clear PIN when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      setPin("");
+    }, [])
+  );
   const [deviceId, setDeviceId] = useState<string>("");
   const { showLoading, hideLoading, isLoading } = useLoading();
   const { signInWithPin, findEmployeeByPin } = useEmployeeStore();
