@@ -317,6 +317,9 @@ export interface CartItem {
   availableDiscount?: Discount;
   appliedDiscount?: Discount | null;
   refundedQuantity?: number;
+  // Tax fields for per-item tax calculation
+  tax_category?: string | null; // e.g., "standard", "alcohol"
+  is_tax_exempt?: boolean;
 }
 
 export interface OnlineOrder {

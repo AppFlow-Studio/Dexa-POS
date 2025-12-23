@@ -15,6 +15,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
@@ -99,8 +100,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         const mappedEmployees: EmployeeProfile[] = (data || []).map(
           (row: any) => {
             const profile = row.staff_profiles;
-            const fullName =
-              `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+            const fullName = `${profile?.first_name || ""} ${
+              profile?.last_name || ""
+            }`.trim();
 
             return {
               id: row.id, // location_member id
@@ -217,13 +219,41 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     [supabase]
   );
 
+  // Sync tax rates from tax_rates table
+  const syncTaxRates = useCallback(
+    async (locationId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from("tax_rates")
+          .select(
+            "id, location_id, name, percentage, tax_category, is_active, created_at, updated_at"
+          )
+          .eq("location_id", locationId)
+          .eq("is_active", true);
+
+        if (error) {
+          console.error("Tax rates sync failed:", error);
+          return;
+        }
+
+        const taxRates = (data || []) as TaxRate[];
+        useStoreSettingsStore.getState().setTaxRates(taxRates);
+        console.log("Tax rates synced:", taxRates.length);
+      } catch (err: any) {
+        console.error("Tax rates sync error:", err);
+      }
+    },
+    [supabase]
+  );
+
   // Sync employees and floor plans when store is selected (parallel)
   useEffect(() => {
     if (selectedStore?.id) {
       syncEmployees(selectedStore.id);
       syncFloorPlans(selectedStore.id);
+      syncTaxRates(selectedStore.id);
     }
-  }, [selectedStore?.id, syncEmployees, syncFloorPlans]);
+  }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
   const setMenuData = useMenuStore((state) => state.setMenuData);
   const setSyncState = useMenuStore((state) => state.setSyncState);
 
@@ -282,8 +312,9 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
       syncEmployees(selectedStore.id);
       syncFloorPlans(selectedStore.id);
+      syncTaxRates(selectedStore.id);
     }
-  }, [selectedStore?.id, syncEmployees, syncFloorPlans]);
+  }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
 
   return <>{children}</>;
 }

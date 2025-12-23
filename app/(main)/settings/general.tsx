@@ -10,7 +10,6 @@ import {
   ChevronUp,
   Clock,
   DollarSign,
-  FileText,
   Globe,
   LogOut,
   MapPin,
@@ -110,14 +109,17 @@ const formatTo24Hour = (time: string) => {
 };
 
 const GeneralSettingsScreen = () => {
-  // Zustand Store - only selectedStore for business info, tax settings remain local
-  const { defaultTaxRate, updateField, saveChanges, selectedStore } =
-    useStoreSettingsStore();
+  // Zustand Store - only selectedStore for business info, tax rates synced from backend
+  const { taxRates, saveChanges, selectedStore } = useStoreSettingsStore();
 
   // Business info from selectedStore only
   const displayStoreName = selectedStore?.name || "No store selected";
   const displayAddress = selectedStore
-    ? `${selectedStore.address_line1}${selectedStore.address_line2 ? ", " + selectedStore.address_line2 : ""}, ${selectedStore.city}, ${selectedStore.state} ${selectedStore.postal_code}`
+    ? `${selectedStore.address_line1}${
+        selectedStore.address_line2 ? ", " + selectedStore.address_line2 : ""
+      }, ${selectedStore.city}, ${selectedStore.state} ${
+        selectedStore.postal_code
+      }`
     : "Select a store to see address";
   const displayPhone = selectedStore?.phone || "";
   const displayEmail = selectedStore?.email || "";
@@ -327,7 +329,9 @@ const GeneralSettingsScreen = () => {
                 {displayHours.map((dayHoursItem, index) => (
                   <View
                     key={dayHoursItem.day}
-                    className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${!dayHoursItem.enabled ? "opacity-50" : ""}`}
+                    className={`flex-row items-center justify-between py-3 border-b border-gray-700 ${
+                      !dayHoursItem.enabled ? "opacity-50" : ""
+                    }`}
                   >
                     <Text className="text-white font-medium w-24">
                       {dayHoursItem.day}
@@ -384,7 +388,7 @@ const GeneralSettingsScreen = () => {
                       Enable Sales Tax
                     </Text>
                     <Text className="text-gray-400 text-sm">
-                      Apply tax to orders based on rate
+                      Apply tax to orders based on category rates
                     </Text>
                   </View>
                   <Switch
@@ -392,25 +396,40 @@ const GeneralSettingsScreen = () => {
                     onCheckedChange={setTaxEnabled}
                   />
                 </View>
-                <View className="flex-row gap-4 mb-4">
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Tax Name",
-                      taxLabel,
-                      setTaxLabel,
-                      <FileText size={18} color="#9ca3af" />
-                    )}
+
+                {/* Tax Rates List */}
+                <Text className="text-gray-400 text-sm mb-3 font-medium">
+                  Tax Rates by Category
+                </Text>
+                {taxRates.length === 0 ? (
+                  <View className="bg-[#404040] rounded-lg p-4">
+                    <Text className="text-gray-400 text-center">
+                      No tax rates configured. Tax rates will be loaded from
+                      your location settings.
+                    </Text>
                   </View>
-                  <View className="flex-1">
-                    {renderInputField(
-                      "Tax Rate (%)",
-                      defaultTaxRate.toString(),
-                      (t) => updateField("defaultTaxRate", parseFloat(t) || 0),
-                      <Percent size={18} color="#9ca3af" />
-                    )}
-                  </View>
-                </View>
-                <View className="flex-row items-center justify-between py-3">
+                ) : (
+                  taxRates.map((rate) => (
+                    <View
+                      key={rate.id}
+                      className="flex-row justify-between items-center py-3 border-b border-gray-600"
+                    >
+                      <View>
+                        <Text className="text-white font-medium">
+                          {rate.name}
+                        </Text>
+                        <Text className="text-gray-400 text-sm">
+                          Category: {rate.tax_category}
+                        </Text>
+                      </View>
+                      <Text className="text-green-400 font-bold text-lg">
+                        {rate.percentage}%
+                      </Text>
+                    </View>
+                  ))
+                )}
+
+                <View className="flex-row items-center justify-between py-3 mt-4">
                   <View>
                     <Text className="text-white font-medium">
                       Tax Included in Price

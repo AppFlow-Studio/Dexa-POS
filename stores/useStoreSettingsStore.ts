@@ -1,4 +1,5 @@
 import { toastService } from "@/lib/toastService";
+import { TaxRate, TaxRatesMap } from "@/types/menu";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -29,9 +30,10 @@ export interface SelectedLocation {
 }
 
 export interface StoreSettings {
-  // Tax Settings (local app settings)
+  // Tax Settings (synced from backend)
   storeTaxId: string;
-  defaultTaxRate: number;
+  taxRates: TaxRate[]; // Array of tax rates from backend
+  taxRatesMap: TaxRatesMap; // Quick lookup: { "standard": 8.875, "alcohol": 12.0 }
   ptoAccrualRate: number;
   minimumPtoNoticeDays: number;
   targetLaborPercent: number;
@@ -104,12 +106,16 @@ interface StoreSettingsState extends StoreSettings {
   // Selected store actions
   setSelectedStore: (store: SelectedLocation) => void;
   clearSelectedStore: () => void;
+
+  // Tax rates actions
+  setTaxRates: (rates: TaxRate[]) => void;
 }
 
 const initialData: StoreSettings = {
-  // Tax Settings
+  // Tax Settings (synced from backend)
   storeTaxId: "US123456789",
-  defaultTaxRate: 8.25,
+  taxRates: [],
+  taxRatesMap: {},
   ptoAccrualRate: 0.0375,
   minimumPtoNoticeDays: 7,
   targetLaborPercent: 25,
@@ -295,6 +301,16 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
       clearSelectedStore: () => {
         set({ selectedStore: null });
       },
+
+      // Tax rates action
+      setTaxRates: (rates: TaxRate[]) => {
+        // Build a map for quick lookup: { "standard": 8.875, "alcohol": 12.0 }
+        const taxRatesMap: TaxRatesMap = {};
+        for (const rate of rates) {
+          taxRatesMap[rate.tax_category] = rate.percentage;
+        }
+        set({ taxRates: rates, taxRatesMap });
+      },
     }),
     {
       name: "store-settings-storage",
@@ -303,7 +319,8 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         // Only persist these fields
         selectedStore: state.selectedStore,
         storeTaxId: state.storeTaxId,
-        defaultTaxRate: state.defaultTaxRate,
+        taxRates: state.taxRates,
+        taxRatesMap: state.taxRatesMap,
         ptoAccrualRate: state.ptoAccrualRate,
         minimumPtoNoticeDays: state.minimumPtoNoticeDays,
         targetLaborPercent: state.targetLaborPercent,

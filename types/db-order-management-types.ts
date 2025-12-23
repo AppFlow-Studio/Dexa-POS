@@ -235,9 +235,6 @@ export interface CalculateSplitPaymentResult {
 
 export interface CalculateOrderTaxResult {
   success: boolean;
-  order_id: string;
-  subtotal: number;
-  tax_rate: number;
   tax_amount: number;
 }
 

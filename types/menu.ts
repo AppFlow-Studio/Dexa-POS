@@ -15,6 +15,24 @@ export type PriceSource =
   | "location_menu";
 
 // ============================================================================
+// 1.5. TAX RATE TYPES
+// ============================================================================
+
+export interface TaxRate {
+  id: string;
+  location_id: string;
+  name: string; // e.g., "Standard Tax"
+  percentage: number; // e.g., 8.875
+  tax_category: string; // e.g., "standard", "alcohol"
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Map for quick lookup: { "standard": 8.875, "alcohol": 12.0 }
+export type TaxRatesMap = Record<string, number>;
+
+// ============================================================================
 // 2. PRICE LEVELS (matches actual API)
 // ============================================================================
 

@@ -96,12 +96,10 @@ export class OrderService {
    */
   static async calculateOrderTax(
     client: SupabaseClient,
-    orderId: string,
-    taxRate: number
+    orderId: string
   ): Promise<{ data: CalculateOrderTaxResult | null; error: any }> {
     const { data, error } = await client.rpc("calculate_order_tax", {
       p_order_id: orderId,
-      // p_tax_rate: taxRate,
     });
     return { data, error };
   }
@@ -148,8 +146,8 @@ export class OrderService {
   }
 
   /**
- * Void an entire order (soft delete - keeps audit trail)
- */
+   * Void an entire order (soft delete - keeps audit trail)
+   */
   static async voidOrder(
     client: SupabaseClient,
     orderId: string,
@@ -375,8 +373,6 @@ export class OrderService {
     });
     return { data, error };
   }
-
-
 
   /**
    * Cancel an order (hard delete for draft/pending, void for confirmed)

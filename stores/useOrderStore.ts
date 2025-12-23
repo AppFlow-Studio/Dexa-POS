@@ -6,6 +6,7 @@ import type {
   OrderType as DbOrderType,
   ProcessPaymentParams,
 } from "@/types/db-order-management-types";
+import { TaxRatesMap } from "@/types/menu";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
@@ -45,15 +46,14 @@ function round2(num: number): number {
 /**
  * Calculate all order totals - PURE FUNCTION, SYNCHRONOUS
  * This replaces the async recalculateTotals for instant UI updates.
+ * Uses per-item tax rates based on tax_category.
  */
 function calculateOrderTotals(
   items: CartItem[],
   checkDiscount: Discount | null | undefined,
   payments: { amount: number }[],
-  taxRatePercent: number
+  taxRatesMap: TaxRatesMap // Map of tax_category -> rate percentage
 ): OrderTotals {
-  const taxRate = taxRatePercent / 100;
-
   // Subtotal (all items with their effective prices)
   const subtotal = items.reduce(
     (acc, item) => acc + item.price * item.quantity,
@@ -83,22 +83,66 @@ function calculateOrderTotals(
   }
 
   const discount_amount = round2(itemDiscountsTotal + checkDiscountAmount);
+
+  // Calculate tax per item based on its tax_category
+  // Distribute discount proportionally for tax calculation
+  let tax_amount = 0;
+  for (const item of items) {
+    // Skip tax-exempt items
+    if (item.is_tax_exempt) continue;
+
+    // Get the tax rate for this item's category (default to "standard" if not set)
+    const taxCategory = item.tax_category || "standard";
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const taxRateDecimal = taxRatePercent / 100;
+
+    // Calculate item's taxable amount (price * quantity)
+    const itemSubtotal = item.price * item.quantity;
+
+    // Apply proportional discount to this item
+    const itemDiscountProportion = subtotal > 0 ? itemSubtotal / subtotal : 0;
+    const itemDiscountAmount = discount_amount * itemDiscountProportion;
+    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
+
+    // Calculate tax for this item
+    tax_amount += itemTaxableAmount * taxRateDecimal;
+  }
+  tax_amount = round2(tax_amount);
+
   const taxableAmount = Math.max(0, subtotal - discount_amount);
-  const tax_amount = round2(taxableAmount * taxRate);
   const total_amount = round2(taxableAmount + tax_amount);
 
-  // Outstanding (unpaid items only)
-  const outstanding_subtotal = items.reduce((acc, item) => {
+  // Outstanding (unpaid items only) - with per-item tax
+  let outstanding_subtotal = 0;
+  let outstanding_tax = 0;
+  for (const item of items) {
     const unpaidQty = item.quantity - (item.paidQuantity || 0);
-    return acc + unpaidQty * item.price;
-  }, 0);
+    if (unpaidQty <= 0) continue;
+
+    const itemSubtotal = unpaidQty * item.price;
+    outstanding_subtotal += itemSubtotal;
+
+    if (!item.is_tax_exempt) {
+      const taxCategory = item.tax_category || "standard";
+      const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+      const taxRateDecimal = taxRatePercent / 100;
+
+      // Apply proportional discount
+      const itemDiscountProportion = subtotal > 0 ? itemSubtotal / subtotal : 0;
+      const itemDiscountAmount = discount_amount * itemDiscountProportion;
+      const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
+
+      outstanding_tax += itemTaxableAmount * taxRateDecimal;
+    }
+  }
+  outstanding_subtotal = round2(outstanding_subtotal);
+  outstanding_tax = round2(outstanding_tax);
 
   const proportionOutstanding =
     subtotal > 0 ? outstanding_subtotal / subtotal : 0;
   const outstandingDiscount = discount_amount * proportionOutstanding;
   const outstandingSubtotalAfterDiscount =
     outstanding_subtotal - outstandingDiscount;
-  const outstanding_tax = round2(outstandingSubtotalAfterDiscount * taxRate);
   const outstanding_total = round2(
     outstandingSubtotalAfterDiscount + outstanding_tax
   );
@@ -108,7 +152,7 @@ function calculateOrderTotals(
     discount_amount,
     tax_amount,
     total_amount,
-    outstanding_subtotal: round2(outstanding_subtotal),
+    outstanding_subtotal,
     outstanding_tax,
     outstanding_total,
   };
@@ -168,8 +212,8 @@ const addItemToBackend = async (
           ? order.order_type === "Takeaway"
             ? "takeout"
             : order.order_type === "Dine In"
-              ? "dine_in"
-              : (order.order_type.toLowerCase() as DbOrderType)
+            ? "dine_in"
+            : (order.order_type.toLowerCase() as DbOrderType)
           : ("dine_in" as DbOrderType),
         p_table_number: order.service_location_id || undefined, // Simple mapping for now
         p_created_by_staff_id: undefined, // Could get from employee store if needed
@@ -660,10 +704,9 @@ export const useOrderStore = create<OrderState>()(
               activeOrder.items &&
               activeOrder.items.length > 0
             ) {
-              // Get dynamic tax rate from store settings (convert from percentage to decimal)
+              // Get tax rates map from store settings for per-item tax calculation
               const storeSettings = useStoreSettingsStore.getState();
-              const taxRateDecimal =
-                (storeSettings.defaultTaxRate || 8.25) / 100;
+              const taxRatesMap = storeSettings.taxRatesMap;
 
               // Subtotal must reflect modifiers (size/add-ons) captured in item.price
               const subtotal = activeOrder.items.reduce(
@@ -677,8 +720,8 @@ export const useOrderStore = create<OrderState>()(
                     return (
                       acc +
                       item.originalPrice *
-                      item.appliedDiscount.value *
-                      item.quantity
+                        item.appliedDiscount.value *
+                        item.quantity
                     );
                   }
                   return acc;
@@ -698,33 +741,43 @@ export const useOrderStore = create<OrderState>()(
                 itemDiscountsTotal + checkDiscountAmount;
               const finalSubtotal = subtotal - totalDiscountAmount;
 
-              // Calculate local tax as fallback
-              let localTax = finalSubtotal * taxRateDecimal;
+              // Calculate local tax using per-item tax rates
+              let localTax = 0;
+              for (const item of activeOrder.items) {
+                if (item.is_tax_exempt) continue;
+                const taxCategory = item.tax_category || "standard";
+                const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+                const taxRateDecimal = taxRatePercent / 100;
+
+                const itemSubtotal = item.price * item.quantity;
+                const itemDiscountProportion =
+                  subtotal > 0 ? itemSubtotal / subtotal : 0;
+                const itemDiscountAmount =
+                  totalDiscountAmount * itemDiscountProportion;
+                const itemTaxableAmount = Math.max(
+                  0,
+                  itemSubtotal - itemDiscountAmount
+                );
+
+                localTax += itemTaxableAmount * taxRateDecimal;
+              }
               let localTotal = finalSubtotal + localTax;
 
               // If order has a db_order_id, call backend to calculate tax
               let backendTaxAmount: number | undefined;
-              let backendSubtotal: number | undefined;
               const supabase = _supabaseClient;
               if (supabase && activeOrder.db_order_id) {
                 try {
                   const { data, error } = await OrderService.calculateOrderTax(
                     supabase,
-                    activeOrder.db_order_id,
-                    taxRateDecimal
+                    activeOrder.db_order_id
                   );
 
                   console.log("Backend tax calculation response:", data);
 
                   if (!error && data && data.success) {
                     backendTaxAmount = data.tax_amount;
-                    backendSubtotal = data.subtotal;
-                    console.log("Using backend values:", {
-                      order_id: data.order_id,
-                      subtotal: data.subtotal,
-                      tax_rate: data.tax_rate,
-                      tax_amount: data.tax_amount,
-                    });
+                    console.log("Using backend tax:", data.tax_amount);
                   } else if (error) {
                     console.warn(
                       "Failed to calculate tax from backend:",
@@ -736,38 +789,51 @@ export const useOrderStore = create<OrderState>()(
                 }
               }
 
-              // Use backend values if available, otherwise use local calculation
-              const usedSubtotal =
-                backendSubtotal !== undefined ? backendSubtotal : finalSubtotal;
+              // Use backend tax if available, otherwise use local calculation
               const tax =
                 backendTaxAmount !== undefined ? backendTaxAmount : localTax;
-              const total = usedSubtotal + tax;
+              const total = finalSubtotal + tax;
 
               // Compute outstanding subtotal (unpaid amount) used for badges/logic
-              const outstandingSubtotal = activeOrder.items.reduce(
-                (acc, item) => {
-                  const unpaidQty = item.quantity - (item.paidQuantity || 0);
-                  return acc + unpaidQty * item.price;
-                },
-                0
-              );
+              let outstandingSubtotal = 0;
+              let outstandingTax = 0;
+              for (const item of activeOrder.items) {
+                const unpaidQty = item.quantity - (item.paidQuantity || 0);
+                if (unpaidQty <= 0) continue;
 
-              // This is a fair way to distribute a check-level discount.
+                const itemSubtotal = unpaidQty * item.price;
+                outstandingSubtotal += itemSubtotal;
+
+                if (!item.is_tax_exempt) {
+                  const taxCategory = item.tax_category || "standard";
+                  const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+                  const taxRateDecimal = taxRatePercent / 100;
+
+                  const itemDiscountProportion =
+                    subtotal > 0 ? itemSubtotal / subtotal : 0;
+                  const itemDiscountAmount =
+                    totalDiscountAmount * itemDiscountProportion;
+                  const itemTaxableAmount = Math.max(
+                    0,
+                    itemSubtotal - itemDiscountAmount
+                  );
+
+                  outstandingTax += itemTaxableAmount * taxRateDecimal;
+                }
+              }
+
+              // Calculate the final outstanding total, including discounts
               const proportionOfSubtotalOutstanding =
                 subtotal > 0 ? outstandingSubtotal / subtotal : 0;
               const outstandingDiscountAmount =
                 totalDiscountAmount * proportionOfSubtotalOutstanding;
-
-              // Calculate the final outstanding total, including discounts
               const outstandingSubtotalAfterDiscount =
                 outstandingSubtotal - outstandingDiscountAmount;
-              const outstandingTax =
-                outstandingSubtotalAfterDiscount * taxRateDecimal;
               const outstandingTotal =
                 outstandingSubtotalAfterDiscount + outstandingTax;
 
-              // Ensure no undefined values propagate - use backend subtotal when available
-              const safeSubtotal = Number(usedSubtotal) || 0;
+              // Ensure no undefined values propagate
+              const safeSubtotal = Number(finalSubtotal) || 0;
               const safeTax = Number(tax) || 0;
               const safeTotal = Number(total) || 0;
               const safeDiscount = Number(totalDiscountAmount) || 0;
@@ -790,19 +856,16 @@ export const useOrderStore = create<OrderState>()(
               }
 
               // Update order with backend-calculated totals if we got them
-              if (
-                backendSubtotal !== undefined ||
-                backendTaxAmount !== undefined
-              ) {
+              if (backendTaxAmount !== undefined) {
                 set((state) => ({
                   orders: state.orders.map((o) =>
                     o.id === orderId
                       ? {
-                        ...o,
-                        total_tax: safeTax,
-                        total_amount: safeTotal,
-                        // Store subtotal for reference (if field exists on OrderProfile)
-                      }
+                          ...o,
+                          total_tax: safeTax,
+                          total_amount: safeTotal,
+                          // Store subtotal for reference (if field exists on OrderProfile)
+                        }
                       : o
                   ),
                 }));
@@ -1093,7 +1156,7 @@ export const useOrderStore = create<OrderState>()(
               }
               const existingItemCourse =
                 coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
-                cartItem.id
+                  cartItem.id
                 ] ?? 1;
               if (existingItemCourse !== currentCourse) {
                 return false;
@@ -1133,13 +1196,12 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // 5. Calculate totals SYNCHRONOUSLY (no await, instant!)
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedCart,
               activeOrder.checkDiscount,
               activeOrder.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             // 6. SINGLE ATOMIC UPDATE (items + totals together = 1 re-render)
@@ -1219,13 +1281,12 @@ export const useOrderStore = create<OrderState>()(
             );
 
             // Calculate totals SYNCHRONOUSLY
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             // SINGLE ATOMIC UPDATE
@@ -1452,13 +1513,12 @@ export const useOrderStore = create<OrderState>()(
             const updatedItems = order.items.filter((i) => i.id !== itemId);
 
             // Calculate totals SYNCHRONOUSLY
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             // SINGLE ATOMIC UPDATE (instant UI)
@@ -1516,13 +1576,12 @@ export const useOrderStore = create<OrderState>()(
             );
 
             // Calculate totals
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -1565,13 +1624,12 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order) return;
 
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
               discount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -1587,14 +1645,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                }
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                  }
                 : {}),
             }));
           },
@@ -1603,13 +1661,12 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order) return;
 
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
               null,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -1625,14 +1682,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                }
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                  }
                 : {}),
             }));
           },
@@ -1648,13 +1705,12 @@ export const useOrderStore = create<OrderState>()(
               return item;
             });
 
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -1670,14 +1726,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                }
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                  }
                 : {}),
             }));
           },
@@ -1690,13 +1746,12 @@ export const useOrderStore = create<OrderState>()(
               item.id === itemId ? { ...item, appliedDiscount: null } : item
             );
 
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -1712,14 +1767,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                }
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                  }
                 : {}),
             }));
           },
@@ -1888,13 +1943,12 @@ export const useOrderStore = create<OrderState>()(
             });
 
             // Calculate totals
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               updatedItems,
               order.checkDiscount,
               newPayments,
-              taxRate
+              taxRatesMap
             );
 
             // Single atomic update with optimistic payment status
@@ -1915,14 +1969,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                }
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                  }
                 : {}),
             }));
 
@@ -1952,13 +2006,12 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // Calculate using sync function
-            const taxRate =
-              useStoreSettingsStore.getState().defaultTaxRate || 8.25;
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
               order.checkDiscount,
               order.payments || [],
-              taxRate
+              taxRatesMap
             );
 
             set((state) => ({
@@ -2014,12 +2067,20 @@ export const useOrderStore = create<OrderState>()(
                 0,
               total_tax:
                 order.total_tax ||
-                (order.items.reduce(
-                  (sum, item) => sum + item.price * item.quantity,
-                  0
-                ) || 0) *
-                ((useStoreSettingsStore.getState().defaultTaxRate || 8.25) /
-                  100),
+                (() => {
+                  // Calculate per-item tax if total_tax not set
+                  const taxRatesMap =
+                    useStoreSettingsStore.getState().taxRatesMap;
+                  let taxSum = 0;
+                  for (const item of order.items) {
+                    if (item.is_tax_exempt) continue;
+                    const taxCategory = item.tax_category || "standard";
+                    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+                    taxSum +=
+                      item.price * item.quantity * (taxRatePercent / 100);
+                  }
+                  return taxSum;
+                })(),
             };
 
             // Save to previous orders
@@ -2466,8 +2527,9 @@ export const useOrderStore = create<OrderState>()(
 
             toastService.show({
               title: "Items Sent",
-              message: `${newItems.length} new item${newItems.length > 1 ? "s" : ""
-                } sent to the kitchen.`,
+              message: `${newItems.length} new item${
+                newItems.length > 1 ? "s" : ""
+              } sent to the kitchen.`,
               type: "success",
             });
           },
@@ -2571,7 +2633,6 @@ export const useOrderStore = create<OrderState>()(
             const { archiveOrder, ordersById } = get();
             const order = ordersById[orderId];
 
-
             // 1. Update the order's status locally
             set((state) => ({
               ordersById: {
@@ -2607,7 +2668,6 @@ export const useOrderStore = create<OrderState>()(
               )
                 .then(({ error }) => {
                   if (error) {
-
                     console.error("[useOrderStore.voidOrder] DB error:", error);
                     // Rollback optimistic update on failure
                     set((state) => ({
@@ -2617,7 +2677,6 @@ export const useOrderStore = create<OrderState>()(
                       },
                     }));
                     return false;
-
                   }
                 })
                 .catch((err) => console.error("Void order sync failed:", err));
@@ -2637,13 +2696,12 @@ export const useOrderStore = create<OrderState>()(
             //     },
             //   ],
             // });
-            
+
             // CRITICAL: Force floor plan refresh after void
             setTimeout(() => {
               useFloorPlanStore.getState().loadFloorPlanStatus();
             }, 100);
             return true;
-
           },
         };
       },
