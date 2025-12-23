@@ -509,7 +509,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                         imageSource={getImageSource(item)}
                         onOrderClosedCheck={onOrderClosedCheck}
                         categoryId={categoryId}
-                        getItemPriceForCategory={getItemPriceForCategory}
+                        getItemPriceForCategory={() => {}}
                       />
                     );
                   }}

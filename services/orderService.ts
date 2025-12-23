@@ -45,10 +45,10 @@ export class OrderService {
     const { p_course_number, p_price_paid, ...standardParams } = params;
 
     // 2. Call standard add_order_item
-    console.log(
-      "Calling standard add_order_item params keys:",
-      Object.keys(standardParams)
-    );
+    // console.log(
+    //   "Calling standard add_order_item params keys:",
+    //   Object.keys(standardParams)
+    // );
     const { data, error } = await client.rpc("add_order_item", standardParams);
 
     if (error || !data) {

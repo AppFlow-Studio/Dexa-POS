@@ -261,7 +261,9 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
     });
   },
 
-  getSession: (employeeId: string) => get().sessions[employeeId],
+  getSession: (employeeId: string) => {
+    return get().sessions[employeeId];
+  },
   showClockInWall: () => set({ isClockInWallOpen: true }),
   hideClockInWall: () => set({ isClockInWallOpen: false }),
   checkEmployeeInShift: (employeeId: string) => {

@@ -1,5 +1,5 @@
 export type TimeClockStatus = 'idle' | 'active' | 'on_break' | 'completed';
-export type TimeClockActionType = 'clock_in' | 'clock_out' | 'break_start' | 'break_end';
+export type TimeClockActionType = 'clock_in' | 'clock_out' | 'break_start' | 'break_end' | 'sign_in';
 
 export interface TimeClockAction {
   id: string; // Unique ID for the queue item

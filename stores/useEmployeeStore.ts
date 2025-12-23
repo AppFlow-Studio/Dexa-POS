@@ -1,8 +1,10 @@
+import { useTimeClock } from "@/hooks/useTimeclock";
 import { MerchantRole } from "@/lib/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import bcrypt from "bcryptjs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { useStoreSettingsStore } from "./useStoreSettingsStore";
 import { useTimeclockStore } from "./useTimeclockStore";
 
 export interface EmployeeProfile {
@@ -42,7 +44,9 @@ interface EmployeeState {
   clockIn: (employeeId: string) => void;
   clockOut: (employeeId: string) => void;
   signInWithPin: (
-    pin: string
+    pin: string,
+    locationId: string,
+    deviceId: string
   ) => Promise<{ ok: true } | { ok: false; reason: "invalid_pin" }>;
   signOut: () => void;
 
@@ -91,10 +95,10 @@ export const useEmployeeStore = create<EmployeeState>()(
           employees: state.employees.map((e) =>
             e.id === employeeId
               ? {
-                  ...e,
-                  shiftStatus: "clocked_in",
-                  clockInAt: new Date().toISOString(),
-                }
+                ...e,
+                shiftStatus: "clocked_in",
+                clockInAt: new Date().toISOString(),
+              }
               : e
           ),
         }));
@@ -118,7 +122,8 @@ export const useEmployeeStore = create<EmployeeState>()(
        * Sign in with PIN using bcrypt comparison.
        * Iterates through all employees to find matching PIN hash.
        */
-      signInWithPin: async (pin: string) => {
+      signInWithPin: async (pin: string, locationId: string, deviceId: string) => {
+
         const { employees, clockIn } = get();
 
         let foundEmployee: EmployeeProfile | null = null;
@@ -145,12 +150,12 @@ export const useEmployeeStore = create<EmployeeState>()(
           setActiveEmployee,
         } = useTimeclockStore.getState();
         const existingSession = getSession(foundEmployee.id);
-
         if (!existingSession) {
           // Fresh clock-in for the shift
           clockIn(foundEmployee.id);
           timeclockClockIn(foundEmployee.id);
         }
+
 
         // Set this employee as active
         set({

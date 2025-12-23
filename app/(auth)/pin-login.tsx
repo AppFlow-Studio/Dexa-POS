@@ -130,7 +130,7 @@ const PinLoginScreen = () => {
     }
 
     // Sign in with PIN (this handles employee store state)
-    const res = await signInWithPin(pin);
+    const res = await signInWithPin(pin, selectedStore.id, deviceId);
     if (!res.ok) {
       hideLoading();
       triggerShakeAnimation();

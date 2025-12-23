@@ -30,8 +30,19 @@ interface ModifierSelection {
 }
 
 const ModifierScreen = () => {
-  const { isOpen, mode, menuItem, cartItem, categoryId, close } =
-    useModifierSidebarStore();
+  const {
+    isOpen,
+    mode,
+    menuItem,
+    cartItem,
+    categoryId,
+    close,
+    // Use pre-computed data for instant render
+    precomputedModifiers,
+    initialSelections: storeInitialSelections,
+    itemPrice: precomputedItemPrice,
+    activeModifierCategory: precomputedActiveCategory,
+  } = useModifierSidebarStore();
   const {
     addItemToActiveOrder,
     updateItemInActiveOrder,
@@ -86,12 +97,17 @@ const ModifierScreen = () => {
       : menuItem;
 
   // Get the correct price for the current item based on category
-
+  // OPTIMIZED: Uses pre-computed price when available
   const getCurrentItemPrice = useCallback(
     (item: any) => {
       if (!item) return 0;
 
-      // If we have a categoryId and the item has custom pricing, use it
+      // Use pre-computed price if available (instant path)
+      if (precomputedItemPrice > 0) {
+        return precomputedItemPrice;
+      }
+
+      // Fallback: compute price (legacy path)
       if (categoryId && getItemPriceForCategory) {
         return getItemPriceForCategory(
           item?.id.split("_")[0] || "",
@@ -101,23 +117,33 @@ const ModifierScreen = () => {
       // Otherwise use the default price
       return item.price || 0;
     },
-    [getItemPriceForCategory, categoryId]
+    [precomputedItemPrice, getItemPriceForCategory, categoryId]
   );
 
   // Get the menu item for modifier access (either directly or from cart item)
-  const baseMenuItem =
-    menuItem || menuItems.find((mi) => mi.id === cartItem?.menuItemId);
+  // Use O(1) lookup from store instead of .find()
+  const baseMenuItem = menuItem || (cartItem ? useMenuStore.getState().getMenuItemById(cartItem.menuItemId) : null);
 
-  // Use the IDs from the baseMenuItem to look up the full modifier group objects
+  // Use pre-computed modifiers from store for instant render
+  // Falls back to computing if pre-computed data isn't available (backwards compat)
   const menuItemForModifiers = useMemo(() => {
-    if (!baseMenuItem || !baseMenuItem.modifierGroupIds) return null;
+    if (!baseMenuItem) return null;
+
+    // Use pre-computed modifiers if available (instant path)
+    if (precomputedModifiers) {
+      return { ...baseMenuItem, modifiers: precomputedModifiers };
+    }
+
+    // Fallback: compute modifiers (legacy path)
+    if (!baseMenuItem.modifierGroupIds) return null;
     const modifiers = baseMenuItem.modifierGroupIds
       .map((id) => allModifierGroups.find((mg) => mg.id === id))
       .filter((mg): mg is ModifierCategory => !!mg);
     return { ...baseMenuItem, modifiers };
-  }, [baseMenuItem, allModifierGroups]);
+  }, [baseMenuItem, precomputedModifiers, allModifierGroups]);
 
   // Initialize form when screen opens
+  // OPTIMIZED: Uses pre-computed data from store for instant initialization
   useEffect(() => {
     actionHandledRef.current = false;
     if (isOpen && currentItem) {
@@ -132,64 +158,72 @@ const ModifierScreen = () => {
           : ""
       );
 
-      // Initialize modifier selections
-      const initialSelections: ModifierSelection = {};
-      if (menuItemForModifiers?.modifiers) {
-        menuItemForModifiers.modifiers.forEach((category) => {
-          initialSelections[category.id] = {};
+      // Use pre-computed selections if available (instant path)
+      if (storeInitialSelections) {
+        setModifierSelections(storeInitialSelections);
+        if (precomputedActiveCategory) {
+          setActiveCategory(precomputedActiveCategory);
+        }
+      } else {
+        // Fallback: compute selections (legacy path - should rarely trigger)
+        const initialSelections: ModifierSelection = {};
+        if (menuItemForModifiers?.modifiers) {
+          menuItemForModifiers.modifiers.forEach((category) => {
+            initialSelections[category.id] = {};
 
-          if (
-            (mode === "edit" || (mode === "fullscreen" && cartItem)) &&
-            cartItem
-          ) {
-            // For edit mode (both sidebar and fullscreen), restore the existing selections from the cart item
-            const existingModifier = cartItem.customizations.modifiers?.find(
-              (mod) => mod.categoryId === category.id
-            );
+            if (
+              (mode === "edit" || (mode === "fullscreen" && cartItem)) &&
+              cartItem
+            ) {
+              // For edit mode (both sidebar and fullscreen), restore the existing selections from the cart item
+              const existingModifier = cartItem.customizations.modifiers?.find(
+                (mod) => mod.categoryId === category.id
+              );
 
-            if (existingModifier) {
-              // Mark the existing selections as true
-              existingModifier.options.forEach((selectedOption) => {
-                initialSelections[category.id][selectedOption.id] = true;
+              if (existingModifier) {
+                // Mark the existing selections as true
+                existingModifier.options.forEach((selectedOption) => {
+                  initialSelections[category.id][selectedOption.id] = true;
+                });
+              }
+
+              // Initialize all other options as unselected
+              category.options.forEach((option) => {
+                if (!initialSelections[category.id][option.id]) {
+                  initialSelections[category.id][option.id] = false;
+                }
+              });
+            } else {
+              // For add mode, set default selections for required categories
+              if (
+                category.type === "required" &&
+                category.selectionType === "single"
+              ) {
+                // For required single selection, select the first available option
+                const firstAvailableOption = category.options.find(
+                  (option) => option.isAvailable !== false
+                );
+                if (firstAvailableOption) {
+                  initialSelections[category.id][firstAvailableOption.id] = true;
+                }
+              }
+
+              // Initialize all other options as unselected
+              category.options.forEach((option) => {
+                if (!initialSelections[category.id][option.id]) {
+                  initialSelections[category.id][option.id] = false;
+                }
               });
             }
+          });
 
-            // Initialize all other options as unselected
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
-          } else {
-            // For add mode, set default selections for required categories
-            if (
-              category.type === "required" &&
-              category.selectionType === "single"
-            ) {
-              // For required single selection, select the first available option
-              const firstAvailableOption = category.options.find(
-                (option) => option.isAvailable !== false
-              );
-              if (firstAvailableOption) {
-                initialSelections[category.id][firstAvailableOption.id] = true;
-              }
-            }
-
-            // Initialize all other options as unselected
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
+          // Set first category as active if available
+          if (menuItemForModifiers.modifiers.length > 0) {
+            setActiveCategory(menuItemForModifiers.modifiers[0].id);
           }
-        });
-
-        // Set first category as active if available
-        if (menuItemForModifiers.modifiers.length > 0) {
-          setActiveCategory(menuItemForModifiers.modifiers[0].id);
         }
+        setModifierSelections(initialSelections);
       }
-      setModifierSelections(initialSelections);
 
       // Add draft item to cart when opening for new items (not edit mode)
       if (mode !== "edit" && !cartItem) {

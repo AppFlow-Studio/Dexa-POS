@@ -3935,7 +3935,7 @@ const FloorPlanTest = () => {
                                                             itemWithCategory.category_name
                                                         );
                                                         setMenuItemId(itemWithCategory.menu_item.id);
-                                                        console.log(itemWithCategory)
+                                                        // console.log(itemWithCategory)
                                                     } else {
                                                         setSelectedMenuItem(null);
                                                         setSelectedCategoryName("");

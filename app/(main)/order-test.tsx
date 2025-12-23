@@ -853,7 +853,7 @@ const OrderTest = () => {
 
     // Process Payment
     const handleProcessPayment = async () => {
-        console.log(paymentMethod);
+        // console.log(paymentMethod);
         if (!currentOrderId) {
             show({
                 title: "Error",
