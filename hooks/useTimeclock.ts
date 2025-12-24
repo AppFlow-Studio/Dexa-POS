@@ -85,7 +85,7 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     if (error) throw error;
 
                     // Update real ID from server response if clocking in
-                    if (type === "clock_in" && data?.shift_id) {
+                    if (type === "clock_in" || type === "sign_in" && data?.shift_id) {
                         store.setStatus(nextStatus, data.shift_id);
                     }
 
@@ -120,6 +120,12 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                         TimeClockActionType,
                         { title: string; message: string }
                     > = {
+                        sign_in: {
+                            title: "Sign In Successful",
+                            message: employeeName
+                                ? `Welcome, ${employeeName}!`
+                                : "You have been signed in successfully.",
+                        },
                         clock_in: {
                             title: "Clock In Successful",
                             message: employeeName
@@ -148,6 +154,9 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     });
 
                     options?.onSuccess?.(type, employeeName);
+
+                    // Return data for actions that need it
+                    return { success: true, ...data };
                 } catch (error: any) {
                     // Revert optimistic update on hard failure
                     store.setStatus(previousStatus);
@@ -168,9 +177,12 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                                 "Your action will be synced when connection is restored.",
                             type: "warning",
                         });
+                        // Return queued status so caller knows it was accepted
+                        return { success: true, queued: true };
                     } else {
                         // Logic error (e.g., Wrong PIN, Already clocked in): show error
                         const errorMessages: Record<TimeClockActionType, string> = {
+                            sign_in: "Failed to sign in. Please check your PIN and try again.",
                             clock_in:
                                 "Failed to clock in. Please check your PIN and try again.",
                             clock_out: "Failed to clock out. Please try again.",
@@ -188,6 +200,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                         });
 
                         options?.onError?.(type, errorMessage);
+                        // Throw so caller can handle the error
+                        throw new Error(errorMessage);
                     }
                 }
             } else {
@@ -199,6 +213,8 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     message: "Your action will be synced when connection is restored.",
                     type: "warning",
                 });
+                // Return queued status so caller knows it was accepted
+                return { success: true, queued: true };
             }
         },
         [store, supabase, options]

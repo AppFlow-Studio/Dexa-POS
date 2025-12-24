@@ -29,6 +29,13 @@ interface TimeclockState {
 
   // ACTIONS
   setActiveEmployee: (employeeId: string | null) => void;
+  signIn: (employeeId: string) => {
+    success: boolean;
+    action: "sign_in" | "clock_in" | "clock_out" | "break_start" | "break_end";
+    status: "active" | "idle" | "on_break";
+    staff_id: string;
+    shift_id: string;
+  };
   clockIn: (employeeId: string) => {
     ok: boolean;
     reason?: "already_in_session";
@@ -259,6 +266,28 @@ export const useTimeclockStore = create<TimeclockState>((set, get) => ({
       message: "You have been successfully clocked out.",
       type: "success",
     });
+  },
+
+  signIn: (employeeId: string) => {
+    const { sessions } = get();
+    if (sessions[employeeId]) {
+      return;
+    }
+
+    const newSession: ShiftSession = {
+      employeeId,
+      status: "clockedIn",
+      clockInTime: new Date(),
+      breakStartTime: null,
+      breakEndTime: null,
+    };
+
+    set((state) => ({
+      sessions: { ...state.sessions, [employeeId]: newSession },
+      activeEmployeeId: employeeId,
+    }));
+
+    return { ok: true };
   },
 
   getSession: (employeeId: string) => {

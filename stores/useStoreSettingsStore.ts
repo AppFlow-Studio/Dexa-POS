@@ -32,6 +32,7 @@ export interface SelectedLocation {
 export interface StoreSettings {
   // Tax Settings (synced from backend)
   storeTaxId: string;
+  deviceId: string;
   taxRates: TaxRate[]; // Array of tax rates from backend
   taxRatesMap: TaxRatesMap; // Quick lookup: { "standard": 8.875, "alcohol": 12.0 }
   ptoAccrualRate: number;
@@ -118,6 +119,7 @@ interface StoreSettingsState extends StoreSettings {
 const initialData: StoreSettings = {
   // Tax Settings (synced from backend)
   storeTaxId: "US123456789",
+  deviceId: "",
   taxRates: [],
   taxRatesMap: {},
   ptoAccrualRate: 0.0375,

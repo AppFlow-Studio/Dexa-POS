@@ -15,11 +15,11 @@ interface SearchResultItemProps {
 const SearchResultItem: React.FC<SearchResultItemProps> = ({ item }) => {
   const openDialog = useCustomizationStore((state) => state.openToAdd);
   const closeSearchSheet = useSearchStore((state) => state.closeSearch);
-  const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
+  const { activeOrderId, orders, addItemToActiveOrder, ordersById } = useOrderStore();
   const { openFullscreen } = useModifierSidebarStore();
   const { show } = useToast();
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = ordersById[activeOrderId ?? ""];
   const { openToAdd } = useModifierSidebarStore();
 
   const handleAddToCart = () => {

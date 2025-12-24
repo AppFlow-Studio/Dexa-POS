@@ -11,6 +11,7 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 interface ItemProgressTrackerProps {
   selectedCourse: number;
   itemsInSelectedCourse: CartItem[];
+  isModifierSidebarOpen: boolean;
   onMarkAllReady: (itemIds: string[]) => void;
   isCourseSent: boolean;
 }
@@ -18,6 +19,7 @@ interface ItemProgressTrackerProps {
 const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
   selectedCourse,
   itemsInSelectedCourse,
+  isModifierSidebarOpen,
   onMarkAllReady,
   isCourseSent,
 }) => {
@@ -122,7 +124,8 @@ const ItemProgressTracker: React.FC<ItemProgressTrackerProps> = ({
         {!allItemsReady && anyItemsPreparing && (
           <TouchableOpacity
             onPress={handleMarkAllReady}
-            className="flex-row items-center bg-green-600 px-4 py-2.5 rounded-lg active:opacity-80"
+            disabled={isModifierSidebarOpen}
+            className={`flex-row items-center bg-green-600 px-4 py-2.5 rounded-lg active:opacity-80 ${isModifierSidebarOpen ? "opacity-50 bg-gray-400" : ""}`}
           >
             <CheckCheck size={18} color="white" strokeWidth={3} />
             {/* Text hidden on very small screens if needed, but fits here */}

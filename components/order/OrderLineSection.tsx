@@ -22,7 +22,7 @@ const OrderLineSection: React.FC = () => {
   const visibleOrders = useMemo(() => {
     return orders.filter(
       (o) =>
-        o.items.length > 0 &&
+        o.items?.length > 0 &&
         o.order_status !== "completed" &&
         o.order_status !== "draft" &&
         (o.order_status === "preparing" || o.paid_status !== "Paid") &&

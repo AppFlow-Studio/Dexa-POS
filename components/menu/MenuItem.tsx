@@ -1,18 +1,189 @@
 import { useToast } from "@/contexts/ToastContext";
 import { MenuItemType } from "@/lib/types";
-import { useCustomizationStore } from "@/stores/useCustomizationStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Settings, Utensils } from "lucide-react-native";
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   Image,
   ImageSourcePropType,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+
+// OPTIMIZED: Pre-compiled StyleSheet (no runtime parsing)
+const styles = StyleSheet.create({
+  container: {
+    width: "23%",
+    borderRadius: 20,
+    marginBottom: 8,
+    backgroundColor: "#303030",
+    borderWidth: 1,
+    borderColor: "#4B5563",
+  },
+  containerDisabled: {
+    opacity: 0.5,
+  },
+  innerContainer: {
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 4,
+    overflow: "hidden",
+    borderRadius: 8,
+    flex: 1,
+  },
+  imageContainer: {
+    position: "relative",
+    width: "100%",
+    height: 96,
+    flex: 1,
+  },
+  image: {
+    width: "100%",
+    height: 96,
+    borderRadius: 8,
+  },
+  placeholderContainer: {
+    width: "100%",
+    height: 96,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modifierIconContainer: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#60A5FA",
+    alignSelf: "center",
+    width: "90%",
+  },
+  contentContainer: {
+    width: "100%",
+    paddingHorizontal: 16,
+    flex: 1,
+    paddingBottom: 4,
+    height: "100%",
+    justifyContent: "flex-end",
+  },
+  nameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  nameText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "white",
+    marginTop: 12,
+    flex: 1,
+  },
+  priceContainer: {
+    flexDirection: "row",
+    alignItems: "baseline",
+  },
+  priceText: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "white",
+  },
+  priceTextCustom: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#FACC15",
+  },
+  originalPriceText: {
+    fontSize: 18,
+    color: "#6B7280",
+    marginLeft: 8,
+    textDecorationLine: "line-through",
+  },
+  cashPriceText: {
+    fontSize: 14,
+    color: "#D1D5DB",
+    marginLeft: 8,
+  },
+  stockContainer: {
+    marginTop: 8,
+  },
+  stockRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  stockDotGreen: {
+    width: 8,
+    height: 8,
+    backgroundColor: "#22C55E",
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  stockDotRed: {
+    width: 8,
+    height: 8,
+    backgroundColor: "#EF4444",
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  stockTextGreen: {
+    color: "#4ADE80",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  stockTextRed: {
+    color: "#F87171",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+});
+
+// OPTIMIZED: Memoized icon components (prevents re-render)
+const PlaceholderIcon = React.memo(() => (
+  <Utensils color="#9ca3af" size={24} />
+));
+PlaceholderIcon.displayName = "PlaceholderIcon";
+
+const ModifierIcon = React.memo(() => (
+  <Settings color="#60A5FA" size={24} />
+));
+ModifierIcon.displayName = "ModifierIcon";
+
+// OPTIMIZED: Memoized stock status component
+const StockStatus = React.memo(({ stockQuantity, availability }: {
+  stockQuantity?: number;
+  availability?: boolean;
+}) => {
+  if (stockQuantity !== undefined && stockQuantity > 0) {
+    return (
+      <View style={styles.stockRow}>
+        <View style={styles.stockDotGreen} />
+        <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
+      </View>
+    );
+  }
+
+  if (availability === false) {
+    return (
+      <View style={styles.stockRow}>
+        <View style={styles.stockDotRed} />
+        <Text style={styles.stockTextRed}>Out of Stock</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.stockRow}>
+      <View style={styles.stockDotGreen} />
+      <Text style={styles.stockTextGreen}>In Stock</Text>
+    </View>
+  );
+});
+StockStatus.displayName = "StockStatus";
 
 interface MenuItemProps {
   item: MenuItemType;
@@ -29,13 +200,13 @@ const MenuItem: React.FC<MenuItemProps> = ({
   categoryId,
   getItemPriceForCategory,
 }) => {
-  const { activeOrderId, orders, addItemToActiveOrder } = useOrderStore();
-  const { openFullscreen } = useModifierSidebarStore();
-  const { openToAdd } = useCustomizationStore();
+  // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const activeOrder = useOrderStore((state) =>
+    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
+  );
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
-
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
 
   const isClockedIn = useMemo(() => {
     if (!activeEmployeeId) return false;
@@ -43,9 +214,26 @@ const MenuItem: React.FC<MenuItemProps> = ({
     return session?.status === "clockedIn";
   }, [activeEmployeeId, getSession]);
 
-  // Menu items always add new items, not edit existing ones
+  // OPTIMIZED: Pre-compute price data (moved from render IIFE)
+  const priceData = useMemo(() => {
+    const displayPrice =
+      categoryId && getItemPriceForCategory
+        ? getItemPriceForCategory(item.id, categoryId)
+        : item.price;
+    const hasCustomPricing = displayPrice !== item.price;
+    return { displayPrice, hasCustomPricing };
+  }, [item.id, item.price, categoryId, getItemPriceForCategory]);
 
-  const handlePress = () => {
+  // OPTIMIZED: Pre-compute derived values
+  const hasModifiers = useMemo(
+    () => item.modifierGroupIds && item.modifierGroupIds.length > 0,
+    [item.modifierGroupIds]
+  );
+
+  const isDisabled = item.availability === false;
+
+  // OPTIMIZED: Use getState() for action-only function to avoid subscription
+  const handlePress = useCallback(() => {
     if (!isClockedIn) {
       showClockInWall();
       return;
@@ -65,113 +253,56 @@ const MenuItem: React.FC<MenuItemProps> = ({
       return;
     }
 
-    openFullscreen(item, activeOrderId, categoryId);
-  };
+    // Use getState() to avoid subscribing to store changes
+    useModifierSidebarStore.getState().openFullscreen(item, activeOrderId, categoryId);
+  }, [item, activeOrderId, categoryId, isClockedIn, activeOrder?.order_type, onOrderClosedCheck, showClockInWall, show]);
 
   return (
     <TouchableOpacity
-      disabled={item.availability === false}
+      disabled={isDisabled}
       onPress={handlePress}
-      className={`w-[23%] rounded-[20px] ${
-        item.availability === false ? "opacity-50" : ""
-      } mb-2 bg-[#303030] border border-gray-600`}
+      style={[styles.container, isDisabled && styles.containerDisabled]}
     >
-      <View className="flex-col items-center gap-1 overflow-hidden rounded-lg flex-1 ">
-        <View className=" relative w-full h-24 flex-1 ">
+      <View style={styles.innerContainer}>
+        <View style={styles.imageContainer}>
           {imageSource ? (
-            <Image
-              source={imageSource}
-              className="w-full h-24 object-cover rounded-lg "
-            />
+            <Image source={imageSource} style={styles.image} />
           ) : (
-            <View className="w-full h-24 rounded-xl  items-center justify-center ">
-              <Utensils color="#9ca3af" size={24} />
+            <View style={styles.placeholderContainer}>
+              <PlaceholderIcon />
             </View>
           )}
-          <View className="absolute bottom-2 right-2">
-            {item.modifierGroupIds && item.modifierGroupIds.length > 0 && (
-              <Settings color="#60A5FA" size={24} className="" />
+          {hasModifiers && (
+            <View style={styles.modifierIconContainer}>
+              <ModifierIcon />
+            </View>
+          )}
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.contentContainer}>
+          <View style={styles.nameContainer}>
+            <Text style={styles.nameText}>{item.name}</Text>
+          </View>
+          <View style={styles.priceContainer}>
+            <Text style={priceData.hasCustomPricing ? styles.priceTextCustom : styles.priceText}>
+              ${priceData.displayPrice?.toFixed(2)}
+            </Text>
+            {priceData.hasCustomPricing && (
+              <Text style={styles.originalPriceText}>
+                ${item.price.toFixed(2)}
+              </Text>
+            )}
+            {item.cashPrice && (
+              <Text style={styles.cashPriceText}>
+                Cash Price: ${item.cashPrice.toFixed(2)}
+              </Text>
             )}
           </View>
-        </View>
-        <View className="h-[1px] bg-blue-400  self-center w-[90%]" />
-        <View className="w-full px-4 flex-1 pb-1 h-full justify-end">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-white mt-3 flex-1">
-              {item.name}
-            </Text>
-          </View>
-          <View className="flex-row  items-baseline">
-            {(() => {
-              // Get the correct price for this category
-              const displayPrice =
-                categoryId && getItemPriceForCategory
-                  ? getItemPriceForCategory(item.id, categoryId)
-                  : item.price;
-
-              const hasCustomPricing =
-                categoryId &&
-                getItemPriceForCategory &&
-                getItemPriceForCategory(item.id, categoryId) !== item.price;
-
-              return (
-                <>
-                  <Text
-                    className={`text-xl font-semibold ${
-                      hasCustomPricing ? "text-yellow-400" : "text-white"
-                    }`}
-                  >
-                    ${displayPrice?.toFixed(2)}
-                  </Text>
-                  {hasCustomPricing && (
-                    <Text className="text-lg text-gray-500 ml-2 line-through">
-                      ${item.price.toFixed(2)}
-                    </Text>
-                  )}
-                  {item.cashPrice && (
-                    <Text className="text-sm text-gray-300 ml-2">
-                      Cash Price: ${item.cashPrice.toFixed(2)}
-                    </Text>
-                  )}
-                </>
-              );
-            })()}
-          </View>
-
-          {/* Stock Status Display */}
-          <View className="mt-2">
-            {(() => {
-              // Determine stock status based on item properties
-              if (item.stockQuantity !== undefined && item.stockQuantity > 0) {
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-                    <Text className="text-green-400 text-sm font-medium">
-                      {item.stockQuantity} in stock
-                    </Text>
-                  </View>
-                );
-              } else if (item.availability === false) {
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-red-500 rounded-full mr-2" />
-                    <Text className="text-red-400 text-sm font-medium">
-                      Out of Stock
-                    </Text>
-                  </View>
-                );
-              } else {
-                // Default to "In Stock" for items without specific stock tracking
-                return (
-                  <View className="flex-row items-center">
-                    <View className="w-2 h-2 bg-green-500 rounded-full mr-2" />
-                    <Text className="text-green-400 text-sm font-medium">
-                      In Stock
-                    </Text>
-                  </View>
-                );
-              }
-            })()}
+          <View style={styles.stockContainer}>
+            <StockStatus
+              stockQuantity={item.stockQuantity}
+              availability={item.availability}
+            />
           </View>
         </View>
       </View>
@@ -179,4 +310,15 @@ const MenuItem: React.FC<MenuItemProps> = ({
   );
 };
 
-export default MenuItem;
+// OPTIMIZED: React.memo with custom comparison to prevent unnecessary re-renders
+export default React.memo(MenuItem, (prevProps, nextProps) => {
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.item.price === nextProps.item.price &&
+    prevProps.item.availability === nextProps.item.availability &&
+    prevProps.item.stockQuantity === nextProps.item.stockQuantity &&
+    prevProps.item.name === nextProps.item.name &&
+    prevProps.categoryId === nextProps.categoryId &&
+    prevProps.imageSource === nextProps.imageSource
+  );
+});

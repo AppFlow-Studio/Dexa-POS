@@ -60,6 +60,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
     <Popover
       isVisible={showTooltip}
       onRequestClose={() => setShowTooltip(false)}
+      
       popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
       from={
         <TouchableOpacity

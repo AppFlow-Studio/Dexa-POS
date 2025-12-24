@@ -1,12 +1,9 @@
-import { useTimeClock } from "@/hooks/useTimeclock";
 import { MerchantRole } from "@/lib/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import bcrypt from "bcryptjs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { useStoreSettingsStore } from "./useStoreSettingsStore";
 import { useTimeclockStore } from "./useTimeclockStore";
-
 export interface EmployeeProfile {
   id: string; // location_members.id
   profileId: string; // staff_profiles.id
@@ -52,7 +49,9 @@ interface EmployeeState {
 
   // Helpers
   getEmployeeById: (id: string) => EmployeeProfile | undefined;
+  getEmployeeByStaffId: (staffId: string) => EmployeeProfile | undefined;
   findEmployeeByPin: (pin: string) => Promise<EmployeeProfile | null>;
+  setActiveSession: (employee: EmployeeProfile) => void;
 }
 
 export const useEmployeeStore = create<EmployeeState>()(
@@ -67,6 +66,8 @@ export const useEmployeeStore = create<EmployeeState>()(
       getEmployeeById: (id) => get().employees.find((e) => e.id === id),
 
       findEmployeeByPin: async (pin: string) => {
+        // Local bcrypt comparison for offline support
+        // Online verification is handled in components using useTimeClock hook
         const { employees } = get();
         for (const emp of employees) {
           if (!emp.pinHash) continue;
@@ -76,6 +77,19 @@ export const useEmployeeStore = create<EmployeeState>()(
           }
         }
         return null;
+      },
+
+      setActiveSession: (employee: EmployeeProfile) => {
+        const { setActiveEmployee } = useTimeclockStore.getState();
+        set({
+          activeEmployeeId: employee.id,
+          loggedInEmployee: employee,
+        });
+        setActiveEmployee(employee.id);
+      },
+
+      getEmployeeByStaffId: (staffId: string) => {
+        return get().employees.find((e) => e.profileId === staffId);
       },
 
       setEmployees: (employees) => set({ employees }),
@@ -119,19 +133,16 @@ export const useEmployeeStore = create<EmployeeState>()(
       },
 
       /**
-       * Sign in with PIN using bcrypt comparison.
-       * Iterates through all employees to find matching PIN hash.
+       * Sign in with PIN using local bcrypt comparison (offline fallback).
+       * For online verification, use the useTimeClock hook in components.
        */
-      signInWithPin: async (pin: string, locationId: string, deviceId: string) => {
+      signInWithPin: async (pin: string, _locationId: string, _deviceId: string) => {
+        const { employees } = get();
 
-        const { employees, clockIn } = get();
-
+        // Find employee by PIN hash
         let foundEmployee: EmployeeProfile | null = null;
-
         for (const emp of employees) {
           if (!emp.pinHash) continue;
-
-          // Compare input PIN with stored bcrypt hash
           const isMatch = await bcrypt.compare(pin, emp.pinHash);
           if (isMatch) {
             foundEmployee = emp;
@@ -143,21 +154,17 @@ export const useEmployeeStore = create<EmployeeState>()(
           return { ok: false as const, reason: "invalid_pin" as const };
         }
 
-        // Check if already clocked in via Timeclock
-        const {
-          getSession,
-          clockIn: timeclockClockIn,
-          setActiveEmployee,
-        } = useTimeclockStore.getState();
+        // Set as active employee
+        const { setActiveEmployee, getSession, clockIn: timeclockClockIn } = useTimeclockStore.getState();
+
+        // Check if already in session
         const existingSession = getSession(foundEmployee.id);
         if (!existingSession) {
-          // Fresh clock-in for the shift
-          clockIn(foundEmployee.id);
+          // Start a new local session
+          get().clockIn(foundEmployee.id);
           timeclockClockIn(foundEmployee.id);
         }
 
-
-        // Set this employee as active
         set({
           activeEmployeeId: foundEmployee.id,
           loggedInEmployee: foundEmployee,

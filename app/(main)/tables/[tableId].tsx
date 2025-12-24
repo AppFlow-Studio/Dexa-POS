@@ -11,6 +11,7 @@ import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import {
   getOrderStoreSupabaseClient,
   useOrderStore,
@@ -32,6 +33,7 @@ const UpdateTableScreen = () => {
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
+  const isModifierSidebarOpen = useModifierSidebarStore((state) => state.isOpen);
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -1051,6 +1053,7 @@ const UpdateTableScreen = () => {
                 ] ?? 1) === selectedCourseIdForTracker
             ) || []
           }
+          isModifierSidebarOpen={isModifierSidebarOpen}
           onMarkAllReady={handleMarkAllReadyForCourse}
           isCourseSent={coursing.isCourseSent(
             activeOrder?.id || "",

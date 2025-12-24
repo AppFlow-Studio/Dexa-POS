@@ -2423,10 +2423,10 @@ export const useOrderStore = create<OrderState>()(
             }));
           },
           sendNewItemsToKitchen: () => {
-            const { activeOrderId, orders } = get();
+            const { activeOrderId , orders, ordersById} = get();
             if (!activeOrderId) return;
 
-            const currentOrder = orders.find((o) => o.id === activeOrderId);
+            const currentOrder = ordersById[activeOrderId];
             if (!currentOrder) return;
 
             const newItems = currentOrder.items.filter(

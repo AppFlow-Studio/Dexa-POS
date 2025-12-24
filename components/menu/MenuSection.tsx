@@ -8,9 +8,9 @@ import {
 } from "@/components/ui/dialog";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
-import { useSearchStore } from "@/stores/searchStore";
+// import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+// useModifierSidebarStore no longer needed - overlay handles modifier screen
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
@@ -24,12 +24,12 @@ import {
   Sofa,
   Table,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
-import ModifierScreen from "./ModifierScreen";
+// ModifierScreen is now rendered via ModifierScreenOverlay in parent components
 import OpenItemAdder from "./OpenItemAdder";
 import OrderTypeDrawer from "./OrderTypeDrawer";
 import PreviousOrdersSection from "./PreviousOrdersSection";
@@ -37,8 +37,20 @@ interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
 }
 
-// Get image source for preview
-const getImageSource = (item: MenuItemType) => {
+// OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
+import { StyleSheet } from "react-native";
+import ModifierScreenOverlay from "./ModifierScreenOverlay";
+
+const menuSectionStyles = StyleSheet.create({
+  spacer: {
+    width: "23%",
+  },
+});
+
+// OPTIMIZED: WeakMap cache for image sources to prevent object recreation
+const imageSourceCache = new WeakMap<MenuItemType, ReturnType<typeof getImageSourceInternal> | undefined>();
+
+const getImageSourceInternal = (item: MenuItemType) => {
   if (item.image && item.image.length > 200) {
     return { uri: `data:image/jpeg;base64,${item.image}` };
   }
@@ -54,6 +66,20 @@ const getImageSource = (item: MenuItemType) => {
 
   return undefined;
 };
+
+// Get image source with caching
+const getImageSource = (item: MenuItemType) => {
+  if (imageSourceCache.has(item)) {
+    return imageSourceCache.get(item);
+  }
+  const source = getImageSourceInternal(item);
+  imageSourceCache.set(item, source);
+  return source;
+};
+
+// OPTIMIZED: Memoized spacer component
+const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
+SpacerItem.displayName = "SpacerItem";
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
   const {
@@ -67,7 +93,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   } = useMenuStore();
   const { requestPinOverride } = usePinOverrideStore();
 
-  const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
+  // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
+  const { activeOrderId, ordersById, updateActiveOrderDetails } = useOrderStore();
 
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
@@ -140,18 +167,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     temporaryActiveMenus,
     availabilityTick,
   ]);
-  const { isOpen, mode, cartItem, close } = useModifierSidebarStore();
+  // ModifierScreen is now rendered via ModifierScreenOverlay - no subscription needed here
 
   // State to hold the items that are actually displayed after filtering
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
   );
-  const { openSearch } = useSearchStore();
+  // const { openSearch } = useSearchStore();
 
 
 
-  // Get current order type
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // OPTIMIZED: O(1) lookup via ordersById instead of O(n) orders.find()
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const currentOrderType = activeOrder?.order_type || "Takeaway";
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
@@ -177,43 +204,43 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   };
 
   // Compute next availability window for the active category
-  const nextAvailability = useMemo(() => {
-    const cat = categories.find((c) => c.name === activeCategory);
-    const rules = (cat?.schedules || []).filter((r) => r.isActive);
-    const availableNow = activeCategory
-      ? isCategoryAvailableNow(activeCategory)
-      : false;
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const now = new Date();
+  // const nextAvailability = useMemo(() => {
+  //   const cat = categories.find((c) => c.name === activeCategory);
+  //   const rules = (cat?.schedules || []).filter((r) => r.isActive);
+  //   const availableNow = activeCategory
+  //     ? isCategoryAvailableNow(activeCategory)
+  //     : false;
+  //   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  //   const now = new Date();
 
-    let bestStart: Date | null = null;
-    let bestEnd: Date | null = null;
+  //   let bestStart: Date | null = null;
+  //   let bestEnd: Date | null = null;
 
-    // Search up to two weeks ahead for the next window
-    for (let offset = 0; offset < 14 && !availableNow; offset++) {
-      const check = new Date(now);
-      check.setDate(now.getDate() + offset);
-      const dayKey = dayNames[check.getDay()];
-      const todays = rules.filter((r) => r.days.includes(dayKey as any));
-      for (const r of todays) {
-        const [sh, sm] = r.startTime.split(":").map(Number);
-        const [eh, em] = r.endTime.split(":").map(Number);
-        const start = new Date(check);
-        start.setHours(sh, sm || 0, 0, 0);
-        const end = new Date(check);
-        end.setHours(eh, em || 0, 0, 0);
-        if (start > now) {
-          if (!bestStart || start < bestStart) {
-            bestStart = start;
-            bestEnd = end;
-          }
-        }
-      }
-      if (bestStart) break;
-    }
+  //   // Search up to two weeks ahead for the next window
+  //   for (let offset = 0; offset < 14 && !availableNow; offset++) {
+  //     const check = new Date(now);
+  //     check.setDate(now.getDate() + offset);
+  //     const dayKey = dayNames[check.getDay()];
+  //     const todays = rules.filter((r) => r.days.includes(dayKey as any));
+  //     for (const r of todays) {
+  //       const [sh, sm] = r.startTime.split(":").map(Number);
+  //       const [eh, em] = r.endTime.split(":").map(Number);
+  //       const start = new Date(check);
+  //       start.setHours(sh, sm || 0, 0, 0);
+  //       const end = new Date(check);
+  //       end.setHours(eh, em || 0, 0, 0);
+  //       if (start > now) {
+  //         if (!bestStart || start < bestStart) {
+  //           bestStart = start;
+  //           bestEnd = end;
+  //         }
+  //       }
+  //     }
+  //     if (bestStart) break;
+  //   }
 
-    return { availableNow, start: bestStart, end: bestEnd };
-  }, [activeCategory, categories, isCategoryAvailableNow, availabilityTick]);
+  //   return { availableNow, start: bestStart, end: bestEnd };
+  // }, [activeCategory, categories, isCategoryAvailableNow, availabilityTick]);
 
   useEffect(() => {
     if (!activeCategory) {
@@ -252,13 +279,42 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     }
     return items;
   }, [filteredMenuItems]);
-  // Show modifier screen when in fullscreen mode (both add and edit), otherwise show regular menu
-  if (isOpen && mode === "fullscreen") {
-    return <ModifierScreen />;
-  }
+
+  // OPTIMIZED: Hoist category lookup OUTSIDE renderItem (runs once, not 100+ times)
+  const currentCategoryId = useMemo(() => {
+    if (!activeCategory) return undefined;
+    const { getCategoryByName } = useMenuStore.getState();
+    return getCategoryByName(activeCategory)?.id;
+  }, [activeCategory]);
+
+  // OPTIMIZED: Memoized keyExtractor to prevent recreation
+  // NOTE: All hooks must be called before any early returns
+  const keyExtractor = useCallback((item: MenuItemType) => item.id, []);
+
+  // OPTIMIZED: Memoized renderItem using hoisted category ID and SpacerItem
+  const renderMenuItem = useCallback(
+    ({ item }: { item: MenuItemType }) => {
+      if ((item as any).name === "spacer") {
+        return <SpacerItem />;
+      }
+      return (
+        <MenuItem
+          item={item}
+          imageSource={getImageSource(item)}
+          onOrderClosedCheck={onOrderClosedCheck}
+          categoryId={currentCategoryId}
+          getItemPriceForCategory={getItemPriceForCategory}
+        />
+      );
+    },
+    [onOrderClosedCheck, currentCategoryId, getItemPriceForCategory]
+  );
 
   const formatTime = (d?: Date | null) =>
     d ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+
+  // ModifierScreen is now rendered as an overlay in parent components (order-processing.tsx, tables/[tableId].tsx)
+  // This eliminates re-renders when opening/closing the modifier screen
   return (
     <>
       <View className="mt-4 flex-1 bg-[#212121]">
@@ -290,7 +346,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={openSearch}
+              // onPress={openSearch}
               className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
             >
               <Search color="#9CA3AF" size={20} />
@@ -479,7 +535,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
                 <FlatList
                   data={dataWithSpacers}
-                  keyExtractor={(item) => item.id}
+                  keyExtractor={keyExtractor}
                   numColumns={numColumns}
                   className="mt-4 h-[93%] pb-32"
                   showsVerticalScrollIndicator={false}
@@ -487,6 +543,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                     justifyContent: "space-between",
                     marginBottom: 16
                   }}
+                  // OPTIMIZED: FlatList performance props
+                  removeClippedSubviews={true}
+                  maxToRenderPerBatch={8}
+                  windowSize={5}
+                  initialNumToRender={8}
                   ListEmptyComponent={
                     <View className="flex-1 items-center justify-center h-48">
                       <Text className="text-gray-400 text-lg">
@@ -494,25 +555,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                       </Text>
                     </View>
                   }
-                  renderItem={({ item }) => {
-                    if ((item as any).name === "spacer") {
-                      return <View className="w-[23%]" />;
-                    }
-
-                    const currentCategory = categories.find(
-                      (cat) => cat.name === activeCategory
-                    );
-                    const categoryId = currentCategory?.id;
-                    return (
-                      <MenuItem
-                        item={item}
-                        imageSource={getImageSource(item)}
-                        onOrderClosedCheck={onOrderClosedCheck}
-                        categoryId={categoryId}
-                        getItemPriceForCategory={() => {}}
-                      />
-                    );
-                  }}
+                  renderItem={renderMenuItem}
                 />
               </View>
             ) : null
@@ -534,6 +577,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         onOrderTypeSelect={handleOrderTypeSelect}
         currentOrderType={currentOrderType}
       />
+      {/* ModifierScreen overlay - renders on top when opened, eliminates MenuSection re-renders */}
+      <ModifierScreenOverlay />
     </>
   );
 };

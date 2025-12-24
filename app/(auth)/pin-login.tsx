@@ -6,9 +6,10 @@ import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -22,31 +23,27 @@ const MAX_PIN_LENGTH = 4;
 const PinLoginScreen = () => {
   const router = useRouter();
   const [pin, setPin] = useState("");
-  const [currentEmployee, setCurrentEmployee] =
-    useState<EmployeeProfile | null>(null);
+  const [deviceId, setDeviceId] = useState<string>("");
 
   // Clear PIN when screen comes into focus
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       setPin("");
     }, [])
   );
-  const [deviceId, setDeviceId] = useState<string>("");
+
   const { showLoading, hideLoading, isLoading } = useLoading();
-  const { signInWithPin, findEmployeeByPin } = useEmployeeStore();
+  const {
+    findEmployeeByPin,
+    getEmployeeByStaffId,
+    setActiveSession,
+    clockIn: employeeClockIn,
+  } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
-  const timeClock = useTimeClock({
-    onSuccess: (type, employeeName) => {
-      // Additional success handling if needed
-      if (type === "clock_in" && employeeName) {
-        setCurrentEmployee(null); // Reset after successful action
-      }
-    },
-    onError: (type, error) => {
-      // Additional error handling if needed
-      console.error(`Time clock error (${type}):`, error);
-    },
-  });
+  const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
+
+  const timeClock = useTimeClock();
+
   const canSubmit = useMemo(
     () =>
       pin.length === MAX_PIN_LENGTH &&
@@ -105,207 +102,163 @@ const PinLoginScreen = () => {
   };
 
   const handleLogin = async () => {
-    if (!canSubmit) {
+    if (!canSubmit || !selectedStore) {
       showDialog(
-        "Invalid PIN",
-        `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
+        !selectedStore ? "No Store Selected" : "Invalid PIN",
+        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
         "error"
       );
       return;
     }
 
-    if (!selectedStore) {
-      showDialog("No Store Selected", "Please select a store first.", "error");
-      return;
-    }
+    showLoading("Signing in...");
 
-    showLoading("Verifying PIN...");
-    const employee = await findEmployeeByPin(pin);
-    if (!employee) {
+    try {
+      let employee: EmployeeProfile | null = null;
+
+      // Try server-side verification first (works online, queues offline)
+      const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
+
+      if (result?.staff_id) {
+        // Server returned employee ID - get local employee record
+        employee = getEmployeeByStaffId(result.staff_id) || null;
+      } else if (result?.queued) {
+        // Request was queued (offline) - verify locally
+        employee = await findEmployeeByPin(pin);
+      }
+
+      if (employee) {
+        // Sync local session state
+        const existingSession = getSession(employee.id);
+        if (!existingSession) {
+          employeeClockIn(employee.id);
+          timeclockClockIn(employee.id);
+        }
+        setActiveSession(employee);
+      }
+
+      hideLoading();
+
+      if (!employee) {
+        triggerShakeAnimation();
+        showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+        setPin("");
+        return;
+      }
+
+      setPin("");
+      router.replace("/home");
+    } catch (error) {
       hideLoading();
       triggerShakeAnimation();
-      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+      showDialog("Sign In Failed", "Unable to sign in. Please try again.", "error");
       setPin("");
-      return;
     }
-
-    // Sign in with PIN (this handles employee store state)
-    const res = await signInWithPin(pin, selectedStore.id, deviceId);
-    if (!res.ok) {
-      hideLoading();
-      triggerShakeAnimation();
-      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
-      setPin("");
-      return;
-    }
-
-    // Note: We do NOT call clockIn here anymore.
-    // The SIGN IN button only authenticates the user.
-    // Use the explicit CLOCK IN button to clock in.
-    // This allows users who are on break to sign in without trying to clock in again.
-
-    hideLoading();
-    setPin("");
-    router.replace("/home");
   };
 
   const handleClockIn = async () => {
-    if (!canSubmit) {
+    if (!canSubmit || !selectedStore) {
       showDialog(
-        "Invalid PIN",
-        `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        !selectedStore ? "No Store Selected" : "Invalid PIN",
+        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
         "error"
       );
       return;
     }
 
-    if (!selectedStore) {
-      showDialog("No Store Selected", "Please select a store first.", "error");
-      return;
-    }
-
-    showLoading("Verifying PIN...");
-    const employee = await findEmployeeByPin(pin);
-    hideLoading();
-
-    if (!employee) {
-      triggerShakeAnimation();
-      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
-      setPin("");
-      return;
-    }
-
-    setCurrentEmployee(employee);
-
-    // Check if already clocked in (local check - database will also validate)
-    if (employee.shiftStatus === "clocked_in") {
-      showDialog(
-        "Already Clocked In",
-        `${employee.fullName} is already on the clock.`,
-        "warning"
-      );
-      setPin("");
-      return;
-    }
-
-    // Use the time clock hook for database-backed clock in
     showLoading("Clocking in...");
+
     try {
+      // Use server for clock in (handles both online and offline via the hook)
       await timeClock.clockIn(pin, selectedStore.id, deviceId);
       // Success toast is handled by the hook
-      showDialog(
-        "Clock In Successful",
-        `Welcome, ${employee.fullName}!`,
-        "success"
-      );
-    } catch (error) {
-      // Error toast is handled by the hook, but show dialog too
-      showDialog(
-        "Clock In Failed",
-        "Unable to clock in. Please try again.",
-        "error"
-      );
-    } finally {
       hideLoading();
+      setPin("");
+    } catch (error) {
+      hideLoading();
+      triggerShakeAnimation();
+      showDialog("Clock In Failed", "Unable to clock in. Please try again.", "error");
       setPin("");
     }
   };
 
   const handleClockOut = async () => {
-    if (!canSubmit) {
+    if (!canSubmit || !selectedStore) {
       showDialog(
-        "Invalid PIN",
-        `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        !selectedStore ? "No Store Selected" : "Invalid PIN",
+        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
         "error"
       );
       return;
     }
 
-    if (!selectedStore) {
-      showDialog("No Store Selected", "Please select a store first.", "error");
-      return;
-    }
-
-    showLoading("Verifying PIN...");
-    const employee = await findEmployeeByPin(pin);
-    hideLoading();
-
-    if (!employee) {
-      triggerShakeAnimation();
-      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
-      setPin("");
-      return;
-    }
-
-    setCurrentEmployee(employee);
-
-    // Check if already clocked out (local check - database will also validate)
-    // if (employee.shiftStatus === "clocked_out") {
-    //   showDialog(
-    //     "Already Clocked Out",
-    //     `${employee.fullName} is already off the clock.`,
-    //     "warning"
-    //   );
-    //   setPin("");
-    //   return;
-    // }
-
-    // Use the time clock hook for database-backed clock out
     showLoading("Clocking out...");
+
     try {
+      // Use server for clock out (handles both online and offline via the hook)
       await timeClock.clockOut(pin, selectedStore.id, deviceId);
       // Success toast is handled by the hook
-      showDialog(
-        "Clock Out Successful",
-        `Goodbye, ${employee.fullName}!`,
-        "success"
-      );
-    } catch (error) {
-      // Error toast is handled by the hook, but show dialog too
-      showDialog(
-        "Clock Out Failed",
-        "Unable to clock out. Please try again.",
-        "error"
-      );
-    } finally {
       hideLoading();
+      setPin("");
+    } catch (error) {
+      hideLoading();
+      triggerShakeAnimation();
+      showDialog("Clock Out Failed", "Unable to clock out. Please try again.", "error");
       setPin("");
     }
   };
 
   const handleOpenTimeclock = async () => {
-    if (!canSubmit) {
+    if (!canSubmit || !selectedStore) {
       showDialog(
-        "Invalid PIN",
-        `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
+        !selectedStore ? "No Store Selected" : "Invalid PIN",
+        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
         "error"
       );
       return;
     }
-    showLoading("Verifying PIN...");
-    const employee = await findEmployeeByPin(pin);
-    hideLoading();
-    if (!employee) {
-      showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+
+    showLoading("Verifying...");
+
+    try {
+      let employee: EmployeeProfile | null = null;
+
+      // Try server-side verification first (works online, queues offline)
+      const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
+
+      if (result?.staff_id) {
+        // Server returned employee ID - get local employee record
+        employee = getEmployeeByStaffId(result.staff_id) || null;
+      } else if (result?.queued) {
+        // Request was queued (offline) - verify locally
+        employee = await findEmployeeByPin(pin);
+      }
+
+      hideLoading();
+
+      if (!employee) {
+        triggerShakeAnimation();
+        showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
+        setPin("");
+        return;
+      }
+
+      // Check for manager-level roles
+      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner"];
+      if (!managerRoles.includes(employee.role)) {
+        showDialog("Permission Denied", "Only managers can access the timeclock.", "error");
+        setPin("");
+        return;
+      }
+
       setPin("");
-      return;
-    }
-    // Check for manager-level roles (merchant.manager, merchant.admin, merchant.owner)
-    const managerRoles = [
-      "merchant.manager",
-      "merchant.admin",
-      "merchant.owner",
-    ];
-    if (!managerRoles.includes(employee.role)) {
-      showDialog(
-        "Permission Denied",
-        "Only managers can access the timeclock.",
-        "error"
-      );
+      router.push("/timeclock");
+    } catch (error) {
+      hideLoading();
+      triggerShakeAnimation();
+      showDialog("Verification Failed", "Unable to verify PIN. Please try again.", "error");
       setPin("");
-      return;
     }
-    router.push("/timeclock");
   };
 
   // Animated style for shake effect
