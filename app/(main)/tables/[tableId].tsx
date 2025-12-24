@@ -52,11 +52,13 @@ const UpdateTableScreen = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { tables, updateSessionStatus, loadFloorPlanStatus, unmergeTable } =
+  const { tables, updateSessionStatus, loadFloorPlanStatus, unmergeTable, getTableById } =
     useFloorPlanStore();
 
   const {
     orders,
+    ordersById,
+    getOrderByDbId,
     activeOrderId,
     activeOrderTotal,
     setActiveOrder,
@@ -76,7 +78,8 @@ const UpdateTableScreen = () => {
   } = usePaymentStore();
 
   const currentTableId = typeof tableId === "string" ? tableId : "";
-  const initialTable = tables.find((t) => t.id === currentTableId);
+  // OPTIMIZED: Use O(1) lookup instead of .find()
+  const initialTable = getTableById(currentTableId);
   // Logic to find primary table if this is a merged table
   // In the new system, tables are merged via session.merged_tables or similar logic
   // For now, we rely on the implementation where tables have a session
@@ -88,19 +91,17 @@ const UpdateTableScreen = () => {
   // Memoized to prevent infinite loop - only recalculates when orders array or currentTableId changes
   // STRICT SYNC: Only return an order if it matches the active session.
   // If no session exists, we pretend no order exists so we can auto-create one.
+  // OPTIMIZED: Use O(1) lookups instead of .find()
   const existingOrderForTable = useMemo(() => {
     if (table?.session?.order_id) {
-      return orders.find(
-        (o) =>
-          o.db_order_id === table.session!.order_id ||
-          o.id === table.session!.order_id
-      );
+      const sessionOrderId = table.session.order_id;
+      return ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
     }
     return undefined;
-  }, [orders, table?.session?.order_id]);
+  }, [ordersById, getOrderByDbId, table?.session?.order_id]);
   const activeOrder = existingOrderForTable
     ? existingOrderForTable
-    : orders.find((o) => o.id === activeOrderId);
+    : (activeOrderId ? ordersById[activeOrderId] : undefined);
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
@@ -333,12 +334,10 @@ const UpdateTableScreen = () => {
       if (!currentTableId || !table) return;
 
       // Case 1: Session exists with an order
+      // OPTIMIZED: Use O(1) lookups instead of .find()
       if (table.session?.order_id) {
-        const foundOrder = orders.find(
-          (o) =>
-            o.id === table.session!.order_id ||
-            o.db_order_id === table.session!.order_id
-        );
+        const sessionOrderId = table.session.order_id;
+        const foundOrder = ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
 
         if (foundOrder) {
           if (activeOrderId !== foundOrder.id) {
@@ -526,7 +525,8 @@ const UpdateTableScreen = () => {
   };
 
   const handlePay = () => {
-    const order = orders.find((o) => o.id === activeOrderId);
+    // OPTIMIZED: Use O(1) lookup instead of .find()
+    const order = activeOrderId ? ordersById[activeOrderId] : undefined;
     if (order) {
       const preparingItems = order.items.filter(
         (i) => (i.item_status || "preparing") !== "ready"

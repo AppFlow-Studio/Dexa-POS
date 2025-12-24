@@ -37,7 +37,7 @@ const TablesScreen = () => {
     mergeTable,
     unmergeTable,
   } = useFloorPlanStore();
-  const { startNewOrder, setActiveOrder, ordersById } = useOrderStore();
+  const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -100,10 +100,16 @@ const TablesScreen = () => {
     }
   };
 
+  // OPTIMIZED: Use Set for O(1) membership tests instead of .includes() O(n)
+  const selectedTableIdsSet = useMemo(
+    () => new Set(selectedTableIds),
+    [selectedTableIds]
+  );
+
   // Analyze selected tables for merge actions
   const selectedTables = useMemo(
-    () => tables.filter((t) => selectedTableIds.includes(t.id)),
-    [tables, selectedTableIds]
+    () => tables.filter((t) => selectedTableIdsSet.has(t.id)), // O(1) per check
+    [tables, selectedTableIdsSet]
   );
   const availableSelectedTables = selectedTables.filter(
     (t) => !t.session || t.session.status === "available"
@@ -133,14 +139,9 @@ const TablesScreen = () => {
     const sessionOrderId = selectedTables[0]?.session?.order_id;
     if (!sessionOrderId) return true;
 
-    // Find the order
+    // Find the order - OPTIMIZED: Use O(1) lookups
     let order: (typeof ordersById)[string] | undefined =
-      ordersById[sessionOrderId];
-    if (!order) {
-      order = Object.values(ordersById).find(
-        (o) => o.db_order_id === sessionOrderId
-      );
-    }
+      ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
     if (!order) return true;
 
     // Check for pending items

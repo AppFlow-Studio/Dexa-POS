@@ -142,6 +142,28 @@ const ModifierScreen = () => {
     return { ...baseMenuItem, modifiers };
   }, [baseMenuItem, precomputedModifiers, allModifierGroups]);
 
+  // Create O(1) lookup maps from modifiers for fast access
+  const { modifierCategoriesById, optionsById } = useMemo(() => {
+    const categoriesMap = new Map<string, ModifierCategory>();
+    const optionsMap = new Map<
+      string,
+      { option: ModifierCategory["options"][0]; categoryId: string; categoryName: string }
+    >();
+
+    menuItemForModifiers?.modifiers?.forEach((category) => {
+      categoriesMap.set(category.id, category);
+      category.options.forEach((option) => {
+        optionsMap.set(option.id, {
+          option,
+          categoryId: category.id,
+          categoryName: category.name,
+        });
+      });
+    });
+
+    return { modifierCategoriesById: categoriesMap, optionsById: optionsMap };
+  }, [menuItemForModifiers?.modifiers]);
+
   // Initialize form when screen opens
   // OPTIMIZED: Uses pre-computed data from store for instant initialization
   useEffect(() => {
@@ -228,8 +250,9 @@ const ModifierScreen = () => {
       // Add draft item to cart when opening for new items (not edit mode)
       if (mode !== "edit" && !cartItem) {
         // Check if there's already an existing item with the same menuItemId and empty customizations
-        const { activeOrderId, orders } = useOrderStore.getState();
-        const activeOrder = orders.find((o) => o.id === activeOrderId);
+        // OPTIMIZED: Use O(1) lookup via ordersById
+        const { activeOrderId, ordersById } = useOrderStore.getState();
+        const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
         // Use a deterministic draft ID so concurrent/duplicate creations refer to the same item
         const stableDraftId = `draft_${currentItem.id}`;
@@ -292,32 +315,29 @@ const ModifierScreen = () => {
   // Update draft item in real-time as user makes changes
   useEffect(() => {
     if (isOpen && currentItem && mode !== "edit" && !cartItem) {
-      // Find the draft item we created
-      const { activeOrderId, orders, updateItemInActiveOrder } =
+      // Find the draft item we created - use O(1) lookup via ordersById
+      const { activeOrderId, ordersById, updateItemInActiveOrder } =
         useOrderStore.getState();
-      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
       const draftItem = activeOrder?.items.find(
         (item) => item.id === draftItemIdRef.current
       );
 
       if (draftItem) {
         // Convert modifier selections to the format expected by the order system
+        // OPTIMIZED: Use O(1) Map lookups instead of nested .find() calls
         const selectedModifiers = menuItemForModifiers?.modifiers
           ? Object.entries(modifierSelections).map(
               ([categoryId, selections]) => {
-                const category = menuItemForModifiers.modifiers?.find(
-                  (cat) => cat.id === categoryId
-                );
+                const category = modifierCategoriesById.get(categoryId); // O(1) lookup
                 const selectedOptions = Object.entries(selections)
                   .filter(([_, isSelected]) => isSelected)
-                  .map(([optionId, _]) => {
-                    const option = category?.options.find(
-                      (opt) => opt.id === optionId
-                    );
+                  .map(([optionId]) => {
+                    const optionData = optionsById.get(optionId); // O(1) lookup
                     return {
                       id: optionId,
-                      name: option?.name || "",
-                      price: option?.price || 0,
+                      name: optionData?.option.name || "",
+                      price: optionData?.option.price || 0,
                     };
                   });
 
@@ -385,9 +405,10 @@ const ModifierScreen = () => {
       !!menuItem && menuItem.id !== previousDraftMenuItemId;
 
     if (switchedToEditExisting || switchedToDifferentMenuItem) {
-      const { activeOrderId, orders, removeItemFromActiveOrder } =
+      // OPTIMIZED: Use O(1) lookup via ordersById
+      const { activeOrderId, ordersById, removeItemFromActiveOrder } =
         useOrderStore.getState();
-      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
       const draftItems = activeOrder?.items.filter(
         (item) => item.isDraft && item.menuItemId === previousDraftMenuItemId
       );
@@ -400,38 +421,33 @@ const ModifierScreen = () => {
     }
   }, [mode, cartItem, menuItem]);
 
-  // Calculate total price
+  // Calculate total price - OPTIMIZED: O(n) single pass using Map instead of O(n*m*k)
   const total = useMemo(() => {
     if (!currentItem) return 0;
 
     let baseTotal = getCurrentItemPrice(currentItem);
 
-    // Add modifier costs
+    // Add modifier costs using O(1) Map lookup
     Object.values(modifierSelections).forEach((categorySelections) => {
       Object.entries(categorySelections).forEach(([optionId, isSelected]) => {
         if (isSelected) {
-          // Find the option and add its price
-          menuItemForModifiers?.modifiers?.forEach((category) => {
-            const option = category.options.find((opt) => opt.id === optionId);
-            if (option) {
-              baseTotal += option.price;
-            }
-          });
+          const optionData = optionsById.get(optionId); // O(1) lookup instead of nested loop
+          if (optionData) {
+            baseTotal += optionData.option.price;
+          }
         }
       });
     });
 
     return baseTotal * quantity;
-  }, [quantity, modifierSelections, currentItem]);
+  }, [quantity, modifierSelections, currentItem, optionsById]);
 
   const handleModifierToggle = useCallback(
     (categoryId: string, optionId: string) => {
       if (isReadOnly) return;
 
       setModifierSelections((prev) => {
-        const category = menuItemForModifiers?.modifiers?.find(
-          (cat) => cat.id === categoryId
-        );
+        const category = modifierCategoriesById.get(categoryId); // O(1) lookup
         if (!category) return prev;
 
         const newSelections = { ...prev };
@@ -468,7 +484,7 @@ const ModifierScreen = () => {
         return newSelections;
       });
     },
-    [isReadOnly, currentItem]
+    [isReadOnly, modifierCategoriesById]
   );
 
   const handleSave = useCallback(() => {
@@ -505,22 +521,19 @@ const ModifierScreen = () => {
     }
 
     // Convert modifier selections to the format expected by the order system
+    // OPTIMIZED: Use O(1) Map lookups instead of nested .find() calls
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(modifierSelections)
           .map(([categoryId, selections]) => {
-            const category = menuItemForModifiers.modifiers?.find(
-              (cat) => cat.id === categoryId
-            );
+            const category = modifierCategoriesById.get(categoryId); // O(1) lookup
             const selectedOptions = Object.entries(selections)
               .filter(([_, isSelected]) => isSelected)
-              .map(([optionId, _]) => {
-                const option = category?.options.find(
-                  (opt) => opt.id === optionId
-                );
+              .map(([optionId]) => {
+                const optionData = optionsById.get(optionId); // O(1) lookup
                 return {
                   id: optionId,
-                  name: option?.name || "",
-                  price: option?.price || 0,
+                  name: optionData?.option.name || "",
+                  price: optionData?.option.price || 0,
                 };
               });
 
@@ -558,8 +571,9 @@ const ModifierScreen = () => {
       });
     } else {
       // --- ADD NEW ITEM TO CART ---
-      const { activeOrderId, orders } = useOrderStore.getState();
-      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      // OPTIMIZED: Use O(1) lookup via ordersById
+      const { activeOrderId, ordersById } = useOrderStore.getState();
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
       // Get current course from coursing store
       const coursingState =

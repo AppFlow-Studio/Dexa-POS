@@ -121,7 +121,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
                       hasCustomPricing ? "text-yellow-400" : "text-white"
                     }`}
                   >
-                    ${displayPrice.toFixed(2)}
+                    ${displayPrice?.toFixed(2)}
                   </Text>
                   {hasCustomPricing && (
                     <Text className="text-lg text-gray-500 ml-2 line-through">

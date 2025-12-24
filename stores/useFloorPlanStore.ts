@@ -38,6 +38,7 @@ interface FloorPlanState {
   floorPlans: FloorPlan[];
   activeFloorPlanId: string | null;
   tables: FloorPlanObject[];
+  tablesById: Record<string, FloorPlanObject>; // O(1) lookup map
   waitlist: WaitlistEntry[];
   reservations: Reservation[];
 
@@ -167,9 +168,25 @@ interface FloorPlanState {
   redo: () => void;
   saveSnapshot: () => void;
 
+  // O(1) Getters
+  getTableById: (id: string) => FloorPlanObject | undefined;
+
   // Internal helpers
   _debouncedRefresh: () => void;
 }
+
+// Helper to build tablesById map from tables array
+const buildTablesById = (
+  tables: FloorPlanObject[]
+): Record<string, FloorPlanObject> => {
+  return tables.reduce(
+    (acc, table) => {
+      acc[table.id] = table;
+      return acc;
+    },
+    {} as Record<string, FloorPlanObject>
+  );
+};
 
 export const useFloorPlanStore = create<FloorPlanState>()(
   subscribeWithSelector(
@@ -180,6 +197,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         floorPlans: [],
         activeFloorPlanId: null,
         tables: [],
+        tablesById: {}, // O(1) lookup map
         waitlist: [],
         reservations: [],
         selectedTableIds: [],
@@ -417,6 +435,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             floorPlans: [],
             activeFloorPlanId: null,
             tables: [],
+            tablesById: {},
             waitlist: [],
             reservations: [],
           });
@@ -504,7 +523,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (isActive && newPlans.length > 0) {
             get().setActiveFloorPlan(newPlans[0].id);
           } else if (newPlans.length === 0) {
-            set({ tables: [] });
+            set({ tables: [], tablesById: {} });
           }
         },
 
@@ -523,8 +542,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             return;
           }
           // console.log("[loadFloorPlanStatus] data", data?.tables);
+          const tables = data?.tables || [];
           set({
-            tables: data?.tables || [],
+            tables,
+            tablesById: buildTablesById(tables),
             lastSyncAt: new Date().toISOString(),
             error: null,
           });
@@ -583,14 +604,18 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           rotation?: number
         ) => {
           const supabase = getClient();
-          // Optimistic update
-          set((state) => ({
-            tables: state.tables.map((t) =>
+          // Optimistic update - sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.map((t) =>
               t.id === tableId
                 ? { ...t, x, y, rotation: rotation ?? t.rotation }
                 : t
-            ),
-          }));
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
 
           const { error } =
             await FloorPlanService.updateFloorPlanObjectPosition(supabase, {
@@ -609,12 +634,16 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         updateTableName: async (tableId: string, name: string) => {
           const supabase = getClient();
-          // Optimistic update
-          set((state) => ({
-            tables: state.tables.map((t) =>
+          // Optimistic update - sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.map((t) =>
               t.id === tableId ? { ...t, name } : t
-            ),
-          }));
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
 
           const { error } = await FloorPlanService.updateFloorPlanObject(
             supabase,
@@ -630,10 +659,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         updateTablePositionsBatch: async (updates) => {
           const supabase = getClient();
-          // Optimistic update
-          set((state) => ({
-            tables: state.tables.map((t) => {
-              const update = updates.find((u) => u.id === t.id);
+          // Create O(1) lookup map from updates to avoid O(n*m) nested loop
+          const updatesById = new Map(updates.map((u) => [u.id, u]));
+
+          // Optimistic update - sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.map((t) => {
+              const update = updatesById.get(t.id); // O(1) instead of O(n)
               return update
                 ? {
                     ...t,
@@ -642,8 +674,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                     rotation: update.rotation ?? t.rotation,
                   }
                 : t;
-            }),
-          }));
+            });
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
 
           const { error } = await FloorPlanService.updateFloorPlanObjectsBatch(
             supabase,
@@ -669,12 +705,17 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
           if (error) throw error;
 
-          set((state) => ({
-            tables: state.tables.filter((t) => t.id !== tableId),
-            selectedTableIds: state.selectedTableIds.filter(
-              (id) => id !== tableId
-            ),
-          }));
+          // Sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.filter((t) => t.id !== tableId);
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+              selectedTableIds: state.selectedTableIds.filter(
+                (id) => id !== tableId
+              ),
+            };
+          });
         },
 
         // ====================================================================
@@ -725,17 +766,21 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (error) throw error;
 
           console.log("[updateSessionStatus] sessionId & status", sessionId, status);
-          // Optimistic update
-          set((state) => ({
-            tables: state.tables.map((t) =>
+          // Optimistic update - sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
                     ...t,
                     session: { ...t.session!, status },
                   }
                 : t
-            ),
-          }));
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
 
           await get().loadFloorPlanStatus();
         },
@@ -798,9 +843,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (error) throw error;
           if (!data) throw new Error("No data returned from advanceCourse");
 
-          // Optimistic update
-          set((state) => ({
-            tables: state.tables.map((t) =>
+          // Optimistic update - sync both tables array and tablesById map
+          set((state) => {
+            const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
                     ...t,
@@ -810,8 +855,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                     },
                   }
                 : t
-            ),
-          }));
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
         },
 
         linkOrderToSession: async (sessionId: string, orderId: string) => {
@@ -1061,6 +1110,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newPast = state.past.slice(0, -1);
             return {
               tables: previous,
+              tablesById: buildTablesById(previous),
               past: newPast,
               future: [state.tables, ...state.future],
             };
@@ -1074,6 +1124,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newFuture = state.future.slice(1);
             return {
               tables: next,
+              tablesById: buildTablesById(next),
               past: [...state.past, state.tables],
               future: newFuture,
             };
@@ -1086,6 +1137,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             future: [],
           }));
         },
+
+        // O(1) Getter
+        getTableById: (id: string) => get().tablesById[id],
       }),
       {
         name: "floor-plan-db-storage",
@@ -1097,6 +1151,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           locationId: state.locationId,
           lastSyncAt: state.lastSyncAt,
         }),
+        // Rebuild tablesById map after rehydrating from storage
+        onRehydrateStorage: () => (state) => {
+          if (state?.tables) {
+            state.tablesById = buildTablesById(state.tables);
+          }
+        },
       }
     )
   )

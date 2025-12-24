@@ -507,6 +507,7 @@ const syncPaymentToBackend = async (
 interface OrderState {
   // === OPTIMIZED DATA STRUCTURE (O(1) lookup) ===
   ordersById: Record<string, OrderProfile>;
+  ordersByDbId: Record<string, OrderProfile>; // O(1) lookup by db_order_id
   orderIds: string[]; // Maintains insertion order for iteration
   activeOrderId: string | null;
 
@@ -597,6 +598,9 @@ interface OrderState {
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
   voidOrder: (orderId: string) => void;
+
+  // O(1) Getter for order by db_order_id
+  getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -1036,6 +1040,7 @@ export const useOrderStore = create<OrderState>()(
         return {
           // --- INITIAL STATE (OPTIMIZED STRUCTURE) ---
           ordersById: {},
+          ordersByDbId: {}, // O(1) lookup by db_order_id
           orderIds: [],
           activeOrderId: null,
           // Explicitly maintain orders array for reactivity (synced via subscription below)
@@ -1067,14 +1072,18 @@ export const useOrderStore = create<OrderState>()(
               total_discount: o.total_discount ?? 0,
               items: o.items || [],
             }));
-            // Convert array to ordersById structure
+            // Convert array to ordersById and ordersByDbId structures
             const ordersById: Record<string, OrderProfile> = {};
+            const ordersByDbId: Record<string, OrderProfile> = {};
             const orderIds: string[] = [];
             for (const order of sanitizedOrders) {
               ordersById[order.id] = order;
+              if (order.db_order_id) {
+                ordersByDbId[order.db_order_id] = order;
+              }
               orderIds.push(order.id);
             }
-            set({ ordersById, orderIds });
+            set({ ordersById, ordersByDbId, orderIds });
           },
 
           setActiveOrder: (orderId) => {
@@ -2703,6 +2712,9 @@ export const useOrderStore = create<OrderState>()(
             }, 100);
             return true;
           },
+
+          // O(1) Getter for order by db_order_id
+          getOrderByDbId: (dbOrderId: string) => get().ordersByDbId[dbOrderId],
         };
       },
       {
@@ -2736,10 +2748,19 @@ export const useOrderStore = create<OrderState>()(
 
 // ERROR FIX: The computed getter for 'orders' inside the store doesn't work because 'this'
 // is not bound to the reactive state. We must synchronize the array explicitly.
-// This subscription automatically updates 'orders' whenever 'ordersById' changes.
+// This subscription automatically updates 'orders' and 'ordersByDbId' whenever 'ordersById' changes.
 useOrderStore.subscribe(
   (state) => state.ordersById,
   (ordersById) => {
-    useOrderStore.setState({ orders: Object.values(ordersById) });
+    // Sync orders array for backward compatibility
+    const orders = Object.values(ordersById);
+    // Build ordersByDbId index for O(1) lookup by db_order_id
+    const ordersByDbId: Record<string, OrderProfile> = {};
+    for (const order of orders) {
+      if (order.db_order_id) {
+        ordersByDbId[order.db_order_id] = order;
+      }
+    }
+    useOrderStore.setState({ orders, ordersByDbId });
   }
 );
