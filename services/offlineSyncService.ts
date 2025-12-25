@@ -366,3 +366,207 @@ async function saveQueueToStorage(): Promise<void> {
     console.error("[OfflineSync] Failed to save queue to storage:", error);
   }
 }
+
+// ============================================================================
+// ORDER RECONCILIATION
+// ============================================================================
+
+export interface ReconciliationResult {
+  success: boolean;
+  itemsAdded: number;
+  itemsRemoved: number;
+  itemsUpdated: number;
+  errors: string[];
+}
+
+/**
+ * Reconcile local order state with backend after network recovery.
+ * Backend is source of truth - local state is updated to match backend.
+ *
+ * @param supabase - Supabase client instance
+ * @param localOrderId - Local order ID from useOrderStore
+ * @param dbOrderId - Backend order UUID
+ * @param getLocalOrder - Function to get local order state
+ * @param updateLocalOrder - Function to update local order with backend state
+ */
+export async function reconcileOrderWithBackend(
+  supabase: any,
+  localOrderId: string,
+  dbOrderId: string,
+  getLocalOrder: () => any,
+  updateLocalOrder: (updates: any) => void
+): Promise<ReconciliationResult> {
+  const result: ReconciliationResult = {
+    success: false,
+    itemsAdded: 0,
+    itemsRemoved: 0,
+    itemsUpdated: 0,
+    errors: [],
+  };
+
+  if (!supabase || !dbOrderId) {
+    result.errors.push("Missing Supabase client or order ID");
+    return result;
+  }
+
+  try {
+    console.log("[Reconciliation] Starting reconciliation for order:", dbOrderId);
+
+    // Fetch backend order state
+    const { data, error } = await supabase.rpc("get_order_details", {
+      p_order_id: dbOrderId,
+    });
+
+    if (error) {
+      result.errors.push(`Failed to fetch backend order: ${error.message}`);
+      return result;
+    }
+
+    if (!data) {
+      result.errors.push("No order data returned from backend");
+      return result;
+    }
+
+    const localOrder = getLocalOrder();
+    if (!localOrder) {
+      result.errors.push("Local order not found");
+      return result;
+    }
+
+    // Build a map of backend items by their ID
+    const backendItemsMap = new Map<string, any>();
+    (data.items || []).forEach((item: any) => {
+      backendItemsMap.set(item.id, item);
+    });
+
+    // Build a map of local items by their db_order_item_id
+    const localItemsMap = new Map<string, any>();
+    (localOrder.items || []).forEach((item: any) => {
+      if (item.db_order_item_id) {
+        localItemsMap.set(item.db_order_item_id, item);
+      }
+    });
+
+    // Detect differences
+    const itemsToAdd: any[] = [];
+    const itemsToUpdate: any[] = [];
+    const itemIdsToRemove = new Set<string>();
+
+    // Check backend items against local
+    backendItemsMap.forEach((backendItem, backendItemId) => {
+      const localItem = localItemsMap.get(backendItemId);
+      if (!localItem) {
+        // Item in backend but not local - add it
+        itemsToAdd.push(backendItem);
+        result.itemsAdded++;
+      } else {
+        // Item exists in both - check for updates
+        if (
+          backendItem.quantity !== localItem.quantity ||
+          backendItem.kitchen_status !== localItem.kitchen_status
+        ) {
+          itemsToUpdate.push({
+            localId: localItem.id,
+            updates: {
+              quantity: backendItem.quantity,
+              kitchen_status: backendItem.kitchen_status,
+              item_status: backendItem.item_status,
+            },
+          });
+          result.itemsUpdated++;
+        }
+      }
+    });
+
+    // Check local items that are not in backend (should be removed)
+    localItemsMap.forEach((localItem, dbItemId) => {
+      if (!backendItemsMap.has(dbItemId)) {
+        // Item in local but not backend - mark for removal
+        itemIdsToRemove.add(localItem.id);
+        result.itemsRemoved++;
+      }
+    });
+
+    // Apply reconciliation updates
+    const reconciledItems = localOrder.items
+      .filter((item: any) => !itemIdsToRemove.has(item.id))
+      .map((item: any) => {
+        const update = itemsToUpdate.find((u) => u.localId === item.id);
+        if (update) {
+          return { ...item, ...update.updates, sync_status: "synced" as const };
+        }
+        // Mark existing items as synced
+        return item.db_order_item_id
+          ? { ...item, sync_status: "synced" as const }
+          : item;
+      });
+
+    // Add new items from backend
+    itemsToAdd.forEach((backendItem) => {
+      reconciledItems.push({
+        id: `sync_${backendItem.id}`,
+        db_order_item_id: backendItem.id,
+        menuItemId: backendItem.menu_item_id,
+        name: backendItem.item_name,
+        quantity: backendItem.quantity,
+        price: backendItem.unit_price,
+        originalPrice: backendItem.unit_price,
+        kitchen_status: backendItem.kitchen_status,
+        item_status: backendItem.item_status,
+        sync_status: "synced" as const,
+        customizations: {
+          notes: backendItem.special_instructions,
+          modifiers: [], // Would need more data to populate
+        },
+      });
+    });
+
+    // Update local order with reconciled state
+    updateLocalOrder({
+      items: reconciledItems,
+      total_amount: data.total_amount,
+      total_tax: data.tax_amount,
+      order_status: data.status,
+    });
+
+    result.success = true;
+    console.log("[Reconciliation] Complete:", result);
+
+    return result;
+  } catch (err: any) {
+    result.errors.push(`Reconciliation error: ${err?.message || "Unknown"}`);
+    console.error("[Reconciliation] Error:", err);
+    return result;
+  }
+}
+
+/**
+ * Trigger reconciliation for all orders with failed sync status.
+ */
+export async function reconcileFailedOrders(
+  supabase: any,
+  getOrdersWithFailedSyncs: () => Array<{ localId: string; dbId: string }>,
+  getLocalOrder: (id: string) => any,
+  updateLocalOrder: (id: string, updates: any) => void
+): Promise<void> {
+  const failedOrders = getOrdersWithFailedSyncs();
+
+  if (failedOrders.length === 0) {
+    console.log("[Reconciliation] No orders with failed syncs");
+    return;
+  }
+
+  console.log(
+    `[Reconciliation] Reconciling ${failedOrders.length} orders with failed syncs`
+  );
+
+  for (const order of failedOrders) {
+    await reconcileOrderWithBackend(
+      supabase,
+      order.localId,
+      order.dbId,
+      () => getLocalOrder(order.localId),
+      (updates) => updateLocalOrder(order.localId, updates)
+    );
+  }
+}

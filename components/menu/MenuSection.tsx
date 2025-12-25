@@ -539,6 +539,12 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   keyExtractor={keyExtractor}
                   numColumns={numColumns}
                   className="mt-4 h-[93%] pb-32"
+                  ItemSeparatorComponent={() => <SpacerItem />}
+                  getItemLayout={(item, index) => ({
+                    length: 100,
+                    offset: 100 * index,
+                    index,
+                  })}
                   showsVerticalScrollIndicator={false}
                   columnWrapperStyle={{
                     justifyContent: "space-between",

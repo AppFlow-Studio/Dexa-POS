@@ -563,6 +563,18 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
   },
 
   fireCourse: async (orderId: string, courseNumber: number) => {
+    // SYNC BARRIER: Ensure all items are synced before firing course
+    // Using lazy import to avoid circular dependency with useOrderStore
+    const { useOrderStore } = await import("./useOrderStore");
+    const orderStore = useOrderStore.getState();
+    
+    if (orderStore.hasPendingSyncs(orderId)) {
+      console.log(
+        "[fireCourse] Waiting for pending syncs before firing course..."
+      );
+      await orderStore.waitForPendingSyncs(orderId);
+    }
+
     const orderData = get().byOrderId[orderId];
     if (!orderData) throw new Error("Order not initialized");
 

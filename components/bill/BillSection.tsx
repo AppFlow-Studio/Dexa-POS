@@ -8,7 +8,7 @@ import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Plus, Send } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
 import DiscountOverlay from "./DiscountOverlay";
@@ -53,6 +53,7 @@ const BillSection = ({
   const sendNewItemsToKitchen = useOrderStore((state) => state.sendNewItemsToKitchen);
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
   const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
+  const getSyncStatus = useOrderStore((state) => state.getSyncStatus);
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
@@ -75,6 +76,15 @@ const BillSection = ({
       ).length,
     [cart]
   );
+
+  // Get sync status for the active order
+  const syncStatus = useMemo(
+    () => (activeOrderId ? getSyncStatus(activeOrderId) : { pending: 0, failed: 0, synced: 0 }),
+    [activeOrderId, getSyncStatus, cart] // Include cart to recompute when items change
+  );
+  const hasPendingSyncs = syncStatus.pending > 0;
+  const hasFailedSyncs = syncStatus.failed > 0;
+
   // Memoize pay button disabled state - prevents clicking when total is 0 or no items
   const isPayButtonDisabled = useMemo(
     () =>
@@ -203,6 +213,9 @@ const BillSection = ({
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
           >
+            {hasPendingSyncs ? (
+              <ActivityIndicator size="small" color="#60A5FA" />
+            ) : null}
             <Text className="text-center text-xl font-bold text-white">
               Send to Kitchen ({newItemsCount})
             </Text>
@@ -227,9 +240,12 @@ const BillSection = ({
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={isPayButtonDisabled}
-              className={`flex-1 py-2 rounded-xl ${isPayButtonDisabled ? "bg-gray-500" : "bg-blue-600"
+              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center gap-2 ${isPayButtonDisabled ? "bg-gray-500" : "bg-blue-600"
                 }`}
             >
+              {hasPendingSyncs ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : null}
               <Text
                 className={`text-center text-xl font-bold ${isPayButtonDisabled ? "text-gray-400" : "text-white"
                   }`}

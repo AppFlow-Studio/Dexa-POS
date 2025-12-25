@@ -216,8 +216,8 @@ const addItemToBackend = async (
           ? order.order_type === "Takeaway"
             ? "takeout"
             : order.order_type === "Dine In"
-            ? "dine_in"
-            : (order.order_type.toLowerCase() as DbOrderType)
+              ? "dine_in"
+              : (order.order_type.toLowerCase() as DbOrderType)
           : ("dine_in" as DbOrderType),
         p_table_number: order.service_location_id || undefined, // Simple mapping for now
         p_created_by_staff_id: undefined, // Could get from employee store if needed
@@ -524,6 +524,23 @@ interface OrderState {
   isOnline: boolean;
   pendingSyncCount: number;
 
+  // === SYNC TRACKING STATE ===
+  // Maps itemId -> sync promise for pending operations
+  pendingSyncOperations: Map<string, Promise<boolean>>;
+
+  // Sync barrier methods
+  hasPendingSyncs: (orderId: string) => boolean;
+  waitForPendingSyncs: (orderId: string) => Promise<void>;
+  getSyncStatus: (orderId: string) => { pending: number; failed: number; synced: number };
+  updateItemSyncStatus: (
+    orderId: string,
+    itemId: string,
+    status: "pending" | "syncing" | "synced" | "failed",
+    error?: string
+  ) => void;
+  registerSyncOperation: (itemId: string, promise: Promise<boolean>) => void;
+  unregisterSyncOperation: (itemId: string) => void;
+
   // --- DERIVED STATE (Totals for the ACTIVE order) ---
   // These values will be automatically updated by the store's actions.
   activeOrderSubtotal: number;
@@ -577,7 +594,7 @@ interface OrderState {
     last4?: string;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
-  }) => void;
+  }) => Promise<void>;
   setOrders: (orders: OrderProfile[]) => void;
 
   markOrderAsPaid: (orderId: string) => void;
@@ -592,8 +609,8 @@ interface OrderState {
     tableNames: string[]
   ) => string;
   fireActiveOrderToKitchen: () => void;
-  sendNewItemsToKitchen: () => void;
-  sendNewItemsToKitchenForOrder: (orderId: string) => void;
+  sendNewItemsToKitchen: () => Promise<void>;
+  sendNewItemsToKitchenForOrder: (orderId: string) => Promise<void>;
   transferOrderToTable: (orderId: string, newTableId: string) => void;
   generateCartItemId: (
     menuItemId: string,
@@ -733,8 +750,8 @@ export const useOrderStore = create<OrderState>()(
                   return (
                     acc +
                     item.originalPrice *
-                      item.appliedDiscount.value *
-                      item.quantity
+                    item.appliedDiscount.value *
+                    item.quantity
                   );
                 }
                 return acc;
@@ -873,11 +890,11 @@ export const useOrderStore = create<OrderState>()(
                   orders: state.orders.map((o) =>
                     o.id === orderId
                       ? {
-                          ...o,
-                          total_tax: safeTax,
-                          total_amount: safeTotal,
-                          // Store subtotal for reference (if field exists on OrderProfile)
-                        }
+                        ...o,
+                        total_tax: safeTax,
+                        total_amount: safeTotal,
+                        // Store subtotal for reference (if field exists on OrderProfile)
+                      }
                       : o
                   ),
                 }));
@@ -1056,6 +1073,8 @@ export const useOrderStore = create<OrderState>()(
           // Offline sync state
           isOnline: true,
           pendingSyncCount: 0,
+          // Sync tracking state
+          pendingSyncOperations: new Map<string, Promise<boolean>>(),
           activeOrderSubtotal: 0,
           activeOrderTax: 0,
           activeOrderTotal: 0,
@@ -1069,6 +1088,125 @@ export const useOrderStore = create<OrderState>()(
           setOnlineStatus: (isOnline: boolean) => set({ isOnline }),
           setPendingSyncCount: (count: number) =>
             set({ pendingSyncCount: count }),
+
+          // --- SYNC BARRIER METHODS ---
+          hasPendingSyncs: (orderId: string) => {
+            const order = get().ordersById[orderId];
+            if (!order) return false;
+            // Check if any non-draft items have pending or syncing status
+            return order.items.some(
+              (item) =>
+                !item.isDraft &&
+                (item.sync_status === "pending" || item.sync_status === "syncing")
+            );
+          },
+
+          waitForPendingSyncs: async (orderId: string) => {
+            const { pendingSyncOperations, ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            // Get all item IDs with pending sync status
+            const pendingItemIds = order.items
+              .filter(
+                (item) =>
+                  !item.isDraft &&
+                  (item.sync_status === "pending" || item.sync_status === "syncing")
+              )
+              .map((item) => item.id);
+
+            // Wait for all pending sync operations
+            const promises: Promise<boolean>[] = [];
+            for (const itemId of pendingItemIds) {
+              const promise = pendingSyncOperations.get(itemId);
+              if (promise) {
+                promises.push(promise);
+              }
+            }
+
+            if (promises.length > 0) {
+              console.log(
+                `[SyncBarrier] Waiting for ${promises.length} pending sync operations...`
+              );
+              await Promise.all(promises);
+              console.log("[SyncBarrier] All sync operations completed");
+            }
+          },
+
+          getSyncStatus: (orderId: string) => {
+            const order = get().ordersById[orderId];
+            if (!order)
+              return { pending: 0, failed: 0, synced: 0 };
+
+            let pending = 0;
+            let failed = 0;
+            let synced = 0;
+
+            for (const item of order.items) {
+              if (item.isDraft) continue; // Skip draft items
+              switch (item.sync_status) {
+                case "pending":
+                case "syncing":
+                  pending++;
+                  break;
+                case "failed":
+                  failed++;
+                  break;
+                case "synced":
+                  synced++;
+                  break;
+                default:
+                  // Items without sync_status are treated as synced (legacy items)
+                  synced++;
+              }
+            }
+
+            return { pending, failed, synced };
+          },
+
+          updateItemSyncStatus: (
+            orderId: string,
+            itemId: string,
+            status: "pending" | "syncing" | "synced" | "failed",
+            error?: string
+          ) => {
+            set((state) => {
+              const order = state.ordersById[orderId];
+              if (!order) return state;
+
+              const updatedItems = order.items.map((item) =>
+                item.id === itemId
+                  ? {
+                    ...item,
+                    sync_status: status,
+                    sync_error: error,
+                    sync_retry_count:
+                      status === "failed"
+                        ? (item.sync_retry_count || 0) + 1
+                        : item.sync_retry_count,
+                  }
+                  : item
+              );
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: {
+                    ...order,
+                    items: updatedItems,
+                  },
+                },
+              };
+            });
+          },
+
+          registerSyncOperation: (itemId: string, promise: Promise<boolean>) => {
+            get().pendingSyncOperations.set(itemId, promise);
+          },
+
+          unregisterSyncOperation: (itemId: string) => {
+            get().pendingSyncOperations.delete(itemId);
+          },
 
           // --- PUBLIC ACTIONS ---
           setOrders: (newOrders) => {
@@ -1173,7 +1311,7 @@ export const useOrderStore = create<OrderState>()(
               }
               const existingItemCourse =
                 coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[
-                  cartItem.id
+                cartItem.id
                 ] ?? 1;
               if (existingItemCourse !== currentCourse) {
                 return false;
@@ -1186,15 +1324,27 @@ export const useOrderStore = create<OrderState>()(
               return existingItemKey === newItemKey;
             });
 
+            // Track the item ID for sync operations
+            let syncItemId: string;
+
             if (mergeCandidate) {
               // 3. If a candidate exists, create a new cart array with the updated quantity
+              syncItemId = mergeCandidate.id;
               updatedCart = updatedCart.map((item) =>
                 item.id === mergeCandidate.id
-                  ? { ...item, quantity: item.quantity + newItem.quantity }
+                  ? {
+                    ...item,
+                    quantity: item.quantity + newItem.quantity,
+                    // Mark as pending sync if not a draft
+                    sync_status: newItem.isDraft
+                      ? item.sync_status
+                      : ("pending" as const),
+                  }
                   : item
               );
             } else {
               // 4. If no candidate, create a new item and add it to a new cart array
+              syncItemId = newItem.id;
               const newCartItem: CartItem = {
                 ...newItem,
                 paidQuantity: 0,
@@ -1203,6 +1353,8 @@ export const useOrderStore = create<OrderState>()(
                     ? "preparing"
                     : undefined,
                 kitchen_status: newItem.isDraft ? undefined : ("new" as const),
+                // Set initial sync status
+                sync_status: newItem.isDraft ? undefined : ("pending" as const),
               };
               updatedCart = [...updatedCart, newCartItem];
               coursingState.setItemCourse(
@@ -1243,12 +1395,17 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingTotal: totals.outstanding_total,
             }));
 
-            // 7. Background sync (fire-and-forget, non-blocking)
+            // 7. Background sync with promise tracking for sync barriers
             const itemToSync = mergeCandidate || newItem;
             if (!itemToSync.isDraft) {
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
                 const removeItemAction = get().removeItemFromActiveOrder;
+                const updateItemSyncStatusAction = get().updateItemSyncStatus;
+                const registerSyncOp = get().registerSyncOperation;
+                const unregisterSyncOp = get().unregisterSyncOperation;
+                const currentOrderId = activeOrderId;
+
                 const setOrderDbIdAction = (
                   orderId: string,
                   dbOrderId: string,
@@ -1273,14 +1430,50 @@ export const useOrderStore = create<OrderState>()(
                   }));
                 };
 
-                // Fire async sync (don't await - optimistic)
-                addItemToBackend(
+                // Create and track the sync promise
+                const syncPromise = addItemToBackend(
                   orderToSync,
                   itemToSync,
                   setOrderDbIdAction,
                   removeItemAction,
                   undefined // No need to recalculate - already done synchronously
-                ).catch((err) => console.error("Background sync failed:", err));
+                )
+                  .then((success) => {
+                    if (success) {
+                      // Update item sync status to synced
+                      updateItemSyncStatusAction(
+                        currentOrderId,
+                        syncItemId,
+                        "synced"
+                      );
+                    } else {
+                      // Update item sync status to failed
+                      updateItemSyncStatusAction(
+                        currentOrderId,
+                        syncItemId,
+                        "failed",
+                        "Backend sync failed"
+                      );
+                    }
+                    return success;
+                  })
+                  .catch((err) => {
+                    console.error("Background sync failed:", err);
+                    updateItemSyncStatusAction(
+                      currentOrderId,
+                      syncItemId,
+                      "failed",
+                      err?.message || "Unknown error"
+                    );
+                    return false;
+                  })
+                  .finally(() => {
+                    // Unregister the sync operation when done
+                    unregisterSyncOp(syncItemId);
+                  });
+
+                // Register the sync promise for barrier tracking
+                registerSyncOp(syncItemId, syncPromise);
               }
             }
           },
@@ -1546,10 +1739,10 @@ export const useOrderStore = create<OrderState>()(
               updatedItems = order.items.map((i) =>
                 i.id === itemId
                   ? {
-                      ...i,
-                      is_voided: true,
-                      void_reason: voidReason || "User voided",
-                    }
+                    ...i,
+                    is_voided: true,
+                    void_reason: voidReason || "User voided",
+                  }
                   : i
               );
             } else {
@@ -1615,9 +1808,17 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId];
             if (!order) return;
 
+            const itemToConfirm = order.items.find((i) => i.id === itemId);
+            if (!itemToConfirm) return;
+
             const updatedItems = order.items.map((i) =>
               i.id === itemId
-                ? { ...i, isDraft: false, kitchen_status: "new" as const }
+                ? {
+                  ...i,
+                  isDraft: false,
+                  kitchen_status: "new" as const,
+                  sync_status: "pending" as const,
+                }
                 : i
             );
 
@@ -1649,6 +1850,81 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingTax: totals.outstanding_tax,
               activeOrderOutstandingTotal: totals.outstanding_total,
             }));
+
+            // Sync the confirmed item to backend
+            const orderToSync = get().ordersById[activeOrderId];
+            if (orderToSync) {
+              const removeItemAction = get().removeItemFromActiveOrder;
+              const updateItemSyncStatusAction = get().updateItemSyncStatus;
+              const registerSyncOp = get().registerSyncOperation;
+              const unregisterSyncOp = get().unregisterSyncOperation;
+              const currentOrderId = activeOrderId;
+
+              const setOrderDbIdAction = (
+                orderId: string,
+                dbOrderId: string,
+                orderNumber: string,
+                displayNumber: string,
+                createdAt: string
+              ) => {
+                set((state) => ({
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: {
+                      ...state.ordersById[orderId],
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                      opened_at:
+                        state.ordersById[orderId]?.opened_at || createdAt,
+                    },
+                  },
+                }));
+              };
+
+              // Create and track the sync promise
+              const syncPromise = addItemToBackend(
+                orderToSync,
+                { ...itemToConfirm, isDraft: false },
+                setOrderDbIdAction,
+                removeItemAction,
+                undefined
+              )
+                .then((success) => {
+                  if (success) {
+                    updateItemSyncStatusAction(
+                      currentOrderId,
+                      itemId,
+                      "synced"
+                    );
+                  } else {
+                    updateItemSyncStatusAction(
+                      currentOrderId,
+                      itemId,
+                      "failed",
+                      "Backend sync failed"
+                    );
+                  }
+                  return success;
+                })
+                .catch((err) => {
+                  console.error("Confirm draft sync failed:", err);
+                  updateItemSyncStatusAction(
+                    currentOrderId,
+                    itemId,
+                    "failed",
+                    err?.message || "Unknown error"
+                  );
+                  return false;
+                })
+                .finally(() => {
+                  unregisterSyncOp(itemId);
+                });
+
+              // Register the sync promise for barrier tracking
+              registerSyncOp(itemId, syncPromise);
+            }
           },
 
           updateActiveOrderDetails: (details) => {
@@ -1693,7 +1969,7 @@ export const useOrderStore = create<OrderState>()(
                 // Get session ID from the table via floor plan store
                 const table =
                   useFloorPlanStore.getState().tablesById[
-                    order.service_location_id
+                  order.service_location_id
                   ];
                 const sessionId = table?.session?.id;
 
@@ -1737,14 +2013,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1774,14 +2050,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1818,14 +2094,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1859,14 +2135,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
           },
@@ -1992,7 +2268,7 @@ export const useOrderStore = create<OrderState>()(
             }));
           },
 
-          addPaymentToOrder: ({
+          addPaymentToOrder: async ({
             orderId,
             amount,
             method,
@@ -2001,6 +2277,20 @@ export const useOrderStore = create<OrderState>()(
             tipAmount,
             transactionDetails,
           }) => {
+            const { hasPendingSyncs, waitForPendingSyncs } = get();
+
+            // SYNC BARRIER: Wait for all pending syncs before processing payment
+            // This ensures all items are in backend before payment is processed
+            if (hasPendingSyncs(orderId)) {
+              toastService.show({
+                title: "Syncing...",
+                message: "Waiting for items to sync before processing payment",
+                type: "warning",
+              });
+              await waitForPendingSyncs(orderId);
+            }
+
+            // Re-fetch order after waiting (state may have changed)
             const order = get().ordersById[orderId]; // O(1) lookup
             if (!order) return;
 
@@ -2061,14 +2351,14 @@ export const useOrderStore = create<OrderState>()(
               },
               ...(orderId === get().activeOrderId
                 ? {
-                    activeOrderSubtotal: totals.subtotal,
-                    activeOrderTax: totals.tax_amount,
-                    activeOrderTotal: totals.total_amount,
-                    activeOrderDiscount: totals.discount_amount,
-                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                    activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
-                  }
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                }
                 : {}),
             }));
 
@@ -2505,20 +2795,34 @@ export const useOrderStore = create<OrderState>()(
               },
             }));
           },
-          sendNewItemsToKitchen: () => {
-            const { activeOrderId, orders, ordersById } = get();
+          sendNewItemsToKitchen: async () => {
+            const { activeOrderId, ordersById, hasPendingSyncs, waitForPendingSyncs } = get();
             if (!activeOrderId) return;
 
             const currentOrder = ordersById[activeOrderId];
             if (!currentOrder) return;
 
-            const newItems = currentOrder.items.filter(
+            // SYNC BARRIER: Wait for all pending syncs before sending to kitchen
+            if (hasPendingSyncs(activeOrderId)) {
+              toastService.show({
+                title: "Syncing...",
+                message: "Waiting for items to sync before sending to kitchen",
+                type: "warning",
+              });
+              await waitForPendingSyncs(activeOrderId);
+            }
+
+            // Re-fetch order after waiting (state may have changed)
+            const orderAfterSync = get().ordersById[activeOrderId];
+            if (!orderAfterSync) return;
+
+            const newItems = orderAfterSync.items.filter(
               (item) => !item.kitchen_status || item.kitchen_status === "new"
             );
 
             if (newItems.length === 0) return;
 
-            let cartToProcess = [...currentOrder.items];
+            let cartToProcess = [...orderAfterSync.items];
             const itemsToKeep: CartItem[] = [];
             const mergedItemIds = new Set<string>();
 
@@ -2601,11 +2905,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Sync the status change to the backend ("Preparing")
             const supabase = getOrderStoreSupabaseClient();
-            if (supabase && currentOrder.db_order_id) {
+            if (supabase && orderAfterSync.db_order_id) {
               // Update order status
               supabase
                 .rpc("update_order_status", {
-                  p_order_id: currentOrder.db_order_id,
+                  p_order_id: orderAfterSync.db_order_id,
                   p_new_status: "preparing",
                 })
                 .then(({ error }) => {
@@ -2635,14 +2939,26 @@ export const useOrderStore = create<OrderState>()(
 
             toastService.show({
               title: "Items Sent",
-              message: `${newItems.length} new item${
-                newItems.length > 1 ? "s" : ""
-              } sent to the kitchen.`,
+              message: `${newItems.length} new item${newItems.length > 1 ? "s" : ""
+                } sent to the kitchen.`,
               type: "success",
             });
           },
 
-          sendNewItemsToKitchenForOrder: (orderId: string) => {
+          sendNewItemsToKitchenForOrder: async (orderId: string) => {
+            const { hasPendingSyncs, waitForPendingSyncs } = get();
+
+            // SYNC BARRIER: Wait for all pending syncs before sending to kitchen
+            if (hasPendingSyncs(orderId)) {
+              toastService.show({
+                title: "Syncing...",
+                message: "Waiting for items to sync before sending to kitchen",
+                type: "warning",
+              });
+              await waitForPendingSyncs(orderId);
+            }
+
+            // Re-fetch order after waiting (state may have changed)
             const order = get().ordersById[orderId];
             if (
               !order ||

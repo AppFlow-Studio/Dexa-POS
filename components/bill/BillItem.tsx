@@ -1,9 +1,9 @@
 import { CartItem } from "@/lib/types";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Trash2 } from "lucide-react-native";
+import { AlertCircle, Trash2 } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   useAnimatedStyle,
@@ -111,11 +111,10 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
 
   return (
     <View
-      className={`rounded-xl overflow-hidden border ${
-        isVoided
-          ? "bg-[#2a2020] border-red-900/50 opacity-60"
-          : "bg-[#303030] border-gray-600"
-      }`}
+      className={`rounded-xl overflow-hidden border ${isVoided
+        ? "bg-[#2a2020] border-red-900/50 opacity-60"
+        : "bg-[#303030] border-gray-600"
+        }`}
     >
       {isEditable && !isVoided && (
         <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
@@ -147,17 +146,20 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                     </View>
                   )}
                   <Text
-                    className={`font-semibold text-lg ${
-                      isVoided ? "text-gray-500 line-through" : "text-white"
-                    }`}
+                    className={`font-semibold text-lg ${isVoided ? "text-gray-500 line-through" : "text-white"
+                      }`}
                   >
                     {item.name}
                   </Text>
-                  {/* Status indicators removed */}
+                  {/* Sync status indicator */}
+                  {item.sync_status === "pending" || item.sync_status === "syncing" ? (
+                    <ActivityIndicator size={10} color="#60A5FA" style={{ marginLeft: 12 }} />
+                  ) : item.sync_status === "failed" ? (
+                    <AlertCircle size={16} color="#EF4444" style={{ marginLeft: 6 }} />
+                  ) : null}
                   <Text
-                    className={`text-base ml-4 ${
-                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
-                    }`}
+                    className={`text-base ml-4 ${isVoided ? "text-gray-600 line-through" : "text-gray-300"
+                      }`}
                   >
                     {item.quantity} X
                   </Text>
@@ -172,9 +174,8 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                 </View>
               </View>
               <Text
-                className={`font-semibold text-xl ${
-                  isVoided ? "text-gray-500 line-through" : "text-white"
-                }`}
+                className={`font-semibold text-xl ${isVoided ? "text-gray-500 line-through" : "text-white"
+                  }`}
               >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
