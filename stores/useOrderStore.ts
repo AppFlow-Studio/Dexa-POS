@@ -179,7 +179,8 @@ const addItemToBackend = async (
     id: string,
     dbId: string,
     number: string,
-    display: string
+    display: string,
+    createdAt: string
   ) => void,
   removeItem: (itemId: string) => void,
   onSyncComplete?: (orderId: string) => void // Callback after successful sync
@@ -265,7 +266,8 @@ const addItemToBackend = async (
             order.id,
             backendId,
             orderData.order_number,
-            orderData.display_number
+            orderData.display_number,
+            orderData.created_at || new Date().toISOString() // Fallback for offline
           );
         } else {
           console.error("createOrder result invalid:", createResult);
@@ -1251,7 +1253,8 @@ export const useOrderStore = create<OrderState>()(
                   orderId: string,
                   dbOrderId: string,
                   orderNumber: string,
-                  displayNumber: string
+                  displayNumber: string,
+                  createdAt: string
                 ) => {
                   set((state) => ({
                     ordersById: {
@@ -1262,6 +1265,9 @@ export const useOrderStore = create<OrderState>()(
                         order_number: orderNumber,
                         display_number: displayNumber,
                         sync_status: "synced" as const,
+                        // Set opened_at from backend's created_at (when 1st item was added)
+                        opened_at:
+                          state.ordersById[orderId]?.opened_at || createdAt,
                       },
                     },
                   }));
