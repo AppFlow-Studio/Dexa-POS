@@ -320,6 +320,9 @@ export interface CartItem {
   // Tax fields for per-item tax calculation
   tax_category?: string | null; // e.g., "standard", "alcohol"
   is_tax_exempt?: boolean;
+  // Voided item tracking
+  is_voided?: boolean;
+  void_reason?: string;
 }
 
 export interface OnlineOrder {

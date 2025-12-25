@@ -364,7 +364,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         .taxRatesMap;
 
     // Calculate order subtotal and discount for proportional tax calculation
-    const masterItems = activeOrder?.items || [];
+    // Filter out voided items - they should not be included in totals
+    const masterItems = (activeOrder?.items || []).filter(
+      (item) => !item.is_voided
+    );
     const orderSubtotal = masterItems.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0

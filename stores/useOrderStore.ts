@@ -54,14 +54,17 @@ function calculateOrderTotals(
   payments: { amount: number }[],
   taxRatesMap: TaxRatesMap // Map of tax_category -> rate percentage
 ): OrderTotals {
-  // Subtotal (all items with their effective prices)
-  const subtotal = items.reduce(
+  // Filter out voided items - they should not be included in totals
+  const activeItems = items.filter((item) => !item.is_voided);
+
+  // Subtotal (all active items with their effective prices)
+  const subtotal = activeItems.reduce(
     (acc, item) => acc + item.price * item.quantity,
     0
   );
 
   // Item-level discounts
-  const itemDiscountsTotal = items.reduce((acc, item) => {
+  const itemDiscountsTotal = activeItems.reduce((acc, item) => {
     if (item.appliedDiscount) {
       return (
         acc + item.originalPrice * item.appliedDiscount.value * item.quantity
@@ -87,7 +90,7 @@ function calculateOrderTotals(
   // Calculate tax per item based on its tax_category
   // Distribute discount proportionally for tax calculation
   let tax_amount = 0;
-  for (const item of items) {
+  for (const item of activeItems) {
     // Skip tax-exempt items
     if (item.is_tax_exempt) continue;
 
@@ -115,7 +118,7 @@ function calculateOrderTotals(
   // Outstanding (unpaid items only) - with per-item tax
   let outstanding_subtotal = 0;
   let outstanding_tax = 0;
-  for (const item of items) {
+  for (const item of activeItems) {
     const unpaidQty = item.quantity - (item.paidQuantity || 0);
     if (unpaidQty <= 0) continue;
 
@@ -712,26 +715,28 @@ export const useOrderStore = create<OrderState>()(
               const storeSettings = useStoreSettingsStore.getState();
               const taxRatesMap = storeSettings.taxRatesMap;
 
+              // Filter out voided items - they should not be included in totals
+              const activeItems = activeOrder.items.filter(
+                (item) => !item.is_voided
+              );
+
               // Subtotal must reflect modifiers (size/add-ons) captured in item.price
-              const subtotal = activeOrder.items.reduce(
+              const subtotal = activeItems.reduce(
                 (acc, item) => acc + item.price * item.quantity,
                 0
               );
 
-              const itemDiscountsTotal = activeOrder.items.reduce(
-                (acc, item) => {
-                  if (item.appliedDiscount) {
-                    return (
-                      acc +
-                      item.originalPrice *
-                        item.appliedDiscount.value *
-                        item.quantity
-                    );
-                  }
-                  return acc;
-                },
-                0
-              );
+              const itemDiscountsTotal = activeItems.reduce((acc, item) => {
+                if (item.appliedDiscount) {
+                  return (
+                    acc +
+                    item.originalPrice *
+                      item.appliedDiscount.value *
+                      item.quantity
+                  );
+                }
+                return acc;
+              }, 0);
 
               const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
 
@@ -747,7 +752,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Calculate local tax using per-item tax rates
               let localTax = 0;
-              for (const item of activeOrder.items) {
+              for (const item of activeItems) {
                 if (item.is_tax_exempt) continue;
                 const taxCategory = item.tax_category || "standard";
                 const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
@@ -799,9 +804,10 @@ export const useOrderStore = create<OrderState>()(
               const total = finalSubtotal + tax;
 
               // Compute outstanding subtotal (unpaid amount) used for badges/logic
+              // Use activeItems (voided items filtered out)
               let outstandingSubtotal = 0;
               let outstandingTax = 0;
-              for (const item of activeOrder.items) {
+              for (const item of activeItems) {
                 const unpaidQty = item.quantity - (item.paidQuantity || 0);
                 if (unpaidQty <= 0) continue;
 
@@ -1518,8 +1524,32 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
-            const itemToRemove = order.items.find((i) => i.id === itemId);
-            const updatedItems = order.items.filter((i) => i.id !== itemId);
+            const itemToHandle = order.items.find((i) => i.id === itemId);
+            if (!itemToHandle) return;
+
+            // Check if item is a kitchen item (sent/ready/served) - should mark as voided, not remove
+            const isKitchenItem =
+              itemToHandle.kitchen_status === "sent" ||
+              itemToHandle.kitchen_status === "ready" ||
+              itemToHandle.kitchen_status === "served";
+
+            let updatedItems: typeof order.items;
+
+            if (isKitchenItem && !itemToHandle.isDraft) {
+              // Kitchen items: mark as voided instead of removing
+              updatedItems = order.items.map((i) =>
+                i.id === itemId
+                  ? {
+                      ...i,
+                      is_voided: true,
+                      void_reason: voidReason || "User voided",
+                    }
+                  : i
+              );
+            } else {
+              // Draft/new items: remove completely
+              updatedItems = order.items.filter((i) => i.id !== itemId);
+            }
 
             // Calculate totals SYNCHRONOUSLY
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -1552,8 +1582,8 @@ export const useOrderStore = create<OrderState>()(
             }));
 
             // Background sync (fire-and-forget)
-            if (itemToRemove?.db_order_item_id && _supabaseClient) {
-              const dbItemId = itemToRemove.db_order_item_id;
+            if (itemToHandle?.db_order_item_id && _supabaseClient) {
+              const dbItemId = itemToHandle.db_order_item_id;
               const reason = voidReason || "User removed";
               OrderService.voidOrderItem(
                 _supabaseClient,
@@ -1616,9 +1646,13 @@ export const useOrderStore = create<OrderState>()(
           },
 
           updateActiveOrderDetails: (details) => {
-            const { activeOrderId } = get();
+            const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
+            const order = ordersById[activeOrderId];
+            if (!order) return;
+
+            // Update local state immediately
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -1628,6 +1662,48 @@ export const useOrderStore = create<OrderState>()(
                 },
               },
             }));
+
+            // Sync to backend (fire-and-forget, non-blocking)
+            const supabase = _supabaseClient;
+            if (supabase && order.db_order_id) {
+              // Sync customer_name to orders table
+              if (details.customer_name !== undefined) {
+                supabase
+                  .from("orders")
+                  .update({ customer_name: details.customer_name })
+                  .eq("id", order.db_order_id)
+                  .then(({ error }) => {
+                    if (error)
+                      console.error("Failed to sync customer_name:", error);
+                    else console.log("Synced customer_name to backend");
+                  });
+              }
+
+              // Sync guest_count to table_sessions.party_size
+              if (
+                details.guest_count !== undefined &&
+                order.service_location_id
+              ) {
+                // Get session ID from the table via floor plan store
+                const table =
+                  useFloorPlanStore.getState().tablesById[
+                    order.service_location_id
+                  ];
+                const sessionId = table?.session?.id;
+
+                if (sessionId) {
+                  supabase
+                    .from("table_sessions")
+                    .update({ party_size: details.guest_count })
+                    .eq("id", sessionId)
+                    .then(({ error }) => {
+                      if (error)
+                        console.error("Failed to sync guest_count:", error);
+                      else console.log("Synced guest_count to backend");
+                    });
+                }
+              }
+            }
           },
 
           applyDiscountToCheck: (orderId, discount) => {
@@ -2424,7 +2500,7 @@ export const useOrderStore = create<OrderState>()(
             }));
           },
           sendNewItemsToKitchen: () => {
-            const { activeOrderId , orders, ordersById} = get();
+            const { activeOrderId, orders, ordersById } = get();
             if (!activeOrderId) return;
 
             const currentOrder = ordersById[activeOrderId];
@@ -2520,6 +2596,7 @@ export const useOrderStore = create<OrderState>()(
             // Sync the status change to the backend ("Preparing")
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && currentOrder.db_order_id) {
+              // Update order status
               supabase
                 .rpc("update_order_status", {
                   p_order_id: currentOrder.db_order_id,
@@ -2533,6 +2610,21 @@ export const useOrderStore = create<OrderState>()(
                     );
                   }
                 });
+
+              // Bulk update item statuses to 'sent' with sent_to_kitchen_at timestamp
+              const dbItemIds = newItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "sent"
+                ).catch((err) => {
+                  console.error("Failed to bulk update item statuses:", err);
+                });
+              }
             }
 
             toastService.show({
@@ -2591,6 +2683,7 @@ export const useOrderStore = create<OrderState>()(
             // Sync to backend
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
+              // Update order status
               supabase
                 .rpc("update_order_status", {
                   p_order_id: order.db_order_id,
@@ -2600,6 +2693,24 @@ export const useOrderStore = create<OrderState>()(
                   if (error)
                     console.error("Failed to sync status for order:", error);
                 });
+
+              // Bulk update item statuses to 'sent' with sent_to_kitchen_at timestamp
+              const newItems = order.items.filter(
+                (item) => !item.kitchen_status || item.kitchen_status === "new"
+              );
+              const dbItemIds = newItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "sent"
+                ).catch((err) => {
+                  console.error("Failed to bulk update item statuses:", err);
+                });
+              }
             }
 
             // Show toast after the state update

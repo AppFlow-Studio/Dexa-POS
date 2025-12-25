@@ -37,7 +37,10 @@ const SplitPaymentView = () => {
   const { show } = useToast();
 
   const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const originalItems = activeOrder?.items || [];
+  // Filter out voided items - they should not be included in splits
+  const originalItems = (activeOrder?.items || []).filter(
+    (item) => !item.is_voided
+  );
 
   // --- State Management ---
   const [splitOption, setSplitOption] = useState<SplitOption>("Split Evenly");
@@ -313,10 +316,16 @@ const SplitPaymentView = () => {
                 <TouchableOpacity
                   key={num}
                   onPress={() => setNumberOfPeople(num)}
-                  className={`w-14 h-14 rounded-lg border items-center justify-center ${numberOfPeople === num ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                  className={`w-14 h-14 rounded-lg border items-center justify-center ${
+                    numberOfPeople === num
+                      ? "border-blue-500 bg-blue-900/30"
+                      : "border-gray-600"
+                  }`}
                 >
                   <Text
-                    className={`text-xl font-semibold ${numberOfPeople === num ? "text-blue-400" : "text-gray-300"}`}
+                    className={`text-xl font-semibold ${
+                      numberOfPeople === num ? "text-blue-400" : "text-gray-300"
+                    }`}
                   >
                     {num}
                   </Text>
@@ -507,10 +516,16 @@ const SplitPaymentView = () => {
                   <TouchableOpacity
                     key={opt}
                     onPress={() => setSplitOption(opt)}
-                    className={`flex-1 py-3 rounded-xl border ${isSelected ? "border-blue-500 bg-blue-900/30" : "border-gray-600"}`}
+                    className={`flex-1 py-3 rounded-xl border ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-900/30"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold text-center ${isSelected ? "text-blue-400" : "text-gray-300"}`}
+                      className={`text-lg font-semibold text-center ${
+                        isSelected ? "text-blue-400" : "text-gray-300"
+                      }`}
                     >
                       {opt}
                     </Text>
@@ -540,20 +555,36 @@ const SplitPaymentView = () => {
                 <View className="flex-row gap-3 items-center ml-4">
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Card")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Card" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Card"
+                        ? "border-blue-500 bg-blue-600"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold ${split.paymentType === "Card" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${
+                        split.paymentType === "Card"
+                          ? "text-white"
+                          : "text-gray-300"
+                      }`}
                     >
                       Card
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetPaymentType(split.id, "Cash")}
-                    className={`py-2 px-4 rounded-lg border ${split.paymentType === "Cash" ? "border-blue-500 bg-blue-600" : "border-gray-600"}`}
+                    className={`py-2 px-4 rounded-lg border ${
+                      split.paymentType === "Cash"
+                        ? "border-blue-500 bg-blue-600"
+                        : "border-gray-600"
+                    }`}
                   >
                     <Text
-                      className={`text-lg font-semibold ${split.paymentType === "Cash" ? "text-white" : "text-gray-300"}`}
+                      className={`text-lg font-semibold ${
+                        split.paymentType === "Cash"
+                          ? "text-white"
+                          : "text-gray-300"
+                      }`}
                     >
                       Cash
                     </Text>
@@ -565,13 +596,21 @@ const SplitPaymentView = () => {
 
           {/* Remaining Balance */}
           <View
-            className={`flex-row justify-between items-center mt-4 p-3 rounded-lg ${Math.abs(remainingBalance) < 0.01 ? "bg-green-900/30" : "bg-red-900/30"}`}
+            className={`flex-row justify-between items-center mt-4 p-3 rounded-lg ${
+              Math.abs(remainingBalance) < 0.01
+                ? "bg-green-900/30"
+                : "bg-red-900/30"
+            }`}
           >
             <Text className="text-lg font-semibold text-white">
               Remaining Balance
             </Text>
             <Text
-              className={`text-2xl font-bold ${Math.abs(remainingBalance) < 0.01 ? "text-green-400" : "text-red-400"}`}
+              className={`text-2xl font-bold ${
+                Math.abs(remainingBalance) < 0.01
+                  ? "text-green-400"
+                  : "text-red-400"
+              }`}
             >
               ${remainingBalance.toFixed(2)}
             </Text>
@@ -588,7 +627,11 @@ const SplitPaymentView = () => {
             <TouchableOpacity
               onPress={handleNext}
               disabled={Math.abs(remainingBalance) > 0.01}
-              className={`flex-1 py-3 rounded-xl items-center ${Math.abs(remainingBalance) > 0.01 ? "bg-gray-500" : "bg-blue-600"}`}
+              className={`flex-1 py-3 rounded-xl items-center ${
+                Math.abs(remainingBalance) > 0.01
+                  ? "bg-gray-500"
+                  : "bg-blue-600"
+              }`}
             >
               <Text className="text-lg font-bold text-white">
                 Confirm & Pay

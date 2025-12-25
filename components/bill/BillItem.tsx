@@ -2,7 +2,7 @@ import { CartItem } from "@/lib/types";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Trash2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -24,6 +24,13 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
   const { openToView, openFullscreenEdit } = useModifierSidebarStore();
   const translateX = useSharedValue(0);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
+
+  // Reset animation when item becomes voided
+  useEffect(() => {
+    if (item.is_voided) {
+      translateX.value = withTiming(0);
+    }
+  }, [item.is_voided]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -90,9 +97,19 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
     (item.customizations.modifiers &&
       item.customizations.modifiers.length > 0) ||
     item.customizations.notes;
+
+  // Check if item is voided
+  const isVoided = item.is_voided === true;
+
   return (
-    <View className="rounded-xl overflow-hidden bg-[#303030] border border-gray-600">
-      {isEditable && (
+    <View
+      className={`rounded-xl overflow-hidden border ${
+        isVoided
+          ? "bg-[#2a2020] border-red-900/50 opacity-60"
+          : "bg-[#303030] border-gray-600"
+      }`}
+    >
+      {isEditable && !isVoided && (
         <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
           <TouchableOpacity
             onPress={handleDelete}
@@ -103,40 +120,54 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
         </View>
       )}
 
-      <GestureDetector gesture={pan}>
-        <Animated.View style={animatedStyle} className="bg-[#303030] z-20">
-          <TouchableOpacity onPress={handleNotesPress} activeOpacity={0.9}>
+      <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
+        <Animated.View
+          style={isVoided ? undefined : animatedStyle}
+          className={isVoided ? "bg-[#2a2020]" : "bg-[#303030] z-20"}
+        >
+          <TouchableOpacity
+            onPress={isVoided ? undefined : handleNotesPress}
+            activeOpacity={isVoided ? 1 : 0.9}
+            disabled={isVoided}
+          >
             <View className="flex-row items-center py-2 px-2">
               <View className="flex-1">
                 <View className="flex-row items-center">
-                  <Text className="font-semibold text-lg text-white">
+                  {isVoided && (
+                    <View className="bg-red-600 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-white text-xs font-bold">VOID</Text>
+                    </View>
+                  )}
+                  <Text
+                    className={`font-semibold text-lg ${
+                      isVoided ? "text-gray-500 line-through" : "text-white"
+                    }`}
+                  >
                     {item.name}
                   </Text>
                   {/* Status indicators removed */}
-                  <Text className="text-base ml-4 text-gray-300">
+                  <Text
+                    className={`text-base ml-4 ${
+                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
+                    }`}
+                  >
                     {item.quantity} X
                   </Text>
                 </View>
+                {isVoided && item.void_reason && (
+                  <Text className="text-red-400/70 text-xs mt-1 italic">
+                    Reason: {item.void_reason}
+                  </Text>
+                )}
                 <View className="flex-row items-center">
-                  {/* {!item.isDraft && (
-                    <TouchableOpacity
-                      className="flex-row items-center ml-3 px-3 py-1 bg-blue-900/30 border border-blue-500 rounded-3xl"
-                    // onPress={handleNotesPress}
-                    >
-                      <Text className="text-lg font-semibold text-blue-400 mr-1">
-                        Edit
-                      </Text>
-
-                      {isExpanded ? (
-                        <ChevronUp color="#60A5FA" size={16} />
-                      ) : (
-                        <ChevronDown color="#60A5FA" size={16} />
-                      )}
-                    </TouchableOpacity>
-                  )} */}
+                  {/* {!item.isDraft && (...)} */}
                 </View>
               </View>
-              <Text className="font-semibold text-xl text-white">
+              <Text
+                className={`font-semibold text-xl ${
+                  isVoided ? "text-gray-500 line-through" : "text-white"
+                }`}
+              >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>

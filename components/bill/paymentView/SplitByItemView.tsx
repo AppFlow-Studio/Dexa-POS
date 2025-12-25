@@ -104,7 +104,11 @@ const SplitByItemView = () => {
     [orders, activeOrderId]
   );
 
-  const masterItems = activeOrder?.items || [];
+  // Filter out voided items - they should not be included in splits
+  const masterItems = useMemo(
+    () => (activeOrder?.items || []).filter((item) => !item.is_voided),
+    [activeOrder?.items]
+  );
 
   // --- LOGIC: Calculate Item Distribution ---
   const itemData = useMemo(() => {

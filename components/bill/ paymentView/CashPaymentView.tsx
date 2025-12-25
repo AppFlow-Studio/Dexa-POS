@@ -17,6 +17,11 @@ const CashPaymentView = () => {
 
   const [amountTendered, setAmountTendered] = useState("");
   const [tipInput, setTipInput] = useState("");
+  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
+    null
+  );
+
+  const TIP_PRESETS = [18, 20, 25];
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
@@ -27,15 +32,19 @@ const CashPaymentView = () => {
       : activeOrderTotal;
   const total = activeSplit ? activeSplit.amount : effectiveOutstandingTotal;
 
+  const tipAmount = parseFloat(tipInput) || 0;
+  const grandTotal = total + tipAmount; // Total including tip
   const tendered = parseFloat(amountTendered) || 0;
-  const changeDue = tendered - total;
-  const isSufficient = tendered >= total;
+  const changeDue = tendered - grandTotal; // Change is after tip
+  const isSufficient = tendered >= grandTotal;
 
-  // Generate smart bill suggestions
+  // Generate smart bill suggestions based on grand total
   const suggestions = useMemo(() => {
     const bills = [10, 20, 50, 100];
-    return bills.filter((bill) => bill >= total || bill === 100 || bill === 50);
-  }, [total]);
+    return bills.filter(
+      (bill) => bill >= grandTotal || bill === 100 || bill === 50
+    );
+  }, [grandTotal]);
 
   const handleSelectAmount = (amount: number) => {
     setAmountTendered(amount.toString());
@@ -43,6 +52,20 @@ const CashPaymentView = () => {
 
   const handleSelectExact = () => {
     setAmountTendered(total.toFixed(2));
+  };
+
+  const handleTipPreset = (percentage: number) => {
+    const calculatedTip = (percentage / 100) * total;
+    setTipInput(calculatedTip.toFixed(2));
+    setSelectedTipPreset(percentage);
+  };
+
+  const handleTipInputChange = (value: string) => {
+    // Only allow valid currency format (numbers and one decimal point)
+    if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
+      setTipInput(value);
+      setSelectedTipPreset(null); // Clear preset when manually typing
+    }
   };
 
   const handleProcessCashPayment = () => {
@@ -140,11 +163,45 @@ const CashPaymentView = () => {
           {/* Tip Section */}
           <View className="p-4 bg-[#262626] border-t border-[#333]">
             <Text className="text-gray-400 mb-2 font-medium">Tip Amount</Text>
+            {/* Preset Tip Buttons */}
+            <View className="flex-row gap-2 mb-3">
+              {TIP_PRESETS.map((percent) => (
+                <TouchableOpacity
+                  key={percent}
+                  onPress={() => handleTipPreset(percent)}
+                  className={`flex-1 py-2 rounded-xl border ${
+                    selectedTipPreset === percent
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-[#333] border-[#404040]"
+                  }`}
+                >
+                  <Text
+                    className={`text-center font-bold ${
+                      selectedTipPreset === percent
+                        ? "text-white"
+                        : "text-gray-300"
+                    }`}
+                  >
+                    {percent}%
+                  </Text>
+                  <Text
+                    className={`text-center text-xs mt-1 ${
+                      selectedTipPreset === percent
+                        ? "text-blue-200"
+                        : "text-gray-500"
+                    }`}
+                  >
+                    ${((percent / 100) * total).toFixed(2)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {/* Custom Tip Input */}
             <View className="flex-row items-center bg-[#1A1A1A] border border-[#404040] rounded-xl px-4 h-16">
               <DollarSign size={20} color="#9CA3AF" />
               <TextInput
                 value={tipInput}
-                onChangeText={setTipInput}
+                onChangeText={handleTipInputChange}
                 placeholder="0.00"
                 keyboardType="numeric"
                 className="flex-1 text-2xl font-bold text-white ml-2 h-full"
@@ -153,15 +210,41 @@ const CashPaymentView = () => {
             </View>
           </View>
 
+          {/* Grand Total Section - Shows when tip is added */}
+          <View className="p-4 bg-[#1A1A1A] border-t border-[#333]">
+            <View className="flex-row justify-between items-center">
+              <Text className="text-gray-400 text-sm">Bill Total</Text>
+              <Text className="text-gray-400 text-sm">${total.toFixed(2)}</Text>
+            </View>
+            {tipAmount > 0 && (
+              <View className="flex-row justify-between items-center mt-1">
+                <Text className="text-green-400 text-sm">+ Tip</Text>
+                <Text className="text-green-400 text-sm">
+                  ${tipAmount.toFixed(2)}
+                </Text>
+              </View>
+            )}
+            <View className="flex-row justify-between items-center mt-2 pt-2 border-t border-[#333]">
+              <Text className="text-white font-bold text-lg">Grand Total</Text>
+              <Text className="text-blue-400 font-bold text-2xl">
+                ${grandTotal.toFixed(2)}
+              </Text>
+            </View>
+          </View>
+
           {/* Bottom Section: Change Calculation */}
           <View
-            className={`p-6 flex-row justify-between items-center ${isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"}`}
+            className={`p-6 flex-row justify-between items-center ${
+              isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
+            }`}
           >
             <Text className="text-lg font-medium text-gray-300">
               Change Due
             </Text>
             <Text
-              className={`text-3xl font-bold ${isSufficient ? "text-green-400" : "text-gray-500"}`}
+              className={`text-3xl font-bold ${
+                isSufficient ? "text-green-400" : "text-gray-500"
+              }`}
             >
               ${changeDue > 0 ? changeDue.toFixed(2) : "0.00"}
             </Text>
@@ -184,10 +267,16 @@ const CashPaymentView = () => {
             onPress={handleProcessCashPayment}
             disabled={!isSufficient && total > 0}
             className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-sm 
-              ${isSufficient || total === 0 ? "bg-blue-600 active:bg-blue-700" : "bg-[#333] border border-[#404040]"}`}
+              ${
+                isSufficient || total === 0
+                  ? "bg-blue-600 active:bg-blue-700"
+                  : "bg-[#333] border border-[#404040]"
+              }`}
           >
             <Text
-              className={`font-bold text-lg ${isSufficient || total === 0 ? "text-white" : "text-gray-500"}`}
+              className={`font-bold text-lg ${
+                isSufficient || total === 0 ? "text-white" : "text-gray-500"
+              }`}
             >
               {total === 0 ? "Complete Order" : "Finalize Payment"}
             </Text>

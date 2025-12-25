@@ -28,6 +28,25 @@ const CardPaymentView = () => {
     "ready" | "processing" | "rejected" | "success"
   >("ready");
   const [tipInput, setTipInput] = useState("");
+  const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
+    null
+  );
+
+  const TIP_PRESETS = [18, 20, 25];
+
+  const handleTipPreset = (percentage: number) => {
+    const calculatedTip = (percentage / 100) * totalToPay;
+    setTipInput(calculatedTip.toFixed(2));
+    setSelectedTipPreset(percentage);
+  };
+
+  const handleTipInputChange = (value: string) => {
+    // Only allow valid currency format (numbers and one decimal point)
+    if (/^\d*\.?\d{0,2}$/.test(value) || value === "") {
+      setTipInput(value);
+      setSelectedTipPreset(null); // Clear preset when manually typing
+    }
+  };
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
@@ -93,11 +112,45 @@ const CardPaymentView = () => {
                 <Text className="text-gray-400 mb-2 font-medium self-start w-full">
                   Add Tip
                 </Text>
+                {/* Preset Tip Buttons */}
+                <View className="flex-row gap-2 w-full mb-4">
+                  {TIP_PRESETS.map((percent) => (
+                    <TouchableOpacity
+                      key={percent}
+                      onPress={() => handleTipPreset(percent)}
+                      className={`flex-1 py-3 rounded-xl border ${
+                        selectedTipPreset === percent
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#333] border-[#404040]"
+                      }`}
+                    >
+                      <Text
+                        className={`text-center font-bold ${
+                          selectedTipPreset === percent
+                            ? "text-white"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {percent}%
+                      </Text>
+                      <Text
+                        className={`text-center text-xs mt-1 ${
+                          selectedTipPreset === percent
+                            ? "text-blue-200"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        ${((percent / 100) * totalToPay).toFixed(2)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Custom Tip Input */}
                 <View className="flex-row items-center bg-[#2A2A2A] border border-[#333] rounded-xl px-4 h-16 w-full mb-8">
                   <Text className="text-gray-400 text-xl mr-2">$</Text>
                   <BottomSheetTextInput
                     value={tipInput}
-                    onChangeText={setTipInput}
+                    onChangeText={handleTipInputChange}
                     placeholder="0.00"
                     keyboardType="numeric"
                     placeholderTextColor="#525252"

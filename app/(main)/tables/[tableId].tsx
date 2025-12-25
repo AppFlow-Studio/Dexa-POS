@@ -33,7 +33,9 @@ const UpdateTableScreen = () => {
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
-  const isModifierSidebarOpen = useModifierSidebarStore((state) => state.isOpen);
+  const isModifierSidebarOpen = useModifierSidebarStore(
+    (state) => state.isOpen
+  );
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -54,8 +56,13 @@ const UpdateTableScreen = () => {
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const { tables, updateSessionStatus, loadFloorPlanStatus, unmergeTable, getTableById } =
-    useFloorPlanStore();
+  const {
+    tables,
+    updateSessionStatus,
+    loadFloorPlanStatus,
+    unmergeTable,
+    getTableById,
+  } = useFloorPlanStore();
 
   const {
     orders,
@@ -103,7 +110,9 @@ const UpdateTableScreen = () => {
   }, [ordersById, getOrderByDbId, table?.session?.order_id]);
   const activeOrder = existingOrderForTable
     ? existingOrderForTable
-    : (activeOrderId ? ordersById[activeOrderId] : undefined);
+    : activeOrderId
+    ? ordersById[activeOrderId]
+    : undefined;
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
@@ -343,10 +352,6 @@ const UpdateTableScreen = () => {
       if (!currentTableId || !updatedTable) return;
 
       // Case 1: Session exists with an order
-      // OPTIMIZED: Use O(1) lookups instead of .find()
-      if (table.session?.order_id) {
-        const sessionOrderId = table.session.order_id;
-        const foundOrder = ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
       if (updatedTable.session?.order_id) {
         const foundOrder = orders.find(
           (o) =>

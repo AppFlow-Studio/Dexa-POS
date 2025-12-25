@@ -144,12 +144,60 @@ const PaymentSuccessView = () => {
           entering={FadeInUp.delay(200)}
           className="w-full max-w-sm bg-[#2A2A2A] rounded-2xl border border-[#333] p-6 items-center"
         >
-          <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
-            Total Paid
-          </Text>
-          <Text className="text-5xl font-bold text-white mb-4">
-            ${activeOrderTotal.toFixed(2)}
-          </Text>
+          {/* Calculate totals from ALL payments (for split payments) */}
+          {(() => {
+            const payments = activeOrder?.payments || [];
+
+            // Sum all payments and tips
+            const totalPaid = payments.reduce(
+              (sum, p) => sum + (p.amount || 0),
+              0
+            );
+            const totalTips = payments.reduce((sum, p) => {
+              const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
+              return sum + tip;
+            }, 0);
+            const grandTotal = totalPaid + totalTips;
+
+            return (
+              <>
+                {totalTips > 0 ? (
+                  <>
+                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                      Bill Total
+                    </Text>
+                    <Text className="text-3xl font-bold text-white mb-2">
+                      ${totalPaid.toFixed(2)}
+                    </Text>
+                    <View className="flex-row items-center mb-2">
+                      <Text className="text-gray-400 text-sm mr-2">
+                        {payments.length > 1 ? "Total Tips:" : "Tip:"}
+                      </Text>
+                      <Text className="text-green-400 text-lg font-bold">
+                        +${totalTips.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View className="w-full h-[1px] bg-[#404040] mb-2" />
+                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                      Grand Total
+                    </Text>
+                    <Text className="text-5xl font-bold text-white mb-4">
+                      ${grandTotal.toFixed(2)}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text className="text-gray-400 text-sm uppercase tracking-widest mb-1">
+                      Total Paid
+                    </Text>
+                    <Text className="text-5xl font-bold text-white mb-4">
+                      ${totalPaid.toFixed(2)}
+                    </Text>
+                  </>
+                )}
+              </>
+            );
+          })()}
 
           <View className="w-full h-[1px] bg-[#404040] mb-4" />
 

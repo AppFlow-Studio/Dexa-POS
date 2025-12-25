@@ -388,4 +388,25 @@ export class OrderService {
     });
     return { data, error };
   }
+
+  // --- Kitchen Status Operations ---
+
+  /**
+   * Bulk update order item statuses (for Send to Kitchen / Fire Course)
+   * Automatically handles sent_to_kitchen_at and updated_at timestamps
+   */
+  static async bulkUpdateOrderItemStatus(
+    client: SupabaseClient,
+    orderItemIds: string[],
+    status: "sent" | "preparing" | "ready" | "served"
+  ): Promise<{ data: any; error: any }> {
+    if (orderItemIds.length === 0) {
+      return { data: null, error: null };
+    }
+    const { data, error } = await client.rpc("bulk_update_order_item_status", {
+      p_order_item_ids: orderItemIds,
+      p_status: status,
+    });
+    return { data, error };
+  }
 }
