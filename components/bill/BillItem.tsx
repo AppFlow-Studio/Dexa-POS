@@ -60,9 +60,12 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
     if (!activeOrderId) return;
 
     if (item.isDraft || !isKitchenItem) {
-      // Draft or new item - simple delete
-      removeItemFromActiveOrder(item.id);
+      // Draft or new item - animate back then remove
       translateX.value = withTiming(0);
+      // Delay removal to allow animation to complete
+      setTimeout(() => {
+        removeItemFromActiveOrder(item.id);
+      }, 200);
     } else {
       // Kitchen item - show void reason dialog
       setShowVoidDialog(true);
@@ -70,11 +73,16 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
   };
 
   const handleConfirmVoid = (reason: string) => {
-    if (activeOrderId) {
-      removeItemFromActiveOrder(item.id, reason);
-      translateX.value = withTiming(0);
-    }
+    // Reset animation first, before any state changes
+    translateX.value = withTiming(0);
     setShowVoidDialog(false);
+
+    // Delay the void operation to allow animation to complete
+    if (activeOrderId) {
+      setTimeout(() => {
+        removeItemFromActiveOrder(item.id, reason);
+      }, 200);
+    }
   };
 
   const handleCancelVoid = () => {
