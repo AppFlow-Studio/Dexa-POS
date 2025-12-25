@@ -1,4 +1,7 @@
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import {
+  selectIsFullscreen,
+  useModifierSidebarStore
+} from "@/stores/useModifierSidebarStore";
 import React, { useEffect, useRef } from "react";
 import { Animated, Dimensions, StyleSheet } from "react-native";
 import ModifierScreen from "./ModifierScreen";
@@ -16,17 +19,14 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
  * - FlatList stays mounted (preserves scroll position)
  * - Smooth native-driver animation
  * - Zero coupling between components
+ * - Uses granular selectors for minimal re-renders
  */
 const ModifierScreenOverlay: React.FC = () => {
-  // Selective subscriptions - only re-render when these specific values change
-  const isOpen = useModifierSidebarStore((state) => state.isOpen);
-
-  const mode = useModifierSidebarStore((state) => state.mode);
+  // Use combined selector for single subscription - minimizes re-renders
+  const isFullscreen = useModifierSidebarStore(selectIsFullscreen);
 
   // Animation value for slide-down effect
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-
-  const isFullscreen = isOpen && mode === "fullscreen";
 
   useEffect(() => {
     if (isFullscreen) {
@@ -47,9 +47,8 @@ const ModifierScreenOverlay: React.FC = () => {
     }
   }, [isFullscreen, slideAnim]);
 
-  // Always render the component but position off-screen when closed
-  // This avoids mount/unmount overhead and enables smooth animations
-  if (!isOpen) return null;
+  // Early return when not fullscreen - avoids rendering when closed
+  if (!isFullscreen) return null;
   return (
     // <View className="absolute inset-0 z-50">
     //   <TouchableOpacity

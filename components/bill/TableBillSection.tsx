@@ -2,7 +2,7 @@ import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { X } from "lucide-react-native"; // Added X import
-import React, { useRef } from "react";
+import React, { useMemo, useRef } from "react";
 import { Text, TouchableOpacity, View } from "react-native"; // Added Text, TouchableOpacity
 import BottomActionBar from "./BottomActionBar";
 import CourseAccordion from "./CourseAccordion";
@@ -49,12 +49,19 @@ const TableBillSection = ({
   onPressProceedToPayment: () => void;
   setCurrentCourse: (course: number) => void;
 }) => {
-  // Added removeCheckDiscount to destructuring
-  const { activeOrderId, orders, removeCheckDiscount } = useOrderStore();
+  // O(1) lookups with individual selectors - only re-renders when specific values change
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const ordersById = useOrderStore((state) => state.ordersById);
+  const removeCheckDiscount = useOrderStore((state) => state.removeCheckDiscount);
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
-  const activeOrder =
-    passedActiveOrder || orders.find((o) => o.id === activeOrderId);
+  // O(1) lookup instead of O(n) find
+  const activeOrder = useMemo(
+    () =>
+      passedActiveOrder ||
+      (activeOrderId ? ordersById[activeOrderId] : undefined),
+    [passedActiveOrder, activeOrderId, ordersById]
+  );
   // Derived check discount
   const appliedDiscount = activeOrder?.checkDiscount;
 

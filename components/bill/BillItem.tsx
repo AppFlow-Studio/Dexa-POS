@@ -179,64 +179,64 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
             </View>
-          </TouchableOpacity>
 
-          {hasModifiers && (
-            <Animated.View className={`overflow-hidden `}>
-              <View className="px-2 border-t border-gray-600">
-                {/* Modifiers */}
-                {item.customizations.modifiers &&
-                  item.customizations.modifiers.length > 0 && (
-                    <View className=" py-1">
-                      {item.customizations.modifiers.map((modifier, index) => (
-                        <View key={index} className="ml-4">
-                          {modifier.options.length > 0 && (
-                            <View
-                              key={index}
-                              className="flex flex-row flex-wrap items-center mb-1"
-                            >
-                              <Text className="text-base font-medium text-gray-300 ">
-                                {modifier.categoryName}:
-                              </Text>
-                              {modifier.options.map((option, optionIndex) => {
-                                return (
-                                  <View
-                                    key={optionIndex}
-                                    className="flex-row justify-between items-center ml-1"
-                                  >
-                                    <Text className="text-base text-gray-200">
-                                      {option.name}
-                                      {optionIndex <
-                                        modifier.options.length - 1 && " • "}
-                                    </Text>
-                                    {option.price > 0 && (
-                                      <Text className="text-base font-medium ml-1 text-green-400">
-                                        +${option.price.toFixed(2)}{" "}
+            {hasModifiers && (
+              <Animated.View className={`overflow-hidden `}>
+                <View className="px-2 border-t border-gray-600">
+                  {/* Modifiers */}
+                  {item.customizations.modifiers &&
+                    item.customizations.modifiers.length > 0 && (
+                      <View className=" py-1">
+                        {item.customizations.modifiers.map((modifier, index) => (
+                          <View key={index} className="ml-4">
+                            {modifier.options.length > 0 && (
+                              <View
+                                key={index}
+                                className="flex flex-row flex-wrap items-center mb-1"
+                              >
+                                <Text className="text-base font-medium text-gray-300 ">
+                                  {modifier.categoryName}:
+                                </Text>
+                                {modifier.options.map((option, optionIndex) => {
+                                  return (
+                                    <View
+                                      key={optionIndex}
+                                      className="flex-row justify-between items-center ml-1"
+                                    >
+                                      <Text className="text-base text-gray-200">
+                                        {option.name}
                                         {optionIndex <
-                                          modifier.options.length - 1 && ","}
+                                          modifier.options.length - 1 && " • "}
                                       </Text>
-                                    )}
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          )}
-                        </View>
-                      ))}
+                                      {option.price > 0 && (
+                                        <Text className="text-base font-medium ml-1 text-green-400">
+                                          +${option.price.toFixed(2)}{" "}
+                                          {optionIndex <
+                                            modifier.options.length - 1 && ","}
+                                        </Text>
+                                      )}
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                  {item.customizations.notes && (
+                    <View className="py-1">
+                      <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
+                      <Text className="text-lg text-gray-200 ml-2 italic">
+                        {item.customizations.notes}
+                      </Text>
                     </View>
                   )}
-
-                {item.customizations.notes && (
-                  <View className="py-1">
-                    <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
-                    <Text className="text-lg text-gray-200 ml-2 italic">
-                      {item.customizations.notes}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </Animated.View>
-          )}
+                </View>
+              </Animated.View>
+            )}
+          </TouchableOpacity>
         </Animated.View>
       </GestureDetector>
 

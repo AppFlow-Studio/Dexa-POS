@@ -29,20 +29,30 @@ type SelectOption = { label: string; value: string };
 const OrderDetails: React.FC = () => {
   const { tables } = useFloorPlanStore();
   const { show } = useToast();
-  const {
-    activeOrderId,
-    orders,
-    updateActiveOrderDetails,
-    updateOrderStatus,
-    assignActiveOrderToTable,
-    assignOrderToTable,
-    addItemToActiveOrder,
-    setPendingTableSelection,
-  } = useOrderStore();
+  // O(1) lookups with individual selectors - only re-renders when specific values change
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const ordersById = useOrderStore((state) => state.ordersById);
+  const updateActiveOrderDetails = useOrderStore(
+    (state) => state.updateActiveOrderDetails
+  );
+  const updateOrderStatus = useOrderStore((state) => state.updateOrderStatus);
+  const assignActiveOrderToTable = useOrderStore(
+    (state) => state.assignActiveOrderToTable
+  );
+  const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
+  const addItemToActiveOrder = useOrderStore(
+    (state) => state.addItemToActiveOrder
+  );
+  const setPendingTableSelection = useOrderStore(
+    (state) => state.setPendingTableSelection
+  );
   const { openDrawer } = useOrderTypeDrawerStore();
   const { openSheet } = useCustomerSheetStore();
-  // Find the full active order object
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // O(1) lookup instead of O(n) find
+  const activeOrder = useMemo(
+    () => (activeOrderId ? ordersById[activeOrderId] : undefined),
+    [activeOrderId, ordersById]
+  );
   const currentOrderType = activeOrder?.order_type || "takeout";
 
   // The state now reflects the data from the global store
@@ -141,9 +151,9 @@ const OrderDetails: React.FC = () => {
       return;
     }
 
-    // Check if the active order is closed
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "completed") {
+    // Check if the active order is closed - O(1) lookup
+    const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+    if (currentOrder?.order_status === "completed") {
       show({
         title: "Order Closed",
         message: "Cannot add items to a closed order. Please reopen it first.",

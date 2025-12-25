@@ -266,3 +266,39 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         });
     },
 }));
+
+// ============================================================================
+// GRANULAR SELECTORS - For optimized component subscriptions
+// Components should use these to avoid re-renders from unrelated state changes
+// ============================================================================
+
+/** Selector for isOpen state - use in overlay/wrapper components */
+export const selectIsOpen = (state: ModifierSidebarState) => state.isOpen;
+
+/** Selector for mode - use when you only need to check the current mode */
+export const selectMode = (state: ModifierSidebarState) => state.mode;
+
+/** Selector for menu item - use when you need the base menu item data */
+export const selectMenuItem = (state: ModifierSidebarState) => state.menuItem;
+
+/** Selector for cart item - use when editing existing cart items */
+export const selectCartItem = (state: ModifierSidebarState) => state.cartItem;
+
+/** Selector for precomputed modifiers - use for instant modifier rendering */
+export const selectPrecomputedModifiers = (state: ModifierSidebarState) => state.precomputedModifiers;
+
+/** Selector for initial selections - use for instant form initialization */
+export const selectInitialSelections = (state: ModifierSidebarState) => state.initialSelections;
+
+/** Selector for precomputed item price - use for instant price display */
+export const selectItemPrice = (state: ModifierSidebarState) => state.itemPrice;
+
+/** Selector for active modifier category - use for tab highlighting */
+export const selectActiveModifierCategory = (state: ModifierSidebarState) => state.activeModifierCategory;
+
+/** Selector for close action - stable reference, no re-renders */
+export const selectClose = (state: ModifierSidebarState) => state.close;
+
+/** Combined selector for fullscreen mode check */
+export const selectIsFullscreen = (state: ModifierSidebarState) =>
+    state.isOpen && state.mode === "fullscreen";

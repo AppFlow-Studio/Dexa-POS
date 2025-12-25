@@ -7,7 +7,7 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Plus, Send } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
@@ -45,29 +45,45 @@ const BillSection = ({
   moreOptionsSheetRef?: React.RefObject<BottomSheetMethods>;
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
 }) => {
-  const {
-    activeOrderId,
-    orders,
-    activeOrderTotal,
-    startNewOrder,
-    sendNewItemsToKitchen,
-    assignOrderToTable,
-    setActiveOrder,
-  } = useOrderStore();
-  console.log(activeOrderId);
+  // O(1) lookups with individual selectors - only re-renders when specific values change
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const ordersById = useOrderStore((state) => state.ordersById);
+  const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
+  const startNewOrder = useOrderStore((state) => state.startNewOrder);
+  const sendNewItemsToKitchen = useOrderStore((state) => state.sendNewItemsToKitchen);
+  const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
+  const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
+
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
-  // Note: updateTableStatus removed - table session management handled via session-based APIs
   const { show } = useToast();
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
-  const cart = activeOrder?.items || [];
-  const hasDraftItems = cart.some((item) => item.isDraft);
-  // console.log('[BillSection] orders', orders)
-  // Count new items that haven't been sent to kitchen yet
-  const newItemsCount = cart.filter(
-    (item) => item.kitchen_status === "new" || !item.kitchen_status
-  ).length;
+
+  // O(1) lookup instead of O(n) find
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+
+  // Memoize computed values to prevent unnecessary recalculations
+  const cart = useMemo(() => activeOrder?.items || [], [activeOrder?.items]);
+  const hasDraftItems = useMemo(
+    () => cart.some((item) => item.isDraft),
+    [cart]
+  );
+  const newItemsCount = useMemo(
+    () =>
+      cart.filter(
+        (item) => item.kitchen_status === "new" || !item.kitchen_status
+      ).length,
+    [cart]
+  );
+  // Memoize pay button disabled state - prevents clicking when total is 0 or no items
+  const isPayButtonDisabled = useMemo(
+    () =>
+      !activeOrder ||
+      cart.length === 0 ||
+      hasDraftItems ||
+      activeOrderTotal <= 0,
+    [activeOrder, cart.length, hasDraftItems, activeOrderTotal]
+  );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
   const handleOpenDiscounts = () => {
@@ -83,6 +99,10 @@ const BillSection = ({
   };
 
   const handlePayClick = () => {
+    // Safety guard: Prevent payment if button should be disabled
+    if (isPayButtonDisabled) {
+      return;
+    }
     if (!checkEmployeeInShift(activeEmployeeId!)) {
       showClockInWall();
       return;
@@ -92,6 +112,15 @@ const BillSection = ({
         title: "Unconfirmed Items",
         message:
           "Please confirm or remove any customized items before proceeding to payment.",
+        type: "error",
+      });
+      return;
+    }
+    // Additional safety check for zero total
+    if (activeOrderTotal <= 0) {
+      show({
+        title: "Invalid Amount",
+        message: "Cannot process payment for $0.00. Please add items to the order.",
         type: "error",
       });
       return;
@@ -130,6 +159,7 @@ const BillSection = ({
     setActiveOrder(newOrder.id);
   };
 
+
   if (!activeOrderId)
     return (
       <View className="w-1/3 items-center justify-center bg-[#212121] p-8 ">
@@ -167,9 +197,8 @@ const BillSection = ({
 
           {/* Send to Kitchen Button - matching previous colors but with new layout */}
           <TouchableOpacity
-            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${
-              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
-            }`}
+            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+              }`}
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
@@ -197,27 +226,13 @@ const BillSection = ({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
-              disabled={
-                !activeOrder ||
-                activeOrder.items.length === 0 ||
-                activeOrder.items.some((item) => item.isDraft)
-              }
-              className={`flex-1 py-2 rounded-xl ${
-                !activeOrder ||
-                activeOrder.items.length === 0 ||
-                activeOrder.items.some((item) => item.isDraft)
-                  ? "bg-gray-500"
-                  : "bg-blue-600"
-              }`}
+              disabled={isPayButtonDisabled}
+              className={`flex-1 py-2 rounded-xl ${isPayButtonDisabled ? "bg-gray-500" : "bg-blue-600"
+                }`}
             >
               <Text
-                className={`text-center text-xl font-bold ${
-                  !activeOrder ||
-                  activeOrder.items.length === 0 ||
-                  activeOrder.items.some((item) => item.isDraft)
-                    ? "text-gray-400"
-                    : "text-white"
-                }`}
+                className={`text-center text-xl font-bold ${isPayButtonDisabled ? "text-gray-400" : "text-white"
+                  }`}
               >
                 Pay ${activeOrderTotal.toFixed(2)}
               </Text>

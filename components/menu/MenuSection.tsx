@@ -38,6 +38,7 @@ interface MenuSectionProps {
 }
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
+import { useSearchStore } from "@/stores/searchStore";
 import { StyleSheet } from "react-native";
 import ModifierScreenOverlay from "./ModifierScreenOverlay";
 
@@ -173,7 +174,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItemType[]>(
     []
   );
-  // const { openSearch } = useSearchStore();
+  const openSearch = useSearchStore((state) => state.openSearch);
 
 
 
@@ -346,7 +347,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
             <TouchableOpacity
-              // onPress={openSearch}
+              onPress={openSearch}
               className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
             >
               <Search color="#9CA3AF" size={20} />

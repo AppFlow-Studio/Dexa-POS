@@ -1,17 +1,18 @@
 import { useToast } from "@/contexts/ToastContext";
 import { ModifierCategory } from "@/lib/types";
+import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import debounce from "lodash/debounce";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import React, {
+  memo,
   useCallback,
   useEffect,
   useMemo,
-  useRef,
-  useState,
-  memo,
   useReducer,
+  useRef
 } from "react";
 import {
   Image,
@@ -24,7 +25,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { debounce } from "lodash"; // Add lodash if not already installed
 
 interface ModifierSelection {
   [categoryId: string]: {
@@ -36,26 +36,25 @@ interface ModifierSelection {
 // MEMOIZED SUB-COMPONENTS (Prevents unnecessary re-renders)
 // ============================================================================
 
-const CategoryTab = memo(({ 
-  category, 
-  isActive, 
-  hasSelection, 
-  onPress 
-}: { 
-  category: ModifierCategory; 
-  isActive: boolean; 
-  hasSelection: boolean; 
+const CategoryTab = memo(({
+  category,
+  isActive,
+  hasSelection,
+  onPress
+}: {
+  category: ModifierCategory;
+  isActive: boolean;
+  hasSelection: boolean;
   onPress: () => void;
 }) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`p-3 rounded-xl border-2 min-w-[140px] ${
-      isActive
+    className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
         ? "bg-blue-600 border-blue-400"
         : hasSelection
-        ? "bg-green-600 border-green-400"
-        : "bg-[#303030] border-gray-600"
-    }`}
+          ? "bg-green-600 border-green-400"
+          : "bg-[#303030] border-gray-600"
+      }`}
   >
     <View className="flex-row items-center justify-between mb-1.5">
       <Text className="font-semibold text-lg text-white">{category.name}</Text>
@@ -64,23 +63,22 @@ const CategoryTab = memo(({
       )}
     </View>
     <Text
-      className={`text-base ${
-        category.type === "required" ? "text-red-400" : "text-gray-400"
-      }`}
+      className={`text-base ${category.type === "required" ? "text-red-400" : "text-gray-400"
+        }`}
     >
       {category.type}
     </Text>
   </TouchableOpacity>
 ));
 
-const ModifierOption = memo(({ 
-  option, 
+const ModifierOption = memo(({
+  option,
   categoryId,
-  isSelected, 
+  isSelected,
   isUnavailable,
   isReadOnly,
-  onToggle 
-}: { 
+  onToggle
+}: {
   option: any;
   categoryId: string;
   isSelected: boolean;
@@ -91,31 +89,28 @@ const ModifierOption = memo(({
   <TouchableOpacity
     disabled={isReadOnly || isUnavailable}
     onPress={() => onToggle(categoryId, option.id)}
-    className={`p-4 rounded-xl border-2 min-w-[120px] ${
-      isSelected
+    className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
         ? "bg-blue-600 border-blue-400"
         : isUnavailable
-        ? "bg-[#1a1a1a] border-gray-700"
-        : "bg-[#303030] border-gray-600"
-    }`}
+          ? "bg-[#1a1a1a] border-gray-700"
+          : "bg-[#303030] border-gray-600"
+      }`}
   >
     <Text
-      className={`text-xl font-medium text-center ${
-        isSelected
+      className={`text-xl font-medium text-center ${isSelected
           ? "text-white"
           : isUnavailable
-          ? "text-gray-500"
-          : "text-white"
-      }`}
+            ? "text-gray-500"
+            : "text-white"
+        }`}
     >
       {option.name}
       {isUnavailable && " (86'd)"}
     </Text>
     {option.price > 0 && (
       <Text
-        className={`text-lg text-center mt-1 ${
-          isSelected ? "text-blue-200" : "text-blue-400"
-        }`}
+        className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+          }`}
       >
         +${option.price.toFixed(2)}
       </Text>
@@ -143,6 +138,7 @@ type Action =
   | { type: "SET_ACTIVE_CATEGORY"; payload: string | null }
   | { type: "OPEN_QUANTITY_MODAL"; payload: string }
   | { type: "CLOSE_QUANTITY_MODAL" }
+  | { type: "SET_QUANTITY_INPUT"; payload: string }
   | { type: "INITIALIZE"; payload: Partial<State> }
   | { type: "TOGGLE_MODIFIER"; payload: { categoryId: string; optionId: string; category: ModifierCategory } };
 
@@ -157,23 +153,25 @@ const reducer = (state: State, action: Action): State => {
     case "SET_ACTIVE_CATEGORY":
       return { ...state, activeCategory: action.payload };
     case "OPEN_QUANTITY_MODAL":
-      return { 
-        ...state, 
-        isQuantityModalOpen: true, 
-        quantityInput: action.payload 
+      return {
+        ...state,
+        isQuantityModalOpen: true,
+        quantityInput: action.payload
       };
     case "CLOSE_QUANTITY_MODAL":
-      return { 
-        ...state, 
-        isQuantityModalOpen: false, 
-        quantityInput: "" 
+      return {
+        ...state,
+        isQuantityModalOpen: false,
+        quantityInput: ""
       };
+    case "SET_QUANTITY_INPUT":
+      return { ...state, quantityInput: action.payload };
     case "INITIALIZE":
       return { ...state, ...action.payload };
     case "TOGGLE_MODIFIER": {
       const { categoryId, optionId, category } = action.payload;
       const newSelections = { ...state.modifierSelections };
-      
+
       if (!newSelections[categoryId]) {
         newSelections[categoryId] = {};
       }
@@ -326,43 +324,53 @@ const ModifierScreen = () => {
   }, [state.quantity, state.modifierSelections, currentItem, optionsById, getCurrentItemPrice]);
 
   // ============================================================================
-  // DEBOUNCED DRAFT UPDATE (Critical optimization!)
+  // DEBOUNCED DRAFT UPDATE (Stabilized with useRef - no recreation on render)
   // ============================================================================
 
-  const updateDraftItemDebounced = useMemo(
-    () =>
-      debounce((quantity, modifierSelections, notes, currentItem) => {
-        if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
+  const updateDraftItemRef = useRef<ReturnType<typeof debounce> | null>(null);
 
+  // Create stable debounce function once on mount
+  useEffect(() => {
+    updateDraftItemRef.current = debounce(
+      (
+        quantity: number,
+        modifierSelections: ModifierSelection,
+        notes: string,
+        item: any,
+        modifiers: ModifierCategory[] | undefined,
+        categoriesMap: Map<string, ModifierCategory>,
+        optionsMap: Map<string, { option: any; categoryId: string; categoryName: string }>,
+        getPrice: (item: any) => number
+      ) => {
         const { activeOrderId, ordersById, updateItemInActiveOrder } = useOrderStore.getState();
         const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-        const draftItem = activeOrder?.items.find((item) => item.id === draftItemIdRef.current);
+        const draftItem = activeOrder?.items.find((i) => i.id === draftItemIdRef.current);
 
-        if (!draftItem) return;
+        if (!draftItem || !item) return;
 
-        const selectedModifiers = menuItemForModifiers?.modifiers
-          ? Object.entries(modifierSelections).map(([categoryId, selections]) => {
-              const category = modifierCategoriesById.get(categoryId);
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId]) => {
-                  const optionData = optionsById.get(optionId);
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || "",
-                    price: optionData?.option.price || 0,
-                  };
-                });
+        const selectedModifiers = modifiers
+          ? Object.entries(modifierSelections).map(([catId, selections]) => {
+            const category = categoriesMap.get(catId);
+            const selectedOptions = Object.entries(selections)
+              .filter(([_, isSelected]) => isSelected)
+              .map(([optionId]) => {
+                const optionData = optionsMap.get(optionId);
+                return {
+                  id: optionId,
+                  name: optionData?.option.name || "",
+                  price: optionData?.option.price || 0,
+                };
+              });
 
-              return {
-                categoryId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            })
+            return {
+              categoryId: catId,
+              categoryName: category?.name || "",
+              options: selectedOptions,
+            };
+          })
           : [];
 
-        let baseTotal = getCurrentItemPrice(currentItem);
+        let baseTotal = getPrice(item);
         selectedModifiers.forEach((modifier) => {
           modifier.options.forEach((option) => {
             baseTotal += option.price;
@@ -380,17 +388,33 @@ const ModifierScreen = () => {
         };
 
         updateItemInActiveOrder(updatedDraftItem);
-      }, 200), // Update after 300ms of no changes
-    [isOpen, mode, cartItem, menuItemForModifiers, modifierCategoriesById, optionsById, getCurrentItemPrice]
-  );
+      },
+      200
+    );
 
-  // Trigger debounced update
+    return () => {
+      updateDraftItemRef.current?.cancel();
+    };
+  }, []); // Empty deps - stable reference
+
+  // Trigger debounced update when values change
   useEffect(() => {
-    updateDraftItemDebounced(state.quantity, state.modifierSelections, state.notes, currentItem);
-  }, [state.quantity, state.modifierSelections, state.notes, currentItem, updateDraftItemDebounced]);
+    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
+
+    updateDraftItemRef.current?.(
+      state.quantity,
+      state.modifierSelections,
+      state.notes,
+      currentItem,
+      menuItemForModifiers?.modifiers,
+      modifierCategoriesById,
+      optionsById,
+      getCurrentItemPrice
+    );
+  }, [state.quantity, state.modifierSelections, state.notes, currentItem, isOpen, mode, cartItem, menuItemForModifiers?.modifiers, modifierCategoriesById, optionsById, getCurrentItemPrice]);
 
   // ============================================================================
-  // INITIALIZATION (Optimized to run only once)
+  // INITIALIZATION (Optimized - uses precomputed data, minimal deps)
   // ============================================================================
 
   useEffect(() => {
@@ -399,71 +423,36 @@ const ModifierScreen = () => {
     actionHandledRef.current = false;
     isInitializedRef.current = true;
 
-    const initialState: Partial<State> = {
-      quantity: mode === "edit" || (mode === "fullscreen" && cartItem) ? cartItem!.quantity : 1,
-      notes: mode === "edit" || (mode === "fullscreen" && cartItem) ? cartItem!.customizations.notes || "" : "",
+    // Use precomputed data directly - no fallback computation for instant render
+    dispatch({
+      type: "INITIALIZE",
+      payload: {
+        quantity: cartItem?.quantity ?? 1,
+        notes: cartItem?.customizations?.notes ?? "",
+        modifierSelections: storeInitialSelections ?? {},
+        activeCategory: precomputedActiveCategory,
+      },
+    });
+
+    return () => {
+      isInitializedRef.current = false;
     };
+  }, [isOpen, currentItem?.id]); // Minimal deps for faster init
 
-    // Use pre-computed selections if available
-    if (storeInitialSelections) {
-      initialState.modifierSelections = storeInitialSelections;
-      if (precomputedActiveCategory) {
-        initialState.activeCategory = precomputedActiveCategory;
-      }
-    } else {
-      // Fallback: compute selections
-      const initialSelections: ModifierSelection = {};
-      if (menuItemForModifiers?.modifiers) {
-        menuItemForModifiers.modifiers.forEach((category) => {
-          initialSelections[category.id] = {};
+  // ============================================================================
+  // DRAFT ITEM CREATION (Deferred to next frame for non-blocking UI)
+  // ============================================================================
 
-          if ((mode === "edit" || (mode === "fullscreen" && cartItem)) && cartItem) {
-            const existingModifier = cartItem.customizations.modifiers?.find(
-              (mod) => mod.categoryId === category.id
-            );
+  useEffect(() => {
+    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
 
-            if (existingModifier) {
-              existingModifier.options.forEach((selectedOption) => {
-                initialSelections[category.id][selectedOption.id] = true;
-              });
-            }
-
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
-          } else {
-            if (category.type === "required" && category.selectionType === "single") {
-              const firstAvailableOption = category.options.find((option) => option.isAvailable !== false);
-              if (firstAvailableOption) {
-                initialSelections[category.id][firstAvailableOption.id] = true;
-              }
-            }
-
-            category.options.forEach((option) => {
-              if (!initialSelections[category.id][option.id]) {
-                initialSelections[category.id][option.id] = false;
-              }
-            });
-          }
-        });
-
-        if (menuItemForModifiers.modifiers.length > 0) {
-          initialState.activeCategory = menuItemForModifiers.modifiers[0].id;
-        }
-      }
-      initialState.modifierSelections = initialSelections;
-    }
-
-    dispatch({ type: "INITIALIZE", payload: initialState });
-
-    // Create draft item if needed
-    if (mode !== "edit" && !cartItem) {
+    // Defer draft creation to next animation frame for non-blocking UI
+    const frameId = requestAnimationFrame(() => {
       const { activeOrderId, ordersById } = useOrderStore.getState();
       const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
       const stableDraftId = `draft_${currentItem.id}`;
 
+      // Check if draft already exists
       const existingStableDraft = activeOrder?.items.find((item) => item.id === stableDraftId);
       if (existingStableDraft) {
         draftItemIdRef.current = existingStableDraft.id;
@@ -471,6 +460,7 @@ const ModifierScreen = () => {
         return;
       }
 
+      // Check for existing identical item
       const existingItem = activeOrder?.items.find((item) => {
         if (item.menuItemId !== currentItem.id) return false;
         const hasModifiers = item.customizations.modifiers && item.customizations.modifiers.length > 0;
@@ -500,12 +490,12 @@ const ModifierScreen = () => {
         draftItemIdRef.current = draftItem.id;
         lastDraftMenuItemIdRef.current = currentItem.id;
       }
-    }
+    });
 
     return () => {
-      isInitializedRef.current = false;
+      cancelAnimationFrame(frameId);
     };
-  }, [isOpen, currentItem, mode, cartItem]);
+  }, [isOpen, currentItem?.id, mode, cartItem, getCurrentItemPrice, addItemToActiveOrder]);
 
   // ============================================================================
   // CLEANUP
@@ -598,26 +588,26 @@ const ModifierScreen = () => {
 
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(state.modifierSelections)
-          .map(([categoryId, selections]) => {
-            const category = modifierCategoriesById.get(categoryId);
-            const selectedOptions = Object.entries(selections)
-              .filter(([_, isSelected]) => isSelected)
-              .map(([optionId]) => {
-                const optionData = optionsById.get(optionId);
-                return {
-                  id: optionId,
-                  name: optionData?.option.name || "",
-                  price: optionData?.option.price || 0,
-                };
-              });
+        .map(([categoryId, selections]) => {
+          const category = modifierCategoriesById.get(categoryId);
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId]) => {
+              const optionData = optionsById.get(optionId);
+              return {
+                id: optionId,
+                name: optionData?.option.name || "",
+                price: optionData?.option.price || 0,
+              };
+            });
 
-            return {
-              categoryId,
-              categoryName: category?.name || "",
-              options: selectedOptions,
-            };
-          })
-          .filter((mod) => mod.options.length > 0)
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
+        .filter((mod) => mod.options.length > 0)
       : [];
 
     const finalCustomizations = {
@@ -645,7 +635,7 @@ const ModifierScreen = () => {
       const { activeOrderId, ordersById } = useOrderStore.getState();
       const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
-      const coursingState = require("@/stores/useCoursingStore").useCoursingStore.getState();
+      const coursingState = useCoursingStore.getState();
       const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
 
       const existingItem = activeOrder?.items.find((item) => {
@@ -985,7 +975,7 @@ const ModifierScreen = () => {
             <Text className="text-xl font-semibold text-white mb-3 text-center">Enter Quantity</Text>
             <TextInput
               value={state.quantityInput}
-              onChangeText={(text) => dispatch({ type: "SET_NOTES", payload: text })}
+              onChangeText={(text) => dispatch({ type: "SET_QUANTITY_INPUT", payload: text })}
               keyboardType="numeric"
               autoFocus
               className="p-3 border border-gray-600 rounded-lg bg-[#212121] text-xl text-white text-center mb-4 h-16"

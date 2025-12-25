@@ -1,6 +1,5 @@
-import { MOCK_MENU_ITEMS } from "@/lib/mockData";
-import { MenuItemType } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
+import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetTextInput,
@@ -8,7 +7,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { FlatList } from "react-native-gesture-handler";
 import SearchResultItem from "./SearchResultItem";
@@ -17,26 +16,49 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["70%", "75%"], []);
   const [searchText, setSearchText] = useState("");
-  const [searchResults, setSearchResults] =
-    useState<MenuItemType[]>(MOCK_MENU_ITEMS);
 
+  // Get menu items directly from store - only re-renders when menuItems array changes
+  const menuItems = useMenuStore((state) => state.menuItems);
   const { closeSearch, setSearchSheetRef } = useSearchStore();
 
-  useEffect(() => {
-    if (searchText.trim() === "") {
-      setSearchResults(MOCK_MENU_ITEMS);
-    } else {
-      const results = MOCK_MENU_ITEMS.filter((item) =>
-        item.name.toLowerCase().includes(searchText.toLowerCase())
-      );
-      setSearchResults(results);
-    }
-  }, [searchText]);
+  // Optimized search with useMemo - only recalculates when searchText or menuItems change
+  const searchResults = useMemo(() => {
+    const trimmedSearch = searchText.trim().toLowerCase();
 
-  useEffect(() => {
-    //@ts-ignore
-    setSearchSheetRef(searchSheetRef);
-  }, [searchSheetRef]);
+    // If no search text, return all available items
+    if (!trimmedSearch) {
+      return menuItems.filter((item) => item.availability !== false);
+    }
+
+    // Fast filtering - search in name, description, and category
+    return menuItems.filter((item) => {
+      // Skip unavailable items
+      if (item.availability === false) return false;
+
+      // Search in name (most common)
+      if (item.name.toLowerCase().includes(trimmedSearch)) return true;
+
+      // Search in description
+      if (item.description?.toLowerCase().includes(trimmedSearch)) return true;
+
+      // Search in category names
+      const categories = Array.isArray(item.category)
+        ? item.category
+        : item.category
+          ? [item.category]
+          : [];
+      if (categories.some((cat) => cat.toLowerCase().includes(trimmedSearch))) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [searchText, menuItems]);
+
+  // Set ref once on mount
+  useLayoutEffect(() => {
+    setSearchSheetRef(searchSheetRef as React.RefObject<BottomSheetMethods>);
+  }, [setSearchSheetRef]);
 
   const renderBackdrop = useMemo(
     () => (props: any) => (
@@ -88,13 +110,20 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       <View className="mt-14">
         <FlatList
           data={searchResults}
-          keyExtractor={(item, index) => index.toString()}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => <SearchResultItem item={item} />}
           className="px-4"
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={15}
+          windowSize={10}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center h-48">
               <Text className="text-lg text-gray-500">
-                No items found for "{searchText}"
+                {searchText.trim()
+                  ? `No items found for "${searchText}"`
+                  : "No menu items available"}
               </Text>
             </View>
           }

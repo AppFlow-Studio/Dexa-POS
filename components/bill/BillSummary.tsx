@@ -1,6 +1,6 @@
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
 import BillItem from "./BillItem";
 
@@ -34,10 +34,15 @@ const BillSummary: React.FC<BillSummaryProps> = ({
     }
   }, [cart.length]);
 
-  const { activeOrderId, orders } = useOrderStore();
+  // O(1) lookup with individual selector - only re-renders when activeOrderId or ordersById changes
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const ordersById = useOrderStore((state) => state.ordersById);
 
-  // Get the active order to display status badges
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  // O(1) lookup instead of O(n) find
+  const activeOrder = useMemo(
+    () => (activeOrderId ? ordersById[activeOrderId] : undefined),
+    [activeOrderId, ordersById]
+  );
   return (
     <View className="flex-1 bg-[#212121]">
       <View className=" px-6 h-full">
@@ -87,9 +92,8 @@ const BillSummary: React.FC<BillSummaryProps> = ({
                             return (
                               <View
                                 key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-1.5 ${
-                                  highlight ? "border border-blue-500" : ""
-                                }`}
+                                className={`rounded-xl mb-1.5 ${highlight ? "border border-blue-500" : ""
+                                  }`}
                               >
                                 <BillItem item={item} isEditable={true} />
                               </View>
