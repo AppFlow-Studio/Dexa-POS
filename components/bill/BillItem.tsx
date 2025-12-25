@@ -2,7 +2,7 @@ import { CartItem } from "@/lib/types";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { Trash2 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -10,6 +10,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import VoidItemDialog from "./VoidItemDialog";
 
 interface BillItemProps {
   item: CartItem;
@@ -18,14 +19,11 @@ interface BillItemProps {
 
 const DELETE_BUTTON_WIDTH = 90;
 
-const BillItem: React.FC<BillItemProps> = ({
-  item,
-  isEditable = false,
-}) => {
+const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
   const { activeOrderId, removeItemFromActiveOrder } = useOrderStore();
-  const { openToView, openFullscreenEdit } =
-    useModifierSidebarStore();
+  const { openToView, openFullscreenEdit } = useModifierSidebarStore();
   const translateX = useSharedValue(0);
+  const [showVoidDialog, setShowVoidDialog] = useState(false);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -45,12 +43,37 @@ const BillItem: React.FC<BillItemProps> = ({
     .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
     .failOffsetY([-20, 20]); // Fail if vertical movement exceeds 20px
 
+  // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
+  const isKitchenItem =
+    item.kitchen_status === "sent" ||
+    item.kitchen_status === "ready" ||
+    item.kitchen_status === "served";
+
   const handleDelete = () => {
-    if (activeOrderId) {
+    if (!activeOrderId) return;
+
+    if (item.isDraft || !isKitchenItem) {
+      // Draft or new item - simple delete
       removeItemFromActiveOrder(item.id);
-      // Reset the position after deletion
+      translateX.value = withTiming(0);
+    } else {
+      // Kitchen item - show void reason dialog
+      setShowVoidDialog(true);
+    }
+  };
+
+  const handleConfirmVoid = (reason: string) => {
+    if (activeOrderId) {
+      removeItemFromActiveOrder(item.id, reason);
       translateX.value = withTiming(0);
     }
+    setShowVoidDialog(false);
+  };
+
+  const handleCancelVoid = () => {
+    setShowVoidDialog(false);
+    // Reset slide position
+    translateX.value = withTiming(0);
   };
 
   const handleNotesPress = (e: any) => {
@@ -177,6 +200,14 @@ const BillItem: React.FC<BillItemProps> = ({
           )}
         </Animated.View>
       </GestureDetector>
+
+      {/* Void Item Dialog */}
+      <VoidItemDialog
+        isOpen={showVoidDialog}
+        itemName={item.name}
+        onConfirm={handleConfirmVoid}
+        onCancel={handleCancelVoid}
+      />
     </View>
   );
 };

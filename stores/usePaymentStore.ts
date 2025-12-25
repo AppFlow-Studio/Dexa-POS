@@ -240,25 +240,79 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   assignItemToSplit: (splitId, item) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
-        s.id === splitId
-          ? { ...s, items: [...s.items, { ...item, quantity: 1 }] }
-          : s
-      ),
-      isDirty: true,
-    }));
+    set((state) => {
+      const updatedSplits = state.splits.map((s) => {
+        if (s.id !== splitId) return s;
+
+        // Check if item already exists in this split
+        const existingItemIndex = s.items.findIndex((i) => i.id === item.id);
+
+        if (existingItemIndex >= 0) {
+          // Increment quantity of existing item
+          const updatedItems = [...s.items];
+          updatedItems[existingItemIndex] = {
+            ...updatedItems[existingItemIndex],
+            quantity: updatedItems[existingItemIndex].quantity + 1,
+          };
+          return { ...s, items: updatedItems };
+        } else {
+          // Add new item with quantity 1
+          return { ...s, items: [...s.items, { ...item, quantity: 1 }] };
+        }
+      });
+
+      return { splits: updatedSplits, isDirty: true };
+    });
   },
 
   unassignItemFromSplit: (splitId, itemId) => {
-    set((state) => ({
-      splits: state.splits.map((s) =>
-        s.id === splitId
-          ? { ...s, items: s.items.filter((item) => item.id !== itemId) }
-          : s
-      ),
-      isDirty: true,
-    }));
+    set((state) => {
+      let updatedSplits = state.splits.map((s) => {
+        if (s.id !== splitId) return s;
+
+        const existingItemIndex = s.items.findIndex((i) => i.id === itemId);
+        if (existingItemIndex < 0) return s;
+
+        const existingItem = s.items[existingItemIndex];
+
+        if (existingItem.quantity > 1) {
+          // Decrement quantity by 1
+          const updatedItems = [...s.items];
+          updatedItems[existingItemIndex] = {
+            ...updatedItems[existingItemIndex],
+            quantity: updatedItems[existingItemIndex].quantity - 1,
+          };
+          return { ...s, items: updatedItems };
+        } else {
+          // Remove item entirely when quantity becomes 0
+          return { ...s, items: s.items.filter((i) => i.id !== itemId) };
+        }
+      });
+
+      // Auto-remove empty guests (but keep at least one guest)
+      if (updatedSplits.length > 1) {
+        updatedSplits = updatedSplits.filter(
+          (s) =>
+            s.items.length > 0 ||
+            updatedSplits.filter((sp) => sp.items.length > 0).length === 0
+        );
+      }
+
+      // If active split was removed, switch to first available
+      const currentActiveSplitId = state.activeSplitId;
+      const activeStillExists = updatedSplits.some(
+        (s) => s.id === currentActiveSplitId
+      );
+      const newActiveSplitId = activeStillExists
+        ? currentActiveSplitId
+        : updatedSplits[0]?.id || null;
+
+      return {
+        splits: updatedSplits,
+        activeSplitId: newActiveSplitId,
+        isDirty: true,
+      };
+    });
   },
 
   updateSplitAmount: (splitId, amount) => {
@@ -302,14 +356,71 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   startSplitPaymentFlow: (source: PaymentView) => {
     const { splits } = get();
 
-    // 1. Recalculate amounts if needed (Split by Item logic)
-    const updatedSplits = splits.map((split) => {
-      // If we have items but 0 amount, assume we need to calculate price from items
-      if (split.items.length > 0 && split.amount === 0) {
-        const calculatedAmount = split.items.reduce(
-          (acc, item) => acc + item.price * item.quantity,
-          0
+    // Get order and tax rates for tax calculation
+    const { activeOrderId, orders } = useOrderStore.getState();
+    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    const taxRatesMap =
+      require("@/stores/useStoreSettingsStore").useStoreSettingsStore.getState()
+        .taxRatesMap;
+
+    // Calculate order subtotal and discount for proportional tax calculation
+    const masterItems = activeOrder?.items || [];
+    const orderSubtotal = masterItems.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0
+    );
+    const itemDiscountsTotal = masterItems.reduce((acc, item) => {
+      if (item.appliedDiscount) {
+        return (
+          acc + item.originalPrice * item.appliedDiscount.value * item.quantity
         );
+      }
+      return acc;
+    }, 0);
+    const subtotalAfterItemDiscounts = orderSubtotal - itemDiscountsTotal;
+    let checkDiscountAmount = 0;
+    if (activeOrder?.checkDiscount) {
+      checkDiscountAmount =
+        subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
+    }
+    const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
+
+    // Helper function to calculate tax for split items (same logic as useOrderStore)
+    const calculateSplitAmount = (items: typeof masterItems): number => {
+      let subtotal = 0;
+      let tax = 0;
+
+      for (const item of items) {
+        const itemSubtotal = item.price * item.quantity;
+        subtotal += itemSubtotal;
+
+        // Skip tax-exempt items
+        if (item.is_tax_exempt) continue;
+
+        // Get the tax rate for this item's category (default to "standard" if not set)
+        const taxCategory = item.tax_category || "standard";
+        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+        const taxRateDecimal = taxRatePercent / 100;
+
+        // Apply proportional discount to this item
+        const itemDiscountProportion =
+          orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
+        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
+        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
+
+        // Calculate tax for this item
+        tax += itemTaxableAmount * taxRateDecimal;
+      }
+
+      // Round to 2 decimal places
+      return Math.round((subtotal + tax) * 100) / 100;
+    };
+
+    // 1. Recalculate amounts if needed (Split by Item logic - now includes tax)
+    const updatedSplits = splits.map((split) => {
+      // If we have items but 0 amount, assume we need to calculate price from items (with tax)
+      if (split.items.length > 0 && split.amount === 0) {
+        const calculatedAmount = calculateSplitAmount(split.items);
         return { ...split, amount: calculatedAmount };
       }
       return split;

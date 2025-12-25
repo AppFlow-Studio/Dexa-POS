@@ -545,7 +545,7 @@ interface OrderState {
   }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
-  removeItemFromActiveOrder: (itemId: string) => void;
+  removeItemFromActiveOrder: (itemId: string, voidReason?: string) => void;
   confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
     itemId: string,
@@ -1511,7 +1511,7 @@ export const useOrderStore = create<OrderState>()(
             recalculateTotals(activeOrderId);
           },
 
-          removeItemFromActiveOrder: (itemId) => {
+          removeItemFromActiveOrder: (itemId, voidReason) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
@@ -1554,16 +1554,17 @@ export const useOrderStore = create<OrderState>()(
             // Background sync (fire-and-forget)
             if (itemToRemove?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToRemove.db_order_item_id;
+              const reason = voidReason || "User removed";
               OrderService.voidOrderItem(
                 _supabaseClient,
                 dbItemId,
-                "User removed"
+                reason
               ).catch(async (err) => {
                 console.error("Failed to void item:", err);
                 // Queue for offline retry
                 await queueOperation({
                   type: "void_item",
-                  params: { orderItemId: dbItemId, reason: "User removed" },
+                  params: { orderItemId: dbItemId, reason },
                   localOrderId: activeOrderId,
                   localItemId: itemId,
                 });

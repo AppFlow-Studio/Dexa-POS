@@ -318,8 +318,6 @@ const UpdateTableScreen = () => {
       return;
     }
 
-    loadFloorPlanStatus();
-
     const handleAutoCreateSession = async () => {
       // Double-check navigation guard (async timing)
       if (isNavigatingAwayRef.current) {
@@ -327,19 +325,34 @@ const UpdateTableScreen = () => {
         return;
       }
 
+      // CRITICAL: Wait for floor plan status to load BEFORE checking table state
+      // This prevents race condition when navigating from waitlist (session already exists on backend)
+      await loadFloorPlanStatus();
+
+      // Re-fetch table from store after status is loaded (to get updated session data)
+      const updatedTables = useFloorPlanStore.getState().tables;
+      const updatedTable = updatedTables.find((t) => t.id === currentTableId);
+      const updatedTableStatus = updatedTable?.session?.status || "available";
+
       console.log("[handleAutoCreateSession] Starting...");
       console.log("  currentTableId:", currentTableId);
-      console.log("  tableStatus:", tableStatus);
-      console.log("  table?.session:", table?.session?.id);
+      console.log("  updatedTableStatus:", updatedTableStatus);
+      console.log("  updatedTable?.session:", updatedTable?.session?.id);
       console.log("  existingOrderForTable:", existingOrderForTable?.id);
 
-      if (!currentTableId || !table) return;
+      if (!currentTableId || !updatedTable) return;
 
       // Case 1: Session exists with an order
       // OPTIMIZED: Use O(1) lookups instead of .find()
       if (table.session?.order_id) {
         const sessionOrderId = table.session.order_id;
         const foundOrder = ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
+      if (updatedTable.session?.order_id) {
+        const foundOrder = orders.find(
+          (o) =>
+            o.id === updatedTable.session!.order_id ||
+            o.db_order_id === updatedTable.session!.order_id
+        );
 
         if (foundOrder) {
           if (activeOrderId !== foundOrder.id) {
@@ -353,8 +366,8 @@ const UpdateTableScreen = () => {
           // Don't fetch if navigating away or table is being cleared
           if (
             isNavigatingAwayRef.current ||
-            tableStatus === "cleaning" ||
-            tableStatus === "available"
+            updatedTableStatus === "cleaning" ||
+            updatedTableStatus === "available"
           ) {
             console.log(
               "[AutoSession] Skipping fetch - table being cleared or navigating"
@@ -364,7 +377,7 @@ const UpdateTableScreen = () => {
 
           console.log(
             "[AutoSession] Fetching missing order:",
-            table.session.order_id
+            updatedTable.session.order_id
           );
           showLoading("Restoring table session...");
 
@@ -373,7 +386,7 @@ const UpdateTableScreen = () => {
             const { data: fetchedOrder, error } =
               await OrderService.fetchOrderById(
                 supabase,
-                table.session.order_id
+                updatedTable.session.order_id
               );
 
             hideLoading();
@@ -442,8 +455,8 @@ const UpdateTableScreen = () => {
       // Case 2: No Session - Auto-create ONLY on first mount
       // CRITICAL: Only auto-create once per screen mount, not on every status change
       if (
-        !table.session &&
-        tableStatus === "available" &&
+        !updatedTable.session &&
+        updatedTableStatus === "available" &&
         !hasInitializedRef.current
       ) {
         hasInitializedRef.current = true;
@@ -672,7 +685,9 @@ const UpdateTableScreen = () => {
     );
     show({
       title: "Course Finalized",
-      message: `Course ${nextCourse - 1} complete. New items added to Course ${nextCourse}.`,
+      message: `Course ${
+        nextCourse - 1
+      } complete. New items added to Course ${nextCourse}.`,
       type: "success",
     });
   };
@@ -731,7 +746,9 @@ const UpdateTableScreen = () => {
 
     show({
       title: forceResend ? "Course Resent" : "Course Sent",
-      message: `Course ${course} has been ${forceResend ? "resent" : "sent"} for preparation.`,
+      message: `Course ${course} has been ${
+        forceResend ? "resent" : "sent"
+      } for preparation.`,
       type: "success",
     });
   };

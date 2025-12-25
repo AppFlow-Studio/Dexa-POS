@@ -15,6 +15,7 @@ import {
 import { useMenuStore } from "@/stores/useMenuStore";
 import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
 
@@ -44,6 +45,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       setFloorPlanSupabaseClient(supabase);
       setCoursingSupabaseClient(supabase);
       setOfflineSyncSupabaseClient(supabase);
+      setWaitlistSupabaseClient(supabase);
 
       // Initialize offline sync service (only once)
       if (!offlineSyncInitialized.current) {
@@ -54,7 +56,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log(
-        "Supabase client registered with order, floor plan, coursing, and offline sync"
+        "Supabase client registered with order, floor plan, coursing, waitlist, and offline sync"
       );
     }
     // return () => {

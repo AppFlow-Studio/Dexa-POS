@@ -1,10 +1,12 @@
+import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowLeft,
-  CheckCircle2,
   Circle,
+  Minus,
   Play,
   Plus,
   User,
@@ -18,9 +20,50 @@ import {
   View,
 } from "react-native";
 
+// Helper function to calculate tax for split items (same logic as useOrderStore)
+function calculateSplitTax(
+  items: CartItem[],
+  taxRatesMap: Record<string, number>,
+  orderSubtotal: number,
+  orderDiscountAmount: number
+): { subtotal: number; tax: number; total: number } {
+  let subtotal = 0;
+  let tax = 0;
+
+  for (const item of items) {
+    const itemSubtotal = item.price * item.quantity;
+    subtotal += itemSubtotal;
+
+    // Skip tax-exempt items
+    if (item.is_tax_exempt) continue;
+
+    // Get the tax rate for this item's category (default to "standard" if not set)
+    const taxCategory = item.tax_category || "standard";
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const taxRateDecimal = taxRatePercent / 100;
+
+    // Apply proportional discount to this item
+    const itemDiscountProportion =
+      orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
+    const itemDiscountAmount = orderDiscountAmount * itemDiscountProportion;
+    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
+
+    // Calculate tax for this item
+    tax += itemTaxableAmount * taxRateDecimal;
+  }
+
+  // Round to 2 decimal places
+  subtotal = Math.round(subtotal * 100) / 100;
+  tax = Math.round(tax * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+
+  return { subtotal, tax, total };
+}
+
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const orders = useOrderStore((state) => state.orders);
+  const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const {
     splits,
@@ -89,9 +132,37 @@ const SplitByItemView = () => {
   }, [masterItems, splits, activeSplitId]);
 
   const activeSplit = splits.find((s) => s.id === activeSplitId);
-  const activeSplitTotal = activeSplit
-    ? activeSplit.items.reduce((acc, i) => acc + i.price * i.quantity, 0)
-    : 0;
+
+  // Calculate order subtotal and discount for proportional tax calculation
+  const orderSubtotal = masterItems.reduce(
+    (acc, item) => acc + item.price * item.quantity,
+    0
+  );
+  const itemDiscountsTotal = masterItems.reduce((acc, item) => {
+    if (item.appliedDiscount) {
+      return (
+        acc + item.originalPrice * item.appliedDiscount.value * item.quantity
+      );
+    }
+    return acc;
+  }, 0);
+  const subtotalAfterItemDiscounts = orderSubtotal - itemDiscountsTotal;
+  let checkDiscountAmount = 0;
+  if (activeOrder?.checkDiscount) {
+    checkDiscountAmount =
+      subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
+  }
+  const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
+
+  // Calculate split totals with tax
+  const activeSplitTotals = activeSplit
+    ? calculateSplitTax(
+        activeSplit.items,
+        taxRatesMap,
+        orderSubtotal,
+        orderDiscountAmount
+      )
+    : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate global remaining items to control button state
   const globalRemainingItems = itemData.reduce(
@@ -104,13 +175,14 @@ const SplitByItemView = () => {
     addSplit(`Guest ${splits.length + 1}`);
   };
 
-  const toggleAssignment = (item: (typeof itemData)[0]) => {
-    if (!activeSplitId) return;
-    if (item.qtyRemaining > 0) {
-      assignItemToSplit(activeSplitId, { ...item, quantity: 1 });
-    } else if (item.qtyInCurrent > 0) {
-      unassignItemFromSplit(activeSplitId, item.id);
-    }
+  const handleAddToGuest = (item: (typeof itemData)[0]) => {
+    if (!activeSplitId || item.qtyRemaining <= 0) return;
+    assignItemToSplit(activeSplitId, { ...item, quantity: 1 });
+  };
+
+  const handleRemoveFromGuest = (item: (typeof itemData)[0]) => {
+    if (!activeSplitId || item.qtyInCurrent <= 0) return;
+    unassignItemFromSplit(activeSplitId, item.id);
   };
 
   const handleStartPayment = () => {
@@ -201,12 +273,26 @@ const SplitByItemView = () => {
             </Text>
           </View>
           <View className="items-end">
-            <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
-              Guest Total
-            </Text>
-            <Text className="text-2xl font-bold text-blue-400">
-              ${activeSplitTotal.toFixed(2)}
-            </Text>
+            <View className="flex-row items-center gap-2">
+              <Text className="text-gray-500 text-xs">Subtotal:</Text>
+              <Text className="text-gray-300 text-sm">
+                ${activeSplitTotals.subtotal.toFixed(2)}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Text className="text-gray-500 text-xs">Tax:</Text>
+              <Text className="text-gray-300 text-sm">
+                ${activeSplitTotals.tax.toFixed(2)}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2 mt-1">
+              <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+                Total:
+              </Text>
+              <Text className="text-xl font-bold text-blue-400">
+                ${activeSplitTotals.total.toFixed(2)}
+              </Text>
+            </View>
           </View>
         </View>
       )}
@@ -218,28 +304,29 @@ const SplitByItemView = () => {
             const isSelected = item.qtyInCurrent > 0;
             const isFullyAssignedToOthers =
               item.qtyRemaining === 0 && item.qtyInCurrent === 0;
+            const canAdd = item.qtyRemaining > 0;
+            const canRemove = item.qtyInCurrent > 0;
 
             return (
-              <TouchableOpacity
+              <View
                 key={item.id}
-                onPress={() => toggleAssignment(item)}
-                disabled={isFullyAssignedToOthers}
                 className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
                   isSelected
                     ? "bg-[#1e3a8a] border-[#2563eb]"
                     : isFullyAssignedToOthers
-                      ? "bg-[#1A1A1A] opacity-40"
-                      : "bg-[#262626]"
+                    ? "bg-[#1A1A1A] opacity-40"
+                    : "bg-[#262626]"
                 }`}
               >
+                {/* Item Info */}
                 <View className="flex-1">
                   <Text
                     className={`text-lg font-semibold ${
                       isSelected
                         ? "text-white"
                         : isFullyAssignedToOthers
-                          ? "text-gray-500"
-                          : "text-gray-200"
+                        ? "text-gray-500"
+                        : "text-gray-200"
                     }`}
                   >
                     {item.name}
@@ -253,34 +340,70 @@ const SplitByItemView = () => {
                   </Text>
                 </View>
 
+                {/* Quantity Controls */}
                 <View className="items-end gap-1">
                   {isFullyAssignedToOthers ? (
                     <Text className="text-gray-500 italic text-xs">
-                      Assigned
+                      Assigned to others
                     </Text>
                   ) : (
                     <View className="flex-row items-center gap-2">
-                      {item.qtyInCurrent > 0 && (
-                        <View className="bg-blue-600 px-2 py-1 rounded-md">
-                          <Text className="text-white text-xs font-bold">
-                            {item.qtyInCurrent}x
-                          </Text>
-                        </View>
-                      )}
-                      {isSelected ? (
-                        <CheckCircle2 size={24} color="#3b82f6" fill="white" />
-                      ) : (
-                        <Circle size={24} color="#555" />
-                      )}
+                      {/* Minus Button */}
+                      <TouchableOpacity
+                        onPress={() => handleRemoveFromGuest(item)}
+                        disabled={!canRemove}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${
+                          canRemove
+                            ? "bg-red-600 active:bg-red-700"
+                            : "bg-[#333] opacity-30"
+                        }`}
+                      >
+                        <Minus size={16} color={canRemove ? "white" : "#666"} />
+                      </TouchableOpacity>
+
+                      {/* Quantity Badge */}
+                      <View
+                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
+                          isSelected ? "bg-blue-600" : "bg-[#333]"
+                        }`}
+                      >
+                        <Text
+                          className={`text-sm font-bold ${
+                            isSelected ? "text-white" : "text-gray-500"
+                          }`}
+                        >
+                          {item.qtyInCurrent}x
+                        </Text>
+                      </View>
+
+                      {/* Plus Button */}
+                      <TouchableOpacity
+                        onPress={() => handleAddToGuest(item)}
+                        disabled={!canAdd}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${
+                          canAdd
+                            ? "bg-green-600 active:bg-green-700"
+                            : "bg-[#333] opacity-30"
+                        }`}
+                      >
+                        <Plus size={16} color={canAdd ? "white" : "#666"} />
+                      </TouchableOpacity>
                     </View>
                   )}
-                  {item.qtyRemaining > 0 && (
+
+                  {/* Status Text */}
+                  {item.qtyRemaining > 0 && !isFullyAssignedToOthers && (
                     <Text className="text-blue-400 text-xs font-medium mt-1">
                       {item.qtyRemaining} left
                     </Text>
                   )}
+                  {item.qtyRemaining === 0 && isSelected && (
+                    <Text className="text-green-400 text-xs font-medium mt-1">
+                      ✓ All assigned
+                    </Text>
+                  )}
                 </View>
-              </TouchableOpacity>
+              </View>
             );
           })}
         </BottomSheetScrollView>
@@ -291,7 +414,9 @@ const SplitByItemView = () => {
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-gray-400 text-sm">Items Remaining</Text>
           <Text
-            className={`font-bold ${globalRemainingItems > 0 ? "text-red-400" : "text-green-400"}`}
+            className={`font-bold ${
+              globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
+            }`}
           >
             {globalRemainingItems}
           </Text>
