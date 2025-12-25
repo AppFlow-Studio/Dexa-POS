@@ -8,6 +8,7 @@ import {
 import { ArrowLeft } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
+import { NetworkStatusBadge } from "./NetworkStatusBadge";
 import SessionDock from "./SessionDock";
 
 const Header = () => {
@@ -151,6 +152,7 @@ const Header = () => {
 
   return (
     <View className="flex-row justify-between items-center h-14">
+      {/* Left Section */}
       <View className="flex-row items-center flex-shrink-0">
         {showBackButton && (
           <TouchableOpacity
@@ -163,6 +165,17 @@ const Header = () => {
         <Text className="text-2xl font-bold text-white">{title}</Text>
       </View>
 
+      {/* Center Section - Network Status Badge */}
+      <View
+        className="absolute left-0 right-0 items-center justify-center"
+        pointerEvents="box-none"
+      >
+        <View pointerEvents="auto">
+          <NetworkStatusBadge />
+        </View>
+      </View>
+
+      {/* Right Section */}
       <View className="flex-shrink-0">
         <SessionDock />
       </View>

@@ -121,12 +121,12 @@ const OrderLineItemsView = ({
         end={{ x: 0, y: 1 }}
         className="p-5 pb-4 items-center border-b border-dashed border-[#444]"
       >
-        <Text className="text-2xl font-bold text-white mb-3">
+        <Text className="text-2xl font-bold text-white mb-3 p-5">
           Order Summary
         </Text>
 
         {/* Status Badges - Pastel Pills */}
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-3 px-5">
           <View className={`px-4 py-1.5 rounded-full ${orderStatusStyle.bg}`}>
             <Text
               className={`text-sm font-semibold capitalize ${orderStatusStyle.text}`}

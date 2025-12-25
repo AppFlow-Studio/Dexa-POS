@@ -118,7 +118,6 @@ const PinLoginScreen = () => {
 
       // Try server-side verification first (works online, queues offline)
       const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
-
       if (result?.staff_id) {
         // Server returned employee ID - get local employee record
         employee = getEmployeeByStaffId(result.staff_id) || null;
@@ -285,9 +284,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
           </TouchableOpacity>
@@ -295,9 +293,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
           </TouchableOpacity>
@@ -305,9 +302,8 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
-              !canSubmit && "opacity-50"
-            }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
+              }`}
           >
             <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
           </TouchableOpacity>
@@ -335,18 +331,17 @@ const PinLoginScreen = () => {
                 dialog.variant === "success"
                   ? "#059669"
                   : dialog.variant === "warning"
-                  ? "#F59E0B"
-                  : "#EF4444",
+                    ? "#F59E0B"
+                    : "#EF4444",
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${
-                dialog.variant === "success"
+              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
                   ? "text-green-400"
                   : dialog.variant === "warning"
-                  ? "text-yellow-400"
-                  : "text-red-400"
-              }`}
+                    ? "text-yellow-400"
+                    : "text-red-400"
+                }`}
             >
               {dialog.title}
             </Text>
@@ -359,8 +354,8 @@ const PinLoginScreen = () => {
                   dialog.variant === "success"
                     ? "#065F46"
                     : dialog.variant === "warning"
-                    ? "#92400E"
-                    : "#7F1D1D",
+                      ? "#92400E"
+                      : "#7F1D1D",
               }}
             >
               <Text className="text-white text-lg font-medium">OK</Text>

@@ -89,6 +89,7 @@ export const useEmployeeStore = create<EmployeeState>()(
       },
 
       getEmployeeByStaffId: (staffId: string) => {
+        console.log("staffId", get().employees.find((e) => e.profileId === staffId));
         return get().employees.find((e) => e.profileId === staffId);
       },
 

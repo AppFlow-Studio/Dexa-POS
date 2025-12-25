@@ -1,6 +1,9 @@
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Switch } from "@/components/ui/switch";
+import { toastService } from "@/lib/toastService";
+import { CacheStats, clearCache, getCacheStats } from "@/services/cacheService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet from "@gorhom/bottom-sheet";
 import { format, parse } from "date-fns";
@@ -16,8 +19,9 @@ import {
   Percent,
   Phone,
   Store,
+  Trash2,
 } from "lucide-react-native";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ScrollView,
   Text,
@@ -181,7 +185,56 @@ const GeneralSettingsScreen = () => {
     hours: true,
     tax: true,
     service: true,
+    cache: true,
   });
+
+  // Cache clearing state
+  const [showClearCacheModal, setShowClearCacheModal] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [cacheStats, setCacheStats] = useState<CacheStats>({
+    orderCount: 0,
+    pendingSyncCount: 0,
+    hasCachedData: false,
+  });
+
+  // Load cache stats on mount
+  useEffect(() => {
+    setCacheStats(getCacheStats());
+  }, []);
+
+  const handleClearCache = async () => {
+    setIsClearing(true);
+    setShowClearCacheModal(false);
+
+    try {
+      const result = await clearCache();
+
+      if (result.success) {
+        toastService.show({
+          title: "Cache Cleared",
+          message: "All cached data has been cleared successfully.",
+          type: "success",
+        });
+      } else {
+        toastService.show({
+          title: "Partial Clear",
+          message: `Cleared with ${result.errors.length} error(s).`,
+          type: "warning",
+        });
+      }
+
+      // Refresh cache stats
+      setCacheStats(getCacheStats());
+    } catch (error) {
+      toastService.show({
+        title: "Error",
+        message: "Failed to clear cache. Please try again.",
+        type: "error",
+      });
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -506,6 +559,44 @@ const GeneralSettingsScreen = () => {
             <Text className="text-white font-bold text-lg">Save Changes</Text>
           </TouchableOpacity>
 
+          {/* Cache & Data Section */}
+          <View className="bg-[#303030] rounded-xl border border-gray-700 mb-6">
+            {renderSectionHeader(
+              "Cache & Data",
+              <Trash2 size={20} color="#f87171" />,
+              "cache"
+            )}
+            {expandedSections.cache && (
+              <View className="p-5">
+                <View className="flex-row items-center justify-between mb-4">
+                  <View className="flex-1 mr-4">
+                    <Text className="text-white font-medium">Clear Cache</Text>
+                    <Text className="text-gray-400 text-sm">
+                      Clear orders, sync queues, and session data
+                    </Text>
+                    {cacheStats.hasCachedData && (
+                      <Text className="text-amber-400 text-xs mt-1">
+                        {cacheStats.orderCount} orders, {cacheStats.pendingSyncCount} pending sync
+                      </Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowClearCacheModal(true)}
+                    className="bg-red-600 px-4 py-2 rounded-lg"
+                    disabled={isClearing}
+                  >
+                    <Text className="text-white font-semibold">
+                      {isClearing ? "Clearing..." : "Clear"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text className="text-gray-500 text-xs">
+                  Device ID, store settings, and employee data will be preserved.
+                </Text>
+              </View>
+            )}
+          </View>
+
           {/* Log Out Section */}
           <View className="bg-[#303030] rounded-xl border border-gray-700 mb-10 p-5">
             <View className="flex-row items-center justify-between">
@@ -544,6 +635,16 @@ const GeneralSettingsScreen = () => {
           type={timePickerState.type}
           onSave={handleTimeSave}
           onClose={() => timeSheetRef.current?.close()}
+        />
+
+        <ConfirmationModal
+          isOpen={showClearCacheModal}
+          onClose={() => setShowClearCacheModal(false)}
+          onConfirm={handleClearCache}
+          title="Clear Cache?"
+          description="This will remove all orders, sync queues, and session data. Device ID and settings will be preserved. This action cannot be undone."
+          confirmText="Clear Cache"
+          variant="destructive"
         />
       </View>
     </GestureHandlerRootView>

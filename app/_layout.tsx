@@ -6,7 +6,8 @@ import ManagerPinModal from "@/components/auth/ManagerPinModal";
 import CustomerSheet from "@/components/bill/CustomerSheet";
 import ItemCustomizationDialog from "@/components/menu/ItemCustomizationDialog";
 import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
-import { SyncStatusBar } from "@/components/SyncStatusBar";
+// SyncStatusBar removed - now using NetworkStatusBadge in Header
+// import { SyncStatusBar } from "@/components/SyncStatusBar";
 import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
 import { TanstackProvider } from "@/contexts/TanstackProvider";
@@ -147,7 +148,7 @@ export default function RootLayout() {
                           },
                         }}
                       />
-                      <SyncStatusBar />
+                      {/* SyncStatusBar removed - now using NetworkStatusBadge in Header */}
                     </LoadingProvider>
                   </ToastProvider>
                 </ThemeProvider>
