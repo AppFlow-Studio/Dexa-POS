@@ -124,27 +124,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Update employee store with mapped data
         setEmployees(mappedEmployees);
         setEmployeeSyncState({ isLoading: false, error: null });
-
-        // Send to debug server in development
-        // if (DEBUG_EMPLOYEES_URL && data) {
-        //   fetch(DEBUG_EMPLOYEES_URL, {
-        //     method: "POST",
-        //     headers: { "Content-Type": "application/json" },
-        //     body: JSON.stringify({ employees: data, locationId }),
-        //   })
-        //     .then((res) => res.json())
-        //     .then((result) => {
-        //       if (result.success) {
-        //         console.log(
-        //           "✅ Employee data sent to debug server:",
-        //           result.path
-        //         );
-        //       }
-        //     })
-        //     .catch((err) => {
-        //       console.log("Debug server not running (optional):", err.message);
-        //     });
-        // }
       } catch (err: any) {
         console.error("Employee sync failed:", err);
         setEmployeeSyncState({
@@ -176,31 +155,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         useFloorPlanStore
           .getState()
           .setActiveFloorPlanId(defaultPlan?.id || null);
-
-        // Debug server logging
-        const DEBUG_FLOOR_PLANS_URL = __DEV__
-          ? "http://192.168.29.134:3456/debug/sync-data"
-          : null;
-
-        if (DEBUG_FLOOR_PLANS_URL && floorPlans) {
-          fetch(DEBUG_FLOOR_PLANS_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ floorPlans: floorPlans, locationId }),
-          })
-            .then((res) => res.json())
-            .then((result) => {
-              if (result.success) {
-                console.log(
-                  "✅ Floor plan data sent to debug server:",
-                  result.path
-                );
-              }
-            })
-            .catch((err) => {
-              console.log("Debug server not running (optional):", err.message);
-            });
-        }
 
         // Load status if we have a floor plan
         if (defaultPlan?.id) {
@@ -271,8 +225,33 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (posSyncData) {
       setMenuData(posSyncData);
+
+      // Send menu data to debug server in development
+      const DEBUG_MENU_URL = __DEV__
+        ? "http://192.168.29.134:3456/debug/sync-data"
+        : null;
+
+      if (DEBUG_MENU_URL) {
+        fetch(DEBUG_MENU_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            menuData: posSyncData,
+            locationId: selectedStore?.id,
+          }),
+        })
+          .then((res) => res.json())
+          .then((result) => {
+            if (result.success) {
+              console.log("✅ Menu data sent to debug server:", result.path);
+            }
+          })
+          .catch((err) => {
+            console.log("Debug server not running (optional):", err.message);
+          });
+      }
     }
-  }, [posSyncData, setMenuData]);
+  }, [posSyncData, setMenuData, selectedStore?.id]);
 
   // Floor plan sync is now handled in the combined useEffect above
 

@@ -7,12 +7,14 @@ interface MenuHeaderProps {
   title: string;
   onAddPress: () => void;
   addButtonLabel: string;
+  disabled?: boolean; // New prop to disable the Add button
 }
 
 const MenuHeader: React.FC<MenuHeaderProps> = ({
   title,
   onAddPress,
   addButtonLabel,
+  disabled = false,
 }) => {
   // Get the action to open the search bottom sheet from the store
   const { openSearch } = useMenuManagementSearchStore();
@@ -30,11 +32,18 @@ const MenuHeader: React.FC<MenuHeaderProps> = ({
 
         {/* Add Button */}
         <TouchableOpacity
-          onPress={onAddPress}
-          className="flex-row items-center bg-blue-600 px-4 py-3 rounded-lg"
+          onPress={disabled ? undefined : onAddPress}
+          disabled={disabled}
+          className={`flex-row items-center px-4 py-3 rounded-lg ${
+            disabled ? "bg-gray-600 opacity-50" : "bg-blue-600"
+          }`}
         >
-          <Plus size={20} color="white" />
-          <Text className="text-base text-white font-bold ml-2">
+          <Plus size={20} color={disabled ? "#9CA3AF" : "white"} />
+          <Text
+            className={`text-base font-bold ml-2 ${
+              disabled ? "text-gray-400" : "text-white"
+            }`}
+          >
             {addButtonLabel}
           </Text>
         </TouchableOpacity>

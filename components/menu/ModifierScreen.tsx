@@ -12,7 +12,7 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
-  useRef
+  useRef,
 } from "react";
 import {
   Image,
@@ -36,87 +36,98 @@ interface ModifierSelection {
 // MEMOIZED SUB-COMPONENTS (Prevents unnecessary re-renders)
 // ============================================================================
 
-const CategoryTab = memo(({
-  category,
-  isActive,
-  hasSelection,
-  onPress
-}: {
-  category: ModifierCategory;
-  isActive: boolean;
-  hasSelection: boolean;
-  onPress: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
-        ? "bg-blue-600 border-blue-400"
-        : hasSelection
+const CategoryTab = memo(
+  ({
+    category,
+    isActive,
+    hasSelection,
+    onPress,
+  }: {
+    category: ModifierCategory;
+    isActive: boolean;
+    hasSelection: boolean;
+    onPress: () => void;
+  }) => (
+    <TouchableOpacity
+      onPress={onPress}
+      className={`p-3 rounded-xl border-2 min-w-[140px] ${
+        isActive
+          ? "bg-blue-600 border-blue-400"
+          : hasSelection
           ? "bg-green-600 border-green-400"
           : "bg-[#303030] border-gray-600"
       }`}
-  >
-    <View className="flex-row items-center justify-between mb-1.5">
-      <Text className="font-semibold text-lg text-white">{category.name}</Text>
-      {hasSelection && (
-        <Check color={isActive ? "#FFFFFF" : "#10B981"} size={20} />
-      )}
-    </View>
-    <Text
-      className={`text-base ${category.type === "required" ? "text-red-400" : "text-gray-400"
-        }`}
     >
-      {category.type}
-    </Text>
-  </TouchableOpacity>
-));
+      <View className="flex-row items-center justify-between mb-1.5">
+        <Text className="font-semibold text-lg text-white">
+          {category.name}
+        </Text>
+        {hasSelection && (
+          <Check color={isActive ? "#FFFFFF" : "#10B981"} size={20} />
+        )}
+      </View>
+      <Text
+        className={`text-base ${
+          category.type === "required" ? "text-red-400" : "text-gray-400"
+        }`}
+      >
+        {category.type}
+      </Text>
+    </TouchableOpacity>
+  )
+);
 
-const ModifierOption = memo(({
-  option,
-  categoryId,
-  isSelected,
-  isUnavailable,
-  isReadOnly,
-  onToggle
-}: {
-  option: any;
-  categoryId: string;
-  isSelected: boolean;
-  isUnavailable: boolean;
-  isReadOnly: boolean;
-  onToggle: (categoryId: string, optionId: string) => void;
-}) => (
-  <TouchableOpacity
-    disabled={isReadOnly || isUnavailable}
-    onPress={() => onToggle(categoryId, option.id)}
-    className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
-        ? "bg-blue-600 border-blue-400"
-        : isUnavailable
+const ModifierOption = memo(
+  ({
+    option,
+    categoryId,
+    isSelected,
+    isUnavailable,
+    isReadOnly,
+    onToggle,
+  }: {
+    option: any;
+    categoryId: string;
+    isSelected: boolean;
+    isUnavailable: boolean;
+    isReadOnly: boolean;
+    onToggle: (categoryId: string, optionId: string) => void;
+  }) => (
+    <TouchableOpacity
+      disabled={isReadOnly || isUnavailable}
+      onPress={() => onToggle(categoryId, option.id)}
+      className={`p-4 rounded-xl border-2 min-w-[120px] ${
+        isSelected
+          ? "bg-blue-600 border-blue-400"
+          : isUnavailable
           ? "bg-[#1a1a1a] border-gray-700"
           : "bg-[#303030] border-gray-600"
       }`}
-  >
-    <Text
-      className={`text-xl font-medium text-center ${isSelected
-          ? "text-white"
-          : isUnavailable
+    >
+      <Text
+        className={`text-xl font-medium text-center ${
+          isSelected
+            ? "text-white"
+            : isUnavailable
             ? "text-gray-500"
             : "text-white"
         }`}
-    >
-      {option.name}
-      {isUnavailable && " (86'd)"}
-    </Text>
-    {option.price > 0 && (
-      <Text
-        className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
-          }`}
       >
-        +${option.price.toFixed(2)}
+        {option.name}
+        {isUnavailable && " (86'd)"}
       </Text>
-    )}
-  </TouchableOpacity>
-));
+      {option.price > 0 && (
+        <Text
+          className={`text-lg text-center mt-1 ${
+            isSelected ? "text-blue-200" : "text-blue-400"
+          }`}
+        >
+          +${option.price.toFixed(2)}
+        </Text>
+      )}
+    </TouchableOpacity>
+  )
+);
 
 // ============================================================================
 // REDUCER FOR BATCHED STATE UPDATES (Better than multiple useState)
@@ -140,7 +151,14 @@ type Action =
   | { type: "CLOSE_QUANTITY_MODAL" }
   | { type: "SET_QUANTITY_INPUT"; payload: string }
   | { type: "INITIALIZE"; payload: Partial<State> }
-  | { type: "TOGGLE_MODIFIER"; payload: { categoryId: string; optionId: string; category: ModifierCategory } };
+  | {
+      type: "TOGGLE_MODIFIER";
+      payload: {
+        categoryId: string;
+        optionId: string;
+        category: ModifierCategory;
+      };
+    };
 
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
@@ -156,13 +174,13 @@ const reducer = (state: State, action: Action): State => {
       return {
         ...state,
         isQuantityModalOpen: true,
-        quantityInput: action.payload
+        quantityInput: action.payload,
       };
     case "CLOSE_QUANTITY_MODAL":
       return {
         ...state,
         isQuantityModalOpen: false,
-        quantityInput: ""
+        quantityInput: "",
       };
     case "SET_QUANTITY_INPUT":
       return { ...state, quantityInput: action.payload };
@@ -180,9 +198,12 @@ const reducer = (state: State, action: Action): State => {
         Object.keys(newSelections[categoryId]).forEach((key) => {
           newSelections[categoryId][key] = false;
         });
-        newSelections[categoryId][optionId] = !newSelections[categoryId][optionId];
+        newSelections[categoryId][optionId] =
+          !newSelections[categoryId][optionId];
       } else {
-        const currentSelected = Object.values(newSelections[categoryId]).filter(Boolean).length;
+        const currentSelected = Object.values(newSelections[categoryId]).filter(
+          Boolean
+        ).length;
         const isCurrentlySelected = newSelections[categoryId][optionId];
 
         if (
@@ -252,7 +273,10 @@ const ModifierScreen = () => {
   const isInitializedRef = useRef(false);
 
   const isReadOnly = mode === "view";
-  const currentItem = mode === "edit" || (mode === "fullscreen" && cartItem) ? cartItem : menuItem;
+  const currentItem =
+    mode === "edit" || (mode === "fullscreen" && cartItem)
+      ? cartItem
+      : menuItem;
 
   // ============================================================================
   // MEMOIZED COMPUTATIONS (Only recalculate when necessary)
@@ -263,7 +287,10 @@ const ModifierScreen = () => {
       if (!item) return 0;
       if (precomputedItemPrice > 0) return precomputedItemPrice;
       if (categoryId && getItemPriceForCategory) {
-        return getItemPriceForCategory(item?.id.split("_")[0] || "", categoryId);
+        return getItemPriceForCategory(
+          item?.id.split("_")[0] || "",
+          categoryId
+        );
       }
       return item.price || 0;
     },
@@ -289,7 +316,10 @@ const ModifierScreen = () => {
 
   const { modifierCategoriesById, optionsById } = useMemo(() => {
     const categoriesMap = new Map<string, ModifierCategory>();
-    const optionsMap = new Map<string, { option: any; categoryId: string; categoryName: string }>();
+    const optionsMap = new Map<
+      string,
+      { option: any; categoryId: string; categoryName: string }
+    >();
 
     menuItemForModifiers?.modifiers?.forEach((category) => {
       categoriesMap.set(category.id, category);
@@ -321,7 +351,13 @@ const ModifierScreen = () => {
     });
 
     return baseTotal * state.quantity;
-  }, [state.quantity, state.modifierSelections, currentItem, optionsById, getCurrentItemPrice]);
+  }, [
+    state.quantity,
+    state.modifierSelections,
+    currentItem,
+    optionsById,
+    getCurrentItemPrice,
+  ]);
 
   // ============================================================================
   // DEBOUNCED DRAFT UPDATE (Stabilized with useRef - no recreation on render)
@@ -339,35 +375,41 @@ const ModifierScreen = () => {
         item: any,
         modifiers: ModifierCategory[] | undefined,
         categoriesMap: Map<string, ModifierCategory>,
-        optionsMap: Map<string, { option: any; categoryId: string; categoryName: string }>,
+        optionsMap: Map<
+          string,
+          { option: any; categoryId: string; categoryName: string }
+        >,
         getPrice: (item: any) => number
       ) => {
-        const { activeOrderId, ordersById, updateItemInActiveOrder } = useOrderStore.getState();
+        const { activeOrderId, ordersById, updateItemInActiveOrder } =
+          useOrderStore.getState();
         const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-        const draftItem = activeOrder?.items.find((i) => i.id === draftItemIdRef.current);
+        const draftItem = activeOrder?.items.find(
+          (i) => i.id === draftItemIdRef.current
+        );
 
         if (!draftItem || !item) return;
 
         const selectedModifiers = modifiers
           ? Object.entries(modifierSelections).map(([catId, selections]) => {
-            const category = categoriesMap.get(catId);
-            const selectedOptions = Object.entries(selections)
-              .filter(([_, isSelected]) => isSelected)
-              .map(([optionId]) => {
-                const optionData = optionsMap.get(optionId);
-                return {
-                  id: optionId,
-                  name: optionData?.option.name || "",
-                  price: optionData?.option.price || 0,
-                };
-              });
+              const category = categoriesMap.get(catId);
+              const selectedOptions = Object.entries(selections)
+                .filter(([_, isSelected]) => isSelected)
+                .map(([optionId]) => {
+                  const optionData = optionsMap.get(optionId);
+                  return {
+                    id: optionId,
+                    name: optionData?.option.name || "",
+                    price: optionData?.option.price || 0,
+                  };
+                });
 
-            return {
-              categoryId: catId,
-              categoryName: category?.name || "",
-              options: selectedOptions,
-            };
-          })
+              return {
+                categoryId: catId,
+                categoryName: category?.name || "",
+                options: selectedOptions,
+              };
+            })
           : [];
 
         let baseTotal = getPrice(item);
@@ -411,7 +453,19 @@ const ModifierScreen = () => {
       optionsById,
       getCurrentItemPrice
     );
-  }, [state.quantity, state.modifierSelections, state.notes, currentItem, isOpen, mode, cartItem, menuItemForModifiers?.modifiers, modifierCategoriesById, optionsById, getCurrentItemPrice]);
+  }, [
+    state.quantity,
+    state.modifierSelections,
+    state.notes,
+    currentItem,
+    isOpen,
+    mode,
+    cartItem,
+    menuItemForModifiers?.modifiers,
+    modifierCategoriesById,
+    optionsById,
+    getCurrentItemPrice,
+  ]);
 
   // ============================================================================
   // INITIALIZATION (Optimized - uses precomputed data, minimal deps)
@@ -453,7 +507,9 @@ const ModifierScreen = () => {
       const stableDraftId = `draft_${currentItem.id}`;
 
       // Check if draft already exists
-      const existingStableDraft = activeOrder?.items.find((item) => item.id === stableDraftId);
+      const existingStableDraft = activeOrder?.items.find(
+        (item) => item.id === stableDraftId
+      );
       if (existingStableDraft) {
         draftItemIdRef.current = existingStableDraft.id;
         lastDraftMenuItemIdRef.current = currentItem.id;
@@ -463,8 +519,11 @@ const ModifierScreen = () => {
       // Check for existing identical item
       const existingItem = activeOrder?.items.find((item) => {
         if (item.menuItemId !== currentItem.id) return false;
-        const hasModifiers = item.customizations.modifiers && item.customizations.modifiers.length > 0;
-        const hasNotes = item.customizations.notes && item.customizations.notes.trim() !== "";
+        const hasModifiers =
+          item.customizations.modifiers &&
+          item.customizations.modifiers.length > 0;
+        const hasNotes =
+          item.customizations.notes && item.customizations.notes.trim() !== "";
         const hasSent = item.kitchen_status === "sent";
         return !hasModifiers && !hasNotes && !hasSent;
       });
@@ -484,6 +543,9 @@ const ModifierScreen = () => {
           availableDiscount: currentItem.availableDiscount,
           appliedDiscount: null,
           paidQuantity: 0,
+          // NEW: Track which category/menu context this item was added from
+          addedFromCategoryId: categoryId || null,
+          addedFromMenuId: null, // Menu context not tracked yet
         };
 
         addItemToActiveOrder(draftItem);
@@ -495,7 +557,14 @@ const ModifierScreen = () => {
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [isOpen, currentItem?.id, mode, cartItem, getCurrentItemPrice, addItemToActiveOrder]);
+  }, [
+    isOpen,
+    currentItem?.id,
+    mode,
+    cartItem,
+    getCurrentItemPrice,
+    addItemToActiveOrder,
+  ]);
 
   // ============================================================================
   // CLEANUP
@@ -515,10 +584,12 @@ const ModifierScreen = () => {
     if (!previousDraftMenuItemId) return;
 
     const switchedToEditExisting = mode === "edit" && !!cartItem;
-    const switchedToDifferentMenuItem = !!menuItem && menuItem.id !== previousDraftMenuItemId;
+    const switchedToDifferentMenuItem =
+      !!menuItem && menuItem.id !== previousDraftMenuItemId;
 
     if (switchedToEditExisting || switchedToDifferentMenuItem) {
-      const { activeOrderId, ordersById, removeItemFromActiveOrder } = useOrderStore.getState();
+      const { activeOrderId, ordersById, removeItemFromActiveOrder } =
+        useOrderStore.getState();
       const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
       const draftItems = activeOrder?.items.filter(
         (item) => item.isDraft && item.menuItemId === previousDraftMenuItemId
@@ -541,14 +612,20 @@ const ModifierScreen = () => {
       if (isReadOnly) return;
       const category = modifierCategoriesById.get(categoryId);
       if (!category) return;
-      dispatch({ type: "TOGGLE_MODIFIER", payload: { categoryId, optionId, category } });
+      dispatch({
+        type: "TOGGLE_MODIFIER",
+        payload: { categoryId, optionId, category },
+      });
     },
     [isReadOnly, modifierCategoriesById]
   );
 
   const handleQuantityPress = useCallback(() => {
     if (isReadOnly) return;
-    dispatch({ type: "OPEN_QUANTITY_MODAL", payload: state.quantity.toString() });
+    dispatch({
+      type: "OPEN_QUANTITY_MODAL",
+      payload: state.quantity.toString(),
+    });
   }, [isReadOnly, state.quantity]);
 
   const handleQuantitySubmit = useCallback(() => {
@@ -568,13 +645,20 @@ const ModifierScreen = () => {
     const baseItem = menuItem || menuItemForModifiers;
     if (!baseItem) return;
 
-    if (menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0) {
-      const hasRequiredSelections = menuItemForModifiers.modifiers.every((category) => {
-        if (category.type === "required") {
-          return Object.values(state.modifierSelections[category.id] || {}).some(Boolean);
+    if (
+      menuItemForModifiers?.modifiers &&
+      menuItemForModifiers.modifiers.length > 0
+    ) {
+      const hasRequiredSelections = menuItemForModifiers.modifiers.every(
+        (category) => {
+          if (category.type === "required") {
+            return Object.values(
+              state.modifierSelections[category.id] || {}
+            ).some(Boolean);
+          }
+          return true;
         }
-        return true;
-      });
+      );
 
       if (!hasRequiredSelections) {
         show({
@@ -588,26 +672,26 @@ const ModifierScreen = () => {
 
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(state.modifierSelections)
-        .map(([categoryId, selections]) => {
-          const category = modifierCategoriesById.get(categoryId);
-          const selectedOptions = Object.entries(selections)
-            .filter(([_, isSelected]) => isSelected)
-            .map(([optionId]) => {
-              const optionData = optionsById.get(optionId);
-              return {
-                id: optionId,
-                name: optionData?.option.name || "",
-                price: optionData?.option.price || 0,
-              };
-            });
+          .map(([categoryId, selections]) => {
+            const category = modifierCategoriesById.get(categoryId);
+            const selectedOptions = Object.entries(selections)
+              .filter(([_, isSelected]) => isSelected)
+              .map(([optionId]) => {
+                const optionData = optionsById.get(optionId);
+                return {
+                  id: optionId,
+                  name: optionData?.option.name || "",
+                  price: optionData?.option.price || 0,
+                };
+              });
 
-          return {
-            categoryId,
-            categoryName: category?.name || "",
-            options: selectedOptions,
-          };
-        })
-        .filter((mod) => mod.options.length > 0)
+            return {
+              categoryId,
+              categoryName: category?.name || "",
+              options: selectedOptions,
+            };
+          })
+          .filter((mod) => mod.options.length > 0)
       : [];
 
     const finalCustomizations = {
@@ -636,13 +720,16 @@ const ModifierScreen = () => {
       const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
       const coursingState = useCoursingStore.getState();
-      const currentCourse = coursingState.getForOrder(activeOrderId)?.currentCourse ?? 1;
+      const currentCourse =
+        coursingState.getForOrder(activeOrderId ?? "")?.workingCourse ?? 1;
 
       const existingItem = activeOrder?.items.find((item) => {
         if (item.menuItemId !== baseItem.id) return false;
 
         const existingItemCourse =
-          coursingState.getForOrder(activeOrderId)?.itemCourseMap?.[item.id] ?? 1;
+          coursingState.getForOrder(activeOrderId ?? "")?.itemCourseMap?.[
+            item.id
+          ] ?? 1;
         if (existingItemCourse !== currentCourse) return false;
 
         const itemCustomizations = item.customizations;
@@ -658,10 +745,12 @@ const ModifierScreen = () => {
           const currentMod = currentModifiers[i];
 
           if (itemMod.categoryId !== currentMod.categoryId) return false;
-          if (itemMod.options.length !== currentMod.options.length) return false;
+          if (itemMod.options.length !== currentMod.options.length)
+            return false;
 
           for (let j = 0; j < itemMod.options.length; j++) {
-            if (itemMod.options[j].id !== currentMod.options[j].id) return false;
+            if (itemMod.options[j].id !== currentMod.options[j].id)
+              return false;
           }
         }
 
@@ -696,6 +785,9 @@ const ModifierScreen = () => {
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
+          // NEW: Track which category/menu context this item was added from
+          addedFromCategoryId: categoryId || null,
+          addedFromMenuId: null,
         };
         addItemToActiveOrder(confirmedItem);
         show({
@@ -717,6 +809,9 @@ const ModifierScreen = () => {
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
+          // NEW: Track which category/menu context this item was added from
+          addedFromCategoryId: categoryId || null,
+          addedFromMenuId: null,
         };
         addItemToActiveOrder(newItem);
         show({
@@ -749,8 +844,14 @@ const ModifierScreen = () => {
 
   const handleCancel = useCallback(() => {
     actionHandledRef.current = true;
-    if (mode !== "edit" && !(mode === "fullscreen" && cartItem) && !cartItem && currentItem) {
-      const { activeOrderId, orders, removeItemFromActiveOrder } = useOrderStore.getState();
+    if (
+      mode !== "edit" &&
+      !(mode === "fullscreen" && cartItem) &&
+      !cartItem &&
+      currentItem
+    ) {
+      const { activeOrderId, orders, removeItemFromActiveOrder } =
+        useOrderStore.getState();
       const activeOrder = orders.find((o) => o.id === activeOrderId);
 
       const draftItems = activeOrder?.items.filter(
@@ -777,12 +878,16 @@ const ModifierScreen = () => {
         <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
           <TouchableOpacity onPress={close} className="flex-row items-center">
             <ArrowLeft color="#9CA3AF" size={20} />
-            <Text className="text-xl font-medium text-white ml-1.5">Back to Bill</Text>
+            <Text className="text-xl font-medium text-white ml-1.5">
+              Back to Bill
+            </Text>
           </TouchableOpacity>
         </View>
         <View className="flex-1 items-center justify-center p-6 w-full">
           <View className="items-center w-full">
-            <Text className="text-2xl font-bold text-white text-center mb-3">Item Already Sent</Text>
+            <Text className="text-2xl font-bold text-white text-center mb-3">
+              Item Already Sent
+            </Text>
             <Text className="text-lg text-gray-400 text-center mb-4 leading-relaxed">
               This item has been sent to the kitchen and cannot be modified.
             </Text>
@@ -793,13 +898,22 @@ const ModifierScreen = () => {
                   className="w-14 h-14 rounded-lg"
                 />
                 <View className="flex-1">
-                  <Text className="text-xl font-semibold text-white">{cartItem.name}</Text>
-                  <Text className="text-base text-gray-400">Quantity: {cartItem.quantity}</Text>
+                  <Text className="text-xl font-semibold text-white">
+                    {cartItem.name}
+                  </Text>
+                  <Text className="text-base text-gray-400">
+                    Quantity: {cartItem.quantity}
+                  </Text>
                 </View>
               </View>
             </View>
-            <TouchableOpacity onPress={close} className="mt-6 bg-blue-600 px-6 py-3 rounded-xl">
-              <Text className="text-lg font-semibold text-white">Back to Bill</Text>
+            <TouchableOpacity
+              onPress={close}
+              className="mt-6 bg-blue-600 px-6 py-3 rounded-xl"
+            >
+              <Text className="text-lg font-semibold text-white">
+                Back to Bill
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -809,7 +923,9 @@ const ModifierScreen = () => {
 
   if (!isOpen || !currentItem) return null;
 
-  const currentCategory = menuItemForModifiers?.modifiers?.find((cat) => cat.id === state.activeCategory);
+  const currentCategory = menuItemForModifiers?.modifiers?.find(
+    (cat) => cat.id === state.activeCategory
+  );
 
   return (
     <KeyboardAvoidingView
@@ -817,14 +933,22 @@ const ModifierScreen = () => {
       className="flex-1 bg-[#212121]"
     >
       <View className="flex-row items-center justify-between p-4 border-b border-gray-700 bg-[#212121]">
-        <TouchableOpacity onPress={handleCancel} className="flex-row items-center">
+        <TouchableOpacity
+          onPress={handleCancel}
+          className="flex-row items-center"
+        >
           <ArrowLeft color="#9CA3AF" size={20} />
           <Text className="text-xl font-medium text-white ml-1.5">
-            {mode === "edit" || (mode === "fullscreen" && cartItem) ? "Back to Bill" : "Back to Menu"}
+            {mode === "edit" || (mode === "fullscreen" && cartItem)
+              ? "Back to Bill"
+              : "Back to Menu"}
           </Text>
         </TouchableOpacity>
         <View className="flex-row items-center gap-x-3">
-          <TouchableOpacity onPress={handleCancel} className="p-2 px-4 rounded-lg bg-red-600">
+          <TouchableOpacity
+            onPress={handleCancel}
+            className="p-2 px-4 rounded-lg bg-red-600"
+          >
             <X color="white" size={23} />
           </TouchableOpacity>
           <TouchableOpacity
@@ -840,10 +964,17 @@ const ModifierScreen = () => {
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         <View className="p-4 border-b border-gray-700">
           <View className="flex-row items-center gap-3">
-            <Image source={require("@/assets/images/classic_burger.png")} className="w-20 h-20 rounded-lg" />
+            <Image
+              source={require("@/assets/images/classic_burger.png")}
+              className="w-20 h-20 rounded-lg"
+            />
             <View className="flex-1">
-              <Text className="text-2xl font-bold text-white">{currentItem.name}</Text>
-              <Text className="text-lg text-gray-400 mt-0.5">{menuItemForModifiers?.description}</Text>
+              <Text className="text-2xl font-bold text-white">
+                {currentItem.name}
+              </Text>
+              <Text className="text-lg text-gray-400 mt-0.5">
+                {menuItemForModifiers?.description}
+              </Text>
               <Text className="text-xl font-semibold text-blue-400 mt-1">
                 Base ${getCurrentItemPrice(currentItem).toFixed(2)}
               </Text>
@@ -851,76 +982,108 @@ const ModifierScreen = () => {
           </View>
         </View>
 
-        {menuItemForModifiers?.modifiers && menuItemForModifiers.modifiers.length > 0 && (
-          <View className="p-4">
-            <Text className="text-2xl font-bold text-white mb-3">Options</Text>
-            <View className="flex-row flex-wrap gap-3 mb-4">
-              {menuItemForModifiers.modifiers.map((category) => {
-                const hasSelection = Object.values(state.modifierSelections[category.id] || {}).some(Boolean);
-                const isActive = state.activeCategory === category.id;
-                return (
-                  <CategoryTab
-                    key={category.id}
-                    category={category}
-                    isActive={isActive}
-                    hasSelection={hasSelection}
-                    onPress={() => dispatch({ type: "SET_ACTIVE_CATEGORY", payload: category.id })}
-                  />
-                );
-              })}
-            </View>
+        {menuItemForModifiers?.modifiers &&
+          menuItemForModifiers.modifiers.length > 0 && (
+            <View className="p-4">
+              <Text className="text-2xl font-bold text-white mb-3">
+                Options
+              </Text>
+              <View className="flex-row flex-wrap gap-3 mb-4">
+                {menuItemForModifiers.modifiers.map((category) => {
+                  const hasSelection = Object.values(
+                    state.modifierSelections[category.id] || {}
+                  ).some(Boolean);
+                  const isActive = state.activeCategory === category.id;
+                  return (
+                    <CategoryTab
+                      key={category.id}
+                      category={category}
+                      isActive={isActive}
+                      hasSelection={hasSelection}
+                      onPress={() =>
+                        dispatch({
+                          type: "SET_ACTIVE_CATEGORY",
+                          payload: category.id,
+                        })
+                      }
+                    />
+                  );
+                })}
+              </View>
 
-            {currentCategory && (
-              <View className="mb-4">
-                <View className="flex-row items-center justify-between mb-3">
-                  <Text className="text-xl font-semibold text-white">{currentCategory.name}</Text>
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-lg text-red-400">
-                      {currentCategory.type === "required" ? "Required" : "Optional"}
+              {currentCategory && (
+                <View className="mb-4">
+                  <View className="flex-row items-center justify-between mb-3">
+                    <Text className="text-xl font-semibold text-white">
+                      {currentCategory.name}
                     </Text>
-                    <Text className="text-lg text-gray-400">{currentCategory.selectionType}</Text>
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-lg text-red-400">
+                        {currentCategory.type === "required"
+                          ? "Required"
+                          : "Optional"}
+                      </Text>
+                      <Text className="text-lg text-gray-400">
+                        {currentCategory.selectionType}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="flex-row flex-wrap gap-3">
+                    {currentCategory.options.map((option) => {
+                      const isSelected =
+                        state.modifierSelections[currentCategory.id]?.[
+                          option.id
+                        ] || false;
+                      const isUnavailable = option.isAvailable === false;
+                      return (
+                        <ModifierOption
+                          key={option.id}
+                          option={option}
+                          categoryId={currentCategory.id}
+                          isSelected={isSelected}
+                          isUnavailable={isUnavailable}
+                          isReadOnly={isReadOnly}
+                          onToggle={handleModifierToggle}
+                        />
+                      );
+                    })}
                   </View>
                 </View>
-                <View className="flex-row flex-wrap gap-3">
-                  {currentCategory.options.map((option) => {
-                    const isSelected = state.modifierSelections[currentCategory.id]?.[option.id] || false;
-                    const isUnavailable = option.isAvailable === false;
-                    return (
-                      <ModifierOption
-                        key={option.id}
-                        option={option}
-                        categoryId={currentCategory.id}
-                        isSelected={isSelected}
-                        isUnavailable={isUnavailable}
-                        isReadOnly={isReadOnly}
-                        onToggle={handleModifierToggle}
-                      />
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-          </View>
-        )}
+              )}
+            </View>
+          )}
 
         <View className="p-4 border-y border-gray-700">
-          <Text className="text-xl font-semibold text-white mb-3">Quantity</Text>
+          <Text className="text-xl font-semibold text-white mb-3">
+            Quantity
+          </Text>
           <View className="flex-row items-center justify-center">
             <TouchableOpacity
               disabled={isReadOnly}
-              onPress={() => dispatch({ type: "SET_QUANTITY", payload: Math.max(1, state.quantity - 1) })}
+              onPress={() =>
+                dispatch({
+                  type: "SET_QUANTITY",
+                  payload: Math.max(1, state.quantity - 1),
+                })
+              }
               className="p-3 border border-gray-600 rounded-full bg-[#303030]"
             >
               <Minus color="#9CA3AF" size={20} />
             </TouchableOpacity>
-            <TouchableOpacity disabled={isReadOnly} onPress={handleQuantityPress} className="mx-12 w-14">
+            <TouchableOpacity
+              disabled={isReadOnly}
+              onPress={handleQuantityPress}
+              className="mx-12 w-14"
+            >
               <Text className="text-3xl border rounded-lg p-1 border-gray-600 font-bold text-white text-center">
                 {state.quantity}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               disabled={isReadOnly}
-              onPress={() => dispatch({ type: "SET_QUANTITY", payload: state.quantity + 1 })}
+              onPress={() =>
+                dispatch({ type: "SET_QUANTITY", payload: state.quantity + 1 })
+              }
               className="p-3 bg-blue-500 rounded-full"
             >
               <Plus color="#FFFFFF" size={20} />
@@ -933,33 +1096,45 @@ const ModifierScreen = () => {
           <TextInput
             editable={!isReadOnly}
             value={state.notes}
-            onChangeText={(text) => dispatch({ type: "SET_NOTES", payload: text })}
+            onChangeText={(text) =>
+              dispatch({ type: "SET_NOTES", payload: text })
+            }
             placeholder="No onions..."
             multiline
             maxLength={80}
             className="px-4 py-3 border border-gray-600 rounded-lg bg-[#303030] min-h-[80px] text-xl text-white"
             placeholderTextColor={"#6B7280"}
           />
-          <Text className="text-base text-gray-400 mt-1.5 text-right">{state.notes.length}/80</Text>
+          <Text className="text-base text-gray-400 mt-1.5 text-right">
+            {state.notes.length}/80
+          </Text>
         </View>
 
-        {menuItemForModifiers?.allergens && menuItemForModifiers.allergens.length > 0 && (
-          <View className="p-4 border-b border-gray-700">
-            <Text className="text-xl font-semibold text-white mb-3">Allergens</Text>
-            <View className="flex-row flex-wrap gap-2">
-              {menuItemForModifiers.allergens.map((allergen) => (
-                <View key={allergen} className="px-3 py-2 bg-red-900 rounded-full">
-                  <Text className="text-lg text-red-300">{allergen}</Text>
-                </View>
-              ))}
+        {menuItemForModifiers?.allergens &&
+          menuItemForModifiers.allergens.length > 0 && (
+            <View className="p-4 border-b border-gray-700">
+              <Text className="text-xl font-semibold text-white mb-3">
+                Allergens
+              </Text>
+              <View className="flex-row flex-wrap gap-2">
+                {menuItemForModifiers.allergens.map((allergen) => (
+                  <View
+                    key={allergen}
+                    className="px-3 py-2 bg-red-900 rounded-full"
+                  >
+                    <Text className="text-lg text-red-300">{allergen}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
         <View className="p-4">
           <View className="flex-row justify-between items-center bg-[#303030] p-4 rounded-lg">
             <Text className="text-2xl font-semibold text-white">Total</Text>
-            <Text className="text-3xl font-bold text-white">${total.toFixed(2)}</Text>
+            <Text className="text-3xl font-bold text-white">
+              ${total.toFixed(2)}
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -972,20 +1147,34 @@ const ModifierScreen = () => {
       >
         <View className="flex-1 bg-black/50 justify-center items-center">
           <View className="bg-[#303030] rounded-xl p-4 w-72 border border-gray-600">
-            <Text className="text-xl font-semibold text-white mb-3 text-center">Enter Quantity</Text>
+            <Text className="text-xl font-semibold text-white mb-3 text-center">
+              Enter Quantity
+            </Text>
             <TextInput
               value={state.quantityInput}
-              onChangeText={(text) => dispatch({ type: "SET_QUANTITY_INPUT", payload: text })}
+              onChangeText={(text) =>
+                dispatch({ type: "SET_QUANTITY_INPUT", payload: text })
+              }
               keyboardType="numeric"
               autoFocus
               className="p-3 border border-gray-600 rounded-lg bg-[#212121] text-xl text-white text-center mb-4 h-16"
             />
             <View className="flex-row gap-3">
-              <TouchableOpacity onPress={handleQuantityCancel} className="flex-1 py-3 px-4 bg-gray-600 rounded-lg">
-                <Text className="text-lg font-semibold text-white text-center">Cancel</Text>
+              <TouchableOpacity
+                onPress={handleQuantityCancel}
+                className="flex-1 py-3 px-4 bg-gray-600 rounded-lg"
+              >
+                <Text className="text-lg font-semibold text-white text-center">
+                  Cancel
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleQuantitySubmit} className="flex-1 py-3 px-4 bg-blue-500 rounded-lg">
-                <Text className="text-lg font-semibold text-white text-center">Set</Text>
+              <TouchableOpacity
+                onPress={handleQuantitySubmit}
+                className="flex-1 py-3 px-4 bg-blue-500 rounded-lg"
+              >
+                <Text className="text-lg font-semibold text-white text-center">
+                  Set
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

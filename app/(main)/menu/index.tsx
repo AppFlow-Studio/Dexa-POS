@@ -1,4 +1,7 @@
 import MenuHeader from "@/components/menu/MenuHeader";
+import PriceEditBottomSheet, {
+  PriceEditBottomSheetRef,
+} from "@/components/menu/PriceEditBottomSheet";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { Menu, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
@@ -14,7 +17,7 @@ import {
   Trash2,
   Utensils,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import {
   Gesture,
@@ -31,7 +34,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useMenuLayout } from "./_layout";
-
 // Get image source for preview
 const getImageSource = (image: string | undefined) => {
   if (image && image.length > 200) {
@@ -85,6 +87,12 @@ interface DraggableMenuProps {
   onToggleCategoryActive: (menuId: string, categoryId: string) => void;
   onSchedule: () => void;
   onEdit: () => void;
+  getItemsInCategory: (categoryName: string) => MenuItemType[];
+  onItemPriceEdit: (
+    item: MenuItemType,
+    categoryId: string,
+    menuId: string
+  ) => void;
 }
 
 // Helper to check if now is within a schedule
@@ -158,6 +166,8 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
   onToggleCategoryActive,
   onSchedule,
   onEdit,
+  getItemsInCategory,
+  onItemPriceEdit,
 }) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -270,6 +280,8 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
                 onReorderCategories(menu.id, fromIndex, toIndex)
               }
               onToggleActive={onToggleCategoryActive}
+              items={getItemsInCategory(category.name)}
+              onItemPriceEdit={onItemPriceEdit}
             />
           ))}
         </View>
@@ -284,6 +296,12 @@ interface DraggableMenuCategoryProps {
   index: number;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onToggleActive: (menuId: string, categoryId: string) => void;
+  items: MenuItemType[];
+  onItemPriceEdit: (
+    item: MenuItemType,
+    categoryId: string,
+    menuId: string
+  ) => void;
 }
 
 const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
@@ -292,10 +310,13 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
   index,
   onReorder,
   onToggleActive,
+  items,
+  onItemPriceEdit,
 }) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const isDragging = useSharedValue(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -337,44 +358,83 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
   return (
     <Animated.View
       style={animatedStyle}
-      className="flex-row items-center justify-between bg-[#212121] p-4 rounded border border-gray-700"
+      className="bg-[#212121] rounded border border-gray-700"
     >
-      <View className="flex-row items-center gap-2">
-        <GestureDetector gesture={panGesture}>
-          <View className="p-2 -ml-2 cursor-grab">
-            <GripVertical size={20} color="#6B7280" />
-          </View>
-        </GestureDetector>
-        <Text className="text-gray-200 text-xl">{category.name}</Text>
-        <View
-          className={`px-2.5 py-1.5 rounded-full ${
-            category.isActive
-              ? "bg-green-900/30 border border-green-500"
-              : "bg-red-900/30 border border-red-500"
-          }`}
-        >
-          <Text
-            className={`text-lg ${
-              category.isActive ? "text-green-400" : "text-red-400"
+      <View className="flex-row items-center justify-between p-4">
+        <View className="flex-row items-center gap-2">
+          <GestureDetector gesture={panGesture}>
+            <View className="p-2 -ml-2 cursor-grab">
+              <GripVertical size={20} color="#6B7280" />
+            </View>
+          </GestureDetector>
+          <TouchableOpacity
+            onPress={() => setIsExpanded(!isExpanded)}
+            className="flex-row items-center gap-2"
+          >
+            {isExpanded ? (
+              <ChevronUp size={18} color="#9CA3AF" />
+            ) : (
+              <ChevronDown size={18} color="#9CA3AF" />
+            )}
+            <Text className="text-gray-200 text-xl">{category.name}</Text>
+            <View className="bg-blue-900/30 border border-blue-500 px-2 py-1 rounded">
+              <Text className="text-sm text-blue-400">
+                {items.length} items
+              </Text>
+            </View>
+          </TouchableOpacity>
+          <View
+            className={`px-2.5 py-1.5 rounded-full ${
+              category.isActive
+                ? "bg-green-900/30 border border-green-500"
+                : "bg-red-900/30 border border-red-500"
             }`}
           >
-            {category.isActive ? "Available Now" : "Unavailable"}
-          </Text>
+            <Text
+              className={`text-lg ${
+                category.isActive ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {category.isActive ? "Available Now" : "Unavailable"}
+            </Text>
+          </View>
+        </View>
+
+        <View className="flex-row items-center gap-2">
+          <TouchableOpacity
+            onPress={() => onToggleActive(menuId, category.id)}
+            className="p-2"
+          >
+            {category.isActive ? (
+              <Eye size={20} color="#10B981" />
+            ) : (
+              <EyeOff size={20} color="#EF4444" />
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View className="flex-row items-center gap-2">
-        <TouchableOpacity
-          onPress={() => onToggleActive(menuId, category.id)}
-          className="p-2"
-        >
-          {category.isActive ? (
-            <Eye size={20} color="#10B981" />
+      {/* Expandable Items List for Level 5 Menu Price Editing */}
+      {isExpanded && (
+        <View className="px-4 pb-4 gap-2">
+          {items.length === 0 ? (
+            <Text className="text-gray-400">No items in this category</Text>
           ) : (
-            <EyeOff size={20} color="#EF4444" />
+            items.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => onItemPriceEdit(item, category.id, menuId)}
+                className="flex-row items-center justify-between bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
+              >
+                <Text className="text-lg text-white">{item.name}</Text>
+                <Text className="text-lg text-gray-300">
+                  ${item.price.toFixed(2)}
+                </Text>
+              </TouchableOpacity>
+            ))
           )}
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
     </Animated.View>
   );
 };
@@ -412,6 +472,9 @@ const MenuPage: React.FC = () => {
   const [scheduleViewType, setScheduleViewType] = useState<
     "menus" | "categories"
   >("menus");
+
+  // Price edit bottom sheet ref
+  const priceEditRef = useRef<PriceEditBottomSheetRef>(null);
 
   // Convert store menus to display format
   const menus = storeMenus.map((storeMenu) => ({
@@ -536,6 +599,7 @@ const MenuPage: React.FC = () => {
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
         addButtonLabel="Add Menu"
+        disabled={true}
       />
 
       <ScrollView className="flex-1" nestedScrollEnabled={true}>
@@ -559,6 +623,13 @@ const MenuPage: React.FC = () => {
                 }
               }}
               onEdit={() => router.push(`/menu/edit-menu?id=${menu.id}`)}
+              getItemsInCategory={getItemsInCategory}
+              onItemPriceEdit={(item, categoryId, menuId) => {
+                priceEditRef.current?.open(
+                  { id: item.id, name: item.name, currentPrice: item.price },
+                  { categoryId, menuId }
+                );
+              }}
             />
           ))}
         </View>
@@ -572,6 +643,7 @@ const MenuPage: React.FC = () => {
         title={`Categories (${storeCategories.length})`}
         onAddPress={handleAddCategory}
         addButtonLabel="Add Category"
+        disabled={true}
       />
 
       <ScrollView className="flex-1">
@@ -657,8 +729,21 @@ const MenuPage: React.FC = () => {
                             );
 
                           return (
-                            <View
+                            <TouchableOpacity
                               key={item.id}
+                              onPress={() => {
+                                priceEditRef.current?.open(
+                                  {
+                                    id: item.id,
+                                    name: item.name,
+                                    currentPrice: categoryPrice,
+                                  },
+                                  {
+                                    categoryId: category?.id || null,
+                                    menuId: null,
+                                  }
+                                );
+                              }}
                               className="flex-row items-center justify-between bg-[#212121] border border-gray-700 rounded-lg px-3 py-2"
                             >
                               <View className="flex-row items-center gap-2 ">
@@ -689,7 +774,7 @@ const MenuPage: React.FC = () => {
                                   </Text>
                                 )}
                               </View>
-                            </View>
+                            </TouchableOpacity>
                           );
                         })}
                       </View>
@@ -710,6 +795,7 @@ const MenuPage: React.FC = () => {
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
         addButtonLabel="Add Item"
+        disabled={true}
       />
 
       {filteredItems.length === 0 ? (
@@ -730,6 +816,17 @@ const MenuPage: React.FC = () => {
                     onEdit={handleEditItem}
                     onDelete={handleDeleteItem}
                     onToggleAvailability={handleToggleAvailability}
+                    onPriceEdit={(editItem) => {
+                      priceEditRef.current?.open(
+                        {
+                          id: editItem.id,
+                          name: editItem.name,
+                          currentPrice: editItem.price,
+                        },
+                        { categoryId: null, menuId: null }
+                      );
+                    }}
+                    editDisabled={true}
                   />
                 </View>
               );
@@ -1111,7 +1208,22 @@ const MenuPage: React.FC = () => {
     }
   };
 
-  return <View className="flex-1 bg-[#212121]">{renderContent()}</View>;
+  return (
+    <View className="flex-1 bg-[#212121]">
+      {renderContent()}
+      <PriceEditBottomSheet
+        ref={priceEditRef}
+        onSave={(itemId, newPrice) => {
+          // Refresh menu data after price update
+          // The price will be reflected on next sync
+          console.log(`Price updated for item ${itemId}: $${newPrice}`);
+        }}
+        onReset={(itemId) => {
+          console.log(`Price reset for item ${itemId}`);
+        }}
+      />
+    </View>
+  );
 };
 
 // Menu Item Card Component
@@ -1120,6 +1232,8 @@ interface MenuItemCardProps {
   onEdit: (item: MenuItemType) => void;
   onDelete: (id: string) => void;
   onToggleAvailability: (id: string) => void;
+  onPriceEdit?: (item: MenuItemType) => void;
+  editDisabled?: boolean;
 }
 
 const MenuItemCard: React.FC<MenuItemCardProps> = ({
@@ -1127,9 +1241,15 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
   onEdit,
   onDelete,
   onToggleAvailability,
+  onPriceEdit,
+  editDisabled = false,
 }) => {
   return (
-    <View className="bg-[#303030] max-h-48 rounded-lg border border-gray-700 p-3">
+    <TouchableOpacity
+      onPress={() => onPriceEdit?.(item)}
+      activeOpacity={onPriceEdit ? 0.7 : 1}
+      className="bg-[#303030] max-h-48 rounded-lg border border-gray-700 p-3"
+    >
       <View className="flex-row items-start gap-3">
         <View className="h-full aspect-square rounded-lg border border-gray-600">
           {getImageSource(item.image) ? (
@@ -1211,10 +1331,15 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
 
         <View className="flex-col gap-y-1.5 ml-2">
           <TouchableOpacity
-            onPress={() => onEdit(item)}
-            className="p-1.5 bg-blue-900/30 border border-blue-500 rounded"
+            onPress={editDisabled ? undefined : () => onEdit(item)}
+            disabled={editDisabled}
+            className={`p-1.5 rounded ${
+              editDisabled
+                ? "bg-gray-600/30 border border-gray-600 opacity-50"
+                : "bg-blue-900/30 border border-blue-500"
+            }`}
           >
-            <Edit size={20} color="#60A5FA" />
+            <Edit size={20} color={editDisabled ? "#6B7280" : "#60A5FA"} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1235,7 +1360,7 @@ const MenuItemCard: React.FC<MenuItemCardProps> = ({
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 

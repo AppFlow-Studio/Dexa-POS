@@ -69,11 +69,11 @@ export interface PurchaseOrder {
   // Paid: invoice fully paid and logged
   // Cancelled: order cancelled
   status:
-  | "Draft"
-  | "Pending Delivery"
-  | "Awaiting Payment"
-  | "Paid"
-  | "Cancelled";
+    | "Draft"
+    | "Pending Delivery"
+    | "Awaiting Payment"
+    | "Paid"
+    | "Cancelled";
   items: POLineItem[];
   // Immutable snapshot of what was originally requested at creation time
   originalItems?: POLineItem[];
@@ -158,6 +158,25 @@ export interface ExtendedModifierGroup extends ModifierCategory {
   items: MenuItemType[]; // Array of menu items that use this modifier group
 }
 
+// Price level data from backend - represents the 5-level pricing cascade
+export interface PriceLevels {
+  level_1_base: number;
+  level_2_location_item: number | null;
+  level_2_modifier: number | null;
+  level_2_modifier_type: string | null;
+  level_3_category: number | null;
+  level_4_location_category: number | null;
+  level_5_location_menu: number | null;
+}
+
+// Source of the effective price - which level won the cascade
+export type PriceSource =
+  | "base"
+  | "location_item"
+  | "category"
+  | "location_category"
+  | "location_menu";
+
 export interface MenuItemType {
   id: string;
   name: string;
@@ -174,13 +193,16 @@ export interface MenuItemType {
   allergens?: string[];
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
-  customPricing?: CustomPricing[]; // New field for custom pricing
+  customPricing?: CustomPricing[]; // Legacy field - being replaced by priceLevels
   recipe?: RecipeItem[];
   // Optional stock tracking directly on menu items (for items not built from recipes)
   stockQuantity?: number;
   reorderThreshold?: number;
   // Stock tracking mode: "in_stock", "out_of_stock", or "quantity"
   stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
+  // NEW: Backend pricing metadata
+  priceLevels?: PriceLevels;
+  priceSource?: PriceSource;
 }
 
 export interface CustomPricing {
@@ -287,12 +309,12 @@ export interface CartItem {
   // Per-item preparation status tracking for table workflow
   // Supports both legacy (PascalCase) and backend (lowercase) values
   item_status?:
-  | "Preparing"
-  | "Ready"
-  | "Served"
-  | "preparing"
-  | "ready"
-  | "served";
+    | "Preparing"
+    | "Ready"
+    | "Served"
+    | "preparing"
+    | "ready"
+    | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
   kitchen_status?: "new" | "sent" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
@@ -327,6 +349,9 @@ export interface CartItem {
   sync_status?: "pending" | "syncing" | "synced" | "failed";
   sync_error?: string;
   sync_retry_count?: number;
+  // NEW: Context for price level tracking - which category/menu was this item added from
+  addedFromCategoryId?: string | null;
+  addedFromMenuId?: string | null;
 }
 
 export interface OnlineOrder {
@@ -405,12 +430,12 @@ export interface Shift {
   endTime: string; // ISO 8601 format: "YYYY-MM-DDTHH:mm:ss.sssZ"
   location?: string;
   status?:
-  | "confirmed"
-  | "pending-drop"
-  | "pending-swap"
-  | "dropped"
-  | "on-shift"
-  | "open";
+    | "confirmed"
+    | "pending-drop"
+    | "pending-swap"
+    | "dropped"
+    | "on-shift"
+    | "open";
   breakMinutes?: number;
   actualClockIn?: string; // "HH:mm"
   actualClockOut?: string; // "HH:mm"
@@ -480,14 +505,14 @@ export interface ShiftRequest {
   ownerId: string; // The employee who initiated the request.
   type: "drop" | "swap";
   status:
-  | "pending"
-  | "approved"
-  | "denied"
-  | "picked-up"
-  | "completed"
-  | "pending-peer"
-  | "pending-manager"
-  | "canceled";
+    | "pending"
+    | "approved"
+    | "denied"
+    | "picked-up"
+    | "completed"
+    | "pending-peer"
+    | "pending-manager"
+    | "canceled";
   submittedAt: string; // ISO string
   shift: Shift; // Kept for drop requests
   note?: string;
@@ -608,14 +633,14 @@ export interface OrderProfile {
   // Supports both legacy (PascalCase) and new backend (lowercase) values
   // Supports only backend values now
   order_status:
-  | "draft"
-  | "pending"
-  | "preparing"
-  | "ready"
-  | "completed"
-  | "cancelled"
-  | "refunded"
-  | "void";
+    | "draft"
+    | "pending"
+    | "preparing"
+    | "ready"
+    | "completed"
+    | "cancelled"
+    | "refunded"
+    | "void";
 
   // The editable state of the check itself (separate from fulfillment status)
   check_status: "Opened" | "Closed";
@@ -623,12 +648,12 @@ export interface OrderProfile {
   // The type of fulfillment for this order.
   // Supports both legacy and backend values
   order_type?:
-  | "Dine In"
-  | "Takeaway"
-  | "Delivery"
-  | "dine_in"
-  | "takeout"
-  | "delivery";
+    | "Dine In"
+    | "Takeaway"
+    | "Delivery"
+    | "dine_in"
+    | "takeout"
+    | "delivery";
 
   // Payment status for the order
   paid_status: "Paid" | "Pending" | "Unpaid";
@@ -729,13 +754,13 @@ export interface Address {
 
 export interface DayHours {
   day:
-  | "Monday"
-  | "Tuesday"
-  | "Wednesday"
-  | "Thursday"
-  | "Friday"
-  | "Saturday"
-  | "Sunday";
+    | "Monday"
+    | "Tuesday"
+    | "Wednesday"
+    | "Thursday"
+    | "Friday"
+    | "Saturday"
+    | "Sunday";
   open: string; // "HH:mm" format
   close: string; // "HH:mm" format
   enabled: boolean;
@@ -752,23 +777,23 @@ export interface SpecialHours {
 export interface Notification {
   id: string;
   type:
-  | "swap_request"
-  | "drop_request"
-  | "manager_note"
-  | "pto_update"
-  | "shift_reminder"
-  | "shift_updated"
-  | "shift_assigned"
-  | "schedule_published"
-  | "drop_request_approved"
-  | "drop_request_denied"
-  | "pto_request_approved"
-  | "pto_request_denied"
-  | "swap_request_received"
-  | "swap_request_peer_accepted"
-  | "swap_request_peer_denied"
-  | "swap_approved"
-  | "swap_denied";
+    | "swap_request"
+    | "drop_request"
+    | "manager_note"
+    | "pto_update"
+    | "shift_reminder"
+    | "shift_updated"
+    | "shift_assigned"
+    | "schedule_published"
+    | "drop_request_approved"
+    | "drop_request_denied"
+    | "pto_request_approved"
+    | "pto_request_denied"
+    | "swap_request_received"
+    | "swap_request_peer_accepted"
+    | "swap_request_peer_denied"
+    | "swap_approved"
+    | "swap_denied";
   message: string;
   isRead: boolean;
   timestamp: string; // ISO string

@@ -145,6 +145,13 @@ interface MenuState {
   toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
   getItemPriceForCategory: (itemId: string, categoryId: string) => number;
 
+  // Optimistic update after backend price edit
+  updateItemPriceOptimistic: (
+    itemId: string,
+    newPrice: number,
+    context: { categoryId: string | null; menuId: string | null }
+  ) => void;
+
   // Category schedule info helper
   getCategoryScheduleInfo: (
     name: string,
@@ -329,6 +336,9 @@ const transformMenuItemsFromSync = (
           stockTrackingMode: item.stock_tracking_mode,
           // Map modifier groups to IDs (legacy format uses IDs)
           modifierGroupIds: (item.modifier_groups || []).map((mg) => mg.id),
+          // NEW: Backend pricing metadata
+          priceLevels: item.price_levels,
+          priceSource: item.price_source as MenuItemType["priceSource"],
         });
       });
     });
@@ -631,8 +641,14 @@ export const useMenuStore = create<MenuState>((set, get) => {
       set((state) => ({
         categories: [...state.categories, newCategory],
         // Keep O(1) Maps in sync
-        categoriesById: { ...state.categoriesById, [newCategory.id]: newCategory },
-        categoriesByName: { ...state.categoriesByName, [newCategory.name]: newCategory },
+        categoriesById: {
+          ...state.categoriesById,
+          [newCategory.id]: newCategory,
+        },
+        categoriesByName: {
+          ...state.categoriesByName,
+          [newCategory.name]: newCategory,
+        },
       }));
 
       console.log("Category added:", newCategory);
@@ -647,7 +663,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
         // Handle name change - remove old name from categoriesByName
         let newCategoriesByName = { ...state.categoriesByName };
-        if (updatedCategory && updates.name && existingCat.name !== updates.name) {
+        if (
+          updatedCategory &&
+          updates.name &&
+          existingCat.name !== updates.name
+        ) {
           delete newCategoriesByName[existingCat.name];
           newCategoriesByName[updates.name] = updatedCategory;
         } else if (updatedCategory) {
@@ -672,7 +692,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
     deleteCategory: (id) => {
       set((state) => {
         const categoryToRemove = state.categoriesById[id];
-        const { [id]: removedById, ...restCategoriesById } = state.categoriesById;
+        const { [id]: removedById, ...restCategoriesById } =
+          state.categoriesById;
         const newCategoriesByName = categoryToRemove
           ? Object.fromEntries(
               Object.entries(state.categoriesByName).filter(
@@ -769,8 +790,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-                ? [item.category]
-                : [];
+              ? [item.category]
+              : [];
 
             // Only add if not already present
             if (!currentCategories.includes(categoryName)) {
@@ -795,8 +816,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
             const currentCategories = Array.isArray(item.category)
               ? item.category
               : item.category
-                ? [item.category]
-                : [];
+              ? [item.category]
+              : [];
 
             return {
               ...item,
@@ -816,8 +837,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const categories = Array.isArray(item.category)
           ? item.category
           : item.category
-            ? [item.category]
-            : [];
+          ? [item.category]
+          : [];
         return categories.includes(categoryName);
       });
     },
@@ -843,7 +864,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
     updateMenu: (id, updates) => {
       set((state) => {
         const updatedMenu = state.menusById[id]
-          ? { ...state.menusById[id], ...updates, updatedAt: new Date().toISOString() }
+          ? {
+              ...state.menusById[id],
+              ...updates,
+              updatedAt: new Date().toISOString(),
+            }
           : undefined;
         return {
           menus: state.menus.map((menu) =>
@@ -903,8 +928,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const itemCategories = Array.isArray(item.category)
           ? item.category
           : item.category
-            ? [item.category]
-            : [];
+          ? [item.category]
+          : [];
         return menu.categories.some((categoryName) =>
           itemCategories.includes(categoryName)
         );
@@ -1173,7 +1198,21 @@ export const useMenuStore = create<MenuState>((set, get) => {
       const item = get().menuItemsById[baseId];
       if (!item) return 0;
 
-      // Check for custom pricing for this category
+      // NEW: Use backend priceLevels if available (replaces legacy customPricing)
+      if (item.priceLevels) {
+        // Level 4 = location_category price (most specific for category context)
+        if (item.priceLevels.level_4_location_category != null) {
+          return item.priceLevels.level_4_location_category;
+        }
+        // Level 2 = location_item price
+        if (item.priceLevels.level_2_location_item != null) {
+          return item.priceLevels.level_2_location_item;
+        }
+        // Level 1 = base price
+        return item.priceLevels.level_1_base;
+      }
+
+      // Legacy fallback: Check for custom pricing for this category
       if (item.customPricing) {
         const customPricing = item.customPricing.find(
           (pricing) => pricing.categoryId === categoryId && pricing.isActive
@@ -1184,6 +1223,79 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }
       // Return default price if no custom pricing found
       return item.price;
+    },
+
+    // NEW: Optimistic update after backend price edit
+    updateItemPriceOptimistic: (itemId, newPrice, context) => {
+      set((state) => {
+        const item = state.menuItemsById[itemId];
+        if (!item) return state;
+
+        // Determine which price level to update based on context
+        const updatedPriceLevels = item.priceLevels
+          ? { ...item.priceLevels }
+          : {
+              level_1_base: item.price,
+              level_2_location_item: null,
+              level_2_modifier: null,
+              level_2_modifier_type: null,
+              level_3_category: null,
+              level_4_location_category: null,
+              level_5_location_menu: null,
+            };
+
+        // Update the appropriate level based on context
+        if (context.menuId && context.categoryId) {
+          // Level 5: Menu-specific price
+          updatedPriceLevels.level_5_location_menu = newPrice;
+        } else if (context.categoryId) {
+          // Level 4: Category-specific price
+          updatedPriceLevels.level_4_location_category = newPrice;
+        } else {
+          // Level 2: Location-wide price
+          updatedPriceLevels.level_2_location_item = newPrice;
+        }
+
+        // Calculate new effective price (highest level wins)
+        const effectivePrice =
+          updatedPriceLevels.level_5_location_menu ??
+          updatedPriceLevels.level_4_location_category ??
+          updatedPriceLevels.level_2_location_item ??
+          updatedPriceLevels.level_1_base;
+
+        // Determine price source
+        let priceSource: MenuItemType["priceSource"] = "base";
+        if (updatedPriceLevels.level_5_location_menu != null) {
+          priceSource = "location_menu";
+        } else if (updatedPriceLevels.level_4_location_category != null) {
+          priceSource = "location_category";
+        } else if (updatedPriceLevels.level_2_location_item != null) {
+          priceSource = "location_item";
+        }
+
+        const updatedItem: MenuItemType = {
+          ...item,
+          price: effectivePrice,
+          priceLevels: updatedPriceLevels,
+          priceSource,
+        };
+
+        // Update both the array and the O(1) lookup map
+        return {
+          menuItems: state.menuItems.map((i) =>
+            i.id === itemId ? updatedItem : i
+          ),
+          menuItemsById: {
+            ...state.menuItemsById,
+            [itemId]: updatedItem,
+          },
+        };
+      });
+
+      console.log(
+        `[useMenuStore] Optimistically updated price for item ${itemId} to ${newPrice}`,
+        context
+      );
     },
 
     getLowStockMenuItems: () => {
