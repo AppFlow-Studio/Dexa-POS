@@ -1,3 +1,4 @@
+import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 
@@ -567,7 +568,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     // Using lazy import to avoid circular dependency with useOrderStore
     const { useOrderStore } = await import("./useOrderStore");
     const orderStore = useOrderStore.getState();
-    
+
     if (orderStore.hasPendingSyncs(orderId)) {
       console.log(
         "[fireCourse] Waiting for pending syncs before firing course..."
@@ -582,6 +583,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       throw new Error(`Course ${courseNumber} is already fired`);
     }
 
+    // 1. ALWAYS update local state first (optimistic)
     set((prev) => ({
       byOrderId: {
         ...prev.byOrderId,
@@ -604,7 +606,10 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     }));
 
     const dbOrderId = orderData.dbOrderId;
-    if (_supabaseClient && dbOrderId) {
+    const isOnline = getIsOnline();
+
+    // 2. Try backend if online and have a dbOrderId
+    if (isOnline && _supabaseClient && dbOrderId) {
       try {
         const { error } = await _supabaseClient.rpc("fire_course", {
           p_order_id: dbOrderId,
@@ -616,31 +621,39 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           "dbOrderId:",
           dbOrderId
         );
-        console.log("Error:", error);
 
-        if (error) throw error;
-        get().loadFromServer(orderId);
+        if (error) {
+          console.error("[fireCourse] Backend error, queuing for retry:", error);
+          // OFFLINE-FIRST: Don't revert, queue for retry instead
+          await queueOperation({
+            type: "fire_course",
+            params: { dbOrderId, courseNumber },
+            localOrderId: orderId,
+          });
+        } else {
+          // Success - optionally load from server to sync
+          get().loadFromServer(orderId);
+        }
       } catch (error) {
-        // Revert
-        set((prev) => ({
-          byOrderId: {
-            ...prev.byOrderId,
-            [orderId]: {
-              ...prev.byOrderId[orderId],
-              courses: {
-                ...prev.byOrderId[orderId].courses,
-                [courseNumber]: {
-                  ...prev.byOrderId[orderId].courses[courseNumber],
-                  status: "open",
-                  firedAt: undefined,
-                },
-              },
-            },
-          },
-        }));
-        throw error;
+        console.error("[fireCourse] Exception, queuing for retry:", error);
+        // OFFLINE-FIRST: Don't revert, queue for retry instead
+        await queueOperation({
+          type: "fire_course",
+          params: { dbOrderId, courseNumber },
+          localOrderId: orderId,
+        });
       }
+    } else if (!isOnline || !dbOrderId) {
+      // 3. Offline or no dbOrderId - queue for later sync
+      console.log("[fireCourse] Offline or no dbOrderId, queuing operation");
+      await queueOperation({
+        type: "fire_course",
+        params: { dbOrderId, courseNumber },
+        localOrderId: orderId,
+      });
     }
+    // Note: We no longer revert on error - the course stays "fired" locally
+    // and will sync when the backend becomes available
   },
 
   markCourseServed: async (orderId: string, courseNumber: number) => {

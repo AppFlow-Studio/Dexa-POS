@@ -6,7 +6,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Plus, Send } from "lucide-react-native";
+import { AlertTriangle, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
@@ -54,6 +54,11 @@ const BillSection = ({
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
   const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
   const getSyncStatus = useOrderStore((state) => state.getSyncStatus);
+  const retryFailedSyncs = useOrderStore((state) => state.retryFailedSyncs);
+
+  // Offline sync state
+  const isOnline = useOrderStore((state) => state.isOnline);
+  const pendingSyncCount = useOrderStore((state) => state.pendingSyncCount);
 
   const { selectedTable, clearSelectedTable } = useDineInStore();
   const { activeEmployeeId } = useEmployeeStore();
@@ -188,9 +193,62 @@ const BillSection = ({
         </TouchableOpacity>
       </View>
     );
+  // Handle retry failed syncs
+  const handleRetryFailedSyncs = async () => {
+    if (activeOrderId) {
+      await retryFailedSyncs(activeOrderId);
+    }
+  };
+
   return (
     <View className="w-1/3 bg-[#303030]">
       {showOrderDetails && <OrderDetails />}
+
+      {/* Offline / Sync Status Banner */}
+      {(!isOnline || hasFailedSyncs || pendingSyncCount > 0) && (
+        <View className="px-4 py-2 bg-[#212121]">
+          {/* Offline Mode Banner */}
+          {!isOnline && (
+            <View className="flex-row items-center justify-center bg-amber-600 px-3 py-2 rounded-lg mb-2">
+              <WifiOff size={16} color="#FFFFFF" />
+              <Text className="text-white text-sm font-medium ml-2">
+                Offline Mode {pendingSyncCount > 0 ? `• ${pendingSyncCount} pending` : ""}
+              </Text>
+            </View>
+          )}
+
+          {/* Failed Syncs Banner (only when online) */}
+          {isOnline && hasFailedSyncs && (
+            <TouchableOpacity
+              onPress={handleRetryFailedSyncs}
+              className="flex-row items-center justify-between bg-red-600/80 px-3 py-2 rounded-lg"
+              activeOpacity={0.7}
+            >
+              <View className="flex-row items-center">
+                <AlertTriangle size={16} color="#FFFFFF" />
+                <Text className="text-white text-sm font-medium ml-2">
+                  {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""} failed to sync
+                </Text>
+              </View>
+              <View className="flex-row items-center">
+                <RefreshCw size={14} color="#FFFFFF" />
+                <Text className="text-white text-xs ml-1">Retry</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Syncing Indicator (only when online and syncing) */}
+          {isOnline && !hasFailedSyncs && hasPendingSyncs && (
+            <View className="flex-row items-center justify-center bg-blue-600/60 px-3 py-2 rounded-lg">
+              <ActivityIndicator size="small" color="#FFFFFF" />
+              <Text className="text-white text-sm font-medium ml-2">
+                Syncing {syncStatus.pending} item{syncStatus.pending > 1 ? "s" : ""}...
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       <BillSectionContent cart={cart} />
       <View className="py-3 px-4 bg-[#212121]">
         <View className="flex-row gap-4">

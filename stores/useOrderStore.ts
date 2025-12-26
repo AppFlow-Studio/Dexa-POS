@@ -171,7 +171,7 @@ export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
 
 export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
-// Helper to sync item to backend
+// Helper to sync item to backend - OFFLINE-FIRST: Does NOT remove items on failure
 const addItemToBackend = async (
   order: OrderProfile,
   item: CartItem,
@@ -182,13 +182,32 @@ const addItemToBackend = async (
     display: string,
     createdAt: string
   ) => void,
-  removeItem: (itemId: string) => void,
+  markItemFailed: (itemId: string, error: string) => void, // Changed from removeItem to markItemFailed
   onSyncComplete?: (orderId: string) => void // Callback after successful sync
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
   if (!supabase) {
     console.log("Backend sync skipped: No Supabase client registered");
-    return true;
+    // Queue for later sync when client is available
+    await queueOperation({
+      type: "add_item",
+      params: {
+        localOrderId: order.id,
+        localItemId: item.id,
+        itemData: {
+          menuItemId: item.menuItemId,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          originalPrice: item.originalPrice,
+          customizations: item.customizations,
+          category_name: item.category_name,
+        },
+      },
+      localOrderId: order.id,
+      localItemId: item.id,
+    });
+    return true; // Return true so item stays in cart
   }
 
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
@@ -236,15 +255,35 @@ const addItemToBackend = async (
 
       if (createError) {
         console.error("Failed to create order in backend:", createError);
-        toastService.show({
-          title: "Sync Error",
-          message:
-            "Failed to create order on server: " +
-            (createError.message || createError.code),
-          type: "error",
+        // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
+        markItemFailed(item.id, createError.message || "Order creation failed");
+        await queueOperation({
+          type: "create_order",
+          params: {
+            localOrderId: order.id,
+            createOrderParams,
+          },
+          localOrderId: order.id,
         });
-        // Rollback: remove the item since order creation failed
-        removeItem(item.id);
+        // Also queue the item add for after order is created
+        await queueOperation({
+          type: "add_item",
+          params: {
+            localOrderId: order.id,
+            localItemId: item.id,
+            itemData: {
+              menuItemId: item.menuItemId,
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              originalPrice: item.originalPrice,
+              customizations: item.customizations,
+              category_name: item.category_name,
+            },
+          },
+          localOrderId: order.id,
+          localItemId: item.id,
+        });
         return false;
       }
 
@@ -285,8 +324,26 @@ const addItemToBackend = async (
       console.error("Critical: dbOrderId is missing before adding item!", {
         orderId: order.id,
       });
-      // We can't proceed without an order ID
-      removeItem(item.id);
+      // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
+      markItemFailed(item.id, "Order ID not available");
+      await queueOperation({
+        type: "add_item",
+        params: {
+          localOrderId: order.id,
+          localItemId: item.id,
+          itemData: {
+            menuItemId: item.menuItemId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            originalPrice: item.originalPrice,
+            customizations: item.customizations,
+            category_name: item.category_name,
+          },
+        },
+        localOrderId: order.id,
+        localItemId: item.id,
+      });
       return false;
     }
 
@@ -338,15 +395,19 @@ const addItemToBackend = async (
 
     if (addError) {
       console.error("Failed to add item to backend:", addError);
-      toastService.show({
-        title: "Sync Error",
-        message:
-          "Failed to sync item to server: " +
-          (addError.message || addError.code),
-        type: "error",
+      // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
+      markItemFailed(item.id, addError.message || "Item sync failed");
+      await queueOperation({
+        type: "add_item",
+        params: {
+          localOrderId: order.id,
+          localItemId: item.id,
+          dbOrderId: dbOrderId,
+          addItemParams,
+        },
+        localOrderId: order.id,
+        localItemId: item.id,
       });
-      // Rollback: remove the item
-      removeItem(item.id);
       return false;
     }
 
@@ -360,7 +421,7 @@ const addItemToBackend = async (
 
         const updatedItems = currentOrder.items.map((i) =>
           i.id === item.id
-            ? { ...i, db_order_item_id: addResult.order_item_id }
+            ? { ...i, db_order_item_id: addResult.order_item_id, sync_status: "synced" as const }
             : i
         );
 
@@ -385,15 +446,28 @@ const addItemToBackend = async (
     }
 
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Backend sync error:", error);
-    toastService.show({
-      title: "Sync Error",
-      message: "Failed to sync to server",
-      type: "error",
+    // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
+    markItemFailed(item.id, error?.message || "Sync failed");
+    await queueOperation({
+      type: "add_item",
+      params: {
+        localOrderId: order.id,
+        localItemId: item.id,
+        itemData: {
+          menuItemId: item.menuItemId,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          originalPrice: item.originalPrice,
+          customizations: item.customizations,
+          category_name: item.category_name,
+        },
+      },
+      localOrderId: order.id,
+      localItemId: item.id,
     });
-    // Rollback
-    removeItem(item.id);
     return false;
   }
 };
@@ -623,6 +697,18 @@ interface OrderState {
 
   // O(1) Getter for order by db_order_id
   getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined;
+
+  // === OFFLINE-FIRST HELPER METHODS ===
+  // Update local order with DB order ID after successful sync
+  updateOrderDbId: (localOrderId: string, dbOrderId: string) => void;
+  // Update local item with DB item ID after successful sync
+  updateItemDbId: (orderId: string, localItemId: string, dbItemId: string) => void;
+  // Get all orders that have items with failed sync status
+  getOrdersWithFailedSyncs: () => Array<{ localId: string; dbId: string | undefined }>;
+  // Update order from reconciliation data
+  updateOrderFromReconciliation: (localOrderId: string, updates: Partial<OrderProfile>) => void;
+  // Retry failed syncs for an order
+  retryFailedSyncs: (orderId: string) => Promise<void>;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -1400,11 +1486,15 @@ export const useOrderStore = create<OrderState>()(
             if (!itemToSync.isDraft) {
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
-                const removeItemAction = get().removeItemFromActiveOrder;
                 const updateItemSyncStatusAction = get().updateItemSyncStatus;
                 const registerSyncOp = get().registerSyncOperation;
                 const unregisterSyncOp = get().unregisterSyncOperation;
                 const currentOrderId = activeOrderId;
+
+                // OFFLINE-FIRST: Mark item as failed instead of removing it
+                const markItemFailedAction = (itemId: string, error: string) => {
+                  updateItemSyncStatusAction(currentOrderId, itemId, "failed", error);
+                };
 
                 const setOrderDbIdAction = (
                   orderId: string,
@@ -1435,7 +1525,7 @@ export const useOrderStore = create<OrderState>()(
                   orderToSync,
                   itemToSync,
                   setOrderDbIdAction,
-                  removeItemAction,
+                  markItemFailedAction, // Changed from removeItemAction
                   undefined // No need to recalculate - already done synchronously
                 )
                   .then((success) => {
@@ -1854,11 +1944,15 @@ export const useOrderStore = create<OrderState>()(
             // Sync the confirmed item to backend
             const orderToSync = get().ordersById[activeOrderId];
             if (orderToSync) {
-              const removeItemAction = get().removeItemFromActiveOrder;
               const updateItemSyncStatusAction = get().updateItemSyncStatus;
               const registerSyncOp = get().registerSyncOperation;
               const unregisterSyncOp = get().unregisterSyncOperation;
               const currentOrderId = activeOrderId;
+
+              // OFFLINE-FIRST: Mark item as failed instead of removing it
+              const markItemFailedAction = (itemIdToMark: string, error: string) => {
+                updateItemSyncStatusAction(currentOrderId, itemIdToMark, "failed", error);
+              };
 
               const setOrderDbIdAction = (
                 orderId: string,
@@ -1888,7 +1982,7 @@ export const useOrderStore = create<OrderState>()(
                 orderToSync,
                 { ...itemToConfirm, isDraft: false },
                 setOrderDbIdAction,
-                removeItemAction,
+                markItemFailedAction, // Changed from removeItemAction
                 undefined
               )
                 .then((success) => {
@@ -3149,6 +3243,185 @@ export const useOrderStore = create<OrderState>()(
 
           // O(1) Getter for order by db_order_id
           getOrderByDbId: (dbOrderId: string) => get().ordersByDbId[dbOrderId],
+
+          // === OFFLINE-FIRST HELPER METHODS ===
+
+          // Update local order with DB order ID after successful sync
+          updateOrderDbId: (localOrderId: string, dbOrderId: string) => {
+            set((state) => {
+              const order = state.ordersById[localOrderId];
+              if (!order) return state;
+
+              const updatedOrder = {
+                ...order,
+                db_order_id: dbOrderId,
+                sync_status: "synced" as const,
+              };
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: updatedOrder,
+                },
+                ordersByDbId: {
+                  ...state.ordersByDbId,
+                  [dbOrderId]: updatedOrder,
+                },
+              };
+            });
+            console.log(`[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`);
+          },
+
+          // Update local item with DB item ID after successful sync
+          updateItemDbId: (orderId: string, localItemId: string, dbItemId: string) => {
+            set((state) => {
+              const order = state.ordersById[orderId];
+              if (!order) return state;
+
+              const updatedItems = order.items.map((item) =>
+                item.id === localItemId
+                  ? { ...item, db_order_item_id: dbItemId, sync_status: "synced" as const }
+                  : item
+              );
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: {
+                    ...order,
+                    items: updatedItems,
+                  },
+                },
+              };
+            });
+            console.log(`[updateItemDbId] Updated item ${localItemId} with db_order_item_id: ${dbItemId}`);
+          },
+
+          // Get all orders that have items with failed sync status
+          getOrdersWithFailedSyncs: () => {
+            const { ordersById } = get();
+            const ordersWithFailedSyncs: Array<{ localId: string; dbId: string | undefined }> = [];
+
+            for (const orderId of Object.keys(ordersById)) {
+              const order = ordersById[orderId];
+              const hasFailedItems = order.items.some(
+                (item) => item.sync_status === "failed" || item.sync_status === "pending"
+              );
+
+              if (hasFailedItems || order.sync_status === "failed") {
+                ordersWithFailedSyncs.push({
+                  localId: orderId,
+                  dbId: order.db_order_id,
+                });
+              }
+            }
+
+            return ordersWithFailedSyncs;
+          },
+
+          // Update order from reconciliation data
+          updateOrderFromReconciliation: (localOrderId: string, updates: Partial<OrderProfile>) => {
+            set((state) => {
+              const order = state.ordersById[localOrderId];
+              if (!order) return state;
+
+              const updatedOrder = {
+                ...order,
+                ...updates,
+              };
+
+              const newOrdersByDbId = { ...state.ordersByDbId };
+              if (updatedOrder.db_order_id) {
+                newOrdersByDbId[updatedOrder.db_order_id] = updatedOrder;
+              }
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: updatedOrder,
+                },
+                ordersByDbId: newOrdersByDbId,
+              };
+            });
+            console.log(`[updateOrderFromReconciliation] Updated order ${localOrderId}`);
+          },
+
+          // Retry failed syncs for an order
+          retryFailedSyncs: async (orderId: string) => {
+            const { ordersById, updateItemSyncStatus, registerSyncOperation, unregisterSyncOperation } = get();
+            const order = ordersById[orderId];
+            if (!order) {
+              console.log(`[retryFailedSyncs] Order ${orderId} not found`);
+              return;
+            }
+
+            const failedItems = order.items.filter(
+              (item) => item.sync_status === "failed" && !item.isDraft
+            );
+
+            if (failedItems.length === 0) {
+              console.log(`[retryFailedSyncs] No failed items to retry for order ${orderId}`);
+              return;
+            }
+
+            console.log(`[retryFailedSyncs] Retrying ${failedItems.length} failed items for order ${orderId}`);
+
+            for (const item of failedItems) {
+              // Mark as syncing
+              updateItemSyncStatus(orderId, item.id, "syncing");
+
+              // Create the sync promise
+              const markItemFailedAction = (itemId: string, error: string) => {
+                updateItemSyncStatus(orderId, itemId, "failed", error);
+              };
+
+              const setOrderDbIdAction = (
+                id: string,
+                dbOrderId: string,
+                orderNumber: string,
+                displayNumber: string,
+                createdAt: string
+              ) => {
+                set((state) => ({
+                  ordersById: {
+                    ...state.ordersById,
+                    [id]: {
+                      ...state.ordersById[id],
+                      db_order_id: dbOrderId,
+                      order_number: orderNumber,
+                      display_number: displayNumber,
+                      sync_status: "synced" as const,
+                      opened_at: state.ordersById[id]?.opened_at || createdAt,
+                    },
+                  },
+                }));
+              };
+
+              const syncPromise = addItemToBackend(
+                order,
+                item,
+                setOrderDbIdAction,
+                markItemFailedAction,
+                undefined
+              )
+                .then((success) => {
+                  if (success) {
+                    updateItemSyncStatus(orderId, item.id, "synced");
+                  }
+                  return success;
+                })
+                .catch((err) => {
+                  console.error(`[retryFailedSyncs] Retry failed for item ${item.id}:`, err);
+                  updateItemSyncStatus(orderId, item.id, "failed", err?.message || "Retry failed");
+                  return false;
+                })
+                .finally(() => {
+                  unregisterSyncOperation(item.id);
+                });
+
+              registerSyncOperation(item.id, syncPromise);
+            }
+          },
         };
       },
       {

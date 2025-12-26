@@ -24,7 +24,12 @@ export type OperationType =
   | "remove_item"
   | "void_item"
   | "update_order_status"
-  | "process_cash_payment";
+  | "process_cash_payment"
+  // Floor plan operations
+  | "seat_guests"
+  | "update_session_status"
+  // Coursing operations
+  | "fire_course";
 
 export interface OfflineOperation {
   id: string;
