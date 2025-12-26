@@ -238,7 +238,17 @@ const PriceEditBottomSheetComponent: React.ForwardRefRenderFunction<
             <Text className="text-2xl text-white mr-2">$</Text>
             <BottomSheetTextInput
               value={priceValue}
-              onChangeText={setPriceValue}
+              onChangeText={(text) => {
+                // Only allow digits and one decimal point
+                const filtered = text.replace(/[^0-9.]/g, "");
+                // Ensure only one decimal point
+                const parts = filtered.split(".");
+                if (parts.length > 2) {
+                  setPriceValue(parts[0] + "." + parts.slice(1).join(""));
+                } else {
+                  setPriceValue(filtered);
+                }
+              }}
               keyboardType="decimal-pad"
               placeholder="0.00"
               placeholderTextColor="#6B7280"
