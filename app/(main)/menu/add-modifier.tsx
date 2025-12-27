@@ -1,12 +1,16 @@
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   ScrollView,
@@ -35,6 +39,8 @@ interface FormErrors {
 
 const AddModifierScreen: React.FC = () => {
   const { addModifierGroup } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
 
   const [formData, setFormData] = useState<ModifierFormData>({
@@ -130,7 +136,66 @@ const AddModifierScreen: React.FC = () => {
     setShowConfirmation(false);
 
     try {
-      // Create the modifier group data
+      // Validate store selection
+      if (!selectedStore) {
+        Alert.alert("Error", "No store selected. Please select a store first.");
+        setIsSaving(false);
+        return;
+      }
+
+      const merchantId = selectedStore.merchant_id;
+      const locationId = selectedStore.id;
+
+      // Transform form data to backend format
+      const isRequired = formData.type === "required";
+      const minSelections = isRequired ? 1 : 0;
+      const maxSelections =
+        formData.selectionType === "single"
+          ? 1
+          : formData.maxSelections || null;
+
+      // Create modifier group in backend
+      const { data: createdGroup, error } =
+        await MenuService.createModifierGroup(supabase, {
+          merchantId,
+          locationId,
+          name: formData.name.trim(),
+          description: formData.description?.trim() || undefined,
+          isRequired,
+          minSelections,
+          maxSelections: maxSelections ?? undefined,
+        });
+
+      if (error) {
+        console.error("Failed to create modifier group:", error);
+        show({
+          title: "Error",
+          message:
+            error.message ||
+            "Failed to create modifier group. Please try again.",
+          type: "error",
+        });
+        setIsSaving(false);
+        return;
+      }
+
+      // Create modifier items (options) in backend
+      if (createdGroup?.id && formData.options.length > 0) {
+        for (let i = 0; i < formData.options.length; i++) {
+          const option = formData.options[i];
+          await MenuService.createModifierItem(supabase, {
+            modifierGroupId: createdGroup.id,
+            name: option.name.trim(),
+            priceModifier: option.price,
+            displayOrder: i,
+            isActive: true,
+            isDefault: option.isDefault,
+            merchantId: merchantId,
+          });
+        }
+      }
+
+      // Also update local store for immediate UI feedback
       const modifierGroupData = {
         name: formData.name.trim(),
         type: formData.type,
@@ -142,8 +207,6 @@ const AddModifierScreen: React.FC = () => {
           name: option.name.trim(),
         })),
       };
-
-      // Save to store
       addModifierGroup(modifierGroupData);
 
       show({
@@ -165,6 +228,7 @@ const AddModifierScreen: React.FC = () => {
         router.back();
       }
     } catch (error) {
+      console.error(error);
       show({
         title: "Save Failed",
         message: "An error occurred while saving. Please try again.",

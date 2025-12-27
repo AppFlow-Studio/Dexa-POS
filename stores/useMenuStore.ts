@@ -143,7 +143,6 @@ interface MenuState {
   ) => void;
   deleteCustomPricing: (itemId: string, pricingId: string) => void;
   toggleCustomPricingActive: (itemId: string, pricingId: string) => void;
-  getItemPriceForCategory: (itemId: string, categoryId: string) => number;
 
   // Optimistic update after backend price edit
   updateItemPriceOptimistic: (
@@ -165,6 +164,13 @@ interface MenuState {
   addTemporaryMenuAccess: (menuName: string) => void;
   addTemporaryCategoryAccess: (categoryName: string) => void;
   clearTemporaryAccess: () => void; // Call this on logout
+
+  // Merge standalone entities (categories, items, modifiers not in any menu)
+  mergeStandaloneData: (data: {
+    categories?: any[];
+    items?: any[];
+    modifierGroups?: any[];
+  }) => void;
 }
 
 // Helper function to generate unique IDs
@@ -184,167 +190,157 @@ const generateModifierGroupId = () => `mod_${modifierGroupId++}`;
 // TRANSFORM FUNCTIONS: Convert API types to legacy types
 // ============================================================
 
-/**
- * Transform MenuWithCategories[] from API to legacy Menu[] format
- */
-const transformMenusFromSync = (
-  syncMenus: MenuWithCategories[] | undefined | null
-): Menu[] => {
-  if (!syncMenus || !Array.isArray(syncMenus)) return [];
-
-  // Helper to convert day_of_week number to day name
-  // Assuming: 0 = Monday, 1 = Tuesday, ..., 6 = Sunday (confirm with backend)
-  const dayNumberToName = (dayNum: number): string => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return days[dayNum] || "";
-  };
-
-  // Helper to convert HH:MM:SS to ISO string (for now, use today's date)
-  // TODO: Backend should return ISO format directly
-  const timeToISO = (timeStr: string): string => {
-    if (!timeStr) return "";
-    // If already ISO format, return as-is
-    if (timeStr.includes("T")) return timeStr;
-    // Convert HH:MM:SS to ISO
-    const [hours, minutes] = timeStr.split(":");
-    const date = new Date();
-    date.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-    return date.toISOString();
-  };
-
-  return syncMenus.map((menu) => ({
-    id: menu.id,
-    name: menu.name,
-    description: menu.description ?? undefined,
-    isActive: menu.is_active,
-    // Extract category names from the nested category object
-    categories: (menu.categories || []).map(
-      (catEntry) => catEntry.category?.name || ""
-    ),
-    // Transform nested schedule structure to legacy format
-    schedules: (menu.schedules || []).map((schEntry) => {
-      const schedule = schEntry.schedule;
-      if (!schedule) {
-        return {
-          id: schEntry.id,
-          name: "",
-          startTime: "",
-          endTime: "",
-          days: [],
-          isActive: false,
-        };
-      }
-
-      // Extract unique days from time_slots
-      const timeSlots = schedule.time_slots || [];
-      const days = [
-        ...new Set(timeSlots.map((slot) => dayNumberToName(slot.day_of_week))),
-      ].filter(Boolean);
-
-      // Use the first time slot's times (assuming consistent times across days)
-      const firstSlot = timeSlots[0];
-
-      return {
-        id: schedule.id,
-        name: schedule.name || "",
-        startTime: firstSlot ? timeToISO(firstSlot.start_time) : "",
-        endTime: firstSlot ? timeToISO(firstSlot.end_time) : "",
-        days,
-        isActive: schedule.is_active,
-      };
-    }),
-    createdAt: menu.created_at,
-    updatedAt: menu.updated_at,
-  }));
-};
-
-/**
- * Transform nested categories from all menus to flat Category[] format
- */
-const transformCategoriesFromSync = (
-  syncMenus: MenuWithCategories[] | undefined | null
-): Category[] => {
-  if (!syncMenus || !Array.isArray(syncMenus)) return [];
-
-  const categoryMap = new Map<string, Category>();
-
-  syncMenus.forEach((menu) => {
-    (menu.categories || []).forEach((catEntry) => {
-      const cat = catEntry.category;
-      if (!cat) return;
-
-      if (!categoryMap.has(cat.id)) {
-        categoryMap.set(cat.id, {
-          id: cat.id,
-          name: cat.name,
-          isActive: catEntry.is_active,
-          order: catEntry.display_order,
-          createdAt: new Date().toISOString(), // API doesn't provide this
-          schedules: [], // Categories in API don't have schedules at category level
-        });
-      }
-    });
-  });
-
-  return Array.from(categoryMap.values());
-};
+// [Legacy transform functions removed]
 
 /**
  * Transform nested items from all menus to flat MenuItemType[] format
  */
 const transformMenuItemsFromSync = (
   syncMenus: MenuWithCategories[] | undefined | null
-): MenuItemType[] => {
-  if (!syncMenus || !Array.isArray(syncMenus)) return [];
+): {
+  menus: Menu[];
+  categories: Category[];
+  menuItems: MenuItemType[];
+  menuItemsById: Record<string, MenuItemType>;
+} => {
+  if (!syncMenus || !Array.isArray(syncMenus))
+    return { menus: [], categories: [], menuItems: [], menuItemsById: {} };
 
-  const itemMap = new Map<string, MenuItemType>();
+  const globalItemMap = new Map<string, MenuItemType>();
 
-  syncMenus.forEach((menu) => {
-    (menu.categories || []).forEach((catEntry) => {
-      const categoryName = catEntry.category?.name || "";
+  // Helper to map Sync Item to Internal Item
+  // This uses the "effective_price" which is ALREADY computed for the specific context by the backend
+  const mapSyncItem = (
+    syncItem: any,
+    context: { menuId?: string; categoryId?: string }
+  ): MenuItemType => {
+    const dbItem = syncItem.menu_item || syncItem; // Handle both wrapper and direct item
 
-      (catEntry.items || []).forEach((catItem) => {
-        const item = catItem.menu_item;
-        if (!item) return;
+    return {
+      id: dbItem.id,
+      name: dbItem.name,
+      description: dbItem.description ?? undefined,
+      // CRITICAL: specific price for this context
+      price: dbItem.effective_price,
+      cashPrice: dbItem.effective_cash_price ?? undefined,
+      image: dbItem.image ?? undefined,
+      meal: (dbItem.meal_types ?? []) as MenuItemType["meal"],
+      category: (dbItem.categories || []).map((c: any) => c.name || c), // Fallback if categories logic differs
+      allergens: dbItem.allergens ?? undefined,
+      cardBgColor: dbItem.card_bg_color ?? undefined,
+      availability: dbItem.effective_availability,
+      stockQuantity: dbItem.current_stock ?? undefined,
+      stockTrackingMode: dbItem.stock_tracking_mode,
+      modifierGroupIds: (dbItem.modifier_groups || []).map((mg: any) => mg.id),
+      priceLevels: dbItem.price_levels,
+      priceSource: dbItem.price_source as MenuItemType["priceSource"],
+      location_id: dbItem.location_id,
+      // Map override fields for reference (though effective_price is what matters)
+      menuPriceOverrides: context.menuId
+        ? { [context.menuId]: dbItem.effective_price }
+        : undefined,
+      categoryPriceOverrides: context.categoryId
+        ? { [context.categoryId]: dbItem.effective_price }
+        : undefined,
+    };
+  };
 
-        const existingItem = itemMap.get(item.id);
+  // 1. Build the Menu Tree (Menu -> Category -> Item)
+  const menus: Menu[] = syncMenus.map((menu) => {
+    const categories: Category[] = (menu.categories || []).map((catEntry) => {
+      // Map items specifically for this menu/category context
+      const items = (catEntry.items || []).map((itemEntry) =>
+        mapSyncItem(itemEntry, {
+          menuId: menu.id,
+          categoryId: catEntry.category_id,
+        })
+      );
 
-        // Build category array (item can be in multiple categories)
-        const categoryNames = existingItem?.category
-          ? Array.isArray(existingItem.category)
-            ? existingItem.category
-            : [existingItem.category]
-          : [];
+      return {
+        id: catEntry.category.id, // Use actual Category ID
+        name: catEntry.category.name,
+        isActive: catEntry.is_active,
+        order: catEntry.display_order,
+        createdAt: new Date().toISOString(),
+        location_id: catEntry.category.location_id,
+        location_name: undefined, // Could map if available
+        items: items, // NESTED ITEMS specific to this context
+      };
+    });
 
-        if (categoryName && !categoryNames.includes(categoryName)) {
-          categoryNames.push(categoryName);
+    return {
+      id: menu.id,
+      name: menu.name,
+      description: menu.description || undefined,
+      isActive: menu.is_active,
+      categories: categories, // Full Category Objects
+      schedules: (menu.schedules || []).map((s) => ({
+        id: s.id,
+        name: s.schedule.name,
+        startTime: s.schedule.time_slots[0]?.start_time || "00:00:00", // Simplified for now
+        endTime: s.schedule.time_slots[0]?.end_time || "23:59:59",
+        days: s.schedule.time_slots.map((ts: any) => ts.day_of_week.toString()), // TODO: map days correctly
+        isActive: s.schedule.is_active,
+      })),
+      createdAt: menu.created_at,
+      updatedAt: menu.updated_at,
+      location_id: menu.location_id,
+    };
+  });
+
+  // 2. Build Global Item Map (for "Item Library"/Inventory view)
+  // We perform a second pass or extract from a specific "All Items" list if available
+  // Assuming syncMenus covers all items is risky if there are orphan items.
+  // Ideally, `pos_sync_data` has a top-level `items` array. checking types/menu.ts... it does NOT.
+  // So we collect all unique items encountered in menus + categories.
+
+  // Actually, wait. The user might want an "Item Library" that is distinct from menus.
+  // But for now, let's populate the global map from the menu tree to ensure consistency.
+  menus.forEach((menu) => {
+    menu.categories.forEach((cat) => {
+      (cat.items || []).forEach((item) => {
+        if (!globalItemMap.has(item.id)) {
+          // Clone and strip context overrides for the "Base" item?
+          // No, we want the base price. `dbItem` has `price_levels.level_1_base`.
+          // Let's rely on the fact that mapSyncItem sets `price` to `effective_price`.
+          // For the GLOBAL item, we want Level 2 (Location Item) or Level 1 (Base).
+
+          // BETTER STRATEGY:
+          // The `mapSyncItem` returns an instance with specific price.
+          // We should find the "Base" version.
+          // `item.priceLevels.level_2_location_item` ?? `item.priceLevels.level_1_base`
+          const basePrice =
+            item.priceLevels?.level_2_location_item ??
+            item.priceLevels?.level_1_base ??
+            item.price;
+
+          globalItemMap.set(item.id, {
+            ...item,
+            price: basePrice, // Reset to base price for global view
+            menuPriceOverrides: undefined,
+            categoryPriceOverrides: undefined,
+          });
         }
-
-        itemMap.set(item.id, {
-          id: item.id,
-          name: item.name,
-          description: item.description ?? undefined,
-          price: item.effective_price,
-          cashPrice: item.effective_cash_price ?? undefined,
-          image: item.image ?? undefined,
-          meal: (item.meal_types ?? []) as MenuItemType["meal"],
-          category: categoryNames,
-          allergens: item.allergens ?? undefined,
-          cardBgColor: item.card_bg_color ?? undefined,
-          availability: item.effective_availability,
-          stockQuantity: item.current_stock ?? undefined,
-          stockTrackingMode: item.stock_tracking_mode,
-          // Map modifier groups to IDs (legacy format uses IDs)
-          modifierGroupIds: (item.modifier_groups || []).map((mg) => mg.id),
-          // NEW: Backend pricing metadata
-          priceLevels: item.price_levels,
-          priceSource: item.price_source as MenuItemType["priceSource"],
-        });
       });
     });
   });
 
-  return Array.from(itemMap.values());
+  // 3. Extract Categories (Unique List)
+  const categoryMap = new Map<string, Category>();
+  menus.forEach((menu) => {
+    menu.categories.forEach((cat) => {
+      if (!categoryMap.has(cat.id)) {
+        categoryMap.set(cat.id, { ...cat, items: undefined }); // Store categories flat without items for generic management
+      }
+    });
+  });
+
+  return {
+    menus,
+    categories: Array.from(categoryMap.values()),
+    menuItems: Array.from(globalItemMap.values()),
+    menuItemsById: Object.fromEntries(globalItemMap),
+  };
 };
 
 /**
@@ -435,18 +431,14 @@ export const useMenuStore = create<MenuState>((set, get) => {
     // SYNC ACTIONS
     // ============================================================
     setMenuData: (data: PosSyncData) => {
-      // Transform API data to legacy formats for backward compatibility
-      const menus = transformMenusFromSync(data.menus);
-      const categories = transformCategoriesFromSync(data.menus);
-      const menuItems = transformMenuItemsFromSync(data.menus);
+      // 1. Transform Menus, Categories, and Items (Tree Structure)
+      const { menus, categories, menuItems, menuItemsById } =
+        transformMenuItemsFromSync(data.menus);
+
+      // 2. Transform Modifier Groups
       const modifierGroups = transformModifierGroupsFromSync(data.menus);
 
-      // Build O(1) lookup Maps for instant access
-      const menuItemsById: Record<string, MenuItemType> = {};
-      for (const item of menuItems) {
-        menuItemsById[item.id] = item;
-      }
-
+      // 3. Build O(1) lookup Maps
       const categoriesById: Record<string, Category> = {};
       const categoriesByName: Record<string, Category> = {};
       for (const cat of categories) {
@@ -766,7 +758,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
       // if category isn't part of the menu, treat as inactive for that menu
       const menu = state.menus.find((m) => m.id === menuId);
-      if (!menu || !menu.categories.includes(category.name)) return false;
+      if (!menu || !menu.categories.some((c) => c.id === category.id))
+        return false;
 
       const override = state.menuCategoryOverrides[menuId]?.[categoryId];
       // undefined means no override -> active; false means explicitly off
@@ -930,9 +923,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
           : item.category
           ? [item.category]
           : [];
-        return menu.categories.some((categoryName) =>
-          itemCategories.includes(categoryName)
-        );
+        return menu.categories.some((cat) => itemCategories.includes(cat.name));
       });
     },
 
@@ -1192,103 +1183,59 @@ export const useMenuStore = create<MenuState>((set, get) => {
       }));
     },
 
-    getItemPriceForCategory: (itemId, categoryId) => {
-      // OPTIMIZED: Use O(1) lookup via menuItemsById instead of O(n) find
-      const baseId = itemId.split("|")[0];
-      const item = get().menuItemsById[baseId];
-      if (!item) return 0;
-
-      // NEW: Use backend priceLevels if available (replaces legacy customPricing)
-      if (item.priceLevels) {
-        // Level 4 = location_category price (most specific for category context)
-        if (item.priceLevels.level_4_location_category != null) {
-          return item.priceLevels.level_4_location_category;
-        }
-        // Level 2 = location_item price
-        if (item.priceLevels.level_2_location_item != null) {
-          return item.priceLevels.level_2_location_item;
-        }
-        // Level 1 = base price
-        return item.priceLevels.level_1_base;
-      }
-
-      // Legacy fallback: Check for custom pricing for this category
-      if (item.customPricing) {
-        const customPricing = item.customPricing.find(
-          (pricing) => pricing.categoryId === categoryId && pricing.isActive
-        );
-        if (customPricing) {
-          return customPricing.price;
-        }
-      }
-      // Return default price if no custom pricing found
-      return item.price;
-    },
-
     // NEW: Optimistic update after backend price edit
     updateItemPriceOptimistic: (itemId, newPrice, context) => {
       set((state) => {
-        const item = state.menuItemsById[itemId];
-        if (!item) return state;
+        let updatedMenuItems = state.menuItems;
+        const updatedMenuItemsById = { ...state.menuItemsById };
 
-        // Determine which price level to update based on context
-        const updatedPriceLevels = item.priceLevels
-          ? { ...item.priceLevels }
-          : {
-              level_1_base: item.price,
-              level_2_location_item: null,
-              level_2_modifier: null,
-              level_2_modifier_type: null,
-              level_3_category: null,
-              level_4_location_category: null,
-              level_5_location_menu: null,
-            };
+        // 1. Update Global Item (Library) if Level 2 (No Context)
+        if (!context.menuId && !context.categoryId) {
+          const item = state.menuItemsById[itemId];
+          if (item) {
+            const updatedItem = { ...item, price: newPrice };
+            // Also update base price / level_2
+            if (updatedItem.priceLevels) {
+              updatedItem.priceLevels = {
+                ...updatedItem.priceLevels,
+                level_2_location_item: newPrice,
+              };
+            }
 
-        // Update the appropriate level based on context
-        if (context.menuId && context.categoryId) {
-          // Level 5: Menu-specific price
-          updatedPriceLevels.level_5_location_menu = newPrice;
-        } else if (context.categoryId) {
-          // Level 4: Category-specific price
-          updatedPriceLevels.level_4_location_category = newPrice;
-        } else {
-          // Level 2: Location-wide price
-          updatedPriceLevels.level_2_location_item = newPrice;
+            updatedMenuItems = state.menuItems.map((i) =>
+              i.id === itemId ? updatedItem : i
+            );
+            updatedMenuItemsById[itemId] = updatedItem;
+          }
         }
 
-        // Calculate new effective price (highest level wins)
-        const effectivePrice =
-          updatedPriceLevels.level_5_location_menu ??
-          updatedPriceLevels.level_4_location_category ??
-          updatedPriceLevels.level_2_location_item ??
-          updatedPriceLevels.level_1_base;
+        // 2. Update Tree Instances (Menu -> Category -> Item)
+        const updatedMenus = state.menus.map((menu) => {
+          if (context.menuId && menu.id !== context.menuId) return menu;
 
-        // Determine price source
-        let priceSource: MenuItemType["priceSource"] = "base";
-        if (updatedPriceLevels.level_5_location_menu != null) {
-          priceSource = "location_menu";
-        } else if (updatedPriceLevels.level_4_location_category != null) {
-          priceSource = "location_category";
-        } else if (updatedPriceLevels.level_2_location_item != null) {
-          priceSource = "location_item";
-        }
+          const updatedCategories = menu.categories.map((cat) => {
+            if (context.categoryId && cat.id !== context.categoryId) return cat;
+            if (!cat.items) return cat;
 
-        const updatedItem: MenuItemType = {
-          ...item,
-          price: effectivePrice,
-          priceLevels: updatedPriceLevels,
-          priceSource,
-        };
+            const updatedItems = cat.items.map((item) => {
+              if (item.id === itemId) {
+                return { ...item, price: newPrice };
+              }
+              return item;
+            });
 
-        // Update both the array and the O(1) lookup map
+            if (updatedItems === cat.items) return cat;
+            return { ...cat, items: updatedItems };
+          });
+
+          if (updatedCategories === menu.categories) return menu;
+          return { ...menu, categories: updatedCategories };
+        });
+
         return {
-          menuItems: state.menuItems.map((i) =>
-            i.id === itemId ? updatedItem : i
-          ),
-          menuItemsById: {
-            ...state.menuItemsById,
-            [itemId]: updatedItem,
-          },
+          menuItems: updatedMenuItems,
+          menuItemsById: updatedMenuItemsById,
+          menus: updatedMenus,
         };
       });
 
@@ -1411,6 +1358,166 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     clearTemporaryAccess: () => {
       set({ temporaryActiveMenus: [], temporaryActiveCategories: [] });
+    },
+
+    // Merge standalone entities (categories, items, modifiers not in any menu)
+    mergeStandaloneData: (data) => {
+      set((state) => {
+        const newCategories = [...state.categories];
+        const newCategoriesById = { ...state.categoriesById };
+        const newCategoriesByName = { ...state.categoriesByName };
+
+        const newMenuItems = [...state.menuItems];
+        const newMenuItemsById = { ...state.menuItemsById };
+
+        const newModifierGroups = [...state.modifierGroups];
+        const newModifierGroupsById = { ...state.modifierGroupsById };
+
+        // Merge standalone categories AND their nested items
+        if (data.categories) {
+          for (const cat of data.categories) {
+            // Skip category if already exists, but still process its items below
+            if (!newCategoriesById[cat.id]) {
+              const mappedCategory: Category = {
+                id: cat.id,
+                name: cat.name,
+                isActive: cat.is_active ?? true,
+                order: cat.item_count ?? 0,
+                createdAt: new Date().toISOString(),
+                schedules: [],
+                location_id: cat.location_id,
+                location_name: cat.location_name ?? undefined,
+              };
+
+              newCategories.push(mappedCategory);
+              newCategoriesById[cat.id] = mappedCategory;
+              newCategoriesByName[cat.name] = mappedCategory;
+            }
+
+            // Extract items from this category's items array
+            const categoryItems = cat.items || [];
+            for (const catItem of categoryItems) {
+              const menuItem = catItem.menu_item;
+              if (!menuItem) continue;
+
+              const itemId = menuItem.id || catItem.menu_item_id;
+
+              // If item already exists, add this category name to its categories
+              if (newMenuItemsById[itemId]) {
+                const existingItem = newMenuItemsById[itemId];
+                const existingCategories = Array.isArray(existingItem.category)
+                  ? existingItem.category
+                  : existingItem.category
+                  ? [existingItem.category]
+                  : [];
+
+                // Add category name if not already present
+                if (!existingCategories.includes(cat.name)) {
+                  existingItem.category = [...existingCategories, cat.name];
+                }
+              } else {
+                // New item - create with this category name
+                const mappedItem: MenuItemType = {
+                  id: itemId,
+                  name: menuItem.name,
+                  description: (menuItem as any).description ?? undefined,
+                  price: menuItem.effective_price ?? 0,
+                  cashPrice: menuItem.effective_cash_price ?? undefined,
+                  availability: menuItem.effective_availability ?? true,
+                  category: [cat.name], // Start with this category
+                  meal: (menuItem as any).meal_types ?? [],
+                  stockTrackingMode:
+                    ((menuItem as any)
+                      .stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
+                    "in_stock",
+                };
+
+                newMenuItems.push(mappedItem);
+                newMenuItemsById[itemId] = mappedItem;
+              }
+            }
+          }
+        }
+
+        // Merge standalone items
+        if (data.items) {
+          for (const item of data.items) {
+            // Skip if already exists
+            if (newMenuItemsById[item.id]) continue;
+
+            // Map category names from the item
+            const categoryNames = (item.categories || []).map(
+              (c: { name: string }) => c.name
+            );
+
+            const mappedItem: MenuItemType = {
+              id: item.id,
+              name: item.name,
+              description: item.description ?? undefined,
+              price: item.effective_price ?? item.base_price ?? 0,
+              cashPrice:
+                item.effective_cash_price ?? item.base_cash_price ?? undefined,
+              availability: item.effective_availability ?? true,
+              category: categoryNames,
+              meal: item.meal_types ?? [],
+              stockTrackingMode:
+                (item.stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
+                "in_stock",
+            };
+
+            newMenuItems.push(mappedItem);
+            newMenuItemsById[item.id] = mappedItem;
+          }
+        }
+
+        // Merge standalone modifier groups
+        if (data.modifierGroups) {
+          for (const mg of data.modifierGroups) {
+            // Skip if already exists
+            if (newModifierGroupsById[mg.id]) continue;
+
+            const mappedModifier: ModifierCategory = {
+              id: mg.id,
+              name: mg.name,
+              description: mg.description ?? undefined,
+              type: mg.is_required ? "required" : "optional",
+              selectionType: mg.max_selections === 1 ? "single" : "multiple",
+              maxSelections: mg.max_selections ?? undefined,
+              options: (mg.modifier_group_items || []).map((opt: any) => ({
+                id: opt.id,
+                name: opt.name,
+                price: opt.price_modifier ?? 0,
+                isAvailable: opt.is_active ?? true,
+                isDefault: opt.is_default ?? false,
+              })),
+              location_id: mg.location_id,
+              location_name: mg.location_name?.name,
+              items: (mg.menu_item_modifier_groups || []).map((mimg: any) => ({
+                id: mimg.menu_item.id,
+                name: mimg.menu_item.name,
+                price: mimg.menu_item.price,
+                image: mimg.menu_item.image,
+                availability: mimg.menu_item.availability ?? true,
+                category: [], // Minimal data needed for display
+                meal: [],
+              })),
+            };
+
+            newModifierGroups.push(mappedModifier);
+            newModifierGroupsById[mg.id] = mappedModifier;
+          }
+        }
+
+        return {
+          categories: newCategories,
+          categoriesById: newCategoriesById,
+          categoriesByName: newCategoriesByName,
+          menuItems: newMenuItems,
+          menuItemsById: newMenuItemsById,
+          modifierGroups: newModifierGroups,
+          modifierGroupsById: newModifierGroupsById,
+        };
+      });
     },
   };
 });

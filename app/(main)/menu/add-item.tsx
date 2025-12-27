@@ -1,13 +1,18 @@
 import ItemForm from "@/components/menu/ItemForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuItemType } from "@/lib/types";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { View } from "react-native";
+import { Alert, View } from "react-native";
 
 const AddMenuItemScreen: React.FC = () => {
-  const { addMenuItem } = useMenuStore();
+  const { addMenuItem, categories } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -17,7 +22,87 @@ const AddMenuItemScreen: React.FC = () => {
   ): Promise<boolean> => {
     setIsSaving(true);
     try {
+      // Validate store selection
+      if (!selectedStore) {
+        Alert.alert("Error", "No store selected. Please select a store first.");
+        return false;
+      }
+
+      const merchantId = selectedStore.merchant_id;
+
+      // Create menu item in backend
+      const { data: createdItem, error } = await MenuService.createMenuItem(
+        supabase,
+        {
+          merchantId,
+          name: data.name,
+          description: data.description,
+          price: data.price,
+          cashPrice: data.cashPrice,
+          image: data.image,
+          mealTypes: data.meal,
+          allergens: data.allergens || [],
+          availability: data.availability,
+          stockTrackingMode: undefined, // TODO: Add field to form
+        }
+      );
+
+      if (error) {
+        console.error("Failed to create menu item:", error);
+        show({
+          title: "Error",
+          message:
+            error.message || "Failed to create menu item. Please try again.",
+          type: "error",
+        });
+        return false;
+      }
+
+      // Add item to categories if selected (only sync to backend for categories with valid UUIDs)
+      const isValidUUID = (id: string) => {
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id);
+      };
+
+      if (data.category && data.category.length > 0 && createdItem?.id) {
+        const categoryNames = Array.isArray(data.category)
+          ? data.category
+          : [data.category];
+        for (const categoryName of categoryNames) {
+          const category = categories.find((c) => c.name === categoryName);
+          // Only call backend for categories with valid UUIDs (local categories from backend)
+          if (category?.id && isValidUUID(category.id)) {
+            await MenuService.addItemToCategory(supabase, {
+              categoryId: category.id,
+              menuItemId: createdItem.id,
+              merchantId,
+              displayOrder: 0,
+              isFeatured: false,
+            });
+          }
+        }
+      }
+
+      // Assign modifier groups if selected
+      if (
+        data.modifierGroupIds &&
+        data.modifierGroupIds.length > 0 &&
+        createdItem?.id
+      ) {
+        for (let i = 0; i < data.modifierGroupIds.length; i++) {
+          const modifierId = data.modifierGroupIds[i];
+          await MenuService.assignModifierToItem(supabase, {
+            menuItemId: createdItem.id,
+            modifierGroupId: modifierId,
+            displayOrder: i,
+          });
+        }
+      }
+
+      // Also update local store for immediate UI feedback
       addMenuItem(data);
+
       show({
         title: "Item Created",
         message: `Successfully added "${data.name}" to the menu.`,
@@ -25,9 +110,10 @@ const AddMenuItemScreen: React.FC = () => {
       });
       return true;
     } catch (error) {
+      console.error(error);
       show({
-        title: "Save Error",
-        message: "Failed to save the menu item. Please try again.",
+        title: "Error",
+        message: "An unexpected error occurred. Please try again.",
         type: "error",
       });
       return false;

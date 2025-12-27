@@ -172,4 +172,693 @@ export class MenuService {
     }
     return null;
   }
+
+  // ============================================================
+  // MENU CRUD OPERATIONS (Location-Owned)
+  // ============================================================
+
+  /**
+   * Create a new location-owned menu
+   */
+  static async createMenu(
+    client: SupabaseClient,
+    params: {
+      merchantId: string;
+      locationId: string;
+      name: string;
+      description?: string;
+      isActive?: boolean;
+      displayOrder?: number;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("menus")
+      .insert({
+        merchant_id: params.merchantId,
+        location_id: params.locationId, // Location-owned
+        name: params.name,
+        description: params.description || null,
+        is_active: params.isActive ?? true,
+        display_order: params.displayOrder ?? 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create menu:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Update a menu
+   */
+  static async updateMenu(
+    client: SupabaseClient,
+    menuId: string,
+    params: {
+      name?: string;
+      description?: string;
+      isActive?: boolean;
+      displayOrder?: number;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const updateData: Record<string, any> = {};
+    if (params.name !== undefined) updateData.name = params.name;
+    if (params.description !== undefined)
+      updateData.description = params.description;
+    if (params.isActive !== undefined) updateData.is_active = params.isActive;
+    if (params.displayOrder !== undefined)
+      updateData.display_order = params.displayOrder;
+
+    const { data, error } = await client
+      .from("menus")
+      .update(updateData)
+      .eq("id", menuId)
+      .select();
+
+    if (error) {
+      console.error("Failed to update menu:", error);
+      return { data: null, error };
+    }
+
+    return { data: data?.[0] ?? null, error: null };
+  }
+
+  /**
+   * Delete a menu
+   */
+  static async deleteMenu(
+    client: SupabaseClient,
+    menuId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.from("menus").delete().eq("id", menuId);
+
+    if (error) {
+      console.error("Failed to delete menu:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  // ============================================================
+  // CATEGORY CRUD OPERATIONS (Location-Owned)
+  // ============================================================
+
+  /**
+   * Create a new location-owned category
+   */
+  static async createCategory(
+    client: SupabaseClient,
+    params: {
+      merchantId: string;
+      locationId: string;
+      name: string;
+      description?: string;
+      displayOrder?: number;
+      image?: string;
+      isActive?: boolean;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("categories")
+      .insert({
+        merchant_id: params.merchantId,
+        location_id: params.locationId, // Location-owned
+        name: params.name,
+        description: params.description || null,
+        display_order: params.displayOrder ?? 0,
+        image: params.image || null,
+        is_active: params.isActive ?? true,
+        is_global: false, // Location-specific
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create category:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Update a category
+   */
+  static async updateCategory(
+    client: SupabaseClient,
+    categoryId: string,
+    params: {
+      name?: string;
+      description?: string;
+      displayOrder?: number;
+      image?: string;
+      isActive?: boolean;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const updateData: Record<string, any> = {};
+    if (params.name !== undefined) updateData.name = params.name;
+    if (params.description !== undefined)
+      updateData.description = params.description;
+    if (params.displayOrder !== undefined)
+      updateData.display_order = params.displayOrder;
+    if (params.image !== undefined) updateData.image = params.image;
+    if (params.isActive !== undefined) updateData.is_active = params.isActive;
+
+    const { data, error } = await client
+      .from("categories")
+      .update(updateData)
+      .eq("id", categoryId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.error("Failed to update category:", error);
+      return { data: null, error };
+    }
+
+    // If no data returned, the category wasn't found or user lacks permission
+    if (!data) {
+      return {
+        data: null,
+        error: {
+          message:
+            "Category not found or you don't have permission to edit it.",
+        },
+      };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Delete a category
+   */
+  static async deleteCategory(
+    client: SupabaseClient,
+    categoryId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("categories")
+      .delete()
+      .eq("id", categoryId);
+
+    if (error) {
+      console.error("Failed to delete category:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Add an item to a category
+   */
+  static async addItemToCategory(
+    client: SupabaseClient,
+    params: {
+      categoryId: string;
+      menuItemId: string;
+      merchantId: string;
+      displayOrder?: number;
+      customPrice?: number;
+      isFeatured?: boolean;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("category_items")
+      .insert({
+        category_id: params.categoryId,
+        menu_item_id: params.menuItemId,
+        merchant_id: params.merchantId,
+        display_order: params.displayOrder ?? 0,
+        custom_price: params.customPrice || null,
+        is_featured: params.isFeatured ?? false,
+        is_available: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to add item to category:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Remove an item from a category
+   */
+  static async removeItemFromCategory(
+    client: SupabaseClient,
+    categoryId: string,
+    menuItemId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("category_items")
+      .delete()
+      .eq("category_id", categoryId)
+      .eq("menu_item_id", menuItemId);
+
+    if (error) {
+      console.error("Failed to remove item from category:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Add a category to a menu
+   */
+  static async addCategoryToMenu(
+    client: SupabaseClient,
+    params: {
+      menuId: string;
+      categoryId: string;
+      merchantId: string;
+      displayOrder?: number;
+      customTitle?: string;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("menu_categories")
+      .insert({
+        menu_id: params.menuId,
+        category_id: params.categoryId,
+        merchant_id: params.merchantId,
+        display_order: params.displayOrder ?? 0,
+        custom_title: params.customTitle || null,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to add category to menu:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Remove a category from a menu
+   */
+  static async removeCategoryFromMenu(
+    client: SupabaseClient,
+    menuId: string,
+    categoryId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("menu_categories")
+      .delete()
+      .eq("menu_id", menuId)
+      .eq("category_id", categoryId);
+
+    if (error) {
+      console.error("Failed to remove category from menu:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  // ============================================================
+  // MENU ITEM CRUD OPERATIONS
+  // ============================================================
+
+  /**
+   * Create a new menu item
+   */
+  static async createMenuItem(
+    client: SupabaseClient,
+    params: {
+      merchantId: string;
+      name: string;
+      description?: string;
+      price: number;
+      cashPrice?: number;
+      image?: string;
+      mealTypes?: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
+      allergens?: string[];
+      availability?: boolean;
+      stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
+      cardBgColor?: string;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("menu_items")
+      .insert({
+        merchant_id: params.merchantId,
+        name: params.name,
+        description: params.description || null,
+        price: params.price,
+        cash_price: params.cashPrice || null,
+        image: params.image || null,
+        meal_types: params.mealTypes || [],
+        allergens: params.allergens || [],
+        availability: params.availability ?? true,
+        stock_tracking_mode: params.stockTrackingMode || null,
+        card_bg_color: params.cardBgColor || null,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create menu item:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Update a menu item
+   */
+  static async updateMenuItem(
+    client: SupabaseClient,
+    itemId: string,
+    params: {
+      name?: string;
+      description?: string;
+      price?: number;
+      cashPrice?: number;
+      image?: string;
+      mealTypes?: ("Lunch" | "Dinner" | "Brunch" | "Specials")[];
+      allergens?: string[];
+      availability?: boolean;
+      stockTrackingMode?: "in_stock" | "out_of_stock" | "quantity";
+      cardBgColor?: string;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const updateData: Record<string, any> = {};
+    if (params.name !== undefined) updateData.name = params.name;
+    if (params.description !== undefined)
+      updateData.description = params.description;
+    if (params.price !== undefined) updateData.price = params.price;
+    if (params.cashPrice !== undefined)
+      updateData.cash_price = params.cashPrice;
+    if (params.image !== undefined) updateData.image = params.image;
+    if (params.mealTypes !== undefined)
+      updateData.meal_types = params.mealTypes;
+    if (params.allergens !== undefined) updateData.allergens = params.allergens;
+    if (params.availability !== undefined)
+      updateData.availability = params.availability;
+    if (params.stockTrackingMode !== undefined)
+      updateData.stock_tracking_mode = params.stockTrackingMode;
+    if (params.cardBgColor !== undefined)
+      updateData.card_bg_color = params.cardBgColor;
+
+    const { data, error } = await client
+      .from("menu_items")
+      .update(updateData)
+      .eq("id", itemId)
+      .select();
+
+    if (error) {
+      console.error("Failed to update menu item:", error);
+      return { data: null, error };
+    }
+
+    return { data: data?.[0] ?? null, error: null };
+  }
+
+  /**
+   * Delete a menu item
+   */
+  static async deleteMenuItem(
+    client: SupabaseClient,
+    itemId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.from("menu_items").delete().eq("id", itemId);
+
+    if (error) {
+      console.error("Failed to delete menu item:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Assign modifier groups to a menu item
+   */
+  static async assignModifierToItem(
+    client: SupabaseClient,
+    params: {
+      menuItemId: string;
+      modifierGroupId: string;
+      displayOrder?: number;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("menu_item_modifier_groups")
+      .insert({
+        menu_item_id: params.menuItemId,
+        modifier_group_id: params.modifierGroupId,
+        display_order: params.displayOrder ?? 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to assign modifier to item:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Remove modifier group from a menu item
+   */
+  static async removeModifierFromItem(
+    client: SupabaseClient,
+    menuItemId: string,
+    modifierGroupId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("menu_item_modifier_groups")
+      .delete()
+      .eq("menu_item_id", menuItemId)
+      .eq("modifier_group_id", modifierGroupId);
+
+    if (error) {
+      console.error("Failed to remove modifier from item:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  // ============================================================
+  // MODIFIER GROUP CRUD OPERATIONS (Location-Owned)
+  // ============================================================
+
+  /**
+   * Create a new modifier group
+   */
+  static async createModifierGroup(
+    client: SupabaseClient,
+    params: {
+      merchantId: string;
+      locationId: string;
+      name: string;
+      description?: string;
+      isRequired?: boolean;
+      minSelections?: number;
+      maxSelections?: number;
+      displayOrder?: number;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("modifier_groups")
+      .insert({
+        merchant_id: params.merchantId,
+        location_id: params.locationId, // Location-owned
+        name: params.name,
+        description: params.description || null,
+        is_required: params.isRequired ?? false,
+        min_selections: params.minSelections ?? 0,
+        max_selections: params.maxSelections ?? null,
+        display_order: params.displayOrder ?? 0,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create modifier group:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Update a modifier group
+   */
+  static async updateModifierGroup(
+    client: SupabaseClient,
+    groupId: string,
+    params: {
+      name?: string;
+      description?: string;
+      isRequired?: boolean;
+      minSelections?: number;
+      maxSelections?: number | null;
+      displayOrder?: number;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const updateData: Record<string, any> = {};
+    if (params.name !== undefined) updateData.name = params.name;
+    if (params.description !== undefined)
+      updateData.description = params.description;
+    if (params.isRequired !== undefined)
+      updateData.is_required = params.isRequired;
+    if (params.minSelections !== undefined)
+      updateData.min_selections = params.minSelections;
+    if (params.maxSelections !== undefined)
+      updateData.max_selections = params.maxSelections;
+    if (params.displayOrder !== undefined)
+      updateData.display_order = params.displayOrder;
+
+    const { data, error } = await client
+      .from("modifier_groups")
+      .update(updateData)
+      .eq("id", groupId)
+      .select();
+
+    if (error) {
+      console.error("Failed to update modifier group:", error);
+      return { data: null, error };
+    }
+
+    return { data: data?.[0] ?? null, error: null };
+  }
+
+  /**
+   * Delete a modifier group
+   */
+  static async deleteModifierGroup(
+    client: SupabaseClient,
+    groupId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("modifier_groups")
+      .delete()
+      .eq("id", groupId);
+
+    if (error) {
+      console.error("Failed to delete modifier group:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Create a modifier group item (option)
+   */
+  static async createModifierItem(
+    client: SupabaseClient,
+    params: {
+      modifierGroupId: string;
+      name: string;
+      description?: string;
+      priceModifier: number;
+      displayOrder?: number;
+      isActive?: boolean;
+      isDefault?: boolean;
+      merchantId: string;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("modifier_group_items")
+      .insert({
+        modifier_group_id: params.modifierGroupId,
+        name: params.name,
+        description: params.description || null,
+        price_modifier: params.priceModifier,
+        display_order: params.displayOrder ?? 0,
+        is_active: params.isActive ?? true,
+        is_default: params.isDefault ?? false,
+        merchant_id: params.merchantId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to create modifier item:", error);
+      return { data: null, error };
+    }
+
+    return { data, error: null };
+  }
+
+  /**
+   * Update a modifier group item
+   */
+  static async updateModifierItem(
+    client: SupabaseClient,
+    itemId: string,
+    params: {
+      name?: string;
+      description?: string;
+      priceModifier?: number;
+      displayOrder?: number;
+      isActive?: boolean;
+      isDefault?: boolean;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const updateData: Record<string, any> = {};
+    if (params.name !== undefined) updateData.name = params.name;
+    if (params.description !== undefined)
+      updateData.description = params.description;
+    if (params.priceModifier !== undefined)
+      updateData.price_modifier = params.priceModifier;
+    if (params.displayOrder !== undefined)
+      updateData.display_order = params.displayOrder;
+    if (params.isActive !== undefined) updateData.is_active = params.isActive;
+    if (params.isDefault !== undefined)
+      updateData.is_default = params.isDefault;
+
+    const { data, error } = await client
+      .from("modifier_group_items")
+      .update(updateData)
+      .eq("id", itemId)
+      .select();
+
+    if (error) {
+      console.error("Failed to update modifier item:", error);
+      return { data: null, error };
+    }
+
+    return { data: data?.[0] ?? null, error: null };
+  }
+
+  /**
+   * Delete a modifier group item
+   */
+  static async deleteModifierItem(
+    client: SupabaseClient,
+    itemId: string
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client
+      .from("modifier_group_items")
+      .delete()
+      .eq("id", itemId);
+
+    if (error) {
+      console.error("Failed to delete modifier item:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
 }

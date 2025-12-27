@@ -76,6 +76,7 @@ export interface ModifierGroup {
 export interface MenuItemDetails {
   id: string;
   name: string;
+  location_id: string | null;
   description: string | null;
   image: string | null;
   allergens: string[];
@@ -126,6 +127,8 @@ export interface CategoryDetails {
   name: string;
   description: string | null;
   image: string | null;
+  // Location ownership: null = global, UUID = local to that location
+  location_id: string | null;
   has_location_override: boolean;
   has_menu_category_override: boolean;
 }

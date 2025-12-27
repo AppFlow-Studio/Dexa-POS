@@ -249,11 +249,7 @@ const ModifierScreen = () => {
     generateCartItemId,
   } = useOrderStore();
 
-  const {
-    getItemPriceForCategory,
-    getMenuItemById,
-    modifierGroups: allModifierGroups,
-  } = useMenuStore();
+  const { getMenuItemById, modifierGroups: allModifierGroups } = useMenuStore();
 
   const { show } = useToast();
 
@@ -286,15 +282,9 @@ const ModifierScreen = () => {
     (item: any) => {
       if (!item) return 0;
       if (precomputedItemPrice > 0) return precomputedItemPrice;
-      if (categoryId && getItemPriceForCategory) {
-        return getItemPriceForCategory(
-          item?.id.split("_")[0] || "",
-          categoryId
-        );
-      }
       return item.price || 0;
     },
-    [precomputedItemPrice, getItemPriceForCategory, categoryId]
+    [precomputedItemPrice]
   );
 
   const baseMenuItem = useMemo(

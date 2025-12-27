@@ -1,59 +1,91 @@
 import CategoryForm from "@/components/menu/CategoryForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import React, { useState } from "react";
 import { Alert, View } from "react-native";
 
 const AddCategoryScreen: React.FC = () => {
-  const { addCategory, addItemToCategory, addCustomPricing } = useMenuStore();
+  const { addCategory, addItemToCategory, categories } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
   const [isSaving, setIsSaving] = useState(false);
-
-  // In the original file, custom pricing was handled via local state before save.
-  // CategoryForm handles the UI for it, but delegates the actual saving here.
-  // However, since we don't have the Category ID yet, we must create it first.
 
   const handleSubmit = async (data: any): Promise<boolean> => {
     setIsSaving(true);
     try {
-      // 1. Calculate new order
-      const newOrder =
-        Math.max(
-          ...useMenuStore.getState().categories.map((cat) => cat.order),
-          0
-        ) + 1;
+      // Validate store selection
+      if (!selectedStore) {
+        Alert.alert("Error", "No store selected. Please select a store first.");
+        return false;
+      }
 
-      // 2. Create Category
-      const newCategory = {
+      const merchantId = selectedStore.merchant_id;
+      const locationId = selectedStore.id;
+
+      // Calculate new display order
+      const newOrder = Math.max(...categories.map((cat) => cat.order), 0) + 1;
+
+      // Create category in backend
+      const { data: createdCategory, error } = await MenuService.createCategory(
+        supabase,
+        {
+          merchantId,
+          locationId,
+          name: data.name,
+          description: data.description || "",
+          displayOrder: newOrder,
+          isActive: data.isActive,
+        }
+      );
+
+      if (error) {
+        console.error("Failed to create category:", error);
+        show({
+          title: "Error",
+          message:
+            error.message || "Failed to create category. Please try again.",
+          type: "error",
+        });
+        return false;
+      }
+
+      // Add items to category if selected
+      if (
+        data.selectedItems &&
+        data.selectedItems.length > 0 &&
+        createdCategory?.id
+      ) {
+        for (let i = 0; i < data.selectedItems.length; i++) {
+          const itemId = data.selectedItems[i];
+          await MenuService.addItemToCategory(supabase, {
+            categoryId: createdCategory.id,
+            menuItemId: itemId,
+            merchantId,
+            displayOrder: i,
+            isFeatured: false,
+          });
+        }
+      }
+
+      // Also update local store for immediate UI feedback
+      // Include location_id so the category is identified as local to this store
+      addCategory({
         name: data.name,
         isActive: data.isActive,
         order: newOrder,
         schedules: data.schedules,
-      };
+        location_id: locationId, // Mark as local to current store
+      });
 
-      addCategory(newCategory);
-
-      // 3. Find created category to get ID (store sync usually instant, but let's be safe)
-      // Note: addCategory generates ID internally usually, but we don't get it back from void return.
-      // We rely on name matching or trusting the state update.
-      const createdCategory = useMenuStore
-        .getState()
-        .categories.find((cat) => cat.name === data.name);
-
-      if (createdCategory) {
-        // 4. Add items
+      // Add items to local store
+      if (data.selectedItems) {
         data.selectedItems.forEach((itemId: string) => {
-          addItemToCategory(itemId, createdCategory.name);
+          addItemToCategory(itemId, data.name);
         });
-
-        // 5. Add custom pricing (if we had passed it up from form)
-        // Since we decided CategoryForm handles generic "Edit" style custom pricing,
-        // and "Add" mode custom pricing in the original was complex to port 1:1 without
-        // significant changes to the store or form...
-        // We will accept that "Add Category" creates the category, and then users can
-        // edit it to add detailed custom pricing if the generic form doesn't match perfectly.
-        // BUT, we can try to support the simple case if CategoryForm passes pendingCustomPrices.
-        // For this iteration, let's keep it simple: Create basic category + items + schedule.
       }
 
       show({
@@ -64,7 +96,11 @@ const AddCategoryScreen: React.FC = () => {
       return true;
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Failed to save category. Please try again.");
+      show({
+        title: "Error",
+        message: "An unexpected error occurred. Please try again.",
+        type: "error",
+      });
       return false;
     } finally {
       setIsSaving(false);

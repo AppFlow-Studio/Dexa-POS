@@ -1,6 +1,9 @@
 import CategoryForm from "@/components/menu/CategoryForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { Alert, Text, TouchableOpacity, View } from "react-native";
@@ -15,6 +18,8 @@ const EditCategoryScreen: React.FC = () => {
     addItemToCategory,
     removeItemFromCategory,
   } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
   const [isSaving, setIsSaving] = useState(false);
 
@@ -30,46 +35,109 @@ const EditCategoryScreen: React.FC = () => {
         const cats = Array.isArray(item.category)
           ? item.category
           : item.category
-            ? [item.category]
-            : [];
+          ? [item.category]
+          : [];
         return cats.includes(existing.name);
       })
       .map((i) => i.id);
   }, [existing, menuItems]);
 
+  // Check if this is a global category (not local to this store)
+  const isGlobalCategory =
+    existing?.location_id === null || existing?.location_id === undefined;
+  const isLocalCategory = existing?.location_id === selectedStore?.id;
+  console.log(
+    "Category debug:",
+    existing?.id,
+    existing?.location_id,
+    selectedStore?.id
+  );
+  if (existing && (isGlobalCategory || !isLocalCategory)) {
+    return (
+      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+        <Text className="text-2xl text-white font-bold mb-2">
+          Global Category
+        </Text>
+        <Text className="text-lg text-gray-400 text-center mb-6">
+          This category belongs to all locations and cannot be edited from here.
+          Please contact your administrator to modify global categories.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="bg-blue-600 px-6 py-3 rounded-lg"
+        >
+          <Text className="text-lg text-white font-medium">Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const handleSubmit = async (data: any): Promise<boolean> => {
-    if (!existing) return false;
+    if (!existing || !selectedStore) return false;
     setIsSaving(true);
     try {
-      // 1. Update Category
+      // 1. Update Category in backend
+      const { error } = await MenuService.updateCategory(
+        supabase,
+        existing.id,
+        {
+          name: data.name,
+          isActive: data.isActive,
+        }
+      );
+
+      if (error) {
+        console.error("Failed to update category:", error);
+        show({
+          title: "Error",
+          message:
+            error.message || "Failed to update category. Please try again.",
+          type: "error",
+        });
+        return false;
+      }
+
+      // 2. Update local store for immediate UI feedback
       updateCategory(existing.id, {
         name: data.name,
         isActive: data.isActive,
         schedules: data.schedules,
       });
 
-      // 2. Update Items (Diffing)
+      // 3. Update Items (Diffing) - handle additions/removals
       const selectedItemIds: string[] = data.selectedItems;
       const beforeItemIds = menuItems
         .filter((item) => {
           const cats = Array.isArray(item.category)
             ? item.category
             : item.category
-              ? [item.category]
-              : [];
+            ? [item.category]
+            : [];
           return cats.includes(existing.name);
         })
         .map((i) => i.id);
 
       // Remove items that are no longer selected
-      beforeItemIds
-        .filter((id) => !selectedItemIds.includes(id))
-        .forEach((id) => removeItemFromCategory(id, existing.name));
+      const removedItems = beforeItemIds.filter(
+        (itemId) => !selectedItemIds.includes(itemId)
+      );
+      for (const itemId of removedItems) {
+        await MenuService.removeItemFromCategory(supabase, existing.id, itemId);
+        removeItemFromCategory(itemId, existing.name);
+      }
 
       // Add items that are newly selected
-      selectedItemIds
-        .filter((id) => !beforeItemIds.includes(id))
-        .forEach((id) => addItemToCategory(id, data.name));
+      const addedItems = selectedItemIds.filter(
+        (itemId) => !beforeItemIds.includes(itemId)
+      );
+      for (const itemId of addedItems) {
+        await MenuService.addItemToCategory(supabase, {
+          categoryId: existing.id,
+          menuItemId: itemId,
+          merchantId: selectedStore.merchant_id,
+        });
+        addItemToCategory(itemId, data.name);
+      }
 
       show({
         title: "Category Updated",
@@ -93,8 +161,28 @@ const EditCategoryScreen: React.FC = () => {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
+        onPress: async () => {
+          // Delete from backend first
+          const { error } = await MenuService.deleteCategory(
+            supabase,
+            existing.id
+          );
+          if (error) {
+            show({
+              title: "Error",
+              message: error.message || "Failed to delete category.",
+              type: "error",
+            });
+            return;
+          }
+
+          // Delete from local store
           deleteCategory(existing.id);
+          show({
+            title: "Category Deleted",
+            message: `Category "${existing.name}" has been deleted.`,
+            type: "success",
+          });
           router.replace({ pathname: "/menu", params: { tab: "categories" } });
         },
       },

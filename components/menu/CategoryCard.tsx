@@ -17,8 +17,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
   onToggleExpand,
   onEdit,
 }) => {
-  const { getItemsInCategory, categories, getItemPriceForCategory } =
-    useMenuStore();
+  const { getItemsInCategory, categories } = useMenuStore();
   const categoryItems = getItemsInCategory(categoryName);
   const categoryDetails = categories.find((c) => c.name === categoryName);
 
@@ -62,13 +61,7 @@ export const CategoryCard: React.FC<CategoryCardProps> = ({
                 >
                   <Text className="text-base text-white">{item.name}</Text>
                   <Text className="text-base text-gray-300 ml-2">
-                    $
-                    {categoryDetails
-                      ? getItemPriceForCategory(
-                          item.id,
-                          categoryDetails.id
-                        ).toFixed(2)
-                      : item.price.toFixed(2)}
+                    $ ${item.price.toFixed(2)}
                   </Text>
                 </View>
               ))}

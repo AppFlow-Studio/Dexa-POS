@@ -17,6 +17,7 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -124,7 +125,14 @@ const MenuForm: React.FC<MenuFormProps> = ({
     }
   }, [name, description, isActive, selectedCategories, schedules, initialData]);
 
-  // Get available active categories
+  // Helper function to check if an ID is a valid UUID (for backend sync)
+  const isValidUUID = (id: string) => {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  };
+
+  // Get available active categories - show all, backend calls will filter by UUID
   const availableCategories = useMemo(
     () =>
       categories
@@ -250,9 +258,15 @@ const MenuForm: React.FC<MenuFormProps> = ({
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
+            className={`flex-row items-center px-4 py-2 rounded-lg ${
+              isSaving ? "bg-blue-400" : "bg-blue-600"
+            }`}
           >
-            <Save size={20} color="white" />
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Save size={20} color="white" />
+            )}
             <Text className="text-xl text-white font-medium ml-1.5">
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>

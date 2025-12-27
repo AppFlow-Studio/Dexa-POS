@@ -1,7 +1,10 @@
 import ItemForm from "@/components/menu/ItemForm";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuItemType } from "@/lib/types";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -9,6 +12,8 @@ import { Text, TouchableOpacity, View } from "react-native";
 const EditMenuItemScreen: React.FC = () => {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
   const { menuItems, updateMenuItem } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -29,11 +34,59 @@ const EditMenuItemScreen: React.FC = () => {
     );
   }
 
+  // Check if this is a global item (not local to this store)
+  const isGlobalItem =
+    itemToEdit.location_id === null || itemToEdit.location_id === undefined;
+  const isLocalItem = itemToEdit.location_id === selectedStore?.id;
+
+  if (isGlobalItem || !isLocalItem) {
+    return (
+      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+        <Text className="text-2xl text-white font-bold mb-2">Global Item</Text>
+        <Text className="text-lg text-gray-400 text-center mb-6">
+          This item belongs to all locations and cannot be edited from here.
+          Please contact your administrator to modify global items.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="bg-blue-600 px-6 py-3 rounded-lg"
+        >
+          <Text className="text-lg text-white font-medium">Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const handleSubmit = async (
     data: Omit<MenuItemType, "id">
   ): Promise<boolean> => {
     setIsSaving(true);
     try {
+      // Update in backend first
+      const { error } = await MenuService.updateMenuItem(supabase, itemId, {
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        cashPrice: data.cashPrice,
+        image: data.image,
+        mealTypes: data.meal as ("Lunch" | "Dinner" | "Brunch" | "Specials")[],
+        allergens: data.allergens,
+        availability: data.availability,
+        stockTrackingMode: data.stockTrackingMode,
+        cardBgColor: data.cardBgColor,
+      });
+
+      if (error) {
+        console.error("Failed to update menu item:", error);
+        show({
+          title: "Error",
+          message: error.message || "Failed to update item. Please try again.",
+          type: "error",
+        });
+        return false;
+      }
+
+      // Update local store for immediate UI feedback
       updateMenuItem(itemId, data);
       show({
         title: "Item Updated",
@@ -42,6 +95,7 @@ const EditMenuItemScreen: React.FC = () => {
       });
       return true;
     } catch (error) {
+      console.error(error);
       show({
         title: "Save Error",
         message: "Failed to update the menu item. Please try again.",

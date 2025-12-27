@@ -7,6 +7,7 @@ import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType, RecipeItem } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -26,11 +27,12 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
-  Platform, // Ensure Pressable is imported
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -418,19 +420,32 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
   // Render Helpers
   const renderInventoryBackdrop = useMemo(
-    () => (backdropProps: any) => (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (backdropProps: any) =>
+      (
+        <BottomSheetBackdrop
+          {...backdropProps}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
+  // Helper function to check if an ID is a valid UUID (for backend sync)
+  const isValidUUID = (id: string) => {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(id);
+  };
+
+  // Get current store's location ID
+  const { selectedStore } = useStoreSettingsStore();
+  const currentLocationId = selectedStore?.id;
+
+  // Filter to only show LOCAL categories (location_id matches current store)
   const availableCategories = categories
-    .filter((cat) => cat.isActive)
+    .filter((cat) => cat.isActive && cat.location_id === currentLocationId)
     .sort((a, b) => a.order - b.order);
 
   return (
@@ -450,11 +465,17 @@ const ItemForm: React.FC<ItemFormProps> = ({
         <TouchableOpacity
           onPress={handleSave}
           disabled={isSaving}
-          className="flex-row items-center bg-blue-600 px-4 py-2 rounded-lg"
+          className={`flex-row items-center px-4 py-2 rounded-lg ${
+            isSaving ? "bg-blue-400" : "bg-blue-600"
+          }`}
         >
-          <Save size={20} color="white" />
+          {isSaving ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Save size={20} color="white" />
+          )}
           <Text className="text-xl text-white font-medium ml-1.5">
-            {submitButtonLabel}
+            {isSaving ? "Saving..." : submitButtonLabel}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1287,8 +1308,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       isCurrentlyEditing
                         ? "bg-blue-900 border-blue-600"
                         : isAlreadyInRecipe
-                          ? "bg-gray-800 opacity-50"
-                          : "bg-transparent"
+                        ? "bg-gray-800 opacity-50"
+                        : "bg-transparent"
                     }`}
                   >
                     <View className="flex-row items-center justify-between">
@@ -1298,8 +1319,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             isCurrentlyEditing
                               ? "text-blue-300"
                               : isAlreadyInRecipe
-                                ? "text-gray-500"
-                                : "text-white"
+                              ? "text-gray-500"
+                              : "text-white"
                           }`}
                         >
                           {inventoryItem.name}
@@ -1309,8 +1330,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                             isCurrentlyEditing
                               ? "text-blue-400"
                               : isAlreadyInRecipe
-                                ? "text-gray-600"
-                                : "text-gray-400"
+                              ? "text-gray-600"
+                              : "text-gray-400"
                           }`}
                         >
                           {inventoryItem.stockQuantity} {inventoryItem.unit} • $

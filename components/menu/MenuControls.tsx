@@ -79,8 +79,9 @@ const MenuControls: React.FC<MenuControlsProps> = ({
             showsHorizontalScrollIndicator={false}
             contentContainerClassName="gap-x-2"
           >
-            {categories?.map((tab) => {
-              const catObj = storeCategories.find((c) => c.name === tab);
+            {categories?.map((cat) => {
+              const tab = cat.name;
+              const catObj = cat; // We already have the object!
               const isScheduled =
                 catObj?.schedules && catObj.schedules.length > 0;
               const isNormallyAvailable =
@@ -105,14 +106,14 @@ const MenuControls: React.FC<MenuControlsProps> = ({
 
               return (
                 <TouchableOpacity
-                  key={tab}
+                  key={cat.id || tab} // Use ID if available
                   onPress={handlePress}
                   className={`py-2 px-4 rounded-lg flex-row items-center gap-2 ${
                     activeCategory === tab
                       ? "bg-[#212121]"
                       : !isAvailable
-                        ? "bg-gray-700 opacity-60"
-                        : "bg-transparent"
+                      ? "bg-gray-700 opacity-60"
+                      : "bg-transparent"
                   }`}
                 >
                   <View
@@ -124,8 +125,8 @@ const MenuControls: React.FC<MenuControlsProps> = ({
                       activeCategory === tab
                         ? "text-blue-400"
                         : !isAvailable
-                          ? "text-gray-400"
-                          : "text-gray-200"
+                        ? "text-gray-400"
+                        : "text-gray-200"
                     }`}
                   >
                     {tab}
