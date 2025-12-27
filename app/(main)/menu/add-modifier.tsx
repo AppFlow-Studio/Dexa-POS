@@ -180,17 +180,31 @@ const AddModifierScreen: React.FC = () => {
       }
 
       // Create modifier items (options) in backend
+      const optionsWithBackendIds = [];
       if (createdGroup?.id && formData.options.length > 0) {
         for (let i = 0; i < formData.options.length; i++) {
           const option = formData.options[i];
-          await MenuService.createModifierItem(supabase, {
-            modifierGroupId: createdGroup.id,
+          const { data: createdOption, error: itemError } =
+            await MenuService.createModifierItem(supabase, {
+              modifierGroupId: createdGroup.id,
+              name: option.name.trim(),
+              priceModifier: option.price,
+              displayOrder: i,
+              isActive: true,
+              isDefault: option.isDefault,
+              merchantId: merchantId,
+            });
+
+          if (itemError) {
+            console.error("Failed to create modifier item:", itemError);
+            // Continue creating others, but log error
+          }
+
+          optionsWithBackendIds.push({
+            ...option,
             name: option.name.trim(),
-            priceModifier: option.price,
-            displayOrder: i,
-            isActive: true,
-            isDefault: option.isDefault,
-            merchantId: merchantId,
+            // Use backend ID if available, otherwise keep temp ID (though this shouldn't happen on success)
+            id: createdOption?.id || option.id,
           });
         }
       }
@@ -202,10 +216,9 @@ const AddModifierScreen: React.FC = () => {
         selectionType: formData.selectionType,
         maxSelections: formData.maxSelections,
         description: formData.description?.trim() || undefined,
-        options: formData.options.map((option) => ({
-          ...option,
-          name: option.name.trim(),
-        })),
+        options: optionsWithBackendIds,
+        location_id: locationId,
+        id: createdGroup.id,
       };
       addModifierGroup(modifierGroupData);
 

@@ -475,6 +475,8 @@ export class MenuService {
     menuId: string,
     categoryId: string
   ): Promise<{ success: boolean; error: any }> {
+    console.log("Removing category from menu:", menuId, categoryId);
+
     const { error } = await client
       .from("menu_categories")
       .delete()

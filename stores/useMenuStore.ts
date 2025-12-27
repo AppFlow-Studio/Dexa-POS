@@ -79,7 +79,9 @@ interface MenuState {
   toggleItemAvailability: (id: string) => void;
 
   // CRUD Operations for Categories
-  addCategory: (category: Omit<Category, "id" | "createdAt">) => void;
+  addCategory: (
+    category: Omit<Category, "id" | "createdAt"> & { id?: string }
+  ) => void;
   updateCategory: (id: string, updates: Partial<Category>) => void;
   deleteCategory: (id: string) => void;
   toggleCategoryActive: (id: string) => void;
@@ -95,7 +97,9 @@ interface MenuState {
   getItemsInCategory: (categoryName: string) => MenuItemType[];
 
   // CRUD Operations for Menus
-  addMenu: (menu: Omit<Menu, "id" | "createdAt" | "updatedAt">) => void;
+  addMenu: (
+    menu: Omit<Menu, "id" | "createdAt" | "updatedAt"> & { id?: string }
+  ) => void;
   updateMenu: (id: string, updates: Partial<Menu>) => void;
   deleteMenu: (id: string) => void;
   toggleMenuActive: (id: string) => void;
@@ -103,7 +107,9 @@ interface MenuState {
   getMenuItems: (menuId: string) => MenuItemType[];
 
   // CRUD Operations for Modifier Groups
-  addModifierGroup: (modifierGroup: Omit<ModifierCategory, "id">) => void;
+  addModifierGroup: (
+    modifierGroup: Omit<ModifierCategory, "id"> & { id?: string }
+  ) => void;
   updateModifierGroup: (id: string, updates: Partial<ModifierCategory>) => void;
   deleteModifierGroup: (id: string) => void;
   getModifierGroup: (id: string) => ModifierCategory | undefined;
@@ -626,7 +632,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     addCategory: (categoryData) => {
       const newCategory: Category = {
         ...categoryData,
-        id: generateCategoryId(),
+        id: (categoryData as any).id || generateCategoryId(),
         createdAt: new Date().toISOString(),
       };
 
@@ -838,11 +844,41 @@ export const useMenuStore = create<MenuState>((set, get) => {
 
     // CRUD Operations for Menus
     addMenu: (menuData) => {
+      const state = get();
+
+      // Transform category names (strings) to full Category objects
+      // The form passes strings, but the store needs objects
+      const fullCategories = (menuData.categories || []).map(
+        (catInput: any) => {
+          if (typeof catInput === "string") {
+            // Look up by name
+            const foundCat = state.categoriesByName[catInput];
+            // If not found locally (rare), create a temporary stub or skip
+            // Ideally we accept that we might not have it yet if it's brand new?
+            // But add-menu flow ensures categories exist before selecting.
+            return (
+              foundCat || {
+                id: `temp_${Math.random()}`,
+                name: catInput,
+                isActive: true,
+                items: [],
+                order: 0,
+                schedules: [],
+              }
+            );
+          }
+          return catInput;
+        }
+      );
+
       const newMenu: Menu = {
         ...menuData,
-        id: generateMenuId(),
+        id: (menuData as any).id || generateMenuId(),
+        categories: fullCategories,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        // Ensure location_id is passed through from menuData
+        location_id: menuData.location_id,
       };
 
       set((state) => ({
@@ -851,23 +887,51 @@ export const useMenuStore = create<MenuState>((set, get) => {
         menusById: { ...state.menusById, [newMenu.id]: newMenu },
       }));
 
-      console.log("Menu added:", newMenu);
+      console.log("Menu added with transformed categories:", newMenu);
     },
 
     updateMenu: (id, updates) => {
       set((state) => {
+        // Transform category names (strings) to full Category objects if present in updates
+        let updatedCategories = undefined;
+        if (updates.categories) {
+          updatedCategories = (updates.categories as any[]).map(
+            (catInput: any) => {
+              if (typeof catInput === "string") {
+                // Look up by name
+                const foundCat = state.categoriesByName[catInput];
+                return (
+                  foundCat || {
+                    id: `temp_${Math.random()}`,
+                    name: catInput,
+                    isActive: true,
+                    items: [],
+                    order: 0,
+                    schedules: [],
+                  }
+                );
+              }
+              return catInput;
+            }
+          );
+        }
+
+        const finalUpdates = {
+          ...updates,
+          ...(updatedCategories ? { categories: updatedCategories } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+
         const updatedMenu = state.menusById[id]
           ? {
               ...state.menusById[id],
-              ...updates,
-              updatedAt: new Date().toISOString(),
+              ...finalUpdates,
             }
           : undefined;
+
         return {
           menus: state.menus.map((menu) =>
-            menu.id === id
-              ? { ...menu, ...updates, updatedAt: new Date().toISOString() }
-              : menu
+            menu.id === id ? { ...menu, ...finalUpdates } : menu
           ),
           // Keep O(1) Map in sync
           menusById: updatedMenu
@@ -876,7 +940,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
         };
       });
 
-      console.log("Menu updated:", id, updates);
+      console.log("Menu updated with transformed categories:", id);
     },
 
     deleteMenu: (id) => {
@@ -931,7 +995,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
     addModifierGroup: (modifierGroupData) => {
       const newModifierGroup: ModifierCategory = {
         ...modifierGroupData,
-        id: generateModifierGroupId(),
+        id: (modifierGroupData as any).id || generateModifierGroupId(),
       };
 
       set((state) => ({

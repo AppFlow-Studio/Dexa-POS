@@ -33,7 +33,9 @@ import {
 export interface MenuFormProps {
   initialData?: Menu;
   onSubmit: (
-    data: Omit<Menu, "id" | "createdAt" | "updatedAt">
+    data: Omit<Menu, "id" | "createdAt" | "updatedAt" | "categories"> & {
+      categories: string[];
+    }
   ) => Promise<boolean>;
   isSaving: boolean;
   title: string;
@@ -71,7 +73,11 @@ const MenuForm: React.FC<MenuFormProps> = ({
   );
   const [isActive, setIsActive] = useState(initialData?.isActive ?? true);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
-    initialData?.categories || []
+    initialData?.categories
+      ? initialData.categories.map((c: any) =>
+          typeof c === "string" ? c : c.name
+        )
+      : []
   );
   const [schedules, setSchedules] = useState<Schedule[]>(
     initialData?.schedules || []

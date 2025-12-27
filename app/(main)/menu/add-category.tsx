@@ -79,6 +79,7 @@ const AddCategoryScreen: React.FC = () => {
         order: newOrder,
         schedules: data.schedules,
         location_id: locationId, // Mark as local to current store
+        id: createdCategory.id,
       });
 
       // Add items to local store

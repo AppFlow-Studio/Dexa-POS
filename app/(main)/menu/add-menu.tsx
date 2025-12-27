@@ -73,6 +73,8 @@ const AddMenuScreen: React.FC = () => {
         isActive: data.isActive,
         categories: data.categories,
         schedules: data.schedules,
+        location_id: locationId,
+        id: createdMenu.id,
       });
 
       show({

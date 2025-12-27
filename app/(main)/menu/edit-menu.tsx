@@ -10,7 +10,7 @@ import { Alert, Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { menus, updateMenu, deleteMenu } = useMenuStore();
+  const { menus, updateMenu, deleteMenu, categoriesByName } = useMenuStore();
   const { selectedStore } = useStoreSettingsStore();
   const supabase = useSupabaseClient();
   const { show } = useToast();
@@ -60,6 +60,65 @@ const EditMenuScreen: React.FC = () => {
           type: "error",
         });
         return false;
+      }
+
+      // Sync Categories
+      // 1. Calculate diff
+      const existingCategoryNames = existing.categories.map((c) => c.name);
+      const newCategoryNames = data.categories as string[];
+
+      const addedCategories = newCategoryNames.filter(
+        (name) => !existingCategoryNames.includes(name)
+      );
+      const removedCategories = existingCategoryNames.filter(
+        (name) => !newCategoryNames.includes(name)
+      );
+
+      // 2. Handle Additions
+      for (const catName of addedCategories) {
+        const category = categoriesByName[catName];
+        if (category) {
+          const { error: addError } = await MenuService.addCategoryToMenu(
+            supabase,
+            {
+              menuId: existing.id,
+              categoryId: category.id,
+              merchantId: selectedStore?.merchant_id || "",
+              displayOrder: 0, // Default order
+            }
+          );
+          if (addError) {
+            console.error(`Failed to add category ${catName}:`, addError);
+            // We continue to try adding others, but could alert the user
+            show({
+              title: "Warning",
+              message: `Failed to add category "${catName}".`,
+              type: "error",
+            });
+          }
+        }
+      }
+
+      // 3. Handle Removals
+      for (const catName of removedCategories) {
+        // Find ID from existing menu categories
+        const category = existing.categories.find((c) => c.name === catName);
+        if (category) {
+          const { error: removeError } =
+            await MenuService.removeCategoryFromMenu(
+              supabase,
+              existing.id,
+              category.id
+            );
+          if (removeError) {
+            console.error(`Failed to remove category ${catName}:`, removeError);
+            show({
+              title: "Warning",
+              message: `Failed to remove category "${catName}".`,
+              type: "error",
+            });
+          }
+        }
       }
 
       // Update local store for immediate UI feedback
