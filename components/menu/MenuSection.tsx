@@ -49,7 +49,10 @@ const menuSectionStyles = StyleSheet.create({
 });
 
 // OPTIMIZED: WeakMap cache for image sources to prevent object recreation
-const imageSourceCache = new WeakMap<MenuItemType, ReturnType<typeof getImageSourceInternal> | undefined>();
+const imageSourceCache = new WeakMap<
+  MenuItemType,
+  ReturnType<typeof getImageSourceInternal> | undefined
+>();
 
 const getImageSourceInternal = (item: MenuItemType) => {
   if (item.image && item.image.length > 200) {
@@ -90,12 +93,12 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     temporaryActiveMenus,
     isCategoryAvailableNow,
     categories,
-    getItemPriceForCategory,
   } = useMenuStore();
   const { requestPinOverride } = usePinOverrideStore();
 
   // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
-  const { activeOrderId, ordersById, updateActiveOrderDetails } = useOrderStore();
+  const { activeOrderId, ordersById, updateActiveOrderDetails } =
+    useOrderStore();
 
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
@@ -124,7 +127,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
     const startMenu = getFirstAvailableMenu();
-    return startMenu ? startMenu.categories[0] || "" : null;
+    return startMenu ? startMenu.categories[0]?.name || "" : null;
   });
 
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
@@ -152,7 +155,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       // Switch to next available
       if (activeMeal !== nextAvailable.name) {
         setActiveMeal(nextAvailable.name);
-        setActiveCategory(nextAvailable.categories[0] || "");
+        setActiveCategory(nextAvailable.categories[0]?.name || "");
       }
     } else {
       // Nothing available: Show graceful "No Menu" state
@@ -176,8 +179,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   );
   const openSearch = useSearchStore((state) => state.openSearch);
 
-
-
   // OPTIMIZED: O(1) lookup via ordersById instead of O(n) orders.find()
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const currentOrderType = activeOrder?.order_type || "Takeaway";
@@ -196,7 +197,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
     if (isAvailable) {
       setActiveMeal(menuName);
-      setActiveCategory(menu.categories[0] || "");
+      setActiveCategory(menu.categories[0]?.name || "");
       setIsMenuDialogOpen(false);
     } else {
       // Request override
@@ -244,21 +245,42 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // }, [activeCategory, categories, isCategoryAvailableNow, availabilityTick]);
 
   useEffect(() => {
-    if (!activeCategory) {
+    if (!activeCategory || !activeMeal) {
       setFilteredMenuItems([]);
       return;
     }
-    const filtered = menuItems.filter((item) => {
-      const categoryMatch = item.category.includes(activeCategory);
-      const categoryAvailable = isCategoryAvailableNow(activeCategory);
-      return categoryMatch && categoryAvailable;
+
+    // Find the active menu and category to get the context-specific items
+    const currentMenu = menus.find((m) => m.name === activeMeal);
+    const currentCategory = currentMenu?.categories.find(
+      (c) => c.name === activeCategory
+    );
+
+    if (!currentCategory || !currentCategory.items) {
+      setFilteredMenuItems([]);
+      return;
+    }
+
+    // Use items directly from the tree (inheriting context prices)
+    const filtered = currentCategory.items.filter((item) => {
+      // Logic for availability
+      // Note: effective_availability is already set on the item in the tree
+      return item.availability;
     });
+
+    // Also respect category availability
+    const categoryAvailable = isCategoryAvailableNow(activeCategory);
+    if (!categoryAvailable) {
+      setFilteredMenuItems([]);
+      return;
+    }
+
     setFilteredMenuItems(filtered);
   }, [
     activeMeal,
     activeCategory,
     isCategoryAvailableNow,
-    menuItems,
+    menus, // Depend on menus to catch updates
     availabilityTick,
   ]);
   const numColumns = 4;
@@ -288,6 +310,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     return getCategoryByName(activeCategory)?.id;
   }, [activeCategory]);
 
+  const activeMenuId = useMemo(() => {
+    if (!activeMeal) return undefined;
+    return menus.find((m) => m.name === activeMeal)?.id;
+  }, [activeMeal, menus]);
+
   // OPTIMIZED: Memoized keyExtractor to prevent recreation
   // NOTE: All hooks must be called before any early returns
   const keyExtractor = useCallback((item: MenuItemType) => item.id, []);
@@ -304,11 +331,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           imageSource={getImageSource(item)}
           onOrderClosedCheck={onOrderClosedCheck}
           categoryId={currentCategoryId}
-          getItemPriceForCategory={getItemPriceForCategory}
+          menuId={activeMenuId}
         />
       );
     },
-    [onOrderClosedCheck, currentCategoryId, getItemPriceForCategory]
+    [onOrderClosedCheck, currentCategoryId, activeMenuId]
   );
 
   const formatTime = (d?: Date | null) =>
@@ -323,7 +350,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
             <TouchableOpacity
-              onPress={() => { }}
+              onPress={() => {}}
               className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
             >
               <Text className="text-white font-medium mr-2 text-base">
@@ -339,10 +366,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           <View className="flex-1 flex-row justify-end items-center gap-x-2">
             <TouchableOpacity
               onPress={() => setActiveTab("Menu")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
-                }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Menu"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -354,10 +382,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab("Open Item")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Open Item"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
-                }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
+                activeTab == "Open Item"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <PackagePlus color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -371,10 +400,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
             <TouchableOpacity
               onPress={() => setActiveTab("Orders")}
-              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders"
-                ? "border-2 border-blue-400"
-                : "border border-gray-600"
-                }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
+                activeTab == "Orders"
+                  ? "border-2 border-blue-400"
+                  : "border border-gray-600"
+              }`}
             >
               <Logs color="#9CA3AF" size={20} />
               <Text className="text-gray-300 ml-2 text-base">Orders</Text>
@@ -396,7 +426,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <DialogContent className="min-w-2xl w-[500px] aspect-square bg-[#212121] border-gray-700">
                 <DialogHeader className="border-b border-gray-700 pb-4">
                   <DialogTitle className="text-white text-center">
-                    <Text className="text-xl font-bold text-white">Select Menu</Text>
+                    <Text className="text-xl font-bold text-white">
+                      Select Menu
+                    </Text>
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView
@@ -415,31 +447,44 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border-2 ${isSelected
-                          ? "bg-blue-600 border-blue-400"
-                          : !isAvailable
+                        className={`p-4 rounded-xl border-2 ${
+                          isSelected
+                            ? "bg-blue-600 border-blue-400"
+                            : !isAvailable
                             ? "bg-[#252538] border-gray-700 opacity-50"
                             : "bg-[#252538] border-[#3a3a5c]"
-                          }`}
-                        style={isSelected ? {
-                          shadowColor: '#3b82f6',
-                          shadowOffset: { width: 0, height: 4 },
-                          shadowOpacity: 0.3,
-                          shadowRadius: 8,
-                          elevation: 8,
-                        } : undefined}
+                        }`}
+                        style={
+                          isSelected
+                            ? {
+                                shadowColor: "#3b82f6",
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.3,
+                                shadowRadius: 8,
+                                elevation: 8,
+                              }
+                            : undefined
+                        }
                       >
                         <View className="flex-row justify-between items-center">
-                          <Text className={`font-bold text-lg ${isSelected ? 'text-white' : 'text-gray-100'}`}>
+                          <Text
+                            className={`font-bold text-lg ${
+                              isSelected ? "text-white" : "text-gray-100"
+                            }`}
+                          >
                             {menu.name}
                           </Text>
-                          {isScheduled && <Clock size={18} color={isSelected ? "#93c5fd" : "#60a5fa"} />}
+                          {isScheduled && (
+                            <Clock
+                              size={18}
+                              color={isSelected ? "#93c5fd" : "#60a5fa"}
+                            />
+                          )}
                         </View>
                         <Text
-                          className={`text-sm mt-1 ${isSelected
-                            ? "text-blue-100"
-                            : "text-gray-400"
-                            }`}
+                          className={`text-sm mt-1 ${
+                            isSelected ? "text-blue-100" : "text-gray-400"
+                          }`}
                         >
                           {menu.description}
                         </Text>
@@ -447,18 +492,18 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                           {menu.categories.map((category, index) => (
                             <View
                               key={index}
-                              className={`px-3 py-1.5 rounded-full ${isSelected
-                                ? "bg-blue-500/80"
-                                : "bg-blue-900/40 border border-blue-800/50"
-                                }`}
+                              className={`px-3 py-1.5 rounded-full ${
+                                isSelected
+                                  ? "bg-blue-500/80"
+                                  : "bg-blue-900/40 border border-blue-800/50"
+                              }`}
                             >
                               <Text
-                                className={`text-xs font-medium ${isSelected
-                                  ? "text-white"
-                                  : "text-blue-300"
-                                  }`}
+                                className={`text-xs font-medium ${
+                                  isSelected ? "text-white" : "text-blue-300"
+                                }`}
                               >
-                                {category}
+                                {category.name}
                               </Text>
                             </View>
                           ))}
@@ -480,8 +525,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                 onMealChange={(value) => {
                   setActiveMeal(value);
                   setActiveCategory(
-                    menus.find((menu) => menu.name === value)?.categories[0] ||
-                    ""
+                    menus.find((menu) => menu.name === value)?.categories[0]
+                      ?.name || ""
                   );
                 }}
                 activeCategory={activeCategory || ""}
@@ -533,7 +578,6 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           {activeTab === "Menu" ? (
             activeMeal ? (
               <View key={"Menu"}>
-
                 <FlatList
                   data={dataWithSpacers}
                   keyExtractor={keyExtractor}
@@ -548,7 +592,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   showsVerticalScrollIndicator={false}
                   columnWrapperStyle={{
                     justifyContent: "space-between",
-                    marginBottom: 16
+                    marginBottom: 16,
                   }}
                   // OPTIMIZED: FlatList performance props
                   removeClippedSubviews={true}

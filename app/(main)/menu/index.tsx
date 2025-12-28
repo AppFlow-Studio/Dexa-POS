@@ -2,10 +2,12 @@ import MenuHeader from "@/components/menu/MenuHeader";
 import PriceEditBottomSheet, {
   PriceEditBottomSheetRef,
 } from "@/components/menu/PriceEditBottomSheet";
+import { useLoading } from "@/contexts/LoadingContext";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { Menu, MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { Link, router } from "expo-router";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { router } from "expo-router";
 import {
   ChevronDown,
   ChevronUp,
@@ -13,6 +15,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  MapPin,
   Settings,
   Trash2,
   Utensils,
@@ -59,6 +62,7 @@ interface Category {
   items: MenuItemType[];
   schedules: any[];
   order: number;
+  location_id?: string | null;
 }
 
 interface ExtendedModifierGroup {
@@ -93,6 +97,7 @@ interface DraggableMenuProps {
     categoryId: string,
     menuId: string
   ) => void;
+  isEditable: boolean;
 }
 
 // Helper to check if now is within a schedule
@@ -168,6 +173,7 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
   onEdit,
   getItemsInCategory,
   onItemPriceEdit,
+  isEditable,
 }) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -259,9 +265,12 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onEdit}
-            className="p-2 bg-[#212121] rounded border border-gray-600"
+            disabled={!isEditable}
+            className={`p-2 bg-[#212121] rounded border ${
+              isEditable ? "border-gray-600" : "border-gray-800 opacity-50"
+            }`}
           >
-            <Settings size={20} color="#9CA3AF" />
+            <Settings size={20} color={isEditable ? "#9CA3AF" : "#4B5563"} />
           </TouchableOpacity>
         </View>
       </View>
@@ -282,6 +291,13 @@ const DraggableMenu: React.FC<DraggableMenuProps> = ({
               onToggleActive={onToggleCategoryActive}
               items={getItemsInCategory(category.name)}
               onItemPriceEdit={onItemPriceEdit}
+              isEditable={
+                !!(
+                  category.location_id &&
+                  isEditable &&
+                  category.location_id === menu.location_id
+                )
+              } // Simplistic check - refined in main component if needed
             />
           ))}
         </View>
@@ -302,6 +318,7 @@ interface DraggableMenuCategoryProps {
     categoryId: string,
     menuId: string
   ) => void;
+  isEditable: boolean;
 }
 
 const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
@@ -312,6 +329,7 @@ const DraggableMenuCategory: React.FC<DraggableMenuCategoryProps> = ({
   onToggleActive,
   items,
   onItemPriceEdit,
+  isEditable,
 }) => {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -456,9 +474,10 @@ const MenuPage: React.FC = () => {
     isCategoryAvailableNow,
     isCategoryActiveForMenu,
     updateMenu,
-    getItemPriceForCategory,
     reorderMenus,
   } = useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const { showLoading, hideLoading } = useLoading();
   const { activeTab, searchQuery } = useMenuLayout();
 
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
@@ -476,28 +495,6 @@ const MenuPage: React.FC = () => {
   // Price edit bottom sheet ref
   const priceEditRef = useRef<PriceEditBottomSheetRef>(null);
 
-  // Convert store menus to display format
-  const menus = storeMenus.map((storeMenu) => ({
-    ...storeMenu,
-    // Add display properties for compatibility
-    categories: (storeMenu.categories || []).map((categoryName) => {
-      const category = storeCategories.find((cat) => cat.name === categoryName);
-      return {
-        id: category?.id || `cat_${categoryName}`,
-        name: categoryName,
-        isActive: !!(
-          category?.id && isCategoryActiveForMenu(storeMenu.id, category.id)
-        ),
-        items: getItemsInCategory(categoryName),
-        schedules: [],
-        order: category?.order || 1,
-      };
-    }),
-    schedules: storeMenu.schedules || [],
-    // Add computed availability
-    isAvailableNow: isMenuAvailableNow(storeMenu.id),
-  }));
-
   // Periodic tick to refresh time-based availability
   const [, forceUpdate] = React.useReducer((x) => x + 1, 0);
   React.useEffect(() => {
@@ -506,6 +503,19 @@ const MenuPage: React.FC = () => {
     }, 60_000);
     return () => clearInterval(intervalId);
   }, []);
+
+  // Convert store menus to display format
+  // Since storeMenus now contains the full tree (Menu -> Category -> Item),
+  // we just need to add computed availability for the top-level menu.
+  const menus = useMemo(
+    () =>
+      storeMenus.map((storeMenu) => ({
+        ...storeMenu,
+        // Add computed availability
+        isAvailableNow: isMenuAvailableNow(storeMenu.id),
+      })),
+    [storeMenus, isMenuAvailableNow, forceUpdate]
+  ); // forceUpdate triggers re-calc based on time
 
   const uniqueModifierGroups = useMemo(() => {
     return modifierGroups
@@ -528,15 +538,21 @@ const MenuPage: React.FC = () => {
   });
 
   const handleAddMenu = () => {
+    showLoading("Loading...");
     router.push("/menu/add-menu");
+    setTimeout(hideLoading, 500);
   };
 
   const handleAddCategory = () => {
+    showLoading("Loading...");
     router.push("/menu/add-category");
+    setTimeout(hideLoading, 500);
   };
 
   const handleAddItem = () => {
+    showLoading("Loading...");
     router.push("/menu/add-item");
+    setTimeout(hideLoading, 500);
   };
 
   const handleEditItem = (item: MenuItemType) => {
@@ -593,13 +609,27 @@ const MenuPage: React.FC = () => {
     updateMenu(menuId, { categories: newCategories });
   };
 
+  const isEntityEditable = (
+    entityLocationId: string | null | undefined,
+    entityName?: string
+  ) => {
+    if (!selectedStore?.id) {
+      console.log("isEntityEditable[false]: No selected store id");
+      return false;
+    }
+
+    // If entity has a location_id, it must match current store
+    if (entityLocationId) return entityLocationId === selectedStore.id;
+    // If entity has NO location_id, it is global -> NOT editable
+    return false;
+  };
+
   const renderMenusContent = () => (
     <View className="flex-1 p-4 bg-[#212121]">
       <MenuHeader
         title={`Menus (${menus.length})`}
         onAddPress={handleAddMenu}
         addButtonLabel="Add Menu"
-        disabled={true}
       />
 
       <ScrollView className="flex-1" nestedScrollEnabled={true}>
@@ -630,6 +660,7 @@ const MenuPage: React.FC = () => {
                   { categoryId, menuId }
                 );
               }}
+              isEditable={isEntityEditable(menu.location_id, menu.name)}
             />
           ))}
         </View>
@@ -643,7 +674,6 @@ const MenuPage: React.FC = () => {
         title={`Categories (${storeCategories.length})`}
         onAddPress={handleAddCategory}
         addButtonLabel="Add Category"
-        disabled={true}
       />
 
       <ScrollView className="flex-1">
@@ -700,9 +730,32 @@ const MenuPage: React.FC = () => {
                         if (cat)
                           router.push(`/menu/edit-category?id=${cat.id}`);
                       }}
-                      className="p-2 bg-[#212121] rounded border border-gray-600"
+                      disabled={
+                        !isEntityEditable(
+                          categoryName.location_id,
+                          categoryName.name
+                        )
+                      }
+                      className={`p-2 bg-[#212121] rounded border ${
+                        isEntityEditable(
+                          categoryName.location_id,
+                          categoryName.name
+                        )
+                          ? "border-gray-600"
+                          : "border-gray-800 opacity-50"
+                      }`}
                     >
-                      <Settings size={20} color="#9CA3AF" />
+                      <Settings
+                        size={20}
+                        color={
+                          isEntityEditable(
+                            categoryName.location_id,
+                            categoryName.name
+                          )
+                            ? "#9CA3AF"
+                            : "#4B5563"
+                        }
+                      />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -719,9 +772,7 @@ const MenuPage: React.FC = () => {
                           const category = storeCategories.find(
                             (c) => c.name === categoryName.name
                           );
-                          const categoryPrice = category
-                            ? getItemPriceForCategory(item.id, category.id)
-                            : item.price;
+                          const categoryPrice = item.price;
                           const hasCustomPricing =
                             item.customPricing &&
                             item.customPricing.some(
@@ -795,7 +846,6 @@ const MenuPage: React.FC = () => {
         title={`Menu Items (${filteredItems.length})`}
         onAddPress={handleAddItem}
         addButtonLabel="Add Item"
-        disabled={true}
       />
 
       {filteredItems.length === 0 ? (
@@ -826,7 +876,9 @@ const MenuPage: React.FC = () => {
                         { categoryId: null, menuId: null }
                       );
                     }}
-                    editDisabled={true}
+                    editDisabled={
+                      !isEntityEditable(item.location_id, item.name)
+                    }
                   />
                 </View>
               );
@@ -853,19 +905,36 @@ const MenuPage: React.FC = () => {
               className="bg-[#303030] rounded-lg border border-gray-700 p-4"
             >
               <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center gap-2 flex-wrap">
                   <Text className="text-2xl font-semibold text-white">
                     {modifierGroup.name}
                   </Text>
+
+                  {/* Location Badge */}
+                  {modifierGroup.location_id ? (
+                    <View className="flex-row items-center bg-purple-900/30 border border-purple-500 px-2.5 py-1 rounded-full gap-1">
+                      <MapPin size={14} color="#C084FC" />
+                      <Text className="text-sm font-medium text-purple-400">
+                        {modifierGroup.location_name || "Local"}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View className="bg-green-900/30 border border-green-500 px-2.5 py-1 rounded-full">
+                      <Text className="text-sm font-medium text-green-400">
+                        Global
+                      </Text>
+                    </View>
+                  )}
+
                   <View
-                    className={`px-3 py-1.5 rounded-full ${
+                    className={`px-3 py-1 rounded-full ${
                       modifierGroup.type === "required"
                         ? "bg-red-900/30 border border-red-500"
                         : "bg-blue-900/30 border border-blue-500"
                     }`}
                   >
                     <Text
-                      className={`text-lg font-medium ${
+                      className={`text-sm font-medium ${
                         modifierGroup.type === "required"
                           ? "text-red-400"
                           : "text-blue-400"
@@ -876,8 +945,8 @@ const MenuPage: React.FC = () => {
                         : "Optional"}
                     </Text>
                   </View>
-                  <View className="bg-gray-600/30 border border-gray-500 px-3 py-1.5 rounded-full">
-                    <Text className="text-lg text-gray-300">
+                  <View className="bg-gray-600/30 border border-gray-500 px-3 py-1 rounded-full">
+                    <Text className="text-sm text-gray-300">
                       {modifierGroup.selectionType === "single"
                         ? "Single"
                         : "Multiple"}
@@ -886,13 +955,37 @@ const MenuPage: React.FC = () => {
                 </View>
 
                 <View className="flex-row items-center gap-2">
-                  <Link
-                    href={`/menu/edit-modifier?id=${modifierGroup.id}`}
-                    asChild
-                    className="p-2 bg-[#212121] rounded border border-gray-600"
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push(`/menu/edit-modifier?id=${modifierGroup.id}`)
+                    }
+                    disabled={
+                      !isEntityEditable(
+                        modifierGroup.location_id,
+                        modifierGroup.name
+                      )
+                    }
+                    className={`p-2 bg-[#212121] rounded border ${
+                      isEntityEditable(
+                        modifierGroup.location_id,
+                        modifierGroup.name
+                      )
+                        ? "border-gray-600"
+                        : "border-gray-800 opacity-50"
+                    }`}
                   >
-                    <Settings size={20} color="#9CA3AF" />
-                  </Link>
+                    <Settings
+                      size={20}
+                      color={
+                        isEntityEditable(
+                          modifierGroup.location_id,
+                          modifierGroup.name
+                        )
+                          ? "#9CA3AF"
+                          : "#4B5563"
+                      }
+                    />
+                  </TouchableOpacity>
                 </View>
               </View>
 

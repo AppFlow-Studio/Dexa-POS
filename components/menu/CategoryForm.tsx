@@ -24,6 +24,7 @@ import {
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -78,7 +79,6 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
     updateCustomPricing,
     deleteCustomPricing,
     toggleCustomPricingActive,
-    getItemPriceForCategory,
   } = useMenuStore();
 
   const [name, setName] = useState(initialData?.name || "");
@@ -303,9 +303,16 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className={`px-4 py-2 rounded-lg ${isSaving ? "bg-blue-800" : "bg-blue-600"}`}
+            className={`flex-row items-center px-4 py-2 rounded-lg ${
+              isSaving ? "bg-blue-400" : "bg-blue-600"
+            }`}
           >
-            <Text className="text-xl text-white">
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Save size={20} color="white" />
+            )}
+            <Text className="text-xl text-white ml-1.5">
               {isSaving ? "Saving..." : submitButtonLabel}
             </Text>
           </TouchableOpacity>
@@ -567,7 +574,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                         </View>
                         {/* Selection Indicator */}
                         <View
-                          className={`w-5 h-5 rounded-full border-2 items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-500"}`}
+                          className={`w-5 h-5 rounded-full border-2 items-center justify-center ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-600"
+                              : "border-gray-500"
+                          }`}
                         >
                           {isSelected && <Check size={12} color="white" />}
                         </View>
@@ -665,7 +676,11 @@ const CategoryForm: React.FC<CategoryFormProps> = ({
                   </View>
                 </View>
                 <View
-                  className={`w-6 h-6 rounded-full border-2 items-center justify-center ${isSelected ? "bg-blue-600 border-blue-600" : "border-gray-500"}`}
+                  className={`w-6 h-6 rounded-full border-2 items-center justify-center ${
+                    isSelected
+                      ? "bg-blue-600 border-blue-600"
+                      : "border-gray-500"
+                  }`}
                 >
                   {isSelected && <Check size={14} color="white" />}
                 </View>

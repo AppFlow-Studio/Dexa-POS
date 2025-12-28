@@ -152,6 +152,10 @@ export interface ModifierCategory {
   maxSelections?: number; // For multiple selection with limits
   description?: string; // e.g., "Choose any", "Included up to 3; extras +$0.25 each"
   options: ModifierOption[];
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+  location_name?: string;
+  items?: MenuItemType[];
 }
 
 export interface ExtendedModifierGroup extends ModifierCategory {
@@ -194,6 +198,12 @@ export interface MenuItemType {
   cardBgColor?: string;
   availability?: boolean; // New field for availability status
   customPricing?: CustomPricing[]; // Legacy field - being replaced by priceLevels
+  // Menu-specific price overrides (Level 5)
+  // Map<MenuID, Price>
+  menuPriceOverrides?: Record<string, number>;
+  // Category-specific price overrides (Level 4)
+  // Map<CategoryID, Price>
+  categoryPriceOverrides?: Record<string, number>;
   recipe?: RecipeItem[];
   // Optional stock tracking directly on menu items (for items not built from recipes)
   stockQuantity?: number;
@@ -203,6 +213,8 @@ export interface MenuItemType {
   // NEW: Backend pricing metadata
   priceLevels?: PriceLevels;
   priceSource?: PriceSource;
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
 }
 
 export interface CustomPricing {
@@ -222,10 +234,12 @@ export interface Menu {
   name: string;
   description?: string;
   isActive: boolean;
-  categories: string[]; // Array of category names
+  categories: Category[]; // Changed to array of full Category objects (Tree Structure)
   schedules?: Schedule[];
   createdAt: string;
   updatedAt: string;
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
 }
 
 export interface Category {
@@ -235,6 +249,10 @@ export interface Category {
   order: number;
   createdAt: string;
   schedules?: Schedule[];
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id?: string | null;
+  location_name?: string; // Display name of the owning location
+  items?: MenuItemType[]; // Nested items for Tree Structure
 }
 
 export interface Schedule {

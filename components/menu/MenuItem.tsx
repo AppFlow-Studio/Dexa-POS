@@ -148,41 +148,44 @@ const PlaceholderIcon = React.memo(() => (
 ));
 PlaceholderIcon.displayName = "PlaceholderIcon";
 
-const ModifierIcon = React.memo(() => (
-  <Settings color="#60A5FA" size={24} />
-));
+const ModifierIcon = React.memo(() => <Settings color="#60A5FA" size={24} />);
 ModifierIcon.displayName = "ModifierIcon";
 
 // OPTIMIZED: Memoized stock status component
-const StockStatus = React.memo(({ stockQuantity, availability }: {
-  stockQuantity?: number;
-  availability?: boolean;
-}) => {
-  if (stockQuantity !== undefined && stockQuantity > 0) {
+const StockStatus = React.memo(
+  ({
+    stockQuantity,
+    availability,
+  }: {
+    stockQuantity?: number;
+    availability?: boolean;
+  }) => {
+    if (stockQuantity !== undefined && stockQuantity > 0) {
+      return (
+        <View style={styles.stockRow}>
+          <View style={styles.stockDotGreen} />
+          <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
+        </View>
+      );
+    }
+
+    if (availability === false) {
+      return (
+        <View style={styles.stockRow}>
+          <View style={styles.stockDotRed} />
+          <Text style={styles.stockTextRed}>Out of Stock</Text>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.stockRow}>
         <View style={styles.stockDotGreen} />
-        <Text style={styles.stockTextGreen}>{stockQuantity} in stock</Text>
+        <Text style={styles.stockTextGreen}>In Stock</Text>
       </View>
     );
   }
-
-  if (availability === false) {
-    return (
-      <View style={styles.stockRow}>
-        <View style={styles.stockDotRed} />
-        <Text style={styles.stockTextRed}>Out of Stock</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.stockRow}>
-      <View style={styles.stockDotGreen} />
-      <Text style={styles.stockTextGreen}>In Stock</Text>
-    </View>
-  );
-});
+);
 StockStatus.displayName = "StockStatus";
 
 interface MenuItemProps {
@@ -190,7 +193,7 @@ interface MenuItemProps {
   imageSource?: ImageSourcePropType;
   onOrderClosedCheck?: () => boolean;
   categoryId?: string;
-  getItemPriceForCategory?: (itemId: string, categoryId: string) => number;
+  menuId?: string;
 }
 
 const MenuItem: React.FC<MenuItemProps> = ({
@@ -198,7 +201,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   imageSource,
   onOrderClosedCheck,
   categoryId,
-  getItemPriceForCategory,
+  menuId,
 }) => {
   // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
@@ -216,13 +219,17 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   // OPTIMIZED: Pre-compute price data (moved from render IIFE)
   const priceData = useMemo(() => {
-    const displayPrice =
-      categoryId && getItemPriceForCategory
-        ? getItemPriceForCategory(item.id, categoryId)
-        : item.price;
-    const hasCustomPricing = displayPrice !== item.price;
-    return { displayPrice, hasCustomPricing };
-  }, [item.id, item.price, categoryId, getItemPriceForCategory]);
+    // Trusted item.price from tree
+    const displayPrice = item.price;
+    const basePrice =
+      item.priceLevels?.level_2_location_item ??
+      item.priceLevels?.level_1_base ??
+      item.price;
+    // Show custom pricing if display price differs from base price
+    const hasCustomPricing = displayPrice !== basePrice;
+
+    return { displayPrice, hasCustomPricing, basePrice };
+  }, [item]);
 
   // OPTIMIZED: Pre-compute derived values
   const hasModifiers = useMemo(
@@ -254,8 +261,19 @@ const MenuItem: React.FC<MenuItemProps> = ({
     }
 
     // Use getState() to avoid subscribing to store changes
-    useModifierSidebarStore.getState().openFullscreen(item, activeOrderId, categoryId);
-  }, [item, activeOrderId, categoryId, isClockedIn, activeOrder?.order_type, onOrderClosedCheck, showClockInWall, show]);
+    useModifierSidebarStore
+      .getState()
+      .openFullscreen(item, activeOrderId, categoryId);
+  }, [
+    item,
+    activeOrderId,
+    categoryId,
+    isClockedIn,
+    activeOrder?.order_type,
+    onOrderClosedCheck,
+    showClockInWall,
+    show,
+  ]);
 
   return (
     <TouchableOpacity
@@ -284,14 +302,16 @@ const MenuItem: React.FC<MenuItemProps> = ({
             <Text style={styles.nameText}>{item.name}</Text>
           </View>
           <View style={styles.priceContainer}>
-            <Text style={priceData.hasCustomPricing ? styles.priceTextCustom : styles.priceText}>
+            <Text
+              style={
+                priceData.hasCustomPricing
+                  ? styles.priceTextCustom
+                  : styles.priceText
+              }
+            >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
-            {priceData.hasCustomPricing && (
-              <Text style={styles.originalPriceText}>
-                ${item.price.toFixed(2)}
-              </Text>
-            )}
+
             {item.cashPrice && (
               <Text style={styles.cashPriceText}>
                 Cash Price: ${item.cashPrice.toFixed(2)}

@@ -1,8 +1,11 @@
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
 import { ModifierOption } from "@/lib/types";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
 import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -37,12 +40,19 @@ const EditModifierScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { modifierGroups, updateModifierGroup, deleteModifierGroup } =
     useMenuStore();
+  const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { show } = useToast();
 
   const existing = useMemo(
     () => modifierGroups.find((m) => m.id === id),
     [id, modifierGroups]
   );
+
+  // Check if this is a global modifier (not local to this store)
+  const isGlobalModifier =
+    existing?.location_id === null || existing?.location_id === undefined;
+  const isLocalModifier = existing?.location_id === selectedStore?.id;
 
   // Use a single formData state object for consistency
   const [formData, setFormData] = useState<ModifierFormData>({
@@ -146,6 +156,71 @@ const EditModifierScreen: React.FC = () => {
     setIsSaving(true);
     setShowConfirm(false);
     try {
+      // Update modifier group in backend
+      const { error } = await MenuService.updateModifierGroup(
+        supabase,
+        existing.id,
+        {
+          name: formData.name.trim(),
+          description: formData.description?.trim() || undefined,
+          isRequired: formData.type === "required",
+          minSelections: formData.type === "required" ? 1 : 0,
+          maxSelections:
+            formData.selectionType === "multiple" ? formData.maxSelections : 1,
+        }
+      );
+
+      if (error) {
+        console.error("Failed to update modifier group:", error);
+        show({
+          title: "Error",
+          message: error.message || "Failed to update modifier group.",
+          type: "error",
+        });
+        return;
+      }
+
+      // Handle modifier options sync (only on save per user requirement)
+      // Compare existing options with form options
+      const existingOptions = existing.options || [];
+      const formOptions = formData.options;
+
+      // Update/create options
+      for (const opt of formOptions) {
+        const existingOpt = existingOptions.find((e) => e.id === opt.id);
+        if (existingOpt) {
+          // Update existing option
+          await MenuService.updateModifierItem(supabase, opt.id, {
+            name: opt.name.trim(),
+            priceModifier: opt.price,
+            isDefault: opt.isDefault,
+            isActive: opt.isAvailable ?? true,
+          });
+        } else {
+          // This is a new option (created locally with temp ID)
+          if (selectedStore?.merchant_id) {
+            await MenuService.createModifierItem(supabase, {
+              modifierGroupId: existing.id,
+              name: opt.name.trim(),
+              priceModifier: opt.price,
+              displayOrder: existingOptions.length, // Append to end or use logic
+              isActive: opt.isAvailable ?? true,
+              isDefault: opt.isDefault,
+              merchantId: selectedStore.merchant_id,
+            });
+          }
+        }
+      }
+
+      // Delete removed options
+      for (const existingOpt of existingOptions) {
+        const stillExists = formOptions.find((o) => o.id === existingOpt.id);
+        if (!stillExists) {
+          await MenuService.deleteModifierItem(supabase, existingOpt.id);
+        }
+      }
+
+      // Update local store
       updateModifierGroup(existing.id, {
         name: formData.name.trim(),
         type: formData.type,
@@ -169,6 +244,7 @@ const EditModifierScreen: React.FC = () => {
 
       router.back();
     } catch (error) {
+      console.error(error);
       show({
         title: "Error",
         message: "Failed to update the modifier group. Please try again.",
@@ -184,8 +260,25 @@ const EditModifierScreen: React.FC = () => {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!existing) return;
+
+    // Delete from backend first
+    const { error } = await MenuService.deleteModifierGroup(
+      supabase,
+      existing.id
+    );
+    if (error) {
+      show({
+        title: "Error",
+        message: error.message || "Failed to delete modifier group.",
+        type: "error",
+      });
+      setShowDeleteConfirm(false);
+      return;
+    }
+
+    // Delete from local store
     deleteModifierGroup(existing.id);
     show({
       title: "Modifier Deleted",
@@ -248,6 +341,27 @@ const EditModifierScreen: React.FC = () => {
           className="mt-3 px-4 py-2 bg-[#303030] rounded border border-gray-600"
         >
           <Text className="text-lg text-gray-300">Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Check if this is a global modifier (not local to this store)
+  if (isGlobalModifier || !isLocalModifier) {
+    return (
+      <View className="flex-1 bg-[#212121] items-center justify-center p-4">
+        <Text className="text-2xl text-white font-bold mb-2">
+          Global Modifier
+        </Text>
+        <Text className="text-lg text-gray-400 text-center mb-6">
+          This modifier group belongs to all locations and cannot be edited from
+          here. Please contact your administrator to modify global modifiers.
+        </Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="bg-blue-600 px-6 py-3 rounded-lg"
+        >
+          <Text className="text-lg text-white font-medium">Go Back</Text>
         </TouchableOpacity>
       </View>
     );

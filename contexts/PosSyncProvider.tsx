@@ -1,4 +1,5 @@
 import { usePosSync } from "@/hooks/pos/usePosSync";
+import { useStandaloneSync } from "@/hooks/pos/useStandaloneSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MerchantRole } from "@/lib/types";
 import { FloorPlanService } from "@/services/floorPlanService";
@@ -220,6 +221,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     error: syncError,
   } = usePosSync(selectedStore?.id ?? null);
 
+  // Fetch standalone entities (categories, items, modifiers not in menus)
+  const { data: standaloneData } = useStandaloneSync(
+    selectedStore?.merchant_id ?? null,
+    selectedStore?.id ?? null
+  );
+
   // Update menu store when sync data changes
   useEffect(() => {
     if (posSyncData) {
@@ -251,6 +258,19 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, [posSyncData, setMenuData, selectedStore?.id]);
+
+  // Merge standalone data (categories, items, modifiers not in any menu)
+  useEffect(() => {
+    if (standaloneData) {
+      const menuStore = useMenuStore.getState();
+      menuStore.mergeStandaloneData(standaloneData);
+      console.log("✅ Standalone data merged:", {
+        categories: standaloneData.categories?.length || 0,
+        items: standaloneData.items?.length || 0,
+        modifierGroups: standaloneData.modifierGroups?.length || 0,
+      });
+    }
+  }, [standaloneData]);
 
   // Floor plan sync is now handled in the combined useEffect above
 
