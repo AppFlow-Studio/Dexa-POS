@@ -546,6 +546,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         tipAmount,
         transactionDetails: detailsWithSplitLabel,
         itemIds, // Pass item IDs for per-item payment tracking
+        // for new split - evenly flow
+        splitCount: splits.length,
+        splitPortionIndex: splits.findIndex((s) => s.id === activeSplitId) + 1,
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)

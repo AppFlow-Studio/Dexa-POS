@@ -636,6 +636,8 @@ const syncPaymentToBackend = async (
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
     itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+    splitCount?: number; // Optional: split count for split payments
+    splitPortionIndex?: number; // Optional: split portion index for split payments
   },
   rollbackState?: PaymentRollbackState // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -680,6 +682,8 @@ const syncPaymentToBackend = async (
       amount: paymentDetails.amount,
       tipAmount: paymentDetails.tipAmount,
       itemIds: paymentDetails.itemIds,
+      splitCount: paymentDetails.splitCount,
+      splitPortionIndex: paymentDetails.splitPortionIndex,
     });
 
     const { data, error } = await supabase.rpc("process_payment_v2", {
@@ -693,6 +697,8 @@ const syncPaymentToBackend = async (
       p_item_ids: paymentDetails.itemIds || null,
       p_terminal_response: terminalResponse,
       p_staff_id: null, // Could get from employee store if needed
+      p_split_count: paymentDetails.splitCount || null,
+      p_split_portion_index: paymentDetails.splitPortionIndex || null,
     });
 
     if (error) {
@@ -916,6 +922,8 @@ interface OrderState {
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
     itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+    splitCount?: number; // Optional: split count for split payments
+    splitPortionIndex?: number; // Optional: split portion index for split payments
   }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
   setOrders: (orders: OrderProfile[]) => void;
 
@@ -2720,6 +2728,8 @@ export const useOrderStore = create<OrderState>()(
             tipAmount,
             transactionDetails,
             itemIds, // NEW: Optional array of db_order_item_ids for per-item payments
+            splitCount, // NEW: Optional split count for split payments
+            splitPortionIndex, // NEW: Optional split portion index for split payments
           }) => {
             const { hasPendingSyncs, waitForPendingSyncs } = get();
 
@@ -2850,6 +2860,8 @@ export const useOrderStore = create<OrderState>()(
                 tipAmount,
                 transactionDetails,
                 itemIds, // Pass item IDs for per-item payment tracking
+                splitCount, // Pass split count for split payments
+                splitPortionIndex, // Pass split portion index for split payments
               },
               rollbackState // Previous state for rollback on failure
             );

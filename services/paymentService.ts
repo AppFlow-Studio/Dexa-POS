@@ -104,6 +104,9 @@ export async function paySplitPortion(
         p_tip_amount: tipAmount,
         p_amount_tendered: amountTendered || null,
         p_terminal_response: terminalResponse || null
+         // NEW: Split parameters
+        p_split_count: splitCount,
+        p_split_portion_index: splitPortionIndex,
     });
 
     if (error) throw error;
