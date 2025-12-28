@@ -19,6 +19,16 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
+  // Calculate payment info - prioritize backend values
+  const amountDue = order.amount_due ?? order.total_amount ?? 0;
+  const amountPaid = order.amount_paid ?? 0;
+  const isPartiallyPaid = amountPaid > 0 && order.paid_status !== "Paid";
+  const hasPayments = (order.payments?.length ?? 0) > 0;
+
+  // Cash pricing - use backend value or fallback to amountDue (no savings if not available)
+  const cashAmountDue = order.cash_amount_due ?? amountDue;
+  const cashSavings = amountDue - cashAmountDue;
+
   // --- Color logic updated to use backend status values ---
   const getStatusColor = (status: string, paidStatus: string) => {
     if (status === "preparing") {
@@ -60,7 +70,7 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
     <Popover
       isVisible={showTooltip}
       onRequestClose={() => setShowTooltip(false)}
-      
+
       popoverStyle={{ backgroundColor: "#313131", borderRadius: 12 }}
       from={
         <TouchableOpacity
@@ -109,35 +119,39 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
               </Text>
             </View>
             <View
-              className={`px-2 py-1 rounded-md ${
-                order.paid_status === "Paid"
-                  ? "bg-green-900/50"
+              className={`px-2 py-1 rounded-md ${order.paid_status === "Paid"
+                ? "bg-green-900/50"
+                : isPartiallyPaid
+                  ? "bg-orange-900/50"
                   : "bg-red-900/50"
-              }`}
+                }`}
             >
               <Text
-                className={`text-sm font-semibold ${
-                  order.paid_status === "Paid"
-                    ? "text-green-400"
+                className={`text-sm font-semibold ${order.paid_status === "Paid"
+                  ? "text-green-400"
+                  : isPartiallyPaid
+                    ? "text-orange-400"
                     : "text-red-400"
-                }`}
+                  }`}
               >
-                {order.paid_status}
+                {order.paid_status === "Paid"
+                  ? "Paid"
+                  : isPartiallyPaid
+                    ? "Partial"
+                    : order.paid_status}
               </Text>
             </View>
             <View
-              className={`px-2 py-1 rounded-md ${
-                order.order_status === "preparing"
-                  ? "bg-orange-900/50"
-                  : "bg-gray-700/80"
-              }`}
+              className={`px-2 py-1 rounded-md ${order.order_status === "preparing"
+                ? "bg-orange-900/50"
+                : "bg-gray-700/80"
+                }`}
             >
               <Text
-                className={`text-sm font-semibold ${
-                  order.order_status === "preparing"
-                    ? "text-orange-400"
-                    : "text-gray-300"
-                }`}
+                className={`text-sm font-semibold ${order.order_status === "preparing"
+                  ? "text-orange-400"
+                  : "text-gray-300"
+                  }`}
               >
                 {order.order_status}
               </Text>
@@ -145,12 +159,34 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
           </View>
 
           <View className="flex-row justify-between items-center w-full">
-            <Text className="text-base text-gray-400">
-              {order.items.length} items -{" "}
-              {order.paid_status === "Paid"
-                ? `$${order.total_amount?.toFixed(2)}`
-                : "Pending"}
-            </Text>
+            <View>
+              <Text className="text-base text-gray-400">
+                {order.items.length} items - Total: ${order.total_amount?.toFixed(2) || "0.00"}
+              </Text>
+              {/* Show paid amount if there are partial payments */}
+              {isPartiallyPaid && (
+                <Text className="text-sm text-green-400 font-medium">
+                  Paid: ${amountPaid.toFixed(2)}
+                </Text>
+              )}
+              {/* Show outstanding amount if not fully paid */}
+              {order.paid_status !== "Paid" && amountDue > 0.01 && (
+                <Text className="text-sm text-yellow-400 font-bold">
+                  Due: ${amountDue.toFixed(2)}
+                </Text>
+              )}
+              {/* Show cash savings option */}
+              {order.paid_status !== "Paid" && cashSavings > 0.01 && (
+                <Text className="text-xs text-green-400">
+                  Cash: ${cashAmountDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
+                </Text>
+              )}
+              {order.paid_status === "Paid" && (
+                <Text className="text-sm text-green-400 font-medium">
+                  Fully Paid ✓
+                </Text>
+              )}
+            </View>
             <Text className="text-base text-gray-400">
               Opened at{" "}
               {new Date(order.opened_at!).toLocaleTimeString("en-US", {
@@ -160,6 +196,30 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </Text>
           </View>
         </View>
+
+        {/* Payment Breakdown (show if there are payments) */}
+        {hasPayments && order.payments && order.payments.length > 0 && (
+          <View className="px-4 py-2 border-b border-gray-600">
+            <Text className="text-gray-500 text-xs uppercase mb-1 font-medium">
+              Payments
+            </Text>
+            {order.payments
+              .filter((p) => !p.isVoided)
+              .map((p, i) => (
+                <View key={i} className="flex-row justify-between items-center py-0.5">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-gray-300 text-sm">{p.method}</Text>
+                    {p.last4 && (
+                      <Text className="text-gray-500 text-xs">••••{p.last4}</Text>
+                    )}
+                  </View>
+                  <Text className="text-gray-300 text-sm font-medium">
+                    ${p.amount.toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+          </View>
+        )}
 
         {/* Action Buttons with Dark Theme */}
         <View className="flex-col gap-y-1 p-2">
@@ -191,17 +251,22 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             </Text>
           </TouchableOpacity>
 
-          {order.paid_status !== "Paid" && (
+          {order.paid_status !== "Paid" && amountDue > 0.01 && (
             <TouchableOpacity
               onPress={() => {
                 onRetrieve();
                 setShowTooltip(false);
               }}
-              className="flex-row items-center p-3 rounded-lg"
+              className="flex-row items-center justify-between p-3 rounded-lg bg-blue-600/20"
             >
-              <CreditCard color="#60a5fa" size={20} />
-              <Text className="ml-3 font-semibold text-blue-400 text-lg">
-                Retrieve to Pay
+              <View className="flex-row items-center">
+                <CreditCard color="#60a5fa" size={20} />
+                <Text className="ml-3 font-semibold text-blue-400 text-lg">
+                  {isPartiallyPaid ? "Pay Remaining" : "Retrieve to Pay"}
+                </Text>
+              </View>
+              <Text className="font-bold text-blue-400 text-lg">
+                ${amountDue.toFixed(2)}
               </Text>
             </TouchableOpacity>
           )}

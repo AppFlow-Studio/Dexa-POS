@@ -130,7 +130,8 @@ export const useStandaloneSync = (
             p_location_id: locationId,
           }),
 
-          // 3. Modifiers via direct query (matching website pattern)
+          // 3. Modifiers via direct query (matching working implementation from menu/index.tsx)
+          // This query matches the GetModifierGroups function that successfully fetches 8 groups
           supabase
             .from("modifier_groups")
             .select(
@@ -149,12 +150,14 @@ export const useStandaloneSync = (
             )
             `
             )
-            .eq("merchant_id", merchantId)
-            // Get global groups + location-specific groups (matching website)
+            // Note: We don't filter by merchant_id here - RLS will handle it
+            // Get global groups (location_id IS NULL) + location-specific groups
             .or(`location_id.is.null,location_id.eq.${locationId}`)
-            .order("display_order", { ascending: true, nullsFirst: false }),
+            .order("display_order", { ascending: true, nullsFirst: false })
+            .order("created_at", { ascending: false }),
         ]);
 
+      console.log("modifiersResult", modifiersResult.data);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
         console.error(

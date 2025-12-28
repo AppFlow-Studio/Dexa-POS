@@ -1,7 +1,7 @@
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { ArrowLeft, ListChecks, Split, Users } from "lucide-react-native";
+import { ArrowLeft, ListChecks, Receipt, Split, Users } from "lucide-react-native";
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const SplitOptionsView: React.FC = () => {
   const setView = usePaymentStore((state) => state.setView);
@@ -25,64 +25,88 @@ const SplitOptionsView: React.FC = () => {
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 justify-center items-center p-6">
-        <View className="flex-row gap-4 w-full max-w-4xl h-[280px]">
+      <ScrollView
+        className="flex-1 p-6"
+        contentContainerStyle={{ alignItems: "center", justifyContent: "center", flexGrow: 1 }}
+      >
+        {/* First Row: Split by Item & Split Evenly */}
+        <View className="flex-row gap-4 w-full max-w-4xl h-[220px] mb-4">
           {/* Option 1: Split by Item */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-6 border border-[#333] justify-between active:bg-[#333]"
+            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
             onPress={() => setView("split-by-item")}
           >
-            <View className="w-16 h-16 rounded-full bg-sky-500/10 items-center justify-center mb-4">
-              <ListChecks size={32} color="#0EA5E9" />
+            <View className="w-14 h-14 rounded-full bg-sky-500/10 items-center justify-center mb-3">
+              <ListChecks size={28} color="#0EA5E9" />
             </View>
             <View>
-              <Text className="text-xl font-bold text-white mb-2">
+              <Text className="text-lg font-bold text-white mb-1">
                 Split by Item
               </Text>
-              <Text className="text-gray-400 leading-5">
-                Assign specific items to specific guests (e.g. Guest 1 had the
-                Burger).
+              <Text className="text-gray-400 text-sm leading-5">
+                Assign specific items to specific guests.
               </Text>
             </View>
           </TouchableOpacity>
 
           {/* Option 2: Split Evenly */}
           <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-6 border border-[#333] justify-between active:bg-[#333]"
+            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
             onPress={() => setView("split-evenly")}
           >
-            <View className="w-16 h-16 rounded-full bg-green-500/10 items-center justify-center mb-4">
-              <Users size={32} color="#22C55E" />
+            <View className="w-14 h-14 rounded-full bg-green-500/10 items-center justify-center mb-3">
+              <Users size={28} color="#22C55E" />
             </View>
             <View>
-              <Text className="text-xl font-bold text-white mb-2">
+              <Text className="text-lg font-bold text-white mb-1">
                 Split Evenly
               </Text>
-              <Text className="text-gray-400 leading-5">
-                Divide the total bill equally among a specific number of people.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Option 3: Custom Amount */}
-          <TouchableOpacity
-            className="flex-1 bg-[#2A2A2A] rounded-2xl p-6 border border-[#333] justify-between active:bg-[#333]"
-            onPress={() => setView("split-custom-amount")}
-          >
-            <View className="w-16 h-16 rounded-full bg-yellow-500/10 items-center justify-center mb-4">
-              <Split size={32} color="#EAB308" />
-            </View>
-            <View>
-              <Text className="text-xl font-bold text-white mb-2">
-                Custom Amount
-              </Text>
-              <Text className="text-gray-400 leading-5">
-                Manually type in exactly how much each person wants to pay.
+              <Text className="text-gray-400 text-sm leading-5">
+                Divide the total equally among guests.
               </Text>
             </View>
           </TouchableOpacity>
         </View>
-      </View>
+
+        {/* Second Row: Custom Amount & Pay for Items */}
+        <View className="flex-row gap-4 w-full max-w-4xl h-[220px]">
+          {/* Option 3: Custom Amount */}
+          <TouchableOpacity
+            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-[#333] justify-between active:bg-[#333]"
+            onPress={() => setView("split-custom-amount")}
+          >
+            <View className="w-14 h-14 rounded-full bg-yellow-500/10 items-center justify-center mb-3">
+              <Split size={28} color="#EAB308" />
+            </View>
+            <View>
+              <Text className="text-lg font-bold text-white mb-1">
+                Custom Amount
+              </Text>
+              <Text className="text-gray-400 text-sm leading-5">
+                Type exactly how much each person pays.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Option 4: Pay for Items (Split Review) */}
+          <TouchableOpacity
+            className="flex-1 bg-[#2A2A2A] rounded-2xl p-5 border border-orange-600/50 justify-between active:bg-[#333]"
+            onPress={() => setView("pay-for-items")}
+          >
+            <View className="w-14 h-14 rounded-full bg-orange-500/10 items-center justify-center mb-3">
+              <Receipt size={28} color="#F97316" />
+            </View>
+            <View>
+              <Text className="text-lg font-bold text-white mb-1">
+                Pay for Items
+              </Text>
+              <Text className="text-gray-400 text-sm leading-5">
+                Select items to pay now, leave rest for later. Manage payments.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </View>
   );
 };

@@ -324,7 +324,7 @@ export interface CartItem {
   // Payment tracking
   paidQuantity: number;       // How many units paid for
   paymentId?: string;         // Which payment covered this
-  
+
   // Per-item preparation status tracking for table workflow
   // Per-item preparation status tracking for table workflow
   // Supports both legacy (PascalCase) and backend (lowercase) values
@@ -701,6 +701,11 @@ export interface OrderProfile {
   total_tax?: number;
   total_discount?: number;
 
+  // Payment tracking - synced from backend
+  amount_paid?: number; // Total amount paid so far
+  amount_due?: number; // Remaining amount due (CARD price - source of truth)
+  cash_amount_due?: number; // Cash price equivalent (for showing cash discount option)
+
   // Additional optional details
   guest_count?: number;
   customer_name?: string;
@@ -710,13 +715,18 @@ export interface OrderProfile {
   checkDiscount?: Discount | null;
   paymentMethod?: PaymentType; // Example usage
   payments?: {
-    id?: string; // Backend payment ID
+    id?: string; // Backend payment ID (for void operations)
     amount: number;
     method: PaymentType;
     cardBrand?: string;
     last4?: string;
     tip_amount?: number;
-  }[]; // Example usage
+    // NEW: Fields for payment tracking and void operations
+    itemsCovered?: string[]; // db_order_item_ids paid by this payment
+    timestamp?: string; // When payment was made (ISO string)
+    isVoided?: boolean; // Whether payment has been voided
+    voidReason?: string; // Reason for void if voided
+  }[]; // Payment records
   notes?: string; // Order-level notes (customer requests, special instructions)
 }
 

@@ -20,6 +20,7 @@ import ItemsReviewView from "./ paymentView/ItemsReviewView";
 import PaymentSuccessView from "./ paymentView/PaymentSuccessView";
 import CustomAmountView from "./paymentView/CustomAmountView";
 import ManualCardEntryView from "./paymentView/ManualCardEntryView";
+import PayForItemsView from "./paymentView/PayForItemsView";
 import PaymentMethodSelectionView from "./paymentView/PaymentMethodSelectionView";
 import PaymentProgressHeader from "./paymentView/PaymentProgressHeader";
 import SplitByItemView from "./paymentView/SplitByItemView";
@@ -27,7 +28,7 @@ import SplitEvenlyView from "./paymentView/SplitEvenlyView";
 import SplitOptionsView from "./paymentView/SplitOptionsView";
 import SplitPaymentSuccessView from "./SplitPaymentSuccessView";
 
-interface PaymentBottomSheetProps {}
+interface PaymentBottomSheetProps { }
 
 const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
@@ -114,6 +115,8 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
         return <CustomAmountView />;
       case "split-payment-success":
         return <SplitPaymentSuccessView />;
+      case "pay-for-items":
+        return <PayForItemsView />;
       case "success":
         return <PaymentSuccessView />;
       default:

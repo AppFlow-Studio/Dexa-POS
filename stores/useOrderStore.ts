@@ -299,6 +299,141 @@ export const setOrderStoreSupabaseClient = (client: SupabaseClient | null) => {
 
 export const getOrderStoreSupabaseClient = () => _supabaseClient;
 
+// ============================================================================
+// PER-ORDER CREATION LOCK - Prevents race conditions when adding items rapidly
+// ============================================================================
+// Maps local order ID -> Promise that resolves to db_order_id (or null on failure)
+// This ensures only ONE order creation happens even when multiple items are added simultaneously
+const pendingOrderCreations: Map<string, Promise<string | null>> = new Map();
+
+// Type for the setOrderDbId callback
+type SetOrderDbIdFn = (
+  localOrderId: string,
+  dbOrderId: string,
+  orderNumber: string,
+  displayNumber: string,
+  createdAt: string
+) => void;
+
+/**
+ * Ensures an order exists in the database, with lock protection against race conditions.
+ * 
+ * - If order already has db_order_id, returns it immediately
+ * - If order creation is already in progress, waits for that promise
+ * - If no creation in progress, starts one and locks others out
+ * 
+ * @returns db_order_id if successful, null if failed (items should be queued for retry)
+ */
+const ensureOrderCreated = async (
+  order: OrderProfile,
+  setOrderDbId: SetOrderDbIdFn
+): Promise<string | null> => {
+  const supabase = _supabaseClient;
+
+  // Early return if no supabase client - offline mode
+  if (!supabase) {
+    console.log("[ensureOrderCreated] No Supabase client - offline mode");
+    return null;
+  }
+
+  const selectedStore = useStoreSettingsStore.getState().selectedStore;
+  if (!selectedStore) {
+    console.log("[ensureOrderCreated] No store selected");
+    return null;
+  }
+
+  // FAST PATH: Order already has db_order_id
+  // Re-check from store in case it was set by another call
+  const currentOrder = useOrderStore.getState().ordersById[order.id];
+  if (currentOrder?.db_order_id) {
+    console.log(`[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`);
+    return currentOrder.db_order_id;
+  }
+
+  // CHECK FOR EXISTING LOCK: Another call is already creating this order
+  const existingPromise = pendingOrderCreations.get(order.id);
+  if (existingPromise) {
+    console.log(`[ensureOrderCreated] Waiting for pending creation for order ${order.id}`);
+    const result = await existingPromise;
+    // After waiting, re-check the store for the db_order_id (it should be set now)
+    const updatedOrder = useOrderStore.getState().ordersById[order.id];
+    return updatedOrder?.db_order_id || result;
+  }
+
+  // ACQUIRE LOCK: We are the first caller - create the order
+  console.log(`[ensureOrderCreated] Acquiring lock and creating order ${order.id}`);
+
+  const creationPromise = (async (): Promise<string | null> => {
+    try {
+      // Double-check in case another call snuck in
+      const recheckOrder = useOrderStore.getState().ordersById[order.id];
+      if (recheckOrder?.db_order_id) {
+        return recheckOrder.db_order_id;
+      }
+
+      const createOrderParams: CreateOrderParams = {
+        p_merchant_id: selectedStore.merchant_id,
+        p_location_id: selectedStore.id,
+        p_order_type: order.order_type
+          ? order.order_type === "Takeaway"
+            ? "takeout"
+            : order.order_type === "Dine In"
+              ? "dine_in"
+              : (order.order_type.toLowerCase() as DbOrderType)
+          : ("dine_in" as DbOrderType),
+        p_table_number: order.service_location_id || undefined,
+        p_created_by_staff_id: undefined,
+      };
+
+      console.log("[ensureOrderCreated] Creating order with params:", JSON.stringify(createOrderParams, null, 2));
+
+      const { data: createResult, error: createError } = await OrderService.createOrder(supabase, createOrderParams);
+
+      console.log("[ensureOrderCreated] createOrder Result:", createResult);
+
+      if (createError) {
+        console.error("[ensureOrderCreated] Failed to create order:", createError);
+        return null;
+      }
+
+      if (createResult) {
+        const orderData = (Array.isArray(createResult) ? createResult[0] : createResult) as any;
+        const backendId = orderData.order_id || orderData.id;
+
+        if (backendId) {
+          console.log(`[ensureOrderCreated] Order created successfully, ID: ${backendId}`);
+
+          // Update the store with the new db_order_id
+          setOrderDbId(
+            order.id,
+            backendId,
+            orderData.order_number,
+            orderData.display_number,
+            orderData.created_at || new Date().toISOString()
+          );
+
+          return backendId;
+        } else {
+          console.error("[ensureOrderCreated] createOrder result invalid:", createResult);
+          return null;
+        }
+      }
+
+      console.warn("[ensureOrderCreated] createOrder returned no data and no error");
+      return null;
+    } finally {
+      // RELEASE LOCK: Always clean up, even on error
+      pendingOrderCreations.delete(order.id);
+      console.log(`[ensureOrderCreated] Released lock for order ${order.id}`);
+    }
+  })();
+
+  // Store the promise so other calls can wait on it
+  pendingOrderCreations.set(order.id, creationPromise);
+
+  return creationPromise;
+};
+
 // Helper to sync item to backend - OFFLINE-FIRST: Does NOT remove items on failure
 const addItemToBackend = async (
   order: OrderProfile,
@@ -353,110 +488,16 @@ const addItemToBackend = async (
   }
 
   try {
-    let dbOrderId = order.db_order_id;
+    // ========================================================================
+    // STEP 1: Ensure order exists in backend (with race condition protection)
+    // ========================================================================
+    // This uses a per-order lock to prevent multiple simultaneous order creations
+    const dbOrderId = await ensureOrderCreated(order, setOrderDbId);
 
-    // Create order if it doesn't exist
+    // If order creation failed, queue item for retry
     if (!dbOrderId) {
-      const createOrderParams: CreateOrderParams = {
-        p_merchant_id: selectedStore.merchant_id,
-        p_location_id: selectedStore.id,
-        // Map local order types to backend enum values
-        p_order_type: order.order_type
-          ? order.order_type === "Takeaway"
-            ? "takeout"
-            : order.order_type === "Dine In"
-              ? "dine_in"
-              : (order.order_type.toLowerCase() as DbOrderType)
-          : ("dine_in" as DbOrderType),
-        p_table_number: order.service_location_id || undefined, // Simple mapping for now
-        p_created_by_staff_id: undefined, // Could get from employee store if needed
-      };
-
-      console.log(
-        "Creating order in backend with params:",
-        JSON.stringify(createOrderParams, null, 2)
-      );
-
-      const { data: createResult, error: createError } =
-        await OrderService.createOrder(supabase, createOrderParams);
-
-      console.log("createOrder Result:", createResult);
-      console.log("createOrder Error:", createError);
-
-      if (createError) {
-        console.error("Failed to create order in backend:", createError);
-        // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-        markItemFailed(item.id, createError.message || "Order creation failed");
-        await queueOperation({
-          type: "create_order",
-          params: {
-            localOrderId: order.id,
-            createOrderParams,
-          },
-          localOrderId: order.id,
-        });
-        // Also queue the item add for after order is created
-        await queueOperation({
-          type: "add_item",
-          params: {
-            localOrderId: order.id,
-            localItemId: item.id,
-            itemData: {
-              menuItemId: item.menuItemId,
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              cashPrice: item.cashPrice,
-              originalPrice: item.originalPrice,
-              customizations: item.customizations,
-              category_name: item.category_name,
-            },
-          },
-          localOrderId: order.id,
-          localItemId: item.id,
-        });
-        return false;
-      }
-
-      if (createResult) {
-        // Store the backend IDs
-        // Handle if createResult is an array (some RPCs return arrays)
-        const orderData = (
-          Array.isArray(createResult) ? createResult[0] : createResult
-        ) as any;
-
-        // The RPC seems to return order_id instead of id based on logs
-        const backendId = orderData.order_id || orderData.id;
-
-        if (backendId) {
-          dbOrderId = backendId;
-          console.log("Order created successfully, ID:", dbOrderId);
-
-          setOrderDbId(
-            order.id,
-            backendId,
-            orderData.order_number,
-            orderData.display_number,
-            orderData.created_at || new Date().toISOString() // Fallback for offline
-          );
-        } else {
-          console.error("createOrder result invalid:", createResult);
-        }
-      } else {
-        console.warn(
-          "createOrder returned no data and no error. This is unexpected."
-        );
-      }
-    }
-
-    // Add item to backend
-    // Debug logging for specific error tracking
-    if (!dbOrderId) {
-      console.error("Critical: dbOrderId is missing before adding item!", {
-        orderId: order.id,
-      });
-      // OFFLINE-FIRST: Keep item, mark as failed, queue for retry
-      markItemFailed(item.id, "Order ID not available");
+      console.error("[addItemToBackend] Order creation failed for order:", order.id);
+      markItemFailed(item.id, "Order creation failed");
       await queueOperation({
         type: "add_item",
         params: {
@@ -478,6 +519,12 @@ const addItemToBackend = async (
       });
       return false;
     }
+
+    console.log(`[addItemToBackend] Order ${order.id} has db_order_id: ${dbOrderId}`);
+
+    // ========================================================================
+    // STEP 2: Add item to the existing order
+    // ========================================================================
 
 
     // Calculate effective cash price (base cash price + modifiers + add-ons)
@@ -763,27 +810,45 @@ const syncPaymentToBackend = async (
           });
         }
 
+        // Update the last payment with backend ID and items covered
+        let updatedPayments = currentOrder.payments || [];
+        if (data.payment_id && updatedPayments.length > 0) {
+          const lastPaymentIndex = updatedPayments.length - 1;
+          updatedPayments = updatedPayments.map((p, i) =>
+            i === lastPaymentIndex
+              ? {
+                ...p,
+                id: data.payment_id,
+                itemsCovered: data.items_covered || [],
+                timestamp: new Date().toISOString(),
+              }
+              : p
+          );
+        }
+
         return {
           ordersById: {
             ...state.ordersById,
             [order.id]: {
               ...currentOrder,
               items: updatedItems,
+              payments: updatedPayments,
               // Backend is source of truth for payment status
               amount_paid: data.order_amount_paid,
-              amount_due: data.order_amount_due,
+              amount_due: data.order_amount_due, // Card price (always source of truth)
+              cash_amount_due: data.order_cash_amount_due ?? data.unpaid_cash_total, // Cash price for discount display
               paid_status: data.order_fully_paid ? ("Paid" as const) : ("Pending" as const),
               check_status: data.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
             },
           },
           // Update outstanding totals if this is the active order
+          // Use backend's authoritative values for both card and cash outstanding
           ...(order.id === activeOrderId
             ? {
-              activeOrderOutstandingTotal: data.order_amount_due,
-              // For cash payments, also update cash outstanding
-              ...(data.is_cash_priced
-                ? { activeOrderOutstandingCash: data.order_amount_due }
-                : {}),
+              // Use unpaid_card_total if available, otherwise fall back to order_amount_due
+              activeOrderOutstandingTotal: data.unpaid_card_total ?? data.order_amount_due,
+              // Use unpaid_cash_total for cash outstanding (always update, not just for cash payments)
+              activeOrderOutstandingCash: data.order_cash_amount_due ?? data.unpaid_cash_total ?? data.order_amount_due,
             }
             : {}),
         };
@@ -950,6 +1015,10 @@ interface OrderState {
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
   voidOrder: (orderId: string) => void;
+
+  // Payment void action - reverts payment and restores items to unpaid
+  voidPayment: (orderId: string, paymentIndex: number) => Promise<boolean>;
+  voidAllPayments: (orderId: string) => Promise<boolean>;
 
   // O(1) Getter for order by db_order_id
   getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined;
@@ -1286,6 +1355,12 @@ export const useOrderStore = create<OrderState>()(
               // This is crucial because the active order might have changed while we were awaiting
               const stillActiveAfterAsync = orderId === get().activeOrderId;
 
+              // PRIORITY: If order has backend-synced amount_due, use it as the authoritative value
+              // Backend is source of truth after payments have been processed
+              const hasBackendAmountDue = activeOrder.amount_due !== undefined && activeOrder.amount_due >= 0;
+              const finalOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : outstandingTotal;
+              const finalCashOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : safeCashOutstandingTotal;
+
               // Only update active order derived state if this order is still the active one
               if (stillActiveAfterAsync) {
                 set({
@@ -1293,11 +1368,11 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderTax: safeTax,
                   activeOrderTotal: safeTotal,
                   activeOrderDiscount: safeDiscount,
-                  activeOrderOutstandingSubtotal: outstandingSubtotal,
-                  activeOrderOutstandingTax: outstandingTax,
-                  activeOrderOutstandingTotal: outstandingTotal,
+                  activeOrderOutstandingSubtotal: hasBackendAmountDue ? activeOrder.amount_due! : outstandingSubtotal,
+                  activeOrderOutstandingTax: hasBackendAmountDue ? 0 : outstandingTax, // Tax included in backend amount_due
+                  activeOrderOutstandingTotal: finalOutstandingTotal,
                   activeOrderTotalCash: safeCashTotal,
-                  activeOrderOutstandingCash: safeCashOutstandingTotal,
+                  activeOrderOutstandingCash: finalCashOutstandingTotal,
                 });
               }
 
@@ -3641,6 +3716,143 @@ export const useOrderStore = create<OrderState>()(
             setTimeout(() => {
               useFloorPlanStore.getState().loadFloorPlanStatus();
             }, 100);
+            return true;
+          },
+
+          // ============================================================================
+          // VOID PAYMENT - Reverts a payment and restores items to unpaid status
+          // ============================================================================
+          voidPayment: async (orderId: string, paymentIndex: number): Promise<boolean> => {
+            const { ordersById, activeOrderId } = get();
+            const order = ordersById[orderId];
+
+            if (!order || !order.payments?.[paymentIndex]) {
+              console.error("[voidPayment] Order or payment not found");
+              return false;
+            }
+
+            const paymentToVoid = order.payments[paymentIndex];
+            const originalOrder = { ...order };
+
+            // 1. OPTIMISTIC UPDATE: Remove payment and restore paidQuantity
+            const updatedPayments = order.payments.filter((_, i) => i !== paymentIndex);
+
+            // Restore paidQuantity for items covered by this payment
+            const updatedItems = order.items.map((item) => {
+              if (paymentToVoid.itemsCovered?.includes(item.db_order_item_id || "")) {
+                return { ...item, paidQuantity: 0 }; // Reset to unpaid
+              }
+              return item;
+            });
+
+            // Recalculate totals after removing payment
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+            const totals = calculateOrderTotals(
+              updatedItems,
+              order.checkDiscount,
+              updatedPayments,
+              taxRatesMap
+            );
+
+            // Calculate new amounts
+            const newAmountPaid = updatedPayments.reduce((acc, p) => acc + p.amount + (p.tip_amount || 0), 0);
+            const newAmountDue = totals.total_amount - newAmountPaid;
+            const isStillPaid = newAmountDue < 0.01;
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...order,
+                  payments: updatedPayments,
+                  items: updatedItems,
+                  amount_paid: newAmountPaid,
+                  amount_due: newAmountDue,
+                  paid_status: isStillPaid ? ("Paid" as const) : ("Pending" as const),
+                  check_status: isStillPaid ? ("Closed" as const) : ("Opened" as const),
+                },
+              },
+              // Update active order totals if this is the active order
+              ...(orderId === activeOrderId
+                ? {
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
+                }
+                : {}),
+            }));
+
+            // 2. SYNC TO BACKEND
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id && paymentToVoid.id) {
+              try {
+                // Call the void_payment RPC
+                const { error } = await supabase.rpc("void_payment", {
+                  p_payment_id: paymentToVoid.id,
+                  p_void_reason: "User voided from split review",
+                });
+
+                if (error) {
+                  console.error("[voidPayment] Backend sync failed:", error);
+                  // Rollback on failure
+                  set((state) => ({
+                    ordersById: { ...state.ordersById, [orderId]: originalOrder },
+                  }));
+                  toastService.show({
+                    title: "Void Failed",
+                    message: error.message || "Failed to void payment. Please try again.",
+                    type: "error",
+                  });
+                  return false;
+                }
+
+                console.log("[voidPayment] Payment voided successfully");
+                toastService.show({
+                  title: "Payment Voided",
+                  message: "Payment has been voided. Items are now available for payment.",
+                  type: "success",
+                });
+                return true;
+              } catch (err) {
+                console.error("[voidPayment] Error:", err);
+                // Rollback on error
+                set((state) => ({
+                  ordersById: { ...state.ordersById, [orderId]: originalOrder },
+                }));
+                toastService.show({
+                  title: "Void Failed",
+                  message: "An error occurred. Please try again.",
+                  type: "error",
+                });
+                return false;
+              }
+            }
+
+            // If no backend sync needed (no db_order_id or payment.id), just succeed locally
+            toastService.show({
+              title: "Payment Voided",
+              message: "Payment has been voided locally.",
+              type: "success",
+            });
+            return true;
+          },
+
+          // Void all payments for an order
+          voidAllPayments: async (orderId: string): Promise<boolean> => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+
+            if (!order?.payments?.length) return true;
+
+            // Void each payment in reverse order to maintain index consistency
+            for (let i = order.payments.length - 1; i >= 0; i--) {
+              const success = await get().voidPayment(orderId, i);
+              if (!success) {
+                return false; // Stop if any void fails
+              }
+            }
+
             return true;
           },
 

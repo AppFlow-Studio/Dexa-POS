@@ -19,7 +19,8 @@ export type PaymentView =
   | "split-evenly"
   | "split"
   | "split-custom-amount"
-  | "split-payment-success";
+  | "split-payment-success"
+  | "pay-for-items"; // NEW: Two-panel split review view
 
 export interface Split {
   id: string;
@@ -42,6 +43,7 @@ const paymentViewToStepMap: Record<PaymentView, number> = {
   "split-evenly": 2,
   split: 2,
   "split-custom-amount": 2,
+  "pay-for-items": 2, // NEW: Split review step
   "split-payment-success": 3,
   review: 3,
   success: 4,
@@ -121,6 +123,7 @@ interface PaymentState {
   splitEvenly: (numberOfPeople: number, amountPerPerson: number, cashAmountPerPerson?: number) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
+  openPayForItems: () => void; // Action to open the pay-for-items split review view
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -353,6 +356,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     set({ splits: [], activeSplitId: null, isDirty: false });
   },
 
+  // Open the two-panel pay-for-items split review view
+  openPayForItems: () => {
+    get().paymentBottomSheetRef?.current?.expand();
+    set({
+      isOpen: true,
+      view: "pay-for-items",
+      isDirty: false,
+      splits: [],
+      activeSplitId: null,
+      splitSourceView: "pay-for-items",
+      progress: {
+        currentStep: paymentViewToStepMap["pay-for-items"],
+        totalSteps: totalSteps,
+      },
+    });
+  },
+
   // --- PAYMENT LOOP LOGIC ---
 
   startSplitPaymentFlow: (source: PaymentView) => {
@@ -510,10 +530,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       if (!currentSplit) return;
 
-      // For split-by-item payments, extract db_order_item_ids from the split items
+      // For split-by-item and pay-for-items payments, extract db_order_item_ids from the split items
       // This allows the backend to track which specific items were paid
       let itemIds: string[] | undefined;
-      if (splitSourceView === "split-by-item" && currentSplit.items.length > 0) {
+      const isPerItemPayment = splitSourceView === "split-by-item" || splitSourceView === "pay-for-items";
+      if (isPerItemPayment && currentSplit.items.length > 0) {
         itemIds = currentSplit.items
           .map((item) => item.db_order_item_id)
           .filter((id): id is string => !!id);
@@ -539,6 +560,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       };
 
       // Await payment and check for success
+      // Only pass splitCount/splitPortionIndex for EVEN split payments
+      // For per-item payments (split-by-item, pay-for-items), we pass itemIds instead
       const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
         amount: paymentAmount,
@@ -546,9 +569,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         tipAmount,
         transactionDetails: detailsWithSplitLabel,
         itemIds, // Pass item IDs for per-item payment tracking
-        // for new split - evenly flow
-        splitCount: splits.length,
-        splitPortionIndex: splits.findIndex((s) => s.id === activeSplitId) + 1,
+        // Only pass split count/index for even splits - NOT for per-item payments
+        // Per-item payments use itemIds to track what was paid
+        ...(isPerItemPayment ? {} : {
+          splitCount: splits.length,
+          splitPortionIndex: splits.findIndex((s) => s.id === activeSplitId) + 1,
+        }),
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)

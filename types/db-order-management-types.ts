@@ -293,30 +293,340 @@ export interface GetOrderItemResult {
 // PROCESS PAYMENT V2 TYPES (Unified Payment Function)
 // ============================================================================
 
-export interface ProcessPaymentV2Params {
-  p_order_id: string;
-  p_payment_method: 'cash' | 'card';
-  p_amount: number;
-  p_tip_amount?: number;
-  p_amount_tendered?: number;   // Cash only: what customer gave
-  p_item_ids?: string[];        // Per-item payment: which items
-  p_terminal_response?: Record<string, unknown>;
-  p_terminal_id?: string;
-  p_device_id?: string;
-  p_staff_id?: string;
-  p_transaction_details?: Record<string, unknown>;
+// export interface ProcessPaymentV2Params {
+//   p_order_id: string;
+//   p_payment_method: 'cash' | 'card';
+//   p_amount: number;
+//   p_tip_amount?: number;
+//   p_amount_tendered?: number;   // Cash only: what customer gave
+//   p_item_ids?: string[];        // Per-item payment: which items
+//   p_terminal_response?: Record<string, unknown>;
+//   p_terminal_id?: string;
+//   p_device_id?: string;
+//   p_staff_id?: string;
+//   p_transaction_details?: Record<string, unknown>;
+// }
+
+// export interface ProcessPaymentV2Result {
+//   'success': true,
+//   'payment_id': string,
+//   'payment_method': 'cash' | 'card',
+//   'amount_charged': number,
+//   'tip_amount': number,
+//   'total_collected': number,
+//   'change_given': number,
+//   'is_cash_priced': boolean,
+//   'pricing_mode': 'card' | 'cash',
+//   'is_item_payment': boolean,
+//   'is_split_payment': boolean,
+//   'split_count': number,
+//   'split_portion_index': number,
+//   'portions_paid': number,
+//   'portions_remaining': number,
+//   'split_card_portion': number,
+//   'split_cash_portion': number,
+//   'items_covered': { id: string, quantity: number }[],
+//   'items_paid': { id: string, quantity: number }[],
+//   'order_amount_paid': number,
+//   'order_amount_due': number,
+//   'order_fully_paid': boolean,
+//   'unpaid_items_count': number,
+//   'unpaid_card_total': number,
+//   'unpaid_cash_total': number
+
+// }
+
+// types/payment.ts
+
+// ============================================================================
+// PROCESS PAYMENT V2 - RPC TYPES
+// ============================================================================
+
+/**
+ * Item details returned when paying for specific items
+ */
+export interface PaidItemDetail {
+  /** UUID of the order_item that was paid */
+  order_item_id: string;
+  /** Name of the menu item */
+  item_name: string;
+  /** Number of units paid in this transaction */
+  quantity_paid: number;
+  /** Price per unit used (card or cash price depending on payment method) */
+  unit_price: number;
+  /** Subtotal for this item (quantity_paid × unit_price) */
+  subtotal: number;
 }
 
-export interface ProcessPaymentV2Result {
+/**
+ * Payment method type
+ */
+// export type PaymentMethod = 'card' | 'cash';
+
+/**
+ * Pricing mode - tracks which pricing context is being used
+ * - 'card': All payments so far are card
+ * - 'cash': All payments so far are cash
+ * - 'mixed': Some payments are card, some are cash
+ */
+export type PricingMode = 'card' | 'cash' | 'mixed';
+
+/**
+ * Response from process_payment_v2 RPC function
+ */
+export interface ProcessPaymentV2Response {
+  // ===========================
+  // CORE RESULT
+  // ===========================
+  
+  /** Whether the payment was successful */
   success: boolean;
+  
+  /** UUID of the created order_payment record */
   payment_id: string;
-  payment_method: string;
+  
+  /** Payment method used: 'card' or 'cash' */
+  payment_method: PaymentMethod;
+  
+  /** Amount charged for this payment (excluding tip) */
   amount_charged: number;
+  
+  /** Tip amount added to this payment */
   tip_amount: number;
+  
+  /** Total collected: amount_charged + tip_amount */
+  total_collected: number;
+  
+  /** Change to give back (cash only, 0 for card) */
   change_given: number;
+  
+  /** Whether cash pricing was used for this payment */
   is_cash_priced: boolean;
-  items_covered: string[];      // Array of db_order_item_ids that were paid
-  order_amount_paid: number;    // Total amount paid so far
-  order_amount_due: number;     // Remaining amount due
-  order_fully_paid: boolean;    // True if order is completely paid
+  
+  /** Current pricing mode after this payment */
+  pricing_mode: PricingMode;
+
+  // ===========================
+  // PAYMENT TYPE FLAGS
+  // ===========================
+  
+  /** True if this was a per-item payment (p_item_ids was provided) */
+  is_item_payment: boolean;
+  
+  /** True if this was a split evenly payment (p_split_count was provided) */
+  is_split_payment: boolean;
+
+  // ===========================
+  // SPLIT PAYMENT INFO
+  // (Only populated when is_split_payment = true)
+  // ===========================
+  
+  /** Total number of portions the order is split into */
+  split_count: number | null;
+  
+  /** Which portion this payment covers (1-based index) */
+  split_portion_index: number | null;
+  
+  /** Number of portions paid so far (including this one) */
+  portions_paid: number;
+  
+  /** Number of portions still unpaid */
+  portions_remaining: number;
+  
+  /** Per-person amount at card pricing */
+  split_card_portion: number | null;
+  
+  /** Per-person amount at cash pricing */
+  split_cash_portion: number | null;
+
+  // ===========================
+  // PER-ITEM PAYMENT INFO
+  // (Only populated when is_item_payment = true)
+  // ===========================
+  
+  /** 
+   * Detailed info about each item paid
+   * Array of objects with item details
+   * Empty array [] if not an item payment
+   */
+  items_paid: PaidItemDetail[];
+  
+  /** 
+   * Array of order_item UUIDs that were covered by this payment
+   * Empty array if not an item payment
+   */
+  items_covered: string[];
+
+  // ===========================
+  // ORDER STATE AFTER PAYMENT
+  // ===========================
+  
+  /** Total amount paid on this order (sum of all payments) */
+  order_amount_paid: number;
+  
+  /** Amount still due on this order */
+  order_amount_due: number;
+  
+  /** Whether the order is now fully paid */
+  order_fully_paid: boolean;
+  
+  /** Count of items that still have unpaid quantity */
+  unpaid_items_count: number;
+  
+  /** Total card price of all unpaid items (including tax) */
+  unpaid_card_total: number;
+  
+  /** Total cash price of all unpaid items (including tax) */
+  unpaid_cash_total: number;
+}
+
+// ============================================================================
+// REQUEST PARAMS
+// ============================================================================
+
+/**
+ * Parameters for calling process_payment_v2 RPC
+ */
+export interface ProcessPaymentV2Params {
+  /** Order UUID to process payment for */
+  p_order_id: string;
+  
+  /** Payment method: 'card' or 'cash' */
+  p_payment_method: PaymentMethod;
+  
+  /** Payment amount (required, but may be ignored for split payments) */
+  p_amount: number;
+  
+  /** Tip amount (optional, default 0) */
+  p_tip_amount?: number;
+  
+  /** Amount tendered by customer - cash only (for change calculation) */
+  p_amount_tendered?: number | null;
+  
+  /** 
+   * Array of order_item UUIDs to pay for (per-item payment)
+   * If provided, only these items are marked as paid
+   */
+  p_item_ids?: string[] | null;
+  
+  /** Terminal response data for card payments */
+  p_terminal_response?: TerminalResponse | null;
+  
+  /** Terminal ID that processed the payment */
+  p_terminal_id?: string | null;
+  
+  /** Device ID that initiated the payment */
+  p_device_id?: string | null;
+  
+  /** Staff member who processed the payment */
+  p_staff_id?: string | null;
+  
+  /** 
+   * Total number of portions for split payment
+   * Must be > 1 to trigger split payment logic
+   */
+  p_split_count?: number | null;
+  
+  /** 
+   * Which portion this payment is for (1-based)
+   * Required if p_split_count is provided
+   */
+  p_split_portion_index?: number | null;
+}
+
+/**
+ * Terminal response data from card processor
+ */
+export interface TerminalResponse {
+  transaction_id?: string;
+  authorization_code?: string;
+  card_type?: string;
+  card_last_four?: string;
+  terminal_type?: string;
+  [key: string]: unknown; // Allow additional fields
+}
+
+// ============================================================================
+// HELPER TYPES FOR UI
+// ============================================================================
+
+/**
+ * Simplified result for UI consumption
+ */
+export interface PaymentResult {
+  success: boolean;
+  paymentId: string;
+  method: PaymentMethod;
+  amountCharged: number;
+  tipAmount: number;
+  changeGiven: number;
+  orderFullyPaid: boolean;
+  amountDue: number;
+  pricingMode: PricingMode;
+  
+  // Split-specific (for UI state management)
+  isSplitPayment: boolean;
+  portionsPaid: number;
+  portionsRemaining: number;
+  
+  // Per-item specific
+  isItemPayment: boolean;
+  itemsPaid: PaidItemDetail[];
+}
+
+/**
+ * Convert RPC response to simplified UI result
+ */
+export function toPaymentResult(response: ProcessPaymentV2Response): PaymentResult {
+  return {
+    success: response.success,
+    paymentId: response.payment_id,
+    method: response.payment_method,
+    amountCharged: response.amount_charged,
+    tipAmount: response.tip_amount,
+    changeGiven: response.change_given,
+    orderFullyPaid: response.order_fully_paid,
+    amountDue: response.order_amount_due,
+    pricingMode: response.pricing_mode,
+    isSplitPayment: response.is_split_payment,
+    portionsPaid: response.portions_paid,
+    portionsRemaining: response.portions_remaining,
+    isItemPayment: response.is_item_payment,
+    itemsPaid: response.items_paid || [],
+  };
+}
+
+// ============================================================================
+// SUPABASE RPC CALL WRAPPER
+// ============================================================================
+
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * Type-safe wrapper for process_payment_v2 RPC call
+ */
+export async function processPaymentV2(
+  supabase: SupabaseClient,
+  params: ProcessPaymentV2Params
+): Promise<{ data: ProcessPaymentV2Response | null; error: Error | null }> {
+  const { data, error } = await supabase.rpc('process_payment_v2', {
+    p_order_id: params.p_order_id,
+    p_payment_method: params.p_payment_method,
+    p_amount: params.p_amount,
+    p_tip_amount: params.p_tip_amount ?? 0,
+    p_amount_tendered: params.p_amount_tendered ?? null,
+    p_item_ids: params.p_item_ids ?? null,
+    p_terminal_response: params.p_terminal_response ?? null,
+    p_terminal_id: params.p_terminal_id ?? null,
+    p_device_id: params.p_device_id ?? null,
+    p_staff_id: params.p_staff_id ?? null,
+    p_split_count: params.p_split_count ?? null,
+    p_split_portion_index: params.p_split_portion_index ?? null,
+  });
+
+  if (error) {
+    return { data: null, error: new Error(error.message) };
+  }
+
+  return { data: data as ProcessPaymentV2Response, error: null };
 }

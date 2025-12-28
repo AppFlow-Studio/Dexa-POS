@@ -49,6 +49,8 @@ const BillSection = ({
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
   const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
+  const activeOrderOutstandingTotal = useOrderStore((state) => state.activeOrderOutstandingTotal);
+  const activeOrderOutstandingCash = useOrderStore((state) => state.activeOrderOutstandingCash);
   const startNewOrder = useOrderStore((state) => state.startNewOrder);
   const sendNewItemsToKitchen = useOrderStore((state) => state.sendNewItemsToKitchen);
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
@@ -90,14 +92,45 @@ const BillSection = ({
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
 
-  // Memoize pay button disabled state - prevents clicking when total is 0 or no items
+  // Calculate the amount to display on the Pay button
+  // Priority: backend amount_due > calculated outstanding total > total
+  const displayBalanceDue = useMemo(() => {
+    // 1. Use backend's authoritative amount_due if available
+    if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
+      return activeOrder.amount_due;
+    }
+    // 2. Use calculated outstanding total if there are payments
+    if (activeOrder?.payments && activeOrder.payments.length > 0 && activeOrderOutstandingTotal > 0) {
+      return activeOrderOutstandingTotal;
+    }
+    // 3. Fall back to full order total for new orders
+    return activeOrderTotal;
+  }, [activeOrder?.amount_due, activeOrder?.payments, activeOrderOutstandingTotal, activeOrderTotal]);
+
+  // Check if order is partially paid (has payments but not fully paid)
+  const isPartiallyPaid = useMemo(() => {
+    return (activeOrder?.payments?.length ?? 0) > 0 && activeOrder?.paid_status !== "Paid";
+  }, [activeOrder?.payments, activeOrder?.paid_status]);
+
+  // Calculate cash savings for dual-price display
+  const { cashBalanceDue, cashSavings } = useMemo(() => {
+    // Use backend cash_amount_due if available, otherwise use local calculation
+    const cashDue = activeOrder?.cash_amount_due ?? activeOrderOutstandingCash ?? displayBalanceDue;
+    const savings = displayBalanceDue - cashDue;
+    return {
+      cashBalanceDue: cashDue,
+      cashSavings: savings > 0.01 ? savings : 0,
+    };
+  }, [activeOrder?.cash_amount_due, activeOrderOutstandingCash, displayBalanceDue]);
+
+  // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
     () =>
       !activeOrder ||
       cart.length === 0 ||
       hasDraftItems ||
-      activeOrderTotal <= 0,
-    [activeOrder, cart.length, hasDraftItems, activeOrderTotal]
+      displayBalanceDue <= 0,
+    [activeOrder, cart.length, hasDraftItems, displayBalanceDue]
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
@@ -131,11 +164,13 @@ const BillSection = ({
       });
       return;
     }
-    // Additional safety check for zero total
-    if (activeOrderTotal <= 0) {
+    // Additional safety check for zero balance due
+    if (displayBalanceDue <= 0) {
       show({
         title: "Invalid Amount",
-        message: "Cannot process payment for $0.00. Please add items to the order.",
+        message: activeOrder?.paid_status === "Paid"
+          ? "This order is already fully paid."
+          : "Cannot process payment for $0.00. Please add items to the order.",
         type: "error",
       });
       return;
@@ -298,7 +333,7 @@ const BillSection = ({
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={isPayButtonDisabled}
-              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center gap-2 ${isPayButtonDisabled ? "bg-gray-500" : "bg-blue-600"
+              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center gap-2 ${isPayButtonDisabled ? "bg-gray-500" : isPartiallyPaid ? "bg-green-600" : "bg-blue-600"
                 }`}
             >
               {hasPendingSyncs ? (
@@ -308,10 +343,18 @@ const BillSection = ({
                 className={`text-center text-xl font-bold ${isPayButtonDisabled ? "text-gray-400" : "text-white"
                   }`}
               >
-                Pay ${activeOrderTotal.toFixed(2)}
+                {isPartiallyPaid ? `Pay Due $${displayBalanceDue.toFixed(2)}` : `Pay $${displayBalanceDue.toFixed(2)}`}
               </Text>
             </TouchableOpacity>
           </View>
+          {/* Cash Discount Option */}
+          {cashSavings > 0 && displayBalanceDue > 0 && (
+            <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
+              <Text className="text-center text-sm text-green-400">
+                Pay cash: ${cashBalanceDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
+              </Text>
+            </View>
+          )}
         </View>
       )}
       <DiscountOverlay

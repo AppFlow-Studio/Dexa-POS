@@ -139,10 +139,23 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
           >
             <View className="flex-row items-center py-2 px-2">
               <View className="flex-1">
-                <View className="flex-row items-center">
+                <View className="flex-row items-center flex-wrap">
                   {isVoided && (
                     <View className="bg-red-600 px-2 py-0.5 rounded mr-2">
                       <Text className="text-white text-xs font-bold">VOID</Text>
+                    </View>
+                  )}
+                  {/* Paid status badge */}
+                  {!isVoided && item.paidQuantity > 0 && item.paidQuantity >= item.quantity && (
+                    <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-green-400 text-xs font-bold">PAID</Text>
+                    </View>
+                  )}
+                  {!isVoided && item.paidQuantity > 0 && item.paidQuantity < item.quantity && (
+                    <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
+                      <Text className="text-yellow-400 text-xs font-bold">
+                        {item.paidQuantity}/{item.quantity} PAID
+                      </Text>
                     </View>
                   )}
                   <Text
