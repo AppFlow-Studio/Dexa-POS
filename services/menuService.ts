@@ -329,30 +329,17 @@ export class MenuService {
     if (params.image !== undefined) updateData.image = params.image;
     if (params.isActive !== undefined) updateData.is_active = params.isActive;
 
-    const { data, error } = await client
+    const { error } = await client
       .from("categories")
       .update(updateData)
-      .eq("id", categoryId)
-      .select()
-      .maybeSingle();
+      .eq("id", categoryId);
 
     if (error) {
       console.error("Failed to update category:", error);
       return { data: null, error };
     }
 
-    // If no data returned, the category wasn't found or user lacks permission
-    if (!data) {
-      return {
-        data: null,
-        error: {
-          message:
-            "Category not found or you don't have permission to edit it.",
-        },
-      };
-    }
-
-    return { data, error: null };
+    return { data: { id: categoryId, ...params }, error: null };
   }
 
   /**
@@ -412,18 +399,20 @@ export class MenuService {
   }
 
   /**
-   * Remove an item from a category
+   * Remove an item from a category using the RPC function
+   * (Matches website implementation)
    */
   static async removeItemFromCategory(
     client: SupabaseClient,
     categoryId: string,
     menuItemId: string
   ): Promise<{ success: boolean; error: any }> {
-    const { error } = await client
-      .from("category_items")
-      .delete()
-      .eq("category_id", categoryId)
-      .eq("menu_item_id", menuItemId);
+    console.log("Removing item from category:", categoryId, menuItemId);
+
+    const { error } = await client.rpc("remove_item_from_category", {
+      p_category_id: categoryId,
+      p_menu_item_id: menuItemId,
+    });
 
     if (error) {
       console.error("Failed to remove item from category:", error);
@@ -468,7 +457,8 @@ export class MenuService {
   }
 
   /**
-   * Remove a category from a menu
+   * Remove a category from a menu using the RPC function
+   * (Matches website implementation)
    */
   static async removeCategoryFromMenu(
     client: SupabaseClient,
@@ -477,11 +467,10 @@ export class MenuService {
   ): Promise<{ success: boolean; error: any }> {
     console.log("Removing category from menu:", menuId, categoryId);
 
-    const { error } = await client
-      .from("menu_categories")
-      .delete()
-      .eq("menu_id", menuId)
-      .eq("category_id", categoryId);
+    const { error } = await client.rpc("remove_category_from_menu", {
+      p_menu_id: menuId,
+      p_category_id: categoryId,
+    });
 
     if (error) {
       console.error("Failed to remove category from menu:", error);
@@ -502,6 +491,7 @@ export class MenuService {
     client: SupabaseClient,
     params: {
       merchantId: string;
+      locationId?: string;
       name: string;
       description?: string;
       price: number;
@@ -518,6 +508,7 @@ export class MenuService {
       .from("menu_items")
       .insert({
         merchant_id: params.merchantId,
+        location_id: params.locationId || null,
         name: params.name,
         description: params.description || null,
         price: params.price,

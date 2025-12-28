@@ -39,6 +39,8 @@ export interface StandaloneItem {
   effective_cash_price: number | null;
   effective_availability: boolean;
   stock_tracking_mode: string | null;
+  // Location ownership - null = global (merchant-wide), UUID = local to that location
+  location_id: string | null;
   categories: {
     id: string;
     name: string;
@@ -111,7 +113,8 @@ export const useStandaloneSync = (
       if (!merchantId || !locationId) {
         throw new Error("Merchant ID and Location ID required");
       }
-
+      console.log("merchantId", merchantId);
+      console.log("locationId", locationId);
       // Fetch all 3 in parallel
       const [categoriesResult, itemsResult, modifiersResult] =
         await Promise.all([
@@ -147,12 +150,8 @@ export const useStandaloneSync = (
             `
             )
             .eq("merchant_id", merchantId)
-
-            // Also filter location_override to current location if it exists
-            // .eq(
-            //   "location_modifier_group_overrides.location_id",
-            //   locationId
-            // )
+            // Get global groups + location-specific groups (matching website)
+            .or(`location_id.is.null,location_id.eq.${locationId}`)
             .order("display_order", { ascending: true, nullsFirst: false }),
         ]);
 
@@ -171,6 +170,38 @@ export const useStandaloneSync = (
           "Modifiers standalone fetch error:",
           modifiersResult.error
         );
+      }
+
+      // Debug: Send standalone data to debug server
+      const DEBUG_STANDALONE_URL = __DEV__
+        ? "http://192.168.29.134:3456/debug/sync-data"
+        : null;
+
+      if (DEBUG_STANDALONE_URL) {
+        fetch(DEBUG_STANDALONE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            standaloneData: {
+              items: itemsResult.data || [],
+            },
+            locationId,
+            merchantId,
+            timestamp: new Date().toISOString(),
+          }),
+        })
+          .then((res) => res.json())
+          .then((result) => {
+            if (result.success) {
+              console.log(
+                "✅ Standalone data sent to debug server:",
+                result.path
+              );
+            }
+          })
+          .catch((err) => {
+            console.log("Debug server not running (optional):", err.message);
+          });
       }
 
       return {

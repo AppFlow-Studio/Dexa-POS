@@ -28,6 +28,8 @@ interface MenuItemCardProps {
   onEdit: (item: MenuItemType) => void;
   onDelete: (id: string) => void;
   onToggleAvailability: (id: string) => void;
+  onPriceEdit?: (item: MenuItemType) => void;
+  editDisabled?: boolean;
 }
 
 export const MenuItemCard: React.FC<MenuItemCardProps> = ({
@@ -35,10 +37,11 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
   onEdit,
   onDelete,
   onToggleAvailability,
+  onPriceEdit,
+  editDisabled = false,
 }) => {
   const imageSource = getImageSource(item.image);
   const isAvailable = item.availability !== false;
-
   return (
     // Main container is now a row
     <View className="bg-[#303030] rounded-lg border border-gray-700 p-3 w-full flex-row items-center">
@@ -84,19 +87,28 @@ export const MenuItemCard: React.FC<MenuItemCardProps> = ({
       <View className="flex-row items-center gap-0">
         <TouchableOpacity
           onPress={() => onToggleAvailability(item.id)}
-          className="p-2"
+          disabled={editDisabled}
+          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
         >
           {isAvailable ? (
-            <EyeOff size={20} color="#9CA3AF" />
+            <EyeOff size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
           ) : (
-            <Eye size={20} color="#9CA3AF" />
+            <Eye size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onEdit(item)} className="p-2">
-          <Settings size={20} color="#9CA3AF" />
+        <TouchableOpacity
+          onPress={() => onEdit(item)}
+          disabled={editDisabled}
+          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
+        >
+          <Settings size={20} color={editDisabled ? "#4B5563" : "#9CA3AF"} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => onDelete(item.id)} className="p-2">
-          <Trash2 size={20} color="#EF4444" />
+        <TouchableOpacity
+          onPress={() => onDelete(item.id)}
+          disabled={editDisabled}
+          className={`p-2 ${editDisabled ? "opacity-50" : ""}`}
+        >
+          <Trash2 size={20} color={editDisabled ? "#4B5563" : "#EF4444"} />
         </TouchableOpacity>
       </View>
     </View>

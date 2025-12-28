@@ -11,7 +11,7 @@ import { Text, TouchableOpacity, View } from "react-native";
 
 const EditMenuItemScreen: React.FC = () => {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
-  const { menuItems, updateMenuItem } = useMenuStore();
+  const { menuItems, updateMenuItem, categories } = useMenuStore();
   const { selectedStore } = useStoreSettingsStore();
   const supabase = useSupabaseClient();
   const { show } = useToast();
@@ -84,6 +84,56 @@ const EditMenuItemScreen: React.FC = () => {
           type: "error",
         });
         return false;
+      }
+
+      // Sync category changes to backend
+      const isValidUUID = (id: string) => {
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        return uuidRegex.test(id);
+      };
+
+      const oldCategories = Array.isArray(itemToEdit.category)
+        ? itemToEdit.category
+        : itemToEdit.category
+        ? [itemToEdit.category]
+        : [];
+      const newCategories = Array.isArray(data.category)
+        ? data.category
+        : data.category
+        ? [data.category]
+        : [];
+
+      // Find categories to add and remove
+      const categoriesToAdd = newCategories.filter(
+        (c) => !oldCategories.includes(c)
+      );
+      const categoriesToRemove = oldCategories.filter(
+        (c) => !newCategories.includes(c)
+      );
+
+      // Add to new categories
+      for (const categoryName of categoriesToAdd) {
+        const category = categories.find((c) => c.name === categoryName);
+        if (category?.id && isValidUUID(category.id) && selectedStore) {
+          await MenuService.addItemToCategory(supabase, {
+            categoryId: category.id,
+            menuItemId: itemId,
+            merchantId: selectedStore.merchant_id,
+          });
+        }
+      }
+
+      // Remove from old categories
+      for (const categoryName of categoriesToRemove) {
+        const category = categories.find((c) => c.name === categoryName);
+        if (category?.id && isValidUUID(category.id)) {
+          await MenuService.removeItemFromCategory(
+            supabase,
+            category.id,
+            itemId
+          );
+        }
       }
 
       // Update local store for immediate UI feedback

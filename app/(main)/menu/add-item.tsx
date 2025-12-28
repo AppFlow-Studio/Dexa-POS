@@ -35,6 +35,7 @@ const AddMenuItemScreen: React.FC = () => {
         supabase,
         {
           merchantId,
+          locationId: selectedStore.id,
           name: data.name,
           description: data.description,
           price: data.price,
@@ -100,8 +101,12 @@ const AddMenuItemScreen: React.FC = () => {
         }
       }
 
-      // Also update local store for immediate UI feedback
-      addMenuItem(data);
+      // Also update local store for immediate UI feedback - use backend ID
+      addMenuItem({
+        ...data,
+        id: createdItem?.id,
+        location_id: selectedStore.id,
+      } as any);
 
       show({
         title: "Item Created",

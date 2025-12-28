@@ -569,7 +569,8 @@ export const useMenuStore = create<MenuState>((set, get) => {
     addMenuItem: (itemData) => {
       const newItem: MenuItemType = {
         ...itemData,
-        id: generateId(),
+        // Use provided ID (from backend) if available, otherwise generate local ID
+        id: (itemData as any).id || generateId(),
         // Default to "in_stock" mode (availability: true) unless explicitly set
         availability:
           itemData.availability !== undefined ? itemData.availability : true,
@@ -1494,6 +1495,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                     ((menuItem as any)
                       .stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
                     "in_stock",
+                  location_id: (menuItem as any).location_id ?? null,
                 };
 
                 newMenuItems.push(mappedItem);
@@ -1523,10 +1525,11 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 item.effective_cash_price ?? item.base_cash_price ?? undefined,
               availability: item.effective_availability ?? true,
               category: categoryNames,
-              meal: item.meal_types ?? [],
+              meal: (item as any).meal_types ?? [],
               stockTrackingMode:
                 (item.stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
                 "in_stock",
+              location_id: item.location_id ?? null,
             };
 
             newMenuItems.push(mappedItem);

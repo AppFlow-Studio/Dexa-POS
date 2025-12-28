@@ -3,8 +3,10 @@ import PriceEditBottomSheet, {
   PriceEditBottomSheetRef,
 } from "@/components/menu/PriceEditBottomSheet";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { Menu, MenuItemType } from "@/lib/types";
+import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router } from "expo-router";
@@ -477,6 +479,7 @@ const MenuPage: React.FC = () => {
     reorderMenus,
   } = useMenuStore();
   const { selectedStore } = useStoreSettingsStore();
+  const supabase = useSupabaseClient();
   const { showLoading, hideLoading } = useLoading();
   const { activeTab, searchQuery } = useMenuLayout();
 
@@ -565,7 +568,19 @@ const MenuPage: React.FC = () => {
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => deleteMenuItem(id),
+        onPress: async () => {
+          // Delete from backend first
+          const { success, error } = await MenuService.deleteMenuItem(
+            supabase,
+            id
+          );
+          if (!success) {
+            Alert.alert("Error", error?.message || "Failed to delete item");
+            return;
+          }
+          // Then update local store
+          deleteMenuItem(id);
+        },
       },
     ]);
   };
@@ -867,6 +882,8 @@ const MenuPage: React.FC = () => {
                     onDelete={handleDeleteItem}
                     onToggleAvailability={handleToggleAvailability}
                     onPriceEdit={(editItem) => {
+                      console.log("edititem", editItem);
+
                       priceEditRef.current?.open(
                         {
                           id: editItem.id,
