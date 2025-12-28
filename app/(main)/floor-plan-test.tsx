@@ -19,7 +19,8 @@ import { usePosSync } from "@/hooks/pos/usePosSync";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { setOrderStoreSupabaseClient, useOrderStore, type CartItem } from "@/stores/useOrderStoreOptimized";
+import { setOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
+import { CartItem } from "@/lib/types";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type {
     FloorPlan,

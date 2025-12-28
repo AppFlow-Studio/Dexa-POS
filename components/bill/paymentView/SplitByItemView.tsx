@@ -1,11 +1,13 @@
 import { CartItem } from "@/lib/types";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { calculateItemEffectiveCashPrice, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
   ArrowLeft,
+  Banknote,
   Circle,
+  CreditCard,
   Minus,
   Play,
   Plus,
@@ -20,7 +22,7 @@ import {
   View,
 } from "react-native";
 
-// Helper function to calculate tax for split items (same logic as useOrderStore)
+// Helper function to calculate tax for split items using CARD pricing (same logic as useOrderStore)
 function calculateSplitTax(
   items: CartItem[],
   taxRatesMap: Record<string, number>,
@@ -45,6 +47,49 @@ function calculateSplitTax(
     // Apply proportional discount to this item
     const itemDiscountProportion =
       orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
+    const itemDiscountAmount = orderDiscountAmount * itemDiscountProportion;
+    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
+
+    // Calculate tax for this item
+    tax += itemTaxableAmount * taxRateDecimal;
+  }
+
+  // Round to 2 decimal places
+  subtotal = Math.round(subtotal * 100) / 100;
+  tax = Math.round(tax * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+
+  return { subtotal, tax, total };
+}
+
+// Helper function to calculate tax for split items using CASH pricing
+// Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
+function calculateSplitCashTax(
+  items: CartItem[],
+  taxRatesMap: Record<string, number>,
+  orderCashSubtotal: number,
+  orderDiscountAmount: number
+): { subtotal: number; tax: number; total: number } {
+  let subtotal = 0;
+  let tax = 0;
+
+  for (const item of items) {
+    // Use the full effective cash price including modifiers and add-ons
+    const itemCashPrice = calculateItemEffectiveCashPrice(item);
+    const itemSubtotal = itemCashPrice * item.quantity;
+    subtotal += itemSubtotal;
+
+    // Skip tax-exempt items
+    if (item.is_tax_exempt) continue;
+
+    // Get the tax rate for this item's category (default to "standard" if not set)
+    const taxCategory = item.tax_category || "standard";
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const taxRateDecimal = taxRatePercent / 100;
+
+    // Apply proportional discount to this item (based on cash subtotal)
+    const itemDiscountProportion =
+      orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
     const itemDiscountAmount = orderDiscountAmount * itemDiscountProportion;
     const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
 
@@ -137,11 +182,19 @@ const SplitByItemView = () => {
 
   const activeSplit = splits.find((s) => s.id === activeSplitId);
 
-  // Calculate order subtotal and discount for proportional tax calculation
+  // Calculate order subtotal (card pricing) and discount for proportional tax calculation
   const orderSubtotal = masterItems.reduce(
     (acc, item) => acc + item.price * item.quantity,
     0
   );
+
+  // Calculate order cash subtotal for cash pricing calculations
+  // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
+  const orderCashSubtotal = masterItems.reduce(
+    (acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity,
+    0
+  );
+
   const itemDiscountsTotal = masterItems.reduce((acc, item) => {
     if (item.appliedDiscount) {
       return (
@@ -158,15 +211,28 @@ const SplitByItemView = () => {
   }
   const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
 
-  // Calculate split totals with tax
+  // Calculate split totals with tax (CARD pricing)
   const activeSplitTotals = activeSplit
     ? calculateSplitTax(
-        activeSplit.items,
-        taxRatesMap,
-        orderSubtotal,
-        orderDiscountAmount
-      )
+      activeSplit.items,
+      taxRatesMap,
+      orderSubtotal,
+      orderDiscountAmount
+    )
     : { subtotal: 0, tax: 0, total: 0 };
+
+  // Calculate split totals with tax (CASH pricing)
+  const activeSplitCashTotals = activeSplit
+    ? calculateSplitCashTax(
+      activeSplit.items,
+      taxRatesMap,
+      orderCashSubtotal,
+      orderDiscountAmount
+    )
+    : { subtotal: 0, tax: 0, total: 0 };
+
+  // Calculate savings when paying cash vs card
+  const cashSavings = Math.max(0, activeSplitTotals.total - activeSplitCashTotals.total);
 
   // Calculate global remaining items to control button state
   const globalRemainingItems = itemData.reduce(
@@ -242,17 +308,15 @@ const SplitByItemView = () => {
               <TouchableOpacity
                 key={split.id}
                 onPress={() => setActiveSplitId(split.id)}
-                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
-                  isActive
-                    ? "bg-blue-600 border-blue-500"
-                    : "bg-[#2a2a2a] border-[#333]"
-                }`}
+                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${isActive
+                  ? "bg-blue-600 border-blue-500"
+                  : "bg-[#2a2a2a] border-[#333]"
+                  }`}
               >
                 <User size={16} color={isActive ? "white" : "#9ca3af"} />
                 <Text
-                  className={`ml-2 font-semibold ${
-                    isActive ? "text-white" : "text-gray-400"
-                  }`}
+                  className={`ml-2 font-semibold ${isActive ? "text-white" : "text-gray-400"
+                    }`}
                 >
                   {split.customerName}
                 </Text>
@@ -264,40 +328,68 @@ const SplitByItemView = () => {
 
       {/* 3. Active Guest Summary */}
       {activeSplit && (
-        <View className="flex-row justify-between items-center p-4 bg-[#262626] border-b border-[#333]">
-          <View>
-            <TextInput
-              className="text-2xl font-bold text-white border-b border-[#444] pb-1 min-w-[150px]"
-              value={activeSplit.customerName}
-              onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
-              placeholderTextColor="#555"
-            />
-            <Text className="text-gray-400 text-xs mt-1">
-              Tap items below to assign
-            </Text>
-          </View>
-          <View className="items-end">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-gray-500 text-xs">Subtotal:</Text>
-              <Text className="text-gray-300 text-sm">
-                ${activeSplitTotals.subtotal.toFixed(2)}
+        <View className="p-4 bg-[#262626] border-b border-[#333]">
+          <View className="flex-row justify-between items-start mb-3">
+            <View>
+              <TextInput
+                className="text-2xl font-bold text-white border-b border-[#444] pb-1 min-w-[150px]"
+                value={activeSplit.customerName}
+                onChangeText={(t) => updateSplitCustomerName(activeSplit.id, t)}
+                placeholderTextColor="#555"
+              />
+              <Text className="text-gray-400 text-xs mt-1">
+                Tap items below to assign
               </Text>
             </View>
-            <View className="flex-row items-center gap-2">
-              <Text className="text-gray-500 text-xs">Tax:</Text>
-              <Text className="text-gray-300 text-sm">
-                ${activeSplitTotals.tax.toFixed(2)}
-              </Text>
-            </View>
-            <View className="flex-row items-center gap-2 mt-1">
-              <Text className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
-                Total:
-              </Text>
-              <Text className="text-xl font-bold text-blue-400">
-                ${activeSplitTotals.total.toFixed(2)}
-              </Text>
+            <View className="items-end">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-gray-500 text-xs">Subtotal:</Text>
+                <Text className="text-gray-300 text-sm">
+                  ${activeSplitTotals.subtotal.toFixed(2)}
+                </Text>
+              </View>
+              <View className="flex-row items-center gap-2">
+                <Text className="text-gray-500 text-xs">Tax:</Text>
+                <Text className="text-gray-300 text-sm">
+                  ${activeSplitTotals.tax.toFixed(2)}
+                </Text>
+              </View>
             </View>
           </View>
+
+          {/* Dual Pricing Display - Card vs Cash */}
+          {activeSplit.items.length > 0 && (
+            <View className="flex-row gap-2">
+              {/* Card Payment Option */}
+              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-[#1A1A1A] rounded-xl border border-[#333]">
+                <View className="flex-row items-center">
+                  <CreditCard size={16} color="#60A5FA" />
+                  <Text className="text-gray-400 text-xs ml-2">Card</Text>
+                </View>
+                <Text className="text-lg font-bold text-blue-400">
+                  ${activeSplitTotals.total.toFixed(2)}
+                </Text>
+              </View>
+
+              {/* Cash Payment Option */}
+              <View className="flex-1 flex-row justify-between items-center py-2 px-3 bg-[#1A1A1A] rounded-xl border border-green-900/50">
+                <View className="flex-row items-center">
+                  <Banknote size={16} color="#10B981" />
+                  <Text className="text-gray-400 text-xs ml-2">Cash</Text>
+                  {cashSavings > 0.01 && (
+                    <View className="ml-1 px-1.5 py-0.5 bg-green-900/30 rounded-full">
+                      <Text className="text-green-400 text-[10px] font-bold">
+                        -${cashSavings.toFixed(2)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text className="text-lg font-bold text-green-400">
+                  ${activeSplitCashTotals.total.toFixed(2)}
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       )}
 
@@ -314,31 +406,28 @@ const SplitByItemView = () => {
             return (
               <View
                 key={item.id}
-                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
-                  isSelected
-                    ? "bg-[#1e3a8a] border-[#2563eb]"
-                    : isFullyAssignedToOthers
+                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${isSelected
+                  ? "bg-[#1e3a8a] border-[#2563eb]"
+                  : isFullyAssignedToOthers
                     ? "bg-[#1A1A1A] opacity-40"
                     : "bg-[#262626]"
-                }`}
+                  }`}
               >
                 {/* Item Info */}
                 <View className="flex-1">
                   <Text
-                    className={`text-lg font-semibold ${
-                      isSelected
-                        ? "text-white"
-                        : isFullyAssignedToOthers
+                    className={`text-lg font-semibold ${isSelected
+                      ? "text-white"
+                      : isFullyAssignedToOthers
                         ? "text-gray-500"
                         : "text-gray-200"
-                    }`}
+                      }`}
                   >
                     {item.name}
                   </Text>
                   <Text
-                    className={`text-sm mt-1 ${
-                      isSelected ? "text-blue-200" : "text-gray-400"
-                    }`}
+                    className={`text-sm mt-1 ${isSelected ? "text-blue-200" : "text-gray-400"
+                      }`}
                   >
                     ${item.price.toFixed(2)}
                   </Text>
@@ -356,25 +445,22 @@ const SplitByItemView = () => {
                       <TouchableOpacity
                         onPress={() => handleRemoveFromGuest(item)}
                         disabled={!canRemove}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${
-                          canRemove
-                            ? "bg-red-600 active:bg-red-700"
-                            : "bg-[#333] opacity-30"
-                        }`}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${canRemove
+                          ? "bg-red-600 active:bg-red-700"
+                          : "bg-[#333] opacity-30"
+                          }`}
                       >
                         <Minus size={16} color={canRemove ? "white" : "#666"} />
                       </TouchableOpacity>
 
                       {/* Quantity Badge */}
                       <View
-                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
-                          isSelected ? "bg-blue-600" : "bg-[#333]"
-                        }`}
+                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-blue-600" : "bg-[#333]"
+                          }`}
                       >
                         <Text
-                          className={`text-sm font-bold ${
-                            isSelected ? "text-white" : "text-gray-500"
-                          }`}
+                          className={`text-sm font-bold ${isSelected ? "text-white" : "text-gray-500"
+                            }`}
                         >
                           {item.qtyInCurrent}x
                         </Text>
@@ -384,11 +470,10 @@ const SplitByItemView = () => {
                       <TouchableOpacity
                         onPress={() => handleAddToGuest(item)}
                         disabled={!canAdd}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${
-                          canAdd
-                            ? "bg-green-600 active:bg-green-700"
-                            : "bg-[#333] opacity-30"
-                        }`}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${canAdd
+                          ? "bg-green-600 active:bg-green-700"
+                          : "bg-[#333] opacity-30"
+                          }`}
                       >
                         <Plus size={16} color={canAdd ? "white" : "#666"} />
                       </TouchableOpacity>
@@ -418,9 +503,8 @@ const SplitByItemView = () => {
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-gray-400 text-sm">Items Remaining</Text>
           <Text
-            className={`font-bold ${
-              globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
-            }`}
+            className={`font-bold ${globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
+              }`}
           >
             {globalRemainingItems}
           </Text>
@@ -429,11 +513,10 @@ const SplitByItemView = () => {
         <TouchableOpacity
           onPress={handleStartPayment}
           disabled={!isAllAssigned}
-          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
-            isAllAssigned
-              ? "bg-blue-600 active:bg-blue-700"
-              : "bg-[#333] opacity-80"
-          }`}
+          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${isAllAssigned
+            ? "bg-blue-600 active:bg-blue-700"
+            : "bg-[#333] opacity-80"
+            }`}
         >
           {isAllAssigned ? (
             <Play size={20} color="white" fill="white" className="mr-1" />
@@ -441,9 +524,8 @@ const SplitByItemView = () => {
             <Circle size={20} color="#666" className="mr-1" />
           )}
           <Text
-            className={`text-lg font-bold ${
-              isAllAssigned ? "text-white" : "text-gray-500"
-            }`}
+            className={`text-lg font-bold ${isAllAssigned ? "text-white" : "text-gray-500"
+              }`}
           >
             {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
           </Text>

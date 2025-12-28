@@ -1,22 +1,70 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import { ArrowLeft, Check, Minus, Plus, Users } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Banknote,
+  Check,
+  CreditCard,
+  Minus,
+  Plus,
+  Users,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const SplitEvenlyView = () => {
   const { setView, splitEvenly, startSplitPaymentFlow, resetSplits } =
     usePaymentStore();
-  const { activeOrderOutstandingTotal, activeOrderTotal } = useOrderStore();
+  const {
+    activeOrderOutstandingTotal,
+    activeOrderTotal,
+    activeOrderOutstandingCash,
+    activeOrderTotalCash,
+    // Tax breakdown for display
+    activeOrderOutstandingSubtotal,
+    activeOrderOutstandingTax,
+    activeOrderSubtotal,
+    activeOrderTax,
+  } = useOrderStore();
 
   const [numberOfPeople, setNumberOfPeople] = useState(2);
 
-  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
-  const effectiveTotal =
+  // Card pricing: Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  const effectiveCardTotal =
     activeOrderOutstandingTotal > 0
       ? activeOrderOutstandingTotal
       : activeOrderTotal;
-  const amountPerPerson = effectiveTotal / numberOfPeople;
+
+  // Cash pricing: Fallback to activeOrderTotalCash if outstandingCash is 0
+  const effectiveCashTotal =
+    activeOrderOutstandingCash > 0
+      ? activeOrderOutstandingCash
+      : activeOrderTotalCash;
+
+  // Subtotal and Tax: Fallback to full amounts if outstanding is 0
+  const effectiveSubtotal =
+    activeOrderOutstandingSubtotal > 0
+      ? activeOrderOutstandingSubtotal
+      : activeOrderSubtotal;
+  const effectiveTax =
+    activeOrderOutstandingTax > 0
+      ? activeOrderOutstandingTax
+      : activeOrderTax;
+
+  // Calculate per-person amounts for both pricing models
+  const cardAmountPerPerson = effectiveCardTotal / numberOfPeople;
+  const cashAmountPerPerson = effectiveCashTotal / numberOfPeople;
+
+  // Calculate per-person breakdown (subtotal, tax, total)
+  const subtotalPerPerson = effectiveSubtotal / numberOfPeople;
+  const taxPerPerson = effectiveTax / numberOfPeople;
+
+  // Calculate savings when paying cash vs card
+  const cashSavingsPerPerson = Math.max(0, cardAmountPerPerson - cashAmountPerPerson);
+
+  // For display, use card pricing as default (matches existing UX)
+  const effectiveTotal = effectiveCardTotal;
+  const amountPerPerson = cardAmountPerPerson;
 
   const handleIncrement = () => {
     if (numberOfPeople < 20) setNumberOfPeople((p) => p + 1);
@@ -32,8 +80,8 @@ const SplitEvenlyView = () => {
   };
 
   const handleConfirmSplit = () => {
-    // 1. Logic: Create the splits in the store
-    splitEvenly(numberOfPeople, amountPerPerson);
+    // 1. Logic: Create the splits in the store with both card and cash amounts
+    splitEvenly(numberOfPeople, cardAmountPerPerson, cashAmountPerPerson);
 
     // 2. Flow: Start paying for Guest 1 immediately
     startSplitPaymentFlow("split-evenly");
@@ -70,11 +118,10 @@ const SplitEvenlyView = () => {
             <View className="flex-row items-center gap-8">
               <TouchableOpacity
                 onPress={handleDecrement}
-                className={`w-20 h-20 rounded-full border-2 items-center justify-center ${
-                  numberOfPeople <= 2
-                    ? "border-[#444] bg-[#222]"
-                    : "border-gray-500 bg-[#333]"
-                }`}
+                className={`w-20 h-20 rounded-full border-2 items-center justify-center ${numberOfPeople <= 2
+                  ? "border-[#444] bg-[#222]"
+                  : "border-gray-500 bg-[#333]"
+                  }`}
                 disabled={numberOfPeople <= 2}
               >
                 <Minus
@@ -111,13 +158,67 @@ const SplitEvenlyView = () => {
               </Text>
             </View>
 
-            {/* Per Person */}
+            {/* Per Person Breakdown */}
             <View>
-              <Text className="text-gray-400 font-medium text-lg mb-2">
-                Amount per person
+              <Text className="text-gray-400 font-medium text-lg mb-4">
+                Per Person Breakdown
               </Text>
-              <Text className="text-6xl font-bold text-blue-400">
-                ${amountPerPerson.toFixed(2)}
+
+              {/* Subtotal per person */}
+              <View className="flex-row justify-between items-center mb-2">
+                <Text className="text-gray-500 text-sm">Subtotal</Text>
+                <Text className="text-gray-300 text-lg">
+                  ${subtotalPerPerson.toFixed(2)}
+                </Text>
+              </View>
+
+              {/* Tax per person */}
+              <View className="flex-row justify-between items-center mb-4 pb-4 border-b border-[#333]">
+                <Text className="text-gray-500 text-sm">Tax</Text>
+                <Text className="text-gray-300 text-lg">
+                  ${taxPerPerson.toFixed(2)}
+                </Text>
+              </View>
+
+              {/* Dual Pricing Display - Card vs Cash */}
+              <View className="mb-4">
+                {/* Card Payment Option */}
+                <View className="flex-row justify-between items-center py-3 px-4 bg-[#1A1A1A] rounded-xl mb-2 border border-[#333]">
+                  <View className="flex-row items-center">
+                    <CreditCard size={20} color="#60A5FA" />
+                    <Text className="text-gray-300 font-medium ml-3">
+                      Card Payment
+                    </Text>
+                  </View>
+                  <Text className="text-2xl font-bold text-blue-400">
+                    ${cardAmountPerPerson.toFixed(2)}
+                  </Text>
+                </View>
+
+                {/* Cash Payment Option */}
+                <View className="flex-row justify-between items-center py-3 px-4 bg-[#1A1A1A] rounded-xl border border-green-900/50">
+                  <View className="flex-row items-center">
+                    <Banknote size={20} color="#10B981" />
+                    <Text className="text-gray-300 font-medium ml-3">
+                      Cash Payment
+                    </Text>
+                    {cashSavingsPerPerson > 0 && (
+                      <View className="ml-2 px-2 py-0.5 bg-green-900/30 rounded-full">
+                        <Text className="text-green-400 text-xs font-bold">
+                          SAVE ${cashSavingsPerPerson.toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text className="text-2xl font-bold text-green-400">
+                    ${cashAmountPerPerson.toFixed(2)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Info text */}
+              <Text className="text-gray-500 text-xs text-center">
+                Each guest can choose their payment method
               </Text>
             </View>
           </View>

@@ -27,7 +27,7 @@ export class FloorPlanService {
     const { data, error } = await client.rpc("get_location_floor_plans", {
       p_location_id: locationId,
     });
-    console.log("[FloorPlanService] getLocationFloorPlans", data, error);
+    // console.log("[FloorPlanService] getLocationFloorPlans", data, error);
     return { data, error };
   }
 

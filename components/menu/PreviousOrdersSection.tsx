@@ -48,14 +48,12 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
           <Pressable
             key={tab.name}
             onPress={() => handlePress(tab.name)}
-            className={`py-2.5 px-4 rounded-lg flex-row items-center ${
-              isActive ? "bg-[#212121]" : ""
-            }`}
+            className={`py-2.5 px-4 rounded-lg flex-row items-center ${isActive ? "bg-[#212121]" : ""
+              }`}
           >
             <Text
-              className={`font-semibold ${
-                isActive ? "text-blue-400" : "text-gray-400"
-              }`}
+              className={`font-semibold ${isActive ? "text-blue-400" : "text-gray-400"
+                }`}
             >
               {tab.name}
             </Text>
@@ -87,18 +85,32 @@ const OrderRow: React.FC<OrderRowProps> = ({
   const isReady = order.order_status === "ready";
   const statusBg = isReady ? "bg-green-600/20" : "bg-yellow-600/20";
   const statusText = isReady ? "text-green-400" : "text-yellow-400";
-  const paidBg =
-    order.paid_status === "Paid"
-      ? "bg-green-600/20"
-      : order.paid_status === "Pending"
-        ? "bg-yellow-600/20"
-        : "bg-red-600/20";
-  const paidText =
-    order.paid_status === "Paid"
-      ? "text-green-400"
-      : order.paid_status === "Pending"
-        ? "text-yellow-400"
-        : "text-red-400";
+
+  // Calculate outstanding amount and partial payment status
+  const amountPaid = order.amount_paid || 0;
+  const totalAmount = order.total_amount || 0;
+  const outstandingAmount = Math.max(0, totalAmount - amountPaid);
+  const isPartiallyPaid = amountPaid > 0 && order.paid_status !== "Paid";
+
+  // Payment status badge styling
+  let paidBg, paidText, paidLabel;
+  if (order.paid_status === "Paid") {
+    paidBg = "bg-green-600/20";
+    paidText = "text-green-400";
+    paidLabel = "Paid";
+  } else if (isPartiallyPaid) {
+    paidBg = "bg-orange-600/20";
+    paidText = "text-orange-400";
+    paidLabel = "Partial";
+  } else if (order.paid_status === "Pending") {
+    paidBg = "bg-yellow-600/20";
+    paidText = "text-yellow-400";
+    paidLabel = "Pending";
+  } else {
+    paidBg = "bg-red-600/20";
+    paidText = "text-red-400";
+    paidLabel = order.paid_status || "Unpaid";
+  }
 
   return (
     <View className="bg-[#303030] p-3 rounded-lg border border-gray-700 mb-2">
@@ -112,19 +124,39 @@ const OrderRow: React.FC<OrderRowProps> = ({
             </View>
             <View className={`px-2 py-0.5 rounded-full ${paidBg}`}>
               <Text className={`text-xs font-bold ${paidText}`}>
-                {order.paid_status}
+                {paidLabel}
               </Text>
             </View>
           </View>
           <Text className="text-lg font-bold text-white mb-1">
             {order.customer_name || "Walk-In"} #{order?.id?.slice(-5)}
           </Text>
-          <Text className="text-sm text-gray-400">
-            {order.order_type}
-            {order.service_location_id && (
-              <> • Table {order.service_location_id}</>
-            )}
-          </Text>
+          <View className="flex-row items-center gap-2">
+            <Text className="text-sm text-gray-400">
+              {order.order_type}
+              {order.service_location_id && (
+                <> • Table {order.service_location_id}</>
+              )}
+            </Text>
+            {/* Show total amount */}
+            <Text className="text-sm text-gray-300">
+              • ${totalAmount.toFixed(2)}
+            </Text>
+          </View>
+
+          {/* Show outstanding amount for unpaid/partial orders */}
+          {order.paid_status !== "Paid" && outstandingAmount > 0 && (
+            <View className="mt-1 flex-row items-center">
+              <Text className="text-sm text-yellow-400 font-bold">
+                Outstanding: ${outstandingAmount.toFixed(2)}
+              </Text>
+              {isPartiallyPaid && (
+                <Text className="text-xs text-gray-500 ml-2">
+                  (Paid: ${amountPaid.toFixed(2)})
+                </Text>
+              )}
+            </View>
+          )}
         </View>
         <View className="flex-col flex items-end gap-y-2">
           <View className="flex-row gap-2">
@@ -150,7 +182,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
 
           {order.paid_status !== "Paid" && (
             <View className="w-full">
-              <RetrieveButton orderId={order.id} />
+              <RetrieveButton orderId={order.id} outstandingAmount={outstandingAmount} />
             </View>
           )}
 
@@ -166,14 +198,22 @@ const OrderRow: React.FC<OrderRowProps> = ({
   );
 };
 
-const RetrieveButton = ({ orderId }: { orderId: string }) => {
+const RetrieveButton = ({
+  orderId,
+  outstandingAmount
+}: {
+  orderId: string;
+  outstandingAmount: number;
+}) => {
   const { setActiveOrder } = useOrderStore();
   return (
     <TouchableOpacity
       onPress={() => setActiveOrder(orderId)}
       className="flex-row items-center justify-center p-2 rounded-lg bg-green-700"
     >
-      <Text className="font-semibold text-white text-sm">Retrieve to Pay</Text>
+      <Text className="font-semibold text-white text-sm">
+        Pay ${outstandingAmount.toFixed(2)}
+      </Text>
     </TouchableOpacity>
   );
 };

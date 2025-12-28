@@ -1,9 +1,10 @@
 import { useToast } from "@/contexts/ToastContext";
-import { ModifierCategory } from "@/lib/types";
+import { CartItem, ModifierCategory } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { AddOrderItemParams } from "@/types/db-order-management-types";
 import debounce from "lodash/debounce";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
 import React, {
@@ -50,13 +51,12 @@ const CategoryTab = memo(
   }) => (
     <TouchableOpacity
       onPress={onPress}
-      className={`p-3 rounded-xl border-2 min-w-[140px] ${
-        isActive
-          ? "bg-blue-600 border-blue-400"
-          : hasSelection
+      className={`p-3 rounded-xl border-2 min-w-[140px] ${isActive
+        ? "bg-blue-600 border-blue-400"
+        : hasSelection
           ? "bg-green-600 border-green-400"
           : "bg-[#303030] border-gray-600"
-      }`}
+        }`}
     >
       <View className="flex-row items-center justify-between mb-1.5">
         <Text className="font-semibold text-lg text-white">
@@ -67,9 +67,8 @@ const CategoryTab = memo(
         )}
       </View>
       <Text
-        className={`text-base ${
-          category.type === "required" ? "text-red-400" : "text-gray-400"
-        }`}
+        className={`text-base ${category.type === "required" ? "text-red-400" : "text-gray-400"
+          }`}
       >
         {category.type}
       </Text>
@@ -96,31 +95,28 @@ const ModifierOption = memo(
     <TouchableOpacity
       disabled={isReadOnly || isUnavailable}
       onPress={() => onToggle(categoryId, option.id)}
-      className={`p-4 rounded-xl border-2 min-w-[120px] ${
-        isSelected
-          ? "bg-blue-600 border-blue-400"
-          : isUnavailable
+      className={`p-4 rounded-xl border-2 min-w-[120px] ${isSelected
+        ? "bg-blue-600 border-blue-400"
+        : isUnavailable
           ? "bg-[#1a1a1a] border-gray-700"
           : "bg-[#303030] border-gray-600"
-      }`}
+        }`}
     >
       <Text
-        className={`text-xl font-medium text-center ${
-          isSelected
-            ? "text-white"
-            : isUnavailable
+        className={`text-xl font-medium text-center ${isSelected
+          ? "text-white"
+          : isUnavailable
             ? "text-gray-500"
             : "text-white"
-        }`}
+          }`}
       >
         {option.name}
         {isUnavailable && " (86'd)"}
       </Text>
       {option.price > 0 && (
         <Text
-          className={`text-lg text-center mt-1 ${
-            isSelected ? "text-blue-200" : "text-blue-400"
-          }`}
+          className={`text-lg text-center mt-1 ${isSelected ? "text-blue-200" : "text-blue-400"
+            }`}
         >
           +${option.price.toFixed(2)}
         </Text>
@@ -152,13 +148,13 @@ type Action =
   | { type: "SET_QUANTITY_INPUT"; payload: string }
   | { type: "INITIALIZE"; payload: Partial<State> }
   | {
-      type: "TOGGLE_MODIFIER";
-      payload: {
-        categoryId: string;
-        optionId: string;
-        category: ModifierCategory;
-      };
+    type: "TOGGLE_MODIFIER";
+    payload: {
+      categoryId: string;
+      optionId: string;
+      category: ModifierCategory;
     };
+  };
 
 const reducer = (state: State, action: Action): State => {
   switch (action.type) {
@@ -297,6 +293,39 @@ const ModifierScreen = () => {
     [precomputedItemPrice, getItemPriceForCategory, categoryId]
   );
 
+  const getCurrentItemCashPrice = useCallback(
+    (item: any) => {
+      if (!item) return 0;
+
+      // For cart items, use originalPrice first (this is the cash/base price)
+      // Then fallback to cashPrice if available
+      if (item.originalPrice !== undefined && item.originalPrice !== null) {
+        return item.originalPrice;
+      }
+
+      // For menu items or cart items with cashPrice explicitly set, use cashPrice
+      if (item.cashPrice !== undefined && item.cashPrice !== null) {
+        return item.cashPrice;
+      }
+
+      // Fallback: if we have a menuItemId, get the base menu item's cashPrice
+      if (item.menuItemId && getMenuItemById) {
+        const baseItem = getMenuItemById(item.menuItemId);
+        if (baseItem?.cashPrice !== undefined && baseItem.cashPrice !== null) {
+          return baseItem.cashPrice;
+        }
+        // If base item doesn't have cashPrice, use its price as fallback
+        if (baseItem?.price !== undefined) {
+          return baseItem.price;
+        }
+      }
+
+      // Last resort: use regular price (some items might not have cash price)
+      return getCurrentItemPrice(item);
+    },
+    [getMenuItemById, getCurrentItemPrice]
+  );
+
   const baseMenuItem = useMemo(
     () => menuItem || (cartItem ? getMenuItemById(cartItem.menuItemId) : null),
     [menuItem, cartItem, getMenuItemById]
@@ -392,24 +421,24 @@ const ModifierScreen = () => {
 
         const selectedModifiers = modifiers
           ? Object.entries(modifierSelections).map(([catId, selections]) => {
-              const category = categoriesMap.get(catId);
-              const selectedOptions = Object.entries(selections)
-                .filter(([_, isSelected]) => isSelected)
-                .map(([optionId]) => {
-                  const optionData = optionsMap.get(optionId);
-                  return {
-                    id: optionId,
-                    name: optionData?.option.name || "",
-                    price: optionData?.option.price || 0,
-                  };
-                });
+            const category = categoriesMap.get(catId);
+            const selectedOptions = Object.entries(selections)
+              .filter(([_, isSelected]) => isSelected)
+              .map(([optionId]) => {
+                const optionData = optionsMap.get(optionId);
+                return {
+                  id: optionId,
+                  name: optionData?.option.name || "",
+                  price: optionData?.option.price || 0,
+                };
+              });
 
-              return {
-                categoryId: catId,
-                categoryName: category?.name || "",
-                options: selectedOptions,
-              };
-            })
+            return {
+              categoryId: catId,
+              categoryName: category?.name || "",
+              options: selectedOptions,
+            };
+          })
           : [];
 
         let baseTotal = getPrice(item);
@@ -530,13 +559,15 @@ const ModifierScreen = () => {
 
       if (!existingItem) {
         const itemPrice = getCurrentItemPrice(currentItem);
+        const cashPrice = getCurrentItemCashPrice(currentItem);
         const draftItem = {
           id: stableDraftId,
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
-          originalPrice: itemPrice,
-          price: itemPrice,
+          originalPrice: cashPrice || itemPrice, // originalPrice should be the cash/base price
+          price: itemPrice, // price is the effective price (card price + modifiers)
+          cashPrice: cashPrice || itemPrice, // Store cashPrice for reference, fallback to itemPrice
           image: currentItem.image,
           isDraft: true,
           customizations: { modifiers: [], notes: "" },
@@ -672,26 +703,26 @@ const ModifierScreen = () => {
 
     const selectedModifiers = menuItemForModifiers?.modifiers
       ? Object.entries(state.modifierSelections)
-          .map(([categoryId, selections]) => {
-            const category = modifierCategoriesById.get(categoryId);
-            const selectedOptions = Object.entries(selections)
-              .filter(([_, isSelected]) => isSelected)
-              .map(([optionId]) => {
-                const optionData = optionsById.get(optionId);
-                return {
-                  id: optionId,
-                  name: optionData?.option.name || "",
-                  price: optionData?.option.price || 0,
-                };
-              });
+        .map(([categoryId, selections]) => {
+          const category = modifierCategoriesById.get(categoryId);
+          const selectedOptions = Object.entries(selections)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([optionId]) => {
+              const optionData = optionsById.get(optionId);
+              return {
+                id: optionId,
+                name: optionData?.option.name || "",
+                price: optionData?.option.price || 0,
+              };
+            });
 
-            return {
-              categoryId,
-              categoryName: category?.name || "",
-              options: selectedOptions,
-            };
-          })
-          .filter((mod) => mod.options.length > 0)
+          return {
+            categoryId,
+            categoryName: category?.name || "",
+            options: selectedOptions,
+          };
+        })
+        .filter((mod) => mod.options.length > 0)
       : [];
 
     const finalCustomizations = {
@@ -728,7 +759,7 @@ const ModifierScreen = () => {
 
         const existingItemCourse =
           coursingState.getForOrder(activeOrderId ?? "")?.itemCourseMap?.[
-            item.id
+          item.id
           ] ?? 1;
         if (existingItemCourse !== currentCourse) return false;
 
@@ -772,14 +803,16 @@ const ModifierScreen = () => {
           });
         }
 
-        const confirmedItem = {
+        const confirmedItem : Omit<CartItem, 'subtotal' | 'cashSubtotal' | 'taxRate' | 'taxAmount' | 'cashTaxAmount'> = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,
           quantity: state.quantity,
-          originalPrice: baseItem.price,
+          originalPrice: baseItem.cashPrice || baseItem.price, // Use cashPrice as base, fallback to price
           price: total / Math.max(1, state.quantity),
+          cashPrice: baseItem.cashPrice || baseItem.price, // Provide fallback if cashPrice is undefined
           image: baseItem.image,
+
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
@@ -801,9 +834,10 @@ const ModifierScreen = () => {
           menuItemId: baseItem.id,
           name: baseItem.name,
           quantity: state.quantity,
-          originalPrice: baseItem.price,
+          originalPrice: baseItem.cashPrice || baseItem.price, // Use cashPrice as base, fallback to price
           price: total / Math.max(1, state.quantity),
           image: baseItem.image,
+          cashPrice: baseItem.cashPrice || baseItem.price, // Provide fallback if cashPrice is undefined
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
@@ -1032,7 +1066,7 @@ const ModifierScreen = () => {
                     {currentCategory.options.map((option) => {
                       const isSelected =
                         state.modifierSelections[currentCategory.id]?.[
-                          option.id
+                        option.id
                         ] || false;
                       const isUnavailable = option.isAvailable === false;
                       return (

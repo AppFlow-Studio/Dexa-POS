@@ -3,8 +3,7 @@ import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
-  OrderType as DbOrderType,
-  ProcessPaymentParams,
+  OrderType as DbOrderType
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -37,10 +36,56 @@ interface OrderTotals {
   outstanding_subtotal: number;
   outstanding_tax: number;
   outstanding_total: number;
+  // Cash pricing totals
+  cash_subtotal: number;
+  cash_tax_amount: number;
+  cash_total_amount: number;
+  // Outstanding cash totals (unpaid items using cash pricing)
+  cash_outstanding_subtotal: number;
+  cash_outstanding_tax: number;
+  cash_outstanding_total: number;
 }
 
 function round2(num: number): number {
   return Math.round(num * 100) / 100;
+}
+
+/**
+ * Calculate the effective cash price for a single cart item.
+ * This calculates: cash price (base) + size modifier + all modifier options + all add-ons
+ * 
+ * @param item - The cart item to calculate the price for
+ * @returns The effective unit price for the item using cash pricing (before quantity multiplication)
+ * 
+ * Exported for use in split payment calculations (SplitByItemView, usePaymentStore)
+ */
+export function calculateItemEffectiveCashPrice(item: CartItem): number {
+  // Start with the base/cash price (originalPrice is the cash/base price)
+  // Use originalPrice first, then fallback to cashPrice if available, then regular price
+  let effectivePrice = item.originalPrice || item.cashPrice || item.price || 0;
+
+  // Add size modifier if present
+  if (item.customizations?.size?.priceModifier) {
+    effectivePrice += item.customizations.size.priceModifier;
+  }
+
+  // Add all modifier options
+  if (item.customizations?.modifiers) {
+    for (const modifierGroup of item.customizations.modifiers) {
+      for (const option of modifierGroup.options) {
+        effectivePrice += option.price || 0;
+      }
+    }
+  }
+
+  // Add all add-ons
+  if (item.customizations?.addOns) {
+    for (const addOn of item.customizations.addOns) {
+      effectivePrice += addOn.price || 0;
+    }
+  }
+
+  return round2(effectivePrice);
 }
 
 /**
@@ -150,6 +195,81 @@ function calculateOrderTotals(
     outstandingSubtotalAfterDiscount + outstanding_tax
   );
 
+  // === CASH PRICING CALCULATIONS ===
+  // Calculate subtotal using cash prices (originalPrice + modifiers + add-ons)
+  const cash_subtotal = activeItems.reduce(
+    (acc, item) => {
+      const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+      return acc + effectiveCashPrice * item.quantity;
+    },
+    0
+  );
+
+  // Calculate cash tax (same discount logic, but using cash subtotal)
+  let cash_tax_amount = 0;
+  for (const item of activeItems) {
+    // Skip tax-exempt items
+    if (item.is_tax_exempt) continue;
+
+    const taxCategory = item.tax_category || "standard";
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const taxRateDecimal = taxRatePercent / 100;
+
+    // Calculate item's taxable amount using cash price
+    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+    const itemCashSubtotal = effectiveCashPrice * item.quantity;
+
+    // Apply proportional discount to this item (based on cash subtotal)
+    const itemDiscountProportion = cash_subtotal > 0 ? itemCashSubtotal / cash_subtotal : 0;
+    const itemDiscountAmount = discount_amount * itemDiscountProportion;
+    const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
+
+    // Calculate tax for this item
+    cash_tax_amount += itemTaxableAmount * taxRateDecimal;
+  }
+  cash_tax_amount = round2(cash_tax_amount);
+
+  // Calculate cash total (cash subtotal - discount + cash tax)
+  const cashTaxableAmount = Math.max(0, cash_subtotal - discount_amount);
+  const cash_total_amount = round2(cashTaxableAmount + cash_tax_amount);
+
+  // Outstanding cash totals (unpaid items only using cash pricing)
+  let cash_outstanding_subtotal = 0;
+  let cash_outstanding_tax = 0;
+  for (const item of activeItems) {
+    const unpaidQty = item.quantity - (item.paidQuantity || 0);
+    if (unpaidQty <= 0) continue;
+
+    // Use cash price for unpaid quantity
+    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+    const itemCashSubtotal = unpaidQty * effectiveCashPrice;
+    cash_outstanding_subtotal += itemCashSubtotal;
+
+    if (!item.is_tax_exempt) {
+      const taxCategory = item.tax_category || "standard";
+      const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+      const taxRateDecimal = taxRatePercent / 100;
+
+      // Apply proportional discount (based on cash subtotal)
+      const itemDiscountProportion = cash_subtotal > 0 ? itemCashSubtotal / cash_subtotal : 0;
+      const itemDiscountAmount = discount_amount * itemDiscountProportion;
+      const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
+
+      cash_outstanding_tax += itemTaxableAmount * taxRateDecimal;
+    }
+  }
+  cash_outstanding_subtotal = round2(cash_outstanding_subtotal);
+  cash_outstanding_tax = round2(cash_outstanding_tax);
+
+  const cash_proportionOutstanding =
+    cash_subtotal > 0 ? cash_outstanding_subtotal / cash_subtotal : 0;
+  const cash_outstandingDiscount = discount_amount * cash_proportionOutstanding;
+  const cash_outstandingSubtotalAfterDiscount =
+    cash_outstanding_subtotal - cash_outstandingDiscount;
+  const cash_outstanding_total = round2(
+    cash_outstandingSubtotalAfterDiscount + cash_outstanding_tax
+  );
+
   return {
     subtotal: round2(subtotal),
     discount_amount,
@@ -158,6 +278,14 @@ function calculateOrderTotals(
     outstanding_subtotal,
     outstanding_tax,
     outstanding_total,
+    // Cash pricing totals
+    cash_subtotal: round2(cash_subtotal),
+    cash_tax_amount,
+    cash_total_amount,
+    // Outstanding cash totals
+    cash_outstanding_subtotal,
+    cash_outstanding_tax,
+    cash_outstanding_total,
   };
 }
 
@@ -186,6 +314,7 @@ const addItemToBackend = async (
   onSyncComplete?: (orderId: string) => void // Callback after successful sync
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
+
   if (!supabase) {
     console.log("Backend sync skipped: No Supabase client registered");
     // Queue for later sync when client is available
@@ -209,6 +338,7 @@ const addItemToBackend = async (
     });
     return true; // Return true so item stays in cart
   }
+  console.log('[addItemToBackend] item', item)
 
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
   if (!selectedStore) {
@@ -276,6 +406,7 @@ const addItemToBackend = async (
               name: item.name,
               quantity: item.quantity,
               price: item.price,
+              cashPrice: item.cashPrice,
               originalPrice: item.originalPrice,
               customizations: item.customizations,
               category_name: item.category_name,
@@ -336,6 +467,7 @@ const addItemToBackend = async (
             name: item.name,
             quantity: item.quantity,
             price: item.price,
+            cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
@@ -347,18 +479,26 @@ const addItemToBackend = async (
       return false;
     }
 
+
+    // Calculate effective cash price (base cash price + modifiers + add-ons)
+    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+
+    // Card price is the effective price per unit (already includes modifiers)
+    const cardUnitPrice = item.price;
+
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
       p_menu_item_id: item.menuItemId || undefined,
+      p_location_exclusive_item_id: item.locationExclusiveItemId || undefined,
       p_quantity: item.quantity,
 
       // Item details
       p_item_name: item.name,
       p_category_name: item.category_name || "Uncategorized",
-      p_unit_price: item.originalPrice, // Providing effective unit price
-      p_cash_price: item.originalPrice, // Assuming cash price same as unit price for now if not available
-      p_price_paid: item.originalPrice, // Default to original price (no item-level discount yet)
-      p_use_cash_price: true, // Defaulting to true as per request
+
+      // Prices (per unit, before quantity multiplication)
+      p_unit_price: cardUnitPrice, // Card price per unit (includes modifiers)
+      p_cash_unit_price: effectiveCashPrice, // Cash price per unit (includes modifiers)
 
       // Size details
       p_selected_size_id: item.customizations?.size?.id || undefined,
@@ -366,7 +506,10 @@ const addItemToBackend = async (
       p_size_price_modifier:
         item.customizations?.size?.priceModifier || undefined,
 
+      // Instructions
       p_special_instructions: item.customizations?.notes || undefined,
+
+      // Modifiers (pre-calculated prices)
       p_modifiers: item.customizations?.modifiers?.flatMap((mod) =>
         mod.options.map((opt) => ({
           modifier_group_id: mod.categoryId,
@@ -377,10 +520,8 @@ const addItemToBackend = async (
           quantity: 1,
         }))
       ),
-      p_location_exclusive_item_id: item.locationExclusiveItemId || undefined,
 
       // Kitchen/Coursing
-      p_prep_station: undefined,
       p_course_number:
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
     };
@@ -472,7 +613,21 @@ const addItemToBackend = async (
   }
 };
 
-// Backend sync helper - processes payment
+// Interface for capturing previous state for rollback on sync failure
+interface PaymentRollbackState {
+  order: OrderProfile;
+  activeOrderSubtotal: number;
+  activeOrderTax: number;
+  activeOrderTotal: number;
+  activeOrderDiscount: number;
+  activeOrderOutstandingSubtotal: number;
+  activeOrderOutstandingTax: number;
+  activeOrderOutstandingTotal: number;
+  activeOrderTotalCash: number;
+  activeOrderOutstandingCash: number;
+}
+
+// Backend sync helper - processes payment using process_payment_v2
 const syncPaymentToBackend = async (
   order: OrderProfile,
   paymentDetails: {
@@ -480,7 +635,9 @@ const syncPaymentToBackend = async (
     method: PaymentType;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
-  }
+    itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+  },
+  rollbackState?: PaymentRollbackState // Previous state for reversion on failure
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
   if (!supabase) {
@@ -501,80 +658,166 @@ const syncPaymentToBackend = async (
   }
 
   try {
-    // Map local PaymentType to backend PaymentMethod
-    let backendMethod: any = "external";
-    if (paymentDetails.method === "Cash") {
-      backendMethod = "cash";
-    } else if (paymentDetails.method === "Card") {
-      // Check if it was a specific terminal integration
-      if (paymentDetails.transactionDetails?.terminalType === "spinapi") {
-        backendMethod = "card_spinapi";
-      } else if (
-        paymentDetails.transactionDetails?.terminalType === "dvpaylite"
-      ) {
-        backendMethod = "card_dvpaylite";
-      } else {
-        backendMethod = "card_manual";
-      }
-    }
+    // Determine if this is a cash or card payment
+    const isCash = paymentDetails.method === "Cash";
+    const paymentMethod = isCash ? "cash" : "card";
 
-    const paymentParams: ProcessPaymentParams = {
+    // Build terminal response for card payments
+    const terminalResponse = !isCash && paymentDetails.transactionDetails
+      ? {
+        terminal_type: paymentDetails.transactionDetails.terminalType || "manual",
+        authorization_code: paymentDetails.transactionDetails.authorizationCode,
+        card_type: paymentDetails.transactionDetails.cardType,
+        card_last_four: paymentDetails.transactionDetails.last4,
+        transaction_id: paymentDetails.transactionDetails.transactionId,
+      }
+      : null;
+
+    // Call process_payment_v2 RPC directly
+    console.log("[syncPaymentToBackend] Calling process_payment_v2:", {
+      orderId: order.db_order_id,
+      method: paymentMethod,
+      amount: paymentDetails.amount,
+      tipAmount: paymentDetails.tipAmount,
+      itemIds: paymentDetails.itemIds,
+    });
+
+    const { data, error } = await supabase.rpc("process_payment_v2", {
       p_order_id: order.db_order_id,
-      p_payment_method: backendMethod,
+      p_payment_method: paymentMethod,
       p_amount: paymentDetails.amount,
       p_tip_amount: paymentDetails.tipAmount || 0,
-      // Add amount tendered for cash payments (for change calculation)
-      p_amount_tendered: paymentDetails.transactionDetails?.amountTendered,
-      p_terminal_type:
-        (paymentDetails.transactionDetails?.terminalType as any) || "manual",
-      p_terminal_id: paymentDetails.transactionDetails?.terminalId || "POS-001", // Placeholder
-      p_transaction_details: paymentDetails.transactionDetails,
-    };
-
-    console.log("Processing payment in backend:", paymentParams);
-    const { data, error } = await OrderService.processPayment(
-      supabase,
-      paymentParams
-    );
+      p_amount_tendered: isCash
+        ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
+        : null,
+      p_item_ids: paymentDetails.itemIds || null,
+      p_terminal_response: terminalResponse,
+      p_staff_id: null, // Could get from employee store if needed
+    });
 
     if (error) {
       console.error("Failed to process payment in backend:", error);
+
+      // REVERT OPTIMISTIC STATE ON FAILURE
+      if (rollbackState) {
+        console.log("[syncPaymentToBackend] Reverting to previous state due to sync failure");
+        const activeOrderId = useOrderStore.getState().activeOrderId;
+
+        useOrderStore.setState((state) => ({
+          ordersById: {
+            ...state.ordersById,
+            [order.id]: rollbackState.order,
+          },
+          // Revert active order totals if this was the active order
+          ...(order.id === activeOrderId
+            ? {
+              activeOrderSubtotal: rollbackState.activeOrderSubtotal,
+              activeOrderTax: rollbackState.activeOrderTax,
+              activeOrderTotal: rollbackState.activeOrderTotal,
+              activeOrderDiscount: rollbackState.activeOrderDiscount,
+              activeOrderOutstandingSubtotal: rollbackState.activeOrderOutstandingSubtotal,
+              activeOrderOutstandingTax: rollbackState.activeOrderOutstandingTax,
+              activeOrderOutstandingTotal: rollbackState.activeOrderOutstandingTotal,
+              activeOrderTotalCash: rollbackState.activeOrderTotalCash,
+              activeOrderOutstandingCash: rollbackState.activeOrderOutstandingCash,
+            }
+            : {}),
+        }));
+      }
+
       toastService.show({
-        title: "Sync Error",
-        message: "Failed to sync payment to server",
+        title: "Payment Failed",
+        message: "Failed to sync payment to server. Changes have been reverted.",
         type: "error",
       });
       return false;
     }
 
-    // Log successful payment with details (payment_id can be used for void)
-    console.log("Payment synced to backend successfully:", {
-      payment_id: data?.payment_id,
-      amount_applied: data?.amount_applied,
-      change_given: data?.change_given,
-      order_fully_paid: data?.order_fully_paid,
-    });
+    // Log successful payment with full response
+    console.log("[syncPaymentToBackend] Payment synced successfully:", data);
 
-    // If backend says order is NOT fully paid, revert optimistic status
-    if (data?.order_fully_paid === false) {
-      useOrderStore.setState((state) => ({
-        ordersById: {
-          ...state.ordersById,
-          [order.id]: {
-            ...state.ordersById[order.id],
-            paid_status: "Unpaid" as const,
-            check_status: "Opened" as const,
+    // ========================================================================
+    // RECONCILE LOCAL STATE WITH BACKEND RESPONSE
+    // ========================================================================
+    if (data?.success) {
+      const activeOrderId = useOrderStore.getState().activeOrderId;
+
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[order.id];
+        if (!currentOrder) return state;
+
+        // Update items that were paid (mark paidQuantity)
+        let updatedItems = currentOrder.items;
+        if (data.items_covered && data.items_covered.length > 0) {
+          updatedItems = currentOrder.items.map((item) => {
+            if (item.db_order_item_id && data.items_covered.includes(item.db_order_item_id)) {
+              return { ...item, paidQuantity: item.quantity }; // Mark as fully paid
+            }
+            return item;
+          });
+        }
+
+        return {
+          ordersById: {
+            ...state.ordersById,
+            [order.id]: {
+              ...currentOrder,
+              items: updatedItems,
+              // Backend is source of truth for payment status
+              amount_paid: data.order_amount_paid,
+              amount_due: data.order_amount_due,
+              paid_status: data.order_fully_paid ? ("Paid" as const) : ("Pending" as const),
+              check_status: data.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
+            },
           },
-        },
-      }));
+          // Update outstanding totals if this is the active order
+          ...(order.id === activeOrderId
+            ? {
+              activeOrderOutstandingTotal: data.order_amount_due,
+              // For cash payments, also update cash outstanding
+              ...(data.is_cash_priced
+                ? { activeOrderOutstandingCash: data.order_amount_due }
+                : {}),
+            }
+            : {}),
+        };
+      });
     }
 
     return true;
   } catch (error) {
     console.error("Backend payment sync error:", error);
+
+    // REVERT OPTIMISTIC STATE ON FAILURE
+    if (rollbackState) {
+      console.log("[syncPaymentToBackend] Reverting to previous state due to sync error");
+      const activeOrderId = useOrderStore.getState().activeOrderId;
+
+      useOrderStore.setState((state) => ({
+        ordersById: {
+          ...state.ordersById,
+          [order.id]: rollbackState.order,
+        },
+        // Revert active order totals if this was the active order
+        ...(order.id === activeOrderId
+          ? {
+            activeOrderSubtotal: rollbackState.activeOrderSubtotal,
+            activeOrderTax: rollbackState.activeOrderTax,
+            activeOrderTotal: rollbackState.activeOrderTotal,
+            activeOrderDiscount: rollbackState.activeOrderDiscount,
+            activeOrderOutstandingSubtotal: rollbackState.activeOrderOutstandingSubtotal,
+            activeOrderOutstandingTax: rollbackState.activeOrderOutstandingTax,
+            activeOrderOutstandingTotal: rollbackState.activeOrderOutstandingTotal,
+            activeOrderTotalCash: rollbackState.activeOrderTotalCash,
+            activeOrderOutstandingCash: rollbackState.activeOrderOutstandingCash,
+          }
+          : {}),
+      }));
+    }
+
     toastService.show({
-      title: "Sync Error",
-      message: "Failed to sync payment to server",
+      title: "Payment Failed",
+      message: "Failed to sync payment to server. Changes have been reverted.",
       type: "error",
     });
     return false;
@@ -625,6 +868,10 @@ interface OrderState {
   activeOrderOutstandingSubtotal: number;
   activeOrderOutstandingTax: number;
   activeOrderOutstandingTotal: number;
+  // Cash pricing total (using cash prices + modifiers + add-ons)
+  activeOrderTotalCash: number;
+  // Outstanding cash totals (unpaid items using cash pricing)
+  activeOrderOutstandingCash: number;
 
   // --- PENDING TABLE SELECTION ---
   pendingTableSelection: string | null; // Store pending table selection
@@ -668,7 +915,8 @@ interface OrderState {
     last4?: string;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
-  }) => Promise<void>;
+    itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+  }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
   setOrders: (orders: OrderProfile[]) => void;
 
   markOrderAsPaid: (orderId: string) => void;
@@ -947,11 +1195,84 @@ export const useOrderStore = create<OrderState>()(
               const outstandingTotal =
                 outstandingSubtotalAfterDiscount + outstandingTax;
 
+              // === CASH PRICING CALCULATIONS ===
+              // Calculate cash subtotal using cash prices (originalPrice + modifiers + add-ons)
+              const cashSubtotal = activeItems.reduce(
+                (acc, item) => {
+                  const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+                  return acc + effectiveCashPrice * item.quantity;
+                },
+                0
+              );
+
+              // Calculate cash tax (same discount logic, but using cash subtotal)
+              let cashTax = 0;
+              for (const item of activeItems) {
+                if (item.is_tax_exempt) continue;
+                const taxCategory = item.tax_category || "standard";
+                const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+                const taxRateDecimal = taxRatePercent / 100;
+
+                // Calculate item's taxable amount using cash price
+                const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+                const itemCashSubtotal = effectiveCashPrice * item.quantity;
+
+                // Apply proportional discount to this item (based on cash subtotal)
+                const itemDiscountProportion = cashSubtotal > 0 ? itemCashSubtotal / cashSubtotal : 0;
+                const itemDiscountAmount = totalDiscountAmount * itemDiscountProportion;
+                const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
+
+                // Calculate tax for this item
+                cashTax += itemTaxableAmount * taxRateDecimal;
+              }
+
+              // Calculate cash total (cash subtotal - discount + cash tax)
+              const cashTaxableAmount = Math.max(0, cashSubtotal - totalDiscountAmount);
+              const cashTotal = cashTaxableAmount + cashTax;
+
+              // Outstanding cash totals (unpaid items only using cash pricing)
+              let cashOutstandingSubtotal = 0;
+              let cashOutstandingTax = 0;
+              for (const item of activeItems) {
+                const unpaidQty = item.quantity - (item.paidQuantity || 0);
+                if (unpaidQty <= 0) continue;
+
+                // Use cash price for unpaid quantity
+                const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+                const itemCashSubtotal = unpaidQty * effectiveCashPrice;
+                cashOutstandingSubtotal += itemCashSubtotal;
+
+                if (!item.is_tax_exempt) {
+                  const taxCategory = item.tax_category || "standard";
+                  const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+                  const taxRateDecimal = taxRatePercent / 100;
+
+                  // Apply proportional discount (based on cash subtotal)
+                  const itemDiscountProportion = cashSubtotal > 0 ? itemCashSubtotal / cashSubtotal : 0;
+                  const itemDiscountAmount = totalDiscountAmount * itemDiscountProportion;
+                  const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
+
+                  cashOutstandingTax += itemTaxableAmount * taxRateDecimal;
+                }
+              }
+
+              // Calculate the final cash outstanding total, including discounts
+              const cashProportionOutstanding =
+                cashSubtotal > 0 ? cashOutstandingSubtotal / cashSubtotal : 0;
+              const cashOutstandingDiscountAmount =
+                totalDiscountAmount * cashProportionOutstanding;
+              const cashOutstandingSubtotalAfterDiscount =
+                cashOutstandingSubtotal - cashOutstandingDiscountAmount;
+              const cashOutstandingTotal =
+                cashOutstandingSubtotalAfterDiscount + cashOutstandingTax;
+
               // Ensure no undefined values propagate
               const safeSubtotal = Number(finalSubtotal) || 0;
               const safeTax = Number(tax) || 0;
               const safeTotal = Number(total) || 0;
               const safeDiscount = Number(totalDiscountAmount) || 0;
+              const safeCashTotal = Number(cashTotal) || 0;
+              const safeCashOutstandingTotal = Number(cashOutstandingTotal) || 0;
 
               // RE-CHECK if this order is still the active one AFTER async operations
               // This is crucial because the active order might have changed while we were awaiting
@@ -967,6 +1288,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: outstandingSubtotal,
                   activeOrderOutstandingTax: outstandingTax,
                   activeOrderOutstandingTotal: outstandingTotal,
+                  activeOrderTotalCash: safeCashTotal,
+                  activeOrderOutstandingCash: safeCashOutstandingTotal,
                 });
               }
 
@@ -1022,6 +1345,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: 0,
                   activeOrderOutstandingTax: 0,
                   activeOrderOutstandingTotal: 0,
+                  activeOrderTotalCash: 0,
+                  activeOrderOutstandingCash: 0,
                 });
               }
             }
@@ -1168,6 +1493,8 @@ export const useOrderStore = create<OrderState>()(
           activeOrderOutstandingSubtotal: 0,
           activeOrderOutstandingTax: 0,
           activeOrderOutstandingTotal: 0,
+          activeOrderTotalCash: 0,
+          activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
 
           // --- OFFLINE SYNC ACTIONS ---
@@ -1330,6 +1657,8 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: 0,
               activeOrderOutstandingTax: 0,
               activeOrderOutstandingTotal: 0,
+              activeOrderTotalCash: 0,
+              activeOrderOutstandingCash: 0,
             });
             // Then recalculate actual values async
             recalculateTotals(orderId);
@@ -1364,6 +1693,7 @@ export const useOrderStore = create<OrderState>()(
           addItemToActiveOrder: (newItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
+            console.log('[addItemToActiveOrder] newItem', newItem)
 
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
@@ -1479,10 +1809,13 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
               activeOrderOutstandingTax: totals.outstanding_tax,
               activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
 
             // 7. Background sync with promise tracking for sync barriers
             const itemToSync = mergeCandidate || newItem;
+
             if (!itemToSync.isDraft) {
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
@@ -1612,6 +1945,8 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
               activeOrderOutstandingTax: totals.outstanding_tax,
               activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
 
             // Background sync (fire-and-forget)
@@ -1803,7 +2138,7 @@ export const useOrderStore = create<OrderState>()(
               },
             }));
 
-            recalculateTotals(activeOrderId);
+            // recalculateTotals(activeOrderId);
           },
 
           removeItemFromActiveOrder: (itemId, voidReason) => {
@@ -1868,6 +2203,8 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
               activeOrderOutstandingTax: totals.outstanding_tax,
               activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
 
             // Background sync (fire-and-forget)
@@ -1899,6 +2236,7 @@ export const useOrderStore = create<OrderState>()(
             if (!order) return;
 
             const itemToConfirm = order.items.find((i) => i.id === itemId);
+            console.log('[confirmDraftItem] itemToConfirm', itemToConfirm)
             if (!itemToConfirm) return;
 
             const updatedItems = order.items.map((i) =>
@@ -1939,6 +2277,8 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
               activeOrderOutstandingTax: totals.outstanding_tax,
               activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
 
             // Sync the confirmed item to backend
@@ -2114,6 +2454,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                   activeOrderOutstandingTax: totals.outstanding_tax,
                   activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
                 }
                 : {}),
             }));
@@ -2151,6 +2493,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                   activeOrderOutstandingTax: totals.outstanding_tax,
                   activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
                 }
                 : {}),
             }));
@@ -2195,6 +2539,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                   activeOrderOutstandingTax: totals.outstanding_tax,
                   activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
                 }
                 : {}),
             }));
@@ -2236,6 +2582,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                   activeOrderOutstandingTax: totals.outstanding_tax,
                   activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
                 }
                 : {}),
             }));
@@ -2315,6 +2663,7 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: 0,
               activeOrderOutstandingTax: 0,
               activeOrderOutstandingTotal: 0,
+              activeOrderTotalCash: 0,
             }));
 
             // Background sync
@@ -2370,6 +2719,7 @@ export const useOrderStore = create<OrderState>()(
             last4,
             tipAmount,
             transactionDetails,
+            itemIds, // NEW: Optional array of db_order_item_ids for per-item payments
           }) => {
             const { hasPendingSyncs, waitForPendingSyncs } = get();
 
@@ -2386,7 +2736,23 @@ export const useOrderStore = create<OrderState>()(
 
             // Re-fetch order after waiting (state may have changed)
             const order = get().ordersById[orderId]; // O(1) lookup
-            if (!order) return;
+            if (!order) return false;
+
+            // ================================================================
+            // CAPTURE PREVIOUS STATE FOR ROLLBACK ON SYNC FAILURE
+            // ================================================================
+            const rollbackState: PaymentRollbackState = {
+              order: { ...order },
+              activeOrderSubtotal: get().activeOrderSubtotal,
+              activeOrderTax: get().activeOrderTax,
+              activeOrderTotal: get().activeOrderTotal,
+              activeOrderDiscount: get().activeOrderDiscount,
+              activeOrderOutstandingSubtotal: get().activeOrderOutstandingSubtotal,
+              activeOrderOutstandingTax: get().activeOrderOutstandingTax,
+              activeOrderOutstandingTotal: get().activeOrderOutstandingTotal,
+              activeOrderTotalCash: get().activeOrderTotalCash,
+              activeOrderOutstandingCash: get().activeOrderOutstandingCash,
+            };
 
             const newPayment = {
               amount,
@@ -2399,24 +2765,37 @@ export const useOrderStore = create<OrderState>()(
 
             const newPayments = [...(order.payments || []), newPayment];
 
-            // Mark items as paid in FIFO order
-            let remaining = amount;
-            const updatedItems = order.items.map((item) => {
-              const unitPrice = item.price;
-              const unpaidQty = item.quantity - (item.paidQuantity || 0);
-              if (remaining <= 0 || unpaidQty <= 0) return item;
+            // Mark items as paid based on itemIds (per-item) or FIFO order (default)
+            let updatedItems: typeof order.items;
 
-              const maxCoverQty = Math.min(
-                unpaidQty,
-                Math.floor(remaining / unitPrice + 1e-6)
-              );
-              if (maxCoverQty <= 0) return item;
-              remaining -= maxCoverQty * unitPrice;
-              return {
-                ...item,
-                paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
-              };
-            });
+            if (itemIds && itemIds.length > 0) {
+              // Per-item payment: Mark specific items as paid
+              updatedItems = order.items.map((item) => {
+                if (item.db_order_item_id && itemIds.includes(item.db_order_item_id)) {
+                  return { ...item, paidQuantity: item.quantity }; // Fully paid
+                }
+                return item;
+              });
+            } else {
+              // Default FIFO: Mark items as paid in order until amount is exhausted
+              let remaining = amount;
+              updatedItems = order.items.map((item) => {
+                const unitPrice = item.price;
+                const unpaidQty = item.quantity - (item.paidQuantity || 0);
+                if (remaining <= 0 || unpaidQty <= 0) return item;
+
+                const maxCoverQty = Math.min(
+                  unpaidQty,
+                  Math.floor(remaining / unitPrice + 1e-6)
+                );
+                if (maxCoverQty <= 0) return item;
+                remaining -= maxCoverQty * unitPrice;
+                return {
+                  ...item,
+                  paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
+                };
+              });
+            }
 
             // Calculate totals
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -2427,6 +2806,9 @@ export const useOrderStore = create<OrderState>()(
               taxRatesMap
             );
 
+            // Determine if order is fully paid based on outstanding amount
+            const isFullyPaid = totals.outstanding_total <= 0.01; // Allow tiny rounding margin
+
             // Single atomic update with optimistic payment status
             set((state) => ({
               ordersById: {
@@ -2435,12 +2817,12 @@ export const useOrderStore = create<OrderState>()(
                   ...state.ordersById[orderId],
                   payments: newPayments,
                   items: updatedItems,
-                  total_amount: totals.total_amount,
-                  total_tax: totals.tax_amount,
+                  total_amount: method === 'Cash' ? totals.cash_total_amount : totals.total_amount,
+                  total_tax: method === 'Cash' ? totals.cash_tax_amount : totals.tax_amount,
                   total_discount: totals.discount_amount,
-                  // Optimistic update: assume payment completes the order
-                  paid_status: "Paid" as const,
-                  check_status: "Closed" as const,
+                  // Optimistic update based on calculated outstanding
+                  paid_status: isFullyPaid ? ("Paid" as const) : ("Pending" as const),
+                  check_status: isFullyPaid ? ("Closed" as const) : ("Opened" as const),
                 },
               },
               ...(orderId === get().activeOrderId
@@ -2452,19 +2834,27 @@ export const useOrderStore = create<OrderState>()(
                   activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                   activeOrderOutstandingTax: totals.outstanding_tax,
                   activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
                 }
                 : {}),
             }));
 
-            // Background sync (fire-and-forget)
-            syncPaymentToBackend(order, {
-              amount,
-              method,
-              tipAmount,
-              transactionDetails,
-            }).catch((err) =>
-              console.error("Background payment sync failed:", err)
+            // Sync to backend - await result and return success/failure
+            // Pass rollbackState to revert optimistic updates on sync failure
+            const syncSuccess = await syncPaymentToBackend(
+              order,
+              {
+                amount,
+                method,
+                tipAmount,
+                transactionDetails,
+                itemIds, // Pass item IDs for per-item payment tracking
+              },
+              rollbackState // Previous state for rollback on failure
             );
+
+            return syncSuccess;
           },
 
           markOrderAsPaid: (orderId: string) => {
@@ -2845,6 +3235,7 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingSubtotal: 0,
               activeOrderOutstandingTax: 0,
               activeOrderOutstandingTotal: 0,
+              activeOrderTotalCash: 0,
             }));
 
             // Sync status to backend
@@ -2995,7 +3386,7 @@ export const useOrderStore = create<OrderState>()(
             // But since we have a pure calculator now, we can do it here:
             // const newTotals = calculateOrderTotals(...);
             // For now, let's keep minimal changes to fix the state status.
-            recalculateTotals(activeOrderId);
+            // recalculateTotals(activeOrderId);
 
             // Sync the status change to the backend ("Preparing")
             const supabase = getOrderStoreSupabaseClient();
@@ -3136,7 +3527,7 @@ export const useOrderStore = create<OrderState>()(
               type: "success",
             });
 
-            recalculateTotals(orderId);
+            // recalculateTotals(orderId);
           },
 
           generateCartItemId: (menuItemId, customizations, isDraft = false) => {

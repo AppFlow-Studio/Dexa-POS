@@ -11,7 +11,6 @@ import {
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-
 const CardPaymentView = () => {
   const {
     activeOrderDiscount,
@@ -75,10 +74,11 @@ const CardPaymentView = () => {
   useEffect(() => {
     if (status === "success" && activeOrderId) {
       // Use central handler instead of direct store call
-      // Pass the tip amount here
+      // Pass the tip amount and explicit card pricing flag
       handlePaymentCompletion("Card", tipAmount, {
         terminalType: "manual", // Default for now
         authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
+        isCashPriced: false, // Explicit card pricing
       });
     }
   }, [status, activeOrderId, handlePaymentCompletion, tipAmount]);
@@ -118,27 +118,24 @@ const CardPaymentView = () => {
                     <TouchableOpacity
                       key={percent}
                       onPress={() => handleTipPreset(percent)}
-                      className={`flex-1 py-3 rounded-xl border ${
-                        selectedTipPreset === percent
-                          ? "bg-blue-600 border-blue-500"
-                          : "bg-[#333] border-[#404040]"
-                      }`}
+                      className={`flex-1 py-3 rounded-xl border ${selectedTipPreset === percent
+                        ? "bg-blue-600 border-blue-500"
+                        : "bg-[#333] border-[#404040]"
+                        }`}
                     >
                       <Text
-                        className={`text-center font-bold ${
-                          selectedTipPreset === percent
-                            ? "text-white"
-                            : "text-gray-300"
-                        }`}
+                        className={`text-center font-bold ${selectedTipPreset === percent
+                          ? "text-white"
+                          : "text-gray-300"
+                          }`}
                       >
                         {percent}%
                       </Text>
                       <Text
-                        className={`text-center text-xs mt-1 ${
-                          selectedTipPreset === percent
-                            ? "text-blue-200"
-                            : "text-gray-500"
-                        }`}
+                        className={`text-center text-xs mt-1 ${selectedTipPreset === percent
+                          ? "text-blue-200"
+                          : "text-gray-500"
+                          }`}
                       >
                         ${((percent / 100) * totalToPay).toFixed(2)}
                       </Text>

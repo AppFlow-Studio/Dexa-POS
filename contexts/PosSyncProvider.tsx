@@ -95,8 +95,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
         if (error) throw error;
 
-        console.log("Employee Sync Data received!");
-        console.log("Employees count:", data?.length || 0);
+        // console.log("Employee Sync Data received!");
+        // console.log("Employees count:", data?.length || 0);
 
         // Map Supabase data to EmployeeProfile format
         const mappedEmployees: EmployeeProfile[] = (data || []).map(
@@ -167,7 +167,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           useFloorPlanStore.getState().loadReservations(),
         ]);
 
-        console.log("Floor plans synced successfully");
       } catch (error: any) {
         console.error("Floor plan sync failed:", error);
       }
@@ -194,7 +193,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
         const taxRates = (data || []) as TaxRate[];
         useStoreSettingsStore.getState().setTaxRates(taxRates);
-        console.log("Tax rates synced:", taxRates.length);
+        // console.log("Tax rates synced:", taxRates.length);
       } catch (err: any) {
         console.error("Tax rates sync error:", err);
       }

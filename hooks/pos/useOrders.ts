@@ -111,7 +111,7 @@ export const useOrder = (orderId?: string) => {
         const supabase = useSupabaseClient();
 
         try {
-            const { data, error: addError } = await supabase.rpc('add_order_item', {
+            const { data, error: addError } = await supabase.rpc('add_order_item_v2', {
                 p_order_id: orderId,
                 p_menu_item_id: params.menuItemId,
                 p_location_exclusive_item_id: params.locationExclusiveItemId,

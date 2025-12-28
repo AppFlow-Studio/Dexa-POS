@@ -195,7 +195,7 @@ class OrderItemService {
     if (isOnline) {
       // ONLINE: Call RPC directly
 
-      const { data, error } = await supabase.rpc('add_order_item', {
+      const { data, error } = await supabase.rpc('add_order_item_v2', {
         p_order_id: params.orderId,
         p_menu_item_id: params.menuItemId,
         p_location_exclusive_item_id: params.locationExclusiveItemId,
@@ -709,7 +709,7 @@ class OrderItemService {
         const supabase = useSupabaseClient();
         switch (operation.type) {
           case 'add_item':
-            await supabase.rpc('add_order_item', {
+            await supabase.rpc('add_order_item_v2', {
               p_order_id: operation.params.orderId,
               p_menu_item_id: operation.params.menuItemId,
               p_location_exclusive_item_id: operation.params.locationExclusiveItemId,

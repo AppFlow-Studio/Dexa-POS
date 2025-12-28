@@ -142,14 +142,11 @@ export interface AddOrderItemParams {
 
   // Pre-calculated item information
   p_item_name: string;
-  p_item_description?: string;
   p_category_name: string;
 
   // Pre-calculated prices
-  p_unit_price: number; // effective_price
-  p_cash_price?: number; // effective_cash_price
-  p_price_paid?: number; // Real amount paid per item (usually unit_price unless discounted)
-  p_use_cash_price?: boolean; // Default true
+  p_unit_price: number; // Card price (effective price with modifiers)
+  p_cash_unit_price?: number; // Cash price (base cash price + modifiers)
 
   // Quantity
   p_quantity?: number;
@@ -173,7 +170,6 @@ export interface AddOrderItemParams {
   }>;
 
   // Kitchen/Coursing
-  p_prep_station?: string;
   p_course_number?: number;
 }
 
@@ -291,4 +287,36 @@ export interface GetOrderItemResult {
   subtotal: number;
   special_instructions?: string;
   modifiers: OrderItemModifier[];
+}
+
+// ============================================================================
+// PROCESS PAYMENT V2 TYPES (Unified Payment Function)
+// ============================================================================
+
+export interface ProcessPaymentV2Params {
+  p_order_id: string;
+  p_payment_method: 'cash' | 'card';
+  p_amount: number;
+  p_tip_amount?: number;
+  p_amount_tendered?: number;   // Cash only: what customer gave
+  p_item_ids?: string[];        // Per-item payment: which items
+  p_terminal_response?: Record<string, unknown>;
+  p_terminal_id?: string;
+  p_device_id?: string;
+  p_staff_id?: string;
+  p_transaction_details?: Record<string, unknown>;
+}
+
+export interface ProcessPaymentV2Result {
+  success: boolean;
+  payment_id: string;
+  payment_method: string;
+  amount_charged: number;
+  tip_amount: number;
+  change_given: number;
+  is_cash_priced: boolean;
+  items_covered: string[];      // Array of db_order_item_ids that were paid
+  order_amount_paid: number;    // Total amount paid so far
+  order_amount_due: number;     // Remaining amount due
+  order_fully_paid: boolean;    // True if order is completely paid
 }

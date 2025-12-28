@@ -3,7 +3,7 @@ import { CartItem } from "@/lib/types";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
-import { useOrderStore } from "./useOrderStore";
+import { calculateItemEffectiveCashPrice, useOrderStore } from "./useOrderStore";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
@@ -25,7 +25,8 @@ export interface Split {
   id: string;
   customerName: string;
   items: CartItem[];
-  amount: number;
+  amount: number;         // Default/card amount
+  cashAmount?: number;    // Cash amount (for dual-price compliance)
   status: "pending" | "paid";
   // FIXED: Removed splitSourceView from here. It belongs in the global store state, not per-guest.
 }
@@ -96,7 +97,7 @@ interface PaymentState {
     method: string,
     tipAmount?: number,
     transactionDetails?: Record<string, any>
-  ) => void;
+  ) => Promise<void>;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
     cardBrand: string;
@@ -117,7 +118,7 @@ interface PaymentState {
   ) => void; // New action to set ref
   setPaymentClean: () => void; // New action to set isDirty to false
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
-  splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void; // New action for evenly splitting
+  splitEvenly: (numberOfPeople: number, amountPerPerson: number, cashAmountPerPerson?: number) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
 }
@@ -333,14 +334,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }));
   },
 
-  splitEvenly: (numberOfPeople, amountPerPerson) => {
+  splitEvenly: (numberOfPeople, amountPerPerson, cashAmountPerPerson) => {
     const newSplits: Split[] = [];
     for (let i = 0; i < numberOfPeople; i++) {
       newSplits.push({
         id: `split_${Date.now()}_${i}`,
         customerName: `Guest ${i + 1}`,
         items: [],
-        amount: amountPerPerson,
+        amount: amountPerPerson, // Card pricing (default)
+        cashAmount: cashAmountPerPerson, // Cash pricing for dual-price compliance
         status: "pending",
       });
     }
@@ -368,10 +370,19 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const masterItems = (activeOrder?.items || []).filter(
       (item) => !item.is_voided
     );
+
+    // Card pricing subtotal
     const orderSubtotal = masterItems.reduce(
       (acc, item) => acc + item.price * item.quantity,
       0
     );
+
+    // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
+    const orderCashSubtotal = masterItems.reduce(
+      (acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity,
+      0
+    );
+
     const itemDiscountsTotal = masterItems.reduce((acc, item) => {
       if (item.appliedDiscount) {
         return (
@@ -388,8 +399,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
     const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
 
-    // Helper function to calculate tax for split items (same logic as useOrderStore)
-    const calculateSplitAmount = (items: typeof masterItems): number => {
+    // Helper function to calculate tax for split items using CARD pricing
+    const calculateSplitCardAmount = (items: typeof masterItems): number => {
       let subtotal = 0;
       let tax = 0;
 
@@ -419,12 +430,47 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       return Math.round((subtotal + tax) * 100) / 100;
     };
 
-    // 1. Recalculate amounts if needed (Split by Item logic - now includes tax)
+    // Helper function to calculate tax for split items using CASH pricing
+    // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
+    const calculateSplitCashAmount = (items: typeof masterItems): number => {
+      let subtotal = 0;
+      let tax = 0;
+
+      for (const item of items) {
+        // Use the full effective cash price including modifiers and add-ons
+        const itemCashPrice = calculateItemEffectiveCashPrice(item);
+        const itemSubtotal = itemCashPrice * item.quantity;
+        subtotal += itemSubtotal;
+
+        // Skip tax-exempt items
+        if (item.is_tax_exempt) continue;
+
+        // Get the tax rate for this item's category (default to "standard" if not set)
+        const taxCategory = item.tax_category || "standard";
+        const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+        const taxRateDecimal = taxRatePercent / 100;
+
+        // Apply proportional discount to this item (based on cash subtotal)
+        const itemDiscountProportion =
+          orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
+        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
+        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
+
+        // Calculate tax for this item
+        tax += itemTaxableAmount * taxRateDecimal;
+      }
+
+      // Round to 2 decimal places
+      return Math.round((subtotal + tax) * 100) / 100;
+    };
+
+    // 1. Recalculate amounts if needed (Split by Item logic - now includes tax for both card and cash)
     const updatedSplits = splits.map((split) => {
-      // If we have items but 0 amount, assume we need to calculate price from items (with tax)
+      // If we have items but 0 amount, calculate price from items (with tax) for both card and cash
       if (split.items.length > 0 && split.amount === 0) {
-        const calculatedAmount = calculateSplitAmount(split.items);
-        return { ...split, amount: calculatedAmount };
+        const cardAmount = calculateSplitCardAmount(split.items);
+        const cashAmount = calculateSplitCashAmount(split.items);
+        return { ...split, amount: cardAmount, cashAmount: cashAmount };
       }
       return split;
     });
@@ -445,35 +491,68 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
 
-  handlePaymentCompletion: (
+  handlePaymentCompletion: async (
     method: string,
     tipAmount?: number,
     transactionDetails?: Record<string, any>
   ) => {
-    const { activeSplitId, splits } = get();
-    const { activeOrderId, addPaymentToOrder, markOrderAsPaid } =
+    const { activeSplitId, splits, splitSourceView, close } = get();
+    const { activeOrderId, addPaymentToOrder } =
       useOrderStore.getState();
 
     if (!activeOrderId) return;
+
+    // Determine if this is a cash payment (for using cash pricing)
+    const isCashPayment = method === "Cash";
 
     if (activeSplitId) {
       // SPLIT FLOW
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       if (!currentSplit) return;
 
-      // Include splitLabel for backend
+      // For split-by-item payments, extract db_order_item_ids from the split items
+      // This allows the backend to track which specific items were paid
+      let itemIds: string[] | undefined;
+      if (splitSourceView === "split-by-item" && currentSplit.items.length > 0) {
+        itemIds = currentSplit.items
+          .map((item) => item.db_order_item_id)
+          .filter((id): id is string => !!id);
+
+        // Only use itemIds if we actually have valid IDs
+        if (itemIds.length === 0) {
+          itemIds = undefined;
+        }
+      }
+
+      // Use cash amount when paying with cash, otherwise card amount
+      // For split-evenly: cashAmount is set when splits were created
+      // For split-by-item: amount is calculated from items at startSplitPaymentFlow time
+      const paymentAmount = isCashPayment && currentSplit.cashAmount !== undefined
+        ? currentSplit.cashAmount
+        : currentSplit.amount;
+
+      // Include splitLabel and cash pricing flag for backend
       const detailsWithSplitLabel = {
         ...transactionDetails,
         splitLabel: currentSplit.customerName,
+        isCashPriced: isCashPayment,
       };
 
-      addPaymentToOrder({
+      // Await payment and check for success
+      const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
-        amount: currentSplit.amount,
-        method: method as any,
+        amount: paymentAmount,
+        method: method as any, // method comes from handlePaymentCompletion ("Cash" or "Card")
         tipAmount,
         transactionDetails: detailsWithSplitLabel,
+        itemIds, // Pass item IDs for per-item payment tracking
       });
+
+      // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
+      if (!paymentSuccess) {
+        close();
+        return;
+      }
 
       const updatedSplits = splits.map((s) =>
         s.id === activeSplitId ? { ...s, status: "paid" as const } : s
@@ -487,27 +566,55 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (nextPending) {
         set({ view: "split-payment-success" });
       } else {
-        markOrderAsPaid(activeOrderId);
+        // All splits paid - check if we need to send items to kitchen
+        const { ordersById, sendNewItemsToKitchenForOrder } = useOrderStore.getState();
+        const order = ordersById[activeOrderId];
+
+        // If order was in draft status, send items to kitchen (preparing state)
+        if (order?.order_status === "draft") {
+          sendNewItemsToKitchenForOrder(activeOrderId);
+        }
+
+        // Order is fully paid - addPaymentToOrder already set the paid status
         set({ view: "success", activeSplitId: null });
       }
     } else {
-      // STANDARD FLOW
+      // STANDARD FLOW (full payment)
       const {
         activeOrderOutstandingTotal,
-        orders,
+        activeOrderOutstandingCash,
+        ordersById,
         sendNewItemsToKitchenForOrder,
       } = useOrderStore.getState();
-      const currentOrder = orders.find((o) => o.id === activeOrderId);
+      const currentOrder = ordersById[activeOrderId];
 
-      addPaymentToOrder({
+      // Use cash outstanding for cash payments, card outstanding for card payments
+      const paymentAmount = isCashPayment
+        ? activeOrderOutstandingCash
+        : activeOrderOutstandingTotal;
+
+      // Include cash pricing flag in transaction details
+      const detailsWithCashFlag = {
+        ...transactionDetails,
+        isCashPriced: isCashPayment,
+      };
+
+      // Await payment and check for success
+      const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
-        amount: activeOrderOutstandingTotal,
+        amount: paymentAmount,
         method: method as any,
         tipAmount,
-        transactionDetails,
+        transactionDetails: detailsWithCashFlag,
       });
-      markOrderAsPaid(activeOrderId);
 
+      // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
+      if (!paymentSuccess) {
+        close();
+        return;
+      }
+
+      // Payment succeeded - addPaymentToOrder already set the paid status
       // If order was in draft status, send it to kitchen
       if (currentOrder?.order_status === "draft") {
         sendNewItemsToKitchenForOrder(activeOrderId);
