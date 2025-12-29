@@ -1426,7 +1426,7 @@ export const useOrderStore = create<OrderState>()(
               // Backend is source of truth after payments have been processed
               const hasBackendAmountDue = activeOrder.amount_due !== undefined && activeOrder.amount_due >= 0;
               const finalOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : outstandingTotal;
-              const finalCashOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : safeCashOutstandingTotal;
+              const finalCashOutstandingTotal = hasBackendAmountDue ? activeOrder.cash_amount_due ?? activeOrder.amount_due : safeCashOutstandingTotal;
 
               // Only update active order derived state if this order is still the active one
               if (stillActiveAfterAsync) {

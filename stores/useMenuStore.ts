@@ -1677,7 +1677,9 @@ function isNowInAnySchedule(schedules: Schedule[], at?: Date): boolean {
     if (endM < startM) {
       endM += 24 * 60;
     }
-
+    console.log("startM", startM);
+    console.log("endM", endM);
+    console.log("minutes", minutes);
     // Now simply check range
     // Note: If current time 'minutes' is very small (e.g. 1 AM), and schedule is 10PM-2AM,
     // we need to handle "being in the late night window".
