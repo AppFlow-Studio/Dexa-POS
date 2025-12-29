@@ -306,6 +306,73 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
 // This ensures only ONE order creation happens even when multiple items are added simultaneously
 const pendingOrderCreations: Map<string, Promise<string | null>> = new Map();
 
+// ============================================================================
+// PER-ORDER ITEM ADDITION QUEUE - Serializes item additions to prevent race conditions
+// ============================================================================
+// Maps local order ID -> Promise chain for sequential item additions
+// This prevents overwhelming the database with concurrent item additions and ensures
+// calculate_order_totals_fast always sees all previously added items
+const pendingItemAdditions: Map<string, Promise<void>> = new Map();
+
+/**
+ * Queues an item addition to run after any pending additions complete.
+ * This prevents race conditions where concurrent item additions cause
+ * order totals to be calculated incorrectly.
+ * 
+ * Flow:
+ * 1. Check if there's an existing queue for this order
+ * 2. Chain the new addition to run after the existing queue completes
+ * 3. Store the new chain as the current queue
+ * 4. Wait for our addition to complete and return the result
+ * 
+ * @param orderId - The local order ID
+ * @param addFn - The function that performs the item addition
+ * @returns Promise<boolean> - true if item was added successfully
+ */
+const queueItemAddition = async (
+  orderId: string,
+  addFn: () => Promise<boolean>
+): Promise<boolean> => {
+  // Get existing queue or start with resolved promise
+  const existingQueue = pendingItemAdditions.get(orderId) || Promise.resolve();
+
+  let result = false;
+
+  // Chain our addition to run after any pending ones
+  const newQueue = existingQueue
+    .then(async () => {
+      try {
+        result = await addFn();
+      } catch (error) {
+        console.error('[queueItemAddition] Error adding item:', error);
+        result = false;
+      }
+    })
+    .catch((error) => {
+      console.error('[queueItemAddition] Queue error:', error);
+    });
+
+  // Store the new chain
+  pendingItemAdditions.set(orderId, newQueue);
+
+  // Wait for our addition to complete
+  await newQueue;
+
+  // Clean up the map if the queue is empty (no more pending operations)
+  // This prevents memory leaks for orders that are no longer being modified
+  const currentQueue = pendingItemAdditions.get(orderId);
+  if (currentQueue === newQueue) {
+    // We're the last in the chain, safe to clean up after a small delay
+    setTimeout(() => {
+      if (pendingItemAdditions.get(orderId) === newQueue) {
+        pendingItemAdditions.delete(orderId);
+      }
+    }, 100);
+  }
+
+  return result;
+};
+
 // Type for the setOrderDbId callback
 type SetOrderDbIdFn = (
   localOrderId: string,
@@ -1936,13 +2003,15 @@ export const useOrderStore = create<OrderState>()(
                   }));
                 };
 
-                // Create and track the sync promise
-                const syncPromise = addItemToBackend(
-                  orderToSync,
-                  itemToSync,
-                  setOrderDbIdAction,
-                  markItemFailedAction, // Changed from removeItemAction
-                  undefined // No need to recalculate - already done synchronously
+                // Create and track the sync promise - wrapped in queue to serialize additions
+                const syncPromise = queueItemAddition(currentOrderId, () =>
+                  addItemToBackend(
+                    orderToSync,
+                    itemToSync,
+                    setOrderDbIdAction,
+                    markItemFailedAction, // Changed from removeItemAction
+                    undefined // No need to recalculate - already done synchronously
+                  )
                 )
                   .then((success) => {
                     if (success) {
@@ -2400,13 +2469,15 @@ export const useOrderStore = create<OrderState>()(
                 }));
               };
 
-              // Create and track the sync promise
-              const syncPromise = addItemToBackend(
-                orderToSync,
-                { ...itemToConfirm, isDraft: false },
-                setOrderDbIdAction,
-                markItemFailedAction, // Changed from removeItemAction
-                undefined
+              // Create and track the sync promise - wrapped in queue to serialize additions
+              const syncPromise = queueItemAddition(currentOrderId, () =>
+                addItemToBackend(
+                  orderToSync,
+                  { ...itemToConfirm, isDraft: false },
+                  setOrderDbIdAction,
+                  markItemFailedAction, // Changed from removeItemAction
+                  undefined
+                )
               )
                 .then((success) => {
                   if (success) {
@@ -4012,12 +4083,15 @@ export const useOrderStore = create<OrderState>()(
                 }));
               };
 
-              const syncPromise = addItemToBackend(
-                order,
-                item,
-                setOrderDbIdAction,
-                markItemFailedAction,
-                undefined
+              // Wrapped in queue to serialize additions during retry
+              const syncPromise = queueItemAddition(orderId, () =>
+                addItemToBackend(
+                  order,
+                  item,
+                  setOrderDbIdAction,
+                  markItemFailedAction,
+                  undefined
+                )
               )
                 .then((success) => {
                   if (success) {
