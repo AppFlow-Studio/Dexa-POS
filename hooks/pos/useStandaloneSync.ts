@@ -1,4 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useSession } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 
 /**
@@ -87,10 +88,31 @@ export interface StandaloneModifierItem {
   display_order: number | null;
 }
 
+/**
+ * Standalone menu - fetched directly without is_active filter
+ * to show both active and inactive menus
+ */
+export interface StandaloneMenu {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  location_id: string | null;
+  display_order: number | null;
+  created_at: string;
+  // Categories linked to this menu
+  menu_categories?: {
+    category_id: string;
+    display_order: number | null;
+    is_active: boolean;
+  }[];
+}
+
 export interface StandaloneSyncData {
   categories: StandaloneCategory[];
   items: StandaloneItem[];
   modifierGroups: StandaloneModifierGroup[];
+  menus: StandaloneMenu[];
 }
 
 /**
@@ -105,6 +127,7 @@ export const useStandaloneSync = (
   locationId: string | null
 ) => {
   const supabase = useSupabaseClient();
+  const { session, isLoaded: isSessionLoaded } = useSession();
 
   return useQuery<StandaloneSyncData>({
     queryKey: ["standalone_sync", merchantId, locationId],
@@ -115,8 +138,8 @@ export const useStandaloneSync = (
       }
       console.log("merchantId", merchantId);
       console.log("locationId", locationId);
-      // Fetch all 3 in parallel
-      const [categoriesResult, itemsResult, modifiersResult] =
+      // Fetch all 4 in parallel
+      const [categoriesResult, itemsResult, modifiersResult, menusResult] =
         await Promise.all([
           // 1. Categories via RPC
           supabase.rpc("get_categories_for_location", {
@@ -136,28 +159,40 @@ export const useStandaloneSync = (
             .from("modifier_groups")
             .select(
               `
-               *,
-            location_name:locations(name),
-            modifier_group_items(*),
-            menu_item_modifier_groups(
-                id,
-                menu_item:menu_items(id, name, price)
-            ),
-            location_override:location_modifier_group_overrides!left(
-                id,
-                is_active,
-                location_id
+          *,
+          location_name:locations(name),
+          modifier_group_items(*),
+          menu_item_modifier_groups(
+            id,
+            menu_item:menu_items(id, name, price)
+          ),
+          location_override:location_modifier_group_overrides!left(
+            id,
+            is_active,
+            location_id
+          )
+        `
             )
+            // Note: We don't have merchant_id filter here - the RLS will handle it
+            .or(`location_id.is.null,location_id.eq.${locationId}`)
+            .order("display_order", { ascending: true, nullsFirst: false })
+            .order("created_at", { ascending: false }),
+
+          // 4. Menus via direct query (like website - NO is_active filter)
+          // This fetches ALL menus including inactive ones, with their category relationships
+          supabase
+            .from("menus")
+            .select(
+              `
+              id, name, description, is_active, location_id, display_order, created_at,
+              menu_categories(category_id, display_order, is_active)
             `
             )
-            // Note: We don't filter by merchant_id here - RLS will handle it
-            // Get global groups (location_id IS NULL) + location-specific groups
+            .eq("merchant_id", merchantId)
             .or(`location_id.is.null,location_id.eq.${locationId}`)
             .order("display_order", { ascending: true, nullsFirst: false })
             .order("created_at", { ascending: false }),
         ]);
-
-      console.log("modifiersResult", modifiersResult.data);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
         console.error(
@@ -173,6 +208,9 @@ export const useStandaloneSync = (
           "Modifiers standalone fetch error:",
           modifiersResult.error
         );
+      }
+      if (menusResult.error) {
+        console.error("Menus standalone fetch error:", menusResult.error);
       }
 
       // Debug: Send standalone data to debug server
@@ -212,10 +250,12 @@ export const useStandaloneSync = (
         items: (itemsResult.data || []) as StandaloneItem[],
         modifierGroups:
           (modifiersResult.data as unknown as StandaloneModifierGroup[]) || [],
+        menus: (menusResult.data || []) as StandaloneMenu[],
       };
     },
 
-    enabled: !!merchantId && !!locationId,
+    // Wait for session to be loaded and have a valid token before querying
+    enabled: !!merchantId && !!locationId && isSessionLoaded && !!session,
 
     // Same offline settings as main sync
     networkMode: "offlineFirst",

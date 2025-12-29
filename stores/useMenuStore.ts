@@ -171,11 +171,12 @@ interface MenuState {
   addTemporaryCategoryAccess: (categoryName: string) => void;
   clearTemporaryAccess: () => void; // Call this on logout
 
-  // Merge standalone entities (categories, items, modifiers not in any menu)
+  // Merge standalone entities (categories, items, modifiers, menus)
   mergeStandaloneData: (data: {
     categories?: any[];
     items?: any[];
     modifierGroups?: any[];
+    menus?: any[];
   }) => void;
 }
 
@@ -1508,8 +1509,14 @@ export const useMenuStore = create<MenuState>((set, get) => {
         // Merge standalone items
         if (data.items) {
           for (const item of data.items) {
-            // Skip if already exists
-            if (newMenuItemsById[item.id]) continue;
+            // Update existing item with location_id if missing (category items may lack this field)
+            if (newMenuItemsById[item.id]) {
+              const existing = newMenuItemsById[item.id];
+              if (existing.location_id === null && item.location_id !== null) {
+                existing.location_id = item.location_id;
+              }
+              continue;
+            }
 
             // Map category names from the item
             const categoryNames = (item.categories || []).map(
@@ -1573,6 +1580,63 @@ export const useMenuStore = create<MenuState>((set, get) => {
             newModifierGroups.push(mappedModifier);
             newModifierGroupsById[mg.id] = mappedModifier;
           }
+        }
+
+        // Merge standalone menus (includes inactive menus not in main sync)
+        if (data.menus) {
+          const newMenus = [...state.menus];
+          const newMenusById = { ...state.menusById };
+
+          for (const menu of data.menus) {
+            // Skip if already exists (was in main sync)
+            if (newMenusById[menu.id]) continue;
+
+            // Map menu_categories to actual Category objects from store
+            const menuCategories = (menu.menu_categories || [])
+              .map(
+                (mc: {
+                  category_id: string;
+                  display_order: number | null;
+                  is_active: boolean;
+                }) => {
+                  const category = newCategoriesById[mc.category_id];
+                  if (!category) return null;
+                  return {
+                    ...category,
+                    isActive: mc.is_active,
+                    order: mc.display_order ?? category.order,
+                  };
+                }
+              )
+              .filter(Boolean) as Category[];
+
+            const mappedMenu: Menu = {
+              id: menu.id,
+              name: menu.name,
+              description: menu.description ?? "",
+              isActive: menu.is_active ?? true,
+              categories: menuCategories, // Now populated with actual categories!
+              schedules: [],
+              createdAt: menu.created_at ?? new Date().toISOString(),
+              updatedAt: menu.created_at ?? new Date().toISOString(),
+              location_id: menu.location_id ?? null,
+            };
+
+            newMenus.push(mappedMenu);
+            newMenusById[menu.id] = mappedMenu;
+          }
+
+          return {
+            categories: newCategories,
+            categoriesById: newCategoriesById,
+            categoriesByName: newCategoriesByName,
+            menuItems: newMenuItems,
+            menuItemsById: newMenuItemsById,
+            modifierGroups: newModifierGroups,
+            modifierGroupsById: newModifierGroupsById,
+            menus: newMenus,
+            menusById: newMenusById,
+          };
         }
 
         return {

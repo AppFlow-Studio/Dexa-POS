@@ -167,7 +167,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
           useFloorPlanStore.getState().loadWaitlist(),
           useFloorPlanStore.getState().loadReservations(),
         ]);
-
       } catch (error: any) {
         console.error("Floor plan sync failed:", error);
       }
@@ -259,7 +258,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [posSyncData, setMenuData, selectedStore?.id]);
 
-  // Merge standalone data (categories, items, modifiers not in any menu)
+  // Merge standalone data (categories, items, modifiers, menus including inactive)
   useEffect(() => {
     if (standaloneData) {
       const menuStore = useMenuStore.getState();
@@ -268,6 +267,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         categories: standaloneData.categories?.length || 0,
         items: standaloneData.items?.length || 0,
         modifierGroups: standaloneData.modifierGroups?.length || 0,
+        menus: standaloneData.menus?.length || 0,
       });
     }
   }, [standaloneData]);

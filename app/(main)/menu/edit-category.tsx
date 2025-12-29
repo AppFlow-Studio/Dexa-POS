@@ -1,4 +1,5 @@
 import CategoryForm from "@/components/menu/CategoryForm";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { MenuService } from "@/services/menuService";
@@ -6,7 +7,7 @@ import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 const EditCategoryScreen: React.FC = () => {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,6 +23,7 @@ const EditCategoryScreen: React.FC = () => {
   const supabase = useSupabaseClient();
   const { show } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const existing = useMemo(
     () => categories.find((c) => c.id === id),
@@ -147,7 +149,11 @@ const EditCategoryScreen: React.FC = () => {
       return true;
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Failed to update category. Please try again.");
+      show({
+        title: "Error",
+        message: "Failed to update category. Please try again.",
+        type: "error",
+      });
       return false;
     } finally {
       setIsSaving(false);
@@ -156,37 +162,33 @@ const EditCategoryScreen: React.FC = () => {
 
   const handleDelete = () => {
     if (!existing) return;
-    Alert.alert("Delete Category", `Delete "${existing.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          // Delete from backend first
-          const { error } = await MenuService.deleteCategory(
-            supabase,
-            existing.id
-          );
-          if (error) {
-            show({
-              title: "Error",
-              message: error.message || "Failed to delete category.",
-              type: "error",
-            });
-            return;
-          }
+    setShowDeleteModal(true);
+  };
 
-          // Delete from local store
-          deleteCategory(existing.id);
-          show({
-            title: "Category Deleted",
-            message: `Category "${existing.name}" has been deleted.`,
-            type: "success",
-          });
-          router.replace({ pathname: "/menu", params: { tab: "categories" } });
-        },
-      },
-    ]);
+  const confirmDelete = async () => {
+    if (!existing) return;
+
+    // Delete from backend first
+    const { error } = await MenuService.deleteCategory(supabase, existing.id);
+    if (error) {
+      show({
+        title: "Error",
+        message: error.message || "Failed to delete category.",
+        type: "error",
+      });
+      setShowDeleteModal(false);
+      return;
+    }
+
+    // Delete from local store
+    deleteCategory(existing.id);
+    show({
+      title: "Category Deleted",
+      message: `Category "${existing.name}" has been deleted.`,
+      type: "success",
+    });
+    setShowDeleteModal(false);
+    router.replace({ pathname: "/menu", params: { tab: "categories" } });
   };
 
   if (!existing) {
@@ -213,6 +215,17 @@ const EditCategoryScreen: React.FC = () => {
         title="Edit Category"
         submitButtonLabel="Save Changes"
         onDelete={handleDelete}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Category"
+        description={`Are you sure you want to delete '${existing?.name}'?`}
+        confirmText="Delete"
+        variant="destructive"
       />
     </View>
   );
