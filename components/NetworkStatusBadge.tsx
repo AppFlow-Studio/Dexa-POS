@@ -2,14 +2,28 @@
  * NetworkStatusBadge Component
  *
  * Displays network status in the header center.
- * Tappable to trigger manual sync when online with pending operations.
+ * Tappable to expand and show a "Sync Order" button for manual database sync.
+ * Click the badge again to collapse.
  */
 
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { CheckCircle, Clock, RefreshCw, WifiOff } from "lucide-react-native";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { toastService } from "@/lib/toastService";
+import {
+  CheckCircle,
+  Clock,
+  Database,
+  RefreshCw,
+  WifiOff,
+} from "lucide-react-native";
 import React, { useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInRight,
+  SlideOutRight,
+} from "react-native-reanimated";
 
 type BadgeVariant = "online" | "pending" | "offline";
 
@@ -24,23 +38,72 @@ interface BadgeConfig {
 export function NetworkStatusBadge(): React.ReactElement {
   const { isOnline, pendingSyncCount, syncNow } = useNetworkStatus();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isSyncingOrder, setIsSyncingOrder] = useState(false);
+
+  // Get active order info from store
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
 
   // Determine badge variant
   const variant: BadgeVariant = !isOnline
     ? "offline"
     : pendingSyncCount > 0
-    ? "pending"
-    : "online";
+      ? "pending"
+      : "online";
 
-  const handlePress = async () => {
-    if (isOnline && pendingSyncCount > 0 && !isSyncing) {
+  // Toggle expanded state when badge is pressed
+  const handleBadgePress = async () => {
+    if (!isOnline) {
+      // Can't expand when offline
+      return;
+    }
+
+    // If there are pending syncs and we're not expanded, trigger sync
+    if (pendingSyncCount > 0 && !isExpanded && !isSyncing) {
       setIsSyncing(true);
       try {
         await syncNow();
       } finally {
-        // Small delay to show sync completed
         setTimeout(() => setIsSyncing(false), 500);
       }
+    }
+
+    // Toggle expanded state
+    setIsExpanded(!isExpanded);
+  };
+
+  // Handle manual order sync from database
+  const handleSyncOrder = async () => {
+    if (!activeOrderId || isSyncingOrder) return;
+
+    setIsSyncingOrder(true);
+    try {
+      const result = await syncOrderFromDatabase(activeOrderId);
+
+      if (result.success) {
+        toastService.show({
+          title: "Order Synced",
+          message: "Order data refreshed from server",
+          type: "success",
+        });
+        // Collapse after successful sync
+        setIsExpanded(false);
+      } else {
+        toastService.show({
+          title: "Sync Failed",
+          message: result.error || "Unable to sync order",
+          type: "error",
+        });
+      }
+    } catch (error: any) {
+      toastService.show({
+        title: "Sync Error",
+        message: error?.message || "An error occurred",
+        type: "error",
+      });
+    } finally {
+      setIsSyncingOrder(false);
     }
   };
 
@@ -48,11 +111,11 @@ export function NetworkStatusBadge(): React.ReactElement {
     switch (variant) {
       case "online":
         return {
-          bgColor: "bg-green-900/30",
-          textColor: "text-green-400",
-          borderColor: "border-green-600/50",
-          icon: <CheckCircle size={14} color="#4ade80" />,
-          label: "Online",
+          bgColor: isExpanded ? "bg-blue-900/40" : "bg-green-900/30",
+          textColor: isExpanded ? "text-blue-400" : "text-green-400",
+          borderColor: isExpanded ? "border-blue-600/50" : "border-green-600/50",
+          icon: <CheckCircle size={14} color={isExpanded ? "#60a5fa" : "#4ade80"} />,
+          label: isExpanded ? "Sync Options" : "Online",
         };
       case "pending":
         return {
@@ -83,28 +146,71 @@ export function NetworkStatusBadge(): React.ReactElement {
   };
 
   const config = getBadgeConfig();
-  const isTappable = isOnline && pendingSyncCount > 0 && !isSyncing;
+  const canExpand = isOnline;
+  const showSyncButton = isExpanded && activeOrderId && isOnline;
 
   return (
-    <Animated.View entering={FadeIn} exiting={FadeOut}>
-      <TouchableOpacity
-        onPress={handlePress}
-        disabled={!isTappable}
-        activeOpacity={isTappable ? 0.7 : 1}
-        className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${config.borderColor} ${config.bgColor}`}
-        style={{ opacity: isTappable ? 1 : 0.9 }}
-      >
-        {config.icon}
-        <Text className={`text-sm font-medium ${config.textColor}`}>
-          {config.label}
-        </Text>
-        {isTappable && (
-          <View className="ml-0.5">
-            <RefreshCw size={12} color="#fbbf24" />
+    <View className="flex-row items-center gap-2">
+      {/* Main Badge */}
+      <Animated.View entering={FadeIn} exiting={FadeOut}>
+        <TouchableOpacity
+          onPress={handleBadgePress}
+          disabled={!canExpand && !isSyncing}
+          activeOpacity={0.7}
+          className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${config.borderColor} ${config.bgColor}`}
+        >
+          {config.icon}
+          <Text className={`text-sm font-medium ${config.textColor}`}>
+            {config.label}
+          </Text>
+          {(pendingSyncCount > 0 || isExpanded) && isOnline && (
+            <View className="ml-0.5">
+              <RefreshCw
+                size={12}
+                color={isExpanded ? "#60a5fa" : "#fbbf24"}
+                style={isExpanded ? { transform: [{ rotate: "180deg" }] } : undefined}
+              />
+            </View>
+          )}
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Expandable Sync Order Button */}
+      {showSyncButton && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <TouchableOpacity
+            onPress={handleSyncOrder}
+            disabled={isSyncingOrder}
+            activeOpacity={0.7}
+            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-cyan-600/50 bg-cyan-900/40"
+          >
+            {isSyncingOrder ? (
+              <ActivityIndicator size="small" color="#22d3d3" />
+            ) : (
+              <Database size={14} color="#22d3d3" />
+            )}
+            <Text className="text-sm font-medium text-cyan-400">
+              {isSyncingOrder ? "Syncing..." : "Sync Order"}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Collapsed indicator when no active order but expanded */}
+      {isExpanded && !activeOrderId && isOnline && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-gray-600/50 bg-gray-900/40">
+            <Text className="text-sm text-gray-500">No active order</Text>
           </View>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
+        </Animated.View>
+      )}
+    </View>
   );
 }
 

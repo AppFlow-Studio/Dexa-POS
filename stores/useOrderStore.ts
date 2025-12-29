@@ -4111,6 +4111,206 @@ export const useOrderStore = create<OrderState>()(
               registerSyncOperation(item.id, syncPromise);
             }
           },
+
+          // ============================================================================
+          // MANUAL ORDER SYNC FROM DATABASE
+          // ============================================================================
+          /**
+           * Manually syncs an order from the database to fix local state inconsistencies.
+           * Fetches order, items, and payments from DB and updates local state.
+           * 
+           * @param orderId - The local order ID to sync
+           * @returns Promise with success status and optional error message
+           */
+          syncOrderFromDatabase: async (orderId: string): Promise<{ success: boolean; error?: string }> => {
+            const supabase = _supabaseClient;
+            if (!supabase) {
+              console.log("[syncOrderFromDatabase] No Supabase client available");
+              return { success: false, error: "No database connection" };
+            }
+
+            const order = get().ordersById[orderId];
+            if (!order) {
+              return { success: false, error: "Order not found locally" };
+            }
+
+            if (!order.db_order_id) {
+              return { success: false, error: "Order not synced to database yet" };
+            }
+
+            console.log(`[syncOrderFromDatabase] Syncing order ${orderId} (db: ${order.db_order_id})`);
+
+            try {
+              // 1. Fetch order from database
+              const { data: dbOrder, error: orderError } = await supabase
+                .from("orders")
+                .select("*")
+                .eq("id", order.db_order_id)
+                .single();
+
+              if (orderError) {
+                console.error("[syncOrderFromDatabase] Order fetch error:", orderError);
+                throw new Error(orderError.message);
+              }
+
+              if (!dbOrder) {
+                throw new Error("Order not found in database");
+              }
+
+              // 2. Fetch order items from database
+              const { data: dbItems, error: itemsError } = await supabase
+                .from("order_items")
+                .select("*")
+                .eq("order_id", order.db_order_id)
+                .eq("is_voided", false);
+
+              if (itemsError) {
+                console.error("[syncOrderFromDatabase] Items fetch error:", itemsError);
+                throw new Error(itemsError.message);
+              }
+
+              // 3. Fetch payments from database
+              const { data: dbPayments, error: paymentsError } = await supabase
+                .from("order_payments")
+                .select("*")
+                .eq("order_id", order.db_order_id)
+                .eq("status", "captured");
+
+              if (paymentsError) {
+                console.error("[syncOrderFromDatabase] Payments fetch error:", paymentsError);
+                // Non-fatal - continue without payments
+              }
+
+              console.log("[syncOrderFromDatabase] Fetched data:", {
+                order: dbOrder,
+                items: dbItems?.length || 0,
+                payments: dbPayments?.length || 0,
+              });
+
+              // 4. Update local state with database values
+              set((state) => {
+                const localOrder = state.ordersById[orderId];
+                if (!localOrder) return state;
+
+                // Map database items to local items format
+                // Match by db_order_item_id, update quantities and prices
+                const syncedItems = localOrder.items.map((localItem) => {
+                  const dbItem = dbItems?.find(
+                    (db) => db.id === localItem.db_order_item_id
+                  );
+                  if (dbItem) {
+                    return {
+                      ...localItem,
+                      quantity: dbItem.quantity,
+                      paidQuantity: dbItem.paid_quantity || 0,
+                      price: dbItem.unit_price,
+                      cashPrice: dbItem.cash_price,
+                      is_voided: dbItem.is_voided,
+                      sync_status: "synced" as const,
+                      sync_error: undefined,
+                    };
+                  }
+                  return localItem;
+                });
+
+                // Also add any items from DB that aren't in local state
+                const localItemDbIds = new Set(
+                  localOrder.items
+                    .map((i) => i.db_order_item_id)
+                    .filter(Boolean)
+                );
+                const newItemsFromDb: CartItem[] =
+                  dbItems
+                    ?.filter((dbItem) => !localItemDbIds.has(dbItem.id))
+                    .map((dbItem) => ({
+                      id: `db_${dbItem.id}`,
+                      db_order_item_id: dbItem.id,
+                      menuItemId: dbItem.menu_item_id || "",
+                      name: dbItem.item_name || "Unknown Item",
+                      price: dbItem.unit_price || 0,
+                      cashPrice: dbItem.cash_price || dbItem.unit_price || 0,
+                      originalPrice: dbItem.cash_price || dbItem.unit_price || 0,
+                      quantity: dbItem.quantity || 1,
+                      paidQuantity: dbItem.paid_quantity || 0,
+                      category_name: dbItem.category_name || "Uncategorized",
+                      is_voided: dbItem.is_voided || false,
+                      sync_status: "synced" as const,
+                      courseNumber: dbItem.course_number || 1,
+                      customizations: {}, // Empty customizations object
+                      modifiers: [],
+                      addOns: [],
+                      // Required CartItem financial fields
+                      subtotal: dbItem.subtotal || (dbItem.unit_price * dbItem.quantity) || 0,
+                      cashSubtotal: dbItem.cash_subtotal || (dbItem.cash_price * dbItem.quantity) || 0,
+                      taxRate: dbItem.tax_rate || 0,
+                      taxAmount: dbItem.tax_amount || 0,
+                      cashTaxAmount: dbItem.cash_tax_amount || 0,
+                    })) || [];
+
+                const allItems = [...syncedItems, ...newItemsFromDb];
+
+                // Map payments from database
+                const syncedPayments =
+                  dbPayments?.map((p) => ({
+                    id: p.id,
+                    amount: p.amount,
+                    method: (p.payment_method === "card" ? "Card" : "Cash") as PaymentType,
+                    cardBrand: p.card_brand,
+                    last4: p.card_last4,
+                    tip_amount: p.tip_amount,
+                    itemsCovered: p.item_ids || [],
+                    timestamp: p.created_at,
+                    isVoided: p.status === "voided",
+                  })) || localOrder.payments;
+
+                // Determine payment status
+                const isPaid = dbOrder.payment_status === "paid";
+                const isPartiallyPaid =
+                  dbOrder.amount_paid > 0 && dbOrder.amount_due > 0;
+
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: {
+                      ...localOrder,
+                      items: allItems,
+                      payments: syncedPayments,
+                      // Use database as source of truth for financial data
+                      amount_paid: dbOrder.amount_paid || 0,
+                      amount_due: dbOrder.amount_due || 0,
+                      cash_amount_due: dbOrder.cash_total
+                        ? dbOrder.cash_total - (dbOrder.amount_paid || 0)
+                        : undefined,
+                      total_amount: dbOrder.card_total || dbOrder.total_amount,
+                      total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
+                      subtotal: dbOrder.card_subtotal || dbOrder.subtotal,
+                      paid_status: isPaid ? ("Paid" as const) : ("Pending" as const),
+                      check_status: isPaid ? ("Closed" as const) : ("Opened" as const),
+                      sync_status: "synced" as const,
+                    },
+                  },
+                  // Update outstanding totals if this is the active order
+                  ...(orderId === state.activeOrderId
+                    ? {
+                      activeOrderOutstandingTotal: dbOrder.amount_due || 0,
+                      activeOrderOutstandingCash: dbOrder.cash_total
+                        ? dbOrder.cash_total - (dbOrder.amount_paid || 0)
+                        : dbOrder.amount_due || 0,
+                      activeOrderTotal: dbOrder.card_total || dbOrder.total_amount || 0,
+                      activeOrderTax: dbOrder.card_tax_amount || dbOrder.tax_amount || 0,
+                      activeOrderSubtotal: dbOrder.card_subtotal || dbOrder.subtotal || 0,
+                    }
+                    : {}),
+                };
+              });
+
+              console.log("[syncOrderFromDatabase] Successfully synced order from database");
+              return { success: true };
+            } catch (error: any) {
+              console.error("[syncOrderFromDatabase] Error:", error);
+              return { success: false, error: error?.message || "Sync failed" };
+            }
+          },
         };
       },
       {
