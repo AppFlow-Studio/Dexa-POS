@@ -30,18 +30,21 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
     const isPaid = activeOrder?.paid_status === "Paid";
 
     // Use backend's authoritative amount_due if available (always CARD price)
-    const balanceDue = activeOrder?.amount_due !== undefined
-      ? activeOrder.amount_due
-      : activeOrderOutstandingTotal;
+    const balanceDue =
+      activeOrder?.amount_due !== undefined
+        ? activeOrder.amount_due
+        : activeOrderOutstandingTotal;
 
     // Use backend's cash_amount_due if available, otherwise use local calculation
-    const cashBalanceDue = activeOrder?.cash_amount_due !== undefined
-      ? activeOrder.cash_amount_due
-      : activeOrderOutstandingCash;
+    const cashBalanceDue =
+      activeOrder?.cash_amount_due !== undefined
+        ? activeOrder.cash_amount_due
+        : activeOrderOutstandingCash;
 
-    const amountPaid = activeOrder?.amount_paid !== undefined
-      ? activeOrder.amount_paid
-      : (activeOrderTotal - activeOrderOutstandingTotal);
+    const amountPaid =
+      activeOrder?.amount_paid !== undefined
+        ? activeOrder.amount_paid
+        : activeOrderTotal - activeOrderOutstandingTotal;
 
     // Calculate savings if paying cash
     const cashSavings = balanceDue - cashBalanceDue;
@@ -54,11 +57,16 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
     };
-  }, [activeOrder, activeOrderTotal, activeOrderOutstandingTotal, activeOrderOutstandingCash]);
+  }, [
+    activeOrder,
+    activeOrderTotal,
+    activeOrderOutstandingTotal,
+    activeOrderOutstandingCash,
+  ]);
 
   return (
-    <View className="px-6 py-1 bg-[#212121]">
-      <View className="gap-y-1">
+    <View className="px-6 py-0.5 bg-[#212121]">
+      <View className="gap-y-0.5">
         {/* <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
@@ -68,16 +76,16 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
 
         {activeOrderDiscount > 0 && (
           <View className="flex-row justify-between items-center">
-            <Text className="text-lg text-green-400">Discount</Text>
-            <Text className="text-lg font-medium text-green-400">
+            <Text className="text-base text-green-400">Discount</Text>
+            <Text className="text-base font-medium text-green-400">
               -${activeOrderDiscount.toFixed(2)}
             </Text>
           </View>
         )}
 
         <View className="flex-row justify-between items-center">
-          <Text className="text-lg text-gray-300">Tax</Text>
-          <Text className="text-lg font-medium text-white">
+          <Text className="text-base text-gray-300">Tax</Text>
+          <Text className="text-base font-medium text-white">
             ${activeOrderTax.toFixed(2)}
           </Text>
         </View>

@@ -24,7 +24,13 @@ import {
   Sofa,
   Table,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
@@ -131,6 +137,28 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   });
 
   const [isMenuDialogOpen, setIsMenuDialogOpen] = useState(false);
+
+  // Ref for auto-scrolling to selected menu in dialog
+  const menuScrollViewRef = useRef<ScrollView>(null);
+
+  // Auto-scroll to selected menu when dialog opens
+  useEffect(() => {
+    if (isMenuDialogOpen && activeMeal) {
+      const selectedIndex = menus.findIndex((m) => m.name === activeMeal);
+      if (selectedIndex >= 0) {
+        // Estimate ~140px per menu item (card height + gap)
+        const scrollOffset = selectedIndex * 140;
+        // Longer delay to ensure Dialog and ScrollView are fully rendered
+        const timeoutId = setTimeout(() => {
+          menuScrollViewRef.current?.scrollTo({
+            y: scrollOffset,
+            animated: true,
+          });
+        }, 300);
+        return () => clearTimeout(timeoutId);
+      }
+    }
+  }, [isMenuDialogOpen, activeMeal, menus]);
 
   // Effect to ensure we always have a valid available menu selected
   useEffect(() => {
@@ -432,6 +460,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   </DialogTitle>
                 </DialogHeader>
                 <ScrollView
+                  ref={menuScrollViewRef}
                   className="gap-3 mt-4 w-full"
                   contentContainerStyle={{ gap: 12 }}
                 >

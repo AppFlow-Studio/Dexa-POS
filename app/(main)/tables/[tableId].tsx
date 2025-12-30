@@ -62,6 +62,7 @@ const UpdateTableScreen = () => {
     loadFloorPlanStatus,
     unmergeTable,
     getTableById,
+    clearTableSession,
   } = useFloorPlanStore();
 
   const {
@@ -70,6 +71,7 @@ const UpdateTableScreen = () => {
     getOrderByDbId,
     activeOrderId,
     activeOrderTotal,
+    activeOrderOutstandingTotal,
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
@@ -117,6 +119,38 @@ const UpdateTableScreen = () => {
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
+
+  // Calculate the amount to display on the Pay button
+  // Priority: backend amount_due > calculated outstanding total > total
+  const displayBalanceDue = useMemo(() => {
+    // 1. Use backend's authoritative amount_due if available
+    if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
+      return activeOrder.amount_due;
+    }
+    // 2. Use calculated outstanding total if there are payments
+    if (
+      activeOrder?.payments &&
+      activeOrder.payments.length > 0 &&
+      activeOrderOutstandingTotal > 0
+    ) {
+      return activeOrderOutstandingTotal;
+    }
+    // 3. Fall back to full order total for new orders
+    return activeOrderTotal;
+  }, [
+    activeOrder?.amount_due,
+    activeOrder?.payments,
+    activeOrderOutstandingTotal,
+    activeOrderTotal,
+  ]);
+
+  // Check if order is fully paid
+  const isFullyPaid = useMemo(() => {
+    return (
+      activeOrder?.paid_status === "Paid" ||
+      (hasPayments && displayBalanceDue <= 0)
+    );
+  }, [activeOrder?.paid_status, hasPayments, displayBalanceDue]);
 
   useEffect(() => {
     if (
@@ -1024,7 +1058,7 @@ const UpdateTableScreen = () => {
           onPressReopenCheck={handleReopenCheck}
           onPressCloseCheck={handleCloseCheck}
           onPressClearTable={handleClearTable}
-          totalDisplayAmount={activeOrderTotal || 0}
+          totalDisplayAmount={displayBalanceDue}
           pricingSheetRef={
             pricingSheetRef as React.RefObject<BottomSheetMethods>
           }
@@ -1087,16 +1121,14 @@ const UpdateTableScreen = () => {
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef}
         onVoidSuccess={async () => {
-          // setVoidConfirmOpen(false);
-          // show({
-          //   title: "Order Voided",
-          //   message: "The order has been successfully voided.",
-          //   type: "success",
-          // });
-          // router.back();
-          // Force session status update
+          // CRITICAL: Set this FIRST to prevent auto-session creation
+          isNavigatingAwayRef.current = true;
+
           // Update local state
           updateOrderStatus(activeOrder?.id || "", "void");
+
+          // Clear the table session immediately
+          await clearTableSession(currentTableId);
 
           // Clear active order BEFORE navigating
           setActiveOrder(null);
@@ -1106,7 +1138,7 @@ const UpdateTableScreen = () => {
           show({
             title: "Check Voided",
             message:
-              "The order has been successfully voided. Table marked for cleaning.",
+              "The order has been successfully voided. Table is now available.",
             type: "success",
           });
 

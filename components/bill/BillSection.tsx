@@ -6,8 +6,14 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { AlertTriangle, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Plus,
+  RefreshCw,
+  Send,
+  WifiOff,
+} from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
@@ -49,10 +55,16 @@ const BillSection = ({
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
   const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
-  const activeOrderOutstandingTotal = useOrderStore((state) => state.activeOrderOutstandingTotal);
-  const activeOrderOutstandingCash = useOrderStore((state) => state.activeOrderOutstandingCash);
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
+  const activeOrderOutstandingCash = useOrderStore(
+    (state) => state.activeOrderOutstandingCash
+  );
   const startNewOrder = useOrderStore((state) => state.startNewOrder);
-  const sendNewItemsToKitchen = useOrderStore((state) => state.sendNewItemsToKitchen);
+  const sendNewItemsToKitchen = useOrderStore(
+    (state) => state.sendNewItemsToKitchen
+  );
   const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
   const setActiveOrder = useOrderStore((state) => state.setActiveOrder);
   const getSyncStatus = useOrderStore((state) => state.getSyncStatus);
@@ -86,7 +98,10 @@ const BillSection = ({
 
   // Get sync status for the active order
   const syncStatus = useMemo(
-    () => (activeOrderId ? getSyncStatus(activeOrderId) : { pending: 0, failed: 0, synced: 0 }),
+    () =>
+      activeOrderId
+        ? getSyncStatus(activeOrderId)
+        : { pending: 0, failed: 0, synced: 0 },
     [activeOrderId, getSyncStatus, cart] // Include cart to recompute when items change
   );
   const hasPendingSyncs = syncStatus.pending > 0;
@@ -100,28 +115,57 @@ const BillSection = ({
       return activeOrder.amount_due;
     }
     // 2. Use calculated outstanding total if there are payments
-    if (activeOrder?.payments && activeOrder.payments.length > 0 && activeOrderOutstandingTotal > 0) {
+    if (
+      activeOrder?.payments &&
+      activeOrder.payments.length > 0 &&
+      activeOrderOutstandingTotal > 0
+    ) {
       return activeOrderOutstandingTotal;
     }
     // 3. Fall back to full order total for new orders
     return activeOrderTotal;
-  }, [activeOrder?.amount_due, activeOrder?.payments, activeOrderOutstandingTotal, activeOrderTotal]);
+  }, [
+    activeOrder?.amount_due,
+    activeOrder?.payments,
+    activeOrderOutstandingTotal,
+    activeOrderTotal,
+  ]);
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid = useMemo(() => {
-    return (activeOrder?.payments?.length ?? 0) > 0 && activeOrder?.paid_status !== "Paid";
+    return (
+      (activeOrder?.payments?.length ?? 0) > 0 &&
+      activeOrder?.paid_status !== "Paid"
+    );
   }, [activeOrder?.payments, activeOrder?.paid_status]);
 
   // Calculate cash savings for dual-price display
   const { cashBalanceDue, cashSavings } = useMemo(() => {
     // Use backend cash_amount_due if available, otherwise use local calculation
-    const cashDue = activeOrder?.cash_amount_due ?? activeOrderOutstandingCash ?? displayBalanceDue;
+    const cashDue =
+      activeOrder?.cash_amount_due ??
+      activeOrderOutstandingCash ??
+      displayBalanceDue;
     const savings = displayBalanceDue - cashDue;
     return {
       cashBalanceDue: cashDue,
       cashSavings: savings > 0.01 ? savings : 0,
     };
-  }, [activeOrder?.cash_amount_due, activeOrderOutstandingCash, displayBalanceDue]);
+  }, [
+    activeOrder?.cash_amount_due,
+    activeOrderOutstandingCash,
+    displayBalanceDue,
+  ]);
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
+
+  // Effect to reset processing state when payment sheet opens
+  useEffect(() => {
+    if (isPaymentSheetOpen) {
+      setIsProcessing(false);
+    }
+  }, [isPaymentSheetOpen]);
 
   // Memoize pay button disabled state - prevents clicking when balance due is 0 or no items
   const isPayButtonDisabled = useMemo(
@@ -129,8 +173,17 @@ const BillSection = ({
       !activeOrder ||
       cart.length === 0 ||
       hasDraftItems ||
-      displayBalanceDue <= 0,
-    [activeOrder, cart.length, hasDraftItems, displayBalanceDue]
+      displayBalanceDue <= 0 ||
+      isPaymentSheetOpen ||
+      isProcessing,
+    [
+      activeOrder,
+      cart.length,
+      hasDraftItems,
+      displayBalanceDue,
+      isPaymentSheetOpen,
+      isProcessing,
+    ]
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
@@ -148,11 +201,21 @@ const BillSection = ({
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
-    if (isPayButtonDisabled) {
+    if (isPayButtonDisabled || isProcessing || isPaymentSheetOpen) {
       return;
     }
+
+    // Set processing state immediately to prevent double taps
+    setIsProcessing(true);
+
+    // Failsafe: Reset processing state after 2 seconds if sheet fails to open
+    setTimeout(() => {
+      setIsProcessing(false);
+    }, 2000);
+
     if (!checkEmployeeInShift(activeEmployeeId!)) {
       showClockInWall();
+      setIsProcessing(false);
       return;
     }
     if (hasDraftItems) {
@@ -162,17 +225,20 @@ const BillSection = ({
           "Please confirm or remove any customized items before proceeding to payment.",
         type: "error",
       });
+      setIsProcessing(false);
       return;
     }
     // Additional safety check for zero balance due
     if (displayBalanceDue <= 0) {
       show({
         title: "Invalid Amount",
-        message: activeOrder?.paid_status === "Paid"
-          ? "This order is already fully paid."
-          : "Cannot process payment for $0.00. Please add items to the order.",
+        message:
+          activeOrder?.paid_status === "Paid"
+            ? "This order is already fully paid."
+            : "Cannot process payment for $0.00. Please add items to the order.",
         type: "error",
       });
+      setIsProcessing(false);
       return;
     }
     // Directly open the payment bottom sheet to the method selection
@@ -208,7 +274,6 @@ const BillSection = ({
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
   };
-
 
   if (!activeOrderId)
     return (
@@ -247,7 +312,8 @@ const BillSection = ({
             <View className="flex-row items-center justify-center bg-amber-600 px-3 py-2 rounded-lg mb-2">
               <WifiOff size={16} color="#FFFFFF" />
               <Text className="text-white text-sm font-medium ml-2">
-                Offline Mode {pendingSyncCount > 0 ? `• ${pendingSyncCount} pending` : ""}
+                Offline Mode{" "}
+                {pendingSyncCount > 0 ? `• ${pendingSyncCount} pending` : ""}
               </Text>
             </View>
           )}
@@ -262,7 +328,8 @@ const BillSection = ({
               <View className="flex-row items-center">
                 <AlertTriangle size={16} color="#FFFFFF" />
                 <Text className="text-white text-sm font-medium ml-2">
-                  {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""} failed to sync
+                  {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""}{" "}
+                  failed to sync
                 </Text>
               </View>
               <View className="flex-row items-center">
@@ -277,7 +344,8 @@ const BillSection = ({
             <View className="flex-row items-center justify-center bg-blue-600/60 px-3 py-2 rounded-lg">
               <ActivityIndicator size="small" color="#FFFFFF" />
               <Text className="text-white text-sm font-medium ml-2">
-                Syncing {syncStatus.pending} item{syncStatus.pending > 1 ? "s" : ""}...
+                Syncing {syncStatus.pending} item
+                {syncStatus.pending > 1 ? "s" : ""}...
               </Text>
             </View>
           )}
@@ -290,18 +358,19 @@ const BillSection = ({
           {/* Start New Order Button */}
           <TouchableOpacity
             onPress={handleStartNewOrder}
-            className="flex-1 py-2 flex-row items-center justify-center gap-2 bg-[#303030] rounded-xl border border-gray-600"
+            className="flex-1 py-1.5 flex-row items-center justify-center gap-2 bg-[#303030] rounded-xl border border-gray-600"
           >
             <Plus color="#22c55e" size={20} />
-            <Text className="text-center text-xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               New Order
             </Text>
           </TouchableOpacity>
 
           {/* Send to Kitchen Button - matching previous colors but with new layout */}
           <TouchableOpacity
-            className={`flex-1 py-2 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
-              }`}
+            className={`flex-1 py-1.5 px-2 flex-row items-center justify-center gap-2 rounded-xl bg-[#212121] border border-gray-600 ${
+              newItemsCount === 0 || hasDraftItems ? "opacity-50" : ""
+            }`}
             disabled={newItemsCount === 0 || hasDraftItems}
             onPress={handleSendToKitchen}
             activeOpacity={0.85}
@@ -309,7 +378,7 @@ const BillSection = ({
             {hasPendingSyncs ? (
               <ActivityIndicator size="small" color="#60A5FA" />
             ) : null}
-            <Text className="text-center text-xl font-bold text-white">
+            <Text className="text-center text-lg font-bold text-white">
               Send to Kitchen ({newItemsCount})
             </Text>
             <Send size={18} color="#9CA3AF" />
@@ -324,26 +393,34 @@ const BillSection = ({
           <View className="flex-row gap-4">
             <TouchableOpacity
               onPress={handleOpenMoreOptions}
-              className="flex-1 py-2 bg-[#303030] rounded-xl border border-gray-600"
+              className="flex-1 py-1.5 bg-[#303030] rounded-xl border border-gray-600"
             >
-              <Text className="text-center text-xl font-bold text-white">
+              <Text className="text-center text-lg font-bold text-white">
                 More
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handlePayClick}
               disabled={isPayButtonDisabled}
-              className={`flex-1 py-2 rounded-xl flex-row items-center justify-center gap-2 ${isPayButtonDisabled ? "bg-gray-500" : isPartiallyPaid ? "bg-green-600" : "bg-blue-600"
-                }`}
+              className={`flex-1 py-1.5 rounded-xl flex-row items-center justify-center gap-2 ${
+                isPayButtonDisabled
+                  ? "bg-gray-500"
+                  : isPartiallyPaid
+                  ? "bg-green-600"
+                  : "bg-blue-600"
+              }`}
             >
-              {hasPendingSyncs ? (
+              {hasPendingSyncs || isProcessing ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : null}
               <Text
-                className={`text-center text-xl font-bold ${isPayButtonDisabled ? "text-gray-400" : "text-white"
-                  }`}
+                className={`text-center text-lg font-bold ${
+                  isPayButtonDisabled ? "text-gray-400" : "text-white"
+                }`}
               >
-                {isPartiallyPaid ? `Pay Due $${displayBalanceDue.toFixed(2)}` : `Pay $${displayBalanceDue.toFixed(2)}`}
+                {isPartiallyPaid
+                  ? `Pay Due $${displayBalanceDue.toFixed(2)}`
+                  : `Pay $${displayBalanceDue.toFixed(2)}`}
               </Text>
             </TouchableOpacity>
           </View>
@@ -357,7 +434,8 @@ const BillSection = ({
           )} */}
           <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
             <Text className="text-center text-sm text-green-400">
-              Pay cash: ${cashBalanceDue?.toFixed(2)} (save ${cashSavings?.toFixed(2)})
+              Pay cash: ${cashBalanceDue?.toFixed(2)} (save $
+              {cashSavings?.toFixed(2)})
             </Text>
           </View>
         </View>

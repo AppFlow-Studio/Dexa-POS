@@ -47,18 +47,32 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         <Text className="font-semibold text-white text-base">Discount</Text>
       </TouchableOpacity>
 
-      {/* Total Button: Blue (Primary Action) */}
-      <TouchableOpacity
-        onPress={onPressTotal}
-        className={`${buttonBaseClass} bg-blue-600`}
-        activeOpacity={0.7}
-      >
-        {/* Truncate text if it gets too long on small screens */}
-        <Text className="font-semibold text-white text-base" numberOfLines={1}>
-          ${totalDisplayAmount.toFixed(2)}
-        </Text>
-        <CreditCard size={18} color="white" />
-      </TouchableOpacity>
+      {/* Total Button: Blue (Primary Action) or Green (Paid) */}
+      {(() => {
+        // Only show "Paid" if order has items AND balance is zero
+        const hasItems = (activeOrder?.items?.length ?? 0) > 0;
+        const isFullyPaid = hasItems && totalDisplayAmount <= 0;
+
+        return (
+          <TouchableOpacity
+            onPress={onPressTotal}
+            className={`${buttonBaseClass} ${
+              isFullyPaid ? "bg-emerald-600" : "bg-blue-600"
+            }`}
+            activeOpacity={0.7}
+            disabled={isFullyPaid}
+          >
+            {/* Truncate text if it gets too long on small screens */}
+            <Text
+              className="font-semibold text-white text-base"
+              numberOfLines={1}
+            >
+              {isFullyPaid ? "Paid" : `$${totalDisplayAmount.toFixed(2)}`}
+            </Text>
+            {!isFullyPaid && <CreditCard size={18} color="white" />}
+          </TouchableOpacity>
+        );
+      })()}
     </>
   );
 

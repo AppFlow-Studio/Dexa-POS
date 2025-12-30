@@ -108,6 +108,7 @@ interface FloorPlanState {
   unmergeTable: (sessionId: string, tableId: string) => Promise<void>;
   advanceCourse: (sessionId: string) => Promise<void>;
   linkOrderToSession: (sessionId: string, orderId: string) => Promise<void>;
+  clearTableSession: (tableId: string) => Promise<void>;
 
   // Selection Actions
   toggleTableSelection: (tableId: string) => void;
@@ -180,13 +181,10 @@ interface FloorPlanState {
 const buildTablesById = (
   tables: FloorPlanObject[]
 ): Record<string, FloorPlanObject> => {
-  return tables.reduce(
-    (acc, table) => {
-      acc[table.id] = table;
-      return acc;
-    },
-    {} as Record<string, FloorPlanObject>
-  );
+  return tables.reduce((acc, table) => {
+    acc[table.id] = table;
+    return acc;
+  }, {} as Record<string, FloorPlanObject>);
 };
 
 export const useFloorPlanStore = create<FloorPlanState>()(
@@ -669,11 +667,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               const update = updatesById.get(t.id); // O(1) instead of O(n)
               return update
                 ? {
-                  ...t,
-                  x: update.x,
-                  y: update.y,
-                  rotation: update.rotation ?? t.rotation,
-                }
+                    ...t,
+                    x: update.x,
+                    y: update.y,
+                    rotation: update.rotation ?? t.rotation,
+                  }
                 : t;
             });
             return {
@@ -728,25 +726,34 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const supabase = getClient();
 
           // 1. Generate local IDs for optimistic update
-          const localSessionId = `local_session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-          const localOrderId = `local_order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const localSessionId = `local_session_${Date.now()}_${Math.random()
+            .toString(36)
+            .substring(2, 9)}`;
+          const localOrderId = `local_order_${Date.now()}_${Math.random()
+            .toString(36)
+            .substring(2, 9)}`;
 
           // 2. ALWAYS update local state first (optimistic)
           set((state) => {
             const newTables = state.tables.map((t) =>
               params.tableIds.includes(t.id)
                 ? {
-                  ...t,
-                  session: {
-                    id: localSessionId,
-                    status: "occupied" as TableStatus,
-                    party_size: params.partySize,
-                    guest_name: params.guestName,
-                    seated_at: new Date().toISOString(),
-                    table_ids: params.tableIds,
-                    order_id: params.createOrder !== false ? localOrderId : undefined,
-                  },
-                }
+                    ...t,
+                    session: {
+                      id: localSessionId,
+                      session_number: localSessionId.slice(-6).toUpperCase(),
+                      status: "seated" as TableStatus,
+                      party_size: params.partySize,
+                      guest_name: params.guestName,
+                      seated_at: new Date().toISOString(),
+                      table_ids: params.tableIds,
+                      order_id:
+                        params.createOrder !== false ? localOrderId : undefined,
+                      current_course: 1,
+                      needs_attention: false,
+                      is_vip: false,
+                    },
+                  }
                 : t
             );
             return {
@@ -759,16 +766,19 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // 3. Try backend if online
           if (isOnline && supabase) {
             try {
-              const { data, error } = await FloorPlanService.seatGuests(supabase, {
-                p_table_ids: params.tableIds,
-                p_party_size: params.partySize,
-                p_guest_name: params.guestName,
-                p_guest_phone: params.guestPhone,
-                p_guest_notes: params.guestNotes,
-                p_reservation_id: params.reservationId,
-                p_waitlist_id: params.waitlistId,
-                p_create_order: params.createOrder ?? true,
-              });
+              const { data, error } = await FloorPlanService.seatGuests(
+                supabase,
+                {
+                  p_table_ids: params.tableIds,
+                  p_party_size: params.partySize,
+                  p_guest_name: params.guestName,
+                  p_guest_phone: params.guestPhone,
+                  p_guest_notes: params.guestNotes,
+                  p_reservation_id: params.reservationId,
+                  p_waitlist_id: params.waitlistId,
+                  p_create_order: params.createOrder ?? true,
+                }
+              );
 
               if (!error && data) {
                 // Update local state with real backend IDs
@@ -776,13 +786,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   const newTables = state.tables.map((t) =>
                     t.session?.id === localSessionId
                       ? {
-                        ...t,
-                        session: {
-                          ...t.session!,
-                          id: data.session_id,
-                          order_id: data.order_id,
-                        },
-                      }
+                          ...t,
+                          session: {
+                            ...t.session!,
+                            id: data.session_id,
+                            order_id: data.order_id,
+                          },
+                        }
                       : t
                   );
                   return {
@@ -802,7 +812,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
               // If there's an error, queue for retry
               if (error) {
-                console.error("[seatGuests] Backend error, queuing for retry:", error);
+                console.error(
+                  "[seatGuests] Backend error, queuing for retry:",
+                  error
+                );
                 await queueOperation({
                   type: "seat_guests",
                   params: {
@@ -873,14 +886,18 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           const supabase = getClient();
 
           // 1. ALWAYS update local state first (optimistic)
-          console.log("[updateSessionStatus] sessionId & status", sessionId, status);
+          console.log(
+            "[updateSessionStatus] sessionId & status",
+            sessionId,
+            status
+          );
           set((state) => {
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: { ...t.session!, status },
-                }
+                    ...t,
+                    session: { ...t.session!, status },
+                  }
                 : t
             );
             return {
@@ -902,7 +919,10 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               );
 
               if (error) {
-                console.error("[updateSessionStatus] Backend error, queuing:", error);
+                console.error(
+                  "[updateSessionStatus] Backend error, queuing:",
+                  error
+                );
                 await queueOperation({
                   type: "update_session_status",
                   params: { sessionId, status, notes },
@@ -971,10 +991,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             }
           );
 
-
           console.log("[unmergeTable] error", error);
           if (error) throw error;
-
 
           await get().loadFloorPlanStatus();
         },
@@ -994,12 +1012,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                  ...t,
-                  session: {
-                    ...t.session!,
-                    current_course: data.current_course,
-                  },
-                }
+                    ...t,
+                    session: {
+                      ...t.session!,
+                      current_course: data.current_course,
+                    },
+                  }
                 : t
             );
             return {
@@ -1016,6 +1034,49 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             p_order_id: orderId,
           });
           if (error) throw error;
+        },
+
+        // Clear table session locally (used when voiding an order)
+        clearTableSession: async (tableId: string) => {
+          const isOnline = getIsOnline();
+          const supabase = getClient();
+          const table = get().tablesById[tableId];
+          const sessionId = table?.session?.id;
+
+          // 1. ALWAYS update local state first (optimistic)
+          set((state) => {
+            const newTables = state.tables.map((t) =>
+              t.id === tableId ? { ...t, session: undefined } : t
+            );
+            return {
+              tables: newTables,
+              tablesById: buildTablesById(newTables),
+            };
+          });
+
+          // 2. Try backend if online and session exists
+          if (isOnline && supabase && sessionId) {
+            try {
+              // End the session by setting status to 'available'
+              const { error } = await FloorPlanService.updateTableSessionStatus(
+                supabase,
+                {
+                  p_session_id: sessionId,
+                  p_status: "available",
+                  p_notes: "Order voided",
+                }
+              );
+
+              if (error) {
+                console.error("[clearTableSession] Backend error:", error);
+              } else {
+                // Refresh from backend
+                await get().loadFloorPlanStatus();
+              }
+            } catch (err) {
+              console.error("[clearTableSession] Exception:", err);
+            }
+          }
         },
 
         // ====================================================================
