@@ -11,94 +11,87 @@ import { Text, TouchableOpacity, View } from "react-native";
 interface PricingBreakdownSheetProps {
   onClose: () => void;
   onPressProceedToPayment: () => void;
+  /** The correct total amount to display - passed from parent which has fresh data */
+  totalDisplayAmount: number;
+  /** Whether the order has payments - passed from parent for reliable detection */
+  hasPayments?: boolean;
 }
 
 const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
 > = function PricingBreakdownSheetComponent(
-  { onClose, onPressProceedToPayment },
+  {
+    onClose,
+    onPressProceedToPayment,
+    totalDisplayAmount,
+    hasPayments: hasPaymentsProp,
+  },
   ref
 ) {
   const snapPoints = useMemo(() => ["50%"], []);
 
-  // Get values directly from the order store
-  const {
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderTotal,
-    activeOrderDiscount,
-    activeOrderOutstandingTotal,
-    activeOrderOutstandingSubtotal,
-    activeOrderOutstandingTax,
-    activeOrderId,
-    ordersById,
-  } = useOrderStore();
+  // REACTIVE SUBSCRIPTIONS: Subscribe directly to each value from the store
+  // This ensures the component re-renders when payment updates these values
+  const activeOrderSubtotal = useOrderStore(
+    (state) => state.activeOrderSubtotal
+  );
+  const activeOrderTax = useOrderStore((state) => state.activeOrderTax);
+  const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
+  const activeOrderDiscount = useOrderStore(
+    (state) => state.activeOrderDiscount
+  );
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
+  const activeOrderOutstandingSubtotal = useOrderStore(
+    (state) => state.activeOrderOutstandingSubtotal
+  );
+  const activeOrderOutstandingTax = useOrderStore(
+    (state) => state.activeOrderOutstandingTax
+  );
 
-  // Get the active order to check for amount_due and payments
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
+  // Get the active order directly with a selector
+  const activeOrder = useOrderStore((state) => {
+    if (state.activeOrderId) {
+      return state.ordersById[state.activeOrderId];
+    }
+    return undefined;
+  });
 
-  // Determine if this is a partially paid order
-  const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
-  const hasBackendAmountDue =
-    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0;
+  // Use prop if provided, otherwise fall back to store value
+  const hasPayments =
+    hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
 
-  // When backend provides amount_due, we can't break down subtotal/tax separately
-  // because the backend amount_due already includes everything.
-  // In this case, we show simplified view with just Balance Due.
-  const showSimplifiedView = hasBackendAmountDue && hasPayments;
+  // When there are payments, always show simplified view
+  // We can't reliably break down subtotal/tax after partial payments due to store sync issues
+  const showSimplifiedView = hasPayments;
 
-  // Calculate display amounts - show outstanding if partially paid, otherwise full totals
-  const displaySubtotal = useMemo(() => {
-    if (showSimplifiedView) {
-      // When we have backend amount_due, we don't have separate subtotal
-      // Just return the amount_due as a single value (tax included)
-      return activeOrder!.amount_due!;
-    }
-    if (hasPayments) {
-      return activeOrderOutstandingSubtotal;
-    }
-    return activeOrderSubtotal;
-  }, [
-    showSimplifiedView,
-    hasPayments,
-    activeOrder?.amount_due,
-    activeOrderOutstandingSubtotal,
-    activeOrderSubtotal,
-  ]);
+  // Calculate display amounts - NO useMemo to avoid stale cached values
+  // Show outstanding if partially paid, otherwise full totals
+  let displaySubtotal: number;
+  if (showSimplifiedView) {
+    // When we have backend amount_due, use the prop value (tax included)
+    displaySubtotal = totalDisplayAmount;
+  } else if (hasPayments) {
+    displaySubtotal = activeOrderOutstandingSubtotal;
+  } else {
+    displaySubtotal = activeOrderSubtotal;
+  }
 
-  const displayTax = useMemo(() => {
-    if (showSimplifiedView) {
-      // Tax is included in backend amount_due, don't show separately
-      return 0;
-    }
-    if (hasPayments) {
-      return activeOrderOutstandingTax;
-    }
-    return activeOrderTax;
-  }, [
-    showSimplifiedView,
-    hasPayments,
-    activeOrderOutstandingTax,
-    activeOrderTax,
-  ]);
+  let displayTax: number;
+  if (showSimplifiedView) {
+    // Tax is included in backend amount_due, don't show separately
+    displayTax = 0;
+  } else if (hasPayments) {
+    displayTax = activeOrderOutstandingTax;
+  } else {
+    displayTax = activeOrderTax;
+  }
 
-  const displayTotal = useMemo(() => {
-    // Priority: backend amount_due > calculated outstanding > full total
-    if (hasBackendAmountDue) {
-      return activeOrder!.amount_due!;
-    }
-    if (hasPayments && activeOrderOutstandingTotal > 0) {
-      return activeOrderOutstandingTotal;
-    }
-    return activeOrderTotal;
-  }, [
-    hasBackendAmountDue,
-    hasPayments,
-    activeOrder?.amount_due,
-    activeOrderOutstandingTotal,
-    activeOrderTotal,
-  ]);
+  // USE THE PROP DIRECTLY - this is the source of truth from the parent
+  // which has the correct value (shown on the Pay button)
+  const displayTotal = totalDisplayAmount;
 
   // Only show discount if not partially paid (discount already applied to paid items)
   const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
