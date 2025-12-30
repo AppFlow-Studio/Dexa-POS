@@ -42,6 +42,13 @@ const LOCAL_ITEM_PREFIX = "local_item_";
 const LOCAL_PAYMENT_PREFIX = "local_payment_";
 const LOCAL_SESSION_PREFIX = "local_session_";
 
+// Legacy prefixes used by useOrderStore - need to recognize these as local IDs
+const LEGACY_ORDER_PREFIX = "order_";
+const LEGACY_ITEM_PREFIX = "item_";
+
+// UUID regex for detecting backend IDs (Supabase uses standard UUIDs)
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ============================================================================
 // STATE
 // ============================================================================
@@ -116,14 +123,50 @@ export function generateLocalId(entityType: EntityType): string {
 
 /**
  * Check if an ID is a local ID (not yet synced to backend).
+ * 
+ * Detection strategy:
+ * 1. If it's a valid UUID, it's a backend ID (return false)
+ * 2. If it starts with known local prefixes, it's a local ID (return true)
+ * 3. If it starts with legacy prefixes (order_, item_), it's a local ID (return true)
+ * 
+ * This handles both new format (local_order_xxx) and legacy format (order_xxx).
  */
 export function isLocalId(id: string): boolean {
-  return (
+  // First check: If it's a valid UUID, it's definitely a backend ID
+  if (UUID_REGEX.test(id)) {
+    return false;
+  }
+
+  // Check for standard local prefixes
+  if (
     id.startsWith(LOCAL_ORDER_PREFIX) ||
     id.startsWith(LOCAL_ITEM_PREFIX) ||
     id.startsWith(LOCAL_PAYMENT_PREFIX) ||
     id.startsWith(LOCAL_SESSION_PREFIX)
-  );
+  ) {
+    return true;
+  }
+
+  // Check for legacy prefixes used by useOrderStore
+  // These are IDs like "order_1767113883512" or "item_abc123"
+  if (
+    id.startsWith(LEGACY_ORDER_PREFIX) ||
+    id.startsWith(LEGACY_ITEM_PREFIX)
+  ) {
+    return true;
+  }
+
+  // If none of the above, assume it's NOT a local ID
+  // (could be some other backend format)
+  return false;
+}
+
+/**
+ * Check if an ID is a valid UUID (backend ID format).
+ * Supabase uses standard UUIDs for all entity IDs.
+ */
+export function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
 }
 
 /**

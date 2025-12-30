@@ -887,7 +887,7 @@ const OrderTest = () => {
 
             addLog("Process Payment", params);
 
-            const result = await callRPC("process_payment", params);
+            const result = await callRPC("process_payment_v2", params);
             addLog("Process Payment", params, result);
             show({
                 title: "Success",
@@ -1935,7 +1935,7 @@ const OrderTest = () => {
                     };
 
                     addLog("Process Payment (Complete Flow)", paymentParams);
-                    const paymentResult = await callRPC("process_payment", paymentParams);
+                    const paymentResult = await callRPC("process_payment_v2", paymentParams);
                     addLog(
                         "Process Payment (Complete Flow)",
                         paymentParams,

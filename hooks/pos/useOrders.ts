@@ -3,10 +3,10 @@
 // Example implementation for POS Tablet
 // ============================================================================
 
+import type { Order, OrderItem, OrderStatus, PaymentMethod } from '@/types/db-order-management-types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
-import type { Order, OrderItem, OrderStatus, PaymentMethod } from '@/types/db-order-management-types';
 import { useSupabaseClient } from '../useSupabaseClient';
 
 // ============================================================================
@@ -197,7 +197,7 @@ export const useOrder = (orderId?: string) => {
         }
     };
 
-    // Process payment
+    // Process payment using process_payment_v2
     const processPayment = async (params: {
         paymentMethod: PaymentMethod;
         amount: number;
@@ -206,6 +206,10 @@ export const useOrder = (orderId?: string) => {
         terminalId?: string;
         deviceId?: string;
         transactionDetails?: Record<string, any>;
+        amountTendered?: number;
+        splitCount?: number;
+        splitPortionIndex?: number;
+        itemIds?: string[];
     }) => {
         if (!orderId) throw new Error('No active order');
 
@@ -213,19 +217,34 @@ export const useOrder = (orderId?: string) => {
         setError(null);
         const supabase = useSupabaseClient();
 
+        console.log(`[useOrders:processPayment] ====== PROCESSING PAYMENT ======`);
+        console.log(`[useOrders:processPayment] Order ID: ${orderId}`);
+        console.log(`[useOrders:processPayment] Method: ${params.paymentMethod}, Amount: ${params.amount}`);
+
         try {
-            const { data, error: paymentError } = await supabase.rpc('process_payment', {
+            // Build terminal response for card payments
+            const terminalResponse = params.paymentMethod !== 'cash' && params.transactionDetails
+                ? params.transactionDetails
+                : null;
+
+            const { data, error: paymentError } = await supabase.rpc('process_payment_v2', {
                 p_order_id: orderId,
                 p_payment_method: params.paymentMethod,
                 p_amount: params.amount,
                 p_tip_amount: params.tipAmount || 0,
-                p_terminal_type: params.terminalType || 'none',
-                p_terminal_id: params.terminalId,
-                p_device_id: params.deviceId,
-                p_transaction_details: params.transactionDetails || {}
+                p_amount_tendered: params.paymentMethod === 'cash' ? (params.amountTendered || params.amount) : null,
+                p_terminal_response: terminalResponse,
+                p_split_count: params.splitCount || null,
+                p_split_portion_index: params.splitPortionIndex || null,
+                p_item_ids: params.itemIds || null,
             });
 
-            if (paymentError) throw paymentError;
+            if (paymentError) {
+                console.error(`[useOrders:processPayment] FAILED:`, paymentError);
+                throw paymentError;
+            }
+
+            console.log(`[useOrders:processPayment] SUCCESS:`, JSON.stringify(data, null, 2));
 
             // Refresh order
             await fetchOrder();
@@ -233,6 +252,7 @@ export const useOrder = (orderId?: string) => {
             return data;
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to process payment';
+            console.error(`[useOrders:processPayment] Error:`, message);
             setError(message);
             Alert.alert('Payment Error', message);
             throw err;

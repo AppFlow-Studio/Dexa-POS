@@ -9,12 +9,12 @@ import {
   Order,
   OrderItemModifier,
   OrderStatus,
-  ProcessPaymentParams,
   ProcessPaymentResult,
+  ProcessPaymentV2Params,
   ReplaceOrderItemModifiersResult,
   UpdateOrderItemParams,
   UpdateOrderItemQuantityResult,
-  UpdateOrderItemResult,
+  UpdateOrderItemResult
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -26,7 +26,20 @@ export class OrderService {
     client: SupabaseClient,
     params: CreateOrderParams
   ): Promise<{ data: Order | null; error: any }> {
+    console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
+    console.log(`[OrderService:createOrder] Params:`, JSON.stringify(params, null, 2));
+
     const { data, error } = await client.rpc("create_order", params);
+
+    if (error) {
+      console.error(`[OrderService:createOrder] FAILED:`, error);
+    } else {
+      const orderData = Array.isArray(data) ? data[0] : data;
+      console.log(`[OrderService:createOrder] SUCCESS!`);
+      console.log(`[OrderService:createOrder] Order ID: ${orderData?.order_id || orderData?.id}`);
+      console.log(`[OrderService:createOrder] Order Number: ${orderData?.order_number || orderData?.display_number}`);
+    }
+
     return { data, error };
   }
 
@@ -37,18 +50,20 @@ export class OrderService {
     client: SupabaseClient,
     params: AddOrderItemParams
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
-    // add_order_item_v2 supports all parameters including p_course_number
-    // No need to strip or make separate calls
-
-    console.log("Calling add_order_item_v2 with params:", params);
-
+    console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
+    console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
+    console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
+    console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
+    console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
     const { data, error } = await client.rpc("add_order_item_v2", params);
 
     if (error || !data) {
-      console.error("add_order_item_v2 failed", error);
+      console.error(`[OrderService:addOrderItem] FAILED:`, error);
       return { data, error };
     }
-    console.log("add_order_item_v2 result:", data);
+
+    console.log(`[OrderService:addOrderItem] SUCCESS!`);
+    console.log(`[OrderService:addOrderItem] Item ID: ${data.order_item_id}`);
 
     return { data, error };
   }
@@ -84,13 +99,25 @@ export class OrderService {
   }
 
   /**
-   * Process a payment for an order
+   * Process a payment for an order using process_payment_v2
+   * Handles: Full card, Full cash, Split, Per-item payments
    */
   static async processPayment(
     client: SupabaseClient,
-    params: ProcessPaymentParams
+    params: ProcessPaymentV2Params
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
-    const { data, error } = await client.rpc("process_payment", params);
+    console.log(`[OrderService:processPayment] ====== CALLING process_payment_v2 ======`);
+    console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
+    console.log(`[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`);
+
+    const { data, error } = await client.rpc("process_payment_v2", params);
+
+    if (error) {
+      console.error(`[OrderService:processPayment] FAILED:`, error);
+    } else {
+      console.log(`[OrderService:processPayment] SUCCESS:`, JSON.stringify(data, null, 2));
+    }
+
     return { data, error };
   }
 

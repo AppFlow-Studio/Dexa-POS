@@ -30,8 +30,12 @@ export type OperationType =
   | "remove_item"
   | "void_item"
   | "update_order_status"
-  | "process_cash_payment"
-  | "process_card_payment"
+  // Kitchen operations
+  | "send_to_kitchen"       // Updates order status + item statuses
+  // Payment operations (unified + legacy)
+  | "process_payment"       // Unified payment via process_payment_v2
+  | "process_cash_payment"  // Legacy - routes to process_payment handler
+  | "process_card_payment"  // Legacy - routes to process_payment handler
   // Floor plan operations
   | "seat_guests"
   | "update_session_status"
@@ -56,13 +60,15 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   remove_item: 3,
   void_item: 3,
 
-  // Coursing after items
+  // Coursing and kitchen after items
   fire_course: 4,
   update_order_status: 4,
+  send_to_kitchen: 4,       // Kitchen send after items synced
 
   // Payments last (after everything else synced)
-  process_cash_payment: 5,
-  process_card_payment: 5,
+  process_payment: 5,       // Unified payment via process_payment_v2
+  process_cash_payment: 5,  // Legacy support
+  process_card_payment: 5,  // Legacy support
 };
 
 export interface OfflineOperation {
@@ -411,7 +417,7 @@ export function getFailedOperations(): OfflineOperation[] {
 export function getPendingPaymentsCount(): number {
   return pendingOperations.filter(
     (op) =>
-      (op.type === "process_cash_payment" || op.type === "process_card_payment") &&
+      (op.type === "process_payment" || op.type === "process_cash_payment" || op.type === "process_card_payment") &&
       (op.status === "pending" || op.status === "blocked" || op.status === "processing")
   ).length;
 }
@@ -422,7 +428,7 @@ export function getPendingPaymentsCount(): number {
 export function getFailedPayments(): OfflineOperation[] {
   return pendingOperations.filter(
     (op) =>
-      (op.type === "process_cash_payment" || op.type === "process_card_payment") &&
+      (op.type === "process_payment" || op.type === "process_cash_payment" || op.type === "process_card_payment") &&
       op.status === "failed"
   );
 }
@@ -432,6 +438,32 @@ export function getFailedPayments(): OfflineOperation[] {
  */
 export function getOperationsForOrder(localOrderId: string): OfflineOperation[] {
   return pendingOperations.filter((op) => op.localOrderId === localOrderId);
+}
+
+/**
+ * Check if there's a pending create_order operation for a given order.
+ * Used to block items/payments until order is created.
+ */
+export function hasPendingOrderCreation(localOrderId: string): boolean {
+  return pendingOperations.some(
+    (op) =>
+      op.localOrderId === localOrderId &&
+      op.type === "create_order" &&
+      (op.status === "pending" || op.status === "processing" || op.status === "blocked")
+  );
+}
+
+/**
+ * Get the create_order operation ID for a given order, if it exists.
+ */
+export function getOrderCreationOperationId(localOrderId: string): string | null {
+  const op = pendingOperations.find(
+    (op) =>
+      op.localOrderId === localOrderId &&
+      op.type === "create_order" &&
+      (op.status === "pending" || op.status === "processing" || op.status === "blocked")
+  );
+  return op?.id || null;
 }
 
 /**
@@ -484,6 +516,67 @@ export async function syncNow(): Promise<void> {
   }
 }
 
+/**
+ * Get a detailed status of the queue for debugging.
+ */
+export function getQueueStatus(): {
+  total: number;
+  pending: number;
+  blocked: number;
+  processing: number;
+  failed: number;
+  byType: Record<string, number>;
+  byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }>;
+} {
+  const allOps = pendingOperations.filter((op) => op.status !== "discarded");
+  const byType: Record<string, number> = {};
+  const byOrder: Record<string, { types: string[]; hasCreateOrder: boolean }> = {};
+
+  for (const op of allOps) {
+    byType[op.type] = (byType[op.type] || 0) + 1;
+
+    if (op.localOrderId) {
+      if (!byOrder[op.localOrderId]) {
+        byOrder[op.localOrderId] = { types: [], hasCreateOrder: false };
+      }
+      byOrder[op.localOrderId].types.push(`${op.type}(${op.status})`);
+      if (op.type === "create_order") {
+        byOrder[op.localOrderId].hasCreateOrder = true;
+      }
+    }
+  }
+
+  return {
+    total: allOps.length,
+    pending: allOps.filter((op) => op.status === "pending").length,
+    blocked: allOps.filter((op) => op.status === "blocked").length,
+    processing: allOps.filter((op) => op.status === "processing").length,
+    failed: allOps.filter((op) => op.status === "failed").length,
+    byType,
+    byOrder,
+  };
+}
+
+/**
+ * Log the current queue status to console (for debugging).
+ */
+export function logQueueStatus(): void {
+  const status = getQueueStatus();
+  console.log("[OfflineSync] ====== QUEUE STATUS ======");
+  console.log(`[OfflineSync] Total: ${status.total}`);
+  console.log(`[OfflineSync]   Pending: ${status.pending}`);
+  console.log(`[OfflineSync]   Blocked: ${status.blocked}`);
+  console.log(`[OfflineSync]   Processing: ${status.processing}`);
+  console.log(`[OfflineSync]   Failed: ${status.failed}`);
+  console.log("[OfflineSync] By type:", JSON.stringify(status.byType));
+  console.log("[OfflineSync] By order:");
+  for (const [orderId, info] of Object.entries(status.byOrder)) {
+    console.log(`[OfflineSync]   ${orderId}:`);
+    console.log(`[OfflineSync]     hasCreateOrder: ${info.hasCreateOrder}`);
+    console.log(`[OfflineSync]     operations: ${info.types.join(", ")}`);
+  }
+}
+
 // ============================================================================
 // QUEUE PROCESSING
 // ============================================================================
@@ -504,26 +597,56 @@ function sortOperationsByPriority(ops: OfflineOperation[]): OfflineOperation[] {
 
 /**
  * Check if an operation's dependencies are satisfied.
+ * 
+ * IMPLICIT DEPENDENCIES:
+ * - add_item, process_payment, process_cash_payment, process_card_payment
+ *   all implicitly depend on create_order for the same localOrderId.
+ * - These operations will be blocked until create_order completes.
  */
 function areDependenciesSatisfied(op: OfflineOperation): boolean {
-  if (!op.dependsOn) return true;
+  // EXPLICIT dependency check
+  if (op.dependsOn) {
+    const dependency = pendingOperations.find((o) => o.id === op.dependsOn);
 
-  // Check if the dependent operation exists and is completed
-  const dependency = pendingOperations.find((o) => o.id === op.dependsOn);
-
-  // If dependency doesn't exist in queue, it's either completed or never existed
-  if (!dependency) return true;
-
-  // If dependency is still pending/processing/blocked, we can't proceed
-  if (
-    dependency.status === "pending" ||
-    dependency.status === "processing" ||
-    dependency.status === "blocked"
-  ) {
-    return false;
+    // If dependency doesn't exist in queue, it's either completed or never existed
+    if (!dependency) {
+      // Check if it was removed (completed) - continue
+    } else if (
+      dependency.status === "pending" ||
+      dependency.status === "processing" ||
+      dependency.status === "blocked"
+    ) {
+      return false;
+    }
   }
 
-  // Dependency is completed (removed) or discarded
+  // IMPLICIT dependency: items and payments must wait for order creation
+  const typesRequiringOrder = [
+    "add_item",
+    "process_payment",
+    "process_cash_payment",
+    "process_card_payment",
+    "update_order_status",
+    "fire_course",
+  ];
+
+  if (typesRequiringOrder.includes(op.type) && op.localOrderId) {
+    // Check if there's a pending create_order for this order
+    const orderCreationPending = pendingOperations.some(
+      (o) =>
+        o.localOrderId === op.localOrderId &&
+        o.type === "create_order" &&
+        (o.status === "pending" || o.status === "processing" || o.status === "blocked")
+    );
+
+    if (orderCreationPending) {
+      console.log(
+        `[OfflineSync] ${op.type} blocked - waiting for create_order of ${op.localOrderId}`
+      );
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -576,18 +699,43 @@ async function processQueue(): Promise<void> {
     return;
   }
 
+  // ========================================================================
+  // COMPREHENSIVE QUEUE STATUS LOGGING
+  // ========================================================================
+  const allOps = pendingOperations.filter(
+    (op) => op.status !== "discarded" && op.status !== "failed"
+  );
+  const byType: Record<string, number> = {};
+  const byOrder: Record<string, string[]> = {};
+
+  for (const op of allOps) {
+    byType[op.type] = (byType[op.type] || 0) + 1;
+    if (!byOrder[op.localOrderId]) {
+      byOrder[op.localOrderId] = [];
+    }
+    byOrder[op.localOrderId].push(`${op.type}(${op.status})`);
+  }
+
+  console.log("[OfflineSync] ====== QUEUE STATUS ======");
+  console.log("[OfflineSync] Total operations:", allOps.length);
+  console.log("[OfflineSync] By type:", JSON.stringify(byType));
+  console.log("[OfflineSync] By order:", JSON.stringify(byOrder));
+
   // Update blocked status before processing
   await updateBlockedOperations();
 
   const readyOps = getReadyOperations();
+  const blocked = pendingOperations.filter((op) => op.status === "blocked");
+  const pending = pendingOperations.filter((op) => op.status === "pending");
+
+  console.log("[OfflineSync] Ready:", readyOps.length, "| Blocked:", blocked.length, "| Pending:", pending.length);
+
   if (readyOps.length === 0) {
-    const blocked = pendingOperations.filter((op) => op.status === "blocked");
     if (blocked.length > 0) {
-      console.log(
-        "[OfflineSync] No ready operations,",
-        blocked.length,
-        "blocked by dependencies"
-      );
+      console.log("[OfflineSync] Blocked operations:");
+      for (const op of blocked.slice(0, 5)) {
+        console.log(`  - ${op.type} (${op.id}) for order ${op.localOrderId}`);
+      }
     } else {
       console.log("[OfflineSync] No pending operations");
     }
@@ -595,11 +743,8 @@ async function processQueue(): Promise<void> {
   }
 
   syncInProgress = true;
-  console.log(
-    "[OfflineSync] Processing",
-    readyOps.length,
-    "operations (by priority)"
-  );
+  console.log("[OfflineSync] ====== PROCESSING ======");
+  console.log("[OfflineSync] Processing", readyOps.length, "operations (by priority)");
 
   let successCount = 0;
   let failCount = 0;
@@ -616,14 +761,14 @@ async function processQueue(): Promise<void> {
     await saveQueueToStorage();
 
     try {
+      console.log(`[OfflineSync] Executing: ${operation.type} (${operation.id})`);
+      console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
+      console.log(`[OfflineSync]   Item: ${operation.localItemId || 'N/A'}`);
+
       const success = await executeOperation(operation);
 
       if (success) {
-        console.log(
-          "[OfflineSync] Operation succeeded:",
-          operation.type,
-          operation.id
-        );
+        console.log(`[OfflineSync] ✓ SUCCESS: ${operation.type} (${operation.id})`);
         await removeOperation(operation.id);
         successCount++;
 
@@ -636,10 +781,8 @@ async function processQueue(): Promise<void> {
 
         if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
           // Max retries reached - mark as failed for manual intervention
-          console.log(
-            "[OfflineSync] Max retries reached, marking failed:",
-            operation.id
-          );
+          console.log(`[OfflineSync] ✗ FAILED (max retries): ${operation.type} (${operation.id})`);
+          console.log(`[OfflineSync]   Order: ${operation.localOrderId || 'N/A'}`);
           operation.status = "failed";
           await saveQueueToStorage();
 
@@ -649,12 +792,7 @@ async function processQueue(): Promise<void> {
           // Reset to pending for next retry
           operation.status = "pending";
           await saveQueueToStorage();
-          console.log(
-            "[OfflineSync] Operation failed, will retry:",
-            operation.id,
-            "attempt",
-            operation.retryCount
-          );
+          console.log(`[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`);
         }
       }
     } catch (error) {

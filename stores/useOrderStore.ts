@@ -23,6 +23,7 @@ import {
   mapLocalToBackend,
   registerLocalId
 } from "@/lib/offlineIdRegistry";
+import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
   getIsOnline,
   queueOperation
@@ -427,12 +428,15 @@ const ensureOrderCreated = async (
   // OFFLINE MODE: Queue order creation and return special marker
   // ========================================================================
   if (!supabase || !isNetworkOnline) {
-    console.log("[ensureOrderCreated] OFFLINE MODE - Queueing order creation");
+    console.log("[ensureOrderCreated] ====== OFFLINE MODE ======");
+    console.log(`[ensureOrderCreated] Order ID: ${order.id}`);
+    console.log(`[ensureOrderCreated] Order Type: ${order.order_type}`);
+    console.log(`[ensureOrderCreated] Store: ${selectedStore?.id}`);
 
     // Check if we've already queued this order
     const existingQueuedOrder = pendingOrderCreations.get(order.id);
     if (existingQueuedOrder) {
-      console.log(`[ensureOrderCreated] Order ${order.id} already queued for offline sync`);
+      console.log(`[ensureOrderCreated] Already queued - returning pending_offline`);
       return "pending_offline";
     }
 
@@ -450,6 +454,9 @@ const ensureOrderCreated = async (
       p_table_number: order.service_location_id || undefined,
       p_created_by_staff_id: undefined,
     };
+
+    console.log(`[ensureOrderCreated] Queueing create_order operation...`);
+    console.log(`[ensureOrderCreated] Params:`, JSON.stringify(createOrderParams, null, 2));
 
     // Queue the create_order operation
     const operationId = await queueOperation({
@@ -486,11 +493,14 @@ const ensureOrderCreated = async (
 
     // Register in ID registry for future lookups
     await registerLocalId(order.id, "order");
+    console.log(`[ensureOrderCreated] Registered local ID: ${order.id}`);
 
     // Set a placeholder promise so we don't queue multiple times
     pendingOrderCreations.set(order.id, Promise.resolve("pending_offline"));
 
-    console.log(`[ensureOrderCreated] Order ${order.id} queued for offline sync (op: ${operationId})`);
+    console.log(`[ensureOrderCreated] ====== QUEUED SUCCESSFULLY ======`);
+    console.log(`[ensureOrderCreated] Operation ID: ${operationId}`);
+    console.log(`[ensureOrderCreated] Local Order ID: ${order.id}`);
     return "pending_offline";
   }
 
@@ -634,16 +644,21 @@ const addItemToBackend = async (
   }
 
   // ========================================================================
-  // OFFLINE MODE: Queue item and return success
+  // OFFLINE MODE: Ensure order is queued first, then queue item
   // ========================================================================
   if (!supabase || !isNetworkOnline) {
-    console.log("[addItemToBackend] OFFLINE MODE - Queueing item for later sync");
+    console.log("[addItemToBackend] OFFLINE MODE - Processing item:", item.id);
+
+    // CRITICAL: First ensure the order creation is queued
+    // This must happen BEFORE queueing the item
+    const orderResult = await ensureOrderCreated(order, setOrderDbId);
+    console.log(`[addItemToBackend] OFFLINE - ensureOrderCreated returned: ${orderResult}`);
 
     // Register item in ID registry for tracking
     await registerLocalId(item.id, "item", order.id);
 
-    // Queue the add_item operation
-    await queueOperation({
+    // Queue the add_item operation (will execute after create_order completes)
+    const itemOpId = await queueOperation({
       type: "add_item",
       params: {
         localOrderId: order.id,
@@ -666,6 +681,8 @@ const addItemToBackend = async (
         course: useCoursingStore.getState().getWorkingCourse(order.id) || 1,
       },
     });
+
+    console.log(`[addItemToBackend] OFFLINE - Item queued: ${item.id} (op: ${itemOpId})`);
 
     // Mark item as pending sync in store
     useOrderStore.setState((state) => {
@@ -958,10 +975,53 @@ const syncPaymentToBackend = async (
     return true;
   }
 
-  // If order doesn't have a DB ID yet (e.g. strict offline mode until payment), we can't sync payment
+  // ========================================================================
+  // OFFLINE-FIRST: Queue payment for later sync if order not in DB yet
+  // ========================================================================
   if (!order.db_order_id) {
-    console.warn("Backend sync skipped: Order has no db_order_id");
-    return true;
+    console.log("[syncPaymentToBackend] Order has no db_order_id, queueing payment for later sync");
+
+    const isCash = paymentDetails.method === "Cash";
+
+    // Build terminal response for card payments
+    const terminalResponse = !isCash && paymentDetails.transactionDetails
+      ? {
+        terminal_type: paymentDetails.transactionDetails.terminalType || "manual",
+        authorization_code: paymentDetails.transactionDetails.authorizationCode,
+        card_type: paymentDetails.transactionDetails.cardType,
+        card_last_four: paymentDetails.transactionDetails.last4,
+        transaction_id: paymentDetails.transactionDetails.transactionId,
+      }
+      : null;
+
+    // Build payment params for process_payment_v2 (will be resolved when order syncs)
+    const paymentParams = {
+      p_order_id: order.id, // Will be resolved to db_order_id at sync time
+      p_payment_method: isCash ? "cash" : "card",
+      p_amount: paymentDetails.amount,
+      p_tip_amount: paymentDetails.tipAmount || 0,
+      p_amount_tendered: isCash
+        ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
+        : null,
+      p_item_ids: paymentDetails.itemIds || null,
+      p_terminal_response: terminalResponse,
+      p_split_count: paymentDetails.splitCount || null,
+      p_split_portion_index: paymentDetails.splitPortionIndex || null,
+    };
+
+    // Queue unified payment operation (will execute after order syncs)
+    await queueOperation({
+      type: "process_payment", // Unified payment type for process_payment_v2
+      params: {
+        params: paymentParams,
+        localOrderId: order.id,
+        terminalResponse, // Pass terminal response for card payments
+      },
+      localOrderId: order.id,
+    });
+
+    console.log(`[syncPaymentToBackend] Payment queued for order ${order.id}`);
+    return true; // Return success - payment recorded locally and queued
   }
 
   try {
@@ -1284,6 +1344,18 @@ interface OrderState {
   // === OFFLINE-FIRST HELPER METHODS ===
   // Update local order with DB order ID after successful sync
   updateOrderDbId: (localOrderId: string, dbOrderId: string) => void;
+  // Update local order with backend-generated data after sync (order_number, display_number, etc.)
+  updateOrderFromSync: (localOrderId: string, backendData: {
+    order_number?: number | string;
+    display_number?: string;
+    opened_at?: string;
+    total_amount?: number;
+    total_tax?: number;
+    subtotal?: number;
+    cash_total?: number;
+    cash_tax_amount?: number;
+    cash_subtotal?: number;
+  }) => void;
   // Update local item with DB item ID after successful sync
   updateItemDbId: (orderId: string, localItemId: string, dbItemId: string) => void;
   // Get all orders that have items with failed sync status
@@ -3039,20 +3111,13 @@ export const useOrderStore = create<OrderState>()(
             splitCount, // NEW: Optional split count for split payments
             splitPortionIndex, // NEW: Optional split portion index for split payments
           }) => {
-            const { hasPendingSyncs, waitForPendingSyncs } = get();
+            // ================================================================
+            // OFFLINE-FIRST: Process payment locally, sync in background
+            // ================================================================
+            // We NO LONGER block on pending syncs - payments proceed immediately
+            // Local state is updated optimistically, backend sync happens later
+            // This allows payments to work even when offline or with slow network
 
-            // SYNC BARRIER: Wait for all pending syncs before processing payment
-            // This ensures all items are in backend before payment is processed
-            if (hasPendingSyncs(orderId)) {
-              toastService.show({
-                title: "Syncing...",
-                message: "Waiting for items to sync before processing payment",
-                type: "warning",
-              });
-              await waitForPendingSyncs(orderId);
-            }
-
-            // Re-fetch order after waiting (state may have changed)
             const order = get().ordersById[orderId]; // O(1) lookup
             if (!order) return false;
 
@@ -3086,11 +3151,23 @@ export const useOrderStore = create<OrderState>()(
             // Mark items as paid based on itemIds (per-item) or FIFO order (default)
             let updatedItems: typeof order.items;
 
+            // Determine if items should transition to "preparing" status
+            // This happens when order is in draft/pending and payment is made
+            const shouldMarkItemsAsPreparing = order.order_status === "draft" || order.order_status === "pending";
+
             if (itemIds && itemIds.length > 0) {
               // Per-item payment: Mark specific items as paid
               updatedItems = order.items.map((item) => {
                 if (item.db_order_item_id && itemIds.includes(item.db_order_item_id)) {
-                  return { ...item, paidQuantity: item.quantity }; // Fully paid
+                  return {
+                    ...item,
+                    paidQuantity: item.quantity, // Fully paid
+                    // Update kitchen and item status when transitioning from draft
+                    ...(shouldMarkItemsAsPreparing && {
+                      kitchen_status: "sent" as const,
+                      item_status: "Preparing" as const,
+                    }),
+                  };
                 }
                 return item;
               });
@@ -3111,6 +3188,11 @@ export const useOrderStore = create<OrderState>()(
                 return {
                   ...item,
                   paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
+                  // Update kitchen and item status when transitioning from draft
+                  ...(shouldMarkItemsAsPreparing && {
+                    kitchen_status: "sent" as const,
+                    item_status: "Preparing" as const,
+                  }),
                 };
               });
             }
@@ -3127,6 +3209,18 @@ export const useOrderStore = create<OrderState>()(
             // Determine if order is fully paid based on outstanding amount
             const isFullyPaid = totals.outstanding_total <= 0.01; // Allow tiny rounding margin
 
+            // Determine new order status:
+            // - If order is in "draft" and payment is made, move to "preparing"
+            // - If order is already "preparing" or later, keep current status
+            // - If order is fully paid, it stays at current status (kitchen flow continues)
+            const currentStatus = order.order_status;
+            const shouldUpdateToPreparingStatus = currentStatus === "draft" || currentStatus === "pending";
+            const newOrderStatus = shouldUpdateToPreparingStatus ? "preparing" : currentStatus;
+
+            // Set opened_at timestamp when transitioning to preparing (if not already set)
+            const shouldSetOpenedAt = shouldUpdateToPreparingStatus && !order.opened_at;
+            const newOpenedAt = shouldSetOpenedAt ? new Date().toISOString() : order.opened_at;
+
             // Single atomic update with optimistic payment status
             set((state) => ({
               ordersById: {
@@ -3138,6 +3232,10 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: method === 'Cash' ? totals.cash_total_amount : totals.total_amount,
                   total_tax: method === 'Cash' ? totals.cash_tax_amount : totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Update order_status to "preparing" if it was in draft/pending
+                  order_status: newOrderStatus,
+                  // Set opened_at timestamp when transitioning
+                  opened_at: newOpenedAt,
                   // Optimistic update based on calculated outstanding
                   paid_status: isFullyPaid ? ("Paid" as const) : ("Pending" as const),
                   check_status: isFullyPaid ? ("Closed" as const) : ("Opened" as const),
@@ -3601,33 +3699,27 @@ export const useOrderStore = create<OrderState>()(
             }));
           },
           sendNewItemsToKitchen: async () => {
-            const { activeOrderId, ordersById, hasPendingSyncs, waitForPendingSyncs } = get();
+            // ================================================================
+            // OFFLINE-FIRST: Update local state immediately
+            // ================================================================
+            // Kitchen operations work with local state - no need to wait for sync
+            // Backend status update is queued for later
+            // Kitchen display/printer uses local state directly
+
+            const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
             const currentOrder = ordersById[activeOrderId];
             if (!currentOrder) return;
 
-            // SYNC BARRIER: Wait for all pending syncs before sending to kitchen
-            if (hasPendingSyncs(activeOrderId)) {
-              toastService.show({
-                title: "Syncing...",
-                message: "Waiting for items to sync before sending to kitchen",
-                type: "warning",
-              });
-              await waitForPendingSyncs(activeOrderId);
-            }
-
-            // Re-fetch order after waiting (state may have changed)
-            const orderAfterSync = get().ordersById[activeOrderId];
-            if (!orderAfterSync) return;
-
-            const newItems = orderAfterSync.items.filter(
+            // Work with current local state (no blocking on syncs)
+            const newItems = currentOrder.items.filter(
               (item) => !item.kitchen_status || item.kitchen_status === "new"
             );
 
             if (newItems.length === 0) return;
 
-            let cartToProcess = [...orderAfterSync.items];
+            let cartToProcess = [...currentOrder.items];
             const itemsToKeep: CartItem[] = [];
             const mergedItemIds = new Set<string>();
 
@@ -3708,13 +3800,22 @@ export const useOrderStore = create<OrderState>()(
             // For now, let's keep minimal changes to fix the state status.
             // recalculateTotals(activeOrderId);
 
-            // Sync the status change to the backend ("Preparing")
+            // ================================================================
+            // OFFLINE-FIRST: Queue or sync backend operation
+            // ================================================================
+            // Local state is already updated above - now handle backend sync
             const supabase = getOrderStoreSupabaseClient();
-            if (supabase && orderAfterSync.db_order_id) {
+            const isOnlineNow = get().isOnline;
+
+            // Get local item IDs for queuing (will be resolved to db_order_item_ids during sync)
+            const localItemIds = newItems.map((item) => item.id);
+
+            if (isOnlineNow && supabase && currentOrder.db_order_id) {
+              // Online + order synced: sync immediately
               // Update order status
               supabase
                 .rpc("update_order_status", {
-                  p_order_id: orderAfterSync.db_order_id,
+                  p_order_id: currentOrder.db_order_id,
                   p_new_status: "preparing",
                 })
                 .then(({ error }) => {
@@ -3722,6 +3823,12 @@ export const useOrderStore = create<OrderState>()(
                     console.error(
                       "Failed to update backend order status:",
                       error
+                    );
+                    // Queue for retry
+                    queueFailedOperation(
+                      "send_to_kitchen",
+                      { localOrderId: activeOrderId, localItemIds },
+                      activeOrderId
                     );
                   }
                 });
@@ -3740,6 +3847,14 @@ export const useOrderStore = create<OrderState>()(
                   console.error("Failed to bulk update item statuses:", err);
                 });
               }
+            } else {
+              // Offline or order not synced: queue for later
+              console.log("[sendNewItemsToKitchen] Queueing send_to_kitchen operation for later sync");
+              queueFailedOperation(
+                "send_to_kitchen",
+                { localOrderId: activeOrderId, localItemIds },
+                activeOrderId
+              );
             }
 
             toastService.show({
@@ -3751,19 +3866,12 @@ export const useOrderStore = create<OrderState>()(
           },
 
           sendNewItemsToKitchenForOrder: async (orderId: string) => {
-            const { hasPendingSyncs, waitForPendingSyncs } = get();
+            // ================================================================
+            // OFFLINE-FIRST: Update local state immediately
+            // ================================================================
+            // Kitchen operations work with local state - no need to wait for sync
+            // Backend status update is queued for later (fire-and-forget)
 
-            // SYNC BARRIER: Wait for all pending syncs before sending to kitchen
-            if (hasPendingSyncs(orderId)) {
-              toastService.show({
-                title: "Syncing...",
-                message: "Waiting for items to sync before sending to kitchen",
-                type: "warning",
-              });
-              await waitForPendingSyncs(orderId);
-            }
-
-            // Re-fetch order after waiting (state may have changed)
             const order = get().ordersById[orderId];
             if (
               !order ||
@@ -3807,9 +3915,21 @@ export const useOrderStore = create<OrderState>()(
               },
             }));
 
-            // Sync to backend
+            // ================================================================
+            // OFFLINE-FIRST: Queue or sync backend operation
+            // ================================================================
+            // Local state is already updated above - now handle backend sync
             const supabase = getOrderStoreSupabaseClient();
-            if (supabase && order.db_order_id) {
+            const isOnlineNow = get().isOnline;
+
+            // Get items that need to be sent
+            const newItems = order.items.filter(
+              (item) => !item.kitchen_status || item.kitchen_status === "new"
+            );
+            const localItemIds = newItems.map((item) => item.id);
+
+            if (isOnlineNow && supabase && order.db_order_id) {
+              // Online + order synced: sync immediately
               // Update order status
               supabase
                 .rpc("update_order_status", {
@@ -3817,14 +3937,18 @@ export const useOrderStore = create<OrderState>()(
                   p_new_status: "preparing",
                 })
                 .then(({ error }) => {
-                  if (error)
+                  if (error) {
                     console.error("Failed to sync status for order:", error);
+                    // Queue for retry
+                    queueFailedOperation(
+                      "send_to_kitchen",
+                      { localOrderId: orderId, localItemIds },
+                      orderId
+                    );
+                  }
                 });
 
               // Bulk update item statuses to 'sent' with sent_to_kitchen_at timestamp
-              const newItems = order.items.filter(
-                (item) => !item.kitchen_status || item.kitchen_status === "new"
-              );
               const dbItemIds = newItems
                 .map((item) => item.db_order_item_id)
                 .filter((id): id is string => !!id);
@@ -3838,6 +3962,14 @@ export const useOrderStore = create<OrderState>()(
                   console.error("Failed to bulk update item statuses:", err);
                 });
               }
+            } else {
+              // Offline or order not synced: queue for later
+              console.log("[sendNewItemsToKitchenForOrder] Queueing send_to_kitchen operation for later sync");
+              queueFailedOperation(
+                "send_to_kitchen",
+                { localOrderId: orderId, localItemIds },
+                orderId
+              );
             }
 
             // Show toast after the state update
@@ -4118,6 +4250,56 @@ export const useOrderStore = create<OrderState>()(
               };
             });
             console.log(`[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`);
+          },
+
+          // Update local order with backend-generated data after sync
+          updateOrderFromSync: (localOrderId: string, backendData: {
+            order_number?: number | string;
+            display_number?: string;
+            opened_at?: string;
+            total_amount?: number;
+            total_tax?: number;
+            subtotal?: number;
+            cash_total?: number;
+            cash_tax_amount?: number;
+            cash_subtotal?: number;
+          }) => {
+            set((state) => {
+              const order = state.ordersById[localOrderId];
+              if (!order) return state;
+
+              // Convert order_number to string if provided (backend returns number)
+              const orderNumberStr = backendData.order_number !== undefined
+                ? String(backendData.order_number)
+                : undefined;
+
+              const updatedOrder: OrderProfile = {
+                ...order,
+                ...(orderNumberStr !== undefined && { order_number: orderNumberStr }),
+                ...(backendData.display_number !== undefined && { display_number: backendData.display_number }),
+                ...(backendData.opened_at !== undefined && { opened_at: backendData.opened_at }),
+                ...(backendData.total_amount !== undefined && { total_amount: backendData.total_amount }),
+                ...(backendData.total_tax !== undefined && { total_tax: backendData.total_tax }),
+                ...(backendData.subtotal !== undefined && { subtotal: backendData.subtotal }),
+                ...(backendData.cash_total !== undefined && { cash_total: backendData.cash_total }),
+                ...(backendData.cash_tax_amount !== undefined && { cash_tax_amount: backendData.cash_tax_amount }),
+                ...(backendData.cash_subtotal !== undefined && { cash_subtotal: backendData.cash_subtotal }),
+              };
+
+              // Also update ordersByDbId if this order has a db_order_id
+              const updatedOrdersByDbId = order.db_order_id
+                ? { ...state.ordersByDbId, [order.db_order_id]: updatedOrder }
+                : state.ordersByDbId;
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: updatedOrder,
+                },
+                ordersByDbId: updatedOrdersByDbId,
+              };
+            });
+            console.log(`[updateOrderFromSync] Updated order ${localOrderId} with backend data:`, backendData);
           },
 
           // Update local item with DB item ID after successful sync

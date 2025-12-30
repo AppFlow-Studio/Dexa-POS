@@ -1,4 +1,4 @@
-// TODO: Backend integration - pass supabase client and call supabase.rpc("process_payment", params)
+// TODO: Backend integration - pass supabase client and call supabase.rpc("process_payment_v2", params)
 
 // lib/payments/spinapi.ts
 interface SPINAPIRequest {
@@ -92,7 +92,7 @@ export const processCardPaymentSPINAPI = async (
 
   // Step 2: Record in database
   // TODO: Integrate with backend - pass supabase client from component
-  // const paymentResult = await supabase.rpc("process_payment", {
+  // const paymentResult = await supabase.rpc("process_payment_v2", {
   //   p_order_id: orderId,
   //   p_payment_method: 'card_spinapi',
   //   p_amount: amount,
