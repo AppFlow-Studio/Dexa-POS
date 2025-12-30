@@ -244,7 +244,9 @@ const PaymentSuccessView = () => {
             className="w-full py-4 bg-blue-600 rounded-xl items-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
           >
             <Text className="text-white font-bold text-xl">
-              Start New Order
+              {activeOrder?.order_type === "Dine In"
+                ? "Finalize Payment"
+                : "Start New Order"}
             </Text>
           </TouchableOpacity>
         </View>

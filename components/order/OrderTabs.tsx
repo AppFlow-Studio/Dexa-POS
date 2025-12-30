@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
 // Define types for props
-type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
+type TabName = "All" | "Takeaway" | "Delivery";
 
 interface Tab {
   name: TabName;
@@ -16,7 +16,7 @@ interface OrderTabsProps {
 
 const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, counts }) => {
   const [activeWindow, setActiveWindow] = useState("All");
-  const TABS: TabName[] = ["All", "Dine In", "Takeaway", "Delivery"];
+  const TABS: TabName[] = ["All", "Takeaway", "Delivery"];
 
   const handlePress = (tabName: TabName) => {
     setActiveWindow(tabName);

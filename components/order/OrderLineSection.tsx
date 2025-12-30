@@ -22,6 +22,9 @@ const OrderLineSection: React.FC = () => {
   const visibleOrders = useMemo(() => {
     return orders.filter(
       (o) =>
+        // Exclude Dine In orders - they belong on Tables view
+        o.order_type !== "Dine In" &&
+        o.order_type !== "dine_in" &&
         o.items?.length > 0 &&
         o.order_status !== "completed" &&
         o.order_status !== "draft" &&
@@ -33,9 +36,6 @@ const OrderLineSection: React.FC = () => {
   const orderCounts = useMemo(() => {
     return {
       All: visibleOrders.length,
-      "Dine In": visibleOrders.filter(
-        (o) => o.order_type === "dine_in" || o.order_type === "Dine In"
-      ).length,
       Takeaway: visibleOrders.filter(
         (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
       ).length,
@@ -60,7 +60,6 @@ const OrderLineSection: React.FC = () => {
 
   // Map tab names to order_type values for filtering
   const tabToOrderType: Record<string, string[]> = {
-    "Dine In": ["dine_in", "Dine In"],
     Takeaway: ["takeout", "Takeaway"],
     Delivery: ["delivery", "Delivery"],
   };

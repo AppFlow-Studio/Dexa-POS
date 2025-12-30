@@ -1,7 +1,6 @@
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
-import ModifierScreenOverlay from "@/components/menu/ModifierScreenOverlay";
 import OrderBadge from "@/components/order/OrderBadge";
 import OrderLineItemsModal from "@/components/order/OrderLineItemsModal";
 import OrderLineSection from "@/components/order/OrderLineSection";
@@ -83,15 +82,19 @@ const OrderProcessing = () => {
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {
     // Show orders that are in a "kitchen" state (preparing) or unpaid
+    // EXCLUDE Dine In orders - they belong on Tables view
     const kitchenOrders = orders.filter(
       (o) =>
-        // Condition 1: Any "preparing" order with items (includes Dine In, Takeaway, Delivery)
-        (o.order_status === "preparing" && o.items.length > 0) ||
-        // Condition 2: Unpaid orders that need payment
-        (o.paid_status === "Unpaid" &&
-          o.order_status !== "completed" &&
-          o.order_status !== "draft" &&
-          o.order_status !== "void")
+        // Exclude Dine In orders entirely
+        o.order_type !== "Dine In" &&
+        o.order_type !== "dine_in" &&
+        // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
+        ((o.order_status === "preparing" && o.items.length > 0) ||
+          // Condition 2: Unpaid orders that need payment
+          (o.paid_status === "Unpaid" &&
+            o.order_status !== "completed" &&
+            o.order_status !== "draft" &&
+            o.order_status !== "void"))
     );
 
     return kitchenOrders;
@@ -240,8 +243,6 @@ const OrderProcessing = () => {
         onClose={() => setItemsModalOpen(false)}
         orderId={selectedOrderId}
       />
-
-     
     </View>
   );
 };

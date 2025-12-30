@@ -11,36 +11,103 @@ import { Text, TouchableOpacity, View } from "react-native";
 interface PricingBreakdownSheetProps {
   onClose: () => void;
   onPressProceedToPayment: () => void;
+  /** The correct total amount to display - passed from parent which has fresh data */
+  totalDisplayAmount: number;
+  /** Whether the order has payments - passed from parent for reliable detection */
+  hasPayments?: boolean;
 }
 
 const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   PricingBreakdownSheetProps
 > = function PricingBreakdownSheetComponent(
-  { onClose, onPressProceedToPayment },
+  {
+    onClose,
+    onPressProceedToPayment,
+    totalDisplayAmount,
+    hasPayments: hasPaymentsProp,
+  },
   ref
 ) {
   const snapPoints = useMemo(() => ["50%"], []);
 
-  // Get values directly from the order store
-  const {
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderTotal,
-    activeOrderDiscount,
-  } = useOrderStore();
+  // REACTIVE SUBSCRIPTIONS: Subscribe directly to each value from the store
+  // This ensures the component re-renders when payment updates these values
+  const activeOrderSubtotal = useOrderStore(
+    (state) => state.activeOrderSubtotal
+  );
+  const activeOrderTax = useOrderStore((state) => state.activeOrderTax);
+  const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
+  const activeOrderDiscount = useOrderStore(
+    (state) => state.activeOrderDiscount
+  );
+  const activeOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
+  const activeOrderOutstandingSubtotal = useOrderStore(
+    (state) => state.activeOrderOutstandingSubtotal
+  );
+  const activeOrderOutstandingTax = useOrderStore(
+    (state) => state.activeOrderOutstandingTax
+  );
+
+  // Get the active order directly with a selector
+  const activeOrder = useOrderStore((state) => {
+    if (state.activeOrderId) {
+      return state.ordersById[state.activeOrderId];
+    }
+    return undefined;
+  });
+
+  // Use prop if provided, otherwise fall back to store value
+  const hasPayments =
+    hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
+
+  // When there are payments, always show simplified view
+  // We can't reliably break down subtotal/tax after partial payments due to store sync issues
+  const showSimplifiedView = hasPayments;
+
+  // Calculate display amounts - NO useMemo to avoid stale cached values
+  // Show outstanding if partially paid, otherwise full totals
+  let displaySubtotal: number;
+  if (showSimplifiedView) {
+    // When we have backend amount_due, use the prop value (tax included)
+    displaySubtotal = totalDisplayAmount;
+  } else if (hasPayments) {
+    displaySubtotal = activeOrderOutstandingSubtotal;
+  } else {
+    displaySubtotal = activeOrderSubtotal;
+  }
+
+  let displayTax: number;
+  if (showSimplifiedView) {
+    // Tax is included in backend amount_due, don't show separately
+    displayTax = 0;
+  } else if (hasPayments) {
+    displayTax = activeOrderOutstandingTax;
+  } else {
+    displayTax = activeOrderTax;
+  }
+
+  // USE THE PROP DIRECTLY - this is the source of truth from the parent
+  // which has the correct value (shown on the Pay button)
+  const displayTotal = totalDisplayAmount;
+
+  // Only show discount if not partially paid (discount already applied to paid items)
+  const displayDiscount = hasPayments ? 0 : activeOrderDiscount;
 
   const voucher = 0; // No voucher logic in the store
 
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
@@ -68,35 +135,74 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
         </View>
         <View className="p-4 flex-1">
-          <View className="flex-row justify-between items-center py-2">
-            <Text className="text-white text-lg">Subtotal:</Text>
-            <Text className="text-white text-lg">
-              ${activeOrderSubtotal.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between items-center py-2">
-            <Text className="text-white text-lg">Discount:</Text>
-            <Text className="text-white text-lg">
-              -${activeOrderDiscount.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between items-center py-2">
-            <Text className="text-white text-lg">Tax:</Text>
-            <Text className="text-white text-lg">
-              ${activeOrderTax.toFixed(2)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between items-center py-2">
-            <Text className="text-white text-lg">Voucher:</Text>
-            <Text className="text-white text-lg">-${voucher.toFixed(2)}</Text>
-          </View>
-          <View className="h-[1px] bg-gray-700 my-3" />
-          <View className="flex-row justify-between items-center py-2">
-            <Text className="text-white text-xl font-bold">Total:</Text>
-            <Text className="text-white text-xl font-bold">
-              ${activeOrderTotal.toFixed(2)}
-            </Text>
-          </View>
+          {/* Show simplified view when backend provides amount_due (tax included) */}
+          {showSimplifiedView ? (
+            <>
+              <View className="flex-row justify-between items-center py-2">
+                <Text className="text-gray-400 text-base">
+                  Tax included in balance
+                </Text>
+              </View>
+              <View className="h-[1px] bg-gray-700 my-3" />
+              <View className="flex-row justify-between items-center py-2">
+                <Text className="text-white text-xl font-bold">
+                  Balance Due:
+                </Text>
+                <Text className="text-xl font-bold text-yellow-400">
+                  ${displayTotal.toFixed(2)}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              {/* Full breakdown when no backend amount_due */}
+              <View className="flex-row justify-between items-center py-2">
+                <Text className="text-white text-lg">
+                  {hasPayments ? "Unpaid Subtotal:" : "Subtotal:"}
+                </Text>
+                <Text className="text-white text-lg">
+                  ${displaySubtotal.toFixed(2)}
+                </Text>
+              </View>
+              {displayDiscount > 0 && (
+                <View className="flex-row justify-between items-center py-2">
+                  <Text className="text-white text-lg">Discount:</Text>
+                  <Text className="text-white text-lg">
+                    -${displayDiscount.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+              <View className="flex-row justify-between items-center py-2">
+                <Text className="text-white text-lg">
+                  {hasPayments ? "Unpaid Tax:" : "Tax:"}
+                </Text>
+                <Text className="text-white text-lg">
+                  ${displayTax.toFixed(2)}
+                </Text>
+              </View>
+              {voucher > 0 && (
+                <View className="flex-row justify-between items-center py-2">
+                  <Text className="text-white text-lg">Voucher:</Text>
+                  <Text className="text-white text-lg">
+                    -${voucher.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+              <View className="h-[1px] bg-gray-700 my-3" />
+              <View className="flex-row justify-between items-center py-2">
+                <Text className="text-white text-xl font-bold">
+                  {hasPayments ? "Balance Due:" : "Total:"}
+                </Text>
+                <Text
+                  className={`text-xl font-bold ${
+                    hasPayments ? "text-yellow-400" : "text-white"
+                  }`}
+                >
+                  ${displayTotal.toFixed(2)}
+                </Text>
+              </View>
+            </>
+          )}
 
           <TouchableOpacity
             onPress={onPressProceedToPayment}

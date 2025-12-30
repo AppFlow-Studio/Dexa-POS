@@ -111,10 +111,11 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
 
   return (
     <View
-      className={`rounded-xl overflow-hidden border ${isVoided
-        ? "bg-[#2a2020] border-red-900/50 opacity-60"
-        : "bg-[#303030] border-gray-600"
-        }`}
+      className={`rounded-xl overflow-hidden border ${
+        isVoided
+          ? "bg-[#2a2020] border-red-900/50 opacity-60"
+          : "bg-[#303030] border-gray-600"
+      }`}
     >
       {isEditable && !isVoided && (
         <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
@@ -146,33 +147,50 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                     </View>
                   )}
                   {/* Paid status badge */}
-                  {!isVoided && item.paidQuantity > 0 && item.paidQuantity >= item.quantity && (
-                    <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-green-400 text-xs font-bold">PAID</Text>
-                    </View>
-                  )}
-                  {!isVoided && item.paidQuantity > 0 && item.paidQuantity < item.quantity && (
-                    <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
-                      <Text className="text-yellow-400 text-xs font-bold">
-                        {item.paidQuantity}/{item.quantity} PAID
-                      </Text>
-                    </View>
-                  )}
+                  {!isVoided &&
+                    item.paidQuantity > 0 &&
+                    item.paidQuantity >= item.quantity && (
+                      <View className="bg-green-600/20 px-2 py-0.5 rounded mr-2">
+                        <Text className="text-green-400 text-xs font-bold">
+                          PAID
+                        </Text>
+                      </View>
+                    )}
+                  {!isVoided &&
+                    item.paidQuantity > 0 &&
+                    item.paidQuantity < item.quantity && (
+                      <View className="bg-yellow-600/20 px-2 py-0.5 rounded mr-2">
+                        <Text className="text-yellow-400 text-xs font-bold">
+                          {item.paidQuantity}/{item.quantity} PAID
+                        </Text>
+                      </View>
+                    )}
                   <Text
-                    className={`font-semibold text-lg ${isVoided ? "text-gray-500 line-through" : "text-white"
-                      }`}
+                    className={`font-semibold text-base ${
+                      isVoided ? "text-gray-500 line-through" : "text-white"
+                    }`}
                   >
                     {item.name}
                   </Text>
                   {/* Sync status indicator */}
-                  {item.sync_status === "pending" || item.sync_status === "syncing" ? (
-                    <ActivityIndicator size={10} color="#60A5FA" style={{ marginLeft: 12 }} />
+                  {item.sync_status === "pending" ||
+                  item.sync_status === "syncing" ? (
+                    <ActivityIndicator
+                      size={10}
+                      color="#60A5FA"
+                      style={{ marginLeft: 12 }}
+                    />
                   ) : item.sync_status === "failed" ? (
-                    <AlertCircle size={16} color="#EF4444" style={{ marginLeft: 6 }} />
+                    <AlertCircle
+                      size={16}
+                      color="#EF4444"
+                      style={{ marginLeft: 6 }}
+                    />
                   ) : null}
                   <Text
-                    className={`text-base ml-4 ${isVoided ? "text-gray-600 line-through" : "text-gray-300"
-                      }`}
+                    className={`text-sm ml-3 ${
+                      isVoided ? "text-gray-600 line-through" : "text-gray-300"
+                    }`}
                   >
                     {item.quantity} X
                   </Text>
@@ -187,8 +205,9 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                 </View>
               </View>
               <Text
-                className={`font-semibold text-xl ${isVoided ? "text-gray-500 line-through" : "text-white"
-                  }`}
+                className={`font-semibold text-lg ${
+                  isVoided ? "text-gray-500 line-through" : "text-white"
+                }`}
               >
                 ${(item.price * item.quantity).toFixed(2)}
               </Text>
@@ -201,48 +220,54 @@ const BillItem: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (
                       <View className=" py-1">
-                        {item.customizations.modifiers.map((modifier, index) => (
-                          <View key={index} className="ml-4">
-                            {modifier.options.length > 0 && (
-                              <View
-                                key={index}
-                                className="flex flex-row flex-wrap items-center mb-1"
-                              >
-                                <Text className="text-base font-medium text-gray-300 ">
-                                  {modifier.categoryName}:
-                                </Text>
-                                {modifier.options.map((option, optionIndex) => {
-                                  return (
-                                    <View
-                                      key={optionIndex}
-                                      className="flex-row justify-between items-center ml-1"
-                                    >
-                                      <Text className="text-base text-gray-200">
-                                        {option.name}
-                                        {optionIndex <
-                                          modifier.options.length - 1 && " • "}
-                                      </Text>
-                                      {option.price > 0 && (
-                                        <Text className="text-base font-medium ml-1 text-green-400">
-                                          +${option.price.toFixed(2)}{" "}
-                                          {optionIndex <
-                                            modifier.options.length - 1 && ","}
-                                        </Text>
-                                      )}
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                            )}
-                          </View>
-                        ))}
+                        {item.customizations.modifiers.map(
+                          (modifier, index) => (
+                            <View key={index} className="ml-4">
+                              {modifier.options.length > 0 && (
+                                <View
+                                  key={index}
+                                  className="flex flex-row flex-wrap items-center mb-1"
+                                >
+                                  <Text className="text-sm font-medium text-gray-300 ">
+                                    {modifier.categoryName}:
+                                  </Text>
+                                  {modifier.options.map(
+                                    (option, optionIndex) => {
+                                      return (
+                                        <View
+                                          key={optionIndex}
+                                          className="flex-row justify-between items-center ml-1"
+                                        >
+                                          <Text className="text-sm text-gray-200">
+                                            {option.name}
+                                            {optionIndex <
+                                              modifier.options.length - 1 &&
+                                              " • "}
+                                          </Text>
+                                          {option.price > 0 && (
+                                            <Text className="text-sm font-medium ml-1 text-green-400">
+                                              +${option.price.toFixed(2)}{" "}
+                                              {optionIndex <
+                                                modifier.options.length - 1 &&
+                                                ","}
+                                            </Text>
+                                          )}
+                                        </View>
+                                      );
+                                    }
+                                  )}
+                                </View>
+                              )}
+                            </View>
+                          )
+                        )}
                       </View>
                     )}
 
                   {item.customizations.notes && (
-                    <View className="py-1">
-                      <Text className="text-lg text-gray-300 mb-1">Notes:</Text>
-                      <Text className="text-lg text-gray-200 ml-2 italic">
+                    <View className="py-0.5">
+                      <Text className="text-sm text-gray-300">Notes:</Text>
+                      <Text className="text-sm text-gray-200 ml-2 italic">
                         {item.customizations.notes}
                       </Text>
                     </View>

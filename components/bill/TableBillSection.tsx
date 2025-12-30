@@ -52,7 +52,9 @@ const TableBillSection = ({
   // O(1) lookups with individual selectors - only re-renders when specific values change
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
-  const removeCheckDiscount = useOrderStore((state) => state.removeCheckDiscount);
+  const removeCheckDiscount = useOrderStore(
+    (state) => state.removeCheckDiscount
+  );
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
   // O(1) lookup instead of O(n) find
@@ -127,6 +129,8 @@ const TableBillSection = ({
           ref={pricingSheetRef}
           onClose={onClosePricingSheet}
           onPressProceedToPayment={onPressProceedToPayment}
+          totalDisplayAmount={totalDisplayAmount}
+          hasPayments={(activeOrder?.payments?.length ?? 0) > 0}
         />
         <DiscountBottomSheet
           ref={discountSheetRef}

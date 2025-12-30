@@ -30,6 +30,7 @@ const UpdateTableScreen = () => {
   const [isOvertime, setIsOvertime] = useState(false);
   const isNavigatingAwayRef = useRef(false);
   const hasInitializedRef = useRef(false);
+  const wasPaymentSheetOpenRef = useRef(false);
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
@@ -62,14 +63,11 @@ const UpdateTableScreen = () => {
     loadFloorPlanStatus,
     unmergeTable,
     getTableById,
+    clearTableSession,
   } = useFloorPlanStore();
 
   const {
     orders,
-    ordersById,
-    getOrderByDbId,
-    activeOrderId,
-    activeOrderTotal,
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
@@ -84,6 +82,7 @@ const UpdateTableScreen = () => {
     setActiveTableId,
     clearActiveTableId,
     open: openPaymentSheet,
+    isOpen: isPaymentSheetOpen,
   } = usePaymentStore();
 
   const currentTableId = typeof tableId === "string" ? tableId : "";
@@ -96,27 +95,69 @@ const UpdateTableScreen = () => {
 
   const tableStatus = table?.session?.status || "available";
 
-  // Find if an order is ALREADY assigned to this table (including closed orders)
-  // Memoized to prevent infinite loop - only recalculates when orders array or currentTableId changes
-  // STRICT SYNC: Only return an order if it matches the active session.
-  // If no session exists, we pretend no order exists so we can auto-create one.
-  // OPTIMIZED: Use O(1) lookups instead of .find()
-  const existingOrderForTable = useMemo(() => {
-    if (table?.session?.order_id) {
-      const sessionOrderId = table.session.order_id;
-      return ordersById[sessionOrderId] || getOrderByDbId(sessionOrderId);
+  // Get order ID for this table's session
+  const sessionOrderId = table?.session?.order_id;
+
+  // REACTIVE SUBSCRIPTION: Subscribe directly to the order from the store
+  // This ensures we always get the latest data when payment updates the store
+  const activeOrder = useOrderStore((state) => {
+    if (sessionOrderId) {
+      // First try direct lookup by local ID
+      if (state.ordersById[sessionOrderId]) {
+        return state.ordersById[sessionOrderId];
+      }
+      // Fallback: Find by db_order_id
+      const orderByDbId = Object.values(state.ordersById).find(
+        (order) => order.db_order_id === sessionOrderId
+      );
+      if (orderByDbId) return orderByDbId;
+    }
+    // Fall back to active order
+    if (state.activeOrderId) {
+      return state.ordersById[state.activeOrderId];
     }
     return undefined;
-  }, [ordersById, getOrderByDbId, table?.session?.order_id]);
-  const activeOrder = existingOrderForTable
-    ? existingOrderForTable
-    : activeOrderId
-    ? ordersById[activeOrderId]
-    : undefined;
+  });
+
+  // REACTIVE: Subscribe directly to these values from the store
+  const activeOrderId = useOrderStore((state) => state.activeOrderId);
+  const storeActiveOrderOutstandingTotal = useOrderStore(
+    (state) => state.activeOrderOutstandingTotal
+  );
+  const storeActiveOrderTotal = useOrderStore(
+    (state) => state.activeOrderTotal
+  );
 
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
+
+  // Calculate the amount to display on the Pay button
+  // NO useMemo - calculate fresh every render to avoid caching stale values
+  // Priority: backend amount_due > calculated outstanding total > total
+  let displayBalanceDue: number;
+  if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
+    // 1. Use backend's authoritative amount_due if available
+    displayBalanceDue = activeOrder.amount_due;
+  } else if (
+    activeOrder?.payments &&
+    activeOrder.payments.length > 0 &&
+    storeActiveOrderOutstandingTotal > 0
+  ) {
+    // 2. Use calculated outstanding total if there are payments
+    displayBalanceDue = storeActiveOrderOutstandingTotal;
+  } else {
+    // 3. Fall back to full order total for new orders
+    displayBalanceDue = storeActiveOrderTotal;
+  }
+
+  // Check if order is fully paid
+  const isFullyPaid = useMemo(() => {
+    return (
+      activeOrder?.paid_status === "Paid" ||
+      (hasPayments && displayBalanceDue <= 0)
+    );
+  }, [activeOrder?.paid_status, hasPayments, displayBalanceDue]);
 
   useEffect(() => {
     if (
@@ -156,7 +197,9 @@ const UpdateTableScreen = () => {
   }, [tableStatus]);
 
   // Use stable ID instead of object reference to prevent loops
-  const existingOrderId = existingOrderForTable?.id;
+  // Note: activeOrder is now the same as what was existingOrderForTable
+  const existingOrderId = activeOrder?.id;
+  const existingOrderForTable = activeOrder; // Alias for backward compatibility
 
   useEffect(() => {
     if (existingOrderId) {
@@ -176,6 +219,108 @@ const UpdateTableScreen = () => {
     };
   }, [currentTableId]);
 
+  // --- Soft reload after payment completes ---
+  // When payment sheet closes after being open, refresh the page to get updated data
+  // --- Full Reload on Payment Sheet Close ---
+  // --- Hard Reload on Payment Sheet Close ---
+  useEffect(() => {
+    // Detect when payment sheet closes (was open -> now closed)
+    if (wasPaymentSheetOpenRef.current && !isPaymentSheetOpen) {
+      console.log("[Payment] Sheet closed. Executing HARD reset...");
+
+      const performHardReset = async () => {
+        if (!currentTableId) return;
+
+        showLoading("Updating payment...");
+
+        // 1. CRITICAL: Clear the active order immediately.
+        // This simulates "leaving the page" effectively wiping the UI state.
+        setActiveOrder(null);
+
+        try {
+          // 2. Refresh Floor Plan to ensure we have the correct session ID
+          await loadFloorPlanStatus();
+
+          // 3. Grab the fresh session ID from the store
+          const freshTables = useFloorPlanStore.getState().tables;
+          const freshTable = freshTables.find((t) => t.id === currentTableId);
+          const sessionId = freshTable?.session?.order_id;
+
+          if (sessionId) {
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase) {
+              // 4. Force fetch the order from the database
+              const { data: fetchedOrder, error } =
+                await OrderService.fetchOrderById(supabase, sessionId);
+
+              if (fetchedOrder && !error) {
+                // 5. Create a brand new OrderProfile object with a NEW ID
+                // The 'Date.now()' in the ID ensures React treats this as a completely new object
+                const newLocalId = `order_reload_${Date.now()}`;
+
+                const updatedOrderProfile: OrderProfile = {
+                  id: newLocalId,
+                  db_order_id: fetchedOrder.id,
+                  service_location_id: currentTableId,
+                  order_status: (fetchedOrder.status as any) || "preparing",
+                  check_status:
+                    fetchedOrder.status === "completed" ? "Closed" : "Opened",
+                  paid_status:
+                    (fetchedOrder.payment_status as string) === "paid"
+                      ? ("Paid" as const)
+                      : ("Unpaid" as const),
+                  order_type: "Dine In",
+                  items:
+                    (fetchedOrder as any).order_items?.map((item: any) => ({
+                      id: `item_${Date.now()}_${Math.random()}`, // New item IDs too
+                      isDraft: false,
+                      menuItemId: item.menu_item_id,
+                      name: item.item_name,
+                      price: item.unit_price,
+                      originalPrice: item.unit_price,
+                      quantity: item.quantity,
+                      db_order_item_id: item.id,
+                      item_status: item.status || "ordered",
+                      kitchen_status: item.status || "ordered",
+                      customizations: {
+                        notes: item.special_instructions,
+                        modifiers: [],
+                      },
+                    })) || [],
+                  payments: [],
+                  opened_at: fetchedOrder.created_at,
+                };
+
+                // 6. Inject into store
+                useOrderStore.setState((state) => ({
+                  ordersById: {
+                    ...state.ordersById,
+                    [updatedOrderProfile.id]: updatedOrderProfile,
+                  },
+                  // Clean up old ID from array and add new one
+                  orderIds: [...state.orderIds, updatedOrderProfile.id],
+                }));
+
+                // 7. Set the NEW order as active.
+                // Because we set it to null earlier, this triggers a full "mount" effect for the UI.
+                setActiveOrder(updatedOrderProfile.id);
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[Payment] Hard reset failed:", error);
+        } finally {
+          hideLoading();
+        }
+      };
+
+      // Run the async function
+      performHardReset();
+    }
+
+    // Update ref
+    wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
+  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus]);
   // // --- Auto-Session & Order Sync Logic ---
   // useEffect(() => {
   //   loadFloorPlanStatus();
@@ -545,8 +690,8 @@ const UpdateTableScreen = () => {
   };
 
   const handlePay = () => {
-    // OPTIMIZED: Use O(1) lookup instead of .find()
-    const order = activeOrderId ? ordersById[activeOrderId] : undefined;
+    // Use activeOrder directly (already subscribed reactively)
+    const order = activeOrder;
     if (order) {
       const preparingItems = order.items.filter(
         (i) => (i.item_status || "preparing") !== "ready"
@@ -1024,7 +1169,7 @@ const UpdateTableScreen = () => {
           onPressReopenCheck={handleReopenCheck}
           onPressCloseCheck={handleCloseCheck}
           onPressClearTable={handleClearTable}
-          totalDisplayAmount={activeOrderTotal || 0}
+          totalDisplayAmount={displayBalanceDue}
           pricingSheetRef={
             pricingSheetRef as React.RefObject<BottomSheetMethods>
           }
@@ -1087,16 +1232,14 @@ const UpdateTableScreen = () => {
       <MoreOptionsBottomSheet
         ref={moreOptionsSheetRef}
         onVoidSuccess={async () => {
-          // setVoidConfirmOpen(false);
-          // show({
-          //   title: "Order Voided",
-          //   message: "The order has been successfully voided.",
-          //   type: "success",
-          // });
-          // router.back();
-          // Force session status update
+          // CRITICAL: Set this FIRST to prevent auto-session creation
+          isNavigatingAwayRef.current = true;
+
           // Update local state
           updateOrderStatus(activeOrder?.id || "", "void");
+
+          // Clear the table session immediately
+          await clearTableSession(currentTableId);
 
           // Clear active order BEFORE navigating
           setActiveOrder(null);
@@ -1106,7 +1249,7 @@ const UpdateTableScreen = () => {
           show({
             title: "Check Voided",
             message:
-              "The order has been successfully voided. Table marked for cleaning.",
+              "The order has been successfully voided. Table is now available.",
             type: "success",
           });
 
