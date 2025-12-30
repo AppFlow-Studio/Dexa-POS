@@ -348,13 +348,18 @@ const BillSection = ({
             </TouchableOpacity>
           </View>
           {/* Cash Discount Option */}
-          {cashSavings > 0 && displayBalanceDue > 0 && (
+          {/* {cashSavings > 0 && displayBalanceDue > 0 && (
             <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
               <Text className="text-center text-sm text-green-400">
                 Pay cash: ${cashBalanceDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
               </Text>
             </View>
-          )}
+          )} */}
+          <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
+            <Text className="text-center text-sm text-green-400">
+              Pay cash: ${cashBalanceDue?.toFixed(2)} (save ${cashSavings?.toFixed(2)})
+            </Text>
+          </View>
         </View>
       )}
       <DiscountOverlay

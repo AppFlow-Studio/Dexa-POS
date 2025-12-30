@@ -59,12 +59,12 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
   return (
     <View className="px-6 py-1 bg-[#212121]">
       <View className="gap-y-1">
-        <View className="flex-row justify-between items-center">
+        {/* <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
             ${activeOrderSubtotal.toFixed(2)}
           </Text>
-        </View>
+        </View> */}
 
         {activeOrderDiscount > 0 && (
           <View className="flex-row justify-between items-center">
@@ -82,21 +82,21 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
           </Text>
         </View>
 
-        <View className="flex-row justify-between items-center">
+        {/* <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Voucher</Text>
           <Text className="text-lg font-medium text-white">
             ${voucher.toFixed(2)}
           </Text>
-        </View>
+        </View> */}
       </View>
 
       {/* Total Line */}
-      <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
+      {/* <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
         <Text className="text-lg font-bold text-white">Total</Text>
         <Text className="text-lg font-bold text-white">
           ${activeOrderTotal.toFixed(2)}
         </Text>
-      </View>
+      </View> */}
 
       {/* Amount Paid (only show if partial payment made) */}
       {paymentInfo.hasPayments && paymentInfo.amountPaid > 0 && (
@@ -109,24 +109,24 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
       )}
 
       {/* Balance Due (only show if there's a remaining balance after payment) */}
-      {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
+      {/* {paymentInfo.hasPayments && !paymentInfo.isPaid && paymentInfo.balanceDue > 0.01 && (
         <View className="flex-row justify-between items-center mt-1 pt-1 border-t border-yellow-600/50">
           <Text className="text-lg font-bold text-yellow-400">Balance Due</Text>
           <Text className="text-lg font-bold text-yellow-400">
             ${paymentInfo.balanceDue.toFixed(2)}
           </Text>
         </View>
-      )}
+      )} */}
 
       {/* Cash Discount Option (show when not fully paid and cash price is lower) */}
-      {!paymentInfo.isPaid && paymentInfo.cashSavings > 0 && paymentInfo.balanceDue > 0.01 && (
+      {/* {!paymentInfo.isPaid && paymentInfo.cashSavings > 0 && paymentInfo.balanceDue > 0.01 && (
         <View className="flex-row justify-between items-center mt-1">
           <Text className="text-sm text-green-400">Cash Price</Text>
           <Text className="text-sm font-medium text-green-400">
             ${paymentInfo.cashBalanceDue.toFixed(2)} (save ${paymentInfo.cashSavings.toFixed(2)})
           </Text>
         </View>
-      )}
+      )} */}
 
       {/* Fully Paid indicator */}
       {paymentInfo.isPaid && (

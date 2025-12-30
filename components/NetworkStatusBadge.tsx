@@ -7,16 +7,19 @@
  */
 
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
-import { useOrderStore } from "@/stores/useOrderStore";
 import { toastService } from "@/lib/toastService";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { usePaymentStore } from "@/stores/usePaymentStore";
 import {
+  AlertTriangle,
   CheckCircle,
   Clock,
+  CreditCard,
   Database,
   RefreshCw,
   WifiOff,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   FadeIn,
@@ -44,6 +47,23 @@ export function NetworkStatusBadge(): React.ReactElement {
   // Get active order info from store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);
+
+  // Payment offline status
+  const {
+    pendingPaymentsCount,
+    failedPayments,
+    refreshOfflinePaymentStatus,
+    retryFailedPayment,
+  } = usePaymentStore();
+
+  // Refresh payment status when network status changes
+  useEffect(() => {
+    refreshOfflinePaymentStatus();
+  }, [isOnline, pendingSyncCount]);
+
+  // Check for any pending or failed payments
+  const hasPendingPayments = pendingPaymentsCount > 0;
+  const hasFailedPayments = failedPayments.length > 0;
 
   // Determine badge variant
   const variant: BadgeVariant = !isOnline
@@ -208,6 +228,46 @@ export function NetworkStatusBadge(): React.ReactElement {
           <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-gray-600/50 bg-gray-900/40">
             <Text className="text-sm text-gray-500">No active order</Text>
           </View>
+        </Animated.View>
+      )}
+
+      {/* Pending Payments Badge */}
+      {hasPendingPayments && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <View className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-amber-600/50 bg-amber-900/40">
+            <CreditCard size={14} color="#fbbf24" />
+            <Text className="text-sm font-medium text-amber-400">
+              {pendingPaymentsCount} payment{pendingPaymentsCount > 1 ? "s" : ""} queued
+            </Text>
+          </View>
+        </Animated.View>
+      )}
+
+      {/* Failed Payments Badge - Critical! */}
+      {hasFailedPayments && (
+        <Animated.View
+          entering={SlideInRight.duration(200)}
+          exiting={SlideOutRight.duration(200)}
+        >
+          <TouchableOpacity
+            onPress={() => {
+              // Retry all failed payments
+              failedPayments.forEach((payment) => {
+                retryFailedPayment(payment.id);
+              });
+            }}
+            activeOpacity={0.7}
+            className="flex-row items-center gap-2 px-3 py-1.5 rounded-full border border-red-600/50 bg-red-900/40"
+          >
+            <AlertTriangle size={14} color="#f87171" />
+            <Text className="text-sm font-medium text-red-400">
+              {failedPayments.length} payment{failedPayments.length > 1 ? "s" : ""} failed
+            </Text>
+            <RefreshCw size={12} color="#f87171" />
+          </TouchableOpacity>
         </Animated.View>
       )}
     </View>

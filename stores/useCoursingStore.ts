@@ -1,3 +1,7 @@
+import {
+  isLocalId,
+  resolveToBackendId,
+} from "@/lib/offlineIdRegistry";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
@@ -605,7 +609,12 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       },
     }));
 
-    const dbOrderId = orderData.dbOrderId;
+    // Try to resolve order ID from registry if it's a local ID
+    let dbOrderId = orderData.dbOrderId;
+    if (!dbOrderId && isLocalId(orderId)) {
+      dbOrderId = resolveToBackendId(orderId) || undefined;
+    }
+
     const isOnline = getIsOnline();
 
     // 2. Try backend if online and have a dbOrderId
@@ -627,7 +636,11 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           // OFFLINE-FIRST: Don't revert, queue for retry instead
           await queueOperation({
             type: "fire_course",
-            params: { dbOrderId, courseNumber },
+            params: {
+              dbOrderId,
+              courseNumber,
+              localOrderId: orderId, // Include for ID resolution during sync
+            },
             localOrderId: orderId,
           });
         } else {
@@ -639,7 +652,11 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
         // OFFLINE-FIRST: Don't revert, queue for retry instead
         await queueOperation({
           type: "fire_course",
-          params: { dbOrderId, courseNumber },
+          params: {
+            dbOrderId,
+            courseNumber,
+            localOrderId: orderId, // Include for ID resolution during sync
+          },
           localOrderId: orderId,
         });
       }
@@ -648,7 +665,11 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       console.log("[fireCourse] Offline or no dbOrderId, queuing operation");
       await queueOperation({
         type: "fire_course",
-        params: { dbOrderId, courseNumber },
+        params: {
+          dbOrderId,
+          courseNumber,
+          localOrderId: orderId, // Include for ID resolution during sync
+        },
         localOrderId: orderId,
       });
     }

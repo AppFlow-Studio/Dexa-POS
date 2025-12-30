@@ -1,5 +1,13 @@
 import { toastService } from "@/lib/toastService";
 import { CartItem } from "@/lib/types";
+import {
+  getIsOnline,
+  getPendingPaymentsCount,
+  getFailedPayments,
+  queueOperation,
+  retryFailedOperation,
+  OfflineOperation,
+} from "@/services/offlineSyncService";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
@@ -124,6 +132,13 @@ interface PaymentState {
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
   openPayForItems: () => void; // Action to open the pay-for-items split review view
+
+  // Offline payment tracking
+  pendingPaymentsCount: number;
+  failedPayments: OfflineOperation[];
+  refreshOfflinePaymentStatus: () => void;
+  retryFailedPayment: (operationId: string) => Promise<void>;
+  isPaymentQueued: boolean; // True if current payment was queued for offline sync
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -137,6 +152,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   activeSplitId: null,
   splitSourceView: null, // Initialized here
   progress: { currentStep: 1, totalSteps: totalSteps },
+  // Offline payment state
+  pendingPaymentsCount: 0,
+  failedPayments: [],
+  isPaymentQueued: false,
 
   setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
@@ -192,6 +211,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       activeSplitId: null,
       splitSourceView: null,
       progress: { currentStep: 1, totalSteps: totalSteps },
+      isPaymentQueued: false,
     });
   },
 
@@ -677,5 +697,32 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         resolve(false);
       }
     });
+  },
+
+  // --- OFFLINE PAYMENT ACTIONS ---
+
+  refreshOfflinePaymentStatus: () => {
+    set({
+      pendingPaymentsCount: getPendingPaymentsCount(),
+      failedPayments: getFailedPayments(),
+    });
+  },
+
+  retryFailedPayment: async (operationId: string) => {
+    try {
+      await retryFailedOperation(operationId);
+      get().refreshOfflinePaymentStatus();
+      toastService.show({
+        title: "Retrying Payment",
+        message: "The payment will be processed when connection is restored.",
+        type: "info",
+      });
+    } catch (error: any) {
+      toastService.show({
+        title: "Retry Failed",
+        message: error.message || "Could not retry payment.",
+        type: "error",
+      });
+    }
   },
 }));

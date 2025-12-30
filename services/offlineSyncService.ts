@@ -3,6 +3,12 @@
  *
  * Manages operation queueing when offline and auto-sync when back online.
  * Uses AsyncStorage for persistence and NetInfo for network monitoring.
+ *
+ * Enhanced with:
+ * - Priority-based processing (orders before items before payments)
+ * - Dependency tracking between operations
+ * - Operation collapsing for same-entity updates
+ * - Full context capture for reliable replay
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -25,11 +31,39 @@ export type OperationType =
   | "void_item"
   | "update_order_status"
   | "process_cash_payment"
+  | "process_card_payment"
   // Floor plan operations
   | "seat_guests"
   | "update_session_status"
   // Coursing operations
   | "fire_course";
+
+/**
+ * Priority levels for operation processing.
+ * Lower number = higher priority (processed first).
+ */
+export const OPERATION_PRIORITY: Record<OperationType, number> = {
+  // Order creation must happen first
+  create_order: 1,
+  seat_guests: 1,
+  update_session_status: 1,
+
+  // Item operations after order exists
+  add_item: 2,
+  update_item: 3,
+  update_item_quantity: 3,
+  replace_modifiers: 3,
+  remove_item: 3,
+  void_item: 3,
+
+  // Coursing after items
+  fire_course: 4,
+  update_order_status: 4,
+
+  // Payments last (after everything else synced)
+  process_cash_payment: 5,
+  process_card_payment: 5,
+};
 
 export interface OfflineOperation {
   id: string;
@@ -39,13 +73,19 @@ export interface OfflineOperation {
   localItemId?: string;
   timestamp: string;
   retryCount: number;
-  status: "pending" | "processing" | "failed" | "discarded";
+  status: "pending" | "processing" | "failed" | "discarded" | "blocked";
+  // Enhanced fields for dependency tracking
+  priority: number;
+  dependsOn?: string; // ID of operation this depends on (must complete first)
+  entityKey?: string; // Unique key for collapsing (e.g., "item:localItemId")
+  contextSnapshot?: Record<string, any>; // Full context at time of queueing
 }
 
 export interface SyncResult {
   success: boolean;
   operationId: string;
   error?: string;
+  backendId?: string; // Backend ID returned from successful operation
 }
 
 // ============================================================================
@@ -69,6 +109,7 @@ let unsubscribeNetInfo: (() => void) | null = null;
 // Callbacks for store integration
 let onStatusChange: ((isOnline: boolean) => void) | null = null;
 let onQueueChange: ((count: number) => void) | null = null;
+let onOperationFailed: ((op: OfflineOperation) => void) | null = null;
 let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
   null;
 
@@ -83,10 +124,12 @@ let executeOperation: ((op: OfflineOperation) => Promise<boolean>) | null =
 export async function initOfflineSyncService(config: {
   onStatusChange: (isOnline: boolean) => void;
   onQueueChange: (count: number) => void;
+  onOperationFailed?: (op: OfflineOperation) => void;
   executeOperation: (op: OfflineOperation) => Promise<boolean>;
 }): Promise<void> {
   onStatusChange = config.onStatusChange;
   onQueueChange = config.onQueueChange;
+  onOperationFailed = config.onOperationFailed ?? null;
   executeOperation = config.executeOperation;
 
   // Load persisted queue
@@ -165,26 +208,116 @@ function scheduleSync(): void {
 // ============================================================================
 
 /**
+ * Generate an entity key for operation collapsing.
+ */
+function generateEntityKey(op: Partial<OfflineOperation>): string | undefined {
+  switch (op.type) {
+    case "create_order":
+      return `order:${op.localOrderId}`;
+    case "add_item":
+    case "update_item":
+    case "update_item_quantity":
+    case "replace_modifiers":
+    case "void_item":
+    case "remove_item":
+      return op.localItemId ? `item:${op.localItemId}` : undefined;
+    case "update_order_status":
+      return `order_status:${op.localOrderId}`;
+    case "process_cash_payment":
+    case "process_card_payment":
+      // Each payment is unique, don't collapse
+      return undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Check if an operation can be collapsed into an existing one.
+ * Returns the operation to collapse into, or null if no collapsing possible.
+ */
+function findCollapseTarget(
+  entityKey: string,
+  newType: OperationType
+): OfflineOperation | null {
+  // Only collapse updates, not creates or deletes
+  const collapsibleTypes: OperationType[] = [
+    "update_item",
+    "update_item_quantity",
+    "replace_modifiers",
+    "update_order_status",
+  ];
+
+  if (!collapsibleTypes.includes(newType)) {
+    return null;
+  }
+
+  // Find the most recent pending operation with the same entity key
+  const candidates = pendingOperations
+    .filter(
+      (op) =>
+        op.entityKey === entityKey &&
+        op.status === "pending" &&
+        collapsibleTypes.includes(op.type)
+    )
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  return candidates[0] || null;
+}
+
+/**
  * Add an operation to the offline queue.
+ * Supports priority ordering, dependency tracking, and operation collapsing.
  */
 export async function queueOperation(
-  op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status">
+  op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">
 ): Promise<string> {
+  const priority = OPERATION_PRIORITY[op.type] ?? 99;
+  const entityKey = generateEntityKey(op);
+
+  // Check for operation collapsing
+  if (entityKey) {
+    const collapseTarget = findCollapseTarget(entityKey, op.type);
+    if (collapseTarget) {
+      // Merge params into existing operation
+      collapseTarget.params = { ...collapseTarget.params, ...op.params };
+      collapseTarget.timestamp = new Date().toISOString();
+      if (op.contextSnapshot) {
+        collapseTarget.contextSnapshot = {
+          ...collapseTarget.contextSnapshot,
+          ...op.contextSnapshot,
+        };
+      }
+      await saveQueueToStorage();
+      console.log(
+        "[OfflineSync] Collapsed operation into:",
+        collapseTarget.id,
+        collapseTarget.type
+      );
+      return collapseTarget.id;
+    }
+  }
+
   const operation: OfflineOperation = {
     ...op,
     id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     timestamp: new Date().toISOString(),
     retryCount: 0,
     status: "pending",
+    priority,
+    entityKey,
   };
 
   pendingOperations.push(operation);
   await saveQueueToStorage();
-  onQueueChange?.(
-    pendingOperations.filter((o) => o.status === "pending").length
-  );
+  onQueueChange?.(getActivePendingCount());
 
-  console.log("[OfflineSync] Queued operation:", operation.type, operation.id);
+  console.log(
+    "[OfflineSync] Queued operation:",
+    operation.type,
+    operation.id,
+    `(priority: ${priority})`
+  );
 
   // If online, schedule immediate sync
   if (isOnline) {
@@ -195,14 +328,32 @@ export async function queueOperation(
 }
 
 /**
+ * Queue an operation with explicit dependency on another operation.
+ */
+export async function queueDependentOperation(
+  op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">,
+  dependsOnOperationId: string
+): Promise<string> {
+  const opWithDep = { ...op, dependsOn: dependsOnOperationId };
+  return queueOperation(opWithDep);
+}
+
+/**
+ * Get count of active pending operations (excluding blocked).
+ */
+function getActivePendingCount(): number {
+  return pendingOperations.filter(
+    (op) => op.status === "pending" || op.status === "blocked"
+  ).length;
+}
+
+/**
  * Remove an operation from the queue (after success or permanent failure).
  */
 export async function removeOperation(operationId: string): Promise<void> {
   pendingOperations = pendingOperations.filter((op) => op.id !== operationId);
   await saveQueueToStorage();
-  onQueueChange?.(
-    pendingOperations.filter((o) => o.status === "pending").length
-  );
+  onQueueChange?.(getActivePendingCount());
 }
 
 /**
@@ -213,9 +364,24 @@ export async function discardOperation(operationId: string): Promise<void> {
     op.id === operationId ? { ...op, status: "discarded" as const } : op
   );
   await saveQueueToStorage();
-  onQueueChange?.(
-    pendingOperations.filter((o) => o.status === "pending").length
-  );
+  onQueueChange?.(getActivePendingCount());
+}
+
+/**
+ * Retry a failed operation.
+ */
+export async function retryFailedOperation(operationId: string): Promise<void> {
+  const op = pendingOperations.find((o) => o.id === operationId);
+  if (op && op.status === "failed") {
+    op.status = "pending";
+    op.retryCount = 0;
+    await saveQueueToStorage();
+    onQueueChange?.(getActivePendingCount());
+
+    if (isOnline) {
+      scheduleSync();
+    }
+  }
 }
 
 /**
@@ -223,6 +389,83 @@ export async function discardOperation(operationId: string): Promise<void> {
  */
 export function getPendingCount(): number {
   return pendingOperations.filter((op) => op.status === "pending").length;
+}
+
+/**
+ * Get count of failed operations.
+ */
+export function getFailedCount(): number {
+  return pendingOperations.filter((op) => op.status === "failed").length;
+}
+
+/**
+ * Get all failed operations (for UI display).
+ */
+export function getFailedOperations(): OfflineOperation[] {
+  return pendingOperations.filter((op) => op.status === "failed");
+}
+
+/**
+ * Get pending payment operations count.
+ */
+export function getPendingPaymentsCount(): number {
+  return pendingOperations.filter(
+    (op) =>
+      (op.type === "process_cash_payment" || op.type === "process_card_payment") &&
+      (op.status === "pending" || op.status === "blocked" || op.status === "processing")
+  ).length;
+}
+
+/**
+ * Get failed payment operations.
+ */
+export function getFailedPayments(): OfflineOperation[] {
+  return pendingOperations.filter(
+    (op) =>
+      (op.type === "process_cash_payment" || op.type === "process_card_payment") &&
+      op.status === "failed"
+  );
+}
+
+/**
+ * Get all operations for a specific order.
+ */
+export function getOperationsForOrder(localOrderId: string): OfflineOperation[] {
+  return pendingOperations.filter((op) => op.localOrderId === localOrderId);
+}
+
+/**
+ * Cancel all operations for an order (e.g., when order is voided).
+ */
+export async function cancelOrderOperations(localOrderId: string): Promise<void> {
+  const opsToCancel = pendingOperations.filter(
+    (op) => op.localOrderId === localOrderId && op.status !== "discarded"
+  );
+
+  for (const op of opsToCancel) {
+    op.status = "discarded";
+  }
+
+  await saveQueueToStorage();
+  onQueueChange?.(getActivePendingCount());
+  console.log(
+    `[OfflineSync] Cancelled ${opsToCancel.length} operations for order:`,
+    localOrderId
+  );
+}
+
+/**
+ * Update operation params (e.g., after ID resolution).
+ */
+export async function updateOperationParams(
+  operationId: string,
+  params: Record<string, any>
+): Promise<void> {
+  const op = pendingOperations.find((o) => o.id === operationId);
+  if (op) {
+    op.params = { ...op.params, ...params };
+    await saveQueueToStorage();
+  }
 }
 
 /**
@@ -246,7 +489,76 @@ export async function syncNow(): Promise<void> {
 // ============================================================================
 
 /**
- * Process all pending operations in order.
+ * Sort operations by priority and timestamp for processing order.
+ */
+function sortOperationsByPriority(ops: OfflineOperation[]): OfflineOperation[] {
+  return [...ops].sort((a, b) => {
+    // First by priority (lower = higher priority)
+    const priorityDiff = (a.priority ?? 99) - (b.priority ?? 99);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    // Then by timestamp (older first)
+    return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+  });
+}
+
+/**
+ * Check if an operation's dependencies are satisfied.
+ */
+function areDependenciesSatisfied(op: OfflineOperation): boolean {
+  if (!op.dependsOn) return true;
+
+  // Check if the dependent operation exists and is completed
+  const dependency = pendingOperations.find((o) => o.id === op.dependsOn);
+
+  // If dependency doesn't exist in queue, it's either completed or never existed
+  if (!dependency) return true;
+
+  // If dependency is still pending/processing/blocked, we can't proceed
+  if (
+    dependency.status === "pending" ||
+    dependency.status === "processing" ||
+    dependency.status === "blocked"
+  ) {
+    return false;
+  }
+
+  // Dependency is completed (removed) or discarded
+  return true;
+}
+
+/**
+ * Get all operations that are ready to process (pending + dependencies satisfied).
+ */
+function getReadyOperations(): OfflineOperation[] {
+  const pending = pendingOperations.filter((op) => op.status === "pending");
+  const ready = pending.filter((op) => areDependenciesSatisfied(op));
+  return sortOperationsByPriority(ready);
+}
+
+/**
+ * Mark operations as blocked if their dependencies aren't satisfied.
+ */
+async function updateBlockedOperations(): Promise<void> {
+  let changed = false;
+
+  for (const op of pendingOperations) {
+    if (op.status === "pending" && !areDependenciesSatisfied(op)) {
+      op.status = "blocked";
+      changed = true;
+    } else if (op.status === "blocked" && areDependenciesSatisfied(op)) {
+      op.status = "pending";
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await saveQueueToStorage();
+  }
+}
+
+/**
+ * Process all pending operations in priority order with dependency tracking.
  */
 async function processQueue(): Promise<void> {
   if (syncInProgress) {
@@ -264,16 +576,35 @@ async function processQueue(): Promise<void> {
     return;
   }
 
-  const pending = pendingOperations.filter((op) => op.status === "pending");
-  if (pending.length === 0) {
-    console.log("[OfflineSync] No pending operations");
+  // Update blocked status before processing
+  await updateBlockedOperations();
+
+  const readyOps = getReadyOperations();
+  if (readyOps.length === 0) {
+    const blocked = pendingOperations.filter((op) => op.status === "blocked");
+    if (blocked.length > 0) {
+      console.log(
+        "[OfflineSync] No ready operations,",
+        blocked.length,
+        "blocked by dependencies"
+      );
+    } else {
+      console.log("[OfflineSync] No pending operations");
+    }
     return;
   }
 
   syncInProgress = true;
-  console.log("[OfflineSync] Processing", pending.length, "operations");
+  console.log(
+    "[OfflineSync] Processing",
+    readyOps.length,
+    "operations (by priority)"
+  );
 
-  for (const operation of pending) {
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const operation of readyOps) {
     // Check if still online before each operation
     if (!isOnline) {
       console.log("[OfflineSync] Went offline during sync, stopping");
@@ -288,19 +619,32 @@ async function processQueue(): Promise<void> {
       const success = await executeOperation(operation);
 
       if (success) {
-        console.log("[OfflineSync] Operation succeeded:", operation.id);
+        console.log(
+          "[OfflineSync] Operation succeeded:",
+          operation.type,
+          operation.id
+        );
         await removeOperation(operation.id);
+        successCount++;
+
+        // After completing an operation, unblock dependent operations
+        await updateBlockedOperations();
       } else {
         // Increment retry count
         operation.retryCount++;
+        failCount++;
 
         if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-          // Max retries reached - discard (conflict resolution = silent discard)
+          // Max retries reached - mark as failed for manual intervention
           console.log(
-            "[OfflineSync] Max retries reached, discarding:",
+            "[OfflineSync] Max retries reached, marking failed:",
             operation.id
           );
-          await discardOperation(operation.id);
+          operation.status = "failed";
+          await saveQueueToStorage();
+
+          // Notify about failed operation (especially for payments)
+          onOperationFailed?.(operation);
         } else {
           // Reset to pending for next retry
           operation.status = "pending";
@@ -320,9 +664,12 @@ async function processQueue(): Promise<void> {
         error
       );
       operation.retryCount++;
+      failCount++;
 
       if (operation.retryCount >= MAX_RETRY_ATTEMPTS) {
-        await discardOperation(operation.id);
+        operation.status = "failed";
+        await saveQueueToStorage();
+        onOperationFailed?.(operation);
       } else {
         operation.status = "pending";
         await saveQueueToStorage();
@@ -331,10 +678,19 @@ async function processQueue(): Promise<void> {
   }
 
   syncInProgress = false;
-  onQueueChange?.(
-    pendingOperations.filter((o) => o.status === "pending").length
+  onQueueChange?.(getActivePendingCount());
+  console.log(
+    `[OfflineSync] Sync complete: ${successCount} succeeded, ${failCount} failed`
   );
-  console.log("[OfflineSync] Sync complete");
+
+  // If we had failures but there are still ready operations, try again
+  const stillReady = getReadyOperations();
+  if (stillReady.length > 0 && isOnline) {
+    console.log(
+      "[OfflineSync] Still have ready operations, scheduling retry..."
+    );
+    scheduleSync();
+  }
 }
 
 // ============================================================================

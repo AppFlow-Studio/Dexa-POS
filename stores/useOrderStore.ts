@@ -19,7 +19,14 @@ import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
 
-import { queueOperation } from "@/services/offlineSyncService";
+import {
+  mapLocalToBackend,
+  registerLocalId
+} from "@/lib/offlineIdRegistry";
+import {
+  getIsOnline,
+  queueOperation
+} from "@/services/offlineSyncService";
 import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
@@ -385,23 +392,22 @@ type SetOrderDbIdFn = (
 /**
  * Ensures an order exists in the database, with lock protection against race conditions.
  * 
- * - If order already has db_order_id, returns it immediately
- * - If order creation is already in progress, waits for that promise
- * - If no creation in progress, starts one and locks others out
+ * OFFLINE-FIRST BEHAVIOR:
+ * - If online and order has db_order_id, returns it immediately
+ * - If online and creation in progress, waits for that promise
+ * - If online and no creation in progress, creates order and returns db_order_id
+ * - If OFFLINE, queues create_order operation and returns a special marker
+ *   indicating items should proceed with local ID tracking
  * 
- * @returns db_order_id if successful, null if failed (items should be queued for retry)
+ * @returns db_order_id if successful, "pending_offline" if queued for later,
+ *          null if failed (critical error, not just offline)
  */
 const ensureOrderCreated = async (
   order: OrderProfile,
   setOrderDbId: SetOrderDbIdFn
 ): Promise<string | null> => {
   const supabase = _supabaseClient;
-
-  // Early return if no supabase client - offline mode
-  if (!supabase) {
-    console.log("[ensureOrderCreated] No Supabase client - offline mode");
-    return null;
-  }
+  const isNetworkOnline = getIsOnline();
 
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
   if (!selectedStore) {
@@ -416,6 +422,81 @@ const ensureOrderCreated = async (
     console.log(`[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`);
     return currentOrder.db_order_id;
   }
+
+  // ========================================================================
+  // OFFLINE MODE: Queue order creation and return special marker
+  // ========================================================================
+  if (!supabase || !isNetworkOnline) {
+    console.log("[ensureOrderCreated] OFFLINE MODE - Queueing order creation");
+
+    // Check if we've already queued this order
+    const existingQueuedOrder = pendingOrderCreations.get(order.id);
+    if (existingQueuedOrder) {
+      console.log(`[ensureOrderCreated] Order ${order.id} already queued for offline sync`);
+      return "pending_offline";
+    }
+
+    // Build the create order params for later execution
+    const createOrderParams: CreateOrderParams = {
+      p_merchant_id: selectedStore.merchant_id,
+      p_location_id: selectedStore.id,
+      p_order_type: order.order_type
+        ? order.order_type === "Takeaway"
+          ? "takeout"
+          : order.order_type === "Dine In"
+            ? "dine_in"
+            : (order.order_type.toLowerCase() as DbOrderType)
+        : ("dine_in" as DbOrderType),
+      p_table_number: order.service_location_id || undefined,
+      p_created_by_staff_id: undefined,
+    };
+
+    // Queue the create_order operation
+    const operationId = await queueOperation({
+      type: "create_order",
+      params: {
+        localOrderId: order.id,
+        createOrderParams,
+      },
+      localOrderId: order.id,
+      contextSnapshot: {
+        order_type: order.order_type,
+        service_location_id: order.service_location_id,
+        storeId: selectedStore.id,
+        merchantId: selectedStore.merchant_id,
+      },
+    });
+
+    // Mark order as pending sync
+    useOrderStore.setState((state) => {
+      const existingOrder = state.ordersById[order.id];
+      if (!existingOrder) return state;
+
+      return {
+        ordersById: {
+          ...state.ordersById,
+          [order.id]: {
+            ...existingOrder,
+            sync_status: "pending",
+            _offlineOperationId: operationId,
+          },
+        },
+      };
+    });
+
+    // Register in ID registry for future lookups
+    await registerLocalId(order.id, "order");
+
+    // Set a placeholder promise so we don't queue multiple times
+    pendingOrderCreations.set(order.id, Promise.resolve("pending_offline"));
+
+    console.log(`[ensureOrderCreated] Order ${order.id} queued for offline sync (op: ${operationId})`);
+    return "pending_offline";
+  }
+
+  // ========================================================================
+  // ONLINE MODE: Create order normally
+  // ========================================================================
 
   // CHECK FOR EXISTING LOCK: Another call is already creating this order
   const existingPromise = pendingOrderCreations.get(order.id);
@@ -460,6 +541,25 @@ const ensureOrderCreated = async (
 
       if (createError) {
         console.error("[ensureOrderCreated] Failed to create order:", createError);
+
+        // Network error - queue for offline retry
+        if (createError.message?.includes("network") || createError.code === "NETWORK_ERROR") {
+          console.log("[ensureOrderCreated] Network error - switching to offline mode");
+
+          // Queue the operation for later
+          await queueOperation({
+            type: "create_order",
+            params: {
+              localOrderId: order.id,
+              createOrderParams,
+            },
+            localOrderId: order.id,
+          });
+
+          await registerLocalId(order.id, "order");
+          return "pending_offline";
+        }
+
         return null;
       }
 
@@ -478,6 +578,9 @@ const ensureOrderCreated = async (
             orderData.display_number,
             orderData.created_at || new Date().toISOString()
           );
+
+          // Register mapping in ID registry
+          await mapLocalToBackend(order.id, backendId);
 
           return backendId;
         } else {
@@ -516,31 +619,7 @@ const addItemToBackend = async (
   onSyncComplete?: (orderId: string) => void // Callback after successful sync
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
-
-  if (!supabase) {
-    console.log("Backend sync skipped: No Supabase client registered");
-    // Queue for later sync when client is available
-    await queueOperation({
-      type: "add_item",
-      params: {
-        localOrderId: order.id,
-        localItemId: item.id,
-        itemData: {
-          menuItemId: item.menuItemId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          originalPrice: item.originalPrice,
-          customizations: item.customizations,
-          category_name: item.category_name,
-        },
-      },
-      localOrderId: order.id,
-      localItemId: item.id,
-    });
-    return true; // Return true so item stays in cart
-  }
-  console.log('[addItemToBackend] item', item)
+  const isNetworkOnline = getIsOnline();
 
   const selectedStore = useStoreSettingsStore.getState().selectedStore;
   if (!selectedStore) {
@@ -554,6 +633,65 @@ const addItemToBackend = async (
     return true;
   }
 
+  // ========================================================================
+  // OFFLINE MODE: Queue item and return success
+  // ========================================================================
+  if (!supabase || !isNetworkOnline) {
+    console.log("[addItemToBackend] OFFLINE MODE - Queueing item for later sync");
+
+    // Register item in ID registry for tracking
+    await registerLocalId(item.id, "item", order.id);
+
+    // Queue the add_item operation
+    await queueOperation({
+      type: "add_item",
+      params: {
+        localOrderId: order.id,
+        localItemId: item.id,
+        itemData: {
+          menuItemId: item.menuItemId,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          cashPrice: item.cashPrice,
+          originalPrice: item.originalPrice,
+          customizations: item.customizations,
+          category_name: item.category_name,
+        },
+      },
+      localOrderId: order.id,
+      localItemId: item.id,
+      contextSnapshot: {
+        orderType: order.order_type,
+        course: useCoursingStore.getState().getWorkingCourse(order.id) || 1,
+      },
+    });
+
+    // Mark item as pending sync in store
+    useOrderStore.setState((state) => {
+      const currentOrder = state.ordersById[order.id];
+      if (!currentOrder) return state;
+
+      const updatedItems = currentOrder.items.map((i) =>
+        i.id === item.id ? { ...i, sync_status: "pending" as const } : i
+      );
+
+      return {
+        ordersById: {
+          ...state.ordersById,
+          [order.id]: {
+            ...currentOrder,
+            items: updatedItems,
+          },
+        },
+      };
+    });
+
+    return true; // Return true so item stays in cart
+  }
+
+  console.log("[addItemToBackend] ONLINE MODE - Syncing item:", item.id);
+
   try {
     // ========================================================================
     // STEP 1: Ensure order exists in backend (with race condition protection)
@@ -561,7 +699,60 @@ const addItemToBackend = async (
     // This uses a per-order lock to prevent multiple simultaneous order creations
     const dbOrderId = await ensureOrderCreated(order, setOrderDbId);
 
-    // If order creation failed, queue item for retry
+    // ========================================================================
+    // HANDLE OFFLINE MODE RESULT FROM ensureOrderCreated
+    // ========================================================================
+    if (dbOrderId === "pending_offline") {
+      console.log("[addItemToBackend] Order is pending offline sync, queueing item");
+
+      // Register item in ID registry
+      await registerLocalId(item.id, "item", order.id);
+
+      // Queue the add_item operation (will be processed after order syncs)
+      await queueOperation({
+        type: "add_item",
+        params: {
+          localOrderId: order.id,
+          localItemId: item.id,
+          itemData: {
+            menuItemId: item.menuItemId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            cashPrice: item.cashPrice,
+            originalPrice: item.originalPrice,
+            customizations: item.customizations,
+            category_name: item.category_name,
+          },
+        },
+        localOrderId: order.id,
+        localItemId: item.id,
+      });
+
+      // Mark item as pending sync
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[order.id];
+        if (!currentOrder) return state;
+
+        const updatedItems = currentOrder.items.map((i) =>
+          i.id === item.id ? { ...i, sync_status: "pending" as const } : i
+        );
+
+        return {
+          ordersById: {
+            ...state.ordersById,
+            [order.id]: {
+              ...currentOrder,
+              items: updatedItems,
+            },
+          },
+        };
+      });
+
+      return true; // Item is saved locally and queued for sync
+    }
+
+    // If order creation failed completely (not just offline), mark item as failed
     if (!dbOrderId) {
       console.error("[addItemToBackend] Order creation failed for order:", order.id);
       markItemFailed(item.id, "Order creation failed");
@@ -1101,6 +1292,8 @@ interface OrderState {
   updateOrderFromReconciliation: (localOrderId: string, updates: Partial<OrderProfile>) => void;
   // Retry failed syncs for an order
   retryFailedSyncs: (orderId: string) => Promise<void>;
+  // Sync order from database (manual refresh)
+  syncOrderFromDatabase: (orderId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -1152,37 +1345,6 @@ export const useOrderStore = create<OrderState>()(
           }
           // For takeaway orders, the order status is managed manually (not based on item statuses)
         };
-        const normalizePaidQuantitiesFromPayments = (
-          orderId: string | null
-        ) => {
-          if (!orderId) return;
-          const { orders } = get();
-          const order = orders.find((o) => o.id === orderId);
-          if (!order) return;
-          const totalPaid = (order.payments || []).reduce(
-            (acc, p) => acc + p.amount,
-            0
-          );
-          // Calculate how many units should be marked paid across items FIFO
-          let remaining = totalPaid;
-          const updatedItems = order.items.map((item) => {
-            const unitPrice = item.price;
-            const currentPaid = item.paidQuantity || 0;
-            const unpaidQty = item.quantity - currentPaid;
-            if (remaining <= 0 || unpaidQty <= 0) return item;
-            const canCover = Math.min(
-              unpaidQty,
-              Math.floor(remaining / unitPrice + 1e-6)
-            );
-            if (canCover <= 0) return item;
-            remaining -= canCover * unitPrice;
-            return { ...item, paidQuantity: currentPaid + canCover };
-          });
-
-          // Return updated items so callers can set state when safe
-          return updatedItems;
-        };
-
         // Re-entry guard to prevent infinite loops when state updates trigger re-calculations
         let isRecalculating = false;
 
