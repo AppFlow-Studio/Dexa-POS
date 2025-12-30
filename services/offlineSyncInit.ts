@@ -362,6 +362,38 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           console.log(`[OfflineSync:payment] Resolved to: ${resolvedOrderId}`);
         }
 
+        // Resolve item IDs (support per-item/split-by-item payments queued with local IDs)
+        if (paymentParams.p_item_ids && Array.isArray(paymentParams.p_item_ids)) {
+          const resolvedItemIds: string[] = [];
+          for (const rawId of paymentParams.p_item_ids) {
+            // If already a UUID, keep it; otherwise resolve via registry/store
+            if (isValidUUID(rawId)) {
+              resolvedItemIds.push(rawId);
+              continue;
+            }
+
+            if (localOrderId) {
+              const resolved = resolveItemId(localOrderId, rawId);
+              if (resolved) {
+                resolvedItemIds.push(resolved);
+              } else {
+                console.log(
+                  `[OfflineSync:payment] Item ${rawId} not synced yet, will retry`
+                );
+                return false; // wait for item sync
+              }
+            } else {
+              console.log(
+                `[OfflineSync:payment] No localOrderId to resolve item ${rawId}, will retry`
+              );
+              return false;
+            }
+          }
+
+          // Replace with resolved backend item IDs
+          paymentParams.p_item_ids = resolvedItemIds;
+        }
+
         // Build terminal response for card payments if we have card data
         let finalTerminalResponse = terminalResponse;
         if (!finalTerminalResponse && cardData) {
@@ -402,6 +434,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         // Sync order state from backend response if available
         if (localOrderId && data) {
           const store = useOrderStore.getState();
+          const order = store.ordersById[localOrderId];
           const responseData = data as any;
 
           // Update local order with backend payment response data
@@ -412,12 +445,107 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             });
           }
 
-          // Update order status if backend changed it
-          if (responseData.order_status) {
-            const order = store.ordersById[localOrderId];
-            if (order && order.order_status !== responseData.order_status) {
-              console.log(`[OfflineSync:payment] Updating order status: ${order.order_status} -> ${responseData.order_status}`);
-            }
+          // ================================================================
+          // Update order status to "preparing" if it was in draft/pending
+          // This ensures payments from offline queue trigger proper workflow
+          // ================================================================
+          if (order && (order.order_status === "draft" || order.order_status === "pending")) {
+            console.log(`[OfflineSync:payment] Updating order status: ${order.order_status} -> preparing`);
+
+            // Update order status and item statuses
+            const updatedItems = order.items.map(item => ({
+              ...item,
+              kitchen_status: "sent" as const,
+              item_status: "Preparing" as const,
+            }));
+
+            useOrderStore.setState(state => {
+              const currentOrder = state.ordersById[localOrderId];
+              if (!currentOrder) return state;
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: {
+                    ...currentOrder,
+                    order_status: "preparing",
+                    items: updatedItems,
+                    // Set opened_at if not already set
+                    opened_at: currentOrder.opened_at || new Date().toISOString(),
+                  },
+                },
+              };
+            });
+
+            console.log(`[OfflineSync:payment] Order status updated to "preparing", ${updatedItems.length} items marked as sent`);
+          }
+
+          // Mark last payment as synced with backend payment_id and items covered
+          if (order && responseData.payment_id) {
+            useOrderStore.setState((state) => {
+              const currentOrder = state.ordersById[localOrderId];
+              if (!currentOrder?.payments || currentOrder.payments.length === 0) {
+                return state;
+              }
+
+              const payments = [...currentOrder.payments];
+              const lastIdx = payments.length - 1;
+              payments[lastIdx] = {
+                ...payments[lastIdx],
+                id: responseData.payment_id,
+                itemsCovered: responseData.items_covered || payments[lastIdx].itemsCovered || [],
+                timestamp: payments[lastIdx].timestamp || new Date().toISOString(),
+                sync_status: "synced" as const,
+                sync_error: undefined,
+              };
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: {
+                    ...currentOrder,
+                    payments,
+                    amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
+                    amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
+                    cash_amount_due: responseData.order_cash_amount_due ?? currentOrder.cash_amount_due,
+                    paid_status: responseData.order_fully_paid ? ("Paid" as const) : (currentOrder.paid_status ?? "Pending"),
+                    check_status: responseData.order_fully_paid ? ("Closed" as const) : (currentOrder.check_status ?? "Opened"),
+                  },
+                },
+              };
+            });
+          }
+
+          // Also update payment amounts from backend
+          if (responseData.order_amount_paid !== undefined || responseData.order_amount_due !== undefined) {
+            useOrderStore.setState(state => {
+              const currentOrder = state.ordersById[localOrderId];
+              if (!currentOrder) return state;
+
+              // Mark the last payment as synced
+              const payments = [...(currentOrder.payments || [])];
+              if (payments.length > 0) {
+                payments[payments.length - 1] = {
+                  ...payments[payments.length - 1],
+                  sync_status: "synced" as const,
+                  sync_error: undefined,
+                };
+              }
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [localOrderId]: {
+                    ...currentOrder,
+                    payments,
+                    amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
+                    amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
+                    paid_status: responseData.order_fully_paid ? ("Paid" as const) : ("Pending" as const),
+                    check_status: responseData.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
+                  },
+                },
+              };
+            });
           }
         }
 

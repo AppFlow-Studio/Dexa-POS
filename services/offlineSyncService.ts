@@ -103,6 +103,32 @@ const MAX_RETRY_ATTEMPTS = 5;
 const DEBOUNCE_MS = 3000;
 
 // ============================================================================
+// AUTO-RETRY CONFIGURATION (Exponential Backoff)
+// ============================================================================
+const RETRY_CONFIG = {
+  baseDelayMs: 2000,      // Initial retry delay: 2 seconds
+  maxDelayMs: 60000,      // Maximum delay: 1 minute
+  multiplier: 2,          // Double the delay each retry
+  jitterMs: 1000,         // Random jitter up to 1 second
+};
+
+/**
+ * Calculate exponential backoff delay with jitter
+ * Formula: min(maxDelay, baseDelay * multiplier^retryCount) + random(0, jitter)
+ */
+function calculateBackoffDelay(retryCount: number): number {
+  const delay = Math.min(
+    RETRY_CONFIG.maxDelayMs,
+    RETRY_CONFIG.baseDelayMs * Math.pow(RETRY_CONFIG.multiplier, retryCount)
+  );
+  const jitter = Math.random() * RETRY_CONFIG.jitterMs;
+  return Math.round(delay + jitter);
+}
+
+// Track scheduled retry timers for cleanup
+let autoRetryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
+// ============================================================================
 // STATE
 // ============================================================================
 
@@ -167,6 +193,65 @@ export function destroyOfflineSyncService(): void {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  // Clear all auto-retry timers
+  for (const timer of autoRetryTimers.values()) {
+    clearTimeout(timer);
+  }
+  autoRetryTimers.clear();
+}
+
+/**
+ * Schedule an automatic retry for a specific operation with exponential backoff.
+ */
+function scheduleAutoRetry(operation: OfflineOperation): void {
+  // Clear any existing timer for this operation
+  const existingTimer = autoRetryTimers.get(operation.id);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const delay = calculateBackoffDelay(operation.retryCount);
+  console.log(`[OfflineSync] Scheduling auto-retry for ${operation.type} (${operation.id}) in ${delay}ms (attempt ${operation.retryCount + 1}/${MAX_RETRY_ATTEMPTS})`);
+
+  const timer = setTimeout(async () => {
+    autoRetryTimers.delete(operation.id);
+
+    // Check if still online and operation still exists
+    if (!isOnline) {
+      console.log(`[OfflineSync] Auto-retry cancelled: offline`);
+      return;
+    }
+
+    const op = pendingOperations.find(o => o.id === operation.id);
+    if (!op || op.status === "discarded" || op.status === "failed") {
+      console.log(`[OfflineSync] Auto-retry cancelled: operation no longer pending`);
+      return;
+    }
+
+    console.log(`[OfflineSync] Auto-retrying: ${operation.type} (${operation.id})`);
+
+    // Trigger queue processing
+    processQueue();
+  }, delay);
+
+  autoRetryTimers.set(operation.id, timer);
+}
+
+/**
+ * Schedule auto-retry for all pending operations after coming back online.
+ */
+function scheduleAllAutoRetries(): void {
+  const pendingOps = pendingOperations.filter(
+    op => op.status === "pending" && op.retryCount > 0
+  );
+
+  for (const op of pendingOps) {
+    scheduleAutoRetry(op);
+  }
+
+  if (pendingOps.length > 0) {
+    console.log(`[OfflineSync] Scheduled auto-retry for ${pendingOps.length} operations`);
+  }
 }
 
 // ============================================================================
@@ -190,7 +275,12 @@ function handleNetworkChange(state: NetInfoState): void {
 
     // If came back online, debounce and sync
     if (isOnline && pendingOperations.length > 0) {
+      // Schedule immediate sync for operations that haven't failed yet
       scheduleSync();
+
+      // Also schedule auto-retries for operations that have failed before
+      // This uses exponential backoff based on their retry count
+      scheduleAllAutoRetries();
     }
   }
 }
@@ -508,6 +598,20 @@ export function getIsOnline(): boolean {
 }
 
 /**
+ * Check if auto-retry is in progress (for UI indicator).
+ */
+export function isAutoRetryInProgress(): boolean {
+  return autoRetryTimers.size > 0;
+}
+
+/**
+ * Get count of operations scheduled for auto-retry.
+ */
+export function getAutoRetryCount(): number {
+  return autoRetryTimers.size;
+}
+
+/**
  * Force sync now (for manual retry button).
  */
 export async function syncNow(): Promise<void> {
@@ -789,10 +893,13 @@ async function processQueue(): Promise<void> {
           // Notify about failed operation (especially for payments)
           onOperationFailed?.(operation);
         } else {
-          // Reset to pending for next retry
+          // Reset to pending for next retry with exponential backoff
           operation.status = "pending";
           await saveQueueToStorage();
           console.log(`[OfflineSync] ⟳ RETRY: ${operation.type} (${operation.id}) - attempt ${operation.retryCount}/${MAX_RETRY_ATTEMPTS}`);
+
+          // Schedule automatic retry with exponential backoff
+          scheduleAutoRetry(operation);
         }
       }
     } catch (error) {
@@ -811,6 +918,8 @@ async function processQueue(): Promise<void> {
       } else {
         operation.status = "pending";
         await saveQueueToStorage();
+        // Schedule automatic retry with exponential backoff
+        scheduleAutoRetry(operation);
       }
     }
   }

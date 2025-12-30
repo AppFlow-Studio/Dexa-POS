@@ -314,6 +314,12 @@ export const getOrderStoreSupabaseClient = () => _supabaseClient;
 // This ensures only ONE order creation happens even when multiple items are added simultaneously
 const pendingOrderCreations: Map<string, Promise<string | null>> = new Map();
 
+// Track creation timestamps for deduplication
+const orderCreationTimestamps: Map<string, number> = new Map();
+
+// Time after which a stale creation promise should be cleared
+const ORDER_CREATION_TIMEOUT_MS = 30000; // 30 seconds
+
 // ============================================================================
 // PER-ORDER ITEM ADDITION QUEUE - Serializes item additions to prevent race conditions
 // ============================================================================
@@ -511,15 +517,30 @@ const ensureOrderCreated = async (
   // CHECK FOR EXISTING LOCK: Another call is already creating this order
   const existingPromise = pendingOrderCreations.get(order.id);
   if (existingPromise) {
-    console.log(`[ensureOrderCreated] Waiting for pending creation for order ${order.id}`);
-    const result = await existingPromise;
-    // After waiting, re-check the store for the db_order_id (it should be set now)
-    const updatedOrder = useOrderStore.getState().ordersById[order.id];
-    return updatedOrder?.db_order_id || result;
+    // Check if it's a stale promise (older than timeout)
+    const creationStarted = orderCreationTimestamps.get(order.id);
+    const now = Date.now();
+
+    if (creationStarted && (now - creationStarted) < ORDER_CREATION_TIMEOUT_MS) {
+      // Still within timeout - wait for existing promise
+      console.log(`[ensureOrderCreated] Waiting for pending creation for order ${order.id} (${Math.round((now - creationStarted) / 1000)}s old)`);
+      const result = await existingPromise;
+      // After waiting, re-check the store for the db_order_id (it should be set now)
+      const updatedOrder = useOrderStore.getState().ordersById[order.id];
+      return updatedOrder?.db_order_id || result;
+    } else {
+      // Stale promise - clear it and retry
+      console.log(`[ensureOrderCreated] Clearing stale creation promise for order ${order.id}`);
+      pendingOrderCreations.delete(order.id);
+      orderCreationTimestamps.delete(order.id);
+    }
   }
 
   // ACQUIRE LOCK: We are the first caller - create the order
   console.log(`[ensureOrderCreated] Acquiring lock and creating order ${order.id}`);
+
+  // Record creation start time for timeout tracking
+  orderCreationTimestamps.set(order.id, Date.now());
 
   const creationPromise = (async (): Promise<string | null> => {
     try {
@@ -604,6 +625,7 @@ const ensureOrderCreated = async (
     } finally {
       // RELEASE LOCK: Always clean up, even on error
       pendingOrderCreations.delete(order.id);
+      orderCreationTimestamps.delete(order.id);
       console.log(`[ensureOrderCreated] Released lock for order ${order.id}`);
     }
   })();
@@ -1067,41 +1089,80 @@ const syncPaymentToBackend = async (
     });
 
     if (error) {
-      console.error("Failed to process payment in backend:", error);
+      console.error("[syncPaymentToBackend] Failed to process payment in backend:", error);
 
-      // REVERT OPTIMISTIC STATE ON FAILURE
-      if (rollbackState) {
-        console.log("[syncPaymentToBackend] Reverting to previous state due to sync failure");
-        const activeOrderId = useOrderStore.getState().activeOrderId;
+      // ========================================================================
+      // DON'T REVERT - Keep local state and queue for retry
+      // ========================================================================
+      // Mark the last payment as pending sync (not reverted)
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[order.id];
+        if (!currentOrder) return state;
 
-        useOrderStore.setState((state) => ({
+        const payments = [...(currentOrder.payments || [])];
+        if (payments.length > 0) {
+          payments[payments.length - 1] = {
+            ...payments[payments.length - 1],
+            sync_status: "pending" as const,
+            sync_error: error.message || "Sync failed",
+            sync_attempt_count: (payments[payments.length - 1].sync_attempt_count || 0) + 1,
+          };
+        }
+
+        return {
           ordersById: {
             ...state.ordersById,
-            [order.id]: rollbackState.order,
+            [order.id]: { ...currentOrder, payments },
           },
-          // Revert active order totals if this was the active order
-          ...(order.id === activeOrderId
-            ? {
-              activeOrderSubtotal: rollbackState.activeOrderSubtotal,
-              activeOrderTax: rollbackState.activeOrderTax,
-              activeOrderTotal: rollbackState.activeOrderTotal,
-              activeOrderDiscount: rollbackState.activeOrderDiscount,
-              activeOrderOutstandingSubtotal: rollbackState.activeOrderOutstandingSubtotal,
-              activeOrderOutstandingTax: rollbackState.activeOrderOutstandingTax,
-              activeOrderOutstandingTotal: rollbackState.activeOrderOutstandingTotal,
-              activeOrderTotalCash: rollbackState.activeOrderTotalCash,
-              activeOrderOutstandingCash: rollbackState.activeOrderOutstandingCash,
-            }
-            : {}),
-        }));
-      }
+        };
+      });
+
+      // Queue for retry - build payment params for process_payment_v2
+      const isCash = paymentDetails.method === "Cash";
+      const terminalResponse = !isCash && paymentDetails.transactionDetails
+        ? {
+          terminal_type: paymentDetails.transactionDetails.terminalType || "manual",
+          authorization_code: paymentDetails.transactionDetails.authorizationCode,
+          card_type: paymentDetails.transactionDetails.cardType,
+          card_last_four: paymentDetails.transactionDetails.last4,
+          transaction_id: paymentDetails.transactionDetails.transactionId,
+        }
+        : null;
+
+      const paymentParams = {
+        p_order_id: order.db_order_id,
+        p_payment_method: isCash ? "cash" : "card",
+        p_amount: paymentDetails.amount,
+        p_tip_amount: paymentDetails.tipAmount || 0,
+        p_amount_tendered: isCash
+          ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
+          : null,
+        p_item_ids: paymentDetails.itemIds || null,
+        p_terminal_response: terminalResponse,
+        p_split_count: paymentDetails.splitCount || null,
+        p_split_portion_index: paymentDetails.splitPortionIndex || null,
+      };
+
+      console.log("[syncPaymentToBackend] Queueing payment for retry:", paymentParams);
+
+      await queueOperation({
+        type: "process_payment",
+        params: {
+          params: paymentParams,
+          localOrderId: order.id,
+          terminalResponse,
+        },
+        localOrderId: order.id,
+      });
 
       toastService.show({
-        title: "Payment Failed",
-        message: "Failed to sync payment to server. Changes have been reverted.",
-        type: "error",
+        title: "Payment Saved",
+        message: "Payment recorded locally. Will sync when connection restores.",
+        type: "warning",
       });
-      return false;
+
+      // Return true - payment is saved locally and queued for sync
+      return true;
     }
 
     // Log successful payment with full response
@@ -1128,7 +1189,7 @@ const syncPaymentToBackend = async (
           });
         }
 
-        // Update the last payment with backend ID and items covered
+        // Update the last payment with backend ID, items covered, and sync status
         let updatedPayments = currentOrder.payments || [];
         if (data.payment_id && updatedPayments.length > 0) {
           const lastPaymentIndex = updatedPayments.length - 1;
@@ -1139,6 +1200,8 @@ const syncPaymentToBackend = async (
                 id: data.payment_id,
                 itemsCovered: data.items_covered || [],
                 timestamp: new Date().toISOString(),
+                sync_status: "synced" as const,
+                sync_error: undefined,
               }
               : p
           );
@@ -3258,6 +3321,18 @@ export const useOrderStore = create<OrderState>()(
 
             // Sync to backend - await result and return success/failure
             // Pass rollbackState to revert optimistic updates on sync failure
+            // For offline/per-item flows, ensure we pass local IDs when db_order_item_id is not available.
+            // This allows the offline queue to resolve them later when items sync.
+            const paymentItemIds = itemIds
+              ? itemIds.map((rawId) => {
+                const item = order.items.find(
+                  (i) => i.db_order_item_id === rawId || i.id === rawId
+                );
+                // Prefer backend ID if present, otherwise use local ID
+                return item?.db_order_item_id || item?.id || rawId;
+              })
+              : undefined;
+
             const syncSuccess = await syncPaymentToBackend(
               order,
               {
@@ -3265,7 +3340,7 @@ export const useOrderStore = create<OrderState>()(
                 method,
                 tipAmount,
                 transactionDetails,
-                itemIds, // Pass item IDs for per-item payment tracking
+                itemIds: paymentItemIds, // Pass item IDs for per-item payment tracking (local or backend)
                 splitCount, // Pass split count for split payments
                 splitPortionIndex, // Pass split portion index for split payments
               },

@@ -726,6 +726,10 @@ export interface OrderProfile {
     timestamp?: string; // When payment was made (ISO string)
     isVoided?: boolean; // Whether payment has been voided
     voidReason?: string; // Reason for void if voided
+    // NEW: Sync status tracking for offline-first reliability
+    sync_status?: "synced" | "pending" | "failed"; // Sync status with backend
+    sync_error?: string; // Error message if sync failed
+    sync_attempt_count?: number; // Number of sync attempts made
   }[]; // Payment records
   notes?: string; // Order-level notes (customer requests, special instructions)
 }

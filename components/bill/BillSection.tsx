@@ -1,13 +1,14 @@
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
+import { getAutoRetryCount, isAutoRetryInProgress } from "@/services/offlineSyncService";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { AlertTriangle, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { AlertTriangle, Clock, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
@@ -91,6 +92,30 @@ const BillSection = ({
   );
   const hasPendingSyncs = syncStatus.pending > 0;
   const hasFailedSyncs = syncStatus.failed > 0;
+
+  // Track auto-retry state for UI indicator
+  const [autoRetryState, setAutoRetryState] = useState({ isRetrying: false, count: 0 });
+
+  // Poll for auto-retry status when there are failed syncs
+  useEffect(() => {
+    if (!hasFailedSyncs && !hasPendingSyncs) {
+      setAutoRetryState({ isRetrying: false, count: 0 });
+      return;
+    }
+
+    // Check auto-retry status periodically
+    const checkAutoRetry = () => {
+      setAutoRetryState({
+        isRetrying: isAutoRetryInProgress(),
+        count: getAutoRetryCount(),
+      });
+    };
+
+    checkAutoRetry();
+    const interval = setInterval(checkAutoRetry, 2000); // Check every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [hasFailedSyncs, hasPendingSyncs, syncStatus]);
 
   // Calculate the amount to display on the Pay button
   // Priority: backend amount_due > calculated outstanding total > total
@@ -252,24 +277,49 @@ const BillSection = ({
             </View>
           )}
 
-          {/* Failed Syncs Banner (only when online) */}
+          {/* Failed Syncs Banner with Auto-Retry Indicator (only when online) */}
           {isOnline && hasFailedSyncs && (
             <TouchableOpacity
               onPress={handleRetryFailedSyncs}
-              className="flex-row items-center justify-between bg-red-600/80 px-3 py-2 rounded-lg"
+              disabled={autoRetryState.isRetrying}
+              className={`flex-row items-center justify-between px-3 py-2 rounded-lg ${autoRetryState.isRetrying ? "bg-amber-600/80" : "bg-red-600/80"
+                }`}
               activeOpacity={0.7}
             >
               <View className="flex-row items-center">
-                <AlertTriangle size={16} color="#FFFFFF" />
-                <Text className="text-white text-sm font-medium ml-2">
-                  {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""} failed to sync
-                </Text>
+                {autoRetryState.isRetrying ? (
+                  <>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text className="text-white text-sm font-medium ml-2">
+                      Auto-retrying {autoRetryState.count} operation{autoRetryState.count > 1 ? "s" : ""}...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle size={16} color="#FFFFFF" />
+                    <Text className="text-white text-sm font-medium ml-2">
+                      {syncStatus.failed} item{syncStatus.failed > 1 ? "s" : ""} failed to sync
+                    </Text>
+                  </>
+                )}
               </View>
-              <View className="flex-row items-center">
-                <RefreshCw size={14} color="#FFFFFF" />
-                <Text className="text-white text-xs ml-1">Retry</Text>
-              </View>
+              {!autoRetryState.isRetrying && (
+                <View className="flex-row items-center">
+                  <RefreshCw size={14} color="#FFFFFF" />
+                  <Text className="text-white text-xs ml-1">Retry Now</Text>
+                </View>
+              )}
             </TouchableOpacity>
+          )}
+
+          {/* Pending Payment Syncs Banner (only when online and has pending payments) */}
+          {isOnline && !hasFailedSyncs && activeOrder?.payments?.some(p => p.sync_status === "pending") && (
+            <View className="flex-row items-center justify-center bg-amber-600/70 px-3 py-2 rounded-lg">
+              <Clock size={16} color="#FFFFFF" />
+              <Text className="text-white text-sm font-medium ml-2">
+                Payment pending sync...
+              </Text>
+            </View>
           )}
 
           {/* Syncing Indicator (only when online and syncing) */}
