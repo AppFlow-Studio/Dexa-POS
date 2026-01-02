@@ -120,8 +120,28 @@ export interface Discount {
   id: string;
   label: string;
   subLabel?: string;
-  value: number; // e.g., 0.15 for 15%
-  type: "percentage";
+  value: number; // e.g., 0.15 for 15% or fixed dollar amount
+  type: "percentage" | "fixed";
+}
+
+// === ORDER DISCOUNT TYPES (backend-aligned) ===
+export type DiscountType = "percentage" | "fixed";
+export type DiscountSource = "preset" | "custom" | "promo_code";
+
+export interface OrderAppliedDiscount {
+  local_id: string;
+  discount_id: string | null;
+  discount_type: DiscountType;
+  discount_value: number;
+  source: DiscountSource;
+  calculated_amount: number;
+  pre_discount_subtotal: number;
+  applied_by_staff_profiles_id: string | null;
+  approved_by_staff_profiles_id?: string | null;
+  applied_at: string;
+  applied_to_item_ids?: string[];
+  sync_status?: "pending" | "synced" | "failed";
+  sync_error?: string | null;
 }
 
 export interface ItemSize {
@@ -318,6 +338,10 @@ export interface CartItem {
   menuItemId: string; // The original ID from the menu data
   db_order_item_id?: string; // Backend order_item_id after sync (for update/void RPC calls)
   locationExclusiveItemId?: string; // Optional location-exclusive item ID
+  // Open item support
+  is_open_item?: boolean;
+  open_item_name?: string;
+  open_item_price?: number;
   name: string;
   category_name?: string; // Category for backend sync
   quantity: number;
@@ -648,7 +672,7 @@ export type PaymentType = "Card" | "Cash" | "Split";
 
 export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
-
+  customer_id?: string; // The ID of the customer associated with this order ( For analytics Tracking trigger)
   // Backend sync fields (populated after first backend sync)
   db_order_id?: string; // UUID from Supabase
   order_number?: string; // Backend order number "ORD-YYYYMMDD-XXXX"
@@ -713,6 +737,7 @@ export interface OrderProfile {
   delivery_address?: string;
   server_name?: string;
   checkDiscount?: Discount | null;
+  applied_discounts?: OrderAppliedDiscount[];
   paymentMethod?: PaymentType; // Example usage
   payments?: {
     id?: string; // Backend payment ID (for void operations)

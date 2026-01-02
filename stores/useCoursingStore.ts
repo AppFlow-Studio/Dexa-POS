@@ -3,6 +3,7 @@ import {
   resolveToBackendId,
 } from "@/lib/offlineIdRegistry";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 
@@ -569,8 +570,6 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
 
   fireCourse: async (orderId: string, courseNumber: number) => {
     // SYNC BARRIER: Ensure all items are synced before firing course
-    // Using lazy import to avoid circular dependency with useOrderStore
-    const { useOrderStore } = await import("./useOrderStore");
     const orderStore = useOrderStore.getState();
 
     if (orderStore.hasPendingSyncs(orderId)) {

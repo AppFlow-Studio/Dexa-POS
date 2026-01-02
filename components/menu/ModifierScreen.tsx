@@ -4,16 +4,16 @@ import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { AddOrderItemParams } from "@/types/db-order-management-types";
 import debounce from "lodash/debounce";
 import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react-native";
-import React, {
+import {
   memo,
   useCallback,
   useEffect,
   useMemo,
   useReducer,
   useRef,
+  useTransition,
 } from "react";
 import {
   Image,
@@ -26,7 +26,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
 interface ModifierSelection {
   [categoryId: string]: {
     [optionId: string]: boolean;
@@ -238,14 +237,17 @@ const ModifierScreen = () => {
     activeModifierCategory: precomputedActiveCategory,
   } = useModifierSidebarStore();
 
-  const {
-    addItemToActiveOrder,
-    updateItemInActiveOrder,
-    removeItemFromActiveOrder,
-    generateCartItemId,
-  } = useOrderStore();
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+  const updateItemInActiveOrder = useOrderStore(
+    (s) => s.updateItemInActiveOrder
+  );
+  const removeItemFromActiveOrder = useOrderStore(
+    (s) => s.removeItemFromActiveOrder
+  );
+  const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
 
-  const { getMenuItemById, modifierGroups: allModifierGroups } = useMenuStore();
+  const getMenuItemById = useMenuStore((s) => s.getMenuItemById);
+  const allModifierGroups = useMenuStore((s) => s.modifierGroups);
 
   const { show } = useToast();
 
@@ -263,6 +265,7 @@ const ModifierScreen = () => {
   const actionHandledRef = useRef(false);
   const draftItemIdRef = useRef<string | null>(null);
   const isInitializedRef = useRef(false);
+  const [, startTransition] = useTransition();
 
   const isReadOnly = mode === "view";
   const currentItem =
@@ -450,7 +453,7 @@ const ModifierScreen = () => {
 
         updateItemInActiveOrder(updatedDraftItem);
       },
-      200
+      50
     );
 
     return () => {
@@ -633,12 +636,14 @@ const ModifierScreen = () => {
       if (isReadOnly) return;
       const category = modifierCategoriesById.get(categoryId);
       if (!category) return;
-      dispatch({
-        type: "TOGGLE_MODIFIER",
-        payload: { categoryId, optionId, category },
+      startTransition(() => {
+        dispatch({
+          type: "TOGGLE_MODIFIER",
+          payload: { categoryId, optionId, category },
+        });
       });
     },
-    [isReadOnly, modifierCategoriesById]
+    [isReadOnly, modifierCategoriesById, startTransition]
   );
 
   const handleQuantityPress = useCallback(() => {
@@ -793,7 +798,7 @@ const ModifierScreen = () => {
           });
         }
 
-        const confirmedItem : Omit<CartItem, 'subtotal' | 'cashSubtotal' | 'taxRate' | 'taxAmount' | 'cashTaxAmount'> = {
+        const confirmedItem: Omit<CartItem, 'subtotal' | 'cashSubtotal' | 'taxRate' | 'taxAmount' | 'cashTaxAmount'> = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,

@@ -1,5 +1,5 @@
+import { secureMMKVStorage } from "@/lib/storage";
 import { MerchantRole } from "@/lib/types";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import bcrypt from "bcryptjs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
@@ -91,7 +91,7 @@ export const useEmployeeStore = create<EmployeeState>()(
       getEmployeeByStaffId: (staffId: string) => {
         console.log("getEmployeeByStaffId", staffId);
         console.log("employees", get().employees);
-        
+
         console.log("staffId", get().employees.find((e) => e.profileId === staffId));
         return get().employees.find((e) => e.profileId === staffId);
       },
@@ -185,7 +185,7 @@ export const useEmployeeStore = create<EmployeeState>()(
     }),
     {
       name: "dexa-employee-storage",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => secureMMKVStorage),
       partialize: (state) => ({
         employees: state.employees,
         // Do NOT persist loggedInEmployee - require fresh login on app restart

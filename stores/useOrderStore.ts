@@ -1,12 +1,12 @@
+import { mmkvStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
-import { CartItem, Discount, OrderProfile, PaymentType } from "@/lib/types";
+import { CartItem, Discount, OrderAppliedDiscount, OrderProfile, PaymentType } from "@/lib/types";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
   OrderType as DbOrderType
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -446,6 +446,10 @@ const ensureOrderCreated = async (
       return "pending_offline";
     }
 
+    // RACE CONDITION FIX: Set placeholder promise BEFORE queueing to prevent duplicate queues
+    // If we set this AFTER queueOperation, another concurrent call could slip through
+    pendingOrderCreations.set(order.id, Promise.resolve("pending_offline"));
+
     // Build the create order params for later execution
     const createOrderParams: CreateOrderParams = {
       p_merchant_id: selectedStore.merchant_id,
@@ -500,9 +504,6 @@ const ensureOrderCreated = async (
     // Register in ID registry for future lookups
     await registerLocalId(order.id, "order");
     console.log(`[ensureOrderCreated] Registered local ID: ${order.id}`);
-
-    // Set a placeholder promise so we don't queue multiple times
-    pendingOrderCreations.set(order.id, Promise.resolve("pending_offline"));
 
     console.log(`[ensureOrderCreated] ====== QUEUED SUCCESSFULLY ======`);
     console.log(`[ensureOrderCreated] Operation ID: ${operationId}`);
@@ -694,6 +695,9 @@ const addItemToBackend = async (
           originalPrice: item.originalPrice,
           customizations: item.customizations,
           category_name: item.category_name,
+          is_open_item: item.is_open_item || false,
+          open_item_name: item.open_item_name,
+          open_item_price: item.open_item_price,
         },
       },
       localOrderId: order.id,
@@ -823,6 +827,83 @@ const addItemToBackend = async (
     // STEP 2: Add item to the existing order
     // ========================================================================
 
+    // Open item branch
+    if (item.is_open_item) {
+      const addOpenParams = {
+        p_order_id: dbOrderId,
+        p_item_name: item.open_item_name || item.name,
+        p_unit_price: item.price,
+        p_quantity: item.quantity,
+        p_special_instructions: item.customizations?.notes || undefined,
+        p_is_tax_exempt: item.is_tax_exempt || undefined,
+      };
+
+      console.log(
+        "[addItemToBackend] add_open_item_v2 params:",
+        JSON.stringify(addOpenParams, null, 2)
+      );
+      const { data: addResult, error: addError } = await OrderService.addOpenItem(
+        supabase,
+        addOpenParams
+      );
+
+      if (addError) {
+        console.error("Failed to add open item to backend:", addError);
+        markItemFailed(item.id, addError.message || "Item sync failed");
+        await queueOperation({
+          type: "add_item",
+          params: {
+            localOrderId: order.id,
+            localItemId: item.id,
+            dbOrderId: dbOrderId,
+            addItemParams: addOpenParams,
+            is_open_item: true,
+          },
+          localOrderId: order.id,
+          localItemId: item.id,
+        });
+        return false;
+      }
+
+      console.log("Open item synced to backend successfully:", addResult);
+
+      if (addResult?.order_item_id) {
+        useOrderStore.setState((state) => {
+          const currentOrder = state.ordersById[order.id];
+          if (!currentOrder) return state;
+
+          const updatedItems = currentOrder.items.map((i) =>
+            i.id === item.id
+              ? {
+                ...i,
+                db_order_item_id: addResult.order_item_id,
+                sync_status: "synced" as const,
+              }
+              : i
+          );
+
+          return {
+            ordersById: {
+              ...state.ordersById,
+              [order.id]: {
+                ...currentOrder,
+                items: updatedItems,
+              },
+            },
+          };
+        });
+      }
+
+      if (onSyncComplete) {
+        onSyncComplete(order.id);
+      }
+
+      return true;
+    }
+
+    // ========================================================================
+    // Regular menu item path
+    // ========================================================================
 
     // Calculate effective cash price (base cash price + modifiers + add-ons)
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
@@ -982,6 +1063,8 @@ const syncPaymentToBackend = async (
     itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
+    localPaymentId?: string; // Unique local ID for matching payment during sync
+    paymentTimestamp?: string; // Timestamp for fallback matching
   },
   rollbackState?: PaymentRollbackState // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -1037,6 +1120,8 @@ const syncPaymentToBackend = async (
       params: {
         params: paymentParams,
         localOrderId: order.id,
+        localPaymentId: paymentDetails.localPaymentId, // For matching payment on sync success
+        paymentTimestamp: paymentDetails.paymentTimestamp, // Fallback for matching
         terminalResponse, // Pass terminal response for card payments
       },
       localOrderId: order.id,
@@ -1094,18 +1179,26 @@ const syncPaymentToBackend = async (
       // ========================================================================
       // DON'T REVERT - Keep local state and queue for retry
       // ========================================================================
-      // Mark the last payment as pending sync (not reverted)
+      // Mark the payment as pending sync using localPaymentId for matching (not array index)
       useOrderStore.setState((state) => {
         const currentOrder = state.ordersById[order.id];
         if (!currentOrder) return state;
 
         const payments = [...(currentOrder.payments || [])];
-        if (payments.length > 0) {
-          payments[payments.length - 1] = {
-            ...payments[payments.length - 1],
+        // FIXED: Find payment by localPaymentId or timestamp, not by array index
+        // This prevents overwriting the wrong payment when multiple payments sync concurrently
+        const paymentIndex = payments.findIndex(
+          (p: any) =>
+            p.localId === paymentDetails.localPaymentId ||
+            p.timestamp === paymentDetails.paymentTimestamp
+        );
+
+        if (paymentIndex !== -1) {
+          payments[paymentIndex] = {
+            ...payments[paymentIndex],
             sync_status: "pending" as const,
             sync_error: error.message || "Sync failed",
-            sync_attempt_count: (payments[payments.length - 1].sync_attempt_count || 0) + 1,
+            sync_attempt_count: ((payments[paymentIndex] as any).sync_attempt_count || 0) + 1,
           };
         }
 
@@ -1150,6 +1243,8 @@ const syncPaymentToBackend = async (
         params: {
           params: paymentParams,
           localOrderId: order.id,
+          localPaymentId: paymentDetails.localPaymentId, // For matching payment on sync success
+          paymentTimestamp: paymentDetails.paymentTimestamp, // Fallback for matching
           terminalResponse,
         },
         localOrderId: order.id,
@@ -2837,7 +2932,7 @@ export const useOrderStore = create<OrderState>()(
               if (details.customer_name !== undefined) {
                 supabase
                   .from("orders")
-                  .update({ customer_name: details.customer_name })
+                  .update({ customer_name: details.customer_name, customer_id: details.customer_id })
                   .eq("id", order.db_order_id)
                   .then(({ error }) => {
                     if (error)
@@ -2873,24 +2968,71 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
-          applyDiscountToCheck: (orderId, discount) => {
+          applyDiscountToCheck: (orderId, discountInput) => {
             const order = get().ordersById[orderId];
             if (!order) return;
+
+            // Normalize incoming discount
+            const isRecord = (discountInput as any).discount_type !== undefined;
+            const normalizedDiscount: Discount = isRecord
+              ? {
+                id: (discountInput as any).id,
+                label: (discountInput as any).name,
+                value:
+                  (discountInput as any).discount_type === "percentage"
+                    ? (discountInput as any).discount_value / 100
+                    : (discountInput as any).discount_value,
+                type:
+                  (discountInput as any).discount_type === "percentage"
+                    ? "percentage"
+                    : "fixed",
+              }
+              : (discountInput as Discount);
 
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
-              discount,
+              normalizedDiscount,
               order.payments || [],
               taxRatesMap
             );
 
+            // Build applied discount metadata for syncing
+            const preDiscountSubtotal = totals.subtotal;
+            const calculatedAmount = normalizedDiscount.type === "percentage"
+              ? preDiscountSubtotal * normalizedDiscount.value
+              : normalizedDiscount.value;
+
+            const applied: OrderAppliedDiscount = {
+              local_id: `discount_${Date.now()}`,
+              discount_id: isRecord ? (discountInput as any).id ?? null : null,
+              discount_type: normalizedDiscount.type === "percentage" ? "percentage" : "fixed",
+              discount_value: isRecord
+                ? (discountInput as any).discount_value
+                : normalizedDiscount.type === "percentage"
+                  ? normalizedDiscount.value * 100
+                  : normalizedDiscount.value,
+              source: "preset",
+              calculated_amount: Math.round(calculatedAmount * 100) / 100,
+              pre_discount_subtotal: preDiscountSubtotal,
+              applied_by_staff_profiles_id: null,
+              applied_at: new Date().toISOString(),
+              sync_status: order.db_order_id ? "pending" : "pending",
+            };
+
+            // Update state
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [orderId]: {
                   ...state.ordersById[orderId],
-                  checkDiscount: discount,
+                  checkDiscount: normalizedDiscount,
+                  applied_discounts: [
+                    ...(state.ordersById[orderId].applied_discounts || []).filter(
+                      (d) => d.source !== "preset"
+                    ),
+                    applied,
+                  ],
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
@@ -2910,6 +3052,43 @@ export const useOrderStore = create<OrderState>()(
                 }
                 : {}),
             }));
+
+            // Sync/queue order_discount
+            const supabase = _supabaseClient;
+            const dbOrderId = order.db_order_id;
+            if (supabase && dbOrderId) {
+              OrderService.addOrderDiscount(supabase, {
+                order_id: dbOrderId,
+                discount_id: isRecord ? (discountInput as any).id ?? null : null,
+                discount_type: applied.discount_type,
+                discount_value: applied.discount_value,
+                source: applied.source,
+                calculated_amount: applied.calculated_amount,
+                pre_discount_subtotal: applied.pre_discount_subtotal,
+                applied_by_staff_profiles_id: applied.applied_by_staff_profiles_id,
+                approved_by_staff_profiles_id: applied.approved_by_staff_profiles_id,
+                applied_at: applied.applied_at,
+              }).catch((err) => {
+                console.error("Failed to sync discount, queueing:", err);
+                queueOperation({
+                  type: "apply_discount",
+                  params: {
+                    localOrderId: orderId,
+                    discount: applied,
+                  },
+                  localOrderId: orderId,
+                } as any);
+              });
+            } else {
+              queueOperation({
+                type: "apply_discount",
+                params: {
+                  localOrderId: orderId,
+                  discount: applied,
+                },
+                localOrderId: orderId,
+              } as any);
+            }
           },
 
           removeCheckDiscount: (orderId) => {
@@ -2930,6 +3109,7 @@ export const useOrderStore = create<OrderState>()(
                 [orderId]: {
                   ...state.ordersById[orderId],
                   checkDiscount: null,
+                  applied_discounts: [],
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
@@ -3200,13 +3380,25 @@ export const useOrderStore = create<OrderState>()(
               activeOrderOutstandingCash: get().activeOrderOutstandingCash,
             };
 
+            // Generate unique local ID and timestamp for this payment
+            // This is critical for matching payments during sync (prevents collapse issue)
+            const localPaymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const paymentTimestamp = new Date().toISOString();
+
             const newPayment = {
+              localId: localPaymentId,  // Unique local identifier for sync matching
               amount,
               method,
+              timestamp: paymentTimestamp,
+              sync_status: "pending" as const,
               ...(cardBrand && { cardBrand }),
               ...(last4 && { last4 }),
               ...(tipAmount && { tipAmount }),
               ...(transactionDetails && { transactionDetails }),
+              // Track split info for reconciliation
+              ...(splitPortionIndex && { splitPortionIndex }),
+              ...(splitCount && { splitCount }),
+              ...(itemIds && { itemsCovered: itemIds }),
             };
 
             const newPayments = [...(order.payments || []), newPayment];
@@ -3214,19 +3406,21 @@ export const useOrderStore = create<OrderState>()(
             // Mark items as paid based on itemIds (per-item) or FIFO order (default)
             let updatedItems: typeof order.items;
 
-            // Determine if items should transition to "preparing" status
-            // This happens when order is in draft/pending and payment is made
-            const shouldMarkItemsAsPreparing = order.order_status === "draft" || order.order_status === "pending";
+            // SPLIT PAYMENT FIX: Always mark PAID items as preparing, not just when order is draft/pending
+            // This ensures items paid in subsequent splits (when order is already "preparing") also get updated
+            // Each item's status is updated individually based on whether IT is being paid now
 
             if (itemIds && itemIds.length > 0) {
               // Per-item payment: Mark specific items as paid
               updatedItems = order.items.map((item) => {
                 if (item.db_order_item_id && itemIds.includes(item.db_order_item_id)) {
+                  // Update this item's status to preparing if it's currently "new"
+                  const shouldUpdateThisItem = item.kitchen_status === "new" || !item.kitchen_status;
                   return {
                     ...item,
                     paidQuantity: item.quantity, // Fully paid
-                    // Update kitchen and item status when transitioning from draft
-                    ...(shouldMarkItemsAsPreparing && {
+                    // Update kitchen and item status for items that haven't been sent yet
+                    ...(shouldUpdateThisItem && {
                       kitchen_status: "sent" as const,
                       item_status: "Preparing" as const,
                     }),
@@ -3248,11 +3442,13 @@ export const useOrderStore = create<OrderState>()(
                 );
                 if (maxCoverQty <= 0) return item;
                 remaining -= maxCoverQty * unitPrice;
+                // Update this item's status to preparing if it's currently "new"
+                const shouldUpdateThisItem = item.kitchen_status === "new" || !item.kitchen_status;
                 return {
                   ...item,
                   paidQuantity: (item.paidQuantity || 0) + maxCoverQty,
-                  // Update kitchen and item status when transitioning from draft
-                  ...(shouldMarkItemsAsPreparing && {
+                  // Update kitchen and item status for items that haven't been sent yet
+                  ...(shouldUpdateThisItem && {
                     kitchen_status: "sent" as const,
                     item_status: "Preparing" as const,
                   }),
@@ -3343,6 +3539,8 @@ export const useOrderStore = create<OrderState>()(
                 itemIds: paymentItemIds, // Pass item IDs for per-item payment tracking (local or backend)
                 splitCount, // Pass split count for split payments
                 splitPortionIndex, // Pass split portion index for split payments
+                localPaymentId, // Unique local ID for matching payment during sync
+                paymentTimestamp, // Timestamp for fallback matching
               },
               rollbackState // Previous state for rollback on failure
             );
@@ -4734,7 +4932,7 @@ export const useOrderStore = create<OrderState>()(
       },
       {
         name: "order-store-storage",
-        storage: createJSONStorage(() => AsyncStorage),
+        storage: createJSONStorage(() => mmkvStorage),
         partialize: (state: OrderState) => ({
           // Persist the optimized structure
           ordersById: state.ordersById,

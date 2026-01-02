@@ -12,7 +12,7 @@ import {
 
 const CashPaymentView = () => {
   const { activeOrderOutstandingCash, activeOrderTotalCash } = useOrderStore();
-  console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
+  // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
 
@@ -28,12 +28,12 @@ const CashPaymentView = () => {
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // For cash payments, use cash outstanding total (unpaid items at cash prices)
   // Fallback to cash total if outstanding is 0 (handles async timing or fully paid orders)
-  console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
+  // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const effectiveOutstandingCash =
     activeOrderOutstandingCash > 0
       ? activeOrderOutstandingCash
       : activeOrderTotalCash;
-  console.log("effectiveOutstandingCash", effectiveOutstandingCash);
+  // console.log("effectiveOutstandingCash", effectiveOutstandingCash);
 
 
   // For split payments, prefer cashAmount (cash pricing) over amount (card pricing)
@@ -41,7 +41,7 @@ const CashPaymentView = () => {
   const total = activeSplit
     ? (activeSplit.cashAmount ?? activeSplit.amount)
     : effectiveOutstandingCash;
-    console.log("total", total);
+    // console.log("total", total);
 
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = total + tipAmount; // Total including tip

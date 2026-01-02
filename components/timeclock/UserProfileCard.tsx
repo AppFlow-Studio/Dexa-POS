@@ -59,7 +59,7 @@ const UserProfileCard: React.FC<{ employeeId: string | null }> = ({
 
   // Get device ID on mount
   useEffect(() => {
-    getDeviceId().then(setDeviceId);
+    setDeviceId(getDeviceId());
   }, []);
 
   const user = useMemo(() => {

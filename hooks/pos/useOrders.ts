@@ -3,8 +3,8 @@
 // Example implementation for POS Tablet
 // ============================================================================
 
+import { getSyncJSON, setSyncJSON } from '@/lib/storage';
 import type { Order, OrderItem, OrderStatus, PaymentMethod } from '@/types/db-order-management-types';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { useSupabaseClient } from '../useSupabaseClient';
@@ -533,25 +533,25 @@ export const useOfflineOrders = () => {
     const [syncing, setSyncing] = useState(false);
     const supabase = useSupabaseClient();
 
-    // Load offline orders from storage
-    const loadOfflineOrders = useCallback(async () => {
+    // Load offline orders from storage (synchronous with MMKV)
+    const loadOfflineOrders = useCallback(() => {
         try {
-            const stored = await AsyncStorage.getItem(OFFLINE_ORDERS_KEY);
+            const stored = getSyncJSON<Order[]>(OFFLINE_ORDERS_KEY);
             if (stored) {
-                setOfflineOrders(JSON.parse(stored));
+                setOfflineOrders(stored);
             }
         } catch (err) {
             console.error('Failed to load offline orders:', err);
         }
     }, []);
 
-    // Save order for offline sync
-    const saveOfflineOrder = useCallback(async (order: Order) => {
+    // Save order for offline sync (synchronous with MMKV)
+    const saveOfflineOrder = useCallback((order: Order) => {
         try {
-            const stored = await AsyncStorage.getItem(OFFLINE_ORDERS_KEY);
-            const orders = stored ? JSON.parse(stored) : [];
+            const stored = getSyncJSON<Order[]>(OFFLINE_ORDERS_KEY);
+            const orders = stored ? stored : [];
             orders.push({ ...order, is_offline: true });
-            await AsyncStorage.setItem(OFFLINE_ORDERS_KEY, JSON.stringify(orders));
+            setSyncJSON(OFFLINE_ORDERS_KEY, orders);
             setOfflineOrders(orders);
         } catch (err) {
             console.error('Failed to save offline order:', err);
@@ -579,9 +579,9 @@ export const useOfflineOrders = () => {
                     continue;
                 }
 
-                // Remove from offline storage
+                // Remove from offline storage (synchronous with MMKV)
                 const remaining = offlineOrders.filter((o) => o.id !== order.id);
-                await AsyncStorage.setItem(OFFLINE_ORDERS_KEY, JSON.stringify(remaining));
+                setSyncJSON(OFFLINE_ORDERS_KEY, remaining);
                 setOfflineOrders(remaining);
             }
 

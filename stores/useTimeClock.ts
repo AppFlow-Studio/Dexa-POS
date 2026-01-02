@@ -1,5 +1,5 @@
+import { mmkvStorage } from "@/lib/storage";
 import { TimeClockAction, TimeClockStatus } from "@/types/time-clock";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -72,7 +72,7 @@ export const useTimeClockStore = create<TimeClockStore>()(
     }),
     {
       name: "dexa-pos-timeclock",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
     }
   )
 );

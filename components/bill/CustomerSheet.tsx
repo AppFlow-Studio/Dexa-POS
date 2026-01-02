@@ -1,7 +1,18 @@
 import { useToast } from "@/contexts/ToastContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import {
+  createCustomerOffline,
+  createCustomerOnline,
+  fetchAndCacheCustomers,
+  getCachedCustomers,
+  linkCustomerToOrder,
+  processCustomerQueue,
+} from "@/services/customer";
+import { getIsOnline } from "@/services/offlineSyncService";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
-import { Customer, useCustomerStore } from "@/stores/useCustomerStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { CustomerWithMeta } from "@/types/customer";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -9,22 +20,26 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { Search, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CustomerSheet: React.FC = () => {
   const sheetRef = useRef<BottomSheet>(null);
   const { isOpen, closeSheet } = useCustomerSheetStore();
-  const { customers, addCustomer } = useCustomerStore();
-  const { activeOrderId, updateActiveOrderDetails } = useOrderStore();
+  const { activeOrderId, updateActiveOrderDetails, ordersById } = useOrderStore();
+  const order = ordersById[activeOrderId ?? ""];
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
+  const supabase = useSupabaseClient();
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [customers, setCustomers] = useState<CustomerWithMeta[]>([]);
 
   // --- NEW: State for the secondary search input ---
   const [secondarySearch, setSecondarySearch] = useState("");
+  const isAssignDisabled = !activeOrderId;
 
   useEffect(() => {
     if (isOpen) {
@@ -33,6 +48,31 @@ const CustomerSheet: React.FC = () => {
       sheetRef.current?.close();
     }
   }, [isOpen]);
+
+  const refreshCustomers = useCallback(async () => {
+    // Always start with cached customers (works offline)
+    setCustomers(getCachedCustomers());
+
+    // If online, refresh from backend and process any queued ops
+    if (selectedStore && getIsOnline()) {
+      try {
+        const updated = await fetchAndCacheCustomers(
+          supabase,
+          selectedStore.merchant_id
+        );
+        setCustomers(updated);
+        await processCustomerQueue(supabase);
+      } catch (err) {
+        console.warn("Failed to refresh customers:", err);
+      }
+    }
+  }, [selectedStore, supabase]);
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshCustomers();
+    }
+  }, [isOpen, refreshCustomers]);
 
   const filteredCustomers = useMemo(() => {
     const nameQuery = name.toLowerCase().trim();
@@ -44,42 +84,76 @@ const CustomerSheet: React.FC = () => {
 
     // Apply the main search/create fields first
     if (nameQuery || phoneQuery) {
-      filtered = filtered.filter(
-        (c: Customer) =>
-          c.name.toLowerCase().includes(nameQuery) &&
-          c.phoneNumber.includes(phoneQuery)
-      );
+      filtered = filtered.filter((c: CustomerWithMeta) => {
+        const phoneValue = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
+        return (
+          (c.name || "").toLowerCase().includes(nameQuery) &&
+          phoneValue.includes(phoneQuery.toLowerCase())
+        );
+      });
     }
 
     // Then, apply the secondary search on the already filtered list
     if (secondaryQuery) {
-      filtered = filtered.filter(
-        (c: Customer) =>
-          c.name.toLowerCase().includes(secondaryQuery) ||
-          c.phoneNumber.includes(secondaryQuery)
-      );
+      filtered = filtered.filter((c: CustomerWithMeta) => {
+        const phoneValue = (c.phone ?? c.phoneNumber ?? "").toLowerCase();
+        return (
+          (c.name || "").toLowerCase().includes(secondaryQuery) ||
+          phoneValue.includes(secondaryQuery)
+        );
+      });
     }
 
     return filtered;
   }, [name, phone, secondarySearch, customers]);
 
-  const handleSelectCustomer = (customer: Customer) => {
-    if (activeOrderId) {
-      updateActiveOrderDetails({
-        customer_name: customer.name,
-        customer_phone: customer.phoneNumber,
-        delivery_address: customer.address,
-      });
+  const handleSelectCustomer = async (customer: CustomerWithMeta) => {
+    if (!activeOrderId) return;
+    if (!selectedStore) {
       show({
-        title: "Customer Assigned",
-        message: `${customer.name} has been assigned to the order.`,
-        type: "success",
+        title: "No Store Selected",
+        message: "Please select a store before assigning a customer.",
+        type: "error",
+      });
+      return;
+    }
+
+    // Optimistic UI update for order details
+    console.log("[CustomerSheet] customer", customer);
+    updateActiveOrderDetails({
+      customer_name: customer.name || "",
+      customer_phone: customer.phone ?? customer.phoneNumber ?? "",
+      delivery_address: customer.address ?? "",
+      customer_id: customer.id,
+    });
+
+    try {
+      console.log("[CustomerSheet] order", order?.db_order_id);
+      await linkCustomerToOrder(supabase, {
+        orderId: activeOrderId,
+        dbOrderId: order?.db_order_id || null,
+        customerId: customer.id,
+        merchantId: selectedStore.id,
+      });
+
+      show({
+        title: customer.is_offline ? "Customer Queued" : "Customer Assigned",
+        message: customer.is_offline
+          ? `${customer.name || "Customer"} will sync when online.`
+          : `${customer.name || "Customer"} has been assigned to the order.`,
+        type: customer.is_offline ? "warning" : "success",
       });
       handleClose();
+    } catch (error: any) {
+      show({
+        title: "Could Not Assign Customer",
+        message: error.message || "An unexpected error occurred.",
+        type: "error",
+      });
     }
   };
 
-  const handleAddNewCustomer = () => {
+  const handleAddNewCustomer = async () => {
     if (!name.trim() || !phone.trim()) {
       show({
         title: "Missing Information",
@@ -90,9 +164,34 @@ const CustomerSheet: React.FC = () => {
       return;
     }
 
+    if (!selectedStore) {
+      show({
+        title: "No Store Selected",
+        message: "Please select a store before adding a customer.",
+        type: "error",
+      });
+      return;
+    }
+
+    const online = getIsOnline();
+
     try {
-      const newCustomer = addCustomer({ name, phoneNumber: phone, address });
-      handleSelectCustomer(newCustomer);
+      const newCustomer = online
+        ? await createCustomerOnline(supabase, {
+          merchantId: selectedStore.merchant_id,
+          name,
+          phone,
+          address,
+        })
+        : createCustomerOffline({
+          merchantId: selectedStore.id,
+          name,
+          phone,
+          address,
+        });
+
+      setCustomers(getCachedCustomers());
+      await handleSelectCustomer(newCustomer);
     } catch (error: any) {
       show({
         title: "Could Not Add Customer",
@@ -139,8 +238,10 @@ const CustomerSheet: React.FC = () => {
 
           <View className="flex-row gap-x-8 items-center justify-between">
             <TouchableOpacity
+              disabled={isAssignDisabled}
               onPress={handleAddNewCustomer}
-              className="w-fit py-3 px-4 bg-blue-600 rounded-xl items-center"
+              className={`w-fit py-3 px-4 rounded-xl items-center ${isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
+                }`}
             >
               <Text className="text-lg font-bold text-white">
                 Add New Customer
@@ -183,15 +284,24 @@ const CustomerSheet: React.FC = () => {
           data={filteredCustomers}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
-          renderItem={({ item }: { item: Customer }) => (
+          renderItem={({ item }: { item: CustomerWithMeta }) => (
             <TouchableOpacity
+              disabled={isAssignDisabled}
               onPress={() => handleSelectCustomer(item)}
-              className="p-3 border-b border-gray-700"
+              className={`p-3 border-b border-gray-700 ${isAssignDisabled ? "opacity-60" : ""
+                }`}
             >
               <Text className="text-xl font-semibold text-white">
                 {item.name}
               </Text>
-              <Text className="text-lg text-gray-400">{item.phoneNumber}</Text>
+              <View className="flex-row items-center gap-x-2">
+                <Text className="text-lg text-gray-400">
+                  {item.phone ?? item.phoneNumber}
+                </Text>
+                {item.is_offline && (
+                  <Text className="text-xs text-yellow-400">Offline</Text>
+                )}
+              </View>
             </TouchableOpacity>
           )}
           ListHeaderComponent={

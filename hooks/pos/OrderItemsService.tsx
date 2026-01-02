@@ -3,10 +3,10 @@
 // React Native / TypeScript
 // ============================================================================
 
-import { useSupabaseClient } from '../useSupabaseClient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSyncJSON, setSyncJSON } from '@/lib/storage';
 import NetInfo from '@react-native-community/netinfo';
 import { v4 as uuidv4 } from 'uuid';
+import { useSupabaseClient } from '../useSupabaseClient';
 
 // ============================================================================
 // TYPES
@@ -49,8 +49,8 @@ interface OrderItem {
 
 interface OfflineOperation {
   id: string;
-  type: 'add_item' | 'update_item' | 'update_quantity' | 'replace_modifiers' | 
-        'add_modifier' | 'remove_modifier' | 'void_item' | 'duplicate_item';
+  type: 'add_item' | 'update_item' | 'update_quantity' | 'replace_modifiers' |
+  'add_modifier' | 'remove_modifier' | 'void_item' | 'duplicate_item';
   params: any;
   timestamp: string;
   status: 'pending' | 'syncing' | 'synced' | 'failed';
@@ -74,74 +74,74 @@ class OfflineQueueManager {
     return state.isConnected === true && state.isInternetReachable === true;
   }
 
-  // Get pending operations
-  async getQueue(): Promise<OfflineOperation[]> {
-    const data = await AsyncStorage.getItem(this.QUEUE_KEY);
-    return data ? JSON.parse(data) : [];
+  // Get pending operations (synchronous with MMKV)
+  getQueue(): OfflineOperation[] {
+    const data = getSyncJSON<OfflineOperation[]>(this.QUEUE_KEY);
+    return data || [];
   }
 
-  // Add operation to queue
-  async enqueue(operation: Omit<OfflineOperation, 'id' | 'timestamp' | 'status'>): Promise<string> {
-    const queue = await this.getQueue();
+  // Add operation to queue (synchronous with MMKV)
+  enqueue(operation: Omit<OfflineOperation, 'id' | 'timestamp' | 'status'>): string {
+    const queue = this.getQueue();
     const id = uuidv4();
-    
+
     queue.push({
       ...operation,
       id,
       timestamp: new Date().toISOString(),
       status: 'pending'
     });
-    
-    await AsyncStorage.setItem(this.QUEUE_KEY, JSON.stringify(queue));
+
+    setSyncJSON(this.QUEUE_KEY, queue);
     return id;
   }
 
-  // Update operation status
-  async updateStatus(id: string, status: OfflineOperation['status'], error?: string): Promise<void> {
-    const queue = await this.getQueue();
+  // Update operation status (synchronous with MMKV)
+  updateStatus(id: string, status: OfflineOperation['status'], error?: string): void {
+    const queue = this.getQueue();
     const index = queue.findIndex(op => op.id === id);
-    
+
     if (index !== -1) {
       queue[index].status = status;
       if (error) queue[index].error = error;
-      await AsyncStorage.setItem(this.QUEUE_KEY, JSON.stringify(queue));
+      setSyncJSON(this.QUEUE_KEY, queue);
     }
   }
 
-  // Remove synced operations
-  async removeCompleted(): Promise<void> {
-    const queue = await this.getQueue();
+  // Remove synced operations (synchronous with MMKV)
+  removeCompleted(): void {
+    const queue = this.getQueue();
     const pending = queue.filter(op => op.status !== 'synced');
-    await AsyncStorage.setItem(this.QUEUE_KEY, JSON.stringify(pending));
+    setSyncJSON(this.QUEUE_KEY, pending);
   }
 
-  // Cache order items for offline access
-  async cacheOrderItems(orderId: string, items: OrderItem[]): Promise<void> {
-    const cache = await this.getItemsCache();
+  // Cache order items for offline access (synchronous with MMKV)
+  cacheOrderItems(orderId: string, items: OrderItem[]): void {
+    const cache = this.getItemsCache();
     cache[orderId] = {
       items,
       cachedAt: new Date().toISOString()
     };
-    await AsyncStorage.setItem(this.CACHE_KEY, JSON.stringify(cache));
+    setSyncJSON(this.CACHE_KEY, cache);
   }
 
-  // Get cached items
-  async getCachedItems(orderId: string): Promise<OrderItem[] | null> {
-    const cache = await this.getItemsCache();
+  // Get cached items (synchronous with MMKV)
+  getCachedItems(orderId: string): OrderItem[] | null {
+    const cache = this.getItemsCache();
     return cache[orderId]?.items || null;
   }
 
-  private async getItemsCache(): Promise<Record<string, { items: OrderItem[], cachedAt: string }>> {
-    const data = await AsyncStorage.getItem(this.CACHE_KEY);
-    return data ? JSON.parse(data) : {};
+  private getItemsCache(): Record<string, { items: OrderItem[], cachedAt: string }> {
+    const data = getSyncJSON<Record<string, { items: OrderItem[], cachedAt: string }>>(this.CACHE_KEY);
+    return data || {};
   }
 
-  // Apply optimistic update to cache
-  async applyOptimisticUpdate(orderId: string, updateFn: (items: OrderItem[]) => OrderItem[]): Promise<OrderItem[]> {
-    const cache = await this.getItemsCache();
+  // Apply optimistic update to cache (synchronous with MMKV)
+  applyOptimisticUpdate(orderId: string, updateFn: (items: OrderItem[]) => OrderItem[]): OrderItem[] {
+    const cache = this.getItemsCache();
     if (cache[orderId]) {
       cache[orderId].items = updateFn(cache[orderId].items);
-      await AsyncStorage.setItem(this.CACHE_KEY, JSON.stringify(cache));
+      setSyncJSON(this.CACHE_KEY, cache);
       return cache[orderId].items;
     }
     return [];
@@ -169,7 +169,7 @@ class OrderItemService {
   // ==========================================================================
   // CREATE - Add Item to Order
   // ==========================================================================
-  
+
   async addItem(params: {
     orderId: string;
     menuItemId?: string;
@@ -189,7 +189,7 @@ class OrderItemService {
     prepStation?: string;
     courseNumber?: number;
   }): Promise<{ success: boolean; itemId: string; isOffline: boolean }> {
-    
+
     const isOnline = await this.queue.isOnline();
     const supabase = useSupabaseClient();
     if (isOnline) {
@@ -220,13 +220,13 @@ class OrderItemService {
     } else {
       // OFFLINE: Queue operation + optimistic update
       const tempId = `TEMP-${uuidv4()}`;
-      const pricePaid = (params.useCashPrice && params.cashPrice) 
-        ? params.cashPrice 
+      const pricePaid = (params.useCashPrice && params.cashPrice)
+        ? params.cashPrice
         : params.unitPrice;
       const modifierTotal = (params.modifiers || []).reduce(
         (sum, m) => sum + (m.price_modifier * m.quantity), 0
       );
-      
+
       // Create optimistic item
       const optimisticItem: OrderItem = {
         id: tempId,
@@ -313,12 +313,11 @@ class OrderItemService {
       if (error) throw error;
       return { ...data.item, modifiers: data.modifiers };
     } else {
-      // Search in cache
-      const cache = await AsyncStorage.getItem('order_items_cache');
+      // Search in cache (synchronous with MMKV)
+      const cache = getSyncJSON<Record<string, { items: OrderItem[], cachedAt: string }>>('order_items_cache');
       if (cache) {
-        const parsed = JSON.parse(cache);
-        for (const orderId in parsed) {
-          const item = parsed[orderId].items.find((i: OrderItem) => i.id === orderItemId);
+        for (const orderId in cache) {
+          const item = cache[orderId].items.find((i: OrderItem) => i.id === orderItemId);
           if (item) return item;
         }
       }
@@ -347,7 +346,7 @@ class OrderItemService {
       return { success: true, isOffline: false };
     } else {
       // Optimistic update
-      await this.queue.applyOptimisticUpdate(orderId, items => 
+      await this.queue.applyOptimisticUpdate(orderId, items =>
         items.map(item => {
           if (item.id === orderItemId) {
             const modifierTotal = (item.modifiers || []).reduce(
@@ -439,7 +438,7 @@ class OrderItemService {
   // ==========================================================================
 
   async replaceModifiers(
-    orderItemId: string, 
+    orderItemId: string,
     orderId: string,
     modifiers: OrderItemModifier[]
   ): Promise<{ success: boolean; isOffline: boolean }> {
@@ -643,11 +642,11 @@ class OrderItemService {
       return { success: true, newItemId: data.new_item_id, isOffline: false };
     } else {
       const tempId = `TEMP-${uuidv4()}`;
-      
+
       // Get original item from cache
       const items = await this.queue.getCachedItems(orderId);
       const original = items?.find(i => i.id === orderItemId);
-      
+
       if (original) {
         const duplicatedItem: OrderItem = {
           ...original,
@@ -659,7 +658,7 @@ class OrderItemService {
             id: `TEMP-MOD-${uuidv4()}`
           }))
         };
-        
+
         // Recalculate subtotal if quantity changed
         if (quantity && quantity !== original.quantity) {
           const modifierTotal = (duplicatedItem.modifiers || []).reduce(
@@ -698,7 +697,7 @@ class OrderItemService {
 
     const queue = await this.queue.getQueue();
     const pending = queue.filter(op => op.status === 'pending');
-    
+
     let synced = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -817,7 +816,7 @@ export const orderItemService = new OrderItemService();
 // REACT HOOK FOR ORDER ITEMS
 // ============================================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export function useOrderItems(orderId: string) {
   const [items, setItems] = useState<OrderItem[]>([]);

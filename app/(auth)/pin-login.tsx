@@ -9,7 +9,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -53,9 +53,10 @@ const PinLoginScreen = () => {
     [pin, isLoading, deviceId, selectedStore]
   );
 
-  // Get device ID on mount
+  // Get device ID on mount (synchronous with MMKV)
   useEffect(() => {
-    getDeviceId().then(setDeviceId);
+    console.log("getDeviceId", getDeviceId());
+    setDeviceId(getDeviceId());
   }, []);
 
   // Animation values for shake effect
@@ -337,10 +338,10 @@ const PinLoginScreen = () => {
           >
             <Text
               className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
-                  ? "text-green-400"
-                  : dialog.variant === "warning"
-                    ? "text-yellow-400"
-                    : "text-red-400"
+                ? "text-green-400"
+                : dialog.variant === "warning"
+                  ? "text-yellow-400"
+                  : "text-red-400"
                 }`}
             >
               {dialog.title}

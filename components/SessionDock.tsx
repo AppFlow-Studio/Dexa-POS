@@ -108,7 +108,7 @@ const SessionChip = ({ sessionId }: { sessionId: string }) => {
 
   // Get device ID on mount
   useEffect(() => {
-    getDeviceId().then(setDeviceId);
+    setDeviceId(getDeviceId());
   }, []);
 
   const session = sessions[sessionId];

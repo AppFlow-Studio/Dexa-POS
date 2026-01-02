@@ -6,7 +6,7 @@ import {
 import { useAuth } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -40,25 +40,22 @@ const StoreSelectItem = ({
 }: StoreSelectItemProps) => (
   <TouchableOpacity
     onPress={onPress}
-    className={`p-4 border rounded-lg mb-3 ${
-      isSelected
-        ? "border-blue-500 bg-blue-900/30"
-        : "border-gray-700 bg-[#303030]"
-    }`}
+    className={`p-4 border rounded-lg mb-3 ${isSelected
+      ? "border-blue-500 bg-blue-900/30"
+      : "border-gray-700 bg-[#303030]"
+      }`}
   >
     <View className="flex-row items-center justify-between">
       <View className="flex-1">
         <Text
-          className={`text-xl font-medium ${
-            isSelected ? "text-blue-400" : "text-white"
-          }`}
+          className={`text-xl font-medium ${isSelected ? "text-blue-400" : "text-white"
+            }`}
         >
           {store.name}
         </Text>
         <Text
-          className={`text-lg mt-1 ${
-            isSelected ? "text-blue-300" : "text-gray-400"
-          }`}
+          className={`text-lg mt-1 ${isSelected ? "text-blue-300" : "text-gray-400"
+            }`}
         >
           {store.city}, {store.state}
         </Text>
@@ -81,6 +78,7 @@ const StoreSelectScreen = () => {
   const router = useRouter();
   const { userId } = useAuth();
   const supabase = useSupabaseClient();
+  console.log("supabase", supabase);
   const setSelectedStore = useStoreSettingsStore(
     (state) => state.setSelectedStore
   );
@@ -188,7 +186,7 @@ const StoreSelectScreen = () => {
     // Find the full location object
     const storeToSave = locations.find((l) => l.id === selectedStoreId);
     if (storeToSave) {
-      // Save to store (persisted to AsyncStorage)
+      // Save to store (persisted to MMKV)
       setSelectedStore(storeToSave as SelectedLocation);
     }
 
@@ -253,9 +251,8 @@ const StoreSelectScreen = () => {
       <TouchableOpacity
         onPress={handleContinue}
         disabled={!selectedStoreId}
-        className={`w-full p-4 rounded-xl items-center ${
-          selectedStoreId ? "bg-blue-600" : "bg-blue-400"
-        }`}
+        className={`w-full p-4 rounded-xl items-center ${selectedStoreId ? "bg-blue-600" : "bg-blue-400"
+          }`}
       >
         <Text className="text-white text-xl font-bold">Continue</Text>
       </TouchableOpacity>

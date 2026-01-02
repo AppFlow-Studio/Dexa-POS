@@ -103,9 +103,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         const mappedEmployees: EmployeeProfile[] = (data || []).map(
           (row: any) => {
             const profile = row.staff_profiles;
-            const fullName = `${profile?.first_name || ""} ${
-              profile?.last_name || ""
-            }`.trim();
+            const fullName = `${profile?.first_name || ""} ${profile?.last_name || ""
+              }`.trim();
 
             return {
               id: row.id, // location_member id

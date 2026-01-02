@@ -92,19 +92,19 @@ const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // State for the active filters
-  const {
-    menuItems,
-    menus,
-    isMenuAvailableNow,
-    temporaryActiveMenus,
-    isCategoryAvailableNow,
-    categories,
-  } = useMenuStore();
+  const menus = useMenuStore((s) => s.menus);
+  const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
+  const temporaryActiveMenus = useMenuStore((s) => s.temporaryActiveMenus);
+  const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
+  const categories = useMenuStore((s) => s.categories);
   const { requestPinOverride } = usePinOverrideStore();
 
   // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
-  const { activeOrderId, ordersById, updateActiveOrderDetails } =
-    useOrderStore();
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const updateActiveOrderDetails = useOrderStore(
+    (s) => s.updateActiveOrderDetails
+  );
 
   const { isOpen: isOrderTypeDrawerOpen, closeDrawer } =
     useOrderTypeDrawerStore();
@@ -378,7 +378,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
             <TouchableOpacity
-              onPress={() => {}}
+              onPress={() => { }}
               className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
             >
               <Text className="text-white font-medium mr-2 text-base">
@@ -394,11 +394,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           <View className="flex-1 flex-row justify-end items-center gap-x-2">
             <TouchableOpacity
               onPress={() => setActiveTab("Menu")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
-                activeTab == "Menu"
-                  ? "border-2 border-blue-400"
-                  : "border border-gray-600"
-              }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu"
+                ? "border-2 border-blue-400"
+                : "border border-gray-600"
+                }`}
             >
               <Table color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -410,11 +409,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setActiveTab("Open Item")}
-              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${
-                activeTab == "Open Item"
-                  ? "border-2 border-blue-400"
-                  : "border border-gray-600"
-              }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Open Item"
+                ? "border-2 border-blue-400"
+                : "border border-gray-600"
+                }`}
             >
               <PackagePlus color="#9CA3AF" size={20} />
             </TouchableOpacity>
@@ -428,11 +426,10 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
             <TouchableOpacity
               onPress={() => setActiveTab("Orders")}
-              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${
-                activeTab == "Orders"
-                  ? "border-2 border-blue-400"
-                  : "border border-gray-600"
-              }`}
+              className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders"
+                ? "border-2 border-blue-400"
+                : "border border-gray-600"
+                }`}
             >
               <Logs color="#9CA3AF" size={20} />
               <Text className="text-gray-300 ml-2 text-base">Orders</Text>
@@ -476,30 +473,28 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                       <TouchableOpacity
                         key={menu.id}
                         onPress={() => handleMenuSelect(menu.name)}
-                        className={`p-4 rounded-xl border-2 ${
-                          isSelected
-                            ? "bg-blue-600 border-blue-400"
-                            : !isAvailable
+                        className={`p-4 rounded-xl border-2 ${isSelected
+                          ? "bg-blue-600 border-blue-400"
+                          : !isAvailable
                             ? "bg-[#252538] border-gray-700 opacity-50"
                             : "bg-[#252538] border-[#3a3a5c]"
-                        }`}
+                          }`}
                         style={
                           isSelected
                             ? {
-                                shadowColor: "#3b82f6",
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.3,
-                                shadowRadius: 8,
-                                elevation: 8,
-                              }
+                              shadowColor: "#3b82f6",
+                              shadowOffset: { width: 0, height: 4 },
+                              shadowOpacity: 0.3,
+                              shadowRadius: 8,
+                              elevation: 8,
+                            }
                             : undefined
                         }
                       >
                         <View className="flex-row justify-between items-center">
                           <Text
-                            className={`font-bold text-lg ${
-                              isSelected ? "text-white" : "text-gray-100"
-                            }`}
+                            className={`font-bold text-lg ${isSelected ? "text-white" : "text-gray-100"
+                              }`}
                           >
                             {menu.name}
                           </Text>
@@ -511,9 +506,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                           )}
                         </View>
                         <Text
-                          className={`text-sm mt-1 ${
-                            isSelected ? "text-blue-100" : "text-gray-400"
-                          }`}
+                          className={`text-sm mt-1 ${isSelected ? "text-blue-100" : "text-gray-400"
+                            }`}
                         >
                           {menu.description}
                         </Text>
@@ -521,16 +515,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                           {menu.categories.map((category, index) => (
                             <View
                               key={index}
-                              className={`px-3 py-1.5 rounded-full ${
-                                isSelected
-                                  ? "bg-blue-500/80"
-                                  : "bg-blue-900/40 border border-blue-800/50"
-                              }`}
+                              className={`px-3 py-1.5 rounded-full ${isSelected
+                                ? "bg-blue-500/80"
+                                : "bg-blue-900/40 border border-blue-800/50"
+                                }`}
                             >
                               <Text
-                                className={`text-xs font-medium ${
-                                  isSelected ? "text-white" : "text-blue-300"
-                                }`}
+                                className={`text-xs font-medium ${isSelected ? "text-white" : "text-blue-300"
+                                  }`}
                               >
                                 {category.name}
                               </Text>

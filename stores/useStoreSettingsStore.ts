@@ -1,6 +1,6 @@
+import { mmkvStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import { TaxRate, TaxRatesMap } from "@/types/menu";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -335,7 +335,7 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
     }),
     {
       name: "store-settings-storage",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => mmkvStorage),
       partialize: (state) => ({
         // Only persist these fields
         selectedStore: state.selectedStore,

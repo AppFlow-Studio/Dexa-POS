@@ -47,23 +47,12 @@ const ModifierScreenOverlay: React.FC = () => {
     }
   }, [isFullscreen, slideAnim]);
 
-  // Early return when not fullscreen - avoids rendering when closed
-  if (!isFullscreen) return null;
   return (
-    // <View className="absolute inset-0 z-50">
-    //   <TouchableOpacity
-    //     className="flex-1 bg-black/50"
-    //     onPress={() => { }}
-    //     activeOpacity={1}
-    //   />
-    //   <View className="absolute bottom-0 left-0 right-0 w-[85% h-[100%] bg-[#212121] rounded-tr-3xl p-4 border-t border-gray-700">
-    //     <ModifierScreen />
-    //   </View>
-    // </View>
     <Animated.View
       style={[
         styles.overlay,
         { transform: [{ translateY: slideAnim }] },
+        !isFullscreen ? { opacity: 0 } : null,
       ]}
       pointerEvents={isFullscreen ? "auto" : "none"}
     >

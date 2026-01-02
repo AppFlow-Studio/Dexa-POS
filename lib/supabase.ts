@@ -10,7 +10,12 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 export const createSupabaseClient = (
   getToken: () => Promise<string | null>
 ): SupabaseClient => {
-  return createClient(supabaseUrl, supabaseKey, {
-    accessToken: getToken,
-  });
+
+  return createClient(supabaseUrl, supabaseKey,
+    {
+      async accessToken() {
+        return (await getToken()) ?? null;
+      },
+    }
+  );
 };

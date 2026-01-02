@@ -2,7 +2,7 @@
  * Offline Sync Service
  *
  * Manages operation queueing when offline and auto-sync when back online.
- * Uses AsyncStorage for persistence and NetInfo for network monitoring.
+ * Uses MMKV for blazing-fast synchronous persistence and NetInfo for network monitoring.
  *
  * Enhanced with:
  * - Priority-based processing (orders before items before payments)
@@ -11,7 +11,7 @@
  * - Full context capture for reliable replay
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSyncJSON, setSyncJSON } from "@/lib/storage";
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
@@ -30,6 +30,7 @@ export type OperationType =
   | "remove_item"
   | "void_item"
   | "update_order_status"
+  | "apply_discount"
   // Kitchen operations
   | "send_to_kitchen"       // Updates order status + item statuses
   // Payment operations (unified + legacy)
@@ -54,6 +55,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
 
   // Item operations after order exists
   add_item: 2,
+  apply_discount: 2,
   update_item: 3,
   update_item_quantity: 3,
   replace_modifiers: 3,
@@ -727,6 +729,7 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
   // IMPLICIT dependency: items and payments must wait for order creation
   const typesRequiringOrder = [
     "add_item",
+    "apply_discount",
     "process_payment",
     "process_cash_payment",
     "process_card_payment",
@@ -946,9 +949,10 @@ async function processQueue(): Promise<void> {
 
 async function loadQueueFromStorage(): Promise<void> {
   try {
-    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    // Synchronous read from MMKV
+    const stored = getSyncJSON<OfflineOperation[]>(STORAGE_KEY);
     if (stored) {
-      pendingOperations = JSON.parse(stored);
+      pendingOperations = stored;
       // Reset any "processing" status to "pending" (in case app crashed during sync)
       pendingOperations = pendingOperations.map((op) =>
         op.status === "processing" ? { ...op, status: "pending" as const } : op
@@ -968,8 +972,9 @@ async function loadQueueFromStorage(): Promise<void> {
 async function saveQueueToStorage(): Promise<void> {
   try {
     // Only persist non-discarded operations
+    // Synchronous write to MMKV
     const toSave = pendingOperations.filter((op) => op.status !== "discarded");
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    setSyncJSON(STORAGE_KEY, toSave);
   } catch (error) {
     console.error("[OfflineSync] Failed to save queue to storage:", error);
   }

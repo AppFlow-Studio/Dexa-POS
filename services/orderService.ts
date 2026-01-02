@@ -18,6 +18,44 @@ import {
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
+export type AddOpenItemParams = {
+  p_order_id: string;
+  p_item_name: string;
+  p_unit_price: number;
+  p_quantity?: number;
+  p_special_instructions?: string | null;
+  p_is_tax_exempt?: boolean | null;
+};
+
+export type AddOpenItemResult = {
+  success: boolean;
+  order_item_id: string;
+  item_name: string;
+  quantity: number;
+  unit_price: number;
+  cash_price: number;
+  subtotal: number;
+  cash_subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  cash_tax_amount: number;
+};
+
+export type UpdateOpenItemParams = {
+  p_order_item_id: string;
+  p_quantity?: number | null;
+  p_unit_price?: number | null;
+  p_special_instructions?: string | null;
+};
+
+export type UpdateOpenItemResult = {
+  success: boolean;
+  order_item_id: string;
+  quantity: number;
+  unit_price: number;
+  subtotal: number;
+};
+
 export class OrderService {
   /**
    * Create a new order
@@ -44,6 +82,76 @@ export class OrderService {
   }
 
   /**
+   * Add an open item to an order via RPC add_open_item_v2
+   */
+  static async addOpenItem(
+    client: SupabaseClient,
+    params: AddOpenItemParams
+  ): Promise<{ data: AddOpenItemResult | null; error: any }> {
+    console.log(`[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`, params);
+    const { data, error } = await client.rpc("add_open_item_v2", params);
+    if (error || !data) {
+      console.error(`[OrderService:addOpenItem] FAILED:`, error);
+      return { data: data as any, error };
+    }
+    console.log(`[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`);
+    return { data: data as AddOpenItemResult, error };
+  }
+
+  /**
+   * Update an open item (price/qty/instructions) via RPC update_order_item_v2
+   */
+  static async updateOpenItem(
+    client: SupabaseClient,
+    params: UpdateOpenItemParams
+  ): Promise<{ data: UpdateOpenItemResult | null; error: any }> {
+    const { data, error } = await client.rpc("update_order_item_v2", params);
+    if (error) {
+      console.error(`[OrderService:updateOpenItem] FAILED:`, error);
+    }
+    return { data: data as UpdateOpenItemResult, error };
+  }
+
+  /**
+   * Add an order-level discount (order_discounts insert)
+   */
+  static async addOrderDiscount(
+    client: SupabaseClient,
+    params: {
+      order_id: string;
+      discount_id: string | null;
+      discount_type: "percentage" | "fixed";
+      discount_value: number;
+      source: "preset" | "custom" | "promo_code";
+      calculated_amount: number;
+      pre_discount_subtotal: number;
+      applied_by_staff_profiles_id: string | null;
+      approved_by_staff_profiles_id?: string | null;
+      applied_at: string;
+      applied_to_item_ids?: string[] | null;
+    }
+  ): Promise<{ data: any; error: any }> {
+    const { data, error } = await client
+      .from("order_discounts")
+      .insert({
+        order_id: params.order_id,
+        discount_id: params.discount_id,
+        discount_type: params.discount_type,
+        discount_value: params.discount_value,
+        source: params.source,
+        calculated_amount: params.calculated_amount,
+        pre_discount_subtotal: params.pre_discount_subtotal,
+        applied_by_staff_profiles_id: params.applied_by_staff_profiles_id,
+        approved_by_staff_profiles_id: params.approved_by_staff_profiles_id ?? null,
+        applied_at: params.applied_at,
+        applied_to_item_ids: params.applied_to_item_ids ?? null,
+      })
+      .select()
+      .single();
+    return { data, error };
+  }
+
+  /**
    * Add an item to an order
    */
   static async addOrderItem(
@@ -51,9 +159,9 @@ export class OrderService {
     params: AddOrderItemParams
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
     console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
-    console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
-    console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
-    console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
+    // console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
+    // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
+    // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
     console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
     const { data, error } = await client.rpc("add_order_item_v2", params);
 

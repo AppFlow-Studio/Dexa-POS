@@ -1,6 +1,9 @@
-import { createSupabaseClient } from "@/lib/supabase";
 import { useSession } from "@clerk/clerk-expo";
+import { createClient } from "@supabase/supabase-js";
 import { useMemo } from "react";
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
 
 /**
  * Hook that creates a Supabase client authenticated with Clerk session.
@@ -10,10 +13,17 @@ export function useSupabaseClient() {
   const { session } = useSession();
 
   const supabaseClient = useMemo(() => {
-    return createSupabaseClient(async () => {
-      if (!session) return null;
-      return session.getToken() ?? null;
-    });
+    // return createSupabaseClient(async () => {
+    //   if (!session) return null;
+    //   return session.getToken() ?? null;
+    // });
+    return createClient(supabaseUrl, supabaseKey,
+      {
+        async accessToken() {
+          return (await session?.getToken()) ?? null;
+        },
+      }
+    );
   }, [session]);
 
   return supabaseClient;

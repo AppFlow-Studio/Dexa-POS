@@ -27,7 +27,7 @@ import {
   queueDependentOperation,
   queueOperation,
 } from "@/services/offlineSyncService";
-import { OrderService } from "@/services/orderService";
+import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
@@ -284,6 +284,55 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         return !error;
       }
 
+      case "apply_discount": {
+        const { localOrderId, discount } = op.params;
+        const store = useOrderStore.getState();
+        const order = store.ordersById[localOrderId];
+        const resolvedOrderId = order?.db_order_id || resolveOrderId(localOrderId);
+
+        if (!resolvedOrderId) {
+          console.log("[OfflineSync] apply_discount: Order not synced yet, will retry");
+          return false;
+        }
+
+        const { error } = await OrderService.addOrderDiscount(_supabaseClient, {
+          order_id: resolvedOrderId,
+          discount_id: discount.discount_id,
+          discount_type: discount.discount_type,
+          discount_value: discount.discount_value,
+          source: discount.source,
+          calculated_amount: discount.calculated_amount,
+          pre_discount_subtotal: discount.pre_discount_subtotal,
+          applied_by_staff_profiles_id: discount.applied_by_staff_profiles_id,
+          approved_by_staff_profiles_id: discount.approved_by_staff_profiles_id,
+          applied_at: discount.applied_at,
+          applied_to_item_ids: discount.applied_to_item_ids,
+        });
+
+        if (!error) {
+          // Mark local discount as synced
+          useOrderStore.setState((state) => {
+            const existingOrder = state.ordersById[localOrderId];
+            if (!existingOrder?.applied_discounts) return state;
+            return {
+              ordersById: {
+                ...state.ordersById,
+                [localOrderId]: {
+                  ...existingOrder,
+                  applied_discounts: existingOrder.applied_discounts.map((d: any) =>
+                    d.local_id === discount.local_id
+                      ? { ...d, sync_status: "synced", sync_error: null }
+                      : d
+                  ),
+                },
+              },
+            };
+          });
+        }
+
+        return !error;
+      }
+
       case "void_item": {
         const { orderItemId, reason, localOrderId, localItemId } = op.params;
 
@@ -340,6 +389,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         const {
           params: paymentParams,
           localOrderId,
+          localPaymentId,
+          paymentTimestamp,
           cardData,
           terminalResponse,
         } = op.params;
@@ -480,7 +531,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             console.log(`[OfflineSync:payment] Order status updated to "preparing", ${updatedItems.length} items marked as sent`);
           }
 
-          // Mark last payment as synced with backend payment_id and items covered
+          // Mark the specific payment as synced with backend payment_id and items covered
+          // Uses localPaymentId or paymentTimestamp to find the correct payment (fixes split payment collapse)
           if (order && responseData.payment_id) {
             useOrderStore.setState((state) => {
               const currentOrder = state.ordersById[localOrderId];
@@ -489,12 +541,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               }
 
               const payments = [...currentOrder.payments];
-              const lastIdx = payments.length - 1;
-              payments[lastIdx] = {
-                ...payments[lastIdx],
+
+              // Find payment by localPaymentId or timestamp instead of using array index
+              const paymentIndex = payments.findIndex(
+                (p: any) =>
+                  (localPaymentId && p.localId === localPaymentId) ||
+                  (paymentTimestamp && p.timestamp === paymentTimestamp)
+              );
+
+              // Fallback to last payment only if no match found (legacy operations)
+              const targetIdx = paymentIndex !== -1 ? paymentIndex : payments.length - 1;
+
+              console.log(`[OfflineSync:payment] Updating payment at index ${targetIdx} (found by ${paymentIndex !== -1 ? 'ID match' : 'fallback'})`);
+
+              payments[targetIdx] = {
+                ...payments[targetIdx],
                 id: responseData.payment_id,
-                itemsCovered: responseData.items_covered || payments[lastIdx].itemsCovered || [],
-                timestamp: payments[lastIdx].timestamp || new Date().toISOString(),
+                itemsCovered: responseData.items_covered || payments[targetIdx].itemsCovered || [],
+                timestamp: payments[targetIdx].timestamp || new Date().toISOString(),
                 sync_status: "synced" as const,
                 sync_error: undefined,
               };
@@ -522,11 +586,21 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
               const currentOrder = state.ordersById[localOrderId];
               if (!currentOrder) return state;
 
-              // Mark the last payment as synced
+              // Mark the specific payment as synced (find by localPaymentId or timestamp)
               const payments = [...(currentOrder.payments || [])];
               if (payments.length > 0) {
-                payments[payments.length - 1] = {
-                  ...payments[payments.length - 1],
+                // Find payment by localPaymentId or timestamp instead of using array index
+                const paymentIndex = payments.findIndex(
+                  (p: any) =>
+                    (localPaymentId && p.localId === localPaymentId) ||
+                    (paymentTimestamp && p.timestamp === paymentTimestamp)
+                );
+
+                // Fallback to last payment only if no match found (legacy operations)
+                const targetIdx = paymentIndex !== -1 ? paymentIndex : payments.length - 1;
+
+                payments[targetIdx] = {
+                  ...payments[targetIdx],
                   sync_status: "synced" as const,
                   sync_error: undefined,
                 };
@@ -655,53 +729,76 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
 
         console.log(`[OfflineSync:add_item] Using db_order_id: ${actualDbOrderId}`);
 
-        // Build the item params if we only have itemData (queued from initial failure)
-        let params: AddOrderItemParams;
-        if (addItemParams) {
-          params = addItemParams;
-          // Update the order ID in case it changed
-          params.p_order_id = actualDbOrderId;
-        } else if (itemData) {
+        const isOpenItem = itemData?.is_open_item || addItemParams?.is_open_item;
+
+        // Build params for open item vs regular item
+        let params: AddOrderItemParams | AddOpenItemParams;
+        if (isOpenItem) {
           params = {
             p_order_id: actualDbOrderId,
-            p_menu_item_id: itemData.menuItemId || undefined,
-            p_quantity: itemData.quantity,
-            p_item_name: itemData.name,
-            p_category_name: itemData.category_name || "Uncategorized",
-            // Use card price for p_unit_price and cash price for p_cash_unit_price
-            // Fall back to originalPrice if specific prices not available
-            p_unit_price: itemData.price ?? itemData.originalPrice,
-            p_cash_unit_price: itemData.cashPrice ?? itemData.price ?? itemData.originalPrice,
-            p_selected_size_id: itemData.customizations?.size?.id || undefined,
-            p_selected_size_name:
-              itemData.customizations?.size?.name || undefined,
-            p_size_price_modifier:
-              itemData.customizations?.size?.priceModifier || undefined,
-            p_special_instructions:
-              itemData.customizations?.notes || undefined,
-            p_modifiers: itemData.customizations?.modifiers?.flatMap(
-              (mod: any) =>
-                mod.options.map((opt: any) => ({
-                  modifier_group_id: mod.categoryId,
-                  modifier_item_id: opt.id,
-                  modifier_group_name: mod.categoryName,
-                  modifier_name: opt.name,
-                  price_modifier: opt.price,
-                  quantity: 1,
-                }))
-            ),
-            p_course_number:
-              useCoursingStore.getState().getWorkingCourse(localOrderId) || 1,
-          };
+            p_item_name: itemData?.open_item_name || itemData?.name || addItemParams?.p_item_name,
+            p_unit_price: itemData?.open_item_price ?? itemData?.price ?? addItemParams?.p_unit_price ?? 0,
+            p_quantity: itemData?.quantity ?? addItemParams?.p_quantity ?? 1,
+            p_special_instructions: itemData?.customizations?.notes ?? addItemParams?.p_special_instructions,
+            p_is_tax_exempt: itemData?.is_tax_exempt ?? addItemParams?.p_is_tax_exempt,
+          } as AddOpenItemParams;
         } else {
-          console.error("[OfflineSync] No item params available for add_item");
-          return false;
+          // Build the item params if we only have itemData (queued from initial failure)
+          if (addItemParams) {
+            params = addItemParams;
+            // Update the order ID in case it changed
+            (params as AddOrderItemParams).p_order_id = actualDbOrderId;
+          } else if (itemData) {
+            params = {
+              p_order_id: actualDbOrderId,
+              p_menu_item_id: itemData.menuItemId || undefined,
+              p_quantity: itemData.quantity,
+              p_item_name: itemData.name,
+              p_category_name: itemData.category_name || "Uncategorized",
+              // Use card price for p_unit_price and cash price for p_cash_unit_price
+              // Fall back to originalPrice if specific prices not available
+              p_unit_price: itemData.price ?? itemData.originalPrice,
+              p_cash_unit_price: itemData.cashPrice ?? itemData.price ?? itemData.originalPrice,
+              p_selected_size_id: itemData.customizations?.size?.id || undefined,
+              p_selected_size_name:
+                itemData.customizations?.size?.name || undefined,
+              p_size_price_modifier:
+                itemData.customizations?.size?.priceModifier || undefined,
+              p_special_instructions:
+                itemData.customizations?.notes || undefined,
+              p_modifiers: itemData.customizations?.modifiers?.flatMap(
+                (mod: any) =>
+                  mod.options.map((opt: any) => ({
+                    modifier_group_id: mod.categoryId,
+                    modifier_item_id: opt.id,
+                    modifier_group_name: mod.categoryName,
+                    modifier_name: opt.name,
+                    price_modifier: opt.price,
+                    quantity: 1,
+                  }))
+              ),
+              p_course_number:
+                useCoursingStore.getState().getWorkingCourse(localOrderId) || 1,
+            } as AddOrderItemParams;
+          } else {
+            console.error("[OfflineSync] No item params available for add_item");
+            return false;
+          }
         }
 
-        const { data, error } = await OrderService.addOrderItem(
-          _supabaseClient,
-          params
-        );
+        let data: any;
+        let error: any;
+        if (isOpenItem) {
+          ({ data, error } = await OrderService.addOpenItem(
+            _supabaseClient,
+            params as AddOpenItemParams
+          ));
+        } else {
+          ({ data, error } = await OrderService.addOrderItem(
+            _supabaseClient,
+            params as AddOrderItemParams
+          ));
+        }
 
         if (error) {
           console.error(`[OfflineSync:add_item] FAILED - DB Error:`, error);

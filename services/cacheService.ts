@@ -3,27 +3,13 @@
  *
  * Manages clearing of transient/operational data while preserving
  * device identity and configuration.
+ * Uses MMKV for blazing-fast synchronous storage operations.
  */
 
+import { clearCacheData } from "@/lib/storage";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeClockStore } from "@/stores/useTimeClock";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-// Keys to CLEAR (transient/operational data)
-const CLEARABLE_KEYS = [
-  "order-store-storage",
-  "dexa-pos-timeclock",
-  "offline_operations_queue",
-  "order_item_operations_queue",
-  "order_items_cache",
-  "offline_orders",
-];
-
-// Keys that are PRESERVED (never cleared):
-// - 'store-settings-storage' (store settings)
-// - 'dexa-employee-storage' (employee list)
-// - 'dexa-pos-device-id' (device identifier)
 
 export interface CacheClearResult {
   success: boolean;
@@ -40,19 +26,19 @@ export interface CacheStats {
 /**
  * Clear all transient cache and operational data.
  * Preserves device ID, store settings, and employee data.
+ * Now synchronous thanks to MMKV!
  */
-export async function clearCache(): Promise<CacheClearResult> {
+export function clearCache(): CacheClearResult {
   const clearedKeys: string[] = [];
   const errors: string[] = [];
 
-  // 1. Clear AsyncStorage keys
-  for (const key of CLEARABLE_KEYS) {
-    try {
-      await AsyncStorage.removeItem(key);
-      clearedKeys.push(key);
-    } catch (error) {
-      errors.push(`Failed to clear ${key}: ${error}`);
-    }
+  // 1. Clear MMKV storage keys (synchronous)
+  try {
+    const mmkvResult = clearCacheData();
+    clearedKeys.push(...mmkvResult.clearedKeys);
+    errors.push(...mmkvResult.errors);
+  } catch (error) {
+    errors.push(`Failed to clear MMKV storage: ${error}`);
   }
 
   // 2. Reset Zustand stores (in-memory state)

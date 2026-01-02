@@ -1,23 +1,19 @@
-import { CartItem, Discount } from "@/lib/types";
+import { useDiscounts } from "@/hooks/useDiscounts";
+import {
+  EligibilityContext,
+  getEligibleDiscounts,
+} from "@/services/discountEligibility";
+import { getDailyUsageCounts } from "@/services/discountUsageTracker";
 import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetTextInput,
-  BottomSheetView,
+  BottomSheetView
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Check, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-
-const mockDiscounts: Discount[] = [
-  { id: "1", label: "10% Off", value: 0.1, type: "percentage" },
-  { id: "2", label: "15% Off", value: 0.15, type: "percentage" },
-  { id: "3", label: "50% Off", value: 0.5, type: "percentage" },
-  { id: "4", label: "Mall Staff (30%)", value: 0.3, type: "percentage" },
-  { id: "5", label: "Military (10%)", value: 0.1, type: "percentage" },
-];
 
 interface DiscountBottomSheetProps {
   onClose: () => void;
@@ -40,20 +36,45 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     removeDiscountFromItem,
   } = useOrderStore();
 
+  const { data: discounts = [] } = useDiscounts();
+
   const activeOrder = orders.find((o) => o.id === activeOrderId);
   const cartItems = activeOrder?.items || [];
   const itemsWithAvailableDiscounts = cartItems.filter(
     (item) => !!item.availableDiscount
   );
 
-  const handleApplyCheckDiscount = (discount: Discount) => {
-    if (activeOrderId) {
-      applyDiscountToCheck(activeOrderId, discount);
-      onClose();
-    }
+  const eligibilityResults = useMemo(() => {
+    if (!activeOrder) return [];
+    const items = cartItems.map((item) => ({
+      id: item.id,
+      menu_item_id: item.menuItemId,
+      category_id: item.category_name || undefined,
+      is_alcohol: false,
+      item_total: item.price * item.quantity,
+    }));
+    const ctx: EligibilityContext = {
+      orderType:
+        activeOrder.order_type === "Dine In"
+          ? "dine_in"
+          : activeOrder.order_type === "Delivery"
+            ? "delivery"
+            : "takeout",
+      currentDate: new Date(),
+      dailyUsageCounts: getDailyUsageCounts(),
+      subtotal: items.reduce((sum, i) => sum + i.item_total, 0),
+      items,
+    };
+    return getEligibleDiscounts(discounts as any, ctx);
+  }, [activeOrder, cartItems, discounts]);
+
+  const handleApplyCheckDiscount = (discount: any) => {
+    if (!activeOrderId) return;
+    applyDiscountToCheck(activeOrderId, discount as any);
+    onClose();
   };
 
-  const handleToggleItemDiscount = (itemInCart: CartItem) => {
+  const handleToggleItemDiscount = (itemInCart: any) => {
     if (!activeOrderId) return;
     if (itemInCart.appliedDiscount) {
       removeDiscountFromItem(activeOrderId, itemInCart.id);
@@ -106,9 +127,8 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         <View className="flex-row bg-[#303030] p-1 rounded-xl mb-5 border border-gray-700">
           <TouchableOpacity
             onPress={() => setActiveTab("check")}
-            className={`flex-1 py-2 rounded-lg items-center ${
-              activeTab === "check" ? "bg-[#4B5563]" : ""
-            }`}
+            className={`flex-1 py-2 rounded-lg items-center ${activeTab === "check" ? "bg-[#4B5563]" : ""
+              }`}
           >
             <Text
               className={`font-semibold ${activeTab === "check" ? "text-white" : "text-gray-400"}`}
@@ -118,9 +138,8 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab("items")}
-            className={`flex-1 py-2 rounded-lg items-center ${
-              activeTab === "items" ? "bg-[#4B5563]" : ""
-            }`}
+            className={`flex-1 py-2 rounded-lg items-center ${activeTab === "items" ? "bg-[#4B5563]" : ""
+              }`}
           >
             <Text
               className={`font-semibold ${activeTab === "items" ? "text-white" : "text-gray-400"}`}
@@ -141,45 +160,46 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           {activeTab === "check" && (
             <View className="flex-1">
               <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
-                Quick Apply
+                Available Discounts
               </Text>
-              <View className="flex-row flex-wrap justify-between gap-y-3">
-                {mockDiscounts.map((d) => (
-                  <TouchableOpacity
-                    key={d.id}
-                    onPress={() => handleApplyCheckDiscount(d)}
-                    className="w-[48%] h-16 bg-[#303030] border border-gray-600 rounded-xl items-center justify-center active:bg-blue-600/20 active:border-blue-500"
-                  >
-                    <Text className="text-white font-bold text-lg">
-                      {d.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View className="mt-6 border-t border-gray-700 pt-4">
-                <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
-                  Voucher Code
-                </Text>
-                <View className="flex-row gap-2">
-                  <BottomSheetTextInput
-                    placeholder="Add promo or voucher"
-                    placeholderTextColor="#6B7280"
-                    style={{
-                      flex: 1,
-                      backgroundColor: "#303030",
-                      color: "white",
-                      padding: 12,
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: "#4B5563",
-                      fontSize: 16,
-                    }}
-                  />
-                  <TouchableOpacity className="bg-blue-600 px-5 rounded-xl justify-center items-center">
-                    <Text className="text-white font-bold">Apply</Text>
-                  </TouchableOpacity>
-                </View>
+              <View className="flex-col gap-y-3">
+                {eligibilityResults.length === 0 ? (
+                  <Text className="text-gray-500">No discounts available</Text>
+                ) : (
+                  eligibilityResults.map((d) => (
+                    <TouchableOpacity
+                      key={d.discount.id}
+                      disabled={!d.eligible}
+                      onPress={() => handleApplyCheckDiscount(d.discount)}
+                      className={`p-3 rounded-xl border ${d.eligible
+                        ? "border-blue-500 bg-blue-500/10"
+                        : "border-gray-700 bg-[#303030]"
+                        }`}
+                    >
+                      <View className="flex-row justify-between items-center">
+                        <View>
+                          <Text className="text-white font-semibold text-lg">
+                            {d.discount.name}
+                          </Text>
+                          <Text className="text-gray-400">
+                            {d.discount.discount_type === "percentage"
+                              ? `${d.discount.discount_value}% off`
+                              : `$${d.discount.discount_value.toFixed(2)} off`}
+                          </Text>
+                        </View>
+                        {d.eligible ? (
+                          <Text className="text-green-400 font-bold">
+                            -${d.calculated_savings.toFixed(2)}
+                          </Text>
+                        ) : (
+                          <Text className="text-red-400 text-sm">
+                            {d.reason}
+                          </Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             </View>
           )}
@@ -193,11 +213,10 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => handleToggleItemDiscount(item)}
-                      className={`flex-row justify-between items-center p-3 rounded-xl border ${
-                        isApplied
-                          ? "bg-blue-900/20 border-blue-500"
-                          : "bg-[#303030] border-gray-700"
-                      }`}
+                      className={`flex-row justify-between items-center p-3 rounded-xl border ${isApplied
+                        ? "bg-blue-900/20 border-blue-500"
+                        : "bg-[#303030] border-gray-700"
+                        }`}
                     >
                       <View className="flex-1 mr-4">
                         <Text className="text-white font-semibold text-lg">

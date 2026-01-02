@@ -109,19 +109,26 @@ const OpenItemAdder = () => {
     }
 
     // Create a new cart item for the open item
+    const cashPrice = Math.round(price * 96) / 100; // match 4% cash discount in RPC
     const newOpenItem = {
       id: `open_item_${Date.now()}`,
       itemId: `open_item_${Date.now()}`,
       menuItemId: `open_item_${Date.now()}`,
       name: itemName,
       quantity: 1,
-      originalPrice: price,
+      originalPrice: cashPrice,
       price: price,
+      cashPrice: cashPrice,
       customizations: {
         notes: "Open Item",
       },
       availableDiscount: undefined,
       appliedDiscount: null,
+      is_open_item: true,
+      open_item_name: itemName,
+      open_item_price: price,
+      category_name: "Open Items",
+      is_tax_exempt: false,
     };
 
     addItemToActiveOrder(newOpenItem);
@@ -147,9 +154,8 @@ const OpenItemAdder = () => {
   }> = ({ value, onPress, isDestructive }) => (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-1 h-12 rounded-lg items-center justify-center ${
-        isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
-      }`}
+      className={`flex-1 h-12 rounded-lg items-center justify-center ${isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
+        }`}
     >
       <Text className="text-xl font-bold text-white">{value}</Text>
     </TouchableOpacity>

@@ -2,7 +2,7 @@
  * Offline ID Registry
  *
  * Manages mapping between local UUIDs and backend UUIDs for offline-first operations.
- * Persists mappings to AsyncStorage for crash recovery.
+ * Persists mappings to MMKV syncStorage for crash recovery and instant access.
  *
  * Key concepts:
  * - Local IDs: Generated client-side UUIDs (format: `local_order_xxx` or `local_item_xxx`)
@@ -10,7 +10,7 @@
  * - Pending: Local IDs that haven't been synced yet
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getSyncJSON, setSyncJSON } from "@/lib/storage";
 
 // ============================================================================
 // TYPES
@@ -65,16 +65,18 @@ let initialized = false;
 // ============================================================================
 
 /**
- * Initialize the ID registry from AsyncStorage.
+ * Initialize the ID registry from MMKV storage.
  * Call this at app startup.
+ * Now synchronous thanks to MMKV!
  */
 export async function initIdRegistry(): Promise<void> {
   if (initialized) return;
 
   try {
-    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    // Synchronous read from MMKV
+    const stored = getSyncJSON<IdRegistryState>(STORAGE_KEY);
     if (stored) {
-      state = JSON.parse(stored);
+      state = stored;
       console.log(
         `[IdRegistry] Loaded ${Object.keys(state.mappings).length} mappings`
       );
@@ -88,11 +90,13 @@ export async function initIdRegistry(): Promise<void> {
 }
 
 /**
- * Persist current state to AsyncStorage.
+ * Persist current state to MMKV storage.
+ * Now synchronous thanks to MMKV!
  */
-async function persistState(): Promise<void> {
+function persistState(): void {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Synchronous write to MMKV
+    setSyncJSON(STORAGE_KEY, state);
   } catch (error) {
     console.error("[IdRegistry] Failed to persist state:", error);
   }
@@ -186,6 +190,7 @@ export function getEntityTypeFromLocalId(localId: string): EntityType | null {
 
 /**
  * Register a new local ID (before sync).
+ * Now synchronous thanks to MMKV!
  */
 export async function registerLocalId(
   localId: string,
@@ -201,13 +206,14 @@ export async function registerLocalId(
   };
 
   state.mappings[localId] = mapping;
-  await persistState();
+  persistState();
 
   console.log(`[IdRegistry] Registered local ID: ${localId} (${entityType})`);
 }
 
 /**
  * Map a local ID to a backend ID after successful sync.
+ * Now synchronous thanks to MMKV!
  */
 export async function mapLocalToBackend(
   localId: string,
@@ -219,7 +225,7 @@ export async function mapLocalToBackend(
     mapping.backendId = backendId;
     mapping.syncedAt = new Date().toISOString();
     state.backendToLocal[backendId] = localId;
-    await persistState();
+    persistState();
 
     console.log(`[IdRegistry] Mapped ${localId} -> ${backendId}`);
   } else {
@@ -233,7 +239,7 @@ export async function mapLocalToBackend(
       syncedAt: new Date().toISOString(),
     };
     state.backendToLocal[backendId] = localId;
-    await persistState();
+    persistState();
 
     console.log(`[IdRegistry] Created mapping ${localId} -> ${backendId}`);
   }
@@ -311,6 +317,7 @@ export function getItemMappingsForOrder(orderLocalId: string): IdMapping[] {
 
 /**
  * Remove a mapping (e.g., when order is archived).
+ * Now synchronous thanks to MMKV!
  */
 export async function removeMapping(localId: string): Promise<void> {
   const mapping = state.mappings[localId];
@@ -320,7 +327,7 @@ export async function removeMapping(localId: string): Promise<void> {
       delete state.backendToLocal[mapping.backendId];
     }
     delete state.mappings[localId];
-    await persistState();
+    persistState();
 
     console.log(`[IdRegistry] Removed mapping: ${localId}`);
   }
@@ -328,6 +335,7 @@ export async function removeMapping(localId: string): Promise<void> {
 
 /**
  * Remove all mappings for an order and its items.
+ * Now synchronous thanks to MMKV!
  */
 export async function removeOrderMappings(orderLocalId: string): Promise<void> {
   // Remove item mappings first
@@ -346,7 +354,7 @@ export async function removeOrderMappings(orderLocalId: string): Promise<void> {
   }
   delete state.mappings[orderLocalId];
 
-  await persistState();
+  persistState();
   console.log(
     `[IdRegistry] Removed order and ${itemMappings.length} item mappings for: ${orderLocalId}`
   );
@@ -355,6 +363,7 @@ export async function removeOrderMappings(orderLocalId: string): Promise<void> {
 /**
  * Clean up old synced mappings (older than specified days).
  * Call periodically to prevent unbounded growth.
+ * Now synchronous thanks to MMKV!
  */
 export async function cleanupOldMappings(daysOld: number = 7): Promise<number> {
   const cutoff = Date.now() - daysOld * 24 * 60 * 60 * 1000;
@@ -375,7 +384,7 @@ export async function cleanupOldMappings(daysOld: number = 7): Promise<number> {
   }
 
   if (removedCount > 0) {
-    await persistState();
+    persistState();
     console.log(`[IdRegistry] Cleaned up ${removedCount} old mappings`);
   }
 
@@ -384,10 +393,11 @@ export async function cleanupOldMappings(daysOld: number = 7): Promise<number> {
 
 /**
  * Clear all mappings (for testing or reset).
+ * Now synchronous thanks to MMKV!
  */
 export async function clearAllMappings(): Promise<void> {
   state = { mappings: {}, backendToLocal: {} };
-  await persistState();
+  persistState();
   console.log("[IdRegistry] Cleared all mappings");
 }
 
@@ -435,5 +445,3 @@ export function getStats(): {
 export function exportMappings(): IdMapping[] {
   return Object.values(state.mappings);
 }
-
-

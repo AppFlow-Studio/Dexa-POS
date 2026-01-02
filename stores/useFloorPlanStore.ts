@@ -1,3 +1,4 @@
+import { mmkvStorage } from "@/lib/storage";
 import { TABLE_SHAPES } from "@/lib/table-shapes";
 import { FloorPlanService } from "@/services/floorPlanService";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
@@ -8,7 +9,6 @@ import {
   TableStatus,
   WaitlistEntry,
 } from "@/types/db-floor-plan-types";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -667,11 +667,11 @@ export const useFloorPlanStore = create<FloorPlanState>()(
               const update = updatesById.get(t.id); // O(1) instead of O(n)
               return update
                 ? {
-                    ...t,
-                    x: update.x,
-                    y: update.y,
-                    rotation: update.rotation ?? t.rotation,
-                  }
+                  ...t,
+                  x: update.x,
+                  y: update.y,
+                  rotation: update.rotation ?? t.rotation,
+                }
                 : t;
             });
             return {
@@ -738,22 +738,22 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               params.tableIds.includes(t.id)
                 ? {
-                    ...t,
-                    session: {
-                      id: localSessionId,
-                      session_number: localSessionId.slice(-6).toUpperCase(),
-                      status: "seated" as TableStatus,
-                      party_size: params.partySize,
-                      guest_name: params.guestName,
-                      seated_at: new Date().toISOString(),
-                      table_ids: params.tableIds,
-                      order_id:
-                        params.createOrder !== false ? localOrderId : undefined,
-                      current_course: 1,
-                      needs_attention: false,
-                      is_vip: false,
-                    },
-                  }
+                  ...t,
+                  session: {
+                    id: localSessionId,
+                    session_number: localSessionId.slice(-6).toUpperCase(),
+                    status: "seated" as TableStatus,
+                    party_size: params.partySize,
+                    guest_name: params.guestName,
+                    seated_at: new Date().toISOString(),
+                    table_ids: params.tableIds,
+                    order_id:
+                      params.createOrder !== false ? localOrderId : undefined,
+                    current_course: 1,
+                    needs_attention: false,
+                    is_vip: false,
+                  },
+                }
                 : t
             );
             return {
@@ -786,13 +786,13 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   const newTables = state.tables.map((t) =>
                     t.session?.id === localSessionId
                       ? {
-                          ...t,
-                          session: {
-                            ...t.session!,
-                            id: data.session_id,
-                            order_id: data.order_id,
-                          },
-                        }
+                        ...t,
+                        session: {
+                          ...t.session!,
+                          id: data.session_id,
+                          order_id: data.order_id,
+                        },
+                      }
                       : t
                   );
                   return {
@@ -895,9 +895,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                    ...t,
-                    session: { ...t.session!, status },
-                  }
+                  ...t,
+                  session: { ...t.session!, status },
+                }
                 : t
             );
             return {
@@ -1012,12 +1012,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             const newTables = state.tables.map((t) =>
               t.session?.id === sessionId
                 ? {
-                    ...t,
-                    session: {
-                      ...t.session!,
-                      current_course: data.current_course,
-                    },
-                  }
+                  ...t,
+                  session: {
+                    ...t.session!,
+                    current_course: data.current_course,
+                  },
+                }
                 : t
             );
             return {
@@ -1350,7 +1350,7 @@ export const useFloorPlanStore = create<FloorPlanState>()(
       }),
       {
         name: "floor-plan-db-storage",
-        storage: createJSONStorage(() => AsyncStorage),
+        storage: createJSONStorage(() => mmkvStorage),
         partialize: (state) => ({
           floorPlans: state.floorPlans,
           activeFloorPlanId: state.activeFloorPlanId,
