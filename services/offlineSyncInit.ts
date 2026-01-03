@@ -27,8 +27,10 @@ import {
   queueDependentOperation,
   queueOperation,
 } from "@/services/offlineSyncService";
+import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
@@ -295,22 +297,31 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           return false;
         }
 
-        const { error } = await OrderService.addOrderDiscount(_supabaseClient, {
+        // Get staff ID - use from discount if available, otherwise get from employee store
+        const staffId = discount.applied_by_staff_profiles_id
+          ?? useEmployeeStore.getState().loggedInEmployee?.profileId
+          ?? null;
+
+        if (!staffId) {
+          console.warn("[OfflineSync] apply_discount: No staff ID available, will retry");
+          return false;
+        }
+
+        const result = await OrderDiscountService.applyDiscount(_supabaseClient, {
           order_id: resolvedOrderId,
-          discount_id: discount.discount_id,
+          staff_id: staffId,
+          discount_id: discount.discount_id ?? null,
+          discount_name: discount.discount_name ?? "Discount",
           discount_type: discount.discount_type,
           discount_value: discount.discount_value,
-          source: discount.source,
-          calculated_amount: discount.calculated_amount,
-          pre_discount_subtotal: discount.pre_discount_subtotal,
-          applied_by_staff_profiles_id: discount.applied_by_staff_profiles_id,
-          approved_by_staff_profiles_id: discount.approved_by_staff_profiles_id,
-          applied_at: discount.applied_at,
-          applied_to_item_ids: discount.applied_to_item_ids,
+          source: discount.source ?? "preset",
+          reason: null,
+          applied_to_item_ids: discount.applied_to_item_ids ?? null,
+          approved_by_staff_id: discount.approved_by_staff_profiles_id ?? null,
         });
 
-        if (!error) {
-          // Mark local discount as synced
+        if (result.success && result.order_discount_id) {
+          // Mark local discount as synced with backend order_discount_id
           useOrderStore.setState((state) => {
             const existingOrder = state.ordersById[localOrderId];
             if (!existingOrder?.applied_discounts) return state;
@@ -321,16 +332,61 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                   ...existingOrder,
                   applied_discounts: existingOrder.applied_discounts.map((d: any) =>
                     d.local_id === discount.local_id
-                      ? { ...d, sync_status: "synced", sync_error: null }
+                      ? { ...d, order_discount_id: result.order_discount_id, sync_status: "synced", sync_error: null }
                       : d
                   ),
                 },
               },
             };
           });
+          return true;
+        } else if (result.requires_approval) {
+          console.warn("[OfflineSync] apply_discount: Requires manager approval");
+          // Don't retry - needs user intervention
+          return true; // Mark as "handled" to prevent infinite retries
+        } else {
+          console.error("[OfflineSync] apply_discount: RPC failed:", result.error);
+          return false;
+        }
+      }
+
+      case "void_discount": {
+        const { localOrderId, order_discount_id, void_reason } = op.params;
+        const store = useOrderStore.getState();
+        const order = store.ordersById[localOrderId];
+        const resolvedOrderId = order?.db_order_id || resolveOrderId(localOrderId);
+
+        if (!resolvedOrderId) {
+          console.log("[OfflineSync] void_discount: Order not synced yet, will retry");
+          return false;
         }
 
-        return !error;
+        if (!order_discount_id) {
+          console.log("[OfflineSync] void_discount: No order_discount_id, skipping");
+          return true; // Nothing to void
+        }
+
+        const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+
+        if (!staffId) {
+          console.warn("[OfflineSync] void_discount: No staff ID available, will retry");
+          return false;
+        }
+
+        const result = await OrderDiscountService.voidDiscount(_supabaseClient, {
+          order_id: resolvedOrderId,
+          staff_id: staffId,
+          order_discount_id: order_discount_id,
+          void_reason: void_reason ?? null,
+        });
+
+        if (result.success) {
+          console.log("[OfflineSync] void_discount: Successfully voided", order_discount_id);
+          return true;
+        } else {
+          console.error("[OfflineSync] void_discount: RPC failed:", result.error);
+          return false;
+        }
       }
 
       case "void_item": {

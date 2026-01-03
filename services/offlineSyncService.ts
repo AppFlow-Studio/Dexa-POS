@@ -31,6 +31,7 @@ export type OperationType =
   | "void_item"
   | "update_order_status"
   | "apply_discount"
+  | "void_discount"         // Void/remove a discount via RPC
   // Kitchen operations
   | "send_to_kitchen"       // Updates order status + item statuses
   // Payment operations (unified + legacy)
@@ -56,6 +57,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   // Item operations after order exists
   add_item: 2,
   apply_discount: 2,
+  void_discount: 2,         // Same priority as apply_discount
   update_item: 3,
   update_item_quantity: 3,
   replace_modifiers: 3,
@@ -267,7 +269,6 @@ function startNetworkListener(): void {
 function handleNetworkChange(state: NetInfoState): void {
   const wasOnline = isOnline;
   isOnline = state.isConnected === true && state.isInternetReachable !== false;
-
   if (wasOnline !== isOnline) {
     console.log(
       "[OfflineSync] Network status changed:",

@@ -1,6 +1,6 @@
 // services/customers.ts
 
-import { resolveToBackendId } from "@/lib/offlineIdRegistry";
+import { isValidUUID, resolveToBackendId } from "@/lib/offlineIdRegistry";
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
 import { getIsOnline } from "@/services/offlineSyncService";
 import {
@@ -243,15 +243,20 @@ export function queueLinkCustomerToOrder(params: {
     merchantId: string;
 }): void {
     const queue = readQueue();
-    // Don't force local orderId into dbOrderId; resolve if available, otherwise keep null and retry later
-    const resolvedDbOrderId =
-        params.dbOrderId ?? resolveToBackendId(params.orderId) ?? null;
+    // Only enqueue a backend order ID if it is a UUID; otherwise wait for mapping resolution
+    const resolvedFromMapping = resolveToBackendId(params.orderId);
+    const sanitizedDbOrderId =
+        (params.dbOrderId && isValidUUID(params.dbOrderId))
+            ? params.dbOrderId
+            : (resolvedFromMapping && isValidUUID(resolvedFromMapping)
+                ? resolvedFromMapping
+                : null);
     queue.push({
         id: uuidv4(),
         type: "link",
         payload: {
             orderId: params.orderId,
-            dbOrderId: resolvedDbOrderId,
+            dbOrderId: sanitizedDbOrderId,
             customerId: params.customerId,
             merchantId: params.merchantId,
         },
@@ -337,13 +342,23 @@ export async function processCustomerQueue(
             continue;
         }
 
-        // Always re-resolve dbOrderId; if still missing, keep in queue without failing
-        const resolvedDbOrderId =
-            op.payload.dbOrderId ??
-            resolveToBackendId(op.payload.orderId) ??
-            null;
+        // Resolve to a backend order ID; if still missing or invalid, keep in queue
+        const resolvedDbOrderId = (() => {
+            if (op.payload.dbOrderId && isValidUUID(op.payload.dbOrderId)) {
+                return op.payload.dbOrderId;
+            }
+            const mapped = resolveToBackendId(op.payload.orderId);
+            if (mapped && isValidUUID(mapped)) {
+                return mapped;
+            }
+            return null;
+        })();
 
         if (!resolvedDbOrderId) {
+            console.warn(
+                "[CustomerQueue] Skipping link; backend order ID not yet available",
+                op.payload
+            );
             remaining.push(op);
             continue;
         }

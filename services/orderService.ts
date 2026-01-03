@@ -131,6 +131,10 @@ export class OrderService {
       applied_to_item_ids?: string[] | null;
     }
   ): Promise<{ data: any; error: any }> {
+    console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id);
+    console.log(client)
+    console.log(`[OrderService:addOrderDiscount] ====== ADDING ORDER DISCOUNT `,params);
+   
     const { data, error } = await client
       .from("order_discounts")
       .insert({
@@ -162,7 +166,7 @@ export class OrderService {
     // console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
     // console.log(`[OrderService:addOrderItem] Item: ${params.p_item_name}`);
     // console.log(`[OrderService:addOrderItem] Qty: ${params.p_quantity}, Price: ${params.p_unit_price}`);
-    console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
+    // console.log(`[OrderService:addOrderItem] ADD_ORDER_ITEM_V2:`, params);
     const { data, error } = await client.rpc("add_order_item_v2", params);
 
     if (error || !data) {
@@ -170,8 +174,8 @@ export class OrderService {
       return { data, error };
     }
 
-    console.log(`[OrderService:addOrderItem] SUCCESS!`);
-    console.log(`[OrderService:addOrderItem] Item ID: ${data.order_item_id}`);
+    // console.log(`[OrderService:addOrderItem] SUCCESS!`);
+    // console.log(`[OrderService:addOrderItem] Item ID: ${data.order_item_id}`);
 
     return { data, error };
   }

@@ -28,6 +28,7 @@ import {
   getIsOnline,
   queueOperation
 } from "@/services/offlineSyncService";
+import { OrderDiscountService } from "@/services/orderDiscountService";
 import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
@@ -2969,6 +2970,7 @@ export const useOrderStore = create<OrderState>()(
           },
 
           applyDiscountToCheck: (orderId, discountInput) => {
+            console.log('[applyDiscountToCheck] discountInput', discountInput);
             const order = get().ordersById[orderId];
             if (!order) return;
 
@@ -3003,24 +3005,36 @@ export const useOrderStore = create<OrderState>()(
               ? preDiscountSubtotal * normalizedDiscount.value
               : normalizedDiscount.value;
 
+            // Get staff ID from employee store
+            const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+
+            // Build discount name
+            const discountName = isRecord
+              ? (discountInput as any).name ?? normalizedDiscount.label ?? "Discount"
+              : normalizedDiscount.label ?? "Discount";
+
+            // Get discount_value in raw form (percentage as 10 for 10%, fixed as dollar amount)
+            const rawDiscountValue = isRecord
+              ? (discountInput as any).discount_value
+              : normalizedDiscount.type === "percentage"
+                ? normalizedDiscount.value * 100
+                : normalizedDiscount.value;
+
             const applied: OrderAppliedDiscount = {
               local_id: `discount_${Date.now()}`,
               discount_id: isRecord ? (discountInput as any).id ?? null : null,
               discount_type: normalizedDiscount.type === "percentage" ? "percentage" : "fixed",
-              discount_value: isRecord
-                ? (discountInput as any).discount_value
-                : normalizedDiscount.type === "percentage"
-                  ? normalizedDiscount.value * 100
-                  : normalizedDiscount.value,
+              discount_value: rawDiscountValue,
+              discount_name: discountName,
               source: "preset",
               calculated_amount: Math.round(calculatedAmount * 100) / 100,
               pre_discount_subtotal: preDiscountSubtotal,
-              applied_by_staff_profiles_id: null,
+              applied_by_staff_profiles_id: staffId,
               applied_at: new Date().toISOString(),
               sync_status: order.db_order_id ? "pending" : "pending",
             };
 
-            // Update state
+            // Update state optimistically
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -3053,23 +3067,62 @@ export const useOrderStore = create<OrderState>()(
                 : {}),
             }));
 
-            // Sync/queue order_discount
+            // Sync via RPC or queue for offline
             const supabase = _supabaseClient;
             const dbOrderId = order.db_order_id;
-            if (supabase && dbOrderId) {
-              OrderService.addOrderDiscount(supabase, {
+            const isOnline = getIsOnline();
+
+            if (supabase && dbOrderId && isOnline && staffId) {
+              console.log('[applyDiscountToCheck] syncing discount via RPC', applied);
+              OrderDiscountService.applyDiscount(supabase, {
                 order_id: dbOrderId,
-                discount_id: isRecord ? (discountInput as any).id ?? null : null,
+                staff_id: staffId,
+                discount_id: applied.discount_id,
+                discount_name: discountName,
                 discount_type: applied.discount_type,
                 discount_value: applied.discount_value,
-                source: applied.source,
-                calculated_amount: applied.calculated_amount,
-                pre_discount_subtotal: applied.pre_discount_subtotal,
-                applied_by_staff_profiles_id: applied.applied_by_staff_profiles_id,
-                approved_by_staff_profiles_id: applied.approved_by_staff_profiles_id,
-                applied_at: applied.applied_at,
+                source: applied.source as "preset" | "custom" | "promo_code",
+                reason: null,
+                applied_to_item_ids: null,
+                approved_by_staff_id: applied.approved_by_staff_profiles_id ?? null,
+              }).then((result) => {
+                if (result.success && result.order_discount_id) {
+                  // Update local state with backend order_discount_id and mark as synced
+                  set((state) => {
+                    const existingOrder = state.ordersById[orderId];
+                    if (!existingOrder?.applied_discounts) return state;
+                    return {
+                      ordersById: {
+                        ...state.ordersById,
+                        [orderId]: {
+                          ...existingOrder,
+                          applied_discounts: existingOrder.applied_discounts.map((d) =>
+                            d.local_id === applied.local_id
+                              ? { ...d, order_discount_id: result.order_discount_id, sync_status: "synced" as const }
+                              : d
+                          ),
+                        },
+                      },
+                    };
+                  });
+                  console.log('[applyDiscountToCheck] RPC success, order_discount_id:', result.order_discount_id);
+                } else if (result.requires_approval) {
+                  console.warn('[applyDiscountToCheck] Discount requires manager approval');
+                  // Could emit an event or show a toast here
+                } else if (!result.success) {
+                  console.error('[applyDiscountToCheck] RPC failed:', result.error);
+                  // Queue for retry
+                  queueOperation({
+                    type: "apply_discount",
+                    params: {
+                      localOrderId: orderId,
+                      discount: applied,
+                    },
+                    localOrderId: orderId,
+                  } as any);
+                }
               }).catch((err) => {
-                console.error("Failed to sync discount, queueing:", err);
+                console.error("Failed to sync discount via RPC, queueing:", err);
                 queueOperation({
                   type: "apply_discount",
                   params: {
@@ -3080,6 +3133,7 @@ export const useOrderStore = create<OrderState>()(
                 } as any);
               });
             } else {
+              // Offline or no db_order_id yet - queue for later
               queueOperation({
                 type: "apply_discount",
                 params: {
@@ -3095,6 +3149,11 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order) return;
 
+            // Get applied discounts that need to be voided
+            const discountsToVoid = (order.applied_discounts || []).filter(
+              (d) => d.source === "preset" && d.order_discount_id
+            );
+
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
             const totals = calculateOrderTotals(
               order.items,
@@ -3103,6 +3162,7 @@ export const useOrderStore = create<OrderState>()(
               taxRatesMap
             );
 
+            // Update state optimistically
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -3129,6 +3189,59 @@ export const useOrderStore = create<OrderState>()(
                 }
                 : {}),
             }));
+
+            // Void discounts on backend
+            const supabase = _supabaseClient;
+            const dbOrderId = order.db_order_id;
+            const staffId = useEmployeeStore.getState().loggedInEmployee?.profileId ?? null;
+            const isOnline = getIsOnline();
+
+            if (supabase && dbOrderId && isOnline && staffId && discountsToVoid.length > 0) {
+              // Void each synced discount
+              for (const discount of discountsToVoid) {
+                if (discount.order_discount_id) {
+                  OrderDiscountService.voidDiscount(supabase, {
+                    order_id: dbOrderId,
+                    staff_id: staffId,
+                    order_discount_id: discount.order_discount_id,
+                    void_reason: null,
+                  }).then((result) => {
+                    if (!result.success) {
+                      console.error('[removeCheckDiscount] Failed to void discount:', result.error);
+                    } else {
+                      console.log('[removeCheckDiscount] Successfully voided discount:', discount.order_discount_id);
+                    }
+                  }).catch((err) => {
+                    console.error('[removeCheckDiscount] RPC error:', err);
+                    // Queue for retry
+                    queueOperation({
+                      type: "void_discount",
+                      params: {
+                        localOrderId: orderId,
+                        order_discount_id: discount.order_discount_id,
+                        void_reason: null,
+                      },
+                      localOrderId: orderId,
+                    } as any);
+                  });
+                }
+              }
+            } else if (discountsToVoid.length > 0) {
+              // Offline - queue void operations
+              for (const discount of discountsToVoid) {
+                if (discount.order_discount_id) {
+                  queueOperation({
+                    type: "void_discount",
+                    params: {
+                      localOrderId: orderId,
+                      order_discount_id: discount.order_discount_id,
+                      void_reason: null,
+                    },
+                    localOrderId: orderId,
+                  } as any);
+                }
+              }
+            }
           },
 
           applyDiscountToItem: (orderId, itemId) => {

@@ -1,5 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { isValidUUID } from "@/lib/offlineIdRegistry";
 import {
   createCustomerOffline,
   createCustomerOnline,
@@ -127,11 +128,16 @@ const CustomerSheet: React.FC = () => {
       customer_id: customer.id,
     });
 
+    const sanitizedDbOrderId =
+      order?.db_order_id && isValidUUID(order.db_order_id)
+        ? order.db_order_id
+        : null;
+
     try {
       console.log("[CustomerSheet] order", order?.db_order_id);
       await linkCustomerToOrder(supabase, {
         orderId: activeOrderId,
-        dbOrderId: order?.db_order_id || null,
+        dbOrderId: sanitizedDbOrderId,
         customerId: customer.id,
         merchantId: selectedStore.id,
       });

@@ -1,4 +1,5 @@
-import { useOAuth, useSignIn } from "@clerk/clerk-expo";
+import { useSSO, useSignIn } from "@clerk/clerk-expo";
+import * as Linking from 'expo-linking';
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
@@ -15,12 +16,17 @@ import {
 // IMPORTANT: Must be called at module level for Expo Go
 WebBrowser.maybeCompleteAuthSession();
 
+
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
+  const linking = Linking.useLinkingURL()
+  const LinkRedirectUrl = Linking.createURL('oauth-native-callback', {
+    scheme: 'dexapos'
+  })
 
   // Native OAuth flow - works in Expo Go
-  const { startOAuthFlow } = useOAuth({ strategy: "oauth_google" });
+  const { startSSOFlow } = useSSO();
 
   const [emailAddress, setEmailAddress] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -41,7 +47,10 @@ const MerchantLoginScreen = () => {
 
     try {
       const { createdSessionId, setActive: setActiveSession } =
-        await startOAuthFlow();
+        await startSSOFlow({
+          strategy: "oauth_google",
+          redirectUrl: LinkRedirectUrl,
+        });
 
       if (createdSessionId) {
         await setActiveSession!({ session: createdSessionId });
@@ -93,6 +102,7 @@ const MerchantLoginScreen = () => {
         router.replace("/store-select");
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2));
+        console.log(signInAttempt)
         setError("Sign-in incomplete. Please try again.");
       }
     } catch (err: any) {
@@ -205,8 +215,8 @@ const MerchantLoginScreen = () => {
         onPress={handleLogin}
         disabled={isFormLoading || !emailAddress || !password}
         className={`w-full p-4 rounded-xl items-center ${isFormLoading || !emailAddress || !password
-            ? "bg-blue-400"
-            : "bg-blue-600"
+          ? "bg-blue-400"
+          : "bg-blue-600"
           }`}
       >
         {isLoading ? (

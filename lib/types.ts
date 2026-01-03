@@ -130,7 +130,9 @@ export type DiscountSource = "preset" | "custom" | "promo_code";
 
 export interface OrderAppliedDiscount {
   local_id: string;
+  order_discount_id?: string; // Backend order_discounts.id after sync
   discount_id: string | null;
+  discount_name?: string; // Display name for the discount
   discount_type: DiscountType;
   discount_value: number;
   source: DiscountSource;
