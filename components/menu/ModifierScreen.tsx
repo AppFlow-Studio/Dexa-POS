@@ -445,12 +445,12 @@ const ModifierScreen = () => {
           ...draftItem,
           quantity,
           price: baseTotal,
+          unitPrice: item.price,
           customizations: {
             modifiers: selectedModifiers,
             notes,
           },
         };
-
         updateItemInActiveOrder(updatedDraftItem);
       },
       50
@@ -558,6 +558,7 @@ const ModifierScreen = () => {
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
+          unitPrice: currentItem.price,
           originalPrice: cashPrice || itemPrice, // originalPrice should be the cash/base price
           price: itemPrice, // price is the effective price (card price + modifiers)
           cashPrice: cashPrice || itemPrice, // Store cashPrice for reference, fallback to itemPrice
@@ -817,6 +818,7 @@ const ModifierScreen = () => {
           addedFromCategoryId: categoryId || null,
           addedFromMenuId: null,
         };
+        console.log('[handleSave] confirmedItem', confirmedItem);
         addItemToActiveOrder(confirmedItem);
         show({
           title: "Item Added",
@@ -833,6 +835,7 @@ const ModifierScreen = () => {
           price: total / Math.max(1, state.quantity),
           image: baseItem.image,
           cashPrice: baseItem.cashPrice || baseItem.price, // Provide fallback if cashPrice is undefined
+          unitPrice: baseItem.price,
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
@@ -842,6 +845,7 @@ const ModifierScreen = () => {
           addedFromCategoryId: categoryId || null,
           addedFromMenuId: null,
         };
+        console.log('[handleSave] newItem', newItem);
         addItemToActiveOrder(newItem);
         show({
           title: "Item Added",

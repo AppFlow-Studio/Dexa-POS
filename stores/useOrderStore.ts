@@ -682,6 +682,7 @@ const addItemToBackend = async (
     await registerLocalId(item.id, "item", order.id);
 
     // Queue the add_item operation (will execute after create_order completes)
+    console.log('[addItemToBackend] item', item);
     const itemOpId = await queueOperation({
       type: "add_item",
       params: {
@@ -693,6 +694,7 @@ const addItemToBackend = async (
           quantity: item.quantity,
           price: item.price,
           cashPrice: item.cashPrice,
+          unitPrice: item.unitPrice,
           originalPrice: item.originalPrice,
           customizations: item.customizations,
           category_name: item.category_name,
@@ -753,6 +755,8 @@ const addItemToBackend = async (
       await registerLocalId(item.id, "item", order.id);
 
       // Queue the add_item operation (will be processed after order syncs)
+      console.log('[addItemToBackend] item', item);
+
       await queueOperation({
         type: "add_item",
         params: {
@@ -764,6 +768,7 @@ const addItemToBackend = async (
             quantity: item.quantity,
             price: item.price,
             cashPrice: item.cashPrice,
+            unitPrice: item.unitPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
@@ -814,6 +819,7 @@ const addItemToBackend = async (
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
+            unitPrice: item.unitPrice,
           },
         },
         localOrderId: order.id,
@@ -833,7 +839,7 @@ const addItemToBackend = async (
       const addOpenParams = {
         p_order_id: dbOrderId,
         p_item_name: item.open_item_name || item.name,
-        p_unit_price: item.price,
+        p_unit_price: item.unitPrice,
         p_quantity: item.quantity,
         p_special_instructions: item.customizations?.notes || undefined,
         p_is_tax_exempt: item.is_tax_exempt || undefined,
@@ -911,6 +917,7 @@ const addItemToBackend = async (
 
     // Card price is the effective price per unit (already includes modifiers)
     const cardUnitPrice = item.price;
+    console.log('[addItemToBackend] item', item);
 
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
@@ -923,8 +930,8 @@ const addItemToBackend = async (
       p_category_name: item.category_name || "Uncategorized",
 
       // Prices (per unit, before quantity multiplication)
-      p_unit_price: cardUnitPrice, // Card price per unit (includes modifiers)
-      p_cash_unit_price: effectiveCashPrice, // Cash price per unit (includes modifiers)
+      p_unit_price: item.unitPrice, // Card price per unit (includes modifiers)
+      p_cash_unit_price: item.originalPrice || item.cashPrice, // Cash price per unit (includes modifiers)
 
       // Size details
       p_selected_size_id: item.customizations?.size?.id || undefined,

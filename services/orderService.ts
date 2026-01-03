@@ -105,6 +105,7 @@ export class OrderService {
     client: SupabaseClient,
     params: UpdateOpenItemParams
   ): Promise<{ data: UpdateOpenItemResult | null; error: any }> {
+    
     const { data, error } = await client.rpc("update_order_item_v2", params);
     if (error) {
       console.error(`[OrderService:updateOpenItem] FAILED:`, error);

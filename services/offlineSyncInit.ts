@@ -793,7 +793,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           params = {
             p_order_id: actualDbOrderId,
             p_item_name: itemData?.open_item_name || itemData?.name || addItemParams?.p_item_name,
-            p_unit_price: itemData?.open_item_price ?? itemData?.price ?? addItemParams?.p_unit_price ?? 0,
+            p_unit_price: itemData?.open_item_price ?? itemData?.unitPrice ?? addItemParams?.p_unit_price ?? 0,
             p_quantity: itemData?.quantity ?? addItemParams?.p_quantity ?? 1,
             p_special_instructions: itemData?.customizations?.notes ?? addItemParams?.p_special_instructions,
             p_is_tax_exempt: itemData?.is_tax_exempt ?? addItemParams?.p_is_tax_exempt,
