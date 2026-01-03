@@ -572,6 +572,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         ? currentSplit.cashAmount
         : currentSplit.amount;
 
+      
       // Include splitLabel and cash pricing flag for backend
       const detailsWithSplitLabel = {
         ...transactionDetails,
@@ -641,7 +642,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const paymentAmount = isCashPayment
         ? activeOrderOutstandingCash
         : activeOrderOutstandingTotal;
-
       // Include cash pricing flag in transaction details
       const detailsWithCashFlag = {
         ...transactionDetails,
