@@ -839,7 +839,7 @@ const addItemToBackend = async (
       const addOpenParams = {
         p_order_id: dbOrderId,
         p_item_name: item.open_item_name || item.name,
-        p_unit_price: item.unitPrice,
+        p_unit_price: item.price,
         p_quantity: item.quantity,
         p_special_instructions: item.customizations?.notes || undefined,
         p_is_tax_exempt: item.is_tax_exempt || undefined,

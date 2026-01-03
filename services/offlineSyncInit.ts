@@ -796,7 +796,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             p_unit_price: itemData?.open_item_price ?? itemData?.unitPrice ?? addItemParams?.p_unit_price ?? 0,
             p_quantity: itemData?.quantity ?? addItemParams?.p_quantity ?? 1,
             p_special_instructions: itemData?.customizations?.notes ?? addItemParams?.p_special_instructions,
-            p_is_tax_exempt: itemData?.is_tax_exempt ?? addItemParams?.p_is_tax_exempt,
+            p_is_tax_exempt: itemData?.is_tax_exempt ?? addItemParams?.p_is_tax_exempt ?? false,
           } as AddOpenItemParams;
         } else {
           // Build the item params if we only have itemData (queued from initial failure)

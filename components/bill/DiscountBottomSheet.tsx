@@ -1,3 +1,4 @@
+import { useToast } from "@/contexts/ToastContext";
 import { useDiscounts } from "@/hooks/useDiscounts";
 import {
   EligibilityContext,
@@ -34,7 +35,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     applyDiscountToCheck,
     applyDiscountToItem,
     removeDiscountFromItem,
+    removeCheckDiscount,
   } = useOrderStore();
+  const { show } = useToast();
 
   const { data: discounts = [] } = useDiscounts();
 
@@ -70,7 +73,29 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const handleApplyCheckDiscount = (discount: any) => {
     if (!activeOrderId) return;
+
+    const existingCheckDiscount = activeOrder?.checkDiscount as any;
+    const existingNonStackable =
+      existingCheckDiscount && existingCheckDiscount.stackable === false;
+    const incomingNonStackable = (discount as any)?.stackable === false;
+
+    // Enforce non-stackable rule: block applying when a non-stackable exists or incoming is non-stackable
+    if (existingCheckDiscount && (existingNonStackable || incomingNonStackable)) {
+      show({
+        title: "Cannot stack discounts",
+        message: "Remove the existing discount before applying this one.",
+        type: "error",
+      });
+      return;
+    }
+
     applyDiscountToCheck(activeOrderId, discount as any);
+    onClose();
+  };
+
+  const handleRemoveCheckDiscount = () => {
+    if (!activeOrderId) return;
+    removeCheckDiscount(activeOrderId);
     onClose();
   };
 
@@ -122,6 +147,32 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
             <X color="#9CA3AF" size={18} />
           </TouchableOpacity>
         </View>
+
+        {/* Current discount + remove */}
+        {activeOrder?.checkDiscount && (
+          <View className="mb-4 p-3 border border-blue-500/60 bg-blue-500/10 rounded-xl flex-row items-center justify-between">
+            <View>
+              <Text className="text-white font-semibold">
+                {activeOrder.checkDiscount.label || "Active Discount"}
+              </Text>
+              {activeOrder.checkDiscount.type === "percentage" ? (
+                <Text className="text-gray-300">
+                  {Math.round((activeOrder.checkDiscount.value || 0) * 100)}% off
+                </Text>
+              ) : (
+                <Text className="text-gray-300">
+                  ${activeOrder.checkDiscount.value?.toFixed(2)} off
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={handleRemoveCheckDiscount}
+              className="px-3 py-2 bg-red-600 rounded-lg"
+            >
+              <Text className="text-white font-semibold">Remove</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Tabs */}
         <View className="flex-row bg-[#303030] p-1 rounded-xl mb-5 border border-gray-700">
