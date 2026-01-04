@@ -1,4 +1,4 @@
-import { useSession } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/clerk-expo";
 import { createClient } from "@supabase/supabase-js";
 import { useMemo } from "react";
 
@@ -10,8 +10,7 @@ const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY!;
  * The client is memoized and will update when the session changes.
  */
 export function useSupabaseClient() {
-  const { session } = useSession();
-
+  const { getToken } = useAuth();
   const supabaseClient = useMemo(() => {
     // return createSupabaseClient(async () => {
     //   if (!session) return null;
@@ -20,11 +19,11 @@ export function useSupabaseClient() {
     return createClient(supabaseUrl, supabaseKey,
       {
         async accessToken() {
-          return (await session?.getToken()) ?? null;
+          return (await getToken?.()) ?? null;
         },
       }
     );
-  }, [session]);
+  }, [getToken]);
 
   return supabaseClient;
 }
