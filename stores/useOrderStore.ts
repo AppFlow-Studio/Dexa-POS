@@ -929,7 +929,7 @@ const addItemToBackend = async (
       p_category_name: item.category_name || "Uncategorized",
 
       // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.unitPrice, // Card price per unit (includes modifiers)
+      p_unit_price: item.unitPrice ?? item.price, // Card price per unit (includes modifiers)
       p_cash_unit_price: item.originalPrice || item.cashPrice, // Cash price per unit (includes modifiers)
 
       // Size details
