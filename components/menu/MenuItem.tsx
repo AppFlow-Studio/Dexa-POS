@@ -263,11 +263,12 @@ const MenuItem: React.FC<MenuItemProps> = ({
     // Use getState() to avoid subscribing to store changes
     useModifierSidebarStore
       .getState()
-      .openFullscreen(item, activeOrderId, categoryId);
+      .openFullscreen(item, activeOrderId, categoryId, menuId);
   }, [
     item,
     activeOrderId,
     categoryId,
+    menuId,
     isClockedIn,
     activeOrder?.order_type,
     onOrderClosedCheck,

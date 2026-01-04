@@ -650,8 +650,13 @@ const addItemToBackend = async (
     createdAt: string
   ) => void,
   markItemFailed: (itemId: string, error: string) => void, // Changed from removeItem to markItemFailed
-  onSyncComplete?: (orderId: string) => void // Callback after successful sync
+  onSyncComplete?: (orderId: string) => void, // Callback after successful sync
+  options?: {
+    isMerge?: boolean; // If true, update quantity instead of creating new item
+    addedQuantity?: number; // The quantity being added (for merge operations)
+  }
 ): Promise<boolean> => {
+  const { isMerge = false, addedQuantity = item.quantity } = options || {};
   const supabase = _supabaseClient;
   const isNetworkOnline = getIsOnline();
 
@@ -681,35 +686,58 @@ const addItemToBackend = async (
     // Register item in ID registry for tracking
     await registerLocalId(item.id, "item", order.id);
 
-    // Queue the add_item operation (will execute after create_order completes)
+    // Queue appropriate operation based on merge status
     console.log('[addItemToBackend] item', item);
-    const itemOpId = await queueOperation({
-      type: "add_item",
-      params: {
+    
+    let itemOpId: string;
+    if (isMerge && item.db_order_item_id) {
+      // MERGE CASE: Queue quantity update operation
+      console.log(`[addItemToBackend] OFFLINE MERGE - Queueing quantity update for: ${item.db_order_item_id}`);
+      itemOpId = await queueOperation({
+        type: "update_item_quantity",
+        params: {
+          localOrderId: order.id,
+          localItemId: item.id,
+          orderItemId: item.db_order_item_id, // Backend UUID for resolved items
+          quantity: item.quantity, // New total quantity
+        },
         localOrderId: order.id,
         localItemId: item.id,
-        itemData: {
-          menuItemId: item.menuItemId,
-          locationExclusiveItemId: item.locationExclusiveItemId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.unitPrice,
-          cashPrice: item.cashPrice,
-          originalPrice: item.originalPrice,
-          customizations: item.customizations,
-          category_name: item.category_name,
-          is_open_item: item.is_open_item || false,
-          open_item_name: item.open_item_name,
-          open_item_price: item.open_item_price,
+        contextSnapshot: {
+          orderType: order.order_type,
+          course: useCoursingStore.getState().getWorkingCourse(order.id) || 1,
         },
-      },
-      localOrderId: order.id,
-      localItemId: item.id,
-      contextSnapshot: {
-        orderType: order.order_type,
-        course: useCoursingStore.getState().getWorkingCourse(order.id) || 1,
-      },
-    });
+      });
+    } else {
+      // NEW ITEM CASE: Queue add_item operation
+      itemOpId = await queueOperation({
+        type: "add_item",
+        params: {
+          localOrderId: order.id,
+          localItemId: item.id,
+          itemData: {
+            menuItemId: item.menuItemId,
+            locationExclusiveItemId: item.locationExclusiveItemId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            cashPrice: item.cashPrice,
+            originalPrice: item.originalPrice,
+            customizations: item.customizations,
+            category_name: item.category_name,
+            is_open_item: item.is_open_item || false,
+            open_item_name: item.open_item_name,
+            open_item_price: item.open_item_price,
+          },
+        },
+        localOrderId: order.id,
+        localItemId: item.id,
+        contextSnapshot: {
+          orderType: order.order_type,
+          course: useCoursingStore.getState().getWorkingCourse(order.id) || 1,
+        },
+      });
+    }
 
     console.log(`[addItemToBackend] OFFLINE - Item queued: ${item.id} (op: ${itemOpId})`);
 
@@ -767,7 +795,7 @@ const addItemToBackend = async (
             locationExclusiveItemId: item.locationExclusiveItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.unitPrice,
+            price: item.price,
             cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
@@ -814,7 +842,7 @@ const addItemToBackend = async (
             menuItemId: item.menuItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.unitPrice,
+            price: item.price,
             cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
@@ -911,6 +939,72 @@ const addItemToBackend = async (
     // Regular menu item path
     // ========================================================================
 
+    // ========================================================================
+    // MERGE CASE: Item already exists in backend, just update quantity
+    // ========================================================================
+    if (isMerge && item.db_order_item_id) {
+      console.log(`[addItemToBackend] MERGE MODE - Updating quantity for db_order_item_id: ${item.db_order_item_id}`);
+      console.log(`[addItemToBackend] New total quantity: ${item.quantity}`);
+
+      const { data: updateResult, error: updateError } = await OrderService.updateOrderItemQuantity(
+        supabase,
+        item.db_order_item_id,
+        item.quantity // The new total quantity after merge
+      );
+
+      if (updateError) {
+        console.error("Failed to update item quantity in backend:", updateError);
+        markItemFailed(item.id, updateError.message || "Quantity update failed");
+        // Queue for retry
+        await queueOperation({
+          type: "update_item_quantity",
+          params: {
+            localOrderId: order.id,
+            localItemId: item.id,
+            orderItemId: item.db_order_item_id, // Backend UUID for resolved items
+            quantity: item.quantity,
+          },
+          localOrderId: order.id,
+          localItemId: item.id,
+        });
+        return false;
+      }
+
+      console.log("Item quantity updated in backend successfully:", updateResult);
+
+      // Update sync status to synced
+      useOrderStore.setState((state) => {
+        const currentOrder = state.ordersById[order.id];
+        if (!currentOrder) return state;
+
+        const updatedItems = currentOrder.items.map((i) =>
+          i.id === item.id
+            ? { ...i, sync_status: "synced" as const }
+            : i
+        );
+
+        return {
+          ordersById: {
+            ...state.ordersById,
+            [order.id]: {
+              ...currentOrder,
+              items: updatedItems,
+            },
+          },
+        };
+      });
+
+      if (onSyncComplete) {
+        onSyncComplete(order.id);
+      }
+
+      return true;
+    }
+
+    // ========================================================================
+    // NEW ITEM CASE: Add new item to backend
+    // ========================================================================
+
     // Calculate effective cash price (base cash price + modifiers + add-ons)
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
 
@@ -929,7 +1023,7 @@ const addItemToBackend = async (
       p_category_name: item.category_name || "Uncategorized",
 
       // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.unitPrice ?? item.price, // Card price per unit (includes modifiers)
+      p_unit_price: item.price, // Card price per unit (includes modifiers)
       p_cash_unit_price: item.originalPrice || item.cashPrice, // Cash price per unit (includes modifiers)
 
       // Size details
@@ -2291,24 +2385,33 @@ export const useOrderStore = create<OrderState>()(
               return existingItemKey === newItemKey;
             });
 
-            // Track the item ID for sync operations
+            // Track the item ID for sync operations and whether this is a merge
             let syncItemId: string;
+            let isMergeOperation = false;
+            let mergedItemWithNewQuantity: CartItem | null = null;
 
             if (mergeCandidate) {
               // 3. If a candidate exists, create a new cart array with the updated quantity
               syncItemId = mergeCandidate.id;
-              updatedCart = updatedCart.map((item) =>
-                item.id === mergeCandidate.id
-                  ? {
+              isMergeOperation = true;
+              const newQuantity = mergeCandidate.quantity + newItem.quantity;
+              
+              updatedCart = updatedCart.map((item) => {
+                if (item.id === mergeCandidate.id) {
+                  const updatedItem = {
                     ...item,
-                    quantity: item.quantity + newItem.quantity,
+                    quantity: newQuantity,
                     // Mark as pending sync if not a draft
                     sync_status: newItem.isDraft
                       ? item.sync_status
                       : ("pending" as const),
-                  }
-                  : item
-              );
+                  };
+                  // Capture the merged item with its new quantity for backend sync
+                  mergedItemWithNewQuantity = updatedItem;
+                  return updatedItem;
+                }
+                return item;
+              });
             } else {
               // 4. If no candidate, create a new item and add it to a new cart array
               syncItemId = newItem.id;
@@ -2365,7 +2468,10 @@ export const useOrderStore = create<OrderState>()(
             }));
 
             // 7. Background sync with promise tracking for sync barriers
-            const itemToSync = mergeCandidate || newItem;
+            // Use the merged item with updated quantity, or the new item
+            const itemToSync = isMergeOperation && mergedItemWithNewQuantity 
+              ? mergedItemWithNewQuantity 
+              : (mergeCandidate || newItem);
 
             if (!itemToSync.isDraft) {
               const orderToSync = get().ordersById[activeOrderId];
@@ -2405,13 +2511,18 @@ export const useOrderStore = create<OrderState>()(
                 };
 
                 // Create and track the sync promise - wrapped in queue to serialize additions
+                // Pass isMerge flag for merge candidates that already have db_order_item_id
                 const syncPromise = queueItemAddition(currentOrderId, () =>
                   addItemToBackend(
                     orderToSync,
                     itemToSync,
                     setOrderDbIdAction,
                     markItemFailedAction, // Changed from removeItemAction
-                    undefined // No need to recalculate - already done synchronously
+                    undefined, // No need to recalculate - already done synchronously
+                    {
+                      isMerge: isMergeOperation && !!itemToSync.db_order_item_id,
+                      addedQuantity: newItem.quantity,
+                    }
                   )
                 )
                   .then((success) => {

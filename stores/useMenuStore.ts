@@ -281,14 +281,47 @@ const transformMenuItemsFromSync = (
       description: menu.description || undefined,
       isActive: menu.is_active,
       categories: categories, // Full Category Objects
-      schedules: (menu.schedules || []).map((s) => ({
-        id: s.id,
-        name: s.schedule.name,
-        startTime: s.schedule.time_slots[0]?.start_time || "00:00:00", // Simplified for now
-        endTime: s.schedule.time_slots[0]?.end_time || "23:59:59",
-        days: s.schedule.time_slots.map((ts: any) => ts.day_of_week.toString()), // TODO: map days correctly
-        isActive: s.schedule.is_active,
-      })),
+      schedules: (menu.schedules || []).flatMap((s) => {
+        if (!s.schedule.is_active || !s.schedule.time_slots || s.schedule.time_slots.length === 0) {
+          return [];
+        }
+        
+        // Map API day_of_week (0=Monday, 1=Tuesday, ..., 6=Sunday) to JS day names
+        // JS getDay(): 0=Sunday, 1=Monday, ..., 6=Saturday
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const apiDayToJsDay = (apiDay: number): number => (apiDay + 1) % 7;
+        
+        // Group time slots by start/end time to create Schedule objects
+        const timeSlotGroups = new Map<string, { startTime: string; endTime: string; days: Set<string> }>();
+        
+        s.schedule.time_slots.forEach((ts: any) => {
+          const startTime = ts.start_time || "00:00:00";
+          const endTime = ts.end_time || "23:59:59";
+          const key = `${startTime}-${endTime}`;
+          
+          if (!timeSlotGroups.has(key)) {
+            timeSlotGroups.set(key, {
+              startTime,
+              endTime,
+              days: new Set(),
+            });
+          }
+          
+          // Convert API day number to JS day name
+          const jsDay = apiDayToJsDay(ts.day_of_week);
+          timeSlotGroups.get(key)!.days.add(dayNames[jsDay]);
+        });
+        
+        // Create one Schedule object per unique time range
+        return Array.from(timeSlotGroups.values()).map((group) => ({
+          id: `${s.id}-${group.startTime}-${group.endTime}`, // Unique ID for each time slot group
+          name: s.schedule.name,
+          startTime: group.startTime,
+          endTime: group.endTime,
+          days: Array.from(group.days),
+          isActive: s.schedule.is_active,
+        }));
+      }),
       createdAt: menu.created_at,
       updatedAt: menu.updated_at,
       location_id: menu.location_id,
@@ -1660,38 +1693,49 @@ function isNowInAnySchedule(schedules: Schedule[], at?: Date): boolean {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const day = dayNames[now.getDay()];
   const minutes = now.getHours() * 60 + now.getMinutes();
+  
+  // Helper to parse time string (HH:MM:SS or HH:MM format) to minutes since midnight
+  const parseTimeToMinutes = (timeStr: string): number => {
+    if (!timeStr) return 0;
+    
+    // Handle ISO date strings (if timeStr contains 'T' or is a full ISO date)
+    if (timeStr.includes("T") || timeStr.includes("-")) {
+      const date = new Date(timeStr);
+      if (!isNaN(date.getTime())) {
+        return date.getHours() * 60 + date.getMinutes();
+      }
+    }
+    
+    // Handle HH:MM:SS or HH:MM format
+    const parts = timeStr.split(":");
+    if (parts.length >= 2) {
+      const hours = parseInt(parts[0], 10) || 0;
+      const mins = parseInt(parts[1], 10) || 0;
+      return hours * 60 + mins;
+    }
+    
+    return 0;
+  };
+  
   return schedules.some((rule) => {
     if (!rule.isActive) return false;
+    if (!rule.days || rule.days.length === 0) return false;
     if (!rule.days.includes(day)) return false;
 
-    // Parse ISO strings
-    const start = new Date(rule.startTime);
-    const end = new Date(rule.endTime);
-
-    // Get minutes from beginning of day (Local Time) to match current time check
-    const startM = start.getHours() * 60 + start.getMinutes();
-    let endM = end.getHours() * 60 + end.getMinutes();
+    // Parse time strings to minutes since midnight
+    const startM = parseTimeToMinutes(rule.startTime);
+    let endM = parseTimeToMinutes(rule.endTime);
 
     // Handle crossing midnight (e.g. 2 AM < 10 PM)
     // If endM is less than startM, we assume it's next day, so add 24h
     if (endM < startM) {
       endM += 24 * 60;
     }
-    console.log("startM", startM);
-    console.log("endM", endM);
-    console.log("minutes", minutes);
-    // Now simply check range
-    // Note: If current time 'minutes' is very small (e.g. 1 AM), and schedule is 10PM-2AM,
-    // we need to handle "being in the late night window".
-    // 1 AM = 60 mins. 10 PM = 1320. 2 AM (next day) = 1560.
-    // 60 is NOT >= 1320.
-    // So 'minutes' also needs to adjust if we are early morning?
-    // OR, simpler approach:
-    // Check if we are >= start OR <= end (if overnight).
 
+    // Check if current time falls within the schedule
     if (endM >= 1440) {
       // It's an overnight shift (e.g. 22:00 to 26:00/02:00)
-      // We are in it if we are >= 22:00 (today) OR <= 02:00 (today)
+      // We are in it if we are >= start (today) OR < end (today)
       const visibleEndM = endM % 1440;
       return minutes >= startM || minutes < visibleEndM;
     } else {

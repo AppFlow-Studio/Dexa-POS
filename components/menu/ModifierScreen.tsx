@@ -230,10 +230,12 @@ const ModifierScreen = () => {
     menuItem,
     cartItem,
     categoryId,
+    menuId,
     close,
     precomputedModifiers,
     initialSelections: storeInitialSelections,
     itemPrice: precomputedItemPrice,
+    itemCashPrice: precomputedCashPrice,
     activeModifierCategory: precomputedActiveCategory,
   } = useModifierSidebarStore();
 
@@ -290,6 +292,9 @@ const ModifierScreen = () => {
     (item: any) => {
       if (!item) return 0;
 
+      // Use precomputed cash price from store (has menu context)
+      if (precomputedCashPrice > 0) return precomputedCashPrice;
+
       // For cart items, use originalPrice first (this is the cash/base price)
       // Then fallback to cashPrice if available
       if (item.originalPrice !== undefined && item.originalPrice !== null) {
@@ -316,7 +321,7 @@ const ModifierScreen = () => {
       // Last resort: use regular price (some items might not have cash price)
       return getCurrentItemPrice(item);
     },
-    [getMenuItemById, getCurrentItemPrice]
+    [getMenuItemById, getCurrentItemPrice, precomputedCashPrice]
   );
 
   const baseMenuItem = useMemo(
@@ -558,7 +563,7 @@ const ModifierScreen = () => {
           menuItemId: currentItem.id,
           name: currentItem.name,
           quantity: 1,
-          unitPrice: currentItem.price,
+          unitPrice: itemPrice, // Use menu-context price
           originalPrice: cashPrice || itemPrice, // originalPrice should be the cash/base price
           price: itemPrice, // price is the effective price (card price + modifiers)
           cashPrice: cashPrice || itemPrice, // Store cashPrice for reference, fallback to itemPrice
@@ -568,9 +573,9 @@ const ModifierScreen = () => {
           availableDiscount: currentItem.availableDiscount,
           appliedDiscount: null,
           paidQuantity: 0,
-          // NEW: Track which category/menu context this item was added from
+          // Track which category/menu context this item was added from
           addedFromCategoryId: categoryId || null,
-          addedFromMenuId: null, // Menu context not tracked yet
+          addedFromMenuId: menuId || null,
         };
 
         addItemToActiveOrder(draftItem);
@@ -587,7 +592,9 @@ const ModifierScreen = () => {
     currentItem?.id,
     mode,
     cartItem,
+    menuId,
     getCurrentItemPrice,
+    getCurrentItemCashPrice,
     addItemToActiveOrder,
   ]);
 
@@ -799,14 +806,16 @@ const ModifierScreen = () => {
           });
         }
 
+        // Use precomputed prices (includes menu context) instead of base item prices
         const confirmedItem: Omit<CartItem, 'subtotal' | 'cashSubtotal' | 'taxRate' | 'taxAmount' | 'cashTaxAmount'> = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,
           quantity: state.quantity,
-          originalPrice: baseItem.cashPrice || baseItem.price, // Use cashPrice as base, fallback to price
+          originalPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
           price: total / Math.max(1, state.quantity),
-          cashPrice: baseItem.cashPrice || baseItem.price, // Provide fallback if cashPrice is undefined
+          cashPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
+          unitPrice: getCurrentItemPrice(baseItem), // Use menu-context price
           image: baseItem.image,
 
           customizations: finalCustomizations,
@@ -814,9 +823,9 @@ const ModifierScreen = () => {
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
-          // NEW: Track which category/menu context this item was added from
+          // Track which category/menu context this item was added from
           addedFromCategoryId: categoryId || null,
-          addedFromMenuId: null,
+          addedFromMenuId: menuId || null,
         };
         console.log('[handleSave] confirmedItem', confirmedItem);
         addItemToActiveOrder(confirmedItem);
@@ -826,24 +835,25 @@ const ModifierScreen = () => {
           type: "success",
         });
       } else {
+        // Use precomputed prices (includes menu context) instead of base item prices
         const newItem = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,
           quantity: state.quantity,
-          originalPrice: baseItem.cashPrice || baseItem.price, // Use cashPrice as base, fallback to price
+          originalPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
           price: total / Math.max(1, state.quantity),
           image: baseItem.image,
-          cashPrice: baseItem.cashPrice || baseItem.price, // Provide fallback if cashPrice is undefined
-          unitPrice: baseItem.price,
+          cashPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
+          unitPrice: getCurrentItemPrice(baseItem), // Use menu-context price
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
-          // NEW: Track which category/menu context this item was added from
+          // Track which category/menu context this item was added from
           addedFromCategoryId: categoryId || null,
-          addedFromMenuId: null,
+          addedFromMenuId: menuId || null,
         };
         console.log('[handleSave] newItem', newItem);
         addItemToActiveOrder(newItem);
