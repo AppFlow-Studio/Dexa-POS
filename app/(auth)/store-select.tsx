@@ -1,4 +1,5 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { createSupabaseClient } from "@/lib/supabase";
 import {
   SelectedLocation,
   useStoreSettingsStore,
@@ -76,9 +77,8 @@ const StoreSelectItem = ({
 
 const StoreSelectScreen = () => {
   const router = useRouter();
-  const { userId } = useAuth();
-  const supabase = useSupabaseClient();
-  console.log("supabase", supabase);
+  const { userId, getToken } = useAuth();
+  const supabase = createSupabaseClient(getToken);
   const setSelectedStore = useStoreSettingsStore(
     (state) => state.setSelectedStore
   );
