@@ -805,15 +805,29 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
             // Update the order ID in case it changed
             (params as AddOrderItemParams).p_order_id = actualDbOrderId;
           } else if (itemData) {
+            // Build modifiers array, but set to undefined if empty
+            const modifiersArray = itemData.customizations?.modifiers?.flatMap(
+              (mod: any) =>
+                mod.options.map((opt: any) => ({
+                  modifier_group_id: mod.categoryId,
+                  modifier_item_id: opt.id,
+                  modifier_group_name: mod.categoryName,
+                  modifier_name: opt.name,
+                  price_modifier: opt.price,
+                  quantity: 1,
+                }))
+            );
+
             params = {
               p_order_id: actualDbOrderId,
               p_menu_item_id: itemData.menuItemId || undefined,
+              p_location_exclusive_item_id: itemData.locationExclusiveItemId || undefined,
               p_quantity: itemData.quantity,
               p_item_name: itemData.name,
               p_category_name: itemData.category_name || "Uncategorized",
               // Use card price for p_unit_price and cash price for p_cash_unit_price
               // Fall back to originalPrice if specific prices not available
-              p_unit_price: itemData.price ?? itemData.originalPrice,
+              p_unit_price: itemData.price ?? itemData.originalPrice ?? 0,
               p_cash_unit_price: itemData.cashPrice ?? itemData.price ?? itemData.originalPrice,
               p_selected_size_id: itemData.customizations?.size?.id || undefined,
               p_selected_size_name:
@@ -822,17 +836,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 itemData.customizations?.size?.priceModifier || undefined,
               p_special_instructions:
                 itemData.customizations?.notes || undefined,
-              p_modifiers: itemData.customizations?.modifiers?.flatMap(
-                (mod: any) =>
-                  mod.options.map((opt: any) => ({
-                    modifier_group_id: mod.categoryId,
-                    modifier_item_id: opt.id,
-                    modifier_group_name: mod.categoryName,
-                    modifier_name: opt.name,
-                    price_modifier: opt.price,
-                    quantity: 1,
-                  }))
-              ),
+              // Set to undefined if empty array to avoid function signature mismatch
+              p_modifiers: modifiersArray && modifiersArray.length > 0 ? modifiersArray : undefined,
               p_course_number:
                 useCoursingStore.getState().getWorkingCourse(localOrderId) || 1,
             } as AddOrderItemParams;
