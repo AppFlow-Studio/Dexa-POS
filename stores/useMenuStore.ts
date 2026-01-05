@@ -6,7 +6,13 @@ import {
   ModifierCategory,
   Schedule,
 } from "@/lib/types";
-import { MenuWithCategories, PosSyncData, PosSyncState } from "@/types/menu";
+import {
+  MenuItemIngredientSync,
+  MenuWithCategories,
+  ModifierIngredientSync,
+  PosSyncData,
+  PosSyncState,
+} from "@/types/menu";
 import { create } from "zustand";
 
 // Re-export Category for components that import it from here
@@ -177,6 +183,22 @@ interface MenuState {
     items?: any[];
     modifierGroups?: any[];
     menus?: any[];
+    menu_item_ingredients?: any[];
+    modifier_group_item_ingredients?: any[];
+  }) => void;
+
+  // Update recipes for existing items
+  mergeRecipeData: (data: {
+    menuRecipes: {
+      menu_item_id: string;
+      inventory_item_id: string;
+      quantity: number;
+    }[];
+    modifierRecipes: {
+      modifier_group_item_id: string;
+      inventory_item_id: string;
+      quantity: number;
+    }[];
   }) => void;
 }
 
@@ -203,7 +225,8 @@ const generateModifierGroupId = () => `mod_${modifierGroupId++}`;
  * Transform nested items from all menus to flat MenuItemType[] format
  */
 const transformMenuItemsFromSync = (
-  syncMenus: MenuWithCategories[] | undefined | null
+  syncMenus: MenuWithCategories[] | undefined | null,
+  menuItemIngredients: MenuItemIngredientSync[] = []
 ): {
   menus: Menu[];
   categories: Category[];
@@ -212,6 +235,23 @@ const transformMenuItemsFromSync = (
 } => {
   if (!syncMenus || !Array.isArray(syncMenus))
     return { menus: [], categories: [], menuItems: [], menuItemsById: {} };
+
+  // Helper map for ingredients
+  const ingredientsMap = new Map<
+    string,
+    { inventoryItemId: string; quantity: number }[]
+  >();
+  menuItemIngredients.forEach((ing) => {
+    let list = ingredientsMap.get(ing.menu_item_id);
+    if (!list) {
+      list = [];
+      ingredientsMap.set(ing.menu_item_id, list);
+    }
+    list.push({
+      inventoryItemId: ing.inventory_item_id,
+      quantity: ing.quantity,
+    });
+  });
 
   const globalItemMap = new Map<string, MenuItemType>();
 
@@ -249,6 +289,7 @@ const transformMenuItemsFromSync = (
       categoryPriceOverrides: context.categoryId
         ? { [context.categoryId]: dbItem.effective_price }
         : undefined,
+      recipe: ingredientsMap.get(dbItem.id),
     };
   };
 
@@ -354,9 +395,26 @@ const transformMenuItemsFromSync = (
  * Transform modifier groups from all menu items to flat ModifierCategory[] format
  */
 const transformModifierGroupsFromSync = (
-  syncMenus: MenuWithCategories[] | undefined | null
+  syncMenus: MenuWithCategories[] | undefined | null,
+  modifierIngredients: ModifierIngredientSync[] = []
 ): ModifierCategory[] => {
   if (!syncMenus || !Array.isArray(syncMenus)) return [];
+
+  const ingredientsMap = new Map<
+    string,
+    { inventoryItemId: string; quantity: number }[]
+  >();
+  modifierIngredients.forEach((ing) => {
+    let list = ingredientsMap.get(ing.modifier_group_item_id);
+    if (!list) {
+      list = [];
+      ingredientsMap.set(ing.modifier_group_item_id, list);
+    }
+    list.push({
+      inventoryItemId: ing.inventory_item_id,
+      quantity: ing.quantity,
+    });
+  });
 
   const modifierMap = new Map<string, ModifierCategory>();
 
@@ -384,6 +442,7 @@ const transformModifierGroupsFromSync = (
                 price: opt.price_modifier, // API uses price_modifier
                 isAvailable: opt.is_active,
                 isDefault: false, // API doesn't have this
+                recipe: ingredientsMap.get(opt.id),
               })),
             });
           }
@@ -440,10 +499,16 @@ export const useMenuStore = create<MenuState>((set, get) => {
     setMenuData: (data: PosSyncData) => {
       // 1. Transform Menus, Categories, and Items (Tree Structure)
       const { menus, categories, menuItems, menuItemsById } =
-        transformMenuItemsFromSync(data.menus);
+        transformMenuItemsFromSync(
+          data.menus,
+          data.menu_item_ingredients as MenuItemIngredientSync[]
+        );
 
       // 2. Transform Modifier Groups
-      const modifierGroups = transformModifierGroupsFromSync(data.menus);
+      const modifierGroups = transformModifierGroupsFromSync(
+        data.menus,
+        data.modifier_group_item_ingredients as ModifierIngredientSync[]
+      );
 
       // 3. Build O(1) lookup Maps
       const categoriesById: Record<string, Category> = {};
@@ -1440,6 +1505,33 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const newModifierGroupsById = { ...state.modifierGroupsById };
 
         // Merge standalone categories AND their nested items
+        // First map ingredients if provided
+        const menuItemIngredientsMap = new Map<string, any[]>();
+        if (data.menu_item_ingredients) {
+          data.menu_item_ingredients.forEach((ing: any) => {
+            if (!menuItemIngredientsMap.has(ing.menu_item_id)) {
+              menuItemIngredientsMap.set(ing.menu_item_id, []);
+            }
+            menuItemIngredientsMap.get(ing.menu_item_id)?.push({
+              inventoryItemId: ing.inventory_item_id,
+              quantity: ing.quantity,
+            });
+          });
+        }
+
+        const modifierIngredientsMap = new Map<string, any[]>();
+        if (data.modifier_group_item_ingredients) {
+          data.modifier_group_item_ingredients.forEach((ing: any) => {
+            if (!modifierIngredientsMap.has(ing.modifier_group_item_id)) {
+              modifierIngredientsMap.set(ing.modifier_group_item_id, []);
+            }
+            modifierIngredientsMap.get(ing.modifier_group_item_id)?.push({
+              inventoryItemId: ing.inventory_item_id,
+              quantity: ing.quantity,
+            });
+          });
+        }
+
         if (data.categories) {
           for (const cat of data.categories) {
             // Skip category if already exists, but still process its items below
@@ -1497,6 +1589,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                       .stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
                     "in_stock",
                   location_id: (menuItem as any).location_id ?? null,
+                  recipe: menuItemIngredientsMap.get(itemId), // Attach recipe
                 };
 
                 newMenuItems.push(mappedItem);
@@ -1537,6 +1630,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 (item.stock_tracking_mode as MenuItemType["stockTrackingMode"]) ??
                 "in_stock",
               location_id: item.location_id ?? null,
+              recipe: menuItemIngredientsMap.get(item.id), // Attach recipe
             };
 
             newMenuItems.push(mappedItem);
@@ -1563,6 +1657,7 @@ export const useMenuStore = create<MenuState>((set, get) => {
                 price: opt.price_modifier ?? 0,
                 isAvailable: opt.is_active ?? true,
                 isDefault: opt.is_default ?? false,
+                recipe: modifierIngredientsMap.get(opt.id), // Attach recipe
               })),
               location_id: mg.location_id,
               location_name: mg.location_name?.name,
@@ -1643,6 +1738,102 @@ export const useMenuStore = create<MenuState>((set, get) => {
           categories: newCategories,
           categoriesById: newCategoriesById,
           categoriesByName: newCategoriesByName,
+          menuItems: newMenuItems,
+          menuItemsById: newMenuItemsById,
+          modifierGroups: newModifierGroups,
+          modifierGroupsById: newModifierGroupsById,
+        };
+      });
+    },
+
+    mergeRecipeData: (data) => {
+      set((state) => {
+        // 1. Create Lookup Maps
+        const menuRecipeMap = new Map<
+          string,
+          { inventoryItemId: string; quantity: number }[]
+        >();
+        if (data.menuRecipes) {
+          data.menuRecipes.forEach((r) => {
+            if (!menuRecipeMap.has(r.menu_item_id)) {
+              menuRecipeMap.set(r.menu_item_id, []);
+            }
+            menuRecipeMap.get(r.menu_item_id)?.push({
+              inventoryItemId: r.inventory_item_id,
+              quantity: r.quantity,
+            });
+          });
+        }
+
+        const modRecipeMap = new Map<
+          string,
+          { inventoryItemId: string; quantity: number }[]
+        >();
+        if (data.modifierRecipes) {
+          data.modifierRecipes.forEach((r) => {
+            if (!modRecipeMap.has(r.modifier_group_item_id)) {
+              modRecipeMap.set(r.modifier_group_item_id, []);
+            }
+            modRecipeMap.get(r.modifier_group_item_id)?.push({
+              inventoryItemId: r.inventory_item_id,
+              quantity: r.quantity,
+            });
+          });
+        }
+
+        // 2. Update Menu Items
+        let menuItemsChanged = false;
+        const newMenuItems = state.menuItems.map((item) => {
+          const recipe = menuRecipeMap.get(item.id);
+          if (recipe) {
+            menuItemsChanged = true;
+            return { ...item, recipe };
+          }
+          return item;
+        });
+
+        const newMenuItemsById = { ...state.menuItemsById };
+        if (menuItemsChanged) {
+          newMenuItems.forEach((item) => {
+            newMenuItemsById[item.id] = item;
+          });
+        }
+
+        // 3. Update Modifier Groups
+        let modifierGroupsChanged = false;
+        const newModifierGroups = state.modifierGroups.map((mg) => {
+          let optionsChanged = false;
+          const newOptions = mg.options.map((opt) => {
+            const recipe = modRecipeMap.get(opt.id);
+            if (recipe) {
+              optionsChanged = true;
+              return { ...opt, recipe };
+            }
+            return opt;
+          });
+
+          if (optionsChanged) {
+            modifierGroupsChanged = true;
+            return { ...mg, options: newOptions };
+          }
+          return mg;
+        });
+
+        const newModifierGroupsById = { ...state.modifierGroupsById };
+        if (modifierGroupsChanged) {
+          newModifierGroups.forEach((mg) => {
+            newModifierGroupsById[mg.id] = mg;
+          });
+        }
+
+        console.log("DEBUG: mergeRecipeData complete", {
+          menuItemsChanged,
+          modifierGroupsChanged,
+          menuRecipesMapped: menuRecipeMap.size,
+          modRecipesMapped: modRecipeMap.size,
+        });
+
+        return {
           menuItems: newMenuItems,
           menuItemsById: newMenuItemsById,
           modifierGroups: newModifierGroups,

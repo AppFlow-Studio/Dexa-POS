@@ -13,11 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { InventoryItem, InventoryUnit, Vendor } from "@/lib/types";
+import { InventoryItem, Vendor } from "@/lib/types";
 import React, { useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView, // <--- Imported
-  Platform, // <--- Imported
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -33,7 +32,7 @@ interface InventoryItemFormModalProps {
   initialData?: InventoryItem | null;
 }
 
-export const UNIT_OPTIONS: { label: string; value: InventoryUnit }[] = [
+export const UNIT_OPTIONS: { label: string; value: string }[] = [
   { label: "Pieces (pcs)", value: "pcs" },
   { label: "Grams (g)", value: "g" },
   { label: "Kilograms (kg)", value: "kg" },
@@ -71,6 +70,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   const [reorderThreshold, setReorderThreshold] = useState("0");
   const [cost, setCost] = useState("0");
   const [vendorId, setVendorId] = useState<any>();
+  const [stockUpdateReason, setStockUpdateReason] = useState("");
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -86,6 +86,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
           .map((v) => ({ label: v.name, value: v.id }))
           .find((v) => v.value === initialData.vendorId)
       );
+      setStockUpdateReason("");
     } else {
       // Reset form for adding
       setName("");
@@ -95,6 +96,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
       setReorderThreshold("0");
       setCost("0");
       setVendorId(undefined);
+      setStockUpdateReason("");
     }
   }, [initialData, isOpen, vendors]);
 
@@ -108,30 +110,222 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
   const vendorOptions = vendors.map((v) => ({ label: v.name, value: v.id }));
 
   const handleSave = () => {
-    if (!name || !category || !unit) {
-      alert("Please fill all required fields.");
-      return;
+    // Shared validation
+    if (initialData?.isGlobal) {
+      // Global Save (Location Settings)
+      const currentStock = parseFloat(stockQuantity) || 0;
+      const initialStock = initialData.stockQuantity || 0;
+      const stockChanged = currentStock !== initialStock;
+
+      if (stockChanged && !stockUpdateReason.trim()) {
+        alert("Please provide a reason for the stock change.");
+        return;
+      }
+
+      onSave(
+        {
+          name: initialData.name, // Keep existing
+          category: initialData.category,
+          stockQuantity: currentStock,
+          unit: initialData.unit,
+          unitType: initialData.unitType,
+          // Overrides passed as standard fields (store maps them)
+          reorderThreshold: parseFloat(reorderThreshold) || 0,
+          cost: parseFloat(cost) || 0,
+          vendorId: initialData.vendorId, // Keep global vendor
+          stockTrackingMode: "quantity",
+          locationId: initialData.locationId ?? null,
+          stockUpdateReason: stockUpdateReason, // New field for audit
+        },
+        initialData.id
+      );
+    } else {
+      // Local Save (Full Edit)
+      if (!name || !category || !unit) {
+        alert("Please fill all required fields.");
+        return;
+      }
+
+      let unitType: "unit" | "weight" | "volume" = "unit";
+      const uVal = unit.value.toLowerCase();
+      if (["kg", "g", "lb", "lbs", "oz"].includes(uVal)) unitType = "weight";
+      if (["l", "ml", "gal", "qt", "pint"].includes(uVal)) unitType = "volume";
+
+      const currentStock = parseFloat(stockQuantity) || 0;
+      const initialStock = initialData?.stockQuantity || 0;
+      const stockChanged = currentStock !== initialStock;
+
+      onSave(
+        {
+          name,
+          category,
+          stockQuantity: currentStock,
+          unit: unit.value,
+          unitType,
+          reorderThreshold: parseFloat(reorderThreshold) || 0,
+          cost: parseFloat(cost) || 0,
+          vendorId: vendorId?.value || null,
+          stockTrackingMode: "quantity",
+          locationId: initialData?.locationId ?? null,
+          stockUpdateReason: stockChanged
+            ? stockUpdateReason || "Manual Adjustment"
+            : undefined,
+        },
+        initialData?.id
+      );
     }
-    onSave(
-      {
-        name,
-        category,
-        stockQuantity: parseFloat(stockQuantity) || 0,
-        unit: unit.value,
-        reorderThreshold: parseFloat(reorderThreshold) || 0,
-        cost: parseFloat(cost) || 0,
-        vendorId: vendorId?.value || null,
-      },
-      initialData?.id
-    );
     onClose();
   };
 
+  // Render Global Form (Location Settings)
+  if (initialData?.isGlobal) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            <DialogHeader>
+              <View className="flex-row items-center gap-2">
+                <DialogTitle className="text-white text-2xl">
+                  Edit Location Settings
+                </DialogTitle>
+                <View className="px-2 py-0.5 bg-blue-500/20 rounded-full border border-blue-500/50">
+                  <Text className="text-blue-400 text-xs font-semibold">
+                    Global
+                  </Text>
+                </View>
+              </View>
+              <View className="mt-2 p-3 bg-blue-900/20 border border-blue-800 rounded-lg">
+                <Text className="text-blue-300 text-sm">
+                  This is a global item. You can only update stock and apply
+                  local overrides for cost and reorder thresholds.
+                </Text>
+              </View>
+            </DialogHeader>
+
+            <View className="py-4 gap-y-4">
+              {/* Read-Only Info */}
+              <View className="flex-row gap-4">
+                <View className="flex-1">
+                  <Text className="text-gray-400 mb-1">Item Name</Text>
+                  <View className="p-3 bg-[#252525] border border-gray-700 rounded-lg">
+                    <Text className="text-gray-300">{initialData.name}</Text>
+                  </View>
+                </View>
+                <View className="w-1/3">
+                  <Text className="text-gray-400 mb-1">Unit</Text>
+                  <View className="p-3 bg-[#252525] border border-gray-700 rounded-lg">
+                    <Text className="text-gray-300">{initialData.unit}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Stock Management */}
+              <View className="p-4 bg-[#252525]/50 border border-gray-700 rounded-xl space-y-3">
+                <Text className="text-gray-200 font-semibold">
+                  Location Stock
+                </Text>
+                <View className="flex-row gap-4">
+                  <View className="flex-1">
+                    <Text className="text-gray-400 mb-1">Quantity</Text>
+                    <TextInput
+                      value={stockQuantity}
+                      onChangeText={setStockQuantity}
+                      keyboardType="numeric"
+                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-gray-400 mb-1">
+                      Reorder Threshold
+                    </Text>
+                    <TextInput
+                      value={reorderThreshold}
+                      onChangeText={setReorderThreshold}
+                      placeholder={String(initialData.reorderThreshold)}
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                    />
+                    <Text className="text-xs text-gray-500 mt-1">
+                      Override default ({initialData.reorderThreshold})
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Conditional Reason Input */}
+                {parseFloat(stockQuantity) !==
+                  (initialData.stockQuantity || 0) && (
+                  <View>
+                    <Text className="text-gray-400 mb-1">
+                      Reason for Change *
+                    </Text>
+                    <TextInput
+                      value={stockUpdateReason}
+                      onChangeText={setStockUpdateReason}
+                      placeholder="e.g. Received delivery, Spoilage..."
+                      placeholderTextColor="#666"
+                      className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                    />
+                  </View>
+                )}
+              </View>
+
+              {/* Cost Override */}
+              <View className="p-4 bg-[#252525]/50 border border-gray-700 rounded-xl">
+                <View className="flex-row justify-between mb-2">
+                  <Text className="text-gray-200 font-semibold">Pricing</Text>
+                  <Text className="text-gray-400 text-sm">
+                    Base Cost: ${initialData.cost.toFixed(2)}
+                  </Text>
+                </View>
+                <View>
+                  <Text className="text-gray-400 mb-1">Cost Override ($)</Text>
+                  <TextInput
+                    value={cost}
+                    onChangeText={setCost}
+                    placeholder="Set custom cost..."
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    className="p-3 bg-[#212121] border border-gray-600 rounded-lg text-white"
+                  />
+                </View>
+              </View>
+            </View>
+
+            <DialogFooter className="flex-row gap-2 mt-2">
+              <TouchableOpacity
+                onPress={onClose}
+                className="flex-1 py-3 bg-[#212121] border border-gray-600 rounded-lg"
+              >
+                <Text className="text-center text-lg font-bold text-gray-300">
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSave}
+                className="flex-1 py-3 bg-blue-600 rounded-lg"
+              >
+                <Text className="text-center text-lg font-bold text-white">
+                  Save Changes
+                </Text>
+              </TouchableOpacity>
+            </DialogFooter>
+          </ScrollView>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Render Local Form (Full Edit - Existing Code Wrapped)
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-[#303030] border-gray-700 w-[550px]">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           <DialogHeader>
             <DialogTitle className="text-white text-2xl">
@@ -269,7 +463,7 @@ const InventoryItemFormModal: React.FC<InventoryItemFormModalProps> = ({
               </Text>
             </TouchableOpacity>
           </DialogFooter>
-        </KeyboardAvoidingView>
+        </ScrollView>
       </DialogContent>
     </Dialog>
   );

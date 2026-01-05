@@ -19,16 +19,31 @@ export const usePosSync = (locationId: string | null) => {
     queryFn: async () => {
       if (!locationId) throw new Error("Location ID required");
 
-      const { data, error } = await supabase.rpc("get_pos_full_sync", {
-        p_location_id: locationId,
-      });
+      // Fetch Menu, Ingredients, and Modifier Ingredients in parallel
+      const [syncResult, menuItemIngredientsResult, modifierIngredientsResult] =
+        await Promise.all([
+          supabase.rpc("get_pos_full_sync", {
+            p_location_id: locationId,
+          }),
+          supabase.from("menu_item_ingredients").select("*"),
+          supabase.from("modifier_group_item_ingredients").select("*"),
+        ]);
 
-      if (error) {
+      if (syncResult.error) {
         // Log this to Sentry immediately - critical failure
-        console.error("POS SYNC FAILED:", error);
-        throw error;
+        console.error("POS SYNC FAILED:", syncResult.error);
+        throw syncResult.error;
       }
-      return data as unknown as PosSyncData;
+
+      const data = syncResult.data as unknown as PosSyncData;
+
+      // Attach ingredients to the sync data object
+      // (The type matches because we updated PosSyncData in types/menu.ts)
+      return {
+        ...data,
+        menu_item_ingredients: menuItemIngredientsResult.data || [],
+        modifier_group_item_ingredients: modifierIngredientsResult.data || [],
+      };
     },
 
     // Only run if we have a locationId

@@ -105,6 +105,11 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
   const { inventoryItems } = useInventoryStore();
 
+  // Local state for exact string input of quantities (to allow decimals like "0." while typing)
+  const [recipeQuantities, setRecipeQuantities] = useState<
+    Record<string, string>
+  >({});
+
   // Modifiers state
   const [modifierSearch, setModifierSearch] = useState("");
   const [expandedModifiers, setExpandedModifiers] = useState<
@@ -135,6 +140,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
       };
       setFormData(data);
       setInitialFormData(data);
+      // Initialize quantities map? Not strictly necessary as we fallback to .toString()
     } else {
       // Explicitly set initial form data for "Add" mode to track changes from empty
       setInitialFormData({
@@ -337,12 +343,29 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
   const selectInventoryItem = (inventoryItemId: string) => {
     if (editingRecipeItemIndex !== null) {
+      const oldItem = formData.recipe[editingRecipeItemIndex];
+      // If converting, keep quantity if possible? No, usually reset to 1 or keep old quantity?
+      // Keeping old quantity logic from previous impl:
+      const oldQuantity = oldItem.quantity;
+
       setFormData((prev) => ({
         ...prev,
         recipe: prev.recipe.map((item, index) =>
           index === editingRecipeItemIndex ? { ...item, inventoryItemId } : item
         ),
       }));
+
+      // Transfer quantity string state if exists
+      setRecipeQuantities((prev) => {
+        const next = { ...prev };
+        // Move the quantity string to the new item ID
+        if (next[oldItem.inventoryItemId]) {
+          next[inventoryItemId] = next[oldItem.inventoryItemId];
+          delete next[oldItem.inventoryItemId];
+        }
+        return next;
+      });
+
       setEditingRecipeItemIndex(null);
     } else {
       setFormData((prev) => ({
@@ -354,6 +377,14 @@ const ItemForm: React.FC<ItemFormProps> = ({
   };
 
   const updateRecipeItemQuantity = (index: number, quantity: string) => {
+    const item = formData.recipe[index];
+
+    // Update local string state for input handling
+    setRecipeQuantities((prev) => ({
+      ...prev,
+      [item.inventoryItemId]: quantity,
+    }));
+
     setFormData((prev) => ({
       ...prev,
       recipe: prev.recipe.map((item, i) =>
@@ -363,6 +394,15 @@ const ItemForm: React.FC<ItemFormProps> = ({
   };
 
   const removeRecipeItem = (index: number) => {
+    const itemToRemove = formData.recipe[index];
+
+    // Clean up local state
+    setRecipeQuantities((prev) => {
+      const next = { ...prev };
+      delete next[itemToRemove.inventoryItemId];
+      return next;
+    });
+
     setFormData((prev) => ({
       ...prev,
       recipe: prev.recipe.filter((_, i) => i !== index),
@@ -938,7 +978,10 @@ const ItemForm: React.FC<ItemFormProps> = ({
                       <View className="w-20">
                         <View>
                           <TextInput
-                            value={recipeItem.quantity.toString()}
+                            value={
+                              recipeQuantities[recipeItem.inventoryItemId] ??
+                              recipeItem.quantity.toString()
+                            }
                             onChangeText={(text) =>
                               updateRecipeItemQuantity(index, text)
                             }

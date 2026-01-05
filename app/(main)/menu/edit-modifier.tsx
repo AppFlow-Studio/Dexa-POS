@@ -1,13 +1,14 @@
+import RecipeManager from "@/components/inventory/RecipeManager";
 import UnsavedChangesDialog from "@/components/ui/UnsavedChangesDialog";
 import { useToast } from "@/contexts/ToastContext";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useUnsavedChanges } from "@/hooks/useUnsavedChanges";
-import { ModifierOption } from "@/lib/types";
+import { ModifierOption, RecipeItem } from "@/lib/types";
 import { MenuService } from "@/services/menuService";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { router, useLocalSearchParams } from "expo-router";
-import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react-native";
+import { ArrowLeft, ChefHat, Plus, Save, Trash2, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -18,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 // Form data interface (consistent with add screen)
 interface ModifierFormData {
@@ -27,6 +29,7 @@ interface ModifierFormData {
   maxSelections?: number;
   description?: string;
   options: ModifierOption[];
+  recipeMap: Record<string, RecipeItem[]>;
 }
 
 // Error interface
@@ -62,6 +65,7 @@ const EditModifierScreen: React.FC = () => {
     maxSelections: undefined,
     description: "",
     options: [],
+    recipeMap: {},
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [showConfirm, setShowConfirm] = useState(false);
@@ -71,6 +75,11 @@ const EditModifierScreen: React.FC = () => {
     useState<ModifierFormData | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const hasSavedRef = useRef(false);
+
+  // Recipe Modal State
+  const [selectedOptionIdForRecipe, setSelectedOptionIdForRecipe] = useState<
+    string | null
+  >(null);
 
   const { isDialogVisible, handleCancel, handleDiscard } = useUnsavedChanges(
     hasChanges && !hasSavedRef.current
@@ -85,6 +94,10 @@ const EditModifierScreen: React.FC = () => {
         maxSelections: existing.maxSelections,
         description: existing.description || "",
         options: existing.options || [],
+        recipeMap: (existing.options || []).reduce((acc, opt) => {
+          if (opt.recipe) acc[opt.id] = opt.recipe;
+          return acc;
+        }, {} as Record<string, RecipeItem[]>),
       };
       setFormData(initialData);
       setOriginalFormData(initialData); // Store the initial state for comparison
@@ -196,18 +209,68 @@ const EditModifierScreen: React.FC = () => {
             isDefault: opt.isDefault,
             isActive: opt.isAvailable ?? true,
           });
+
+          // Update Recipe if changed
+          const currentRecipe = formData.recipeMap[opt.id];
+          if (currentRecipe) {
+            await MenuService.upsertModifierOptionRecipe(
+              supabase,
+              opt.id, // Must use real ID
+              currentRecipe.map((r) => ({
+                inventoryItemId: r.inventoryItemId,
+                quantity: r.quantity,
+              }))
+            );
+          }
         } else {
           // This is a new option (created locally with temp ID)
           if (selectedStore?.merchant_id) {
-            await MenuService.createModifierItem(supabase, {
-              modifierGroupId: existing.id,
-              name: opt.name.trim(),
-              priceModifier: opt.price,
-              displayOrder: existingOptions.length, // Append to end or use logic
-              isActive: opt.isAvailable ?? true,
-              isDefault: opt.isDefault,
-              merchantId: selectedStore.merchant_id,
-            });
+            const { data: newModifierItem, error: createError } =
+              await MenuService.createModifierItem(supabase, {
+                modifierGroupId: existing.id,
+                name: opt.name.trim(),
+                priceModifier: opt.price,
+                displayOrder: existingOptions.length,
+                isActive: opt.isAvailable ?? true,
+                isDefault: opt.isDefault,
+                merchantId: selectedStore.merchant_id,
+              });
+
+            if (createError) {
+              console.error("Failed to create modifier option:", createError);
+            } else if (newModifierItem) {
+              // Save recipe using the new ID
+              const currentRecipe = formData.recipeMap[opt.id];
+              if (currentRecipe && currentRecipe.length > 0) {
+                await MenuService.upsertModifierOptionRecipe(
+                  supabase,
+                  newModifierItem.id,
+                  currentRecipe.map((r) => ({
+                    inventoryItemId: r.inventoryItemId,
+                    quantity: r.quantity,
+                  }))
+                );
+              }
+            }
+
+            // Save recipe for new option
+            // Note: We need the NEW ID to save the recipe.
+            // MenuService.createModifierItem returns the created item.
+            // We should refactor to get the ID.
+            // But wait, the service does return { data, error }.
+            // Let's quickly fix logic to capture the ID.
+            /*
+             const { data: newModifierItem } = await MenuService.createModifierItem(...)
+             if(newModifierItem) {
+                const currentRecipe = formData.recipeMap[opt.id]; // opt.id is temp
+                await MenuService.upsertModifierOptionRecipe(supabase, newModifierItem.id, ...)
+             }
+             */
+            // Ideally we need to refactor the loop to await and capture result.
+            // For now, let's warn that recipe saving for NEW options might need refactoring
+            // or we do it properly now.
+            // Let's assume createModifierItem works.
+            // RE-READING createModifierItem: it returns { data, error }.
           }
         }
       }
@@ -230,7 +293,11 @@ const EditModifierScreen: React.FC = () => {
             ? formData.maxSelections
             : undefined,
         description: formData.description?.trim() || undefined,
-        options: formData.options.map((o) => ({ ...o, name: o.name.trim() })),
+        options: formData.options.map((o) => ({
+          ...o,
+          name: o.name.trim(),
+          recipe: formData.recipeMap[o.id], // Persist recipe to store
+        })),
       });
 
       show({
@@ -605,10 +672,11 @@ const EditModifierScreen: React.FC = () => {
                       />
                     </View>
                   </View>
-                  <View className="mt-3">
+                  <View className="mt-3"></View>
+                  <View className="flex-row gap-3 mt-3">
                     <TouchableOpacity
                       onPress={() => toggleDefaultOption(index)}
-                      className={`flex-row items-center p-3 rounded-lg border ${
+                      className={`flex-1 flex-row items-center p-3 rounded-lg border ${
                         option.isDefault
                           ? "bg-green-600/20 border-green-500"
                           : "bg-[#212121] border-gray-600"
@@ -636,6 +704,37 @@ const EditModifierScreen: React.FC = () => {
                           Default
                         </Text>
                       </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => setSelectedOptionIdForRecipe(option.id)}
+                      className={`flex-1 flex-row items-center justify-center p-3 rounded-lg border ${
+                        formData.recipeMap[option.id]?.length
+                          ? "bg-blue-600/20 border-blue-500"
+                          : "bg-[#212121] border-gray-600"
+                      }`}
+                    >
+                      <ChefHat
+                        size={20}
+                        color={
+                          formData.recipeMap[option.id]?.length
+                            ? "#60A5FA"
+                            : "#9CA3AF"
+                        }
+                      />
+                      <Text
+                        className={`ml-2 text-lg font-medium ${
+                          formData.recipeMap[option.id]?.length
+                            ? "text-blue-400"
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {formData.recipeMap[option.id]?.length
+                          ? `${
+                              formData.recipeMap[option.id].length
+                            } Ingredients`
+                          : "Recipe"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -722,6 +821,57 @@ const EditModifierScreen: React.FC = () => {
         onCancel={handleCancel}
         onDiscard={handleDiscard}
       />
+
+      <Modal
+        visible={!!selectedOptionIdForRecipe}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedOptionIdForRecipe(null)}
+      >
+        <GestureHandlerRootView className="flex-1 bg-[#212121]">
+          <View className="flex-1 bg-[#212121]">
+            <View className="flex-row items-center justify-between p-4 border-b border-gray-800 bg-[#212121]">
+              <View>
+                <Text className="text-xl font-bold text-white">
+                  Manage Recipe
+                </Text>
+                <Text className="text-gray-400 text-sm">
+                  for option "
+                  {
+                    formData.options.find(
+                      (o) => o.id === selectedOptionIdForRecipe
+                    )?.name
+                  }
+                  "
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setSelectedOptionIdForRecipe(null)}
+                className="p-2 bg-gray-800 rounded-full"
+              >
+                <X size={20} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-1 p-4">
+              {selectedOptionIdForRecipe && (
+                <RecipeManager
+                  recipe={formData.recipeMap[selectedOptionIdForRecipe] || []}
+                  onUpdate={(newRecipe) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      recipeMap: {
+                        ...prev.recipeMap,
+                        [selectedOptionIdForRecipe]: newRecipe,
+                      },
+                    }));
+                  }}
+                />
+              )}
+            </View>
+          </View>
+        </GestureHandlerRootView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
