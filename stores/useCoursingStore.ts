@@ -52,7 +52,8 @@ export interface CourseInfo {
 
 type OrderCoursing = {
   workingCourse: number;
-  itemCourseMap: Record<string, number>;
+  itemCourseMap: Record<string, number>; // Maps both local IDs and DB IDs to course numbers
+  dbIdToCourseMap: Record<string, number>; // Maps DB item IDs specifically for backend sync
   courses: Record<number, CourseInfo>;
   syncing: boolean;
   lastSyncAt?: Date;
@@ -75,7 +76,8 @@ type CoursingState = {
   isCourseFired: (orderId: string, courseNumber: number) => boolean;
   getOpenCourses: (orderId: string) => number[];
   getFiredCourses: (orderId: string) => number[];
-  getItemCourse: (orderId: string, itemId: string) => number;
+  getItemCourse: (orderId: string, itemId: string, dbItemId?: string) => number;
+  getItemCourseByDbId: (orderId: string, dbItemId: string) => number | undefined;
   canModifyItem: (orderId: string, itemId: string) => boolean;
 
   // Backward compatibility
@@ -140,6 +142,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
         [orderId]: {
           workingCourse: 1,
           itemCourseMap: {},
+          dbIdToCourseMap: {}, // Initialize the DB ID map
           courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
           syncing: false,
           dbOrderId,
@@ -161,6 +164,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           ...(prev.byOrderId[orderId] ?? {
             workingCourse: 1,
             itemCourseMap: {},
+            dbIdToCourseMap: {},
             courses: { 1: { courseNumber: 1, status: "open", itemCount: 0 } },
             syncing: false,
           }),
@@ -196,7 +200,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       if (!data) return;
 
       const courses: Record<number, CourseInfo> = {};
-      const itemCourseMap: Record<string, number> = {};
+      const dbIdToCourseMap: Record<string, number> = {}; // DB item ID -> course number
 
       (data?.courses || []).forEach((course: any) => {
         courses[course.course_number] = {
@@ -207,8 +211,9 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           itemCount: course.item_count || 0,
           items: course.items,
         };
+        // Store mapping by DB item ID (for later lookup when local items have db_order_item_id)
         (course.items || []).forEach((item: any) => {
-          itemCourseMap[item.id] = course.course_number;
+          dbIdToCourseMap[item.id] = course.course_number;
         });
       });
 
@@ -230,9 +235,11 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           ...prev.byOrderId,
           [orderId]: {
             workingCourse,
-            itemCourseMap: {
-              ...itemCourseMap,
-              ...(prev.byOrderId[orderId]?.itemCourseMap || {}),
+            // Preserve existing local item mappings, merge with any existing
+            itemCourseMap: prev.byOrderId[orderId]?.itemCourseMap || {},
+            dbIdToCourseMap: {
+              ...dbIdToCourseMap,
+              ...(prev.byOrderId[orderId]?.dbIdToCourseMap || {}),
             },
             courses,
             syncing: false,
@@ -291,9 +298,27 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       .sort((a, b) => a - b);
   },
 
-  getItemCourse: (orderId: string, itemId: string) => {
+  getItemCourse: (orderId: string, itemId: string, dbItemId?: string) => {
     const orderData = get().byOrderId[orderId];
-    return orderData?.itemCourseMap[itemId] ?? orderData?.workingCourse ?? 1;
+    if (!orderData) return 1;
+    
+    // First check local itemCourseMap by local ID
+    if (orderData.itemCourseMap[itemId] !== undefined) {
+      return orderData.itemCourseMap[itemId];
+    }
+    
+    // Then check dbIdToCourseMap by db_order_item_id (from backend)
+    if (dbItemId && orderData.dbIdToCourseMap?.[dbItemId] !== undefined) {
+      return orderData.dbIdToCourseMap[dbItemId];
+    }
+    
+    // Fall back to working course
+    return orderData.workingCourse ?? 1;
+  },
+
+  getItemCourseByDbId: (orderId: string, dbItemId: string) => {
+    const orderData = get().byOrderId[orderId];
+    return orderData?.dbIdToCourseMap?.[dbItemId];
   },
 
   canModifyItem: (orderId: string, itemId: string) => {
@@ -408,6 +433,11 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
             ...prev.byOrderId[orderId].itemCourseMap,
             [itemId]: courseNumber,
           },
+          // Also update dbIdToCourseMap if we have a dbItemId
+          dbIdToCourseMap: dbItemId ? {
+            ...prev.byOrderId[orderId].dbIdToCourseMap,
+            [dbItemId]: courseNumber,
+          } : prev.byOrderId[orderId].dbIdToCourseMap,
           courses: {
             ...prev.byOrderId[orderId].courses,
             [courseNumber]: prev.byOrderId[orderId].courses[courseNumber] ?? {

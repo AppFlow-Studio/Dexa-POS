@@ -2,7 +2,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -19,6 +19,7 @@ const CardPaymentView = () => {
     activeOrderOutstandingTotal,
     activeOrderTotal,
     activeOrderId,
+    ordersById,
   } = useOrderStore();
 
   const { close, handlePaymentCompletion, activeSplitId, splits } =
@@ -32,6 +33,9 @@ const CardPaymentView = () => {
   );
 
   const TIP_PRESETS = [18, 20, 25];
+
+  // Get the active order for backend amount_due
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
   const handleTipPreset = (percentage: number) => {
     const calculatedTip = (percentage / 100) * totalToPay;
@@ -49,11 +53,14 @@ const CardPaymentView = () => {
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
-  // Fallback to activeOrderTotal if outstandingTotal is 0 (handles async timing)
+  // Priority: backend amount_due > store outstanding total > full order total
+  // Use backend's authoritative amount_due when available
   const effectiveOutstandingTotal =
-    activeOrderOutstandingTotal > 0
-      ? activeOrderOutstandingTotal
-      : activeOrderTotal;
+    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0
+      ? activeOrder.amount_due
+      : activeOrderOutstandingTotal > 0
+        ? activeOrderOutstandingTotal
+        : activeOrderTotal;
   const totalToPay = activeSplit
     ? activeSplit.amount
     : effectiveOutstandingTotal;

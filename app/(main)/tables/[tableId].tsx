@@ -261,6 +261,8 @@ const UpdateTableScreen = () => {
                 const updatedOrderProfile: OrderProfile = {
                   id: newLocalId,
                   db_order_id: fetchedOrder.id,
+                  display_number: (fetchedOrder as any).display_number,
+                  order_number: (fetchedOrder as any).order_number,
                   service_location_id: currentTableId,
                   order_status: (fetchedOrder.status as any) || "preparing",
                   check_status:
@@ -268,7 +270,7 @@ const UpdateTableScreen = () => {
                   paid_status:
                     (fetchedOrder.payment_status as string) === "paid"
                       ? ("Paid" as const)
-                      : ("Unpaid" as const),
+                      : ((fetchedOrder as any).amount_paid > 0 ? ("Pending" as const) : ("Unpaid" as const)),
                   order_type: "Dine In",
                   items:
                     (fetchedOrder as any).order_items?.map((item: any) => ({
@@ -277,21 +279,32 @@ const UpdateTableScreen = () => {
                       menuItemId: item.menu_item_id,
                       name: item.item_name,
                       price: item.unit_price,
+                      cashPrice: item.cash_price,
                       originalPrice: item.unit_price,
                       quantity: item.quantity,
+                      paidQuantity: item.paid_quantity || 0, // Include paid quantity from backend
                       db_order_item_id: item.id,
+                      courseNumber: item.course_number || 1, // Include course number from backend
                       item_status: item.status || "ordered",
                       kitchen_status: item.status || "ordered",
+                      is_voided: item.is_voided || false,
                       customizations: {
                         notes: item.special_instructions,
                         modifiers: [],
                       },
                     })) || [],
-                  payments: [],
+                  payments: [], // Payments are tracked in backend, local array reset
                   opened_at: fetchedOrder.created_at,
+                  // Include payment-related fields from backend
+                  amount_due: (fetchedOrder as any).amount_due,
+                  cash_amount_due: (fetchedOrder as any).cash_amount_due,
+                  amount_paid: (fetchedOrder as any).amount_paid,
+                  total_amount: (fetchedOrder as any).total_amount,
+                  total_tax: (fetchedOrder as any).tax_amount,
+                  total_discount: (fetchedOrder as any).discount_amount,
                 };
 
-                // 6. Inject into store
+                // 6. Inject into store with updated outstanding totals
                 useOrderStore.setState((state) => ({
                   ordersById: {
                     ...state.ordersById,
@@ -299,6 +312,10 @@ const UpdateTableScreen = () => {
                   },
                   // Clean up old ID from array and add new one
                   orderIds: [...state.orderIds, updatedOrderProfile.id],
+                  // Update outstanding totals from backend's authoritative values
+                  activeOrderOutstandingTotal: (fetchedOrder as any).amount_due ?? state.activeOrderOutstandingTotal,
+                  activeOrderOutstandingCash: (fetchedOrder as any).cash_amount_due ?? (fetchedOrder as any).amount_due ?? state.activeOrderOutstandingCash,
+                  activeOrderTotal: (fetchedOrder as any).total_amount ?? state.activeOrderTotal,
                 }));
 
                 // 7. Set the NEW order as active.
@@ -571,18 +588,26 @@ const UpdateTableScreen = () => {
                     menuItemId: item.menu_item_id,
                     name: item.item_name,
                     price: item.unit_price,
+                    cashPrice: item.cash_price,
                     originalPrice: item.unit_price,
                     quantity: item.quantity,
+                    paidQuantity: item.paid_quantity || 0,
                     db_order_item_id: item.id,
+                    courseNumber: item.course_number || 1, // Include course number from backend
                     item_status: item.status || "ordered",
                     kitchen_status: item.status || "ordered",
+                    is_voided: item.is_voided || false,
                     customizations: {
                       notes: item.special_instructions,
-                      modifiers: [], // TODO: Map modifiers if needed for display
+                      modifiers: [],
                     },
                   })) || [],
-                payments: [], // TODO: Fetch payments if needed
+                payments: [],
                 opened_at: fetchedOrder.created_at,
+                // Include payment-related fields
+                amount_due: (fetchedOrder as any).amount_due,
+                cash_amount_due: (fetchedOrder as any).cash_amount_due,
+                amount_paid: (fetchedOrder as any).amount_paid,
               };
 
               // Inject into store
@@ -813,12 +838,40 @@ const UpdateTableScreen = () => {
         item.db_order_item_id &&
         !syncedDbItemsRef.current.has(item.db_order_item_id)
       ) {
-        // Get the course meant for this item from local state
         const state = coursing.getForOrder(orderId);
-        const course =
-          state?.itemCourseMap?.[item.id] ?? state?.workingCourse ?? 1;
+        
+        // Priority for determining course:
+        // 1. Item's courseNumber (from backend fetch) - most authoritative
+        // 2. Backend's dbIdToCourseMap (from get_order_courses RPC)
+        // 3. Local itemCourseMap
+        // 4. Working course as fallback
+        let course: number;
+        
+        if (item.courseNumber !== undefined && item.courseNumber > 0) {
+          // Use the course number from the fetched item data (most accurate)
+          course = item.courseNumber;
+        } else if (state?.dbIdToCourseMap?.[item.db_order_item_id] !== undefined) {
+          // Use the DB ID mapping from backend
+          course = state.dbIdToCourseMap[item.db_order_item_id];
+        } else if (state?.itemCourseMap?.[item.id] !== undefined) {
+          // Use local mapping if exists
+          course = state.itemCourseMap[item.id];
+        } else {
+          // Fall back to working course
+          course = state?.workingCourse ?? 1;
+        }
 
-        // Sync item course with DB ID
+        // Guard: Only sync if the target course is still open
+        // If the course is already fired (from backend), don't attempt to re-sync
+        const courseStatus = state?.courses?.[course]?.status;
+        if (courseStatus && courseStatus !== "open") {
+          // Course is already fired - just update local map without RPC call
+          coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id);
+          syncedDbItemsRef.current.add(item.db_order_item_id);
+          return;
+        }
+
+        // Sync item course with DB ID (will RPC only if course is open)
         coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id);
 
         // Mark as synced

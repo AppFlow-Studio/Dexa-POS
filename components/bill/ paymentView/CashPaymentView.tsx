@@ -1,7 +1,7 @@
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ScrollView,
   Text,
@@ -11,7 +11,7 @@ import {
 } from "react-native";
 
 const CashPaymentView = () => {
-  const { activeOrderOutstandingCash, activeOrderTotalCash } = useOrderStore();
+  const { activeOrderOutstandingCash, activeOrderTotalCash, activeOrderId, ordersById } = useOrderStore();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
@@ -24,15 +24,20 @@ const CashPaymentView = () => {
 
   const TIP_PRESETS = [18, 20, 25];
 
+  // Get the active order for backend cash_amount_due
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+
   // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // For cash payments, use cash outstanding total (unpaid items at cash prices)
-  // Fallback to cash total if outstanding is 0 (handles async timing or fully paid orders)
+  // Priority: backend cash_amount_due > store outstanding cash > full cash total
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const effectiveOutstandingCash =
-    activeOrderOutstandingCash > 0
-      ? activeOrderOutstandingCash
-      : activeOrderTotalCash;
+    activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
+      ? activeOrder.cash_amount_due
+      : activeOrderOutstandingCash > 0
+        ? activeOrderOutstandingCash
+        : activeOrderTotalCash;
   // console.log("effectiveOutstandingCash", effectiveOutstandingCash);
 
 

@@ -174,7 +174,13 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       {/* Main Header */}
       <View className="flex-row items-center justify-between pb-3 border-b border-gray-700 mb-3">
         <Text className="text-xl font-bold text-white">
-          Order #{activeOrder.id?.substring(0, 8)}
+          Order {activeOrder.display_number 
+            ? (activeOrder.display_number.startsWith('#') ? activeOrder.display_number : `#${activeOrder.display_number}`)
+            : activeOrder.order_number 
+              ? `#${activeOrder.order_number}`
+              : activeOrder.db_order_id 
+                ? `#${activeOrder.db_order_id.substring(0, 8)}`
+                : `#${activeOrder.id?.split('_').pop()?.substring(0, 8)}`}
         </Text>
         <TouchableOpacity
           onPress={onPressStartNewCourse}

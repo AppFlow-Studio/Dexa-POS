@@ -232,10 +232,24 @@ const PayForItemsView: React.FC = () => {
     const payments = activeOrder?.payments || [];
 
     // Calculate collected amount and remaining
+    // Priority: Use backend's amount_due (authoritative) > calculate from payments
     const collectedAmount = payments.reduce((sum, p) => sum + p.amount + (p.tip_amount || 0), 0);
-    const remainingAmount = Math.max(0, (activeOrder?.total_amount || activeOrderTotal) - collectedAmount);
+    
+    // Card remaining (default pricing)
+    const remainingAmount = activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0
+        ? activeOrder.amount_due  // Use backend's authoritative amount_due (card price)
+        : Math.max(0, (activeOrder?.total_amount || activeOrderTotal) - collectedAmount);
+    
+    // Cash remaining (for showing cash discount option)
+    const remainingCashAmount = activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
+        ? activeOrder.cash_amount_due  // Use backend's cash_amount_due
+        : Math.max(0, (activeOrderTotalCash || activeOrderTotal) - collectedAmount);
+    
+    // Calculate cash savings for remaining
+    const remainingCashSavings = Math.max(0, remainingAmount - remainingCashAmount);
+    
     const collectedPercent = activeOrderTotal > 0
-        ? Math.round((collectedAmount / activeOrderTotal) * 100)
+        ? Math.round(((activeOrderTotal - remainingAmount) / activeOrderTotal) * 100)
         : 0;
 
     // Get unpaid items (quantity > paidQuantity)
@@ -612,13 +626,20 @@ const PayForItemsView: React.FC = () => {
                                 </Text>
                             </View>
 
-                            {/* Remaining */}
+                            {/* Remaining - Show both card and cash */}
                             <View className="items-center">
-                                <Text className="text-2xl font-bold text-orange-500">
-                                    ${remainingAmount.toFixed(2)}
-                                </Text>
+                                <View className="flex-row items-baseline gap-2">
+                                    <Text className="text-2xl font-bold text-orange-500">
+                                        ${remainingAmount.toFixed(2)}
+                                    </Text>
+                                    {remainingCashSavings > 0.01 && (
+                                        <Text className="text-sm font-medium text-green-400">
+                                            (${remainingCashAmount.toFixed(2)} cash)
+                                        </Text>
+                                    )}
+                                </View>
                                 <Text className="text-gray-500 text-xs uppercase">
-                                    Remaining
+                                    Remaining{remainingCashSavings > 0.01 ? ' (Card / Cash)' : ''}
                                 </Text>
                             </View>
 
