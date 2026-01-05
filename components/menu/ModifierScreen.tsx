@@ -239,16 +239,51 @@ const ModifierScreen = () => {
     activeModifierCategory: precomputedActiveCategory,
   } = useModifierSidebarStore();
 
-  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
-  const updateItemInActiveOrder = useOrderStore(
-    (s) => s.updateItemInActiveOrder
-  );
-  const removeItemFromActiveOrder = useOrderStore(
-    (s) => s.removeItemFromActiveOrder
-  );
-  const generateCartItemId = useOrderStore((s) => s.generateCartItemId);
+  // ============================================================================
+  // STABLE STORE REFERENCES (No subscriptions = no re-renders from store changes)
+  // ============================================================================
+  // Use refs for store actions - these never change and don't need subscriptions
+  const orderStoreRef = useRef(useOrderStore.getState());
+  const menuStoreRef = useRef(useMenuStore.getState());
+  
+  // Keep refs updated with latest store state (for reading, not subscribing)
+  useEffect(() => {
+    const unsubOrder = useOrderStore.subscribe((state) => {
+      orderStoreRef.current = state;
+    });
+    const unsubMenu = useMenuStore.subscribe((state) => {
+      menuStoreRef.current = state;
+    });
+    return () => {
+      unsubOrder();
+      unsubMenu();
+    };
+  }, []);
 
-  const getMenuItemById = useMenuStore((s) => s.getMenuItemById);
+  // Stable action accessors - never cause re-renders
+  const addItemToActiveOrder = useCallback(
+    (item: any) => orderStoreRef.current.addItemToActiveOrder(item),
+    []
+  );
+  const updateItemInActiveOrder = useCallback(
+    (item: any) => orderStoreRef.current.updateItemInActiveOrder(item),
+    []
+  );
+  const removeItemFromActiveOrder = useCallback(
+    (itemId: string, voidReason?: string) => orderStoreRef.current.removeItemFromActiveOrder(itemId, voidReason),
+    []
+  );
+  const generateCartItemId = useCallback(
+    (menuItemId: string, customizations: any, isDraft?: boolean) => 
+      orderStoreRef.current.generateCartItemId(menuItemId, customizations, isDraft),
+    []
+  );
+  const getMenuItemById = useCallback(
+    (id: string) => menuStoreRef.current.getMenuItemById(id),
+    []
+  );
+  
+  // Only subscribe to modifierGroups since it's used in memoized computation
   const allModifierGroups = useMenuStore((s) => s.modifierGroups);
 
   const { show } = useToast();
@@ -450,7 +485,6 @@ const ModifierScreen = () => {
           ...draftItem,
           quantity,
           price: baseTotal,
-          unitPrice: item.price,
           customizations: {
             modifiers: selectedModifiers,
             notes,
@@ -521,82 +555,109 @@ const ModifierScreen = () => {
   }, [isOpen, currentItem?.id]); // Minimal deps for faster init
 
   // ============================================================================
-  // DRAFT ITEM CREATION (Deferred to next frame for non-blocking UI)
+  // DRAFT ITEM CREATION (Deferred via microtask for non-blocking UI)
   // ============================================================================
-
-  useEffect(() => {
-    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
-
-    // Defer draft creation to next animation frame for non-blocking UI
-    const frameId = requestAnimationFrame(() => {
-      const { activeOrderId, ordersById } = useOrderStore.getState();
-      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
-      const stableDraftId = `draft_${currentItem.id}`;
-
-      // Check if draft already exists
-      const existingStableDraft = activeOrder?.items.find(
-        (item) => item.id === stableDraftId
-      );
-      if (existingStableDraft) {
-        draftItemIdRef.current = existingStableDraft.id;
-        lastDraftMenuItemIdRef.current = currentItem.id;
-        return;
-      }
-
-      // Check for existing identical item
-      const existingItem = activeOrder?.items.find((item) => {
-        if (item.menuItemId !== currentItem.id) return false;
-        const hasModifiers =
-          item.customizations.modifiers &&
-          item.customizations.modifiers.length > 0;
-        const hasNotes =
-          item.customizations.notes && item.customizations.notes.trim() !== "";
-        const hasSent = item.kitchen_status === "sent";
-        return !hasModifiers && !hasNotes && !hasSent;
-      });
-
-      if (!existingItem) {
-        const itemPrice = getCurrentItemPrice(currentItem);
-        const cashPrice = getCurrentItemCashPrice(currentItem);
-        const draftItem = {
-          id: stableDraftId,
-          menuItemId: currentItem.id,
-          name: currentItem.name,
-          quantity: 1,
-          unitPrice: itemPrice, // Use menu-context price
-          originalPrice: cashPrice || itemPrice, // originalPrice should be the cash/base price
-          price: itemPrice, // price is the effective price (card price + modifiers)
-          cashPrice: cashPrice || itemPrice, // Store cashPrice for reference, fallback to itemPrice
-          image: currentItem.image,
-          isDraft: true,
-          customizations: { modifiers: [], notes: "" },
-          availableDiscount: currentItem.availableDiscount,
-          appliedDiscount: null,
-          paidQuantity: 0,
-          // Track which category/menu context this item was added from
-          addedFromCategoryId: categoryId || null,
-          addedFromMenuId: menuId || null,
-        };
-
-        addItemToActiveOrder(draftItem);
-        draftItemIdRef.current = draftItem.id;
-        lastDraftMenuItemIdRef.current = currentItem.id;
-      }
-    });
-
-    return () => {
-      cancelAnimationFrame(frameId);
-    };
-  }, [
-    isOpen,
-    currentItem?.id,
-    mode,
-    cartItem,
+  
+  // Store current values in ref for stable microtask access
+  const draftCreationRef = useRef({
+    currentItem,
+    categoryId,
     menuId,
     getCurrentItemPrice,
     getCurrentItemCashPrice,
     addItemToActiveOrder,
-  ]);
+  });
+  
+  // Keep ref updated
+  useEffect(() => {
+    draftCreationRef.current = {
+      currentItem,
+      categoryId,
+      menuId,
+      getCurrentItemPrice,
+      getCurrentItemCashPrice,
+      addItemToActiveOrder,
+    };
+  });
+
+  useEffect(() => {
+    if (!isOpen || !currentItem || mode === "edit" || cartItem) return;
+
+    // Use queueMicrotask for truly non-blocking draft creation
+    // Microtasks execute after current task but before next render
+    let cancelled = false;
+    
+    queueMicrotask(() => {
+      if (cancelled) return;
+      
+      const { 
+        currentItem: item, 
+        categoryId: catId, 
+        menuId: mId,
+        getCurrentItemPrice: getPrice,
+        getCurrentItemCashPrice: getCashPrice,
+        addItemToActiveOrder: addItem,
+      } = draftCreationRef.current;
+      
+      if (!item) return;
+      
+      const { activeOrderId, ordersById } = orderStoreRef.current;
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+      const stableDraftId = `draft_${item.id}`;
+
+      // Check if draft already exists
+      const existingStableDraft = activeOrder?.items.find(
+        (i) => i.id === stableDraftId
+      );
+      if (existingStableDraft) {
+        draftItemIdRef.current = existingStableDraft.id;
+        lastDraftMenuItemIdRef.current = item.id;
+        return;
+      }
+
+      // Check for existing identical item
+      const existingItem = activeOrder?.items.find((i) => {
+        if (i.menuItemId !== item.id) return false;
+        const hasModifiers =
+          i.customizations.modifiers &&
+          i.customizations.modifiers.length > 0;
+        const hasNotes =
+          i.customizations.notes && i.customizations.notes.trim() !== "";
+        const hasSent = i.kitchen_status === "sent";
+        return !hasModifiers && !hasNotes && !hasSent;
+      });
+
+      if (!existingItem) {
+        const itemPrice = getPrice(item);
+        const cashPrice = getCashPrice(item);
+        const draftItem = {
+          id: stableDraftId,
+          menuItemId: item.id,
+          name: item.name,
+          quantity: 1,
+          originalPrice: cashPrice || itemPrice,
+          price: itemPrice,
+          cashPrice: cashPrice || itemPrice,
+          image: item.image,
+          isDraft: true,
+          customizations: { modifiers: [], notes: "" },
+          availableDiscount: item.availableDiscount,
+          appliedDiscount: null,
+          paidQuantity: 0,
+          addedFromCategoryId: catId || null,
+          addedFromMenuId: mId || null,
+        };
+
+        addItem(draftItem);
+        draftItemIdRef.current = draftItem.id;
+        lastDraftMenuItemIdRef.current = item.id;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentItem?.id, mode, cartItem]); // Minimal dependencies
 
   // ============================================================================
   // CLEANUP
@@ -636,58 +697,118 @@ const ModifierScreen = () => {
   }, [mode, cartItem, menuItem]);
 
   // ============================================================================
-  // HANDLERS
+  // HANDLERS (Stabilized with refs for instant response)
   // ============================================================================
+  
+  // Store latest values in ref for stable callback access
+  const latestStateRef = useRef({
+    state,
+    total,
+    menuItem,
+    cartItem,
+    menuItemForModifiers,
+    modifierCategoriesById,
+    optionsById,
+    mode,
+    categoryId,
+    menuId,
+    isReadOnly,
+    currentItem,
+    close,
+    show,
+  });
+  
+  // Keep ref updated (no deps array = runs every render, but is cheap)
+  useEffect(() => {
+    latestStateRef.current = {
+      state,
+      total,
+      menuItem,
+      cartItem,
+      menuItemForModifiers,
+      modifierCategoriesById,
+      optionsById,
+      mode,
+      categoryId,
+      menuId,
+      isReadOnly,
+      currentItem,
+      close,
+      show,
+    };
+  });
 
+  // Stable handler - never recreates, reads from ref
   const handleModifierToggle = useCallback(
-    (categoryId: string, optionId: string) => {
+    (catId: string, optionId: string) => {
+      const { isReadOnly, modifierCategoriesById } = latestStateRef.current;
       if (isReadOnly) return;
-      const category = modifierCategoriesById.get(categoryId);
+      const category = modifierCategoriesById.get(catId);
       if (!category) return;
-      startTransition(() => {
-        dispatch({
-          type: "TOGGLE_MODIFIER",
-          payload: { categoryId, optionId, category },
-        });
+      // Direct dispatch for immediate feedback (no startTransition)
+      dispatch({
+        type: "TOGGLE_MODIFIER",
+        payload: { categoryId: catId, optionId, category },
       });
     },
-    [isReadOnly, modifierCategoriesById, startTransition]
+    [] // Empty deps = never recreates
   );
 
+  // Stable handler
   const handleQuantityPress = useCallback(() => {
+    const { isReadOnly, state } = latestStateRef.current;
     if (isReadOnly) return;
     dispatch({
       type: "OPEN_QUANTITY_MODAL",
       payload: state.quantity.toString(),
     });
-  }, [isReadOnly, state.quantity]);
+  }, []);
 
+  // Stable handler
   const handleQuantitySubmit = useCallback(() => {
+    const { state } = latestStateRef.current;
     const newQuantity = parseInt(state.quantityInput, 10);
     if (newQuantity && newQuantity > 0) {
       dispatch({ type: "SET_QUANTITY", payload: newQuantity });
     }
     dispatch({ type: "CLOSE_QUANTITY_MODAL" });
-  }, [state.quantityInput]);
+  }, []);
 
+  // Stable handler
   const handleQuantityCancel = useCallback(() => {
     dispatch({ type: "CLOSE_QUANTITY_MODAL" });
   }, []);
 
+  // Stable handleSave - reads all values from refs, never recreates
   const handleSave = useCallback(() => {
     actionHandledRef.current = true;
-    const baseItem = menuItem || menuItemForModifiers;
+    
+    // Read all values from refs for instant access
+    const {
+      state: currentState,
+      total: currentTotal,
+      menuItem: currentMenuItem,
+      cartItem: currentCartItem,
+      menuItemForModifiers: modifiersItem,
+      modifierCategoriesById: categoriesMap,
+      optionsById: optsMap,
+      mode: currentMode,
+      categoryId: catId,
+      menuId: mId,
+      currentItem: item,
+      close: closeModal,
+      show: showToast,
+    } = latestStateRef.current;
+    
+    const baseItem = currentMenuItem || modifiersItem;
     if (!baseItem) return;
 
-    if (
-      menuItemForModifiers?.modifiers &&
-      menuItemForModifiers.modifiers.length > 0
-    ) {
-      const hasRequiredSelections = menuItemForModifiers.modifiers.every(
+    if (modifiersItem?.modifiers && modifiersItem.modifiers.length > 0) {
+      const hasRequiredSelections = modifiersItem.modifiers.every(
         (category) => {
           if (category.type === "required") {
             return Object.values(
-              state.modifierSelections[category.id] || {}
+              currentState.modifierSelections[category.id] || {}
             ).some(Boolean);
           }
           return true;
@@ -695,7 +816,7 @@ const ModifierScreen = () => {
       );
 
       if (!hasRequiredSelections) {
-        show({
+        showToast({
           title: "Missing Selections",
           message: "Please select all required options before proceeding.",
           type: "error",
@@ -704,14 +825,14 @@ const ModifierScreen = () => {
       }
     }
 
-    const selectedModifiers = menuItemForModifiers?.modifiers
-      ? Object.entries(state.modifierSelections)
-        .map(([categoryId, selections]) => {
-          const category = modifierCategoriesById.get(categoryId);
+    const selectedModifiers = modifiersItem?.modifiers
+      ? Object.entries(currentState.modifierSelections)
+        .map(([cId, selections]) => {
+          const category = categoriesMap.get(cId);
           const selectedOptions = Object.entries(selections)
             .filter(([_, isSelected]) => isSelected)
             .map(([optionId]) => {
-              const optionData = optionsById.get(optionId);
+              const optionData = optsMap.get(optionId);
               return {
                 id: optionId,
                 name: optionData?.option.name || "",
@@ -720,7 +841,7 @@ const ModifierScreen = () => {
             });
 
           return {
-            categoryId,
+            categoryId: cId,
             categoryName: category?.name || "",
             options: selectedOptions,
           };
@@ -730,66 +851,62 @@ const ModifierScreen = () => {
 
     const finalCustomizations = {
       modifiers: selectedModifiers,
-      notes: state.notes,
+      notes: currentState.notes,
     };
 
-    if (mode === "edit" || (mode === "fullscreen" && cartItem)) {
-      if (!cartItem) return;
+    if (currentMode === "edit" || (currentMode === "fullscreen" && currentCartItem)) {
+      if (!currentCartItem) return;
       const updatedItem = {
-        ...cartItem,
-        quantity: state.quantity,
-        price: total / Math.max(1, state.quantity),
+        ...currentCartItem,
+        quantity: currentState.quantity,
+        price: currentTotal / Math.max(1, currentState.quantity),
         customizations: finalCustomizations,
         isDraft: false,
       };
 
       updateItemInActiveOrder(updatedItem);
-      show({
+      showToast({
         title: "Item Updated",
-        message: `Your changes to ${currentItem?.name} have been saved.`,
+        message: `Your changes to ${item?.name} have been saved.`,
         type: "success",
       });
     } else {
-      const { activeOrderId, ordersById } = useOrderStore.getState();
+      const { activeOrderId, ordersById } = orderStoreRef.current;
       const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
       const coursingState = useCoursingStore.getState();
       const currentCourse =
         coursingState.getForOrder(activeOrderId ?? "")?.workingCourse ?? 1;
 
-      const existingItem = activeOrder?.items.find((item) => {
-        if (item.menuItemId !== baseItem.id) return false;
+      const existingItem = activeOrder?.items.find((i) => {
+        if (i.menuItemId !== baseItem.id) return false;
 
         const existingItemCourse =
           coursingState.getForOrder(activeOrderId ?? "")?.itemCourseMap?.[
-          item.id
+          i.id
           ] ?? 1;
         if (existingItemCourse !== currentCourse) return false;
 
-        const itemCustomizations = item.customizations;
-        const currentCustomizations = finalCustomizations;
-
+        const itemCustomizations = i.customizations;
         const itemModifiers = itemCustomizations.modifiers || [];
-        const currentModifiers = currentCustomizations.modifiers || [];
+        const currentModifiers = finalCustomizations.modifiers || [];
 
         if (itemModifiers.length !== currentModifiers.length) return false;
 
-        for (let i = 0; i < itemModifiers.length; i++) {
-          const itemMod = itemModifiers[i];
-          const currentMod = currentModifiers[i];
+        for (let j = 0; j < itemModifiers.length; j++) {
+          const itemMod = itemModifiers[j];
+          const currentMod = currentModifiers[j];
 
           if (itemMod.categoryId !== currentMod.categoryId) return false;
-          if (itemMod.options.length !== currentMod.options.length)
-            return false;
+          if (itemMod.options.length !== currentMod.options.length) return false;
 
-          for (let j = 0; j < itemMod.options.length; j++) {
-            if (itemMod.options[j].id !== currentMod.options[j].id)
-              return false;
+          for (let k = 0; k < itemMod.options.length; k++) {
+            if (itemMod.options[k].id !== currentMod.options[k].id) return false;
           }
         }
 
         const itemNotes = (itemCustomizations.notes || "").trim();
-        const currentNotes = (currentCustomizations.notes || "").trim();
+        const currentNotes = (finalCustomizations.notes || "").trim();
         if (itemNotes !== currentNotes) return false;
 
         return true;
@@ -797,7 +914,7 @@ const ModifierScreen = () => {
 
       if (existingItem) {
         const draftItems = activeOrder?.items.filter(
-          (item) => item.isDraft && item.menuItemId === baseItem.id
+          (i) => i.isDraft && i.menuItemId === baseItem.id
         );
 
         if (draftItems && draftItems.length > 0) {
@@ -806,58 +923,49 @@ const ModifierScreen = () => {
           });
         }
 
-        // Use precomputed prices (includes menu context) instead of base item prices
         const confirmedItem: Omit<CartItem, 'subtotal' | 'cashSubtotal' | 'taxRate' | 'taxAmount' | 'cashTaxAmount'> = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,
-          quantity: state.quantity,
-          originalPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
-          price: total / Math.max(1, state.quantity),
-          cashPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
-          unitPrice: getCurrentItemPrice(baseItem), // Use menu-context price
+          quantity: currentState.quantity,
+          originalPrice: getCurrentItemCashPrice(baseItem),
+          price: currentTotal / Math.max(1, currentState.quantity),
+          cashPrice: getCurrentItemCashPrice(baseItem),
           image: baseItem.image,
-
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
-          // Track which category/menu context this item was added from
-          addedFromCategoryId: categoryId || null,
-          addedFromMenuId: menuId || null,
+          addedFromCategoryId: catId || null,
+          addedFromMenuId: mId || null,
         };
-        console.log('[handleSave] confirmedItem', confirmedItem);
         addItemToActiveOrder(confirmedItem);
-        show({
+        showToast({
           title: "Item Added",
           message: `${baseItem.name} has been successfully added to your order.`,
           type: "success",
         });
       } else {
-        // Use precomputed prices (includes menu context) instead of base item prices
         const newItem = {
           id: generateCartItemId(baseItem.id, finalCustomizations),
           menuItemId: baseItem.id,
           name: baseItem.name,
-          quantity: state.quantity,
-          originalPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
-          price: total / Math.max(1, state.quantity),
+          quantity: currentState.quantity,
+          originalPrice: getCurrentItemCashPrice(baseItem),
+          price: currentTotal / Math.max(1, currentState.quantity),
           image: baseItem.image,
-          cashPrice: getCurrentItemCashPrice(baseItem), // Use menu-context cash price
-          unitPrice: getCurrentItemPrice(baseItem), // Use menu-context price
+          cashPrice: getCurrentItemCashPrice(baseItem),
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
           appliedDiscount: null,
           paidQuantity: 0,
           isDraft: false,
-          // Track which category/menu context this item was added from
-          addedFromCategoryId: categoryId || null,
-          addedFromMenuId: menuId || null,
+          addedFromCategoryId: catId || null,
+          addedFromMenuId: mId || null,
         };
-        console.log('[handleSave] newItem', newItem);
         addItemToActiveOrder(newItem);
-        show({
+        showToast({
           title: "Item Added",
           message: `${baseItem.name} has been successfully added to your order.`,
           type: "success",
@@ -865,40 +973,25 @@ const ModifierScreen = () => {
       }
     }
 
-    close();
-  }, [
-    currentItem,
-    cartItem,
-    menuItem,
-    menuItemForModifiers,
-    state.modifierSelections,
-    state.quantity,
-    state.notes,
-    total,
-    mode,
-    close,
-    addItemToActiveOrder,
-    updateItemInActiveOrder,
-    generateCartItemId,
-    show,
-    modifierCategoriesById,
-    optionsById,
-  ]);
+    closeModal();
+  }, []); // Empty deps = never recreates
 
+  // Stable handleCancel - reads from refs
   const handleCancel = useCallback(() => {
     actionHandledRef.current = true;
+    const { mode: currentMode, cartItem: cart, currentItem: item, close: closeModal } = latestStateRef.current;
+    
     if (
-      mode !== "edit" &&
-      !(mode === "fullscreen" && cartItem) &&
-      !cartItem &&
-      currentItem
+      currentMode !== "edit" &&
+      !(currentMode === "fullscreen" && cart) &&
+      !cart &&
+      item
     ) {
-      const { activeOrderId, orders, removeItemFromActiveOrder } =
-        useOrderStore.getState();
-      const activeOrder = orders.find((o) => o.id === activeOrderId);
+      const { activeOrderId, ordersById } = orderStoreRef.current;
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
 
       const draftItems = activeOrder?.items.filter(
-        (item) => item.isDraft && item.menuItemId === currentItem.id
+        (i) => i.isDraft && i.menuItemId === item.id
       );
 
       if (draftItems && draftItems.length > 0) {
@@ -908,8 +1001,8 @@ const ModifierScreen = () => {
       }
       lastDraftMenuItemIdRef.current = null;
     }
-    close();
-  }, [close, mode, cartItem, currentItem]);
+    closeModal();
+  }, []); // Empty deps = never recreates
 
   // ============================================================================
   // RENDER

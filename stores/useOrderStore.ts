@@ -108,28 +108,75 @@ function calculateOrderTotals(
   payments: { amount: number }[],
   taxRatesMap: TaxRatesMap // Map of tax_category -> rate percentage
 ): OrderTotals {
-  // Filter out voided items - they should not be included in totals
-  const activeItems = items.filter((item) => !item.is_voided);
-
-  // Subtotal (all active items with their effective prices)
-  const subtotal = activeItems.reduce(
-    (acc, item) => acc + item.price * item.quantity,
-    0
-  );
-
-  // Item-level discounts
-  const itemDiscountsTotal = activeItems.reduce((acc, item) => {
+  // ============================================================================
+  // SINGLE-PASS OPTIMIZATION: Calculate all values in ONE loop iteration
+  // Previous: 8 separate loops/reduces = O(8n)
+  // Now: 1 loop = O(n)
+  // ============================================================================
+  
+  // First pass accumulators
+  let subtotal = 0;
+  let itemDiscountsTotal = 0;
+  let cash_subtotal = 0;
+  
+  // We need subtotals first to calculate proportional discounts for taxes
+  // So we collect per-item data for the tax calculation phase
+  interface ItemTaxData {
+    itemSubtotal: number;
+    itemCashSubtotal: number;
+    unpaidQty: number;
+    unpaidSubtotal: number;
+    unpaidCashSubtotal: number;
+    taxRateDecimal: number;
+    isTaxExempt: boolean;
+  }
+  const itemsData: ItemTaxData[] = [];
+  
+  // SINGLE PASS: Collect all item data at once
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    
+    // Skip voided items
+    if (item.is_voided) continue;
+    
+    // Calculate card price subtotal
+    const itemSubtotal = item.price * item.quantity;
+    subtotal += itemSubtotal;
+    
+    // Calculate item-level discounts
     if (item.appliedDiscount) {
-      return (
-        acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-      );
+      itemDiscountsTotal += item.originalPrice * item.appliedDiscount.value * item.quantity;
     }
-    return acc;
-  }, 0);
-
+    
+    // Calculate cash price subtotal
+    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+    const itemCashSubtotal = effectiveCashPrice * item.quantity;
+    cash_subtotal += itemCashSubtotal;
+    
+    // Calculate unpaid quantities
+    const unpaidQty = item.quantity - (item.paidQuantity || 0);
+    const unpaidSubtotal = unpaidQty > 0 ? unpaidQty * item.price : 0;
+    const unpaidCashSubtotal = unpaidQty > 0 ? unpaidQty * effectiveCashPrice : 0;
+    
+    // Get tax rate
+    const taxCategory = item.tax_category || "standard";
+    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
+    const taxRateDecimal = taxRatePercent / 100;
+    
+    // Store for second phase (tax calculations need complete subtotals)
+    itemsData.push({
+      itemSubtotal,
+      itemCashSubtotal,
+      unpaidQty,
+      unpaidSubtotal,
+      unpaidCashSubtotal,
+      taxRateDecimal,
+      isTaxExempt: item.is_tax_exempt || false,
+    });
+  }
+  
+  // Calculate check-level discount
   const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
-
-  // Check-level discount
   let checkDiscountAmount = 0;
   if (checkDiscount) {
     if (checkDiscount.type === "percentage") {
@@ -138,146 +185,81 @@ function calculateOrderTotals(
       checkDiscountAmount = checkDiscount.value;
     }
   }
-
   const discount_amount = round2(itemDiscountsTotal + checkDiscountAmount);
-
-  // Calculate tax per item based on its tax_category
-  // Distribute discount proportionally for tax calculation
+  
+  // SECOND PHASE: Calculate taxes and outstanding amounts
+  // (Needs discount_amount and subtotals from first phase)
   let tax_amount = 0;
-  for (const item of activeItems) {
-    // Skip tax-exempt items
-    if (item.is_tax_exempt) continue;
-
-    // Get the tax rate for this item's category (default to "standard" if not set)
-    const taxCategory = item.tax_category || "standard";
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-    const taxRateDecimal = taxRatePercent / 100;
-
-    // Calculate item's taxable amount (price * quantity)
-    const itemSubtotal = item.price * item.quantity;
-
-    // Apply proportional discount to this item
-    const itemDiscountProportion = subtotal > 0 ? itemSubtotal / subtotal : 0;
-    const itemDiscountAmount = discount_amount * itemDiscountProportion;
-    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
-
-    // Calculate tax for this item
-    tax_amount += itemTaxableAmount * taxRateDecimal;
-  }
-  tax_amount = round2(tax_amount);
-
-  const taxableAmount = Math.max(0, subtotal - discount_amount);
-  const total_amount = round2(taxableAmount + tax_amount);
-
-  // Outstanding (unpaid items only) - with per-item tax
   let outstanding_subtotal = 0;
   let outstanding_tax = 0;
-  for (const item of activeItems) {
-    const unpaidQty = item.quantity - (item.paidQuantity || 0);
-    if (unpaidQty <= 0) continue;
-
-    const itemSubtotal = unpaidQty * item.price;
-    outstanding_subtotal += itemSubtotal;
-
-    if (!item.is_tax_exempt) {
-      const taxCategory = item.tax_category || "standard";
-      const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-      const taxRateDecimal = taxRatePercent / 100;
-
-      // Apply proportional discount
-      const itemDiscountProportion = subtotal > 0 ? itemSubtotal / subtotal : 0;
-      const itemDiscountAmount = discount_amount * itemDiscountProportion;
-      const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
-
-      outstanding_tax += itemTaxableAmount * taxRateDecimal;
-    }
-  }
-  outstanding_subtotal = round2(outstanding_subtotal);
-  outstanding_tax = round2(outstanding_tax);
-
-  const proportionOutstanding =
-    subtotal > 0 ? outstanding_subtotal / subtotal : 0;
-  const outstandingDiscount = discount_amount * proportionOutstanding;
-  const outstandingSubtotalAfterDiscount =
-    outstanding_subtotal - outstandingDiscount;
-  const outstanding_total = round2(
-    outstandingSubtotalAfterDiscount + outstanding_tax
-  );
-
-  // === CASH PRICING CALCULATIONS ===
-  // Calculate subtotal using cash prices (originalPrice + modifiers + add-ons)
-  const cash_subtotal = activeItems.reduce(
-    (acc, item) => {
-      const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-      return acc + effectiveCashPrice * item.quantity;
-    },
-    0
-  );
-
-  // Calculate cash tax (same discount logic, but using cash subtotal)
   let cash_tax_amount = 0;
-  for (const item of activeItems) {
-    // Skip tax-exempt items
-    if (item.is_tax_exempt) continue;
-
-    const taxCategory = item.tax_category || "standard";
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-    const taxRateDecimal = taxRatePercent / 100;
-
-    // Calculate item's taxable amount using cash price
-    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-    const itemCashSubtotal = effectiveCashPrice * item.quantity;
-
-    // Apply proportional discount to this item (based on cash subtotal)
-    const itemDiscountProportion = cash_subtotal > 0 ? itemCashSubtotal / cash_subtotal : 0;
-    const itemDiscountAmount = discount_amount * itemDiscountProportion;
-    const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
-
-    // Calculate tax for this item
-    cash_tax_amount += itemTaxableAmount * taxRateDecimal;
-  }
-  cash_tax_amount = round2(cash_tax_amount);
-
-  // Calculate cash total (cash subtotal - discount + cash tax)
-  const cashTaxableAmount = Math.max(0, cash_subtotal - discount_amount);
-  const cash_total_amount = round2(cashTaxableAmount + cash_tax_amount);
-
-  // Outstanding cash totals (unpaid items only using cash pricing)
   let cash_outstanding_subtotal = 0;
   let cash_outstanding_tax = 0;
-  for (const item of activeItems) {
-    const unpaidQty = item.quantity - (item.paidQuantity || 0);
-    if (unpaidQty <= 0) continue;
-
-    // Use cash price for unpaid quantity
-    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-    const itemCashSubtotal = unpaidQty * effectiveCashPrice;
-    cash_outstanding_subtotal += itemCashSubtotal;
-
-    if (!item.is_tax_exempt) {
-      const taxCategory = item.tax_category || "standard";
-      const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-      const taxRateDecimal = taxRatePercent / 100;
-
-      // Apply proportional discount (based on cash subtotal)
-      const itemDiscountProportion = cash_subtotal > 0 ? itemCashSubtotal / cash_subtotal : 0;
+  
+  for (let i = 0; i < itemsData.length; i++) {
+    const data = itemsData[i];
+    
+    // Skip tax calculation for tax-exempt items
+    if (!data.isTaxExempt && data.taxRateDecimal > 0) {
+      // Card price tax
+      const itemDiscountProportion = subtotal > 0 ? data.itemSubtotal / subtotal : 0;
       const itemDiscountAmount = discount_amount * itemDiscountProportion;
-      const itemTaxableAmount = Math.max(0, itemCashSubtotal - itemDiscountAmount);
-
-      cash_outstanding_tax += itemTaxableAmount * taxRateDecimal;
+      const itemTaxableAmount = Math.max(0, data.itemSubtotal - itemDiscountAmount);
+      tax_amount += itemTaxableAmount * data.taxRateDecimal;
+      
+      // Cash price tax
+      const cashDiscountProportion = cash_subtotal > 0 ? data.itemCashSubtotal / cash_subtotal : 0;
+      const cashItemDiscountAmount = discount_amount * cashDiscountProportion;
+      const cashItemTaxableAmount = Math.max(0, data.itemCashSubtotal - cashItemDiscountAmount);
+      cash_tax_amount += cashItemTaxableAmount * data.taxRateDecimal;
+    }
+    
+    // Outstanding calculations
+    if (data.unpaidQty > 0) {
+      outstanding_subtotal += data.unpaidSubtotal;
+      cash_outstanding_subtotal += data.unpaidCashSubtotal;
+      
+      if (!data.isTaxExempt && data.taxRateDecimal > 0) {
+        // Outstanding card tax
+        const outstandingDiscountProportion = subtotal > 0 ? data.unpaidSubtotal / subtotal : 0;
+        const outstandingDiscountAmount = discount_amount * outstandingDiscountProportion;
+        const outstandingTaxableAmount = Math.max(0, data.unpaidSubtotal - outstandingDiscountAmount);
+        outstanding_tax += outstandingTaxableAmount * data.taxRateDecimal;
+        
+        // Outstanding cash tax
+        const cashOutstandingDiscountProportion = cash_subtotal > 0 ? data.unpaidCashSubtotal / cash_subtotal : 0;
+        const cashOutstandingDiscountAmount = discount_amount * cashOutstandingDiscountProportion;
+        const cashOutstandingTaxableAmount = Math.max(0, data.unpaidCashSubtotal - cashOutstandingDiscountAmount);
+        cash_outstanding_tax += cashOutstandingTaxableAmount * data.taxRateDecimal;
+      }
     }
   }
+  
+  // Round all tax values
+  tax_amount = round2(tax_amount);
+  outstanding_subtotal = round2(outstanding_subtotal);
+  outstanding_tax = round2(outstanding_tax);
+  cash_tax_amount = round2(cash_tax_amount);
   cash_outstanding_subtotal = round2(cash_outstanding_subtotal);
   cash_outstanding_tax = round2(cash_outstanding_tax);
-
-  const cash_proportionOutstanding =
-    cash_subtotal > 0 ? cash_outstanding_subtotal / cash_subtotal : 0;
+  
+  // Calculate totals
+  const taxableAmount = Math.max(0, subtotal - discount_amount);
+  const total_amount = round2(taxableAmount + tax_amount);
+  
+  const proportionOutstanding = subtotal > 0 ? outstanding_subtotal / subtotal : 0;
+  const outstandingDiscount = discount_amount * proportionOutstanding;
+  const outstandingSubtotalAfterDiscount = outstanding_subtotal - outstandingDiscount;
+  const outstanding_total = round2(outstandingSubtotalAfterDiscount + outstanding_tax);
+  
+  // Cash totals
+  const cashTaxableAmount = Math.max(0, cash_subtotal - discount_amount);
+  const cash_total_amount = round2(cashTaxableAmount + cash_tax_amount);
+  
+  const cash_proportionOutstanding = cash_subtotal > 0 ? cash_outstanding_subtotal / cash_subtotal : 0;
   const cash_outstandingDiscount = discount_amount * cash_proportionOutstanding;
-  const cash_outstandingSubtotalAfterDiscount =
-    cash_outstanding_subtotal - cash_outstandingDiscount;
-  const cash_outstanding_total = round2(
-    cash_outstandingSubtotalAfterDiscount + cash_outstanding_tax
-  );
+  const cash_outstandingSubtotalAfterDiscount = cash_outstanding_subtotal - cash_outstandingDiscount;
+  const cash_outstanding_total = round2(cash_outstandingSubtotalAfterDiscount + cash_outstanding_tax);
 
   return {
     subtotal: round2(subtotal),
@@ -287,11 +269,9 @@ function calculateOrderTotals(
     outstanding_subtotal,
     outstanding_tax,
     outstanding_total,
-    // Cash pricing totals
     cash_subtotal: round2(cash_subtotal),
     cash_tax_amount,
     cash_total_amount,
-    // Outstanding cash totals
     cash_outstanding_subtotal,
     cash_outstanding_tax,
     cash_outstanding_total,
@@ -2338,11 +2318,36 @@ export const useOrderStore = create<OrderState>()(
           addItemToActiveOrder: (newItem) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
-            console.log('[addItemToActiveOrder] newItem', newItem)
 
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
 
+            // ================================================================
+            // FAST PATH: Draft items skip all expensive operations
+            // ================================================================
+            if (newItem.isDraft) {
+              const draftCartItem: CartItem = {
+                ...newItem,
+                paidQuantity: 0,
+                // No kitchen_status or sync_status for drafts
+              };
+              
+              // Single minimal state update - no totals calculation
+              set((state) => ({
+                ordersById: {
+                  ...state.ordersById,
+                  [activeOrderId]: {
+                    ...state.ordersById[activeOrderId],
+                    items: [...state.ordersById[activeOrderId].items, draftCartItem],
+                  },
+                },
+              }));
+              return; // Early exit - no sync, no totals
+            }
+
+            // ================================================================
+            // REGULAR PATH: Non-draft items with deferred totals
+            // ================================================================
             const coursingState = useCoursingStore.getState();
             const currentCourse =
               coursingState.getForOrder(activeOrderId)?.workingCourse ?? 1;
@@ -2353,17 +2358,14 @@ export const useOrderStore = create<OrderState>()(
 
             let updatedCart: CartItem[] = activeOrder.items;
 
-            // 1. If newItem is NOT a draft, remove any existing drafts for this MenuItemId
-            if (!newItem.isDraft) {
-              updatedCart = updatedCart.filter(
-                (item) =>
-                  !(item.isDraft && item.menuItemId === newItem.menuItemId)
-              );
-            }
+            // 1. Remove any existing drafts for this MenuItemId
+            updatedCart = updatedCart.filter(
+              (item) =>
+                !(item.isDraft && item.menuItemId === newItem.menuItemId)
+            );
 
-            // 2. Find a potential candidate for merging with the (possibly filtered) cart
+            // 2. Find a potential candidate for merging
             const mergeCandidate = updatedCart.find((cartItem) => {
-              // Must be a "new" item, not a draft, and in the same course
               if (
                 cartItem.isDraft ||
                 (cartItem.kitchen_status && cartItem.kitchen_status !== "new")
@@ -2377,7 +2379,6 @@ export const useOrderStore = create<OrderState>()(
               if (existingItemCourse !== currentCourse) {
                 return false;
               }
-              // Must have the exact same customizations
               const existingItemKey = generateItemCompositeKey(
                 cartItem.menuItemId,
                 cartItem.customizations
@@ -2391,7 +2392,7 @@ export const useOrderStore = create<OrderState>()(
             let mergedItemWithNewQuantity: CartItem | null = null;
 
             if (mergeCandidate) {
-              // 3. If a candidate exists, create a new cart array with the updated quantity
+              // 3. Merge: update quantity
               syncItemId = mergeCandidate.id;
               isMergeOperation = true;
               const newQuantity = mergeCandidate.quantity + newItem.quantity;
@@ -2401,19 +2402,15 @@ export const useOrderStore = create<OrderState>()(
                   const updatedItem = {
                     ...item,
                     quantity: newQuantity,
-                    // Mark as pending sync if not a draft
-                    sync_status: newItem.isDraft
-                      ? item.sync_status
-                      : ("pending" as const),
+                    sync_status: "pending" as const,
                   };
-                  // Capture the merged item with its new quantity for backend sync
                   mergedItemWithNewQuantity = updatedItem;
                   return updatedItem;
                 }
                 return item;
               });
             } else {
-              // 4. If no candidate, create a new item and add it to a new cart array
+              // 4. New item: add to cart
               syncItemId = newItem.id;
               const newCartItem: CartItem = {
                 ...newItem,
@@ -2422,9 +2419,8 @@ export const useOrderStore = create<OrderState>()(
                   activeOrder.order_type === "Dine In"
                     ? "preparing"
                     : undefined,
-                kitchen_status: newItem.isDraft ? undefined : ("new" as const),
-                // Set initial sync status
-                sync_status: newItem.isDraft ? undefined : ("pending" as const),
+                kitchen_status: "new" as const,
+                sync_status: "pending" as const,
               };
               updatedCart = [...updatedCart, newCartItem];
               coursingState.setItemCourse(
@@ -2434,38 +2430,63 @@ export const useOrderStore = create<OrderState>()(
               );
             }
 
-            // 5. Calculate totals SYNCHRONOUSLY (no await, instant!)
-            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
-            const totals = calculateOrderTotals(
-              updatedCart,
-              activeOrder.checkDiscount,
-              activeOrder.payments || [],
-              taxRatesMap
-            );
-
-            // 6. SINGLE ATOMIC UPDATE (items + totals together = 1 re-render)
+            // ================================================================
+            // STEP 1: Update items IMMEDIATELY (instant UI response)
+            // ================================================================
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [activeOrderId]: {
                   ...state.ordersById[activeOrderId],
                   items: updatedCart,
-                  total_amount: totals.total_amount,
-                  total_tax: totals.tax_amount,
-                  total_discount: totals.discount_amount,
                 },
               },
-              // Also update cached active order totals in same update
-              activeOrderSubtotal: totals.subtotal,
-              activeOrderTax: totals.tax_amount,
-              activeOrderTotal: totals.total_amount,
-              activeOrderDiscount: totals.discount_amount,
-              activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-              activeOrderOutstandingTax: totals.outstanding_tax,
-              activeOrderOutstandingTotal: totals.outstanding_total,
-              activeOrderTotalCash: totals.cash_total_amount,
-              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
+
+            // ================================================================
+            // STEP 2: Defer totals calculation to microtask (non-blocking)
+            // ================================================================
+            const orderIdForTotals = activeOrderId;
+            const cartForTotals = updatedCart;
+            const discountForTotals = activeOrder.checkDiscount;
+            const paymentsForTotals = activeOrder.payments || [];
+            
+            queueMicrotask(() => {
+              const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+              const totals = calculateOrderTotals(
+                cartForTotals,
+                discountForTotals,
+                paymentsForTotals,
+                taxRatesMap
+              );
+
+              // Update totals in a separate setState
+              set((state) => {
+                // Verify order still exists (might have been deleted)
+                if (!state.ordersById[orderIdForTotals]) return state;
+                
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderIdForTotals]: {
+                      ...state.ordersById[orderIdForTotals],
+                      total_amount: totals.total_amount,
+                      total_tax: totals.tax_amount,
+                      total_discount: totals.discount_amount,
+                    },
+                  },
+                  activeOrderSubtotal: totals.subtotal,
+                  activeOrderTax: totals.tax_amount,
+                  activeOrderTotal: totals.total_amount,
+                  activeOrderDiscount: totals.discount_amount,
+                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                  activeOrderOutstandingTax: totals.outstanding_tax,
+                  activeOrderOutstandingTotal: totals.outstanding_total,
+                  activeOrderTotalCash: totals.cash_total_amount,
+                  activeOrderOutstandingCash: totals.cash_outstanding_total,
+                };
+              });
+            });
 
             // 7. Background sync with promise tracking for sync barriers
             // Use the merged item with updated quantity, or the new item

@@ -3,7 +3,7 @@ import { MenuItemType } from "@/lib/types";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { Settings, Utensils } from "lucide-react-native";
+import { Banknote, Settings, Utensils } from "lucide-react-native";
 import React, { useCallback, useMemo } from "react";
 import {
   Image,
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
   },
   priceContainer: {
     flexDirection: "row",
-    alignItems: "baseline",
+    justifyContent: "space-between",
   },
   priceText: {
     fontSize: 20,
@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   cashPriceText: {
     fontSize: 14,
     color: "#D1D5DB",
-    marginLeft: 8,
+    marginLeft: 4,
   },
   stockContainer: {
     marginTop: 8,
@@ -302,21 +302,25 @@ const MenuItem: React.FC<MenuItemProps> = ({
           <View style={styles.nameContainer}>
             <Text style={styles.nameText}>{item.name}</Text>
           </View>
-          <View style={styles.priceContainer}>
+          <View style={styles.priceContainer} className="flex-row flex items-center gap-1">
             <Text
               style={
                 priceData.hasCustomPricing
                   ? styles.priceTextCustom
                   : styles.priceText
               }
+              className="flex-row items-center gap-1 w-fit " 
             >
               ${priceData.displayPrice?.toFixed(2)}
             </Text>
 
             {item.cashPrice && (
-              <Text style={styles.cashPriceText}>
-                Cash Price: ${item.cashPrice.toFixed(2)}
-              </Text>
+              <View className="flex-row  items-center gap-1 w-fit">
+                <Banknote size={16} color="#22c55e"/>
+                <Text style={styles.cashPriceText} className="flex-row items-center gap-1">
+                   ${item.cashPrice.toFixed(2)}
+                </Text>
+              </View>
             )}
           </View>
           <View style={styles.stockContainer}>
