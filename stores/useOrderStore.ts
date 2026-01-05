@@ -98,6 +98,81 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 }
 
 /**
+ * Calculate the effective subtotal for a cart item (post-discount).
+ * Priority: 1. Backend discount_amount, 2. Local appliedDiscount, 3. No discount
+ * 
+ * @param item - The cart item to calculate the effective subtotal for
+ * @returns The post-discount subtotal for the item
+ * 
+ * Exported for use in split payment calculations
+ */
+export function getItemEffectiveSubtotal(item: CartItem): number {
+  const grossSubtotal = item.price * item.quantity;
+  
+  // Priority 1: Use backend discount_amount if available
+  if (item.discount_amount !== undefined && item.discount_amount > 0) {
+    return round2(grossSubtotal - item.discount_amount);
+  }
+  
+  // Priority 2: Calculate from appliedDiscount for offline support
+  if (item.appliedDiscount) {
+    const discountValue = item.appliedDiscount.value || 0;
+    const discountType = item.appliedDiscount.type;
+    
+    if (discountType === 'percentage') {
+      return round2(grossSubtotal * (1 - discountValue));
+    } else if (discountType === 'fixed') {
+      return round2(Math.max(0, grossSubtotal - discountValue));
+    }
+  }
+  
+  // No discount
+  return round2(grossSubtotal);
+}
+
+/**
+ * Calculate the effective cash subtotal for a cart item (post-discount).
+ * Priority: 1. Backend cash_discount_amount, 2. Proportional from card discount, 3. Local appliedDiscount
+ * 
+ * @param item - The cart item to calculate the effective cash subtotal for
+ * @returns The post-discount cash subtotal for the item
+ * 
+ * Exported for use in split payment calculations
+ */
+export function getItemEffectiveCashSubtotal(item: CartItem): number {
+  const grossCashSubtotal = calculateItemEffectiveCashPrice(item) * item.quantity;
+  
+  // Priority 1: Use backend cash_discount_amount if available
+  if (item.cash_discount_amount !== undefined && item.cash_discount_amount > 0) {
+    return round2(grossCashSubtotal - item.cash_discount_amount);
+  }
+  
+  // Priority 2: Use same discount ratio as card price
+  if (item.discount_amount !== undefined && item.discount_amount > 0) {
+    const grossSubtotal = item.price * item.quantity;
+    if (grossSubtotal > 0) {
+      const discountRatio = item.discount_amount / grossSubtotal;
+      return round2(grossCashSubtotal * (1 - discountRatio));
+    }
+  }
+  
+  // Priority 3: Calculate from appliedDiscount for offline support
+  if (item.appliedDiscount) {
+    const discountValue = item.appliedDiscount.value || 0;
+    const discountType = item.appliedDiscount.type;
+    
+    if (discountType === 'percentage') {
+      return round2(grossCashSubtotal * (1 - discountValue));
+    } else if (discountType === 'fixed') {
+      return round2(Math.max(0, grossCashSubtotal - discountValue));
+    }
+  }
+  
+  // No discount
+  return round2(grossCashSubtotal);
+}
+
+/**
  * Calculate all order totals - PURE FUNCTION, SYNCHRONOUS
  * This replaces the async recalculateTotals for instant UI updates.
  * Uses per-item tax rates based on tax_category.

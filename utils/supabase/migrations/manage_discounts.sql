@@ -604,9 +604,22 @@ BEGIN
     v_new_card_total := v_new_card_subtotal + v_new_card_tax;
     v_new_cash_total := v_new_cash_subtotal + v_new_cash_tax;
     
-    -- Calculate amount due
-    v_new_amount_due := GREATEST(v_new_card_total - COALESCE(v_order.amount_paid, 0), 0);
-    v_new_cash_amount_due := GREATEST(v_new_cash_total - COALESCE(v_order.amount_paid, 0), 0);
+    -- Calculate amount due from UNPAID items (items where quantity > paid_quantity)
+    -- This is the correct formula for mixed payments (cash + card)
+    SELECT 
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0),
+        COALESCE(SUM(
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) +
+            ROUND(((oi.quantity - COALESCE(oi.paid_quantity, 0)) * COALESCE(oi.cash_price, oi.unit_price)) * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0)
+    INTO v_new_amount_due, v_new_cash_amount_due
+    FROM public.order_items oi
+    WHERE oi.order_id = p_order_id 
+      AND oi.is_voided = false 
+      AND oi.quantity > COALESCE(oi.paid_quantity, 0);
     
     -- ============================================
     -- 4. Update Order

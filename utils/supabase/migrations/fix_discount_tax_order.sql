@@ -698,6 +698,8 @@ DECLARE
     v_amount_paid numeric;
     v_original_card_subtotal numeric;
     v_original_cash_subtotal numeric;
+    v_unpaid_card_total numeric;
+    v_unpaid_cash_total numeric;
 BEGIN
     -- Get original (pre-discount) subtotals and discount amount
     SELECT 
@@ -724,6 +726,21 @@ BEGIN
         COALESCE(amount_paid, 0)
     INTO v_service_charge, v_amount_paid
     FROM public.orders WHERE id = p_order_id;
+
+    -- Calculate amount_due from UNPAID items (items where quantity > paid_quantity)
+    -- This is the correct formula for mixed payments (cash + card)
+    SELECT 
+        COALESCE(SUM(
+            ((quantity - COALESCE(paid_quantity, 0)) * unit_price) +
+            ROUND(((quantity - COALESCE(paid_quantity, 0)) * unit_price) * COALESCE(tax_rate, 0) / 100, 2)
+        ), 0),
+        COALESCE(SUM(
+            ((quantity - COALESCE(paid_quantity, 0)) * COALESCE(cash_price, unit_price)) +
+            ROUND(((quantity - COALESCE(paid_quantity, 0)) * COALESCE(cash_price, unit_price)) * COALESCE(tax_rate, 0) / 100, 2)
+        ), 0)
+    INTO v_unpaid_card_total, v_unpaid_cash_total
+    FROM public.order_items
+    WHERE order_id = p_order_id AND is_voided = false AND quantity > COALESCE(paid_quantity, 0);
 
     -- Update order with totals
     UPDATE public.orders SET
@@ -752,9 +769,9 @@ BEGIN
         tax_amount = v_card_tax,
         total_amount = v_card_subtotal + v_card_tax + v_service_charge,
         
-        -- Amount due
-        amount_due = GREATEST((v_card_subtotal + v_card_tax + v_service_charge) - v_amount_paid, 0),
-        cash_amount_due = GREATEST((v_cash_subtotal + v_cash_tax + v_service_charge) - v_amount_paid, 0),
+        -- Amount due (calculated from UNPAID items, not total - paid)
+        amount_due = v_unpaid_card_total,
+        cash_amount_due = v_unpaid_cash_total,
         
         updated_at = now()
     WHERE id = p_order_id;
@@ -767,7 +784,8 @@ BEGIN
         'card_tax', v_card_tax,
         'card_total', v_card_subtotal + v_card_tax + v_service_charge,
         'cash_total', v_cash_subtotal + v_cash_tax + v_service_charge,
-        'amount_due', GREATEST((v_card_subtotal + v_card_tax + v_service_charge) - v_amount_paid, 0)
+        'amount_due', v_unpaid_card_total,
+        'cash_amount_due', v_unpaid_cash_total
     );
 END;
 $$;

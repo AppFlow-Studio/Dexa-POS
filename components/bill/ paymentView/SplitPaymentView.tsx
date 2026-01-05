@@ -1,7 +1,7 @@
 import { useToast } from "@/contexts/ToastContext"; // Import useToast
-import { useOrderStore } from "@/stores/useOrderStore";
+import { getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
   Platform, // <--- Imported
@@ -80,23 +80,31 @@ const SplitPaymentView = () => {
     splits.map((s) => s.items.map((i) => i.cartItem.id + i.quantity))
   );
 
+  // Recalculate split amounts when items change (for "Split by Item" mode)
+  // Uses getItemEffectiveSubtotal to include discounts from backend or local state
   useEffect(() => {
     if (splitOption === "Split by Item") {
       setSplits((currentSplits) =>
         currentSplits.map((split) => {
-          const splitSubtotal = split.items.reduce(
-            (acc, splitItem) =>
-              acc + splitItem.cartItem.price * splitItem.quantity,
-            0
-          );
+          // Calculate the effective subtotal (post-discount) for items in this split
+          // For SplitItem, we need to create a temp CartItem with the split quantity
+          const splitSubtotal = split.items.reduce((acc, splitItem) => {
+            // Create a temporary item with the split quantity to calculate effective subtotal
+            const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
+            return acc + getItemEffectiveSubtotal(tempItem);
+          }, 0);
 
-          const proportionOfTotal =
-            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
+          // Calculate tax on the post-discount subtotal
+          // Use item's taxRate if available, otherwise use a default
+          const splitTax = split.items.reduce((acc, splitItem) => {
+            const tempItem = { ...splitItem.cartItem, quantity: splitItem.quantity };
+            const itemSubtotal = getItemEffectiveSubtotal(tempItem);
+            const taxRate = splitItem.cartItem.taxRate || 0;
+            return acc + (itemSubtotal * taxRate / 100);
+          }, 0);
 
-          const splitTax = activeOrderTax * proportionOfTotal;
-          const splitDiscount = activeOrderDiscount * proportionOfTotal;
-
-          const newAmount = splitSubtotal + splitTax - splitDiscount;
+          // Calculate the final amount (subtotal already has discount removed, no need to subtract again)
+          const newAmount = Math.round((splitSubtotal + splitTax) * 100) / 100;
 
           if (split.amount !== newAmount) {
             return { ...split, amount: newAmount };
@@ -105,49 +113,7 @@ const SplitPaymentView = () => {
         })
       );
     }
-  }, [
-    itemDependency,
-    splitOption,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-  ]);
-
-  useEffect(() => {
-    if (splitOption === "Split by Item") {
-      setSplits((currentSplits) =>
-        currentSplits.map((split) => {
-          // Calculate the subtotal for just the items in this split
-          const splitSubtotal = split.items.reduce(
-            (acc, item) => acc + item.price * item.quantity,
-            0
-          );
-
-          // Determine this split's proportion of the total order subtotal
-          const proportionOfTotal =
-            activeOrderSubtotal > 0 ? splitSubtotal / activeOrderSubtotal : 0;
-
-          // Calculate the proportional tax and discount for this split
-          const splitTax = activeOrderTax * proportionOfTotal;
-          const splitDiscount = activeOrderDiscount * proportionOfTotal;
-
-          // Calculate the final amount for this split
-          const newAmount = splitSubtotal + splitTax - splitDiscount;
-
-          if (split.amount !== newAmount) {
-            return { ...split, amount: newAmount };
-          }
-          return split;
-        })
-      );
-    }
-  }, [
-    itemDependency,
-    splitOption,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderDiscount,
-  ]);
+  }, [itemDependency, splitOption]);
 
   const totalPaid = splits.reduce((acc, split) => acc + split.amount, 0);
   const remainingBalance = activeOrderOutstandingTotal - totalPaid;

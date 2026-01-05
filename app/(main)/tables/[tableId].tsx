@@ -279,7 +279,7 @@ const UpdateTableScreen = () => {
                       menuItemId: item.menu_item_id,
                       name: item.item_name,
                       price: item.unit_price,
-                      cashPrice: item.cash_price,
+                      cashPrice: item.cash_price || item.cash_unit_price || item.unit_price,
                       originalPrice: item.unit_price,
                       quantity: item.quantity,
                       paidQuantity: item.paid_quantity || 0, // Include paid quantity from backend
@@ -288,6 +288,15 @@ const UpdateTableScreen = () => {
                       item_status: item.status || "ordered",
                       kitchen_status: item.status || "ordered",
                       is_voided: item.is_voided || false,
+                      // Pre-calculated values from backend
+                      subtotal: item.subtotal || item.unit_price * item.quantity,
+                      cashSubtotal: item.cash_subtotal || (item.cash_price || item.unit_price) * item.quantity,
+                      taxRate: item.tax_rate || 0,
+                      taxAmount: item.tax_amount || 0,
+                      cashTaxAmount: item.cash_tax_amount || 0,
+                      // Discount amounts from backend (for split payment calculations)
+                      discount_amount: item.discount_amount || 0,
+                      cash_discount_amount: item.discount_cash_amount || 0,
                       customizations: {
                         notes: item.special_instructions,
                         modifiers: [],
@@ -588,7 +597,7 @@ const UpdateTableScreen = () => {
                     menuItemId: item.menu_item_id,
                     name: item.item_name,
                     price: item.unit_price,
-                    cashPrice: item.cash_price,
+                    cashPrice: item.cash_price || item.cash_unit_price || item.unit_price,
                     originalPrice: item.unit_price,
                     quantity: item.quantity,
                     paidQuantity: item.paid_quantity || 0,
@@ -597,6 +606,15 @@ const UpdateTableScreen = () => {
                     item_status: item.status || "ordered",
                     kitchen_status: item.status || "ordered",
                     is_voided: item.is_voided || false,
+                    // Pre-calculated values from backend
+                    subtotal: item.subtotal || item.unit_price * item.quantity,
+                    cashSubtotal: item.cash_subtotal || (item.cash_price || item.unit_price) * item.quantity,
+                    taxRate: item.tax_rate || 0,
+                    taxAmount: item.tax_amount || 0,
+                    cashTaxAmount: item.cash_tax_amount || 0,
+                    // Discount amounts from backend (for split payment calculations)
+                    discount_amount: item.discount_amount || 0,
+                    cash_discount_amount: item.discount_cash_amount || 0,
                     customizations: {
                       notes: item.special_instructions,
                       modifiers: [],

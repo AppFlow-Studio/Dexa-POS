@@ -14,53 +14,15 @@ CREATE OR REPLACE FUNCTION process_payment_v2(
     p_terminal_id text DEFAULT NULL,
     p_device_id text DEFAULT NULL,
     p_staff_id uuid DEFAULT NULL,
-    p_transaction_details jsonb DEFAULT NULL
+    p_transaction_details jsonb DEFAULT NULL,
+    p_split_count integer DEFAULT NULL,
+    p_split_portion_index integer DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
-DECLARE
-    v_order record;
-    v_payment_id uuid;
-    v_is_cash boolean;
-    v_is_item_payment boolean;
-    v_is_split_payment boolean;
-    v_payment_total numeric;
-    v_subtotal_portion numeric := 0;
-    v_tax_portion numeric := 0;
-    v_change_given numeric := 0;
-    v_new_amount_paid numeric;
-    v_new_amount_due numeric;         -- ALWAYS card price
-    v_new_cash_amount_due numeric;    -- For reference
-    v_current_pricing_mode text;
-    v_new_pricing_mode text;
-    v_items_subtotal numeric := 0;
-    v_items_tax numeric := 0;
-    v_covered_items uuid[] := '{}';
-    v_covered_items_json jsonb := '[]'::jsonb;
-    
-    -- Unpaid tracking (ALWAYS both prices)
-    v_unpaid_items_count integer := 0;
-    v_unpaid_card_total numeric := 0;
-    v_unpaid_cash_total numeric := 0;
-    
-    -- Payment totals by type
-    v_total_cash_paid numeric := 0;
-    v_total_card_paid numeric := 0;
-    
-    -- Fully paid detection
-    v_order_fully_paid boolean := false;
-    
-    -- Split evenly tracking
-    v_split_card_portion numeric;
-    v_split_cash_portion numeric;
-    v_portions_paid integer := 0;
-    v_portions_remaining integer := 0;
-    v_paid_portion_indexes integer[];
-    v_is_last_portion boolean := false;
-BEGIN
-    v_is_cash := p_payment_method = 'cash';
+ v_is_cash := p_payment_method = 'cash';
     v_is_item_payment := p_item_ids IS NOT NULL AND array_length(p_item_ids, 1) > 0;
     v_is_split_payment := p_split_count IS NOT NULL AND p_split_count > 1;
     
@@ -84,7 +46,50 @@ BEGIN
     v_current_pricing_mode := v_order.payment_pricing_mode::text;
     
     -- ============================================
-    -- 2. Get Existing Payment Totals by Type
+    -- 2. Calculate CURRENT Unpaid Totals from Items
+    --    (BEFORE this payment - used for validation)
+    -- ============================================
+    SELECT 
+        COUNT(*),
+        -- COALESCE(SUM(
+        --     (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price +
+        --     ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        -- ), 0),
+        -- COALESCE(SUM(
+        --     (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price +
+        --     ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        -- ), 0)
+        COALESCE(SUM(
+            -- Card Total: (Qty * Price) - Discount + Tax on discounted amount
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) 
+            - COALESCE(oi.discount_amount, 0) -- REPLACE 'discount_amount' WITH YOUR ACTUAL COLUMN
+            + ROUND(
+                (((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) - COALESCE(oi.discount_amount, 0)) 
+                * COALESCE(oi.tax_rate, 0) / 100, 2
+            )
+        ), 0),
+        COALESCE(SUM(
+            -- Cash Total
+            ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price) 
+            - COALESCE(oi.discount_amount, 0) -- Assessing discount is same for cash
+            + ROUND(
+                (((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price) - COALESCE(oi.discount_amount, 0)) 
+                * COALESCE(oi.tax_rate, 0) / 100, 2
+            )
+        ), 0)
+    INTO v_unpaid_items_count, v_pre_unpaid_card_total, v_pre_unpaid_cash_total
+    FROM public.order_items oi
+    WHERE oi.order_id = p_order_id
+      AND oi.is_voided = false
+      AND oi.quantity > COALESCE(oi.paid_quantity, 0);
+    
+    -- If nothing to pay, return early
+    IF v_unpaid_items_count = 0 THEN
+        RAISE EXCEPTION 'No unpaid items remaining on this order';
+    END IF;
+    
+    -- ============================================
+    -- 3. Get Existing Payment Totals by Type
     -- ============================================
     SELECT 
         COALESCE(SUM(CASE WHEN is_cash_priced THEN total_amount ELSE 0 END), 0),
@@ -95,7 +100,7 @@ BEGIN
       AND status = 'captured';
     
     -- ============================================
-    -- 3. Split Payment Validation
+    -- 4. Split Payment Validation
     -- ============================================
     IF v_is_split_payment THEN
         IF p_split_portion_index IS NULL THEN
@@ -129,7 +134,7 @@ BEGIN
     END IF;
     
     -- ============================================
-    -- 4. Determine Pricing Mode (for tracking only)
+    -- 5. Determine Pricing Mode (for tracking only)
     -- ============================================
     IF v_current_pricing_mode IS NULL THEN
         v_new_pricing_mode := CASE WHEN v_is_cash THEN 'cash' ELSE 'card' END;
@@ -142,69 +147,97 @@ BEGIN
     END IF;
     
     -- ============================================
-    -- 5. Calculate Payment Amount Based on Scenario
+    -- 6. Calculate Payment Amount Based on Scenario
     -- ============================================
     IF v_is_item_payment THEN
         -- ========================================
         -- PER-ITEM PAYMENT
+        -- Pay for specific selected items
         -- ========================================
-        SELECT 
-            COALESCE(SUM(
-                CASE WHEN v_is_cash 
+        -- DECLARE
+        --     v_items_subtotal numeric := 0;
+        --     v_items_tax numeric := 0;
+        -- BEGIN
+        --     SELECT 
+        --         COALESCE(SUM(
+        --             CASE WHEN v_is_cash 
+        --                 THEN (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
+        --                 ELSE (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
+        --             END
+        --         ), 0),
+        --         COALESCE(SUM(
+        --             CASE WHEN v_is_cash 
+        --                 THEN ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        --                 ELSE ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        --             END
+        --         ), 0),
+        --         array_agg(oi.id)
+        --     INTO v_items_subtotal, v_items_tax, v_covered_items
+        --     FROM public.order_items oi
+        --     WHERE oi.id = ANY(p_item_ids)
+        DECLARE
+            v_items_subtotal numeric := 0;
+            v_items_tax numeric := 0;
+        BEGIN
+            SELECT 
+                COALESCE(SUM(
+                    CASE WHEN v_is_cash 
+                        THEN ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price) - COALESCE(oi.discount_amount, 0)
+                        ELSE ((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) - COALESCE(oi.discount_amount, 0)
+                    END
+                ), 0),
+                COALESCE(SUM(
+                    CASE WHEN v_is_cash 
+                        THEN ROUND((((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price) - COALESCE(oi.discount_amount, 0)) * COALESCE(oi.tax_rate, 0) / 100, 2)
+                        ELSE ROUND((((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price) - COALESCE(oi.discount_amount, 0)) * COALESCE(oi.tax_rate, 0) / 100, 2)
+                    END
+                ), 0),
+                array_agg(oi.id)
+            INTO v_items_subtotal, v_items_tax, v_covered_items
+            FROM public.order_items oi
+            WHERE oi.id = ANY(p_item_ids)
+              AND oi.order_id = p_order_id
+              AND oi.is_voided = false
+              AND oi.quantity > COALESCE(oi.paid_quantity, 0);
+            
+            v_payment_total := v_items_subtotal + v_items_tax;
+            v_subtotal_portion := v_items_subtotal;
+            v_tax_portion := v_items_tax;
+            
+            -- Build detailed items JSON
+            SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                'order_item_id', oi.id,
+                'item_name', oi.item_name,
+                'quantity_paid', oi.quantity - COALESCE(oi.paid_quantity, 0),
+                'unit_price', CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
+                'subtotal', CASE WHEN v_is_cash 
                     THEN (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
                     ELSE (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
                 END
-            ), 0),
-            COALESCE(SUM(
-                CASE WHEN v_is_cash 
-                    THEN ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-                    ELSE ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-                END
-            ), 0),
-            array_agg(oi.id)
-        INTO v_items_subtotal, v_items_tax, v_covered_items
-        FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
-          AND oi.order_id = p_order_id
-          AND oi.is_voided = false
-          AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-        
-        v_payment_total := v_items_subtotal + v_items_tax;
-        v_subtotal_portion := v_items_subtotal;
-        v_tax_portion := v_items_tax;
-        
-        -- Build detailed items JSON
-        SELECT COALESCE(jsonb_agg(jsonb_build_object(
-            'order_item_id', oi.id,
-            'item_name', oi.item_name,
-            'quantity_paid', oi.quantity - COALESCE(oi.paid_quantity, 0),
-            'unit_price', CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
-            'subtotal', CASE WHEN v_is_cash 
-                THEN (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
-                ELSE (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
-            END
-        )), '[]'::jsonb)
-        INTO v_covered_items_json
-        FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
-          AND oi.order_id = p_order_id
-          AND oi.is_voided = false
-          AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-        
-        -- Mark selected items as paid
-        UPDATE public.order_items
-        SET 
-            paid_quantity = quantity,
-            price_paid = CASE WHEN v_is_cash THEN cash_price ELSE unit_price END,
-            -- payment_method_used = p_payment_method,
-            updated_at = now()
-        WHERE id = ANY(p_item_ids)
-          AND order_id = p_order_id
-          AND is_voided = false;
+            )), '[]'::jsonb)
+            INTO v_covered_items_json
+            FROM public.order_items oi
+            WHERE oi.id = ANY(p_item_ids)
+              AND oi.order_id = p_order_id
+              AND oi.is_voided = false
+              AND oi.quantity > COALESCE(oi.paid_quantity, 0);
+            
+            -- Mark selected items as paid
+            UPDATE public.order_items
+            SET 
+                paid_quantity = quantity,
+                price_paid = CASE WHEN v_is_cash THEN cash_price ELSE unit_price END,
+                -- payment_method_used = p_payment_method,
+                updated_at = now()
+            WHERE id = ANY(p_item_ids)
+              AND order_id = p_order_id
+              AND is_voided = false;
+        END;
     
     ELSIF v_is_split_payment THEN
         -- ========================================
         -- SPLIT EVENLY PAYMENT
+        -- Divide total evenly among portions
         -- ========================================
         v_split_card_portion := ROUND(v_order.card_total / p_split_count, 2);
         v_split_cash_portion := ROUND(v_order.cash_total / p_split_count, 2);
@@ -216,7 +249,6 @@ BEGIN
             ELSE
                 v_payment_total := v_order.card_total - v_total_card_paid;
             END IF;
-            -- Ensure non-negative
             v_payment_total := GREATEST(v_payment_total, 0);
         ELSE
             IF v_is_cash THEN
@@ -236,30 +268,49 @@ BEGIN
           
     ELSE
         -- ========================================
-        -- FULL/PARTIAL PAYMENT (Amount-based)
+        -- FULL/REMAINING PAYMENT
+        -- Pay all remaining unpaid items
         -- ========================================
+        
+        -- Use the ACTUAL unpaid total from items, not p_amount
+        -- This handles the case where UI has stale amount_due
         IF v_is_cash THEN
-            -- Charge at cash price, but cap at what's actually owed at cash price
-            v_payment_total := LEAST(p_amount, v_order.cash_total - v_total_cash_paid);
+            v_payment_total := v_pre_unpaid_cash_total;
         ELSE
-            -- Charge at card price, cap at what's owed at card price
-            v_payment_total := LEAST(p_amount, v_order.card_total - v_total_card_paid);
+            v_payment_total := v_pre_unpaid_card_total;
         END IF;
         
-        -- Ensure non-negative
-        v_payment_total := GREATEST(v_payment_total, 0);
-        
-        -- Pro-rate subtotal/tax
+        -- Pro-rate subtotal/tax based on order ratios
         IF v_is_cash AND v_order.cash_total > 0 THEN
             v_subtotal_portion := ROUND(v_payment_total * (v_order.cash_subtotal / v_order.cash_total), 2);
         ELSIF v_order.card_total > 0 THEN
             v_subtotal_portion := ROUND(v_payment_total * (v_order.card_subtotal / v_order.card_total), 2);
         END IF;
         v_tax_portion := v_payment_total - v_subtotal_portion;
+        
+        -- Mark ALL remaining items as paid
+        UPDATE public.order_items
+        SET 
+            paid_quantity = quantity,
+            price_paid = CASE WHEN v_is_cash THEN cash_price ELSE unit_price END,
+            -- payment_method_used = p_payment_method,
+            updated_at = now()
+        WHERE order_id = p_order_id
+          AND is_voided = false
+          AND quantity > COALESCE(paid_quantity, 0);
+        
+        -- Get the items we just paid for the response
+        SELECT array_agg(id)
+        INTO v_covered_items
+        FROM public.order_items
+        WHERE order_id = p_order_id
+          AND is_voided = false
+          AND paid_quantity = quantity
+          AND updated_at >= now() - interval '1 second';
     END IF;
     
     -- ============================================
-    -- 6. Calculate Change (Cash Only)
+    -- 7. Calculate Change (Cash Only)
     -- ============================================
     IF v_is_cash THEN
         v_change_given := GREATEST(
@@ -269,7 +320,7 @@ BEGIN
     END IF;
     
     -- ============================================
-    -- 7. Create Payment Record
+    -- 8. Create Payment Record
     -- ============================================
     INSERT INTO public.order_payments (
         order_id,
@@ -309,11 +360,12 @@ BEGIN
         v_change_given,
         v_is_cash,
         v_is_cash,
+        -- original_amount: what this would cost at card price
         CASE WHEN v_is_cash 
             THEN ROUND(v_payment_total * v_order.card_total / NULLIF(v_order.cash_total, 0), 2)
             ELSE v_payment_total 
         END,
-        CASE WHEN v_is_item_payment THEN v_covered_items ELSE NULL END,
+        CASE WHEN array_length(v_covered_items, 1) > 0 THEN v_covered_items ELSE NULL END,
         p_split_portion_index,
         p_split_count,
         'captured',
@@ -330,9 +382,9 @@ BEGIN
     RETURNING id INTO v_payment_id;
     
     -- ============================================
-    -- 8. Per-Item: Create order_payment_items
+    -- 9. Per-Item: Create order_payment_items
     -- ============================================
-    IF v_is_item_payment THEN
+    IF v_is_item_payment AND array_length(v_covered_items, 1) > 0 THEN
         INSERT INTO public.order_payment_items (
             order_payment_id,
             order_item_id,
@@ -349,13 +401,13 @@ BEGIN
             oi.quantity * oi.price_paid,
             ROUND(oi.quantity * oi.price_paid * COALESCE(oi.tax_rate, 0) / 100, 2)
         FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
+        WHERE oi.id = ANY(v_covered_items)
           AND oi.order_id = p_order_id
           AND oi.is_voided = false;
     END IF;
 
     -- ============================================
-    -- 9. Update Payment Totals (include this payment)
+    -- 10. Update Payment Totals (include this payment)
     -- ============================================
     IF v_is_cash THEN
         v_total_cash_paid := v_total_cash_paid + v_payment_total + COALESCE(p_tip_amount, 0);
@@ -363,52 +415,32 @@ BEGIN
         v_total_card_paid := v_total_card_paid + v_payment_total + COALESCE(p_tip_amount, 0);
     END IF;
     
-    -- Total amount_paid for the order (sum of all payments)
     v_new_amount_paid := v_total_cash_paid + v_total_card_paid;
 
     -- ============================================
-    -- 10. Calculate Unpaid Totals (ALWAYS both prices)
+    -- 11. Calculate NEW Unpaid Totals from Items
+    --     (AFTER this payment - the source of truth)
     -- ============================================
-    IF v_is_item_payment THEN
-        -- For item-based: calculate from remaining unpaid items
-        SELECT 
-            COUNT(*),
-            COALESCE(SUM(
-                (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price +
-                ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-            ), 0),
-            COALESCE(SUM(
-                (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price +
-                ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-            ), 0)
-        INTO v_unpaid_items_count, v_unpaid_card_total, v_unpaid_cash_total
-        FROM public.order_items oi
-        WHERE oi.order_id = p_order_id
-          AND oi.is_voided = false
-          AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-          
-    ELSE
-        -- For amount-based: calculate from order totals minus payments
-        v_unpaid_card_total := GREATEST(v_order.card_total - v_total_card_paid, 0);
-        v_unpaid_cash_total := GREATEST(v_order.cash_total - v_total_cash_paid, 0);
-        
-        -- Count unpaid items for reference
-        SELECT COUNT(*)
-        INTO v_unpaid_items_count
-        FROM public.order_items oi
-        WHERE oi.order_id = p_order_id
-          AND oi.is_voided = false
-          AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-    END IF;
+    SELECT 
+        COUNT(*),
+        COALESCE(SUM(
+            (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price +
+            ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0),
+        COALESCE(SUM(
+            (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price +
+            ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+        ), 0)
+    INTO v_unpaid_items_count, v_unpaid_card_total, v_unpaid_cash_total
+    FROM public.order_items oi
+    WHERE oi.order_id = p_order_id
+      AND oi.is_voided = false
+      AND oi.quantity > COALESCE(oi.paid_quantity, 0);
 
     -- ============================================
-    -- 11. Determine if Order is Fully Paid
+    -- 12. Determine if Order is Fully Paid
     -- ============================================
-    IF v_is_item_payment THEN
-        -- Item-based: fully paid when no unpaid items remain
-        v_order_fully_paid := (v_unpaid_items_count = 0);
-        
-    ELSIF v_is_split_payment THEN
+    IF v_is_split_payment THEN
         -- Split: fully paid when all portions are paid
         SELECT COUNT(*) INTO v_portions_paid
         FROM public.order_payments
@@ -420,55 +452,39 @@ BEGIN
         v_portions_remaining := p_split_count - v_portions_paid;
         v_order_fully_paid := (v_portions_remaining = 0);
         
+        -- If split is complete, mark all items paid
+        IF v_order_fully_paid AND v_unpaid_items_count > 0 THEN
+            UPDATE public.order_items
+            SET 
+                paid_quantity = quantity,
+                price_paid = COALESCE(price_paid, unit_price),
+                updated_at = now()
+            WHERE order_id = p_order_id
+              AND is_voided = false
+              AND quantity > COALESCE(paid_quantity, 0);
+            
+            v_unpaid_items_count := 0;
+            v_unpaid_card_total := 0;
+            v_unpaid_cash_total := 0;
+        END IF;
     ELSE
-        -- Amount-based: Check if payments cover the respective totals
-        -- Cash payments must cover cash_total OR card payments must cover card_total
-        -- OR combined coverage (for mixed scenarios)
-        v_order_fully_paid := (
-            -- All cash scenario
-            (v_total_cash_paid >= v_order.cash_total AND v_total_card_paid = 0) OR
-            -- All card scenario  
-            (v_total_card_paid >= v_order.card_total AND v_total_cash_paid = 0) OR
-            -- Mixed: each payment type covers its respective portion
-            (v_unpaid_card_total <= 0.01 AND v_unpaid_cash_total <= 0.01) OR
-            -- Fallback: total payments cover the order
-            (v_new_amount_paid >= v_order.card_total)
-        );
+        -- Item-based or Full payment: fully paid when no unpaid items remain
+        v_order_fully_paid := (v_unpaid_items_count = 0);
     END IF;
 
     -- ============================================
-    -- 12. Set Final amount_due (ALWAYS card price)
+    -- 13. Set Final amount_due (ALWAYS from items)
     -- ============================================
-    IF v_order_fully_paid THEN
-        v_new_amount_due := 0;
-        v_new_cash_amount_due := 0;
-        
-        -- Mark all remaining items as paid
-        UPDATE public.order_items
-        SET 
-            paid_quantity = quantity,
-            price_paid = COALESCE(price_paid, unit_price),
-            updated_at = now()
-        WHERE order_id = p_order_id
-          AND is_voided = false
-          AND quantity > COALESCE(paid_quantity, 0);
-          
-        v_unpaid_items_count := 0;
-        v_unpaid_card_total := 0;
-        v_unpaid_cash_total := 0;
-    ELSE
-        -- ALWAYS show card price as amount_due
-        v_new_amount_due := v_unpaid_card_total;
-        v_new_cash_amount_due := v_unpaid_cash_total;
-    END IF;
+    v_new_amount_due := v_unpaid_card_total;
+    v_new_cash_amount_due := v_unpaid_cash_total;
     
     -- ============================================
-    -- 13. Update Order
+    -- 14. Update Order
     -- ============================================
     UPDATE public.orders SET
         amount_paid = v_new_amount_paid,
-        amount_due = v_new_amount_due,              -- ALWAYS card price
-        cash_amount_due = v_new_cash_amount_due,    -- For reference (if column exists)
+        amount_due = v_new_amount_due,              -- ALWAYS unpaid items at card price
+        cash_amount_due = v_new_cash_amount_due,    -- ALWAYS unpaid items at cash price
         tip_amount = COALESCE(tip_amount, 0) + COALESCE(p_tip_amount, 0),
         payment_pricing_mode = v_new_pricing_mode::pricing_mode,
         cash_discount_applied = COALESCE(cash_discount_applied, false) OR v_is_cash,
@@ -481,7 +497,7 @@ BEGIN
     WHERE id = p_order_id;
     
     -- ============================================
-    -- 14. Return Result
+    -- 15. Return Result
     -- ============================================
     RETURN jsonb_build_object(
         'success', true,
@@ -514,10 +530,10 @@ BEGIN
         'total_cash_paid', v_total_cash_paid,
         'total_card_paid', v_total_card_paid,
         
-        -- Order state (amount_due is ALWAYS card price)
+        -- Order state (ALWAYS calculated from unpaid items)
         'order_amount_paid', v_new_amount_paid,
-        'order_amount_due', v_new_amount_due,           -- Card price
-        'order_cash_amount_due', v_new_cash_amount_due, -- Cash price (for UI)
+        'order_amount_due', v_new_amount_due,           -- Unpaid at card price
+        'order_cash_amount_due', v_new_cash_amount_due, -- Unpaid at cash price
         'order_fully_paid', v_order_fully_paid,
         
         -- Unpaid details

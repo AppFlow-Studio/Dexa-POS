@@ -407,7 +407,12 @@ export interface CartItem {
   taxAmount: number;          // subtotal * taxRate
   cashTaxAmount: number;      // cashSubtotal * taxRate
 
+  // Backend-synced discount amount (from order_items.discount_amount)
+  discount_amount?: number;
+  cash_discount_amount?: number;
 
+  // Course number for coursing (synced from backend)
+  courseNumber?: number;
 }
 
 export interface OnlineOrder {
