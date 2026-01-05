@@ -22,18 +22,71 @@ import {
   View,
 } from "react-native";
 
-// Helper function to calculate tax for split items using CARD pricing (same logic as useOrderStore)
+/**
+ * Get discounted values for a split item using the HYBRID approach:
+ * - If split quantity equals original quantity, use the pre-calculated DB values
+ * - If split quantity differs (partial assignment), calculate proportionally
+ *
+ * @param splitItem - The item in the split (may have different quantity than original)
+ * @param originalItem - The original order item (has full quantity and discount_amount)
+ * @param isCash - Whether to use cash pricing
+ */
+function getItemDiscountedValues(
+  splitItem: CartItem,
+  originalItem: CartItem | undefined,
+  isCash: boolean = false
+): { subtotal: number; discountAmount: number } {
+  const splitQuantity = splitItem.quantity;
+  const originalQuantity = originalItem?.quantity ?? splitItem.quantity;
+  const unitPrice = isCash ? calculateItemEffectiveCashPrice(splitItem) : splitItem.price;
+  const originalDiscount = isCash
+    ? (originalItem?.discount_cash_amount ?? originalItem?.discount_amount ?? 0)
+    : (originalItem?.discount_amount ?? 0);
+
+  // If split quantity equals original quantity and we have DB discount, use DB values
+  if (splitQuantity === originalQuantity && originalDiscount > 0) {
+    return {
+      subtotal: isCash ? splitItem.cashSubtotal : splitItem.subtotal,
+      discountAmount: originalDiscount,
+    };
+  }
+
+  // For partial quantities or no discount: calculate proportional discount
+  const grossSubtotal = unitPrice * splitQuantity;
+
+  if (originalQuantity > 0 && originalDiscount > 0) {
+    // Calculate per-unit discount and apply to split quantity
+    const perUnitDiscount = originalDiscount / originalQuantity;
+    const itemDiscountAmount = Math.round(perUnitDiscount * splitQuantity * 100) / 100;
+    return {
+      subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
+      discountAmount: itemDiscountAmount,
+    };
+  }
+
+  // No discount applied
+  return {
+    subtotal: grossSubtotal,
+    discountAmount: 0,
+  };
+}
+
+// Helper function to calculate tax for split items using CARD pricing
+// Uses hybrid approach: DB values for full quantities, proportional for partial
 function calculateSplitTax(
   items: CartItem[],
   taxRatesMap: Record<string, number>,
-  orderSubtotal: number,
-  orderDiscountAmount: number
+  masterItems: CartItem[] // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
 
+  // Build map for fast lookup of original items
+  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+
   for (const item of items) {
-    const itemSubtotal = item.price * item.quantity;
+    const originalItem = originalItemsMap.get(item.id);
+    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(item, originalItem, false);
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -44,14 +97,8 @@ function calculateSplitTax(
     const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
     const taxRateDecimal = taxRatePercent / 100;
 
-    // Apply proportional discount to this item
-    const itemDiscountProportion =
-      orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-    const itemDiscountAmount = orderDiscountAmount * itemDiscountProportion;
-    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
-
-    // Calculate tax for this item
-    tax += itemTaxableAmount * taxRateDecimal;
+    // Calculate tax on discounted subtotal
+    tax += itemSubtotal * taxRateDecimal;
   }
 
   // Round to 2 decimal places
@@ -63,20 +110,21 @@ function calculateSplitTax(
 }
 
 // Helper function to calculate tax for split items using CASH pricing
-// Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
+// Uses hybrid approach: DB values for full quantities, proportional for partial
 function calculateSplitCashTax(
   items: CartItem[],
   taxRatesMap: Record<string, number>,
-  orderCashSubtotal: number,
-  orderDiscountAmount: number
+  masterItems: CartItem[] // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
 
+  // Build map for fast lookup of original items
+  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+
   for (const item of items) {
-    // Use the full effective cash price including modifiers and add-ons
-    const itemCashPrice = calculateItemEffectiveCashPrice(item);
-    const itemSubtotal = itemCashPrice * item.quantity;
+    const originalItem = originalItemsMap.get(item.id);
+    const { subtotal: itemSubtotal } = getItemDiscountedValues(item, originalItem, true);
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -87,14 +135,8 @@ function calculateSplitCashTax(
     const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
     const taxRateDecimal = taxRatePercent / 100;
 
-    // Apply proportional discount to this item (based on cash subtotal)
-    const itemDiscountProportion =
-      orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-    const itemDiscountAmount = orderDiscountAmount * itemDiscountProportion;
-    const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmount);
-
-    // Calculate tax for this item
-    tax += itemTaxableAmount * taxRateDecimal;
+    // Calculate tax on discounted subtotal
+    tax += itemSubtotal * taxRateDecimal;
   }
 
   // Round to 2 decimal places
@@ -107,7 +149,8 @@ function calculateSplitCashTax(
 
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const orders = useOrderStore((state) => state.orders);
+  const ordersById = useOrderStore((state) => state.ordersById);
+  const ordersByDbId = useOrderStore((state) => state.ordersByDbId);
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const {
@@ -145,8 +188,8 @@ const SplitByItemView = () => {
   }, [splits, activeSplitId]);
 
   const activeOrder = useMemo(
-    () => orders.find((o) => o.id === activeOrderId),
-    [orders, activeOrderId]
+    () => activeOrderId ? ordersById[activeOrderId] : null,
+    [ordersById, activeOrderId]
   );
 
   // Filter out voided items - they should not be included in splits
@@ -154,6 +197,7 @@ const SplitByItemView = () => {
     () => (activeOrder?.items || []).filter((item) => !item.is_voided),
     [activeOrder?.items]
   );
+  // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder);
 
   // --- LOGIC: Calculate Item Distribution ---
   const itemData = useMemo(() => {
@@ -182,52 +226,23 @@ const SplitByItemView = () => {
 
   const activeSplit = splits.find((s) => s.id === activeSplitId);
 
-  // Calculate order subtotal (card pricing) and discount for proportional tax calculation
-  const orderSubtotal = masterItems.reduce(
-    (acc, item) => acc + item.price * item.quantity,
-    0
-  );
-
-  // Calculate order cash subtotal for cash pricing calculations
-  // Uses calculateItemEffectiveCashPrice to include modifiers and add-ons
-  const orderCashSubtotal = masterItems.reduce(
-    (acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity,
-    0
-  );
-
-  const itemDiscountsTotal = masterItems.reduce((acc, item) => {
-    if (item.appliedDiscount) {
-      return (
-        acc + item.originalPrice * item.appliedDiscount.value * item.quantity
-      );
-    }
-    return acc;
-  }, 0);
-  const subtotalAfterItemDiscounts = orderSubtotal - itemDiscountsTotal;
-  let checkDiscountAmount = 0;
-  if (activeOrder?.checkDiscount) {
-    checkDiscountAmount =
-      subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
-  }
-  const orderDiscountAmount = itemDiscountsTotal + checkDiscountAmount;
-
   // Calculate split totals with tax (CARD pricing)
+  // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitTotals = activeSplit
     ? calculateSplitTax(
       activeSplit.items,
       taxRatesMap,
-      orderSubtotal,
-      orderDiscountAmount
+      masterItems // Pass master items to look up original quantities/discounts
     )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate split totals with tax (CASH pricing)
+  // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitCashTotals = activeSplit
     ? calculateSplitCashTax(
       activeSplit.items,
       taxRatesMap,
-      orderCashSubtotal,
-      orderDiscountAmount
+      masterItems // Pass master items to look up original quantities/discounts
     )
     : { subtotal: 0, tax: 0, total: 0 };
 

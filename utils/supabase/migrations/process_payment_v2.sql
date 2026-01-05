@@ -3,18 +3,20 @@
 -- Handles: Full card, Full cash, Split, Per-item
 -- ============================================
  
-CREATE OR REPLACE FUNCTION process_payment_v2(
+CREATE OR REPLACE FUNCTION process_payment_v3(
     p_order_id uuid,
     p_payment_method text,                    -- 'cash' | 'card'
     p_amount numeric,                         -- Amount to charge (before tip)
     p_tip_amount numeric DEFAULT 0,
     p_amount_tendered numeric DEFAULT NULL,   -- Cash only: what customer gave
-    p_item_ids uuid[] DEFAULT NULL,           -- Per-item payment: which items
+    p_item_allocations jsonb DEFAULT NULL,    -- Per-item payment: [{"order_item_id": "uuid", "quantity": 1, "amount": 10.00}]
     p_terminal_response jsonb DEFAULT NULL,
     p_terminal_id text DEFAULT NULL,
     p_device_id text DEFAULT NULL,
     p_staff_id uuid DEFAULT NULL,
-    p_transaction_details jsonb DEFAULT NULL
+    p_transaction_details jsonb DEFAULT NULL,
+    p_split_count integer DEFAULT NULL,       -- Total number of portions for split payment
+    p_split_portion_index integer DEFAULT NULL -- Which portion this payment is for (1-based)
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -61,7 +63,7 @@ DECLARE
     v_is_last_portion boolean := false;
 BEGIN
     v_is_cash := p_payment_method = 'cash';
-    v_is_item_payment := p_item_ids IS NOT NULL AND array_length(p_item_ids, 1) > 0;
+    v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
     v_is_split_payment := p_split_count IS NOT NULL AND p_split_count > 1;
     
     -- ============================================
@@ -146,61 +148,65 @@ BEGIN
     -- ============================================
     IF v_is_item_payment THEN
         -- ========================================
-        -- PER-ITEM PAYMENT
+        -- PER-ITEM PAYMENT (with per-item quantities)
         -- ========================================
-        SELECT 
+        -- Calculate totals based on allocated quantities (not full remaining quantity)
+        SELECT
             COALESCE(SUM(
-                CASE WHEN v_is_cash 
-                    THEN (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
-                    ELSE (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
+                CASE WHEN v_is_cash
+                    THEN LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
+                    ELSE LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
                 END
             ), 0),
             COALESCE(SUM(
-                CASE WHEN v_is_cash 
-                    THEN ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-                    ELSE ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+                CASE WHEN v_is_cash
+                    THEN ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
+                    ELSE ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
                 END
             ), 0),
             array_agg(oi.id)
         INTO v_items_subtotal, v_items_tax, v_covered_items
-        FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
-          AND oi.order_id = p_order_id
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
+        WHERE oi.order_id = p_order_id
           AND oi.is_voided = false
           AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-        
+
         v_payment_total := v_items_subtotal + v_items_tax;
         v_subtotal_portion := v_items_subtotal;
         v_tax_portion := v_items_tax;
-        
-        -- Build detailed items JSON
+
+        -- Build detailed items JSON with allocated quantities
         SELECT COALESCE(jsonb_agg(jsonb_build_object(
             'order_item_id', oi.id,
             'item_name', oi.item_name,
-            'quantity_paid', oi.quantity - COALESCE(oi.paid_quantity, 0),
+            'quantity_paid', LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)),
             'unit_price', CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
-            'subtotal', CASE WHEN v_is_cash 
-                THEN (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
-                ELSE (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
+            'subtotal', CASE WHEN v_is_cash
+                THEN LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
+                ELSE LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
             END
         )), '[]'::jsonb)
         INTO v_covered_items_json
-        FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
-          AND oi.order_id = p_order_id
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
+        WHERE oi.order_id = p_order_id
           AND oi.is_voided = false
           AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-        
-        -- Mark selected items as paid
-        UPDATE public.order_items
-        SET 
-            paid_quantity = quantity,
-            price_paid = CASE WHEN v_is_cash THEN cash_price ELSE unit_price END,
-            -- payment_method_used = p_payment_method,
+
+        -- Update items with allocated quantities (increment paid_quantity, not set to full)
+        UPDATE public.order_items oi
+        SET
+            paid_quantity = COALESCE(oi.paid_quantity, 0) + LEAST(
+                COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)),
+                oi.quantity - COALESCE(oi.paid_quantity, 0)
+            ),
+            price_paid = CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
             updated_at = now()
-        WHERE id = ANY(p_item_ids)
-          AND order_id = p_order_id
-          AND is_voided = false;
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        WHERE oi.id = (alloc.value->>'order_item_id')::uuid
+          AND oi.order_id = p_order_id
+          AND oi.is_voided = false;
     
     ELSIF v_is_split_payment THEN
         -- ========================================
@@ -344,12 +350,21 @@ BEGIN
         SELECT
             v_payment_id,
             oi.id,
-            oi.quantity,
+            LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity),
             oi.price_paid,
-            oi.quantity * oi.price_paid,
-            ROUND(oi.quantity * oi.price_paid * COALESCE(oi.tax_rate, 0) / 100, 2)
-        FROM public.order_items oi
-        WHERE oi.id = ANY(p_item_ids)
+            LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity) * oi.price_paid,
+            ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity), oi.quantity) * oi.price_paid * COALESCE(oi.tax_rate, 0) / 100, 2)
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
+        WHERE oi.order_id = p_order_id
+          AND oi.is_voided = false;
+
+        -- Also set payment_id on the items for tracking which payment covered them
+        UPDATE public.order_items oi
+        SET payment_id = v_payment_id,
+            updated_at = now()
+        FROM jsonb_array_elements(p_item_allocations) AS alloc
+        WHERE oi.id = (alloc.value->>'order_item_id')::uuid
           AND oi.order_id = p_order_id
           AND oi.is_voided = false;
     END IF;

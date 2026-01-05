@@ -637,6 +637,7 @@ const ModifierScreen = () => {
           quantity: 1,
           originalPrice: cashPrice || itemPrice,
           price: itemPrice,
+          unitPrice: currentItem.price,
           cashPrice: cashPrice || itemPrice,
           image: item.image,
           isDraft: true,
@@ -929,6 +930,7 @@ const ModifierScreen = () => {
           name: baseItem.name,
           quantity: currentState.quantity,
           originalPrice: getCurrentItemCashPrice(baseItem),
+          unitPrice : baseItem.price ?? getCurrentItemCashPrice(baseItem),
           price: currentTotal / Math.max(1, currentState.quantity),
           cashPrice: getCurrentItemCashPrice(baseItem),
           image: baseItem.image,
@@ -940,6 +942,7 @@ const ModifierScreen = () => {
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
         };
+        console.log('[confirmedItem] confirmedItem', confirmedItem);
         addItemToActiveOrder(confirmedItem);
         showToast({
           title: "Item Added",
@@ -953,8 +956,10 @@ const ModifierScreen = () => {
           name: baseItem.name,
           quantity: currentState.quantity,
           originalPrice: getCurrentItemCashPrice(baseItem),
+          unitPrice : baseItem.price,
           price: currentTotal / Math.max(1, currentState.quantity),
           image: baseItem.image,
+          unitPrice: baseItem.price,
           cashPrice: getCurrentItemCashPrice(baseItem),
           customizations: finalCustomizations,
           availableDiscount: baseItem.availableDiscount,
@@ -964,6 +969,7 @@ const ModifierScreen = () => {
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
         };
+        console.log('[newItem] newItem', newItem);
         addItemToActiveOrder(newItem);
         showToast({
           title: "Item Added",

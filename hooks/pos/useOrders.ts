@@ -209,7 +209,7 @@ export const useOrder = (orderId?: string) => {
         amountTendered?: number;
         splitCount?: number;
         splitPortionIndex?: number;
-        itemIds?: string[];
+        itemAllocations?: { order_item_id: string; quantity: number; amount?: number }[];
     }) => {
         if (!orderId) throw new Error('No active order');
 
@@ -227,7 +227,7 @@ export const useOrder = (orderId?: string) => {
                 ? params.transactionDetails
                 : null;
 
-            const { data, error: paymentError } = await supabase.rpc('process_payment_v2', {
+            const { data, error: paymentError } = await supabase.rpc('process_payment_v5', {
                 p_order_id: orderId,
                 p_payment_method: params.paymentMethod,
                 p_amount: params.amount,
@@ -236,7 +236,7 @@ export const useOrder = (orderId?: string) => {
                 p_terminal_response: terminalResponse,
                 p_split_count: params.splitCount || null,
                 p_split_portion_index: params.splitPortionIndex || null,
-                p_item_ids: params.itemIds || null,
+                p_item_allocations: params.itemAllocations || null,
             });
 
             if (paymentError) {

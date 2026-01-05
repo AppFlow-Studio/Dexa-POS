@@ -47,7 +47,7 @@ export async function payFullCard(
     terminalResponse?: Record<string, unknown>
 ): Promise<ProcessPaymentV2Result> {
     const supabase = getSupabase();
-    const { data, error } = await supabase.rpc('process_payment_v2', {
+    const { data, error } = await supabase.rpc('process_payment_v5', {
         p_order_id: orderId,
         p_payment_method: 'card',
         p_amount: amount,
@@ -71,7 +71,7 @@ export async function payFullCash(
     tipAmount: number = 0
 ): Promise<ProcessPaymentV2Result> {
     const supabase = getSupabase();
-    const { data, error } = await supabase.rpc('process_payment_v2', {
+    const { data, error } = await supabase.rpc('process_payment_v5', {
         p_order_id: orderId,
         p_payment_method: 'cash',
         p_amount: cashTotal,
@@ -94,19 +94,21 @@ export async function paySplitPortion(
     amount: number,
     tipAmount: number = 0,
     amountTendered?: number,          // For cash
-    terminalResponse?: Record<string, unknown>  // For card
+    terminalResponse?: Record<string, unknown>,  // For card
+    splitCount?: number,              // Total number of split portions
+    splitPortionIndex?: number        // Which portion this is (1-based)
 ): Promise<ProcessPaymentV2Result> {
     const supabase = getSupabase();
-    const { data, error } = await supabase.rpc('process_payment_v2', {
+    const { data, error } = await supabase.rpc('process_payment_v5', {
         p_order_id: orderId,
         p_payment_method: paymentMethod,
         p_amount: amount,
         p_tip_amount: tipAmount,
         p_amount_tendered: amountTendered || null,
-        p_terminal_response: terminalResponse || null
-         // NEW: Split parameters
-        p_split_count: splitCount,
-        p_split_portion_index: splitPortionIndex,
+        p_terminal_response: terminalResponse || null,
+        // Split parameters
+        p_split_count: splitCount || null,
+        p_split_portion_index: splitPortionIndex || null,
     });
 
     if (error) throw error;
@@ -115,26 +117,27 @@ export async function paySplitPortion(
 
 /**
  * SCENARIO 4: Pay for Specific Items
- * - Select which items this payment covers
- * - Marks items as paid
+ * - Select which items and quantities this payment covers
+ * - Supports partial quantity payment (e.g., 1 of 3 lattes)
+ * - Marks items as paid with specified quantities
  */
 export async function payForItems(
     orderId: string,
-    itemIds: string[],
+    itemAllocations: { order_item_id: string; quantity: number; amount?: number }[],
     paymentMethod: 'card' | 'cash',
     tipAmount: number = 0,
     amountTendered?: number,
     terminalResponse?: Record<string, unknown>
 ): Promise<ProcessPaymentV2Result> {
     const supabase = getSupabase();
-    // Backend calculates amount from items
-    const { data, error } = await supabase.rpc('process_payment_v2', {
+    // Backend calculates amount from items and their quantities
+    const { data, error } = await supabase.rpc('process_payment_v5', {
         p_order_id: orderId,
         p_payment_method: paymentMethod,
         p_amount: 0,  // Backend calculates from items
         p_tip_amount: tipAmount,
         p_amount_tendered: amountTendered || null,
-        p_item_ids: itemIds,
+        p_item_allocations: itemAllocations,
         p_terminal_response: terminalResponse || null
     });
 

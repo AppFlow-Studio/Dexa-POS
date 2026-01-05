@@ -98,6 +98,56 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 }
 
 /**
+ * Distribute an order-level discount proportionally to individual items.
+ * This mirrors the database's discount distribution algorithm to ensure consistency
+ * between local state (for offline) and backend values.
+ *
+ * @param items - The cart items to distribute the discount across
+ * @param totalDiscount - The total card-price discount to distribute
+ * @param totalCashDiscount - The total cash-price discount (optional, defaults to totalDiscount)
+ * @returns Items with updated discount_amount, discount_cash_amount, subtotal, cashSubtotal
+ */
+export function distributeDiscountToItems(
+  items: CartItem[],
+  totalDiscount: number,
+  totalCashDiscount?: number
+): CartItem[] {
+  // Calculate order subtotals for proportion calculation
+  const orderSubtotal = items.reduce(
+    (sum, item) => item.is_voided ? sum : sum + item.price * item.quantity,
+    0
+  );
+  const orderCashSubtotal = items.reduce(
+    (sum, item) => item.is_voided ? sum : sum + calculateItemEffectiveCashPrice(item) * item.quantity,
+    0
+  );
+
+  const cashDiscount = totalCashDiscount ?? totalDiscount;
+
+  return items.map(item => {
+    if (item.is_voided) return item;
+
+    const itemSubtotal = item.price * item.quantity;
+    const itemCashSubtotal = calculateItemEffectiveCashPrice(item) * item.quantity;
+
+    // Calculate proportional discount based on item's share of order subtotal
+    const proportion = orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
+    const cashProportion = orderCashSubtotal > 0 ? itemCashSubtotal / orderCashSubtotal : 0;
+
+    const itemDiscount = round2(totalDiscount * proportion);
+    const itemCashDiscount = round2(cashDiscount * cashProportion);
+
+    return {
+      ...item,
+      discount_amount: itemDiscount,
+      discount_cash_amount: itemCashDiscount,
+      subtotal: round2(itemSubtotal - itemDiscount),
+      cashSubtotal: round2(itemCashSubtotal - itemCashDiscount),
+    };
+  });
+}
+
+/**
  * Calculate all order totals - PURE FUNCTION, SYNCHRONOUS
  * This replaces the async recalculateTotals for instant UI updates.
  * Uses per-item tax rates based on tax_category.
@@ -667,7 +717,7 @@ const addItemToBackend = async (
     await registerLocalId(item.id, "item", order.id);
 
     // Queue appropriate operation based on merge status
-    console.log('[addItemToBackend] item', item);
+    console.log('[addItemToBackend] item 1', item);
     
     let itemOpId: string;
     if (isMerge && item.db_order_item_id) {
@@ -701,6 +751,7 @@ const addItemToBackend = async (
             name: item.name,
             quantity: item.quantity,
             price: item.price,
+            unitPrice: item.unitPrice ?? item.price,
             cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
@@ -763,7 +814,7 @@ const addItemToBackend = async (
       await registerLocalId(item.id, "item", order.id);
 
       // Queue the add_item operation (will be processed after order syncs)
-      console.log('[addItemToBackend] item', item);
+      console.log('[addItemToBackend] item 2', item);
 
       await queueOperation({
         type: "add_item",
@@ -775,7 +826,7 @@ const addItemToBackend = async (
             locationExclusiveItemId: item.locationExclusiveItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.price,
+            price: item.unitPrice,
             cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
@@ -785,7 +836,6 @@ const addItemToBackend = async (
         localOrderId: order.id,
         localItemId: item.id,
       });
-
       // Mark item as pending sync
       useOrderStore.setState((state) => {
         const currentOrder = state.ordersById[order.id];
@@ -822,7 +872,7 @@ const addItemToBackend = async (
             menuItemId: item.menuItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.price,
+            price: item.unitPrice,
             cashPrice: item.cashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
@@ -990,7 +1040,7 @@ const addItemToBackend = async (
 
     // Card price is the effective price per unit (already includes modifiers)
     const cardUnitPrice = item.price;
-    console.log('[addItemToBackend] item', item);
+    console.log('[addItemToBackend] item 3', item);
 
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
@@ -1003,7 +1053,7 @@ const addItemToBackend = async (
       p_category_name: item.category_name || "Uncategorized",
 
       // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.price, // Card price per unit (includes modifiers)
+      p_unit_price: item.unitPrice ?? item.price, // Card price per unit (includes modifiers)
       p_cash_unit_price: item.originalPrice || item.cashPrice, // Cash price per unit (includes modifiers)
 
       // Size details
@@ -1143,7 +1193,7 @@ const syncPaymentToBackend = async (
     method: PaymentType;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
-    itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+    itemAllocations?: { itemId: string; quantity: number; amount?: number }[]; // Per-item allocations with quantities
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
     localPaymentId?: string; // Unique local ID for matching payment during sync
@@ -1182,6 +1232,13 @@ const syncPaymentToBackend = async (
       }
       : null;
 
+    // Build item allocations for per-item payments (convert to backend format)
+    const itemAllocations = paymentDetails.itemAllocations?.map(alloc => ({
+      order_item_id: alloc.itemId,
+      quantity: alloc.quantity,
+      amount: alloc.amount,
+    })) || null;
+
     // Build payment params for process_payment_v2 (will be resolved when order syncs)
     const paymentParams = {
       p_order_id: order.id, // Will be resolved to db_order_id at sync time
@@ -1191,7 +1248,7 @@ const syncPaymentToBackend = async (
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
         : null,
-      p_item_ids: paymentDetails.itemIds || null,
+      p_item_allocations: itemAllocations,
       p_terminal_response: terminalResponse,
       p_split_count: paymentDetails.splitCount || null,
       p_split_portion_index: paymentDetails.splitPortionIndex || null,
@@ -1230,18 +1287,26 @@ const syncPaymentToBackend = async (
       }
       : null;
 
+    // Build item allocations for per-item payments (convert to backend format)
+    // Filter out undefined amount values to avoid JSON serialization issues
+    const itemAllocationsForRpc = paymentDetails.itemAllocations?.map(alloc => ({
+      order_item_id: alloc.itemId,
+      quantity: alloc.quantity,
+      ...(alloc.amount !== undefined && { amount: alloc.amount }),
+    })) || null;
+
     // Call process_payment_v2 RPC directly
-    console.log("[syncPaymentToBackend] Calling process_payment_v2:", {
+    console.log("[syncPaymentToBackend] Calling process_payment_v5:", {
       orderId: order.db_order_id,
       method: paymentMethod,
       amount: paymentDetails.amount,
       tipAmount: paymentDetails.tipAmount,
-      itemIds: paymentDetails.itemIds,
+      itemAllocations: itemAllocationsForRpc,
       splitCount: paymentDetails.splitCount,
       splitPortionIndex: paymentDetails.splitPortionIndex,
     });
 
-    const { data, error } = await supabase.rpc("process_payment_v2", {
+    const { data, error } = await supabase.rpc("process_payment_v5", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
       p_amount: paymentDetails.amount,
@@ -1249,7 +1314,7 @@ const syncPaymentToBackend = async (
       p_amount_tendered: isCash
         ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
         : null,
-      p_item_ids: paymentDetails.itemIds || null,
+      p_item_allocations: itemAllocationsForRpc,
       p_terminal_response: terminalResponse,
       p_staff_id: null, // Could get from employee store if needed
       p_split_count: paymentDetails.splitCount || null,
@@ -1294,8 +1359,8 @@ const syncPaymentToBackend = async (
       });
 
       // Queue for retry - build payment params for process_payment_v2
-      const isCash = paymentDetails.method === "Cash";
-      const terminalResponse = !isCash && paymentDetails.transactionDetails
+      const isCashRetry = paymentDetails.method === "Cash";
+      const terminalResponseRetry = !isCashRetry && paymentDetails.transactionDetails
         ? {
           terminal_type: paymentDetails.transactionDetails.terminalType || "manual",
           authorization_code: paymentDetails.transactionDetails.authorizationCode,
@@ -1305,16 +1370,23 @@ const syncPaymentToBackend = async (
         }
         : null;
 
+      // Build item allocations for retry
+      const itemAllocationsRetry = paymentDetails.itemAllocations?.map(alloc => ({
+        order_item_id: alloc.itemId,
+        quantity: alloc.quantity,
+        amount: alloc.amount,
+      })) || null;
+
       const paymentParams = {
         p_order_id: order.db_order_id,
-        p_payment_method: isCash ? "cash" : "card",
+        p_payment_method: isCashRetry ? "cash" : "card",
         p_amount: paymentDetails.amount,
         p_tip_amount: paymentDetails.tipAmount || 0,
-        p_amount_tendered: isCash
+        p_amount_tendered: isCashRetry
           ? paymentDetails.transactionDetails?.amountTendered || paymentDetails.amount
           : null,
-        p_item_ids: paymentDetails.itemIds || null,
-        p_terminal_response: terminalResponse,
+        p_item_allocations: itemAllocationsRetry,
+        p_terminal_response: terminalResponseRetry,
         p_split_count: paymentDetails.splitCount || null,
         p_split_portion_index: paymentDetails.splitPortionIndex || null,
       };
@@ -1328,7 +1400,7 @@ const syncPaymentToBackend = async (
           localOrderId: order.id,
           localPaymentId: paymentDetails.localPaymentId, // For matching payment on sync success
           paymentTimestamp: paymentDetails.paymentTimestamp, // Fallback for matching
-          terminalResponse,
+          terminalResponse: terminalResponseRetry,
         },
         localOrderId: order.id,
       });
@@ -1356,18 +1428,30 @@ const syncPaymentToBackend = async (
         const currentOrder = state.ordersById[order.id];
         if (!currentOrder) return state;
 
-        // Update items that were paid (mark paidQuantity)
+        // DON'T re-increment paidQuantity here - addPaymentToOrder already did the optimistic update
+        // The sync function should only update payment records, not re-apply item changes
+        // This prevents the double-counting bug where paidQuantity gets incremented twice
         let updatedItems = currentOrder.items;
-        if (data.items_covered && data.items_covered.length > 0) {
+
+        // Only update items if backend returns authoritative paid_quantity values (error recovery/sync)
+        // This handles edge cases where optimistic update might have been wrong
+        if (data.updated_items && Array.isArray(data.updated_items) && data.updated_items.length > 0) {
+          const backendItemMap = new Map<string, number>(
+            data.updated_items.map((item: { id: string; paid_quantity: number }) =>
+              [item.id, item.paid_quantity] as [string, number]
+            )
+          );
           updatedItems = currentOrder.items.map((item) => {
-            if (item.db_order_item_id && data.items_covered.includes(item.db_order_item_id)) {
-              return { ...item, paidQuantity: item.quantity }; // Mark as fully paid
+            const backendPaidQty = backendItemMap.get(item.db_order_item_id || "");
+            if (typeof backendPaidQty === "number") {
+              return { ...item, paidQuantity: backendPaidQty };
             }
             return item;
           });
         }
 
-        // Update the last payment with backend ID, items covered, and sync status
+        // Update the last payment with backend ID and sync status
+        // Keep local itemsCovered (with quantities) instead of backend's items_covered (just IDs)
         let updatedPayments = currentOrder.payments || [];
         if (data.payment_id && updatedPayments.length > 0) {
           const lastPaymentIndex = updatedPayments.length - 1;
@@ -1376,7 +1460,9 @@ const syncPaymentToBackend = async (
               ? {
                 ...p,
                 id: data.payment_id,
-                itemsCovered: data.items_covered || [],
+                // Keep existing itemsCovered (with quantities) from optimistic update
+                // Only set from backend if local is missing
+                itemsCovered: p.itemsCovered || (data.items_covered?.map((id: string) => ({ itemId: id, quantity: 1 })) ?? []),
                 timestamp: new Date().toISOString(),
                 sync_status: "synced" as const,
                 sync_error: undefined,
@@ -1396,7 +1482,7 @@ const syncPaymentToBackend = async (
               amount_paid: data.order_amount_paid,
               amount_due: data.order_amount_due, // Card price (always source of truth)
               cash_amount_due: data.order_cash_amount_due ?? data.unpaid_cash_total, // Cash price for discount display
-              paid_status: data.order_fully_paid ? ("Paid" as const) : ("Pending" as const),
+              paid_status: data.order_fully_paid ? ("Paid" as const) : ("Partial" as const),
               check_status: data.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
             },
           },
@@ -1545,7 +1631,7 @@ interface OrderState {
     last4?: string;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
-    itemIds?: string[]; // Optional: db_order_item_ids for per-item payments
+    itemAllocations?: { itemId: string; quantity: number; amount?: number }[]; // Optional: per-item allocations with quantities
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
   }) => Promise<boolean>; // Returns true if sync succeeded, false if failed (state reverted)
@@ -1670,8 +1756,8 @@ export const useOrderStore = create<OrderState>()(
           isRecalculating = true;
 
           try {
-            const { orders, activeOrderId: currentActiveOrderId } = get();
-            const activeOrder = orders.find((o) => o.id === orderId);
+            const { orders, activeOrderId: currentActiveOrderId, ordersById } = get();
+            const activeOrder = orderId ? ordersById[orderId] : null;
 
             // Safety check: Only update derived state if this orderId is still the active order
             // This prevents stale async calculations from overwriting the current order's totals
@@ -1900,9 +1986,12 @@ export const useOrderStore = create<OrderState>()(
               // PRIORITY: If order has backend-synced amount_due, use it as the authoritative value
               // Backend is source of truth after payments have been processed
               const hasBackendAmountDue = activeOrder.amount_due !== undefined && activeOrder.amount_due >= 0;
+              console.log('[recalculateTotals] hasBackendAmountDue', hasBackendAmountDue);
+
               const finalOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : outstandingTotal;
               const finalCashOutstandingTotal = hasBackendAmountDue ? activeOrder.cash_amount_due ?? activeOrder.amount_due : safeCashOutstandingTotal;
-
+              console.log('[recalculateTotals] finalOutstandingTotal', finalOutstandingTotal);
+              console.log('[recalculateTotals] finalCashOutstandingTotal', finalCashOutstandingTotal);
               // Only update active order derived state if this order is still the active one
               if (stillActiveAfterAsync) {
                 set({
@@ -1934,27 +2023,38 @@ export const useOrderStore = create<OrderState>()(
                 }));
               }
 
-              // Auto-manage paid_status only when there are items and at least one payment
+              // Auto-manage paid_status based on payment state
+              // Use backend amount_due as authoritative when available
               const hasItems = (activeOrder.items?.length || 0) > 0;
-              const hasPayments = (activeOrder.payments?.length || 0) > 0;
-              if (hasItems && hasPayments) {
-                if (
-                  outstandingSubtotal <= 1e-6 &&
-                  activeOrder.paid_status !== "Paid"
-                ) {
+              const nonVoidedPayments = activeOrder.payments?.filter(p => !p.isVoided) || [];
+              const hasNonVoidedPayments = nonVoidedPayments.length > 0;
+
+              // Use backend amount_due if available, otherwise use local calculation
+              const effectiveOutstanding = hasBackendAmountDue
+                ? activeOrder.amount_due!
+                : outstandingSubtotal;
+
+              if (hasItems) {
+                // Determine the correct paid_status based on outstanding amount and payments
+                let correctPaidStatus: "Paid" | "Partial" | "Pending" | "Unpaid" = activeOrder.paid_status;
+
+                if (effectiveOutstanding <= 0.01) {
+                  // Fully paid - no outstanding amount
+                  correctPaidStatus = "Paid";
+                } else if (hasNonVoidedPayments) {
+                  // Has payments but still has outstanding - Partial
+                  correctPaidStatus = "Partial";
+                } else {
+                  // No payments yet - keep as Pending or Unpaid
+                  correctPaidStatus = activeOrder.paid_status === "Unpaid" ? "Unpaid" : "Pending";
+                }
+
+                // Only update if status needs to change
+                if (correctPaidStatus !== activeOrder.paid_status) {
+                  console.log(`[recalculateTotals] Updating paid_status: ${activeOrder.paid_status} -> ${correctPaidStatus} (outstanding: ${effectiveOutstanding})`);
                   set((state) => ({
                     orders: state.orders.map((o) =>
-                      o.id === orderId ? { ...o, paid_status: "Paid" } : o
-                    ),
-                  }));
-                } else if (
-                  outstandingSubtotal > 1e-6 &&
-                  activeOrder.paid_status === "Paid"
-                ) {
-                  // If new items were added after full payment, reflect Pending
-                  set((state) => ({
-                    orders: state.orders.map((o) =>
-                      o.id === orderId ? { ...o, paid_status: "Pending" } : o
+                      o.id === orderId ? { ...o, paid_status: correctPaidStatus } : o
                     ),
                   }));
                 }
@@ -2827,6 +2927,8 @@ export const useOrderStore = create<OrderState>()(
           },
 
           removeItemFromActiveOrder: (itemId, voidReason) => {
+            console.log('[removeItemFromActiveOrder] itemId', itemId);
+            console.log('[removeItemFromActiveOrder] voidReason', voidReason);
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
@@ -2835,7 +2937,7 @@ export const useOrderStore = create<OrderState>()(
 
             const itemToHandle = order.items.find((i) => i.id === itemId);
             if (!itemToHandle) return;
-
+            console.log('[removeItemFromActiveOrder] itemToHandle', itemToHandle);
             // Check if item is a kitchen item (sent/ready/served) - should mark as voided, not remove
             const isKitchenItem =
               itemToHandle.kitchen_status === "sent" ||
@@ -3174,12 +3276,19 @@ export const useOrderStore = create<OrderState>()(
               sync_status: order.db_order_id ? "pending" : "pending",
             };
 
-            // Update state optimistically
+            // Update state optimistically - distribute discount to items locally
+            // This ensures split payment views show correct prices even before RPC completes
+            const itemsWithDistributedDiscount = distributeDiscountToItems(
+              order.items,
+              totals.discount_amount
+            );
+
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [orderId]: {
                   ...state.ordersById[orderId],
+                  items: itemsWithDistributedDiscount,
                   checkDiscount: normalizedDiscount,
                   applied_discounts: [
                     ...(state.ordersById[orderId].applied_discounts || []).filter(
@@ -3227,15 +3336,50 @@ export const useOrderStore = create<OrderState>()(
                 approved_by_staff_id: applied.approved_by_staff_profiles_id ?? null,
               }).then((result) => {
                 if (result.success && result.order_discount_id) {
-                  // Update local state with backend order_discount_id and mark as synced
+                  // Update local state with backend order_discount_id, mark as synced,
+                  // and merge affected_items with authoritative discount values from backend
                   set((state) => {
                     const existingOrder = state.ordersById[orderId];
                     if (!existingOrder?.applied_discounts) return state;
+
+                    // Define type for affected items from backend
+                    interface AffectedItemFromBackend {
+                      id: string;
+                      discount_amount: number;
+                      subtotal: number;
+                      cash_subtotal: number;
+                      tax_amount: number;
+                      cash_tax_amount: number;
+                    }
+
+                    // Build map of affected items by db_order_item_id
+                    const affectedMap = new Map<string, AffectedItemFromBackend>(
+                      (result.affected_items || []).map((ai: AffectedItemFromBackend) => [ai.id, ai])
+                    );
+
+                    // Update items with authoritative discount values from backend
+                    const updatedItems = existingOrder.items.map(item => {
+                      const affected = affectedMap.get(item.db_order_item_id || "");
+                      if (affected) {
+                        return {
+                          ...item,
+                          discount_amount: affected.discount_amount,
+                          discount_cash_amount: affected.discount_amount, // Use same for now, backend doesn't return separate cash
+                          subtotal: affected.subtotal,
+                          cashSubtotal: affected.cash_subtotal,
+                          taxAmount: affected.tax_amount,
+                          cashTaxAmount: affected.cash_tax_amount,
+                        };
+                      }
+                      return item;
+                    });
+
                     return {
                       ordersById: {
                         ...state.ordersById,
                         [orderId]: {
                           ...existingOrder,
+                          items: updatedItems,
                           applied_discounts: existingOrder.applied_discounts.map((d) =>
                             d.local_id === applied.local_id
                               ? { ...d, order_discount_id: result.order_discount_id, sync_status: "synced" as const }
@@ -3245,7 +3389,7 @@ export const useOrderStore = create<OrderState>()(
                       },
                     };
                   });
-                  console.log('[applyDiscountToCheck] RPC success, order_discount_id:', result.order_discount_id);
+                  console.log('[applyDiscountToCheck] RPC success, order_discount_id:', result.order_discount_id, 'affected_items:', result.affected_items?.length);
                 } else if (result.requires_approval) {
                   console.warn('[applyDiscountToCheck] Discount requires manager approval');
                   // Could emit an event or show a toast here
@@ -3603,9 +3747,9 @@ export const useOrderStore = create<OrderState>()(
             last4,
             tipAmount,
             transactionDetails,
-            itemIds, // NEW: Optional array of db_order_item_ids for per-item payments
-            splitCount, // NEW: Optional split count for split payments
-            splitPortionIndex, // NEW: Optional split portion index for split payments
+            itemAllocations, // Per-item allocations with quantities for partial payments
+            splitCount, // Optional: split count for split payments
+            splitPortionIndex, // Optional: split portion index for split payments
           }) => {
             // ================================================================
             // OFFLINE-FIRST: Process payment locally, sync in background
@@ -3638,6 +3782,12 @@ export const useOrderStore = create<OrderState>()(
             const localPaymentId = `payment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const paymentTimestamp = new Date().toISOString();
 
+            // Build itemsCovered from itemAllocations for payment tracking (with quantities)
+            const itemsCovered = itemAllocations?.map(alloc => ({
+              itemId: alloc.itemId,
+              quantity: alloc.quantity,
+            }));
+
             const newPayment = {
               localId: localPaymentId,  // Unique local identifier for sync matching
               amount,
@@ -3651,27 +3801,39 @@ export const useOrderStore = create<OrderState>()(
               // Track split info for reconciliation
               ...(splitPortionIndex && { splitPortionIndex }),
               ...(splitCount && { splitCount }),
-              ...(itemIds && { itemsCovered: itemIds }),
+              ...(itemsCovered && { itemsCovered }),
             };
 
             const newPayments = [...(order.payments || []), newPayment];
 
-            // Mark items as paid based on itemIds (per-item) or FIFO order (default)
+            // Mark items as paid based on itemAllocations (per-item with quantities) or FIFO order (default)
             let updatedItems: typeof order.items;
 
             // SPLIT PAYMENT FIX: Always mark PAID items as preparing, not just when order is draft/pending
             // This ensures items paid in subsequent splits (when order is already "preparing") also get updated
             // Each item's status is updated individually based on whether IT is being paid now
 
-            if (itemIds && itemIds.length > 0) {
-              // Per-item payment: Mark specific items as paid
+            if (itemAllocations && itemAllocations.length > 0) {
+              // Build a map for quick lookup: itemId -> quantity being paid
+              const allocationMap = new Map(
+                itemAllocations.map(alloc => [alloc.itemId, alloc.quantity])
+              );
+
+              console.log('[allocationMap | addPaymentToOrder] allocationMap', allocationMap);
+              // Per-item payment: Increment paidQuantity by the specified quantity (not full quantity)
               updatedItems = order.items.map((item) => {
-                if (item.db_order_item_id && itemIds.includes(item.db_order_item_id)) {
+                const quantityToPay = allocationMap.get(item.db_order_item_id || "");
+                if (quantityToPay !== undefined && quantityToPay > 0) {
+                  const newPaidQty = Math.min(
+                    (item.paidQuantity || 0) + quantityToPay,
+                    item.quantity // Don't exceed total quantity
+                  );
+                  const isFullyPaid = newPaidQty >= item.quantity;
                   // Update this item's status to preparing if it's currently "new"
                   const shouldUpdateThisItem = item.kitchen_status === "new" || !item.kitchen_status;
                   return {
                     ...item,
-                    paidQuantity: item.quantity, // Fully paid
+                    paidQuantity: newPaidQty,
                     // Update kitchen and item status for items that haven't been sent yet
                     ...(shouldUpdateThisItem && {
                       kitchen_status: "sent" as const,
@@ -3770,15 +3932,19 @@ export const useOrderStore = create<OrderState>()(
 
             // Sync to backend - await result and return success/failure
             // Pass rollbackState to revert optimistic updates on sync failure
-            // For offline/per-item flows, ensure we pass local IDs when db_order_item_id is not available.
+            // For offline/per-item flows, ensure we pass backend IDs when available.
             // This allows the offline queue to resolve them later when items sync.
-            const paymentItemIds = itemIds
-              ? itemIds.map((rawId) => {
+            const paymentItemAllocations = itemAllocations
+              ? itemAllocations.map((alloc) => {
                 const item = order.items.find(
-                  (i) => i.db_order_item_id === rawId || i.id === rawId
+                  (i) => i.db_order_item_id === alloc.itemId || i.id === alloc.itemId
                 );
                 // Prefer backend ID if present, otherwise use local ID
-                return item?.db_order_item_id || item?.id || rawId;
+                return {
+                  itemId: item?.db_order_item_id || item?.id || alloc.itemId,
+                  quantity: alloc.quantity,
+                  amount: alloc.amount,
+                };
               })
               : undefined;
 
@@ -3789,7 +3955,7 @@ export const useOrderStore = create<OrderState>()(
                 method,
                 tipAmount,
                 transactionDetails,
-                itemIds: paymentItemIds, // Pass item IDs for per-item payment tracking (local or backend)
+                itemAllocations: paymentItemAllocations, // Pass item allocations for per-item payment tracking
                 splitCount, // Pass split count for split payments
                 splitPortionIndex, // Pass split portion index for split payments
                 localPaymentId, // Unique local ID for matching payment during sync
@@ -4148,7 +4314,7 @@ export const useOrderStore = create<OrderState>()(
               order_status: "preparing" as const,
               check_status: "Opened" as const,
               paid_status:
-                currentOrder.paid_status === "Paid" ? "Paid" : "Unpaid",
+                currentOrder.paid_status === "Paid" ? "Paid" : currentOrder.paid_status === "Partial" ? "Partial" : "Unpaid",
               order_type: currentOrder.order_type,
               opened_at: startTime,
             };
@@ -4629,9 +4795,27 @@ export const useOrderStore = create<OrderState>()(
             const updatedPayments = order.payments.filter((_, i) => i !== paymentIndex);
 
             // Restore paidQuantity for items covered by this payment
+            // Build a map from itemId -> quantity to restore
+            const itemsCoveredMap = new Map<string, number>();
+            if (paymentToVoid.itemsCovered) {
+              for (const covered of paymentToVoid.itemsCovered) {
+                // Handle both old format (string) and new format ({itemId, quantity})
+                if (typeof covered === 'string') {
+                  // Old format: assume full quantity was paid (for backward compatibility)
+                  itemsCoveredMap.set(covered, Infinity);
+                } else {
+                  itemsCoveredMap.set(covered.itemId, covered.quantity);
+                }
+              }
+            }
             const updatedItems = order.items.map((item) => {
-              if (paymentToVoid.itemsCovered?.includes(item.db_order_item_id || "")) {
-                return { ...item, paidQuantity: 0 }; // Reset to unpaid
+              const quantityToRestore = itemsCoveredMap.get(item.db_order_item_id || "");
+              if (quantityToRestore !== undefined) {
+                // Decrement by specific quantity (not reset to 0)
+                const newPaidQty = quantityToRestore === Infinity
+                  ? 0 // Old format: reset completely
+                  : Math.max(0, (item.paidQuantity || 0) - quantityToRestore);
+                return { ...item, paidQuantity: newPaidQty };
               }
               return item;
             });
@@ -5046,6 +5230,12 @@ export const useOrderStore = create<OrderState>()(
                 .eq("order_id", order.db_order_id)
                 .eq("status", "captured");
 
+              // 4. Fetch items payment allocations from database
+              const { data: dbItemPayments, error: itemPaymentsError } = await supabase
+                .from("order_item_payments")
+                .select("*")
+                .eq("order_id", order.db_order_id);
+
               if (paymentsError) {
                 console.error("[syncOrderFromDatabase] Payments fetch error:", paymentsError);
                 // Non-fatal - continue without payments
@@ -5063,7 +5253,7 @@ export const useOrderStore = create<OrderState>()(
                 if (!localOrder) return state;
 
                 // Map database items to local items format
-                // Match by db_order_item_id, update quantities and prices
+                // Match by db_order_item_id, update quantities, prices, and discount distribution
                 const syncedItems = localOrder.items.map((localItem) => {
                   const dbItem = dbItems?.find(
                     (db) => db.id === localItem.db_order_item_id
@@ -5076,6 +5266,13 @@ export const useOrderStore = create<OrderState>()(
                       price: dbItem.unit_price,
                       cashPrice: dbItem.cash_price,
                       is_voided: dbItem.is_voided,
+                      // Sync discount distribution fields from backend
+                      discount_amount: dbItem.discount_amount ?? 0,
+                      discount_cash_amount: dbItem.discount_cash_amount ?? dbItem.discount_amount ?? 0,
+                      subtotal: dbItem.subtotal,
+                      cashSubtotal: dbItem.cash_subtotal,
+                      taxAmount: dbItem.tax_amount,
+                      cashTaxAmount: dbItem.cash_tax_amount,
                       sync_status: "synced" as const,
                       sync_error: undefined,
                     };
@@ -5098,6 +5295,7 @@ export const useOrderStore = create<OrderState>()(
                       menuItemId: dbItem.menu_item_id || "",
                       name: dbItem.item_name || "Unknown Item",
                       price: dbItem.unit_price || 0,
+                      unitPrice: dbItem.unit_price || 0,
                       cashPrice: dbItem.cash_price || dbItem.unit_price || 0,
                       originalPrice: dbItem.cash_price || dbItem.unit_price || 0,
                       quantity: dbItem.quantity || 1,
@@ -5105,16 +5303,16 @@ export const useOrderStore = create<OrderState>()(
                       category_name: dbItem.category_name || "Uncategorized",
                       is_voided: dbItem.is_voided || false,
                       sync_status: "synced" as const,
-                      courseNumber: dbItem.course_number || 1,
                       customizations: {}, // Empty customizations object
-                      modifiers: [],
-                      addOns: [],
                       // Required CartItem financial fields
                       subtotal: dbItem.subtotal || (dbItem.unit_price * dbItem.quantity) || 0,
                       cashSubtotal: dbItem.cash_subtotal || (dbItem.cash_price * dbItem.quantity) || 0,
                       taxRate: dbItem.tax_rate || 0,
                       taxAmount: dbItem.tax_amount || 0,
                       cashTaxAmount: dbItem.cash_tax_amount || 0,
+                      // Discount distribution fields
+                      discount_amount: dbItem.discount_amount ?? 0,
+                      discount_cash_amount: dbItem.discount_cash_amount ?? dbItem.discount_amount ?? 0,
                     })) || [];
 
                 const allItems = [...syncedItems, ...newItemsFromDb];
@@ -5128,15 +5326,27 @@ export const useOrderStore = create<OrderState>()(
                     cardBrand: p.card_brand,
                     last4: p.card_last4,
                     tip_amount: p.tip_amount,
-                    itemsCovered: p.item_ids || [],
+                    // Convert backend item_ids to new format with quantities
+                    // Backend doesn't store quantities per payment, so default to 1
+                    itemsCovered: (p.item_ids || []).map((itemId: string) => ({ itemId, quantity: 1 })),
                     timestamp: p.created_at,
                     isVoided: p.status === "voided",
                   })) || localOrder.payments;
 
-                // Determine payment status
-                const isPaid = dbOrder.payment_status === "paid";
-                const isPartiallyPaid =
-                  dbOrder.amount_paid > 0 && dbOrder.amount_due > 0;
+                // Determine payment status from backend
+                const isPaid = dbOrder.payment_status === "paid" || (dbOrder.amount_due <= 0.01 && dbOrder.amount_paid > 0);
+                const isPartiallyPaid = dbOrder.payment_status === "partial" ||
+                  (dbOrder.amount_paid > 0 && dbOrder.amount_due > 0.01);
+
+                // Map backend payment_status to local paid_status
+                let syncedPaidStatus: "Paid" | "Partial" | "Pending" | "Unpaid" = "Pending";
+                if (isPaid) {
+                  syncedPaidStatus = "Paid";
+                } else if (isPartiallyPaid) {
+                  syncedPaidStatus = "Partial";
+                } else if (dbOrder.amount_paid === 0 && dbOrder.amount_due > 0) {
+                  syncedPaidStatus = "Pending";
+                }
 
                 return {
                   ordersById: {
@@ -5154,7 +5364,7 @@ export const useOrderStore = create<OrderState>()(
                       total_amount: dbOrder.card_total || dbOrder.total_amount,
                       total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                       subtotal: dbOrder.card_subtotal || dbOrder.subtotal,
-                      paid_status: isPaid ? ("Paid" as const) : ("Pending" as const),
+                      paid_status: syncedPaidStatus,
                       check_status: isPaid ? ("Closed" as const) : ("Opened" as const),
                       sync_status: "synced" as const,
                     },

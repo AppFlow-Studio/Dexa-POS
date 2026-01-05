@@ -28,19 +28,61 @@ import {
 } from "react-native";
 
 // ============================================================================
-// HELPER: Calculate tax for selected items using card pricing
+// HELPER: Get discounted values using HYBRID approach
+// - If quantityToPay equals item.quantity, use pre-calculated DB values
+// - If quantityToPay differs (partial), calculate proportionally
+// ============================================================================
+function getSelectedItemDiscountedValues(
+    item: CartItem,
+    quantityToPay: number,
+    isCash: boolean = false
+): { subtotal: number; discountAmount: number } {
+    const originalQuantity = item.quantity;
+    const unitPrice = isCash ? calculateItemEffectiveCashPrice(item) : item.price;
+    const originalDiscount = isCash
+        ? (item.discount_cash_amount ?? item.discount_amount ?? 0)
+        : (item.discount_amount ?? 0);
+
+    // If paying for full quantity and we have DB discount, use DB values
+    if (quantityToPay === originalQuantity && originalDiscount > 0) {
+        return {
+            subtotal: isCash ? item.cashSubtotal : item.subtotal,
+            discountAmount: originalDiscount,
+        };
+    }
+
+    // For partial quantities or no discount: calculate proportional discount
+    const grossSubtotal = unitPrice * quantityToPay;
+
+    if (originalQuantity > 0 && originalDiscount > 0) {
+        // Calculate per-unit discount and apply to selected quantity
+        const perUnitDiscount = originalDiscount / originalQuantity;
+        const itemDiscountAmount = Math.round(perUnitDiscount * quantityToPay * 100) / 100;
+        return {
+            subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
+            discountAmount: itemDiscountAmount,
+        };
+    }
+
+    // No discount applied
+    return {
+        subtotal: grossSubtotal,
+        discountAmount: 0,
+    };
+}
+
+// ============================================================================
+// HELPER: Calculate tax for selected items using card pricing (HYBRID approach)
 // ============================================================================
 function calculateSelectedTax(
     items: { item: CartItem; quantityToPay: number }[],
-    taxRatesMap: Record<string, number>,
-    orderSubtotal: number,
-    orderDiscountAmount: number
+    taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
     let subtotal = 0;
     let tax = 0;
 
     for (const { item, quantityToPay } of items) {
-        const itemSubtotal = item.price * quantityToPay;
+        const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, false);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -51,13 +93,8 @@ function calculateSelectedTax(
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount
-        const itemDiscountProportion =
-            orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        tax += itemTaxableAmount * taxRateDecimal;
+        // Calculate tax on discounted subtotal
+        tax += itemSubtotal * taxRateDecimal;
     }
 
     subtotal = Math.round(subtotal * 100) / 100;
@@ -68,20 +105,17 @@ function calculateSelectedTax(
 }
 
 // ============================================================================
-// HELPER: Calculate tax for selected items using cash pricing
+// HELPER: Calculate tax for selected items using cash pricing (HYBRID approach)
 // ============================================================================
 function calculateSelectedCashTax(
     items: { item: CartItem; quantityToPay: number }[],
-    taxRatesMap: Record<string, number>,
-    orderCashSubtotal: number,
-    orderDiscountAmount: number
+    taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
     let subtotal = 0;
     let tax = 0;
 
     for (const { item, quantityToPay } of items) {
-        const itemCashPrice = calculateItemEffectiveCashPrice(item);
-        const itemSubtotal = itemCashPrice * quantityToPay;
+        const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, true);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -92,13 +126,8 @@ function calculateSelectedCashTax(
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount
-        const itemDiscountProportion =
-            orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        tax += itemTaxableAmount * taxRateDecimal;
+        // Calculate tax on discounted subtotal
+        tax += itemSubtotal * taxRateDecimal;
     }
 
     subtotal = Math.round(subtotal * 100) / 100;
@@ -228,6 +257,7 @@ const PayForItemsView: React.FC = () => {
         () => (activeOrderId ? ordersById[activeOrderId] : null),
         [activeOrderId, ordersById]
     );
+    // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder?.items[0]);
 
     const payments = activeOrder?.payments || [];
 
@@ -262,64 +292,22 @@ const PayForItemsView: React.FC = () => {
         );
     }, [activeOrder]);
 
-    // Calculate order subtotals for tax proportions
-    const orderSubtotal = useMemo(() => {
-        if (!activeOrder) return 0;
-        return activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => acc + item.price * item.quantity, 0);
-    }, [activeOrder]);
-
-    const orderCashSubtotal = useMemo(() => {
-        if (!activeOrder) return 0;
-        return activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity, 0);
-    }, [activeOrder]);
-
-    const orderDiscountAmount = useMemo(() => {
-        if (!activeOrder) return 0;
-        const itemDiscounts = activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => {
-                if (item.appliedDiscount) {
-                    return acc + item.originalPrice * item.appliedDiscount.value * item.quantity;
-                }
-                return acc;
-            }, 0);
-        let checkDiscountAmount = 0;
-        if (activeOrder.checkDiscount) {
-            checkDiscountAmount = (orderSubtotal - itemDiscounts) * activeOrder.checkDiscount.value;
-        }
-        return itemDiscounts + checkDiscountAmount;
-    }, [activeOrder, orderSubtotal]);
-
-    // Calculate selected totals
+    // Calculate selected totals using HYBRID approach:
+    // - Items have discount_amount synced from DB
+    // - Uses per-item discount (full qty uses DB value, partial qty calculates proportionally)
     const selectedArray = useMemo(
         () => Array.from(selectedItems.values()),
         [selectedItems]
     );
 
     const selectedCardTotals = useMemo(
-        () =>
-            calculateSelectedTax(
-                selectedArray,
-                taxRatesMap,
-                orderSubtotal,
-                orderDiscountAmount
-            ),
-        [selectedArray, taxRatesMap, orderSubtotal, orderDiscountAmount]
+        () => calculateSelectedTax(selectedArray, taxRatesMap),
+        [selectedArray, taxRatesMap]
     );
 
     const selectedCashTotals = useMemo(
-        () =>
-            calculateSelectedCashTax(
-                selectedArray,
-                taxRatesMap,
-                orderCashSubtotal,
-                orderDiscountAmount
-            ),
-        [selectedArray, taxRatesMap, orderCashSubtotal, orderDiscountAmount]
+        () => calculateSelectedCashTax(selectedArray, taxRatesMap),
+        [selectedArray, taxRatesMap]
     );
 
     const cashSavings = Math.max(0, selectedCardTotals.total - selectedCashTotals.total);

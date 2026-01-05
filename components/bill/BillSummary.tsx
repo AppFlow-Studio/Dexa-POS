@@ -43,6 +43,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
     () => (activeOrderId ? ordersById[activeOrderId] : undefined),
     [activeOrderId, ordersById]
   );
+  // console.log('[activeOrder | BillSummary] activeOrder', activeOrder.items);
   return (
     <View className="flex-1 bg-[#212121]">
       <View className=" px-6 h-full">

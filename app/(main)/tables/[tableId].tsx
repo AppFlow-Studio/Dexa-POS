@@ -136,6 +136,7 @@ const UpdateTableScreen = () => {
   // NO useMemo - calculate fresh every render to avoid caching stale values
   // Priority: backend amount_due > calculated outstanding total > total
   let displayBalanceDue: number;
+  // console.log('[activeOrder] activeOrder', activeOrder);
   if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
     // 1. Use backend's authoritative amount_due if available
     displayBalanceDue = activeOrder.amount_due;
@@ -150,6 +151,7 @@ const UpdateTableScreen = () => {
     // 3. Fall back to full order total for new orders
     displayBalanceDue = storeActiveOrderTotal;
   }
+
 
   // Check if order is fully paid
   const isFullyPaid = useMemo(() => {

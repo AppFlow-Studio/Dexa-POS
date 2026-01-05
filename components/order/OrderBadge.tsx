@@ -18,7 +18,11 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
   onRetrieve,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
-
+  
+  // if( order.display_number === "#0065" ) {
+  //   console.log('[order | OrderBadge] order', order);
+  //   console.log('[order | OrderBadge] order', order.payments?.[0]?.itemsCovered);
+  // }
   // Calculate payment info - prioritize backend values
   const amountDue = order.amount_due ?? order.total_amount ?? 0;
   const amountPaid = order.amount_paid ?? 0;
@@ -38,6 +42,13 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
           bg: "#bae6fd", // Light blue
           border: "#2dd4bf", // Teal border
           text: "#134e4a", // Dark teal
+        };
+      } else if( paidStatus === "Partial" ) {
+        return {
+          dot: "#8b5cf6", // Purple
+          bg: "#f5f3ff", // Light purple
+          border: "#c4b5fd", // Purple border
+          text: "#581c87", // Dark purple
         };
       } else {
         return {
@@ -121,22 +132,22 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
             <View
               className={`px-2 py-1 rounded-md ${order.paid_status === "Paid"
                 ? "bg-green-900/50"
-                : isPartiallyPaid
-                  ? "bg-orange-900/50"
+                : order.paid_status === "Partial" || isPartiallyPaid
+                  ? "bg-purple-900/50"
                   : "bg-red-900/50"
                 }`}
             >
               <Text
                 className={`text-sm font-semibold ${order.paid_status === "Paid"
                   ? "text-green-400"
-                  : isPartiallyPaid
-                    ? "text-orange-400"
+                  : order.paid_status === "Partial" || isPartiallyPaid
+                    ? "text-purple-400"
                     : "text-red-400"
                   }`}
               >
                 {order.paid_status === "Paid"
                   ? "Paid"
-                  : isPartiallyPaid
+                  : order.paid_status === "Partial" || isPartiallyPaid
                     ? "Partial"
                     : order.paid_status}
               </Text>

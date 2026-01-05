@@ -367,6 +367,7 @@ export interface CartItem {
   isDraft?: boolean;
   originalPrice: number;
   price: number; // Final price after size/add-ons
+  unitPrice: number; // Base Price before modifiers and add-ons
   cashPrice: number;
   image?: string; // Image filename is a top-level property
   customizations: {
@@ -401,13 +402,15 @@ export interface CartItem {
   addedFromMenuId?: string | null;
 
   // Pre-calculated (synced from backend or calculated locally)
-  subtotal: number;           // price * quantity
-  cashSubtotal: number;       // cashPrice * quantity
+  subtotal: number;           // price * quantity (or discounted subtotal if discount applied)
+  cashSubtotal: number;       // cashPrice * quantity (or discounted if discount applied)
   taxRate: number;            // Tax rate % captured at add time
   taxAmount: number;          // subtotal * taxRate
   cashTaxAmount: number;      // cashSubtotal * taxRate
 
-
+  // Distributed discount from order-level/check discounts (synced from backend)
+  discount_amount?: number;      // Card pricing discount distributed to this item
+  discount_cash_amount?: number; // Cash pricing discount distributed to this item
 }
 
 export interface OnlineOrder {
@@ -712,7 +715,7 @@ export interface OrderProfile {
   | "delivery";
 
   // Payment status for the order
-  paid_status: "Paid" | "Pending" | "Unpaid";
+  paid_status: "Paid" | "Partial" | "Pending" | "Unpaid";
 
   // The actual items in the order. This is the "cart".
   items: CartItem[];
@@ -749,7 +752,7 @@ export interface OrderProfile {
     last4?: string;
     tip_amount?: number;
     // NEW: Fields for payment tracking and void operations
-    itemsCovered?: string[]; // db_order_item_ids paid by this payment
+    itemsCovered?: { itemId: string; quantity: number }[]; // Items and quantities paid by this payment
     timestamp?: string; // When payment was made (ISO string)
     isVoided?: boolean; // Whether payment has been voided
     voidReason?: string; // Reason for void if voided

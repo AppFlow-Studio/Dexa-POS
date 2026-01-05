@@ -469,20 +469,24 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           console.log(`[OfflineSync:payment] Resolved to: ${resolvedOrderId}`);
         }
 
-        // Resolve item IDs (support per-item/split-by-item payments queued with local IDs)
-        if (paymentParams.p_item_ids && Array.isArray(paymentParams.p_item_ids)) {
-          const resolvedItemIds: string[] = [];
-          for (const rawId of paymentParams.p_item_ids) {
+        // Resolve item allocations (support per-item/split-by-item payments queued with local IDs)
+        if (paymentParams.p_item_allocations && Array.isArray(paymentParams.p_item_allocations)) {
+          const resolvedAllocations: { order_item_id: string; quantity: number; amount?: number }[] = [];
+          for (const alloc of paymentParams.p_item_allocations) {
+            const rawId = alloc.order_item_id;
             // If already a UUID, keep it; otherwise resolve via registry/store
             if (isValidUUID(rawId)) {
-              resolvedItemIds.push(rawId);
+              resolvedAllocations.push(alloc);
               continue;
             }
 
             if (localOrderId) {
               const resolved = resolveItemId(localOrderId, rawId);
               if (resolved) {
-                resolvedItemIds.push(resolved);
+                resolvedAllocations.push({
+                  ...alloc,
+                  order_item_id: resolved,
+                });
               } else {
                 console.log(
                   `[OfflineSync:payment] Item ${rawId} not synced yet, will retry`
@@ -498,7 +502,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           }
 
           // Replace with resolved backend item IDs
-          paymentParams.p_item_ids = resolvedItemIds;
+          paymentParams.p_item_allocations = resolvedAllocations;
         }
 
         // Build terminal response for card payments if we have card data

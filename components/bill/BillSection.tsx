@@ -56,6 +56,7 @@ const BillSection = ({
   const activeOrderOutstandingCash = useOrderStore(
     (state) => state.activeOrderOutstandingCash
   );
+  console.log('[activeOrderOutstandingCash] activeOrderOutstandingCash', activeOrderOutstandingCash);
   const startNewOrder = useOrderStore((state) => state.startNewOrder);
   const sendNewItemsToKitchen = useOrderStore(
     (state) => state.sendNewItemsToKitchen
