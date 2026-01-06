@@ -52,7 +52,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         // Only show "Paid" if order has items AND balance is zero
         const hasItems = (activeOrder?.items?.length ?? 0) > 0;
         const isFullyPaid = hasItems && totalDisplayAmount <= 0;
-
+        // console.log('[totalDisplayAmount] totalDisplayAmount', totalDisplayAmount);
         return (
           <TouchableOpacity
             onPress={onPressTotal}

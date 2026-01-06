@@ -410,7 +410,7 @@ export interface ProcessPaymentV2Response {
   // PAYMENT TYPE FLAGS
   // ===========================
   
-  /** True if this was a per-item payment (p_item_ids was provided) */
+  /** True if this was a per-item payment (p_item_allocations was provided) */
   is_item_payment: boolean;
   
   /** True if this was a split evenly payment (p_split_count was provided) */
@@ -503,11 +503,12 @@ export interface ProcessPaymentV2Params {
   /** Amount tendered by customer - cash only (for change calculation) */
   p_amount_tendered?: number | null;
   
-  /** 
-   * Array of order_item UUIDs to pay for (per-item payment)
-   * If provided, only these items are marked as paid
+  /**
+   * Array of item allocations for per-item payment
+   * Supports partial quantity payment (e.g., 1 of 3 lattes)
+   * Each allocation specifies order_item_id, quantity, and optional amount
    */
-  p_item_ids?: string[] | null;
+  p_item_allocations?: { order_item_id: string; quantity: number; amount?: number }[] | null;
   
   /** Terminal response data for card payments */
   p_terminal_response?: TerminalResponse | null;
@@ -609,13 +610,13 @@ export async function processPaymentV2(
   supabase: SupabaseClient,
   params: ProcessPaymentV2Params
 ): Promise<{ data: ProcessPaymentV2Response | null; error: Error | null }> {
-  const { data, error } = await supabase.rpc('process_payment_v2', {
+  const { data, error } = await supabase.rpc('process_payment_v3', {
     p_order_id: params.p_order_id,
     p_payment_method: params.p_payment_method,
     p_amount: params.p_amount,
     p_tip_amount: params.p_tip_amount ?? 0,
     p_amount_tendered: params.p_amount_tendered ?? null,
-    p_item_ids: params.p_item_ids ?? null,
+    p_item_allocations: params.p_item_allocations ?? null,
     p_terminal_response: params.p_terminal_response ?? null,
     p_terminal_id: params.p_terminal_id ?? null,
     p_device_id: params.p_device_id ?? null,

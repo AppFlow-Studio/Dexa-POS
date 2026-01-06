@@ -1,4 +1,3 @@
-
 DECLARE
     v_location_id uuid;
     v_merchant_id uuid;
@@ -17,8 +16,9 @@ DECLARE
     v_cash_tax_amount numeric;
     
     v_cash_discount_rate numeric := 0.04;
+    v_has_active_discount boolean := false;
 BEGIN
-    -- ============================================
+     -- ============================================
     -- 1. Validate & Get Order Context (with RLS)
     -- ============================================
     -- FOR UPDATE: Acquires exclusive row lock to prevent race conditions
@@ -36,6 +36,7 @@ BEGIN
     IF v_location_id IS NULL THEN
         RAISE EXCEPTION 'Order not found or access denied: %', p_order_id;
     END IF;
+    
     
     -- ============================================
     -- 2. Get Tax Rate
@@ -193,11 +194,34 @@ BEGIN
             COALESCE((mod->>'price_modifier')::numeric, 0) * COALESCE((mod->>'quantity')::integer, 1)
         FROM jsonb_array_elements(p_modifiers) AS mod;
     END IF;
+
+    -- 7. Check if there's an active order discount
+    SELECT EXISTS(
+        SELECT 1 FROM public.order_discounts
+        WHERE order_id = p_order_id
+          AND voided_at IS NULL
+          AND calculated_amount > 0
+    ) INTO v_has_active_discount;
     
+    -- 8. If discount exists, redistribute across all items (including new one)
+    IF v_has_active_discount THEN
+        PERFORM redistribute_order_discount(p_order_id);
+        
+        -- Get the updated values for the new item
+        SELECT subtotal, tax_amount, cash_subtotal, cash_tax_amount
+        INTO v_subtotal, v_tax_amount, v_cash_subtotal, v_cash_tax_amount
+        FROM public.order_items
+        WHERE id = v_item_id;
+    END IF;
+    
+       -- ============================================
+    -- 7. RECALCULATE DISCOUNT (updates order_discounts + all items)
+    -- ============================================
+    PERFORM recalculate_order_discount(p_order_id);
     -- ============================================
     -- 7. Recalculate Order Totals
     -- ============================================
-    PERFORM calculate_order_totals_fast(p_order_id);
+    -- PERFORM calculate_order_totals_fast(p_order_id);
     
     -- ============================================
     -- 8. Return Result

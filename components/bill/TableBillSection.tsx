@@ -77,7 +77,7 @@ const TableBillSection = ({
   return (
     <>
       <View className="max-w-lg  flex-1 flex-col">
-        {showOrderDetails && <OrderDetails />}
+        {/* {showOrderDetails && <OrderDetails />} */}
 
         {/* CourseAccordion will be rendered here later */}
         <CourseAccordion // Rendered CourseAccordion

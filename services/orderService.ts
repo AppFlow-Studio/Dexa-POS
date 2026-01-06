@@ -372,7 +372,7 @@ export class OrderService {
     client: SupabaseClient,
     params: UpdateOrderItemParams
   ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
-    const { data, error } = await client.rpc("update_order_item", params);
+    const { data, error } = await client.rpc("update_order_item_v2", params);
     return { data, error };
   }
 

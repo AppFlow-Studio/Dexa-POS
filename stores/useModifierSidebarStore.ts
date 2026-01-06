@@ -9,6 +9,13 @@ interface ModifierSelection {
   };
 }
 
+// Position data for attached modifier panel
+interface ItemPosition {
+  y: number;
+  height: number;
+  absoluteY?: number; // Absolute Y position on screen
+}
+
 interface ModifierSidebarState {
   isOpen: boolean;
   mode: "add" | "edit" | "view" | "fullscreen";
@@ -18,6 +25,12 @@ interface ModifierSidebarState {
   menuId: string | null; // Menu context for price lookup
 
   // ============================================================
+  // MENU BLOCKING & POSITION - For inline overlay pattern
+  // ============================================================
+  isMenuBlocked: boolean; // Block menu input during modifier editing
+  selectedItemPosition: ItemPosition | null; // Position of selected item in bill
+
+  // ============================================================
   // PRE-COMPUTED DATA - For instant ModifierScreen render
   // ============================================================
   precomputedModifiers: ModifierCategory[] | null;
@@ -25,6 +38,7 @@ interface ModifierSidebarState {
   itemPrice: number;
   itemCashPrice: number; // Cash price for the item in current context
   activeModifierCategory: string | null;
+  precomputedForItemId: string | null; // Track which item precomputed values are for (prevents race conditions)
 
   openToAdd: (
     item: MenuItemType,
@@ -42,58 +56,74 @@ interface ModifierSidebarState {
   ) => void;
   openFullscreenEdit: (item: CartItem, orderId: string | null) => void;
   close: () => void;
+  setSelectedItemPosition: (position: ItemPosition | null) => void;
 }
 
 /**
  * Pre-compute modifier data for instant UI rendering
  * This moves the heavy computation OUT of the render cycle
+ *
+ * OPTIMIZED:
+ * - Uses item.price immediately (no O(n) menu search blocking)
+ * - Menu-context price lookup deferred via queueMicrotask
+ * - Lazy modifier selections (only true values set, component uses ?? false)
  */
 function precomputeModifierData(
   item: MenuItemType,
   categoryId: string | undefined,
   menuId: string | undefined,
-  cartItem: CartItem | null = null
+  cartItem: CartItem | null = null,
+  setFn?: (partial: Partial<ModifierSidebarState>) => void
 ): {
   modifiers: ModifierCategory[];
   initialSelections: ModifierSelection;
   itemPrice: number;
   itemCashPrice: number;
   activeCategory: string | null;
+  forItemId: string;
 } {
-  const { getModifierGroupsByIds, menus } = useMenuStore.getState();
+  const { getModifierGroupsByIds, menusById } = useMenuStore.getState();
 
   // O(1) lookup for modifier groups instead of O(n) .find() calls
   const modifiers = item.modifierGroupIds
     ? getModifierGroupsByIds(item.modifierGroupIds)
     : [];
 
-  // Look up context-specific price from the menu structure if menuId is provided
+  // OPTIMIZED: Use item price immediately (no blocking menu search)
   let itemPrice = item.price;
   let itemCashPrice = item.cashPrice ?? item.price;
 
-  if (menuId) {
-    const menu = menus.find((m) => m.id === menuId);
-    if (menu) {
-      // Search for the item in the menu's nested structure
-      for (const cat of menu.categories) {
-        const menuItem = cat.items?.find((mi) => mi.id === item.id);
-        if (menuItem) {
-          // Use the context-specific price from the menu structure
-          itemPrice = menuItem.price;
-          itemCashPrice = menuItem.cashPrice ?? menuItem.price;
-          break;
+  // OPTIMIZED: Defer menu-context price lookup to background
+  // This prevents blocking the UI while still getting accurate prices
+  if (menuId && setFn) {
+    queueMicrotask(() => {
+      const menu = menusById[menuId];
+      if (menu?.categories) {
+        for (const cat of menu.categories) {
+          const menuItem = cat.items?.find((mi) => mi.id === item.id);
+          if (menuItem) {
+            // Only update if price differs from item default
+            if (menuItem.price !== item.price) {
+              setFn({
+                itemPrice: menuItem.price,
+                itemCashPrice: menuItem.cashPrice ?? menuItem.price,
+              });
+            }
+            break;
+          }
         }
       }
-    }
+    });
   }
 
-  // Pre-compute initial selections
+  // OPTIMIZED: Lazy modifier selections - only set true values
+  // Components use (selection ?? false) pattern for unset options
   const initialSelections: ModifierSelection = {};
   modifiers.forEach((category) => {
     initialSelections[category.id] = {};
 
     if (cartItem) {
-      // For edit mode, restore existing selections from cart item
+      // For edit mode, only restore existing TRUE selections from cart item
       const existingModifier = cartItem.customizations.modifiers?.find(
         (mod) => mod.categoryId === category.id
       );
@@ -103,30 +133,45 @@ function precomputeModifierData(
           initialSelections[category.id][selectedOption.id] = true;
         });
       }
-
-      // Initialize all other options as unselected
-      category.options.forEach((option) => {
-        if (!initialSelections[category.id][option.id]) {
-          initialSelections[category.id][option.id] = false;
-        }
-      });
+      // OPTIMIZATION: Skip setting false values - component uses ?? false
     } else {
-      // For add mode, set default selections for required single-select categories
-      if (category.type === "required" && category.selectionType === "single") {
-        const firstAvailableOption = category.options.find(
-          (option) => option.isAvailable !== false
+      // For add mode, auto-select defaults for required categories
+      if (category.type === "required") {
+        // Priority 1: Find options with isDefault: true
+        const defaultOptions = category.options.filter(
+          (option) => option.isDefault === true && option.isAvailable !== false
         );
-        if (firstAvailableOption) {
-          initialSelections[category.id][firstAvailableOption.id] = true;
+
+        if (defaultOptions.length > 0) {
+          // For single-select, use the first default; for multiple, use all defaults
+          if (category.selectionType === "single") {
+            initialSelections[category.id][defaultOptions[0].id] = true;
+          } else {
+            // Multiple selection - select all defaults
+            defaultOptions.forEach((option) => {
+              initialSelections[category.id][option.id] = true;
+            });
+          }
+        } else {
+          // Priority 2: No defaults set - select first available option with price $0
+          const freeOption = category.options.find(
+            (option) => option.isAvailable !== false && option.price === 0
+          );
+
+          if (freeOption) {
+            initialSelections[category.id][freeOption.id] = true;
+          } else {
+            // Priority 3: No free option - select first available option
+            const firstAvailableOption = category.options.find(
+              (option) => option.isAvailable !== false
+            );
+            if (firstAvailableOption) {
+              initialSelections[category.id][firstAvailableOption.id] = true;
+            }
+          }
         }
       }
-
-      // Initialize all other options as unselected
-      category.options.forEach((option) => {
-        if (!initialSelections[category.id][option.id]) {
-          initialSelections[category.id][option.id] = false;
-        }
-      });
+      // OPTIMIZATION: Skip setting false values - component uses ?? false
     }
   });
 
@@ -139,6 +184,7 @@ function precomputeModifierData(
     itemPrice,
     itemCashPrice,
     activeCategory,
+    forItemId: item.id,
   };
 }
 
@@ -150,12 +196,17 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   categoryId: null,
   menuId: null,
 
+  // Menu blocking & position
+  isMenuBlocked: false,
+  selectedItemPosition: null,
+
   // Pre-computed data starts empty
   precomputedModifiers: null,
   initialSelections: null,
   itemPrice: 0,
   itemCashPrice: 0,
   activeModifierCategory: null,
+  precomputedForItemId: null,
 
   openToAdd: (
     item: MenuItemType,
@@ -164,10 +215,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     menuId?: string
   ) => {
     // Pre-compute BEFORE setting isOpen for instant render
-    const precomputed = precomputeModifierData(item, categoryId, menuId);
+    // Pass set function for deferred price updates
+    const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
 
     set({
       isOpen: true,
+      isMenuBlocked: true, // Block menu immediately
       mode: "add",
       menuItem: item,
       cartItem: null,
@@ -178,6 +231,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       itemPrice: precomputed.itemPrice,
       itemCashPrice: precomputed.itemCashPrice,
       activeModifierCategory: precomputed.activeCategory,
+      precomputedForItemId: precomputed.forItemId,
     });
   },
 
@@ -188,9 +242,11 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
 
     if (menuItem) {
       // Use the cart item's stored menu context for price lookup
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item);
+      // Pass set function for deferred price updates
+      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true,
         mode: "edit",
         menuItem: null,
         cartItem: item,
@@ -201,10 +257,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: precomputed.itemPrice,
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
+        precomputedForItemId: precomputed.forItemId,
       });
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true,
         mode: "edit",
         menuItem: null,
         cartItem: item,
@@ -215,6 +273,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: item.price,
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
+        precomputedForItemId: item.menuItemId,
       });
     }
   },
@@ -226,9 +285,11 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
 
     if (menuItem) {
       // Use the cart item's stored menu context for price lookup
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item);
+      // Pass set function for deferred price updates
+      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu for consistent behavior
         mode: "view",
         menuItem: null,
         cartItem: item,
@@ -239,10 +300,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: precomputed.itemPrice,
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
+        precomputedForItemId: precomputed.forItemId,
       });
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu for consistent behavior
         mode: "view",
         menuItem: null,
         cartItem: item,
@@ -253,6 +316,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: item.price,
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
+        precomputedForItemId: item.menuItemId,
       });
     }
   },
@@ -264,10 +328,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     menuId?: string
   ) => {
     // Pre-compute BEFORE setting isOpen for instant render
-    const precomputed = precomputeModifierData(item, categoryId, menuId);
+    // Pass set function for deferred price updates
+    const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
 
     set({
       isOpen: true,
+      isMenuBlocked: true, // Block menu during fullscreen modifier editing
       mode: "fullscreen",
       menuItem: item,
       cartItem: null,
@@ -278,6 +344,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       itemPrice: precomputed.itemPrice,
       itemCashPrice: precomputed.itemCashPrice,
       activeModifierCategory: precomputed.activeCategory,
+      precomputedForItemId: precomputed.forItemId,
     });
   },
 
@@ -288,9 +355,11 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
 
     if (menuItem) {
       // Use the cart item's stored menu context for price lookup
-      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item);
+      // Pass set function for deferred price updates
+      const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu during fullscreen edit
         mode: "fullscreen",
         menuItem: menuItem,
         cartItem: item,
@@ -301,10 +370,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: precomputed.itemPrice,
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
+        precomputedForItemId: precomputed.forItemId,
       });
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu during fullscreen edit
         mode: "fullscreen",
         menuItem: null,
         cartItem: item,
@@ -315,6 +386,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: item.price,
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
+        precomputedForItemId: item.menuItemId,
       });
     }
   },
@@ -322,6 +394,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   close: () => {
     set({
       isOpen: false,
+      isMenuBlocked: false, // Unblock menu on close
+      selectedItemPosition: null, // Clear position tracking
       mode: "add",
       menuItem: null,
       cartItem: null,
@@ -333,7 +407,12 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       itemPrice: 0,
       itemCashPrice: 0,
       activeModifierCategory: null,
+      precomputedForItemId: null,
     });
+  },
+
+  setSelectedItemPosition: (position: ItemPosition | null) => {
+    set({ selectedItemPosition: position });
   },
 }));
 
@@ -375,9 +454,29 @@ export const selectMenuId = (state: ModifierSidebarState) => state.menuId;
 export const selectActiveModifierCategory = (state: ModifierSidebarState) =>
   state.activeModifierCategory;
 
+/** Selector for precomputed item ID - use to verify data freshness */
+export const selectPrecomputedForItemId = (state: ModifierSidebarState) =>
+  state.precomputedForItemId;
+
 /** Selector for close action - stable reference, no re-renders */
 export const selectClose = (state: ModifierSidebarState) => state.close;
 
 /** Combined selector for fullscreen mode check */
 export const selectIsFullscreen = (state: ModifierSidebarState) =>
   state.isOpen && state.mode === "fullscreen";
+
+// ============================================================================
+// MENU BLOCKING SELECTORS - For inline overlay pattern
+// ============================================================================
+
+/** Selector for menu blocked state - use in MenuSection for blocking overlay */
+export const selectIsMenuBlocked = (state: ModifierSidebarState) =>
+  state.isMenuBlocked;
+
+/** Selector for selected item position - use for attached modifier panel positioning */
+export const selectSelectedItemPosition = (state: ModifierSidebarState) =>
+  state.selectedItemPosition;
+
+/** Selector for setSelectedItemPosition action - stable reference */
+export const selectSetSelectedItemPosition = (state: ModifierSidebarState) =>
+  state.setSelectedItemPosition;

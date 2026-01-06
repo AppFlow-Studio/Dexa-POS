@@ -1,5 +1,5 @@
 import { CartItem } from "@/lib/types";
-import { getItemEffectiveCashSubtotal, getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
+import { calculateItemEffectiveCashPrice, getItemEffectiveCashSubtotal, getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
@@ -22,18 +22,80 @@ import {
   View,
 } from "react-native";
 
+/**
+ * Get discounted values for a split item using the HYBRID approach:
+ * - If split quantity equals original quantity, use the pre-calculated DB values
+ * - If split quantity differs (partial assignment), calculate proportionally
+ *
+ * @param splitItem - The item in the split (may have different quantity than original)
+ * @param originalItem - The original order item (has full quantity and discount_amount)
+ * @param isCash - Whether to use cash pricing
+ */
+function getItemDiscountedValues(
+  splitItem: CartItem,
+  originalItem: CartItem | undefined,
+  isCash: boolean = false
+): { subtotal: number; discountAmount: number } {
+  const splitQuantity = splitItem.quantity;
+  const originalQuantity = originalItem?.quantity ?? splitItem.quantity;
+
+  // Calculate unit price: for cash, use effective cash price (includes modifiers)
+  const unitPrice = isCash ? calculateItemEffectiveCashPrice(splitItem) : splitItem.price;
+
+  // Get order-level discount (from backend sync) - NOT the card/cash price difference
+  // Only use actual discount_amount/discount_cash_amount from order-level discounts
+  const originalDiscount = isCash
+    ? (originalItem?.discount_cash_amount ?? 0)
+    : (originalItem?.discount_amount ?? 0);
+
+  // If split quantity equals original quantity and we have a pre-calculated DB subtotal with discount, use it
+  // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
+  if (splitQuantity === originalQuantity && originalDiscount > 0) {
+    const preCalculatedSubtotal = isCash ? splitItem.cashSubtotal : splitItem.subtotal;
+    if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
+      return {
+        subtotal: preCalculatedSubtotal,
+        discountAmount: originalDiscount,
+      };
+    }
+  }
+
+  // Calculate subtotal dynamically
+  const grossSubtotal = unitPrice * splitQuantity;
+
+  // Apply proportional discount if there's an order-level discount
+  if (originalQuantity > 0 && originalDiscount > 0) {
+    const perUnitDiscount = originalDiscount / originalQuantity;
+    const itemDiscountAmount = Math.round(perUnitDiscount * splitQuantity * 100) / 100;
+    return {
+      subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
+      discountAmount: itemDiscountAmount,
+    };
+  }
+
+  // No order-level discount - just return gross subtotal
+  return {
+    subtotal: Math.round(grossSubtotal * 100) / 100,
+    discountAmount: 0,
+  };
+}
+
 // Helper function to calculate tax for split items using CARD pricing
-// Uses getItemEffectiveSubtotal which handles both backend discount_amount and local appliedDiscount
+// Uses hybrid approach: DB values for full quantities, proportional for partial
 function calculateSplitTax(
   items: CartItem[],
-  taxRatesMap: Record<string, number>
+  taxRatesMap: Record<string, number>,
+  masterItems: CartItem[] // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
 
+  // Build map for fast lookup of original items
+  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+
   for (const item of items) {
-    // Use effective subtotal (post-discount) - handles backend and local discounts
-    const itemSubtotal = getItemEffectiveSubtotal(item);
+    const originalItem = originalItemsMap.get(item.id);
+    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(item, originalItem, false);
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -44,7 +106,7 @@ function calculateSplitTax(
     const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
     const taxRateDecimal = taxRatePercent / 100;
 
-    // Calculate tax on post-discount amount
+    // Calculate tax on discounted subtotal
     tax += itemSubtotal * taxRateDecimal;
   }
 
@@ -57,17 +119,21 @@ function calculateSplitTax(
 }
 
 // Helper function to calculate tax for split items using CASH pricing
-// Uses getItemEffectiveCashSubtotal which handles both backend discount_amount and local appliedDiscount
+// Uses hybrid approach: DB values for full quantities, proportional for partial
 function calculateSplitCashTax(
   items: CartItem[],
-  taxRatesMap: Record<string, number>
+  taxRatesMap: Record<string, number>,
+  masterItems: CartItem[] // Original order items to look up original quantities
 ): { subtotal: number; tax: number; total: number } {
   let subtotal = 0;
   let tax = 0;
 
+  // Build map for fast lookup of original items
+  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+
   for (const item of items) {
-    // Use effective cash subtotal (post-discount) - handles backend and local discounts
-    const itemSubtotal = getItemEffectiveCashSubtotal(item);
+    const originalItem = originalItemsMap.get(item.id);
+    const { subtotal: itemSubtotal } = getItemDiscountedValues(item, originalItem, true);
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -78,7 +144,7 @@ function calculateSplitCashTax(
     const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
     const taxRateDecimal = taxRatePercent / 100;
 
-    // Calculate tax on post-discount amount
+    // Calculate tax on discounted subtotal
     tax += itemSubtotal * taxRateDecimal;
   }
 
@@ -92,7 +158,8 @@ function calculateSplitCashTax(
 
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const orders = useOrderStore((state) => state.orders);
+  const ordersById = useOrderStore((state) => state.ordersById);
+  const ordersByDbId = useOrderStore((state) => state.ordersByDbId);
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const {
@@ -130,8 +197,8 @@ const SplitByItemView = () => {
   }, [splits, activeSplitId]);
 
   const activeOrder = useMemo(
-    () => orders.find((o) => o.id === activeOrderId),
-    [orders, activeOrderId]
+    () => activeOrderId ? ordersById[activeOrderId] : null,
+    [ordersById, activeOrderId]
   );
 
   // Filter out voided items - they should not be included in splits
@@ -139,6 +206,7 @@ const SplitByItemView = () => {
     () => (activeOrder?.items || []).filter((item) => !item.is_voided),
     [activeOrder?.items]
   );
+  // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder);
 
   // --- LOGIC: Calculate Item Distribution ---
   const itemData = useMemo(() => {
@@ -168,15 +236,23 @@ const SplitByItemView = () => {
   const activeSplit = splits.find((s) => s.id === activeSplitId);
 
   // Calculate split totals with tax (CARD pricing)
-  // Uses getItemEffectiveSubtotal which handles discounts from backend or local state
+  // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitTotals = activeSplit
-    ? calculateSplitTax(activeSplit.items, taxRatesMap)
+    ? calculateSplitTax(
+      activeSplit.items,
+      taxRatesMap,
+      masterItems // Pass master items to look up original quantities/discounts
+    )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate split totals with tax (CASH pricing)
-  // Uses getItemEffectiveCashSubtotal which handles discounts from backend or local state
+  // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitCashTotals = activeSplit
-    ? calculateSplitCashTax(activeSplit.items, taxRatesMap)
+    ? calculateSplitCashTax(
+      activeSplit.items,
+      taxRatesMap,
+      masterItems // Pass master items to look up original quantities/discounts
+    )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate savings when paying cash vs card

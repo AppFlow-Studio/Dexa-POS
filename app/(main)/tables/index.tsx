@@ -90,6 +90,14 @@ const TablesScreen = () => {
       case "in use":
       case "check_presented":
       case "paid":
+        // OPTIMIZED: Prefetch order before navigation for faster table view load
+        // This sets the active order immediately so the table view doesn't need to look it up
+        if (table.session?.order_id) {
+          const existingOrder = ordersById[table.session.order_id] || getOrderByDbId(table.session.order_id);
+          if (existingOrder) {
+            setActiveOrder(existingOrder.id);
+          }
+        }
         router.push(`/tables/${table.id}`);
         break;
       case "cleaning":

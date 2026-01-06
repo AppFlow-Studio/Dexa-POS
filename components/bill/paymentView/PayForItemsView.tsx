@@ -28,19 +28,72 @@ import {
 } from "react-native";
 
 // ============================================================================
-// HELPER: Calculate tax for selected items using card pricing
+// HELPER: Get discounted values using HYBRID approach
+// - If quantityToPay equals item.quantity, use pre-calculated DB values
+// - If quantityToPay differs (partial), calculate proportionally
+// ============================================================================
+function getSelectedItemDiscountedValues(
+    item: CartItem,
+    quantityToPay: number,
+    isCash: boolean = false
+): { subtotal: number; discountAmount: number } {
+    console.log("item", item);
+    const originalQuantity = item.quantity;
+
+    // Calculate unit price: for cash, use effective cash price (includes modifiers)
+    const unitPrice = isCash ? calculateItemEffectiveCashPrice(item) : item.price;
+    console.log("unitPrice", unitPrice);
+
+    // Get order-level discount (from backend sync) - NOT the card/cash price difference
+    // Only use actual discount_amount/discount_cash_amount from order-level discounts
+    const originalDiscount = isCash
+        ? (item.discount_cash_amount ?? 0)
+        : (item.discount_amount ?? 0);
+
+    // If paying for full quantity and we have a pre-calculated DB subtotal with discount, use it
+    // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
+    if (quantityToPay === originalQuantity && originalDiscount > 0) {
+        const preCalculatedSubtotal = isCash ? item.cashSubtotal : item.subtotal;
+        if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
+            return {
+                subtotal: preCalculatedSubtotal,
+                discountAmount: originalDiscount,
+            };
+        }
+    }
+
+    // Calculate subtotal dynamically
+    const grossSubtotal = unitPrice * quantityToPay;
+
+    // Apply proportional discount if there's an order-level discount
+    if (originalQuantity > 0 && originalDiscount > 0) {
+        const perUnitDiscount = originalDiscount / originalQuantity;
+        const itemDiscountAmount = Math.round(perUnitDiscount * quantityToPay * 100) / 100;
+        return {
+            subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
+            discountAmount: itemDiscountAmount,
+        };
+    }
+
+    // No order-level discount - just return gross subtotal
+    return {
+        subtotal: Math.round(grossSubtotal * 100) / 100,
+        discountAmount: 0,
+    };
+}
+
+// ============================================================================
+// HELPER: Calculate tax for selected items using card pricing (HYBRID approach)
 // ============================================================================
 function calculateSelectedTax(
     items: { item: CartItem; quantityToPay: number }[],
-    taxRatesMap: Record<string, number>,
-    orderSubtotal: number,
-    orderDiscountAmount: number
+    taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
     let subtotal = 0;
     let tax = 0;
 
     for (const { item, quantityToPay } of items) {
-        const itemSubtotal = item.price * quantityToPay;
+        const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, false);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -51,13 +104,8 @@ function calculateSelectedTax(
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount
-        const itemDiscountProportion =
-            orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        tax += itemTaxableAmount * taxRateDecimal;
+        // Calculate tax on discounted subtotal
+        tax += itemSubtotal * taxRateDecimal;
     }
 
     subtotal = Math.round(subtotal * 100) / 100;
@@ -68,20 +116,17 @@ function calculateSelectedTax(
 }
 
 // ============================================================================
-// HELPER: Calculate tax for selected items using cash pricing
+// HELPER: Calculate tax for selected items using cash pricing (HYBRID approach)
 // ============================================================================
 function calculateSelectedCashTax(
     items: { item: CartItem; quantityToPay: number }[],
-    taxRatesMap: Record<string, number>,
-    orderCashSubtotal: number,
-    orderDiscountAmount: number
+    taxRatesMap: Record<string, number>
 ): { subtotal: number; tax: number; total: number } {
     let subtotal = 0;
     let tax = 0;
 
     for (const { item, quantityToPay } of items) {
-        const itemCashPrice = calculateItemEffectiveCashPrice(item);
-        const itemSubtotal = itemCashPrice * quantityToPay;
+        const { subtotal: itemSubtotal } = getSelectedItemDiscountedValues(item, quantityToPay, true);
         subtotal += itemSubtotal;
 
         // Skip tax-exempt items
@@ -92,13 +137,8 @@ function calculateSelectedCashTax(
         const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
         const taxRateDecimal = taxRatePercent / 100;
 
-        // Apply proportional discount
-        const itemDiscountProportion =
-            orderCashSubtotal > 0 ? itemSubtotal / orderCashSubtotal : 0;
-        const itemDiscountAmt = orderDiscountAmount * itemDiscountProportion;
-        const itemTaxableAmount = Math.max(0, itemSubtotal - itemDiscountAmt);
-
-        tax += itemTaxableAmount * taxRateDecimal;
+        // Calculate tax on discounted subtotal
+        tax += itemSubtotal * taxRateDecimal;
     }
 
     subtotal = Math.round(subtotal * 100) / 100;
@@ -212,7 +252,7 @@ const PayForItemsView: React.FC = () => {
     const voidPayment = useOrderStore((state) => state.voidPayment);
     const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
-    const { setView, close, handlePaymentCompletion, addSplit, splits, resetSplits } =
+    const { setView, close, addSplit, resetSplits } =
         usePaymentStore();
 
     // --- LOCAL STATE ---
@@ -228,6 +268,7 @@ const PayForItemsView: React.FC = () => {
         () => (activeOrderId ? ordersById[activeOrderId] : null),
         [activeOrderId, ordersById]
     );
+    // console.log('[activeOrder | SplitByItemView] activeOrder', activeOrder?.items[0]);
 
     const payments = activeOrder?.payments || [];
 
@@ -262,64 +303,22 @@ const PayForItemsView: React.FC = () => {
         );
     }, [activeOrder]);
 
-    // Calculate order subtotals for tax proportions
-    const orderSubtotal = useMemo(() => {
-        if (!activeOrder) return 0;
-        return activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => acc + item.price * item.quantity, 0);
-    }, [activeOrder]);
-
-    const orderCashSubtotal = useMemo(() => {
-        if (!activeOrder) return 0;
-        return activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity, 0);
-    }, [activeOrder]);
-
-    const orderDiscountAmount = useMemo(() => {
-        if (!activeOrder) return 0;
-        const itemDiscounts = activeOrder.items
-            .filter((item) => !item.is_voided)
-            .reduce((acc, item) => {
-                if (item.appliedDiscount) {
-                    return acc + item.originalPrice * item.appliedDiscount.value * item.quantity;
-                }
-                return acc;
-            }, 0);
-        let checkDiscountAmount = 0;
-        if (activeOrder.checkDiscount) {
-            checkDiscountAmount = (orderSubtotal - itemDiscounts) * activeOrder.checkDiscount.value;
-        }
-        return itemDiscounts + checkDiscountAmount;
-    }, [activeOrder, orderSubtotal]);
-
-    // Calculate selected totals
+    // Calculate selected totals using HYBRID approach:
+    // - Items have discount_amount synced from DB
+    // - Uses per-item discount (full qty uses DB value, partial qty calculates proportionally)
     const selectedArray = useMemo(
         () => Array.from(selectedItems.values()),
         [selectedItems]
     );
 
     const selectedCardTotals = useMemo(
-        () =>
-            calculateSelectedTax(
-                selectedArray,
-                taxRatesMap,
-                orderSubtotal,
-                orderDiscountAmount
-            ),
-        [selectedArray, taxRatesMap, orderSubtotal, orderDiscountAmount]
+        () => calculateSelectedTax(selectedArray, taxRatesMap),
+        [selectedArray, taxRatesMap]
     );
 
     const selectedCashTotals = useMemo(
-        () =>
-            calculateSelectedCashTax(
-                selectedArray,
-                taxRatesMap,
-                orderCashSubtotal,
-                orderDiscountAmount
-            ),
-        [selectedArray, taxRatesMap, orderCashSubtotal, orderDiscountAmount]
+        () => calculateSelectedCashTax(selectedArray, taxRatesMap),
+        [selectedArray, taxRatesMap]
     );
 
     const cashSavings = Math.max(0, selectedCardTotals.total - selectedCashTotals.total);
@@ -479,6 +478,8 @@ const PayForItemsView: React.FC = () => {
         );
     }
 
+
+    console.log("selectedItems", selectedCashTotals);
     return (
         <View className="flex-1 bg-[#212121]">
             {/* Header */}
@@ -548,7 +549,7 @@ const PayForItemsView: React.FC = () => {
                                 const selected = selectedItems.get(item.id);
                                 const selectedQty = selected?.quantityToPay || 0;
                                 const isSelected = selectedQty > 0;
-
+                                // console.log('[item | PayForItemsView] item', item);
                                 return (
                                     <View
                                         key={item.id}

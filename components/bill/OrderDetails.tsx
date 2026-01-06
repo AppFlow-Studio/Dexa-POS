@@ -4,7 +4,7 @@ import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { Edit3, Plus, User } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView, // <--- Imported
   Platform, // <--- Imported
@@ -26,34 +26,39 @@ import { Label } from "../ui/label";
 // Define a consistent type for our dropdown options
 type SelectOption = { label: string; value: string };
 
-const OrderDetails: React.FC = () => {
-  const { tables } = useFloorPlanStore();
+const OrderDetailsComponent: React.FC = () => {
   const { show } = useToast();
-  // O(1) lookups with individual selectors - only re-renders when specific values change
-  const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const ordersById = useOrderStore((state) => state.ordersById);
-  const updateActiveOrderDetails = useOrderStore(
-    (state) => state.updateActiveOrderDetails
-  );
-  const updateOrderStatus = useOrderStore((state) => state.updateOrderStatus);
-  const assignActiveOrderToTable = useOrderStore(
-    (state) => state.assignActiveOrderToTable
-  );
-  const assignOrderToTable = useOrderStore((state) => state.assignOrderToTable);
-  const addItemToActiveOrder = useOrderStore(
-    (state) => state.addItemToActiveOrder
-  );
-  const setPendingTableSelection = useOrderStore(
-    (state) => state.setPendingTableSelection
-  );
+
+  // CRITICAL FIX: Only subscribe to primitives, not objects
+  // Subscribe to individual fields instead of entire order object
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const customerName = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.customer_name || null;
+  });
+  const customerPhone = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.customer_phone || null;
+  });
+  const orderType = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_type || "takeout";
+  });
+  const serviceLocationId = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.service_location_id || null;
+  });
+  const orderStatus = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_status || "draft";
+  });
+
+  // Actions - stable function references
+  const updateActiveOrderDetails = useOrderStore((s) => s.updateActiveOrderDetails);
+  const addItemToActiveOrder = useOrderStore((s) => s.addItemToActiveOrder);
+
   const { openDrawer } = useOrderTypeDrawerStore();
   const { openSheet } = useCustomerSheetStore();
-  // O(1) lookup instead of O(n) find
-  const activeOrder = useMemo(
-    () => (activeOrderId ? ordersById[activeOrderId] : undefined),
-    [activeOrderId, ordersById]
-  );
-  const currentOrderType = activeOrder?.order_type || "takeout";
 
   // The state now reflects the data from the global store
   const [selectedTable, setSelectedTable] = useState<SelectOption | undefined>(
@@ -69,67 +74,78 @@ const OrderDetails: React.FC = () => {
   const [openItemName, setOpenItemName] = useState("");
   const [openItemPrice, setOpenItemPrice] = useState("");
 
-  // Order naming state
-  const [customerName, setCustomerName] = useState("");
+  // Local state for editing customer name
+  const [localCustomerName, setLocalCustomerName] = useState("");
   const [isCustomerNameModalVisible, setIsCustomerNameModalVisible] =
     useState(false);
   const [tempCustomerName, setTempCustomerName] = useState("");
 
-  const allTables = useMemo(() => tables, [tables]);
-
+  // FIXED: Don't compute available tables at all - not used in this component
+  // Only compute when actually needed for display
   const availableTableOptions = useMemo(() => {
-    return allTables
+    const tablesById = useFloorPlanStore.getState().tablesById;
+    return Object.values(tablesById)
       .filter(
         (t) =>
           t.session?.status === "available" ||
-          t.id === activeOrder?.service_location_id
+          t.id === serviceLocationId
       )
       .map((t) => ({ label: t.name, value: t.id }));
-  }, [allTables, activeOrder]);
+  }, [serviceLocationId]);
+
+  // Track the last processed service location to avoid redundant updates
+  const lastProcessedServiceLocationRef = useRef<string | null>(null);
+
+  // FIXED: Only run when service location ID actually changes
+  useEffect(() => {
+    // Skip if we've already processed this service location
+    if (lastProcessedServiceLocationRef.current === serviceLocationId) {
+      return;
+    }
+
+    // Only update if conditions are met and value is different
+    if (serviceLocationId && orderStatus === "preparing") {
+      // Use O(1) lookup directly from store
+      const table = useFloorPlanStore.getState().getTableById(serviceLocationId);
+      if (table) {
+        setSelectedTable({ label: table.name, value: table.id });
+        lastProcessedServiceLocationRef.current = serviceLocationId;
+      }
+    } else if (!serviceLocationId) {
+      // Reset tracking when no service location
+      lastProcessedServiceLocationRef.current = null;
+    }
+  }, [serviceLocationId, orderStatus]);
+
+  // FIXED: Separate effect for pending table selection - also use ref to avoid loops
+  const lastProcessedPendingRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Initialize selected table from active order if it exists (only for already assigned tables)
-    if (
-      activeOrder?.service_location_id &&
-      activeOrder.order_status === "preparing" &&
-      !selectedTable
-    ) {
-      const tableOption = availableTableOptions.find(
-        (option) => option.value === activeOrder.service_location_id
-      );
-      if (tableOption) {
-        setSelectedTable(tableOption);
-      }
+    const pendingValue = pendingTableSelection?.value;
+
+    // Skip if we've already processed this pending value
+    if (!pendingValue || lastProcessedPendingRef.current === pendingValue) {
+      return;
     }
 
-    // Initialize pending table selection from store
-    if (pendingTableSelection && !selectedTable) {
-      const tableOption = availableTableOptions.find(
-        (option) => option.value === pendingTableSelection.value
-      );
-      if (tableOption) {
-        setSelectedTable(tableOption);
-      }
+    const table = useFloorPlanStore.getState().getTableById(pendingValue);
+    if (table) {
+      setSelectedTable({ label: table.name, value: table.id });
+      lastProcessedPendingRef.current = pendingValue;
     }
-  }, [
-    activeOrder,
-    availableTableOptions,
-    selectedTable,
-    pendingTableSelection,
-  ]);
+  }, [pendingTableSelection?.value]);
 
   useEffect(() => {
     setSelectedTable(undefined);
+    // Reset refs when order changes
+    lastProcessedServiceLocationRef.current = null;
+    lastProcessedPendingRef.current = null;
   }, [activeOrderId]);
 
-  // Initialize customer name from active order
+  // Initialize local customer name from store customer name
   useEffect(() => {
-    if (activeOrder?.customer_name) {
-      setCustomerName(activeOrder.customer_name);
-    } else {
-      setCustomerName("");
-    }
-  }, [activeOrderId, activeOrder?.customer_name]);
+    setLocalCustomerName(customerName || "");
+  }, [activeOrderId, customerName]);
 
   const handleAddOpenItem = () => {
     if (!openItemName.trim()) {
@@ -151,7 +167,8 @@ const OrderDetails: React.FC = () => {
       return;
     }
 
-    // Check if the active order is closed - O(1) lookup
+    // Check if the active order is closed - O(1) lookup from store directly
+    const ordersById = useOrderStore.getState().ordersById;
     const currentOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     if (currentOrder?.order_status === "completed") {
       show({
@@ -202,14 +219,14 @@ const OrderDetails: React.FC = () => {
 
   // Customer name modal handlers
   const handleAddCustomerName = () => {
-    setTempCustomerName(customerName);
+    setTempCustomerName(localCustomerName);
     setIsCustomerNameModalVisible(true);
   };
 
   const handleSaveCustomerName = () => {
     if (activeOrderId) {
       const trimmedName = tempCustomerName.trim();
-      setCustomerName(trimmedName);
+      setLocalCustomerName(trimmedName);
       updateActiveOrderDetails({ customer_name: trimmedName });
       setIsCustomerNameModalVisible(false);
       show({
@@ -223,7 +240,7 @@ const OrderDetails: React.FC = () => {
   };
 
   const handleCancelCustomerName = () => {
-    setTempCustomerName(customerName);
+    setTempCustomerName(localCustomerName);
     setIsCustomerNameModalVisible(false);
   };
 
@@ -245,7 +262,7 @@ const OrderDetails: React.FC = () => {
             onPress={openSheet}
             className="flex-row w-full items-center p-2 border-2 border-dashed border-gray-700 rounded-lg bg-[#303030] h-12"
           >
-            {activeOrder?.customer_name ? (
+            {customerName ? (
               <>
                 <User color="#A5A5B5" size={24} />
                 <View className="ml-3 flex-1">
@@ -253,11 +270,11 @@ const OrderDetails: React.FC = () => {
                     className="text-xl font-semibold text-white overflow-ellipsis"
                     numberOfLines={1}
                   >
-                    {activeOrder.customer_name}
+                    {customerName}
                   </Text>
-                  {activeOrder.customer_phone && (
+                  {customerPhone && (
                     <Text className="text-sm text-gray-400">
-                      {activeOrder.customer_phone}
+                      {customerPhone}
                     </Text>
                   )}
                 </View>
@@ -281,7 +298,7 @@ const OrderDetails: React.FC = () => {
             onPress={openDrawer}
           >
             <Text className="text-xl font-semibold text-white">
-              {currentOrderType}
+              {orderType}
             </Text>
             <Text className="text-gray-400">▼</Text>
           </TouchableOpacity>
@@ -300,7 +317,7 @@ const OrderDetails: React.FC = () => {
             {/* Dark Header */}
             <View className="p-6 rounded-lg ">
               <DialogTitle className="text-[#F1F1F1] text-3xl font-bold text-center">
-                {customerName ? "Edit Customer Name" : "Add Customer Name"}
+                {localCustomerName ? "Edit Customer Name" : "Add Customer Name"}
               </DialogTitle>
             </View>
 
@@ -342,7 +359,7 @@ const OrderDetails: React.FC = () => {
                   className="flex-1 py-4 bg-white rounded-lg  border border-blue-400"
                 >
                   <Text className="font-bold text-2xl text-gray-800 text-center">
-                    {customerName ? "Update" : "Add"}
+                    {localCustomerName ? "Update" : "Add"}
                   </Text>
                 </TouchableOpacity>
               </DialogFooter>
@@ -353,5 +370,8 @@ const OrderDetails: React.FC = () => {
     </View>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const OrderDetails = React.memo(OrderDetailsComponent);
 
 export default OrderDetails;

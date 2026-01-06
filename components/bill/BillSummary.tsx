@@ -13,7 +13,7 @@ interface BillSummaryProps {
   sentCourses?: Record<number, boolean>;
 }
 
-const BillSummary: React.FC<BillSummaryProps> = ({
+const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   cart,
   expandedItemId,
   onToggleExpand,
@@ -43,6 +43,7 @@ const BillSummary: React.FC<BillSummaryProps> = ({
     () => (activeOrderId ? ordersById[activeOrderId] : undefined),
     [activeOrderId, ordersById]
   );
+  // console.log('[activeOrder | BillSummary] activeOrder', activeOrder.items);
   return (
     <View className="flex-1 bg-[#212121]">
       <View className=" px-6 h-full">
@@ -115,5 +116,17 @@ const BillSummary: React.FC<BillSummaryProps> = ({
     </View>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const BillSummary = React.memo(BillSummaryComponent, (prev, next) => {
+  // Return true if props are equal (skip re-render)
+  return (
+    prev.cart === next.cart &&
+    prev.expandedItemId === next.expandedItemId &&
+    prev.currentCourse === next.currentCourse &&
+    prev.itemCourseMap === next.itemCourseMap &&
+    prev.sentCourses === next.sentCourses
+  );
+});
 
 export default BillSummary;

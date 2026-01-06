@@ -10,7 +10,11 @@ import { MENU_IMAGE_MAP } from "@/lib/mockData";
 import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-// useModifierSidebarStore no longer needed - overlay handles modifier screen
+import {
+  selectClose,
+  selectIsMenuBlocked,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useOrderTypeDrawerStore } from "@/stores/useOrderTypeDrawerStore";
 import { usePinOverrideStore } from "@/stores/usePinOverrideStore";
@@ -31,11 +35,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { FlatList, Text, TouchableOpacity, View } from "react-native";
+import { FlatList, Pressable, Text, TouchableOpacity, View } from "react-native";
 import { ScrollView } from "react-native-gesture-handler";
 import MenuControls from "./MenuControls";
 import MenuItem from "./MenuItem";
-// ModifierScreen is now rendered via ModifierScreenOverlay in parent components
+import ModifierScreenOverlay from "./ModifierScreenOverlay";
 import OpenItemAdder from "./OpenItemAdder";
 import OrderTypeDrawer from "./OrderTypeDrawer";
 import PreviousOrdersSection from "./PreviousOrdersSection";
@@ -46,11 +50,15 @@ interface MenuSectionProps {
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
 import { useSearchStore } from "@/stores/searchStore";
 import { StyleSheet } from "react-native";
-import ModifierScreenOverlay from "./ModifierScreenOverlay";
 
 const menuSectionStyles = StyleSheet.create({
   spacer: {
     width: "23%",
+  },
+  blockingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    zIndex: 100,
   },
 });
 
@@ -91,6 +99,12 @@ const getImageSource = (item: MenuItemType) => {
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
 const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
+  // ============================================================
+  // MENU BLOCKING - For inline overlay pattern
+  // ============================================================
+  const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
+  const closeModifier = useModifierSidebarStore(selectClose);
+
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
   const isMenuAvailableNow = useMenuStore((s) => s.isMenuAvailableNow);
@@ -99,9 +113,13 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const categories = useMenuStore((s) => s.categories);
   const { requestPinOverride } = usePinOverrideStore();
 
-  // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
+  // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const ordersById = useOrderStore((s) => s.ordersById);
+  // Only subscribe to the order_type, not the entire ordersById object
+  const currentOrderType = useOrderStore((s) => {
+    const order = s.activeOrderId ? s.ordersById[s.activeOrderId] : null;
+    return order?.order_type || "Takeaway";
+  });
   const updateActiveOrderDetails = useOrderStore(
     (s) => s.updateActiveOrderDetails
   );
@@ -207,9 +225,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   );
   const openSearch = useSearchStore((state) => state.openSearch);
 
-  // OPTIMIZED: O(1) lookup via ordersById instead of O(n) orders.find()
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
-  const currentOrderType = activeOrder?.order_type || "Takeaway";
+  // currentOrderType now comes from the optimized selector above
   const handleOrderTypeSelect = (orderType: string) => {
     if (activeOrderId) {
       updateActiveOrderDetails({ order_type: orderType as any });
@@ -641,6 +657,17 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             </View>
           ) : null}
         </View>
+
+        {/* ============================================================
+            BLOCKING OVERLAY - Prevents touch during modifier editing
+            Native-level blocking via Pressable for 60fps performance
+            ============================================================ */}
+        {isMenuBlocked && (
+          <Pressable
+            style={menuSectionStyles.blockingOverlay}
+            onPress={closeModifier}
+          />
+        )}
       </View>
 
       <OrderTypeDrawer
@@ -649,7 +676,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         onOrderTypeSelect={handleOrderTypeSelect}
         currentOrderType={currentOrderType}
       />
-      {/* ModifierScreen overlay - renders on top when opened, eliminates MenuSection re-renders */}
+      {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
       <ModifierScreenOverlay />
     </>
   );

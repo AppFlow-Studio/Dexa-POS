@@ -160,7 +160,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
   open: (method, tableId, initialView) => {
-    get().paymentBottomSheetRef?.current?.expand();
+    // OPTIMIZED: Update state BEFORE animation for instant UI response
+    // This ensures the payment view is ready before the sheet animates open
     set({
       isOpen: true,
       paymentMethod: method,
@@ -176,6 +177,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
+    // Expand sheet AFTER state update
+    get().paymentBottomSheetRef?.current?.expand();
   },
 
   close: () => {
@@ -184,7 +187,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     set({ isOpen: false });
   },
 
-  setView: (view) =>
+  setView: (view: PaymentView) =>
     set((state) => ({
       view,
       progress: {
@@ -218,10 +221,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // Called when success view is dismissed by dragging down
   handleSuccessClose: () => {
     const { activeTableId } = get();
-    const { activeOrderId, orders, startNewOrder, setActiveOrder } =
+    const { activeOrderId, ordersById, startNewOrder, setActiveOrder } =
       useOrderStore.getState();
 
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
     // For dine-in orders on a table, just close (table keeps the paid order)
     if (activeOrder?.order_type === "Dine In" && activeTableId) {
@@ -399,8 +403,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const { activeOrderId, orders } = useOrderStore.getState();
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
       require("@/stores/useStoreSettingsStore").useStoreSettingsStore.getState()
         .taxRatesMap;
@@ -550,18 +555,30 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const currentSplit = splits.find((s) => s.id === activeSplitId);
       if (!currentSplit) return;
 
-      // For split-by-item and pay-for-items payments, extract db_order_item_ids from the split items
-      // This allows the backend to track which specific items were paid
-      let itemIds: string[] | undefined;
+      // For split-by-item and pay-for-items payments, build item allocations with quantities
+      // This allows the backend to track which specific items and quantities were paid
+      let itemAllocations: { itemId: string; quantity: number; amount?: number }[] | undefined;
       const isPerItemPayment = splitSourceView === "split-by-item" || splitSourceView === "pay-for-items";
       if (isPerItemPayment && currentSplit.items.length > 0) {
-        itemIds = currentSplit.items
-          .map((item) => item.db_order_item_id)
-          .filter((id): id is string => !!id);
+        itemAllocations = currentSplit.items
+          .filter((item) => !!item.db_order_item_id)
+          .map((item) => {
+            // Calculate per-item amount: unit price * quantity
+            // Use cash price when paying with cash, otherwise card price
+            const unitPrice = isCashPayment
+              ? (item.cashPrice ?? item.price ?? item.unitPrice ?? 0)
+              : (item.price ?? item.unitPrice ?? 0);
+            const amount = Math.round(unitPrice * item.quantity * 100) / 100;
+            return {
+              itemId: item.db_order_item_id!,
+              quantity: item.quantity, // Use the quantity from the split (may be partial)
+              amount: amount,
+            };
+          });
 
-        // Only use itemIds if we actually have valid IDs
-        if (itemIds.length === 0) {
-          itemIds = undefined;
+        // Only use itemAllocations if we actually have valid allocations
+        if (itemAllocations.length === 0) {
+          itemAllocations = undefined;
         }
       }
 
@@ -572,7 +589,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         ? currentSplit.cashAmount
         : currentSplit.amount;
 
-      
+
       // Include splitLabel and cash pricing flag for backend
       const detailsWithSplitLabel = {
         ...transactionDetails,
@@ -582,16 +599,16 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       // Await payment and check for success
       // Only pass splitCount/splitPortionIndex for EVEN split payments
-      // For per-item payments (split-by-item, pay-for-items), we pass itemIds instead
+      // For per-item payments (split-by-item, pay-for-items), we pass itemAllocations instead
       const paymentSuccess = await addPaymentToOrder({
         orderId: activeOrderId,
         amount: paymentAmount,
         method: method as any, // method comes from handlePaymentCompletion ("Cash" or "Card")
         tipAmount,
         transactionDetails: detailsWithSplitLabel,
-        itemIds, // Pass item IDs for per-item payment tracking
+        itemAllocations, // Pass item allocations with quantities for per-item payment tracking
         // Only pass split count/index for even splits - NOT for per-item payments
-        // Per-item payments use itemIds to track what was paid
+        // Per-item payments use itemAllocations to track what was paid
         ...(isPerItemPayment ? {} : {
           splitCount: splits.length,
           splitPortionIndex: splits.findIndex((s) => s.id === activeSplitId) + 1,
@@ -715,7 +732,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       toastService.show({
         title: "Retrying Payment",
         message: "The payment will be processed when connection is restored.",
-        type: "info",
+        type: "success",
       });
     } catch (error: any) {
       toastService.show({

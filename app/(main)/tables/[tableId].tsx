@@ -1,3 +1,4 @@
+import AttachedModifierPanel from "@/components/bill/AttachedModifierPanel";
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
@@ -31,6 +32,7 @@ const UpdateTableScreen = () => {
   const isNavigatingAwayRef = useRef(false);
   const hasInitializedRef = useRef(false);
   const wasPaymentSheetOpenRef = useRef(false);
+  const isAutoSessionRunningRef = useRef(false); // Prevent re-entry during async operations
 
   const router = useRouter();
   const { tableId } = useLocalSearchParams();
@@ -67,7 +69,7 @@ const UpdateTableScreen = () => {
   } = useFloorPlanStore();
 
   const {
-    orders,
+    // OPTIMIZED: Removed deprecated `orders` array - use ordersById selectors instead
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
@@ -76,6 +78,7 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
+    syncOrderFromDatabase
   } = useOrderStore();
 
   const {
@@ -136,6 +139,7 @@ const UpdateTableScreen = () => {
   // NO useMemo - calculate fresh every render to avoid caching stale values
   // Priority: backend amount_due > calculated outstanding total > total
   let displayBalanceDue: number;
+  // console.log('[activeOrder] activeOrder', activeOrder);
   if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
     // 1. Use backend's authoritative amount_due if available
     displayBalanceDue = activeOrder.amount_due;
@@ -150,6 +154,7 @@ const UpdateTableScreen = () => {
     // 3. Fall back to full order total for new orders
     displayBalanceDue = storeActiveOrderTotal;
   }
+
 
   // Check if order is fully paid
   const isFullyPaid = useMemo(() => {
@@ -219,282 +224,37 @@ const UpdateTableScreen = () => {
     };
   }, [currentTableId]);
 
-  // --- Soft reload after payment completes ---
-  // When payment sheet closes after being open, refresh the page to get updated data
-  // --- Full Reload on Payment Sheet Close ---
-  // --- Hard Reload on Payment Sheet Close ---
+  // --- Sync order from database after payment sheet closes ---
   useEffect(() => {
     // Detect when payment sheet closes (was open -> now closed)
     if (wasPaymentSheetOpenRef.current && !isPaymentSheetOpen) {
-      console.log("[Payment] Sheet closed. Executing HARD reset...");
+      console.log("[Payment] Sheet closed. Syncing order from database...");
 
-      const performHardReset = async () => {
-        if (!currentTableId) return;
-
-        showLoading("Updating payment...");
-
-        // 1. CRITICAL: Clear the active order immediately.
-        // This simulates "leaving the page" effectively wiping the UI state.
-        setActiveOrder(null);
-
-        try {
-          // 2. Refresh Floor Plan to ensure we have the correct session ID
-          await loadFloorPlanStatus();
-
-          // 3. Grab the fresh session ID from the store
-          const freshTables = useFloorPlanStore.getState().tables;
-          const freshTable = freshTables.find((t) => t.id === currentTableId);
-          const sessionId = freshTable?.session?.order_id;
-
-          if (sessionId) {
-            const supabase = getOrderStoreSupabaseClient();
-            if (supabase) {
-              // 4. Force fetch the order from the database
-              const { data: fetchedOrder, error } =
-                await OrderService.fetchOrderById(supabase, sessionId);
-
-              if (fetchedOrder && !error) {
-                // 5. Create a brand new OrderProfile object with a NEW ID
-                // The 'Date.now()' in the ID ensures React treats this as a completely new object
-                const newLocalId = `order_reload_${Date.now()}`;
-
-                const updatedOrderProfile: OrderProfile = {
-                  id: newLocalId,
-                  db_order_id: fetchedOrder.id,
-                  display_number: (fetchedOrder as any).display_number,
-                  order_number: (fetchedOrder as any).order_number,
-                  service_location_id: currentTableId,
-                  order_status: (fetchedOrder.status as any) || "preparing",
-                  check_status:
-                    fetchedOrder.status === "completed" ? "Closed" : "Opened",
-                  paid_status:
-                    (fetchedOrder.payment_status as string) === "paid"
-                      ? ("Paid" as const)
-                      : ((fetchedOrder as any).amount_paid > 0 ? ("Pending" as const) : ("Unpaid" as const)),
-                  order_type: "Dine In",
-                  items:
-                    (fetchedOrder as any).order_items?.map((item: any) => ({
-                      id: `item_${Date.now()}_${Math.random()}`, // New item IDs too
-                      isDraft: false,
-                      menuItemId: item.menu_item_id,
-                      name: item.item_name,
-                      price: item.unit_price,
-                      cashPrice: item.cash_price || item.cash_unit_price || item.unit_price,
-                      originalPrice: item.unit_price,
-                      quantity: item.quantity,
-                      paidQuantity: item.paid_quantity || 0, // Include paid quantity from backend
-                      db_order_item_id: item.id,
-                      courseNumber: item.course_number || 1, // Include course number from backend
-                      item_status: item.status || "ordered",
-                      kitchen_status: item.status || "ordered",
-                      is_voided: item.is_voided || false,
-                      // Pre-calculated values from backend
-                      subtotal: item.subtotal || item.unit_price * item.quantity,
-                      cashSubtotal: item.cash_subtotal || (item.cash_price || item.unit_price) * item.quantity,
-                      taxRate: item.tax_rate || 0,
-                      taxAmount: item.tax_amount || 0,
-                      cashTaxAmount: item.cash_tax_amount || 0,
-                      // Discount amounts from backend (for split payment calculations)
-                      discount_amount: item.discount_amount || 0,
-                      cash_discount_amount: item.discount_cash_amount || 0,
-                      customizations: {
-                        notes: item.special_instructions,
-                        modifiers: [],
-                      },
-                    })) || [],
-                  payments: [], // Payments are tracked in backend, local array reset
-                  opened_at: fetchedOrder.created_at,
-                  // Include payment-related fields from backend
-                  amount_due: (fetchedOrder as any).amount_due,
-                  cash_amount_due: (fetchedOrder as any).cash_amount_due,
-                  amount_paid: (fetchedOrder as any).amount_paid,
-                  total_amount: (fetchedOrder as any).total_amount,
-                  total_tax: (fetchedOrder as any).tax_amount,
-                  total_discount: (fetchedOrder as any).discount_amount,
-                };
-
-                // 6. Inject into store with updated outstanding totals
-                useOrderStore.setState((state) => ({
-                  ordersById: {
-                    ...state.ordersById,
-                    [updatedOrderProfile.id]: updatedOrderProfile,
-                  },
-                  // Clean up old ID from array and add new one
-                  orderIds: [...state.orderIds, updatedOrderProfile.id],
-                  // Update outstanding totals from backend's authoritative values
-                  activeOrderOutstandingTotal: (fetchedOrder as any).amount_due ?? state.activeOrderOutstandingTotal,
-                  activeOrderOutstandingCash: (fetchedOrder as any).cash_amount_due ?? (fetchedOrder as any).amount_due ?? state.activeOrderOutstandingCash,
-                  activeOrderTotal: (fetchedOrder as any).total_amount ?? state.activeOrderTotal,
-                }));
-
-                // 7. Set the NEW order as active.
-                // Because we set it to null earlier, this triggers a full "mount" effect for the UI.
-                setActiveOrder(updatedOrderProfile.id);
-              }
-            }
-          }
-        } catch (error) {
-          console.error("[Payment] Hard reset failed:", error);
-        } finally {
-          hideLoading();
-        }
-      };
-
-      // Run the async function
-      performHardReset();
+      // Add delay to allow backend to process payment before syncing
+      // This prevents race condition where stale amount_due overwrites local calculations
+      const orderId = activeOrder?.id;
+      if (orderId) {
+        setTimeout(() => {
+          syncOrderFromDatabase(orderId);
+        }, 500);
+      }
     }
 
     // Update ref
     wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
-  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus]);
-  // // --- Auto-Session & Order Sync Logic ---
-  // useEffect(() => {
-  //   loadFloorPlanStatus();
-  //   const handleAutoCreateSession = async () => {
-  //     console.log("handleAutoCreateSession");
-  //     console.log("currentTableId", currentTableId);
-  //     console.log("table", table);
-  //     console.log("tableStatus", tableStatus);
-  //     console.log("existingOrderForTable", existingOrderForTable);
+  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus, activeOrder?.id]);
 
-  //     console.log(
-  //       "existingOrderForTable",
-  //       existingOrderForTable ? existingOrderForTable.id : "null"
-  //     );
-
-  //     if (!currentTableId || !table) return;
-
-  //     // Case 1: Session exists, but local order sync might be missing activeOrderId
-  //     if (table.session?.order_id) {
-  //       // If we found the order locally, good. If not, we might need to fetch it (future/real sync).
-  //       // Check both local ID and db_order_id because session usually has the UUID
-  //       const foundOrder = orders.find(
-  //         (o) =>
-  //           o.id === table.session!.order_id ||
-  //           o.db_order_id === table.session!.order_id
-  //       );
-  //       if (foundOrder) {
-  //         if (activeOrderId !== foundOrder.id) {
-  //           console.log(
-  //             "Found existing local order for session. Setting active.",
-  //             foundOrder.id
-  //           );
-  //           setActiveOrder(foundOrder.id);
-  //         }
-  //       } else {
-  //         // Don't fetch order if table is being cleared/cleaned
-  //         if (tableStatus === "cleaning" || tableStatus === "available") {
-  //           console.log("Skipping order fetch for cleared/available table");
-  //           return;
-  //         }
-
-  //         console.log(
-  //           "Fetching missing order from backend:",
-  //           table.session.order_id
-  //         );
-
-  //         showLoading("Restoring table session...");
-
-  //         const supabase = getOrderStoreSupabaseClient();
-  //         if (!supabase) {
-  //           hideLoading();
-  //         }
-  //         if (supabase) {
-  //           const { data: fetchedOrder, error } =
-  //             await OrderService.fetchOrderById(
-  //               supabase,
-  //               table.session.order_id
-  //             );
-
-  //           hideLoading(); // Hide immediately after fetch
-
-  //           if (fetchedOrder && !error) {
-  //             console.log("Fetched order from backend:", fetchedOrder.id);
-  //             // Transform to local OrderProfile
-  //             const newOrderProfile: OrderProfile = {
-  //               id: `order_${Date.now()}`, // Local ID
-  //               db_order_id: fetchedOrder.id,
-  //               service_location_id: currentTableId,
-  //               order_status: (fetchedOrder.status as any) || "preparing",
-  //               check_status:
-  //                 fetchedOrder.status === "completed" ? "Closed" : "Opened",
-  //               paid_status:
-  //                 (fetchedOrder.payment_status as string) === "paid" // Cast to string to avoid overlap error with strict Enum
-  //                   ? ("Paid" as const)
-  //                   : ("Unpaid" as const),
-  //               order_type: "Dine In",
-  //               items:
-  //                 (fetchedOrder as any).order_items?.map((item: any) => ({
-  //                   id: `item_${Date.now()}_${Math.random()}`, // New local ID
-  //                   isDraft: false,
-  //                   menuItemId: item.menu_item_id,
-  //                   name: item.item_name,
-  //                   price: item.unit_price,
-  //                   originalPrice: item.unit_price,
-  //                   quantity: item.quantity,
-  //                   db_order_item_id: item.id,
-  //                   item_status: item.status || "ordered",
-  //                   kitchen_status: item.status || "ordered",
-  //                   customizations: {
-  //                     notes: item.special_instructions,
-  //                     modifiers: [], // TODO: Map modifiers if needed for display
-  //                   },
-  //                 })) || [],
-  //               payments: [], // TODO: Fetch payments if needed
-  //               opened_at: fetchedOrder.created_at,
-  //             };
-
-  //             // Inject into store
-  //             useOrderStore.setState((state) => ({
-  //               ordersById: {
-  //                 ...state.ordersById,
-  //                 [newOrderProfile.id]: newOrderProfile,
-  //               },
-  //               orderIds: [...state.orderIds, newOrderProfile.id],
-  //             }));
-  //             setActiveOrder(newOrderProfile.id);
-  //           } else {
-  //             console.error("Failed to fetch order:", error);
-  //           }
-  //         }
-  //       }
-  //       return;
-  //     }
-
-  //     // Case 2: No Session, and No Active Order for this table.
-  //     // The user expects the "Order Started" state just by navigating here.
-  //     // So we Auto-Seat / Create Session.
-  //     // FIX: Ignored existingOrderForTable if table.session is null, because backend is source of truth.
-  //     if (!table.session && tableStatus === "available") {
-  //       console.log("Auto-creating session for table", currentTableId);
-  //       showLoading("Creating session...");
-  //       try {
-  //         // Default party size 1, no name. Just to get the ID.
-  //         const { sessionId, orderId } = await useFloorPlanStore
-  //           .getState()
-  //           .seatGuests({
-  //             tableIds: [currentTableId],
-  //             partySize: 1,
-  //             createOrder: true,
-  //           });
-
-  //         console.log("Auto-created session:", sessionId, "Order:", orderId);
-  //         // Force active order to the new one, overriding any stale local state
-  //         setActiveOrder(orderId || null);
-  //       } catch (err) {
-  //         console.error("Failed to auto-seat guests:", err);
-  //       } finally {
-  //         hideLoading();
-  //       }
-  //     }
-  //   };
-
-  //   handleAutoCreateSession();
-  // }, [currentTableId, tableStatus, table?.session?.order_id]);
+  // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
     // Skip if we're navigating away
     if (isNavigatingAwayRef.current) {
       console.log("[AutoSession] Skipping - navigating away");
+      return;
+    }
+
+    // Guard against re-entry while async operation is in progress
+    if (isAutoSessionRunningRef.current) {
+      console.log("[AutoSession] Skipping - already running");
       return;
     }
 
@@ -505,11 +265,22 @@ const UpdateTableScreen = () => {
         return;
       }
 
-      // CRITICAL: Wait for floor plan status to load BEFORE checking table state
-      // This prevents race condition when navigating from waitlist (session already exists on backend)
-      await loadFloorPlanStatus();
+      // Set running flag to prevent re-entry
+      isAutoSessionRunningRef.current = true;
 
-      // Re-fetch table from store after status is loaded (to get updated session data)
+      try {
+        // OPTIMIZED: Check if we already have session data before fetching
+        // This prevents unnecessary network call when data is already fresh (e.g., after prefetch)
+        const currentTable = getTableById(currentTableId);
+        const hasExistingSession = currentTable?.session?.status && currentTable.session.status !== "available";
+
+        if (!hasExistingSession) {
+          // Only load floor plan status if we don't have session data
+          // This is critical for preventing race condition when navigating from waitlist
+          await loadFloorPlanStatus();
+        }
+
+      // Re-fetch table from store after status check (to get updated session data)
       const updatedTables = useFloorPlanStore.getState().tables;
       const updatedTable = updatedTables.find((t) => t.id === currentTableId);
       const updatedTableStatus = updatedTable?.session?.status || "available";
@@ -524,7 +295,9 @@ const UpdateTableScreen = () => {
 
       // Case 1: Session exists with an order
       if (updatedTable.session?.order_id) {
-        const foundOrder = orders.find(
+        // Use getState() for fresh data instead of stale orders array
+        const currentOrders = Object.values(useOrderStore.getState().ordersById);
+        const foundOrder = currentOrders.find(
           (o) =>
             o.id === updatedTable.session!.order_id ||
             o.db_order_id === updatedTable.session!.order_id
@@ -591,35 +364,36 @@ const UpdateTableScreen = () => {
                     : ("Unpaid" as const),
                 order_type: "Dine In",
                 items:
-                  (fetchedOrder as any).order_items?.map((item: any) => ({
-                    id: `item_${Date.now()}_${Math.random()}`, // New local ID
-                    isDraft: false,
-                    menuItemId: item.menu_item_id,
-                    name: item.item_name,
-                    price: item.unit_price,
-                    cashPrice: item.cash_price || item.cash_unit_price || item.unit_price,
-                    originalPrice: item.unit_price,
-                    quantity: item.quantity,
-                    paidQuantity: item.paid_quantity || 0,
-                    db_order_item_id: item.id,
-                    courseNumber: item.course_number || 1, // Include course number from backend
-                    item_status: item.status || "ordered",
-                    kitchen_status: item.status || "ordered",
-                    is_voided: item.is_voided || false,
-                    // Pre-calculated values from backend
-                    subtotal: item.subtotal || item.unit_price * item.quantity,
-                    cashSubtotal: item.cash_subtotal || (item.cash_price || item.unit_price) * item.quantity,
-                    taxRate: item.tax_rate || 0,
-                    taxAmount: item.tax_amount || 0,
-                    cashTaxAmount: item.cash_tax_amount || 0,
-                    // Discount amounts from backend (for split payment calculations)
-                    discount_amount: item.discount_amount || 0,
-                    cash_discount_amount: item.discount_cash_amount || 0,
-                    customizations: {
-                      notes: item.special_instructions,
-                      modifiers: [],
-                    },
-                  })) || [],
+                  (fetchedOrder as any).order_items?.map((item: any) => {
+                    // Determine proper item status - default to "preparing" for items that can be marked ready
+                    // Only use "ordered" if explicitly set from backend, otherwise "preparing"
+                    const itemStatus = item.status === "ready" || item.status === "served"
+                      ? item.status
+                      : item.status === "ordered"
+                        ? "preparing" // Upgrade "ordered" to "preparing" so items can be marked ready
+                        : "preparing"; // Default to preparing for null/undefined
+
+                    return {
+                      id: `item_${Date.now()}_${Math.random()}`, // New local ID
+                      isDraft: false,
+                      menuItemId: item.menu_item_id,
+                      name: item.item_name,
+                      price: item.unit_price,
+                      cashPrice: item.cash_price,
+                      originalPrice: item.unit_price,
+                      quantity: item.quantity,
+                      paidQuantity: item.paid_quantity || 0,
+                      db_order_item_id: item.id,
+                      courseNumber: item.course_number || 1, // Include course number from backend
+                      item_status: itemStatus,
+                      kitchen_status: itemStatus,
+                      is_voided: item.is_voided || false,
+                      customizations: {
+                        notes: item.special_instructions,
+                        modifiers: [],
+                      },
+                    };
+                  }) || [],
                 payments: [],
                 opened_at: fetchedOrder.created_at,
                 // Include payment-related fields
@@ -668,7 +442,9 @@ const UpdateTableScreen = () => {
 
         try {
           // For fallback cases (direct URL navigation), try to use existing local order's guest count
-          const existingLocalOrder = orders.find(
+          // Use getState() for fresh data instead of stale orders array
+          const currentOrders = Object.values(useOrderStore.getState().ordersById);
+          const existingLocalOrder = currentOrders.find(
             (o) => o.service_location_id === currentTableId
           );
           const partySize = existingLocalOrder?.guest_count || 1;
@@ -697,6 +473,10 @@ const UpdateTableScreen = () => {
         } finally {
           hideLoading();
         }
+      }
+      } finally {
+        // Reset running flag when async operation completes
+        isAutoSessionRunningRef.current = false;
       }
     };
 
@@ -795,6 +575,9 @@ const UpdateTableScreen = () => {
   const coursing = coursingStore;
   const prevItemIdsRef = useRef<string[]>([]);
 
+  // Track when coursing data has been loaded from server
+  const [coursingInitialized, setCoursingInitialized] = useState(false);
+
   // Use stable item count and IDs to prevent infinite loops
   const itemCount = activeOrder?.items?.length ?? 0;
   const itemIds = useMemo(
@@ -803,10 +586,36 @@ const UpdateTableScreen = () => {
   );
   const orderId = activeOrder?.id;
 
+  // Initialize coursing and load from server
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId) {
+      setCoursingInitialized(false);
+      return;
+    }
+
     // Pass db_order_id for backend RPC calls (use UUID, not local ID)
     coursing.initializeForOrder(orderId, activeOrder?.db_order_id);
+
+    // Wait for server data to load before marking as initialized
+    // This ensures dbIdToCourseMap is populated before sync effect runs
+    coursing.loadFromServer(orderId)
+      .then(() => {
+        setCoursingInitialized(true);
+      })
+      .catch((error) => {
+        console.error("[Coursing] Failed to load from server:", error);
+        // Still mark as initialized so UI doesn't block forever
+        setCoursingInitialized(true);
+      });
+
+    return () => {
+      setCoursingInitialized(false);
+    };
+  }, [orderId, activeOrder?.db_order_id]);
+
+  // Assign new items to working course
+  useEffect(() => {
+    if (!orderId || !coursingInitialized) return;
 
     const currentIds = itemIds.split(",").filter(Boolean);
     const prevIds = prevItemIdsRef.current;
@@ -832,7 +641,7 @@ const UpdateTableScreen = () => {
       });
     }
     prevItemIdsRef.current = currentIds;
-  }, [orderId, itemIds, coursing, activeOrder?.db_order_id]);
+  }, [orderId, itemIds, coursing, coursingInitialized, activeOrder?.items]);
 
   // Ref to track which DB items have been synced to coursing backend
   const syncedDbItemsRef = useRef<Set<string>>(new Set());
@@ -848,7 +657,7 @@ const UpdateTableScreen = () => {
   );
 
   useEffect(() => {
-    if (!orderId || !activeOrder?.items) return;
+    if (!orderId || !activeOrder?.items || !coursingInitialized) return;
 
     activeOrder.items.forEach((item) => {
       // If item has a DB ID and hasn't been synced yet
@@ -883,20 +692,20 @@ const UpdateTableScreen = () => {
         // If the course is already fired (from backend), don't attempt to re-sync
         const courseStatus = state?.courses?.[course]?.status;
         if (courseStatus && courseStatus !== "open") {
-          // Course is already fired - just update local map without RPC call
-          coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id);
+          // Course is already fired - update local map only, skip backend RPC
+          coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id, true);
           syncedDbItemsRef.current.add(item.db_order_item_id);
           return;
         }
 
         // Sync item course with DB ID (will RPC only if course is open)
-        coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id);
+        coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id, false);
 
         // Mark as synced
         syncedDbItemsRef.current.add(item.db_order_item_id);
       }
     });
-  }, [orderId, dbItemIdsHash, coursing]); // activeOrder.items is covered by dbItemIdsHash change
+  }, [orderId, dbItemIdsHash, coursing, coursingInitialized]); // activeOrder.items is covered by dbItemIdsHash change
 
   const finalizeCurrentCourse = () => {
     if (!activeOrder) return;
@@ -1009,22 +818,6 @@ const UpdateTableScreen = () => {
     router.back();
   };
 
-  // const confirmVoid = async () => {
-  //   if (!activeOrder) return;
-  //   updateOrderStatus(activeOrder.id, "void");
-  //   if (table?.session?.id) {
-  //     await updateSessionStatus(table.session.id, "cleaning");
-  //   }
-
-  //   setVoidConfirmOpen(false);
-  //   show({
-  //     title: "Check Voided",
-  //     message: "The order has been successfully voided.",
-  //     type: "success",
-  //   });
-  //   router.back();
-  // };
-
   const confirmVoid = async () => {
     if (!activeOrder) return;
 
@@ -1084,40 +877,6 @@ const UpdateTableScreen = () => {
     }
   };
 
-  // const handleClearTable = async () => {
-  //   if (!activeOrderId || !activeOrder) return;
-
-  //   const allItemsReady = activeOrder.items.every(
-  //     (item) =>
-  //       (item.item_status || "preparing") === "ready" ||
-  //       item.item_status === "served"
-  //   );
-
-  //   if (!allItemsReady) {
-  //     show({
-  //       title: "Items Not Ready",
-  //       message:
-  //         "Cannot clear the table as some items are still being prepared.",
-  //       type: "warning",
-  //     });
-  //     return;
-  //   }
-
-  //   if (table?.session?.id) {
-  //     await updateSessionStatus(table.session.id, "cleaning");
-  //   }
-
-  //   archiveOrder(activeOrderId);
-  //   setActiveOrder(null); // Explicitly clear active order to prevent zombie state
-
-  //   router.back();
-  //   show({
-  //     title: "Table Cleared",
-  //     message: `Table marked for cleaning.`,
-  //     type: "success",
-  //   });
-  // };
-
   // Extracted clearing logic for reuse
   const doClearTable = async () => {
     if (!activeOrderId) return;
@@ -1176,6 +935,27 @@ const UpdateTableScreen = () => {
     return false;
   };
 
+  // Memoized sentCourses to prevent recreation on every render
+  const sentCourses = useMemo(() => {
+    const courseData = coursing.getForOrder(activeOrder?.id || "");
+    const sentMap: Record<number, boolean> = {};
+    if (courseData?.courses) {
+      Object.entries(courseData.courses).forEach(([num, info]) => {
+        sentMap[Number(num)] = info.status !== "open";
+      });
+    }
+    return sentMap;
+  }, [activeOrder?.id, coursingStore.byOrderId[activeOrder?.id || ""]?.courses]);
+
+  // Memoized items for selected course to prevent recreation on every render
+  const itemsInSelectedCourse = useMemo(() => {
+    if (!activeOrder || selectedCourseIdForTracker === null) return [];
+    const courseMap = coursing.getForOrder(activeOrder.id)?.itemCourseMap;
+    return activeOrder.items.filter(
+      (item) => (courseMap?.[item.id] ?? 1) === selectedCourseIdForTracker
+    );
+  }, [activeOrder?.items, activeOrder?.id, selectedCourseIdForTracker, coursingStore.byOrderId[activeOrder?.id || ""]?.itemCourseMap]);
+
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center bg-[#212121]">
@@ -1191,6 +971,9 @@ const UpdateTableScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
+      {/* AttachedModifierPanel - Renders over menu area for inline editing */}
+      <AttachedModifierPanel />
+
       {isOvertime && (
         <View className="p-2 bg-yellow-500 items-center">
           <Text className="text-base font-bold text-yellow-900">
@@ -1210,17 +993,7 @@ const UpdateTableScreen = () => {
           itemCourseMap={
             coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap
           }
-          sentCourses={(() => {
-            // Convert courses to sentCourses format for backward compatibility
-            const courseData = coursing.getForOrder(activeOrder?.id || "");
-            const sentMap: Record<number, boolean> = {};
-            if (courseData?.courses) {
-              Object.entries(courseData.courses).forEach(([num, info]) => {
-                sentMap[Number(num)] = info.status !== "open";
-              });
-            }
-            return sentMap;
-          })()}
+          sentCourses={sentCourses}
           currentCourse={currentCourse}
           onSelectCourse={(courseId: number | null) => {
             setSelectedCourseIdForTracker(courseId);
@@ -1283,14 +1056,7 @@ const UpdateTableScreen = () => {
       {selectedCourseIdForTracker !== null && (
         <ItemProgressTracker
           selectedCourse={selectedCourseIdForTracker}
-          itemsInSelectedCourse={
-            activeOrder?.items.filter(
-              (item) =>
-                (coursing.getForOrder(activeOrder?.id || "")?.itemCourseMap?.[
-                  item.id
-                ] ?? 1) === selectedCourseIdForTracker
-            ) || []
-          }
+          itemsInSelectedCourse={itemsInSelectedCourse}
           isModifierSidebarOpen={isModifierSidebarOpen}
           onMarkAllReady={handleMarkAllReadyForCourse}
           isCourseSent={coursing.isCourseSent(
@@ -1559,3 +1325,5 @@ const UpdateTableScreen = () => {
 };
 
 export default UpdateTableScreen;
+
+
