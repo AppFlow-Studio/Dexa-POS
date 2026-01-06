@@ -1,3 +1,4 @@
+import AttachedModifierPanel from "@/components/bill/AttachedModifierPanel";
 import BillSection from "@/components/bill/BillSection";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import MenuSection from "@/components/menu/MenuSection";
@@ -169,6 +170,9 @@ const OrderProcessing = () => {
 
   return (
     <View className="flex-1 flex-col bg-[#212121]">
+      {/* AttachedModifierPanel - Renders over menu area for inline editing */}
+      <AttachedModifierPanel />
+
       <View className="flex-1 flex-row">
         <BillSection
           moreOptionsSheetRef={

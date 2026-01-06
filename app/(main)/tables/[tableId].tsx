@@ -1,3 +1,4 @@
+import AttachedModifierPanel from "@/components/bill/AttachedModifierPanel";
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
@@ -970,6 +971,9 @@ const UpdateTableScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
+      {/* AttachedModifierPanel - Renders over menu area for inline editing */}
+      <AttachedModifierPanel />
+
       {isOvertime && (
         <View className="p-2 bg-yellow-500 items-center">
           <Text className="text-base font-bold text-yellow-900">

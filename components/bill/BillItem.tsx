@@ -1,8 +1,11 @@
 import { CartItem } from "@/lib/types";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import {
+  selectSetSelectedItemPosition,
+  useModifierSidebarStore,
+} from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { AlertCircle, Trash2 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -25,6 +28,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
   const removeItemFromActiveOrder = useOrderStore((s) => s.removeItemFromActiveOrder);
   const openToView = useModifierSidebarStore((s) => s.openToView);
   const openFullscreenEdit = useModifierSidebarStore((s) => s.openFullscreenEdit);
+  const setSelectedItemPosition = useModifierSidebarStore(selectSetSelectedItemPosition);
+
+  // Ref for position tracking (attached modifier panel positioning)
+  const itemRef = useRef<View>(null);
+
   const translateX = useSharedValue(0);
   const [showVoidDialog, setShowVoidDialog] = useState(false);
 
@@ -99,8 +107,25 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
     translateX.value = withTiming(0);
   };
 
+  // Capture item position for attached modifier panel positioning
+  const captureItemPosition = useCallback(() => {
+    if (itemRef.current) {
+      itemRef.current.measureInWindow((x, y, width, height) => {
+        setSelectedItemPosition({
+          y,
+          height,
+          absoluteY: y, // Absolute Y position on screen
+        });
+      });
+    }
+  }, [setSelectedItemPosition]);
+
   const handleNotesPress = (e: any) => {
     e.stopPropagation();
+
+    // Capture position before opening modifier for attached panel positioning
+    captureItemPosition();
+
     if (isEditable) {
       openFullscreenEdit(item, activeOrderId);
     } else {
@@ -119,6 +144,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
 
   return (
     <View
+      ref={itemRef}
       className={`rounded-xl overflow-hidden border ${
         isVoided
           ? "bg-[#2a2020] border-red-900/50 opacity-60"

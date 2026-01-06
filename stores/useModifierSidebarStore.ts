@@ -9,6 +9,13 @@ interface ModifierSelection {
   };
 }
 
+// Position data for attached modifier panel
+interface ItemPosition {
+  y: number;
+  height: number;
+  absoluteY?: number; // Absolute Y position on screen
+}
+
 interface ModifierSidebarState {
   isOpen: boolean;
   mode: "add" | "edit" | "view" | "fullscreen";
@@ -16,6 +23,12 @@ interface ModifierSidebarState {
   cartItem: CartItem | null;
   categoryId: string | null;
   menuId: string | null; // Menu context for price lookup
+
+  // ============================================================
+  // MENU BLOCKING & POSITION - For inline overlay pattern
+  // ============================================================
+  isMenuBlocked: boolean; // Block menu input during modifier editing
+  selectedItemPosition: ItemPosition | null; // Position of selected item in bill
 
   // ============================================================
   // PRE-COMPUTED DATA - For instant ModifierScreen render
@@ -43,6 +56,7 @@ interface ModifierSidebarState {
   ) => void;
   openFullscreenEdit: (item: CartItem, orderId: string | null) => void;
   close: () => void;
+  setSelectedItemPosition: (position: ItemPosition | null) => void;
 }
 
 /**
@@ -182,6 +196,10 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   categoryId: null,
   menuId: null,
 
+  // Menu blocking & position
+  isMenuBlocked: false,
+  selectedItemPosition: null,
+
   // Pre-computed data starts empty
   precomputedModifiers: null,
   initialSelections: null,
@@ -202,6 +220,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
 
     set({
       isOpen: true,
+      isMenuBlocked: true, // Block menu immediately
       mode: "add",
       menuItem: item,
       cartItem: null,
@@ -227,6 +246,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true,
         mode: "edit",
         menuItem: null,
         cartItem: item,
@@ -242,6 +262,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true,
         mode: "edit",
         menuItem: null,
         cartItem: item,
@@ -252,7 +273,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemPrice: item.price,
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
-        precomputedForItemId: item.menuItemId, // Use menuItemId for cart items
+        precomputedForItemId: item.menuItemId,
       });
     }
   },
@@ -268,6 +289,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu for consistent behavior
         mode: "view",
         menuItem: null,
         cartItem: item,
@@ -283,6 +305,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu for consistent behavior
         mode: "view",
         menuItem: null,
         cartItem: item,
@@ -310,6 +333,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
 
     set({
       isOpen: true,
+      isMenuBlocked: true, // Block menu during fullscreen modifier editing
       mode: "fullscreen",
       menuItem: item,
       cartItem: null,
@@ -335,6 +359,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       const precomputed = precomputeModifierData(menuItem, item.addedFromCategoryId || undefined, item.addedFromMenuId || undefined, item, set);
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu during fullscreen edit
         mode: "fullscreen",
         menuItem: menuItem,
         cartItem: item,
@@ -350,6 +375,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     } else {
       set({
         isOpen: true,
+        isMenuBlocked: true, // Block menu during fullscreen edit
         mode: "fullscreen",
         menuItem: null,
         cartItem: item,
@@ -368,6 +394,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   close: () => {
     set({
       isOpen: false,
+      isMenuBlocked: false, // Unblock menu on close
+      selectedItemPosition: null, // Clear position tracking
       mode: "add",
       menuItem: null,
       cartItem: null,
@@ -381,6 +409,10 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       activeModifierCategory: null,
       precomputedForItemId: null,
     });
+  },
+
+  setSelectedItemPosition: (position: ItemPosition | null) => {
+    set({ selectedItemPosition: position });
   },
 }));
 
@@ -432,3 +464,19 @@ export const selectClose = (state: ModifierSidebarState) => state.close;
 /** Combined selector for fullscreen mode check */
 export const selectIsFullscreen = (state: ModifierSidebarState) =>
   state.isOpen && state.mode === "fullscreen";
+
+// ============================================================================
+// MENU BLOCKING SELECTORS - For inline overlay pattern
+// ============================================================================
+
+/** Selector for menu blocked state - use in MenuSection for blocking overlay */
+export const selectIsMenuBlocked = (state: ModifierSidebarState) =>
+  state.isMenuBlocked;
+
+/** Selector for selected item position - use for attached modifier panel positioning */
+export const selectSelectedItemPosition = (state: ModifierSidebarState) =>
+  state.selectedItemPosition;
+
+/** Selector for setSelectedItemPosition action - stable reference */
+export const selectSetSelectedItemPosition = (state: ModifierSidebarState) =>
+  state.setSelectedItemPosition;
