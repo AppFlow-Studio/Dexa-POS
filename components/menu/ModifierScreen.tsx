@@ -27,6 +27,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   useTransition,
 } from "react";
 import {
@@ -40,6 +41,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import ModifierScreenSkeleton from "./ModifierScreenSkeleton";
 interface ModifierSelection {
   [categoryId: string]: {
     [optionId: string]: boolean;
@@ -256,6 +258,22 @@ const ModifierScreen = () => {
   const precomputedCashPrice = useModifierSidebarStore(selectItemCashPrice);
   const precomputedActiveCategory = useModifierSidebarStore(selectActiveModifierCategory);
   const precomputedForItemId = useModifierSidebarStore(selectPrecomputedForItemId);
+
+  // ============================================================================
+  // TWO-STAGE HYDRATION - Skeleton first, then rich content
+  // Shows skeleton UI instantly (<16ms) while heavy content hydrates
+  // ============================================================================
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && !isHydrated) {
+      // Defer hydration to next frame for instant skeleton display
+      requestAnimationFrame(() => setIsHydrated(true));
+    }
+    if (!isOpen && isHydrated) {
+      setIsHydrated(false);
+    }
+  }, [isOpen, isHydrated]);
 
   // ============================================================================
   // OPTIMIZED: Use getState() directly instead of subscriptions
@@ -833,7 +851,8 @@ const ModifierScreen = () => {
 
     // Staleness guard: Get safe cash price directly if precomputed data is stale
     const storeState = useModifierSidebarStore.getState();
-    const baseItemId = baseItem.id || (item?.menuItemId);
+    // For MenuItemType, use .id; for CartItem, use .menuItemId
+    const baseItemId = baseItem.id || ('menuItemId' in (item || {}) ? (item as CartItem)?.menuItemId : undefined);
     let safeCashPrice: number | null = null;
 
     if (storeState.precomputedForItemId !== baseItemId) {
@@ -1108,6 +1127,12 @@ const ModifierScreen = () => {
   }
 
   if (!isOpen || !currentItem) return null;
+
+  // PERFORMANCE: Show skeleton immediately while content hydrates
+  // This ensures <16ms visual response to user tap
+  if (!isHydrated) {
+    return <ModifierScreenSkeleton />;
+  }
 
   const currentCategory = menuItemForModifiers?.modifiers?.find(
     (cat) => cat.id === state.activeCategory

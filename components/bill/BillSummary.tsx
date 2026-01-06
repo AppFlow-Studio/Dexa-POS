@@ -27,10 +27,11 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   // 2. useEffect to scroll to bottom when cart items change
   useEffect(() => {
     if (cart.length > 0) {
-      // Use setTimeout to ensure the layout has updated before scrolling
-      setTimeout(() => {
+      // OPTIMIZED: Use requestAnimationFrame instead of 100ms setTimeout
+      // This waits for the next frame (16ms max) instead of fixed 100ms delay
+      requestAnimationFrame(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      });
     }
   }, [cart.length]);
 

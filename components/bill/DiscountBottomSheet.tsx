@@ -31,7 +31,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const {
     activeOrderId,
-    orders,
+    ordersById,
     applyDiscountToCheck,
     applyDiscountToItem,
     removeDiscountFromItem,
@@ -41,7 +41,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
 
   const { data: discounts = [] } = useDiscounts();
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const cartItems = activeOrder?.items || [];
   const itemsWithAvailableDiscounts = cartItems.filter(
     (item) => !!item.availableDiscount

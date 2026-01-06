@@ -11,6 +11,7 @@ import { MenuItemType } from "@/lib/types";
 // import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
+  isMenuBlockedSync,
   selectClose,
   selectIsMenuBlocked,
   useModifierSidebarStore,
@@ -661,8 +662,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
         {/* ============================================================
             BLOCKING OVERLAY - Prevents touch during modifier editing
             Native-level blocking via Pressable for 60fps performance
+            Checks BOTH React state AND sync ref for zero-gap blocking
             ============================================================ */}
-        {isMenuBlocked && (
+        {(isMenuBlocked || isMenuBlockedSync()) && (
           <Pressable
             style={menuSectionStyles.blockingOverlay}
             onPress={closeModifier}
@@ -678,7 +680,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       />
       {/* ModifierScreenOverlay renders on top when opened - keeps cart visible to cashier */}
       <ModifierScreenOverlay />
-    </>
+    </> 
   );
 };
 

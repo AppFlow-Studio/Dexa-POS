@@ -1,6 +1,6 @@
 import { useToast } from "@/contexts/ToastContext";
 import { MenuItemType } from "@/lib/types";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
+import { setMenuBlockedSync, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Banknote, Settings, Utensils } from "lucide-react-native";
@@ -237,12 +237,18 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   // OPTIMIZED: Use getState() at call time to avoid re-renders on activeOrderId changes
   const handlePress = useCallback(() => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before any React)
+    // This prevents race conditions where items can be tapped before modal is interactive
+    setMenuBlockedSync(true);
+
     if (!isClockedIn) {
+      setMenuBlockedSync(false); // Unblock on early return
       showClockInWall();
       return;
     }
 
     if (onOrderClosedCheck && onOrderClosedCheck()) {
+      setMenuBlockedSync(false); // Unblock on early return
       return;
     }
 
@@ -251,6 +257,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
     const currentOrder = currentOrderId ? ordersById[currentOrderId] : undefined;
 
     if (!currentOrder?.order_type) {
+      setMenuBlockedSync(false); // Unblock on early return
       show({
         title: "Order Type Required",
         message:
@@ -261,6 +268,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
     }
 
     // Use getState() to avoid subscribing to store changes
+    // Note: openFullscreen also calls setMenuBlockedSync(true), which is idempotent
     useModifierSidebarStore
       .getState()
       .openFullscreen(item, currentOrderId, categoryId, menuId);

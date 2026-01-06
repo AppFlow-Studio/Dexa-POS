@@ -212,7 +212,6 @@ const OrderProcessing = () => {
             </AccordionItem>
           </Accordion>
 
-          {/* Always render the OrderBadge container but control visibility */}
           <View
             className={
               !isAccordionOpen && filteredOrders.length > 0

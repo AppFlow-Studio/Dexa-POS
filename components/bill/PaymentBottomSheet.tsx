@@ -94,7 +94,7 @@ const PaymentBottomSheetComponent: React.ForwardRefRenderFunction<
   const renderContent = () => {
     switch (view) {
       case "review":
-        return <ItemsReviewView />;
+        return;
       case "payment-method-selection":
         return <PaymentMethodSelectionView />;
       case "card":

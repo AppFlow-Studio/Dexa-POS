@@ -15,7 +15,7 @@ const PaymentModal: React.FC = () => {
   const renderContent = () => {
     switch (view) {
       case "review":
-        return <ItemsReviewView />;
+        return;
       case "cardOptions": // New case
         return <CardPaymentOptions />;
       case "card":

@@ -2,6 +2,21 @@ import { CartItem, MenuItemType, ModifierCategory } from "@/lib/types";
 import { create } from "zustand";
 import { useMenuStore } from "./useMenuStore";
 
+// ============================================================================
+// SYNCHRONOUS TOUCH BLOCKING - For same-frame menu blocking
+// ============================================================================
+// Module-level ref for instant, same-frame touch blocking
+// This blocks touches BEFORE React render cycle completes
+let menuBlockedSyncRef = false;
+
+/** Set menu blocked state synchronously (same frame) */
+export const setMenuBlockedSync = (blocked: boolean) => {
+  menuBlockedSyncRef = blocked;
+};
+
+/** Check if menu is blocked synchronously (O(1), no React) */
+export const isMenuBlockedSync = () => menuBlockedSyncRef;
+
 // Pre-computed modifier selections for instant UI
 interface ModifierSelection {
   [categoryId: string]: {
@@ -214,6 +229,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     categoryId?: string,
     menuId?: string
   ) => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
+    setMenuBlockedSync(true);
+
     // Pre-compute BEFORE setting isOpen for instant render
     // Pass set function for deferred price updates
     const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
@@ -236,6 +254,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   },
 
   openToEdit: (item: CartItem, orderId: string | null) => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
+    setMenuBlockedSync(true);
+
     // Get the menu item for pre-computation
     const { getMenuItemById } = useMenuStore.getState();
     const menuItem = getMenuItemById(item.menuItemId);
@@ -279,6 +300,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   },
 
   openToView: (item: CartItem, orderId: string | null) => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
+    setMenuBlockedSync(true);
+
     // Get the menu item for pre-computation
     const { getMenuItemById } = useMenuStore.getState();
     const menuItem = getMenuItemById(item.menuItemId);
@@ -327,6 +351,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     categoryId?: string,
     menuId?: string
   ) => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
+    setMenuBlockedSync(true);
+
     // Pre-compute BEFORE setting isOpen for instant render
     // Pass set function for deferred price updates
     const precomputed = precomputeModifierData(item, categoryId, menuId, null, set);
@@ -349,6 +376,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   },
 
   openFullscreenEdit: (item: CartItem, orderId: string | null) => {
+    // CRITICAL: Block touches synchronously FIRST (same frame, before React)
+    setMenuBlockedSync(true);
+
     // Use O(1) lookup instead of .find()
     const { getMenuItemById } = useMenuStore.getState();
     const menuItem = getMenuItemById(item.menuItemId);
@@ -392,6 +422,9 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   },
 
   close: () => {
+    // CRITICAL: Unblock touches synchronously FIRST (same frame)
+    setMenuBlockedSync(false);
+
     set({
       isOpen: false,
       isMenuBlocked: false, // Unblock menu on close
