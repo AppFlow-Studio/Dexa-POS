@@ -363,6 +363,8 @@ export interface CartItem {
   | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
   kitchen_status?: "new" | "sent" | "ready" | "served";
+  // Course number for coursing workflow (fine dining)
+  courseNumber?: number;
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;

@@ -5266,6 +5266,8 @@ export const useOrderStore = create<OrderState>()(
                       price: dbItem.unit_price,
                       cashPrice: dbItem.cash_price,
                       is_voided: dbItem.is_voided,
+                      // Preserve course number from backend to prevent items being grouped into course 1
+                      courseNumber: dbItem.course_number || localItem.courseNumber || 1,
                       // Sync discount distribution fields from backend
                       discount_amount: dbItem.discount_amount ?? 0,
                       discount_cash_amount: dbItem.discount_cash_amount ?? dbItem.discount_amount ?? 0,
@@ -5300,6 +5302,8 @@ export const useOrderStore = create<OrderState>()(
                       originalPrice: dbItem.cash_price || dbItem.unit_price || 0,
                       quantity: dbItem.quantity || 1,
                       paidQuantity: dbItem.paid_quantity || 0,
+                      // Preserve course number from backend to prevent items being grouped into course 1
+                      courseNumber: dbItem.course_number || 1,
                       category_name: dbItem.category_name || "Uncategorized",
                       is_voided: dbItem.is_voided || false,
                       sync_status: "synced" as const,

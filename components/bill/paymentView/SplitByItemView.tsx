@@ -38,24 +38,33 @@ function getItemDiscountedValues(
 ): { subtotal: number; discountAmount: number } {
   const splitQuantity = splitItem.quantity;
   const originalQuantity = originalItem?.quantity ?? splitItem.quantity;
+
+  // Calculate unit price: for cash, use effective cash price (includes modifiers)
   const unitPrice = isCash ? calculateItemEffectiveCashPrice(splitItem) : splitItem.price;
+
+  // Get order-level discount (from backend sync) - NOT the card/cash price difference
+  // Only use actual discount_amount/discount_cash_amount from order-level discounts
   const originalDiscount = isCash
-    ? (originalItem?.discount_cash_amount ?? originalItem?.discount_amount ?? 0)
+    ? (originalItem?.discount_cash_amount ?? 0)
     : (originalItem?.discount_amount ?? 0);
 
-  // If split quantity equals original quantity and we have DB discount, use DB values
+  // If split quantity equals original quantity and we have a pre-calculated DB subtotal with discount, use it
+  // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
   if (splitQuantity === originalQuantity && originalDiscount > 0) {
-    return {
-      subtotal: isCash ? splitItem.cashSubtotal : splitItem.subtotal,
-      discountAmount: originalDiscount,
-    };
+    const preCalculatedSubtotal = isCash ? splitItem.cashSubtotal : splitItem.subtotal;
+    if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
+      return {
+        subtotal: preCalculatedSubtotal,
+        discountAmount: originalDiscount,
+      };
+    }
   }
 
-  // For partial quantities or no discount: calculate proportional discount
+  // Calculate subtotal dynamically
   const grossSubtotal = unitPrice * splitQuantity;
 
+  // Apply proportional discount if there's an order-level discount
   if (originalQuantity > 0 && originalDiscount > 0) {
-    // Calculate per-unit discount and apply to split quantity
     const perUnitDiscount = originalDiscount / originalQuantity;
     const itemDiscountAmount = Math.round(perUnitDiscount * splitQuantity * 100) / 100;
     return {
@@ -64,9 +73,9 @@ function getItemDiscountedValues(
     };
   }
 
-  // No discount applied
+  // No order-level discount - just return gross subtotal
   return {
-    subtotal: grossSubtotal,
+    subtotal: Math.round(grossSubtotal * 100) / 100,
     discountAmount: 0,
   };
 }

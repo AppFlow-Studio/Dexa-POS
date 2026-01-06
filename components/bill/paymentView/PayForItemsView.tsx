@@ -38,24 +38,33 @@ function getSelectedItemDiscountedValues(
     isCash: boolean = false
 ): { subtotal: number; discountAmount: number } {
     const originalQuantity = item.quantity;
+
+    // Calculate unit price: for cash, use effective cash price (includes modifiers)
     const unitPrice = isCash ? calculateItemEffectiveCashPrice(item) : item.price;
+
+    // Get order-level discount (from backend sync) - NOT the card/cash price difference
+    // Only use actual discount_amount/discount_cash_amount from order-level discounts
     const originalDiscount = isCash
-        ? (item.discount_cash_amount ?? item.discount_amount ?? 0)
+        ? (item.discount_cash_amount ?? 0)
         : (item.discount_amount ?? 0);
 
-    // If paying for full quantity and we have DB discount, use DB values
+    // If paying for full quantity and we have a pre-calculated DB subtotal with discount, use it
+    // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
     if (quantityToPay === originalQuantity && originalDiscount > 0) {
-        return {
-            subtotal: isCash ? item.cashSubtotal : item.subtotal,
-            discountAmount: originalDiscount,
-        };
+        const preCalculatedSubtotal = isCash ? item.cashSubtotal : item.subtotal;
+        if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
+            return {
+                subtotal: preCalculatedSubtotal,
+                discountAmount: originalDiscount,
+            };
+        }
     }
 
-    // For partial quantities or no discount: calculate proportional discount
+    // Calculate subtotal dynamically
     const grossSubtotal = unitPrice * quantityToPay;
 
+    // Apply proportional discount if there's an order-level discount
     if (originalQuantity > 0 && originalDiscount > 0) {
-        // Calculate per-unit discount and apply to selected quantity
         const perUnitDiscount = originalDiscount / originalQuantity;
         const itemDiscountAmount = Math.round(perUnitDiscount * quantityToPay * 100) / 100;
         return {
@@ -64,9 +73,9 @@ function getSelectedItemDiscountedValues(
         };
     }
 
-    // No discount applied
+    // No order-level discount - just return gross subtotal
     return {
-        subtotal: grossSubtotal,
+        subtotal: Math.round(grossSubtotal * 100) / 100,
         discountAmount: 0,
     };
 }
@@ -241,7 +250,7 @@ const PayForItemsView: React.FC = () => {
     const voidPayment = useOrderStore((state) => state.voidPayment);
     const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
-    const { setView, close, handlePaymentCompletion, addSplit, splits, resetSplits } =
+    const { setView, close, addSplit, resetSplits } =
         usePaymentStore();
 
     // --- LOCAL STATE ---
@@ -536,7 +545,7 @@ const PayForItemsView: React.FC = () => {
                                 const selected = selectedItems.get(item.id);
                                 const selectedQty = selected?.quantityToPay || 0;
                                 const isSelected = selectedQty > 0;
-
+                                // console.log('[item | PayForItemsView] item', item);
                                 return (
                                     <View
                                         key={item.id}

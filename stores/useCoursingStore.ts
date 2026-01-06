@@ -96,7 +96,8 @@ type CoursingState = {
     orderId: string,
     itemId: string,
     courseNumber: number,
-    dbItemId?: string // Optional: DB UUID for syncing
+    dbItemId?: string, // Optional: DB UUID for syncing
+    skipBackendSync?: boolean // Optional: Skip RPC call (for fired courses)
   ) => void;
   assignItemsToWorkingCourse: (orderId: string, itemIds: string[]) => void;
   finalizeCurrentCourse: (orderId: string, itemIds: string[]) => number;
@@ -411,19 +412,23 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     orderId: string,
     itemId: string,
     courseNumber: number,
-    dbItemId?: string
+    dbItemId?: string,
+    skipBackendSync?: boolean
   ) => {
     const orderData = get().byOrderId[orderId];
     if (!orderData) return;
 
+    // Guard: If course exists and is not open, skip state update (unless we're intentionally
+    // updating local map only via skipBackendSync for already-fired courses)
     if (
       orderData.courses[courseNumber]?.status !== "open" &&
-      orderData.courses[courseNumber]
+      orderData.courses[courseNumber] &&
+      !skipBackendSync
     ) {
       return;
     }
-    console.log("[setItemCourse] orderData", orderData);
 
+    // Update local state - always allow if skipBackendSync is true (for syncing fired course items)
     set((prev) => ({
       byOrderId: {
         ...prev.byOrderId,
@@ -450,9 +455,10 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
       },
     }));
 
-    // Sync to backend if we have a valid DB Item ID
+    // Sync to backend if we have a valid DB Item ID AND not explicitly skipped
+    // skipBackendSync is used when updating local map for items in already-fired courses
     const dbOrderId = orderData.dbOrderId;
-    if (_supabaseClient && dbOrderId && dbItemId && isValidUUID(dbItemId)) {
+    if (_supabaseClient && dbOrderId && dbItemId && isValidUUID(dbItemId) && !skipBackendSync) {
       _supabaseClient
         .rpc("set_item_course", {
           p_order_item_id: dbItemId,
