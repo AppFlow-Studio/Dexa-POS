@@ -133,13 +133,13 @@ const OpenItemAdder = () => {
 
     addItemToActiveOrder(newOpenItem);
 
-    show({
-      title: "Item Added",
-      message: `${itemName} for $${price.toFixed(
-        2
-      )} has been added to the order.`,
-      type: "success",
-    });
+    // show({
+    //   title: "Item Added",
+    //   message: `${itemName} for $${price.toFixed(
+    //     2
+    //   )} has been added to the order.`,
+    //   type: "success",
+    // });
 
     // Reset form
     setOpenItemName("");

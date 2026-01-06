@@ -7,17 +7,16 @@ interface TotalsProps {
   cart: CartItem[];
 }
 
-const Totals: React.FC<TotalsProps> = ({ cart }) => {
-  const {
-    activeOrderId,
-    ordersById,
-    activeOrderSubtotal,
-    activeOrderTax,
-    activeOrderTotal,
-    activeOrderDiscount,
-    activeOrderOutstandingTotal,
-    activeOrderOutstandingCash,
-  } = useOrderStore();
+const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
+  // OPTIMIZED: Use individual selectors instead of destructuring entire store
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
+  const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
+  const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal);
+  const activeOrderDiscount = useOrderStore((s) => s.activeOrderDiscount);
+  const activeOrderOutstandingTotal = useOrderStore((s) => s.activeOrderOutstandingTotal);
+  const activeOrderOutstandingCash = useOrderStore((s) => s.activeOrderOutstandingCash);
 
   const voucher = 0.0;
 
@@ -146,5 +145,8 @@ const Totals: React.FC<TotalsProps> = ({ cart }) => {
     </View>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const Totals = React.memo(TotalsComponent);
 
 export default Totals;

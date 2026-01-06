@@ -8,7 +8,7 @@ import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { AlertTriangle, Clock, Plus, RefreshCw, Send, WifiOff } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import BillSummary from "./BillSummary";
 import DiscountBottomSheet from "./DiscountBottomSheet";
@@ -16,24 +16,28 @@ import DiscountOverlay from "./DiscountOverlay";
 import OrderDetails from "./OrderDetails";
 import Totals from "./Totals";
 
-const BillSectionContent = ({ cart }: { cart: CartItem[] }) => {
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const BillSectionContent = React.memo(
+  ({ cart }: { cart: CartItem[] }) => {
+    const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
-  const handleToggleExpand = (itemId: string) => {
-    setExpandedItemId(expandedItemId === itemId ? null : itemId);
-  };
+    const handleToggleExpand = useCallback((itemId: string) => {
+      setExpandedItemId((prev) => (prev === itemId ? null : itemId));
+    }, []);
 
-  return (
-    <>
-      <BillSummary
-        cart={cart}
-        expandedItemId={expandedItemId}
-        onToggleExpand={handleToggleExpand}
-      />
-      <Totals cart={cart} />
-    </>
-  );
-};
+    return (
+      <>
+        <BillSummary
+          cart={cart}
+          expandedItemId={expandedItemId}
+          onToggleExpand={handleToggleExpand}
+        />
+        <Totals cart={cart} />
+      </>
+    );
+  },
+  (prev, next) => prev.cart === next.cart
+);
 
 const BillSection = ({
   showOrderDetails = true,
@@ -48,7 +52,12 @@ const BillSection = ({
 }) => {
   // O(1) lookups with individual selectors - only re-renders when specific values change
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const ordersById = useOrderStore((state) => state.ordersById);
+
+  // FIXED: Only subscribe to the active order, not the entire ordersById object
+  const activeOrder = useOrderStore((state) =>
+    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
+  );
+
   const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
   const activeOrderOutstandingTotal = useOrderStore(
     (state) => state.activeOrderOutstandingTotal
@@ -74,9 +83,6 @@ const BillSection = ({
   const { activeEmployeeId } = useEmployeeStore();
   const { checkEmployeeInShift, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
-
-  // O(1) lookup instead of O(n) find
-  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
   // Memoize computed values to prevent unnecessary recalculations
   const cart = useMemo(() => activeOrder?.items || [], [activeOrder?.items]);
@@ -207,17 +213,18 @@ const BillSection = ({
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
 
-  const handleOpenDiscounts = () => {
+  // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
+  const handleOpenDiscounts = useCallback(() => {
     setDiscountOverlayVisible(true);
-  };
+  }, []);
 
-  const handleCloseDiscounts = () => {
+  const handleCloseDiscounts = useCallback(() => {
     setDiscountOverlayVisible(false);
-  };
+  }, []);
 
-  const handleOpenMoreOptions = () => {
+  const handleOpenMoreOptions = useCallback(() => {
     moreOptionsSheetRef?.current?.expand();
-  };
+  }, [moreOptionsSheetRef]);
 
   const handlePayClick = () => {
     // Safety guard: Prevent payment if button should be disabled
@@ -290,10 +297,11 @@ const BillSection = ({
     setActiveOrder(newOrder.id);
   };
 
-  const handleStartNewOrder = () => {
+  // OPTIMIZED: Wrap callback with useCallback
+  const handleStartNewOrder = useCallback(() => {
     const newOrder = startNewOrder();
     setActiveOrder(newOrder.id);
-  };
+  }, [startNewOrder, setActiveOrder]);
 
   if (!activeOrderId)
     return (

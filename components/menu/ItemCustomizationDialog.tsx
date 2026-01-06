@@ -105,11 +105,11 @@ const ItemCustomizationDialog: React.FC = () => {
         paidQuantity: 0,
       };
       addItemToActiveOrder(newItem);
-      show({
-        title: "Item Added",
-        message: `${menuItem.name} has been added to the order.`,
-        type: "success",
-      });
+      // show({
+      //   title: "Item Added",
+      //   message: `${menuItem.name} has been added to the order.`,
+      //   type: "success",
+      // });
     }
 
     close();

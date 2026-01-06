@@ -17,13 +17,12 @@ const PaymentSuccessView = () => {
 
   const {
     activeOrderId,
-    orders,
+    ordersById,
     activeOrderTotal,
     activeOrderOutstandingTotal,
   } = useOrderStore();
   const { menuItems } = useMenuStore();
   const { addSaleEvent, forceRefresh } = useAnalyticsStore();
-
   // NOTE: Payment was already processed by handlePaymentCompletion
   // before navigating to this view. No need to call addPaymentToOrder again.
 
@@ -32,9 +31,10 @@ const PaymentSuccessView = () => {
     usePaymentStore.getState().setPaymentClean();
   }, []);
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const items = activeOrder?.items || [];
-
+  console.log("items", items);
+  console.log("activeOrder", activeOrder);
   const handleDone = () => {
     const {
       activeOrderId,
@@ -153,6 +153,7 @@ const PaymentSuccessView = () => {
               (sum, p) => sum + (p.amount || 0),
               0
             );
+            console.log("totalPaid", totalPaid);
             const totalTips = payments.reduce((sum, p) => {
               const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
               return sum + tip;

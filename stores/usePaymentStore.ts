@@ -160,7 +160,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
   open: (method, tableId, initialView) => {
-    get().paymentBottomSheetRef?.current?.expand();
+    // OPTIMIZED: Update state BEFORE animation for instant UI response
+    // This ensures the payment view is ready before the sheet animates open
     set({
       isOpen: true,
       paymentMethod: method,
@@ -176,6 +177,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         totalSteps: totalSteps,
       },
     });
+    // Expand sheet AFTER state update
+    get().paymentBottomSheetRef?.current?.expand();
   },
 
   close: () => {
@@ -218,10 +221,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   // Called when success view is dismissed by dragging down
   handleSuccessClose: () => {
     const { activeTableId } = get();
-    const { activeOrderId, orders, startNewOrder, setActiveOrder } =
+    const { activeOrderId, ordersById, startNewOrder, setActiveOrder } =
       useOrderStore.getState();
 
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
     // For dine-in orders on a table, just close (table keeps the paid order)
     if (activeOrder?.order_type === "Dine In" && activeTableId) {
@@ -399,8 +403,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     const { splits } = get();
 
     // Get order and tax rates for tax calculation
-    const { activeOrderId, orders } = useOrderStore.getState();
-    const activeOrder = orders.find((o) => o.id === activeOrderId);
+    const { activeOrderId, ordersById } = useOrderStore.getState();
+    // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
+    const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
     const taxRatesMap =
       require("@/stores/useStoreSettingsStore").useStoreSettingsStore.getState()
         .taxRatesMap;

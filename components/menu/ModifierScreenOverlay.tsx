@@ -20,28 +20,35 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
  * - Smooth native-driver animation
  * - Zero coupling between components
  * - Uses granular selectors for minimal re-renders
+ *
+ * OPTIMIZED:
+ * - Faster spring animation (tension: 300, friction: 25) for instant feel
+ * - Touch enabled immediately via isOpen (not animation completion)
+ * - Faster close animation (150ms instead of 300ms)
  */
 const ModifierScreenOverlay: React.FC = () => {
   // Use combined selector for single subscription - minimizes re-renders
   const isFullscreen = useModifierSidebarStore(selectIsFullscreen);
+  // OPTIMIZATION: Enable touch immediately when store says open, not when animation completes
+  const isOpen = useModifierSidebarStore((s) => s.isOpen);
 
   // Animation value for slide-down effect
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
     if (isFullscreen) {
-      // Slide to top from bottom with spring animation
+      // OPTIMIZED: Faster spring for instant response
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
-        tension: 120,
-        friction: 14,
+        tension: 300,  // Increased from 120 - faster animation
+        friction: 25,  // Increased from 14 - less bounce, faster settle
       }).start();
     } else {
-      // Slide back down with timing animation (faster close)
+      // OPTIMIZED: Faster close animation (150ms instead of 300ms)
       Animated.timing(slideAnim, {
         toValue: SCREEN_HEIGHT,
-        duration: 300,
+        duration: 150,  // Reduced from 300ms
         useNativeDriver: true,
       }).start();
     }
@@ -54,7 +61,8 @@ const ModifierScreenOverlay: React.FC = () => {
         { transform: [{ translateY: slideAnim }] },
         !isFullscreen ? { opacity: 0 } : null,
       ]}
-      pointerEvents={isFullscreen ? "auto" : "none"}
+      // OPTIMIZATION: Enable touches as soon as store says open (not animation completion)
+      pointerEvents={isOpen ? "auto" : "none"}
     >
       <ModifierScreen />
     </Animated.View>

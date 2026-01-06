@@ -203,11 +203,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
   categoryId,
   menuId,
 }) => {
-  // OPTIMIZED: Use O(1) ordersById lookup instead of O(n) orders.find()
-  const activeOrderId = useOrderStore((state) => state.activeOrderId);
-  const activeOrder = useOrderStore((state) =>
-    state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
-  );
+  // OPTIMIZED: Removed activeOrderId/activeOrder subscriptions - now read via getState() in handlePress
   const { activeEmployeeId, getSession, showClockInWall } = useTimeclockStore();
   const { show } = useToast();
 
@@ -239,7 +235,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
 
   const isDisabled = item.availability === false;
 
-  // OPTIMIZED: Use getState() for action-only function to avoid subscription
+  // OPTIMIZED: Use getState() at call time to avoid re-renders on activeOrderId changes
   const handlePress = useCallback(() => {
     if (!isClockedIn) {
       showClockInWall();
@@ -250,7 +246,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
       return;
     }
 
-    if (!activeOrder?.order_type) {
+    // Read order state at call time instead of as a dependency
+    const { activeOrderId: currentOrderId, ordersById } = useOrderStore.getState();
+    const currentOrder = currentOrderId ? ordersById[currentOrderId] : undefined;
+
+    if (!currentOrder?.order_type) {
       show({
         title: "Order Type Required",
         message:
@@ -263,23 +263,21 @@ const MenuItem: React.FC<MenuItemProps> = ({
     // Use getState() to avoid subscribing to store changes
     useModifierSidebarStore
       .getState()
-      .openFullscreen(item, activeOrderId, categoryId, menuId);
+      .openFullscreen(item, currentOrderId, categoryId, menuId);
   }, [
     item,
-    activeOrderId,
     categoryId,
     menuId,
     isClockedIn,
-    activeOrder?.order_type,
     onOrderClosedCheck,
     showClockInWall,
     show,
-  ]);
+  ]); // Removed activeOrderId and activeOrder?.order_type from deps
 
   return (
     <TouchableOpacity
       disabled={isDisabled}
-      onPress={handlePress}
+      onPressIn={handlePress}
       style={[styles.container, isDisabled && styles.containerDisabled]}
     >
       <View style={styles.innerContainer}>

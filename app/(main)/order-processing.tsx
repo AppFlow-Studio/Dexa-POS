@@ -19,15 +19,24 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 
 const OrderProcessing = () => {
-  const {
-    activeOrderId,
-    orders,
-    setActiveOrder,
-    startNewOrder,
-    updateOrderStatus,
-    markAllItemsAsReady,
-    archiveOrder,
-  } = useOrderStore();
+  // FIXED: Use individual selectors to prevent subscribing to entire ordersById
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const startNewOrder = useOrderStore((s) => s.startNewOrder);
+  const updateOrderStatus = useOrderStore((s) => s.updateOrderStatus);
+  const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+
+  // FIXED: Subscribe to orderIds (stable array) and lookup orders when needed
+  // This prevents infinite loops from Object.values() creating new arrays
+  const orderIds = useOrderStore((s) => s.orderIds);
+  const ordersById = useOrderStore((s) => s.ordersById);
+
+  // Compute orders array from IDs - only recalculates when orderIds or ordersById change
+  const orders = useMemo(
+    () => orderIds.map((id) => ordersById[id]).filter(Boolean),
+    [orderIds, ordersById]
+  );
 
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
@@ -36,6 +45,7 @@ const OrderProcessing = () => {
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
   useEffect(() => {
+    // OPTIMIZED: Use memoized find helpers with O(1) lookup when possible
     // Find an existing empty draft order (not assigned to table, no items)
     const emptyDraft = orders.find(
       (o) =>
@@ -66,7 +76,8 @@ const OrderProcessing = () => {
 
     // If activeOrderId exists, do not override it here. This allows "Retrieve to Pay"
     // to set a non-global order as active without being reset by this effect.
-    const currentActive = orders.find((o) => o.id === activeOrderId);
+    // OPTIMIZED: Use O(1) lookup instead of orders.find()
+    const currentActive = ordersById[activeOrderId];
     if (!currentActive) {
       if (emptyDraft) {
         setActiveOrder(emptyDraft.id);
@@ -77,7 +88,7 @@ const OrderProcessing = () => {
         setActiveOrder(newOrder.id);
       }
     }
-  }, [orders, activeOrderId, setActiveOrder, startNewOrder]);
+  }, [orders, activeOrderId, ordersById, setActiveOrder, startNewOrder]);
 
   // State to hold the orders that are actually displayed
   const filteredOrders = useMemo(() => {

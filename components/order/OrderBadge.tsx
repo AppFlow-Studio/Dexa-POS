@@ -11,7 +11,7 @@ interface OrderBadgeProps {
   onRetrieve: () => void;
 }
 
-const OrderBadge: React.FC<OrderBadgeProps> = ({
+const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   order,
   onMarkReady,
   onViewItems,
@@ -286,5 +286,21 @@ const OrderBadge: React.FC<OrderBadgeProps> = ({
     </Popover>
   );
 };
+
+// OPTIMIZED: Memoize to prevent re-renders when parent updates
+const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
+  // Return true if props are equal (skip re-render)
+  return (
+    prev.order.id === next.order.id &&
+    prev.order.order_status === next.order.order_status &&
+    prev.order.paid_status === next.order.paid_status &&
+    prev.order.items.length === next.order.items.length &&
+    prev.order.amount_due === next.order.amount_due &&
+    prev.order.amount_paid === next.order.amount_paid &&
+    prev.order.total_amount === next.order.total_amount &&
+    prev.order.customer_name === next.order.customer_name &&
+    prev.order.payments?.length === next.order.payments?.length
+  );
+});
 
 export default OrderBadge;

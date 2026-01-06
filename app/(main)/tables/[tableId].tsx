@@ -68,7 +68,7 @@ const UpdateTableScreen = () => {
   } = useFloorPlanStore();
 
   const {
-    orders,
+    // OPTIMIZED: Removed deprecated `orders` array - use ordersById selectors instead
     setActiveOrder,
     startNewOrder,
     assignOrderToTable,
@@ -268,11 +268,18 @@ const UpdateTableScreen = () => {
       isAutoSessionRunningRef.current = true;
 
       try {
-        // CRITICAL: Wait for floor plan status to load BEFORE checking table state
-        // This prevents race condition when navigating from waitlist (session already exists on backend)
-        await loadFloorPlanStatus();
+        // OPTIMIZED: Check if we already have session data before fetching
+        // This prevents unnecessary network call when data is already fresh (e.g., after prefetch)
+        const currentTable = getTableById(currentTableId);
+        const hasExistingSession = currentTable?.session?.status && currentTable.session.status !== "available";
 
-      // Re-fetch table from store after status is loaded (to get updated session data)
+        if (!hasExistingSession) {
+          // Only load floor plan status if we don't have session data
+          // This is critical for preventing race condition when navigating from waitlist
+          await loadFloorPlanStatus();
+        }
+
+      // Re-fetch table from store after status check (to get updated session data)
       const updatedTables = useFloorPlanStore.getState().tables;
       const updatedTable = updatedTables.find((t) => t.id === currentTableId);
       const updatedTableStatus = updatedTable?.session?.status || "available";

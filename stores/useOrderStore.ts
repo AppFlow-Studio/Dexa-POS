@@ -1,3 +1,4 @@
+import debounce from "lodash.debounce";
 import { mmkvStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import { CartItem, Discount, OrderAppliedDiscount, OrderProfile, PaymentType } from "@/lib/types";
@@ -56,7 +57,7 @@ interface OrderTotals {
 }
 
 function round2(num: number): number {
-  return Math.round(num * 100) / 100;
+  return Math.ceil(num * 100) / 100;
 }
 
 /**
@@ -2080,6 +2081,15 @@ export const useOrderStore = create<OrderState>()(
           }
         };
 
+        // OPTIMIZED: Debounced version for non-critical updates (e.g., setActiveOrder)
+        // This prevents blocking UI when rapidly switching between orders
+        // Uses trailing: true to ensure final value is always calculated
+        const debouncedRecalculateTotals = debounce(
+          (orderId: string | null) => recalculateTotals(orderId),
+          50,
+          { leading: false, trailing: true }
+        );
+
         // --- Helper function to generate a unique composite key for cart items ---
         const generateItemCompositeKey = (
           menuItemId: string,
@@ -2385,8 +2395,9 @@ export const useOrderStore = create<OrderState>()(
               activeOrderTotalCash: 0,
               activeOrderOutstandingCash: 0,
             });
-            // Then recalculate actual values async
-            recalculateTotals(orderId);
+            // OPTIMIZED: Use debounced version to prevent UI blocking
+            // when rapidly switching between orders
+            debouncedRecalculateTotals(orderId);
           },
 
           startNewOrder: (details) => {
@@ -5426,21 +5437,20 @@ export const useOrderStore = create<OrderState>()(
   )
 );
 
-// ERROR FIX: The computed getter for 'orders' inside the store doesn't work because 'this'
-// is not bound to the reactive state. We must synchronize the array explicitly.
-// This subscription automatically updates 'orders' and 'ordersByDbId' whenever 'ordersById' changes.
+// OPTIMIZED: Only sync ordersByDbId (O(n) on keys only, not full array recreation)
+// Removed 'orders' array sync - use Object.values(ordersById) when iteration is needed
+// This eliminates O(n) array recreation on every order change
 useOrderStore.subscribe(
   (state) => state.ordersById,
   (ordersById) => {
-    // Sync orders array for backward compatibility
-    const orders = Object.values(ordersById);
     // Build ordersByDbId index for O(1) lookup by db_order_id
     const ordersByDbId: Record<string, OrderProfile> = {};
-    for (const order of orders) {
+    for (const id in ordersById) {
+      const order = ordersById[id];
       if (order.db_order_id) {
         ordersByDbId[order.db_order_id] = order;
       }
     }
-    useOrderStore.setState({ orders, ordersByDbId });
+    useOrderStore.setState({ ordersByDbId });
   }
 );

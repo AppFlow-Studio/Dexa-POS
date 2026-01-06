@@ -37,10 +37,12 @@ function getSelectedItemDiscountedValues(
     quantityToPay: number,
     isCash: boolean = false
 ): { subtotal: number; discountAmount: number } {
+    console.log("item", item);
     const originalQuantity = item.quantity;
 
     // Calculate unit price: for cash, use effective cash price (includes modifiers)
     const unitPrice = isCash ? calculateItemEffectiveCashPrice(item) : item.price;
+    console.log("unitPrice", unitPrice);
 
     // Get order-level discount (from backend sync) - NOT the card/cash price difference
     // Only use actual discount_amount/discount_cash_amount from order-level discounts
@@ -476,6 +478,8 @@ const PayForItemsView: React.FC = () => {
         );
     }
 
+
+    console.log("selectedItems", selectedCashTotals);
     return (
         <View className="flex-1 bg-[#212121]">
             {/* Header */}

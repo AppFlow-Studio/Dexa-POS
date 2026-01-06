@@ -5,27 +5,19 @@ import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import BillItem from "../BillItem";
 
 const ItemsReviewView = () => {
+  // OPTIMIZED: Use ordersById O(1) lookup instead of deprecated orders array
   const {
     activeOrderId,
-    orders,
+    ordersById,
     activeOrderSubtotal,
     activeOrderTax,
     activeOrderDiscount,
     activeOrderTotal,
-    activeOrderOutstandingSubtotal,
-    activeOrderOutstandingTax,
-    activeOrderOutstandingTotal,
   } = useOrderStore();
   const { close, setView, paymentMethod } = usePaymentStore();
 
-  const activeOrder = orders.find((o) => o.id === activeOrderId);
+  const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const items = activeOrder?.items || [];
-
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
-
-  const handleToggleExpand = (itemId: string) => {
-    setExpandedItemId(expandedItemId === itemId ? null : itemId);
-  };
 
   return (
     <View className="bg-[#212121] p-4 rounded-2xl border border-gray-700 w-[550px]">
@@ -37,13 +29,12 @@ const ItemsReviewView = () => {
         contentContainerClassName="gap-y-2"
       >
         {items.map((item) => (
+          // FIXED: Removed invalid props (expandedItemId, onToggleExpand, showStatus)
+          // BillItemProps only accepts: item, isEditable
           <BillItem
             key={item.id}
             item={item}
-            expandedItemId={expandedItemId}
-            onToggleExpand={handleToggleExpand}
-            isEditable={false} // Hide the Edit/Delete functionality in this view
-            showStatus={false}
+            isEditable={false}
           />
         ))}
       </ScrollView>

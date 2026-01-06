@@ -11,8 +11,14 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  const { orders, markAllItemsAsReady, setActiveOrder, archiveOrder } =
-    useOrderStore();
+  // OPTIMIZED: Use granular selectors instead of full store destructure
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
+  const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
+  const archiveOrder = useOrderStore((s) => s.archiveOrder);
+
+  // Memoize the orders array transformation
+  const orders = useMemo(() => Object.values(ordersById), [ordersById]);
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
