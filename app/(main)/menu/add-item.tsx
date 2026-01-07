@@ -101,6 +101,18 @@ const AddMenuItemScreen: React.FC = () => {
         }
       }
 
+      // 4. Save Recipe Ingredients (New)
+      if (data.recipe && data.recipe.length > 0 && createdItem?.id) {
+        await MenuService.upsertMenuItemRecipe(
+          supabase,
+          createdItem.id,
+          data.recipe.map((r) => ({
+            inventoryItemId: r.inventoryItemId,
+            quantity: r.quantity,
+          }))
+        );
+      }
+
       // Also update local store for immediate UI feedback - use backend ID
       addMenuItem({
         ...data,

@@ -1,5 +1,5 @@
 // Types for get_pos_full_sync API response
-// These types match the ACTUAL structure returned by the Supabase RPC
+// These types match the ACTUAL structure returned by the Supabase RPC & Parallel Queries
 
 // ============================================================================
 // 1. ENUMS / LITERAL TYPES
@@ -204,10 +204,26 @@ export interface MenuWithCategories {
 // 8. POS SYNC RESPONSE
 // ============================================================================
 
+export interface MenuItemIngredientSync {
+  id: string;
+  menu_item_id: string;
+  inventory_item_id: string;
+  quantity: number;
+}
+
+export interface ModifierIngredientSync {
+  id: string;
+  modifier_group_item_id: string;
+  inventory_item_id: string;
+  quantity: number;
+}
+
 export interface PosSyncData {
   synced_at: string;
   location_id: string;
   menus: MenuWithCategories[];
+  menu_item_ingredients: MenuItemIngredientSync[];
+  modifier_group_item_ingredients: ModifierIngredientSync[];
 }
 
 // ============================================================================

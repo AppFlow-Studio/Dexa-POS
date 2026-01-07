@@ -854,4 +854,58 @@ export class MenuService {
 
     return { success: true, error: null };
   }
+
+  // ============================================================
+  // RECIPE MANAGEMENT
+  // ============================================================
+
+  /**
+   * Upsert recipe for a menu item (replace all ingredients)
+   */
+  static async upsertMenuItemRecipe(
+    client: SupabaseClient,
+    menuItemId: string,
+    ingredients: { inventoryItemId: string; quantity: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc("upsert_menu_item_with_recipe", {
+      p_menu_item_id: menuItemId,
+      p_recipe_items: ingredients.map((i) => ({
+        inventoryItemId: i.inventoryItemId,
+        quantity: i.quantity,
+      })),
+    });
+
+    if (error) {
+      console.error("Failed to upsert menu item recipe:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Upsert recipe for a modifier option (replace all ingredients)
+   */
+  static async upsertModifierOptionRecipe(
+    client: SupabaseClient,
+    modifierOptionId: string,
+    ingredients: { inventoryItemId: string; quantity: number }[]
+  ): Promise<{ success: boolean; error: any }> {
+    console.log("upsertModifierOptionRecipe", modifierOptionId, ingredients);
+
+    const { error } = await client.rpc("upsert_modifier_item_with_recipe", {
+      p_modifier_item_id: modifierOptionId,
+      p_recipe_items: ingredients.map((i) => ({
+        inventoryItemId: i.inventoryItemId,
+        quantity: i.quantity,
+      })),
+    });
+
+    if (error) {
+      console.error("Failed to upsert modifier option recipe:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
 }

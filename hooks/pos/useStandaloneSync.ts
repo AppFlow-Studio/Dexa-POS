@@ -2,6 +2,8 @@ import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useSession } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
 
+import { MenuItemIngredientSync, ModifierIngredientSync } from "@/types/menu";
+
 /**
  * Types for standalone data (not part of menu hierarchy)
  */
@@ -113,6 +115,8 @@ export interface StandaloneSyncData {
   items: StandaloneItem[];
   modifierGroups: StandaloneModifierGroup[];
   menus: StandaloneMenu[];
+  menu_item_ingredients: MenuItemIngredientSync[];
+  modifier_group_item_ingredients: ModifierIngredientSync[];
 }
 
 /**
@@ -139,26 +143,31 @@ export const useStandaloneSync = (
       console.log("merchantId", merchantId);
       console.log("locationId", locationId);
       // Fetch all 4 in parallel
-      const [categoriesResult, itemsResult, modifiersResult, menusResult] =
-        await Promise.all([
-          // 1. Categories via RPC
-          supabase.rpc("get_categories_for_location", {
-            p_merchant_id: merchantId,
-            p_location_id: locationId,
-          }),
+      const [
+        categoriesResult,
+        itemsResult,
+        modifiersResult,
+        menusResult,
+        menuItemIngredientsResult,
+        modifierIngredientsResult,
+      ] = await Promise.all([
+        // 1. Categories via RPC
+        supabase.rpc("get_categories_for_location", {
+          p_merchant_id: merchantId,
+          p_location_id: locationId,
+        }),
 
-          // 2. Items via RPC
-          supabase.rpc("get_items_for_location_library", {
-            p_merchant_id: merchantId,
-            p_location_id: locationId,
-          }),
+        // 2. Items via RPC
+        supabase.rpc("get_items_for_location_library", {
+          p_merchant_id: merchantId,
+          p_location_id: locationId,
+        }),
 
-          // 3. Modifiers via direct query (matching working implementation from menu/index.tsx)
-          // This query matches the GetModifierGroups function that successfully fetches 8 groups
-          supabase
-            .from("modifier_groups")
-            .select(
-              `
+        // 3. Modifiers via direct query (matching working implementation from menu/index.tsx)
+        supabase
+          .from("modifier_groups")
+          .select(
+            `
           *,
           location_name:locations(name),
           modifier_group_items(*),
@@ -172,32 +181,61 @@ export const useStandaloneSync = (
             location_id
           )
         `
-            )
-            // Note: We don't have merchant_id filter here - the RLS will handle it
-            .or(`location_id.is.null,location_id.eq.${locationId}`)
-            .order("display_order", { ascending: true, nullsFirst: false })
-            .order("created_at", { ascending: false }),
+          )
+          // Note: We don't have merchant_id filter here - the RLS will handle it
+          .or(`location_id.is.null,location_id.eq.${locationId}`)
+          .order("display_order", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false }),
 
-          // 4. Menus via direct query (like website - NO is_active filter)
-          // This fetches ALL menus including inactive ones, with their category relationships
-          supabase
-            .from("menus")
-            .select(
-              `
+        // 4. Menus via direct query (like website - NO is_active filter)
+        supabase
+          .from("menus")
+          .select(
+            `
               id, name, description, is_active, location_id, display_order, created_at,
               menu_categories(category_id, display_order, is_active)
             `
-            )
-            .eq("merchant_id", merchantId)
-            .or(`location_id.is.null,location_id.eq.${locationId}`)
-            .order("display_order", { ascending: true, nullsFirst: false })
-            .order("created_at", { ascending: false }),
-        ]);
+          )
+          .eq("merchant_id", merchantId)
+          .or(`location_id.is.null,location_id.eq.${locationId}`)
+          .order("display_order", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: false }),
+
+        // 5. Menu Item Ingredients - TEMPORARILY DISABLED: Table name mismatch (PGRST205)
+        // supabase
+        //   .from("menu_item_ingredients")
+        //   .select("*, menu_items!inner(id, merchant_id)")
+        //   .eq("menu_items.merchant_id", merchantId),
+
+        // Placeholder for result
+        { data: [], error: null },
+
+        // 6. Modifier Group Item Ingredients - TEMPORARILY DISABLED: Table name mismatch
+        // supabase
+        //   .from("modifier_group_item_ingredients")
+        //   .select("*, modifier_group_items!inner(id, merchant_id)")
+        //   .eq("modifier_group_items.merchant_id", merchantId),
+
+        // Placeholder for result
+        { data: [], error: null },
+      ]);
       // Log errors but don't fail completely
       if (categoriesResult.error) {
         console.error(
           "Categories standalone fetch error:",
           categoriesResult.error
+        );
+      }
+      if (menuItemIngredientsResult.error) {
+        console.error(
+          "Menu Item Ingredients fetch error:",
+          menuItemIngredientsResult.error
+        );
+      }
+      if (modifierIngredientsResult.error) {
+        console.error(
+          "Modifier Ingredients fetch error:",
+          modifierIngredientsResult.error
         );
       }
       if (itemsResult.error) {
@@ -212,6 +250,13 @@ export const useStandaloneSync = (
       if (menusResult.error) {
         console.error("Menus standalone fetch error:", menusResult.error);
       }
+
+      // Debug: Log ingredient counts
+      console.log("DEBUG: useStandaloneSync raw results:", {
+        menuItemIngredients: menuItemIngredientsResult.data?.length,
+        modifierIngredients: modifierIngredientsResult.data?.length,
+        items: itemsResult.data?.length,
+      });
 
       // Debug: Send standalone data to debug server
       const DEBUG_STANDALONE_URL = __DEV__
@@ -251,6 +296,10 @@ export const useStandaloneSync = (
         modifierGroups:
           (modifiersResult.data as unknown as StandaloneModifierGroup[]) || [],
         menus: (menusResult.data || []) as StandaloneMenu[],
+        menu_item_ingredients: (menuItemIngredientsResult.data ||
+          []) as MenuItemIngredientSync[],
+        modifier_group_item_ingredients: (modifierIngredientsResult.data ||
+          []) as ModifierIngredientSync[],
       };
     },
 

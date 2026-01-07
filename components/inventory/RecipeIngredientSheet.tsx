@@ -1,11 +1,13 @@
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import { Package, Search, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 
 export type RecipeIngredientSheetRef = BottomSheet;
 
@@ -17,7 +19,7 @@ interface Props {
 
 const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
   ({ onSelect, existingIds = [], currentId = null }, ref) => {
-    const snapPoints = useMemo(() => ["85%"], []);
+    const snapPoints = useMemo(() => ["95%"], []);
     const renderBackdrop = useMemo(
       () => (backdropProps: any) =>
         (
@@ -56,83 +58,141 @@ const RecipeIngredientSheet = forwardRef<RecipeIngredientSheetRef, Props>(
         ref={ref as any}
         index={-1}
         snapPoints={snapPoints}
-        enablePanDownToClose
-        backgroundStyle={{ backgroundColor: "#303030" }}
-        handleIndicatorStyle={{ backgroundColor: "#9CA3AF" }}
+        enablePanDownToClose={true}
+        backgroundStyle={{ backgroundColor: "#212121" }}
+        handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
         backdropComponent={renderBackdrop}
+        topInset={60}
       >
-        <BottomSheetView className="flex-1 h-full w-full">
-          <View className="p-3 border-b border-gray-700">
-            <Text className="text-white text-xl font-bold">Add Ingredient</Text>
-            <Text className="text-gray-400 mt-0.5 text-base">
-              Select an inventory item
-            </Text>
-          </View>
-
-          <View className="p-3">
-            <BottomSheetTextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search inventory..."
-              placeholderTextColor="#9CA3AF"
-              className="bg-[#212121] border border-gray-600 rounded-lg px-3 py-2.5 text-white text-base"
-            />
-          </View>
-
-          <View className="flex-1 w-full h-full">
-            <ScrollView className="flex-1 w-full h-full">
-              {filtered.map((item) => {
-                const isSelected = selectedId === item.id;
-                const isAdded =
-                  existingIds.includes(item.id) && item.id !== currentId;
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    disabled={isAdded}
-                    onPress={() => handleSelect(item.id)}
-                    className={`px-3 py-2.5 border-b border-gray-700 ${
-                      isSelected
-                        ? "bg-blue-900/20"
-                        : isAdded
-                        ? "opacity-50"
-                        : ""
-                    }`}
-                  >
-                    <View className="flex-row items-center justify-between">
-                      <View>
-                        <Text className="text-xl text-white">{item.name}</Text>
-                        <Text className="text-lg text-gray-400">
-                          {item.category} • {item.unit}
-                        </Text>
-                      </View>
-                      {isSelected && (
-                        <View className="px-2 py-0.5 rounded bg-blue-900/30 border border-blue-500">
-                          <Text className="text-blue-400 text-sm">
-                            Selected
-                          </Text>
-                        </View>
-                      )}
-                      {!isSelected && isAdded && (
-                        <View className="px-2 py-0.5 rounded bg-gray-700 border border-gray-600">
-                          <Text className="text-gray-300 text-sm">Added</Text>
-                        </View>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View className="p-3 border-t border-gray-700 bg-[#303030]">
+        <BottomSheetView className="flex-1 w-full bg-[#212121]">
+          {/* Header */}
+          <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-800">
+            <View>
+              <Text className="text-white text-xl font-bold">
+                Add Ingredient
+              </Text>
+              <Text className="text-gray-400 text-sm mt-0.5">
+                Select an item from inventory
+              </Text>
+            </View>
             <TouchableOpacity
               onPress={() => (ref as any)?.current?.close?.()}
-              className="w-full py-2 bg-gray-600 rounded-lg"
+              className="p-2 bg-gray-800 rounded-full"
             >
-              <Text className="text-white text-center text-lg font-semibold">
-                Close
-              </Text>
+              <X size={20} color="#9CA3AF" />
             </TouchableOpacity>
+          </View>
+
+          {/* Search Bar */}
+          <View className="p-4 bg-[#212121]">
+            <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-xl px-3 py-2">
+              <Search size={20} color="#9CA3AF" />
+              <BottomSheetTextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search by name or category..."
+                placeholderTextColor="#9CA3AF"
+                className="flex-1 ml-3 text-white text-base h-10"
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch("")}>
+                  <X size={16} color="#9CA3AF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* List */}
+          <View className="flex-1 w-full bg-[#212121]">
+            {filtered.length === 0 ? (
+              <View className="flex-1 items-center justify-center p-8 opacity-50">
+                <Package size={48} color="#4B5563" />
+                <Text className="text-gray-500 text-lg font-medium mt-4">
+                  No items found
+                </Text>
+                <Text className="text-gray-600 text-center mt-2">
+                  Try searching for something else
+                </Text>
+              </View>
+            ) : (
+              <BottomSheetScrollView
+                className="flex-1 w-full"
+                contentContainerStyle={{ paddingBottom: 40 }}
+              >
+                {filtered.map((item) => {
+                  const isSelected = selectedId === item.id;
+                  const isAdded =
+                    existingIds.includes(item.id) && item.id !== currentId;
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      disabled={isAdded}
+                      onPress={() => handleSelect(item.id)}
+                      className={`mx-4 mb-2 p-3 rounded-xl border ${
+                        isSelected
+                          ? "bg-blue-900/20 border-blue-500"
+                          : isAdded
+                          ? "bg-[#252525] border-gray-800 opacity-50"
+                          : "bg-[#303030] border-gray-700"
+                      }`}
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1">
+                          <View className="flex-row items-center gap-2 mb-1">
+                            <Text
+                              className={`text-lg font-semibold ${
+                                isSelected ? "text-blue-400" : "text-white"
+                              }`}
+                            >
+                              {item.name}
+                            </Text>
+                          </View>
+
+                          <View className="flex-row items-center gap-3">
+                            <View className="flex-row items-center bg-gray-800/50 px-2 py-1 rounded-md">
+                              <Text className="text-gray-400 text-xs uppercase tracking-wider font-medium mr-1.5">
+                                Category
+                              </Text>
+                              <Text className="text-gray-300 text-xs font-medium">
+                                {item.category}
+                              </Text>
+                            </View>
+
+                            <Text className="text-gray-500 text-xs">•</Text>
+
+                            <Text className="text-gray-400 text-xs">
+                              {item.stockQuantity} {item.unit} in stock
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Status Badge */}
+                        <View className="ml-3">
+                          {isSelected && (
+                            <View className="w-6 h-6 bg-blue-500 rounded-full items-center justify-center">
+                              <Text className="text-white text-xs font-bold">
+                                ✓
+                              </Text>
+                            </View>
+                          )}
+                          {!isSelected && isAdded && (
+                            <View className="bg-gray-700 px-2 py-1 rounded">
+                              <Text className="text-gray-400 text-xs font-medium">
+                                Added
+                              </Text>
+                            </View>
+                          )}
+                          {!isSelected && !isAdded && (
+                            <View className="w-6 h-6 rounded-full border border-gray-600" />
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </BottomSheetScrollView>
+            )}
           </View>
         </BottomSheetView>
       </BottomSheet>

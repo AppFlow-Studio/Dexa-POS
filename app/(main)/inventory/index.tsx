@@ -13,6 +13,7 @@ import {
 import { InventoryItem, MenuItemType } from "@/lib/types";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetModal,
@@ -23,6 +24,7 @@ import {
   AlertTriangle,
   Check,
   Edit,
+  Globe,
   MoreHorizontal,
   Plus,
   Search,
@@ -53,12 +55,14 @@ const InventoryCatalogRow: React.FC<{
     <Link href={`/inventory/ingredient-items/${item.id}`} asChild>
       <TouchableOpacity className="flex-row items-center px-4 py-4 border-b border-gray-700">
         {/* Name: 25% */}
-        <Text
-          className="w-[25%] text-xl font-semibold text-white"
-          numberOfLines={1}
-        >
-          {item.name}
-        </Text>
+        <View className="w-[25%] flex-row items-center gap-1">
+          <Text className="text-xl font-semibold text-white" numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.isGlobal && (
+            <Globe color="#60A5FA" size={16} /> // Blue globe for global items
+          )}
+        </View>
 
         {/* Stock: 15% (Centered) */}
         <View className="w-[15%] items-center justify-center">
@@ -171,11 +175,25 @@ const InventoryScreen = () => {
     setSelectedItem(null);
   };
 
-  const handleSaveItem = (data: Omit<InventoryItem, "id">, id?: string) => {
-    if (id) {
-      updateInventoryItem(id, data);
-    } else {
-      addInventoryItem(data);
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+
+  const handleSaveItem = async (
+    data: Omit<InventoryItem, "id">,
+    id?: string
+  ) => {
+    if (!selectedStore?.id) {
+      alert("No store selected");
+      return;
+    }
+    try {
+      if (id) {
+        await updateInventoryItem(id, data, selectedStore.id);
+      } else {
+        await addInventoryItem(data, selectedStore.id);
+      }
+    } catch (e) {
+      console.error("Failed to save item:", e);
+      alert("Failed to save item. Please try again.");
     }
   };
 
@@ -366,12 +384,17 @@ const InventoryScreen = () => {
     const threshold = bulkInventoryReorderThreshold
       ? parseInt(bulkInventoryReorderThreshold)
       : undefined;
+    if (!selectedStore?.id) return;
     selectedInventoryIds.forEach((id) => {
-      updateInventoryItem(id, {
-        stockQuantity: stockQty ?? (undefined as any),
-        reorderThreshold: threshold ?? (undefined as any),
-        // keep other fields unchanged via partial update
-      } as any);
+      updateInventoryItem(
+        id,
+        {
+          stockQuantity: stockQty ?? (undefined as any),
+          reorderThreshold: threshold ?? (undefined as any),
+          // keep other fields unchanged via partial update
+        } as any,
+        selectedStore.id
+      );
     });
     setBulkInventoryStockModalOpen(false);
     setBulkInventoryStockQuantity("");
@@ -384,14 +407,15 @@ const InventoryScreen = () => {
     setBulkInventoryReorderThreshold("");
   };
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
   return (
@@ -585,7 +609,7 @@ const InventoryScreen = () => {
           ) : (
             <FlatList
               data={menuItems}
-              keyExtractor={(item) => item.name}
+              keyExtractor={(item) => item.id}
               // Optional: Optimize window size for faster scrolling
               initialNumToRender={10}
               windowSize={5}

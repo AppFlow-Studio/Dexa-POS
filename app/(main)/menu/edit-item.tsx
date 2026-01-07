@@ -136,6 +136,19 @@ const EditMenuItemScreen: React.FC = () => {
         }
       }
 
+      // 4. Save Recipe Ingredients (New)
+      if (data.recipe) {
+        // Always upsert if present (even if empty, it might mean clearing ingredients)
+        await MenuService.upsertMenuItemRecipe(
+          supabase,
+          itemId,
+          data.recipe.map((r) => ({
+            inventoryItemId: r.inventoryItemId,
+            quantity: r.quantity,
+          }))
+        );
+      }
+
       // Update local store for immediate UI feedback
       updateMenuItem(itemId, data);
       show({
