@@ -103,7 +103,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           >
             {order.customer_name
               ? order.customer_name
-              : order.display_number || order.order_number || "New"}{" "}
+              : order.display_number || order.order_number || `#${order.id.slice(-4)}`}{" "}
             - {order.order_status}
           </Text>
         </TouchableOpacity>
@@ -121,7 +121,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
             </Text>
             <View className="px-2 py-1 rounded-md bg-gray-700/80">
               <Text className="text-sm font-semibold text-gray-300">
-                {order.display_number || order.order_number || "New"}
+                {order.display_number || order.order_number || `#${order.id.slice(-4)}`}
               </Text>
             </View>
             <View className="px-2 py-1 rounded-md bg-blue-900/50">
