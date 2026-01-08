@@ -24,11 +24,11 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             locationId: string,
             deviceId: string
         ) => {
-            console.log("[useTimeClock] performAction called:", {
-                type,
-                locationId,
-                deviceId,
-            });
+            // console.log("[useTimeClock] performAction called:", {
+            //     type,
+            //     locationId,
+            //     deviceId,
+            // });
             const previousStatus = store.status;
 
             // A. Create the payload
@@ -61,26 +61,26 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
                     break;
             }
             store.setStatus(nextStatus);
-            console.log("[useTimeClock] Optimistic update, status:", nextStatus);
+            // console.log("[useTimeClock] Optimistic update, status:", nextStatus);
 
             // C. Network Check & Execution
             const netState = await NetInfo.fetch();
-            console.log("[useTimeClock] Network:", {
-                connected: netState.isConnected,
-                reachable: netState.isInternetReachable,
-            });
+            // console.log("[useTimeClock] Network:", {
+            //     connected: netState.isConnected,
+            //     reachable: netState.isInternetReachable,
+            // });
 
             if (netState.isConnected && netState.isInternetReachable) {
                 try {
                     // --- ONLINE PATH ---
-                    console.log("[useTimeClock] Calling RPC...", { type, locationId });
+                    // console.log("[useTimeClock] Calling RPC...", { type, locationId });
                     const { data, error } = await supabase.rpc("handle_time_clock", {
                         p_pin_code: pinCode,
                         p_location_id: locationId,
                         p_action_type: type,
                         p_device_id: deviceId,
                     });
-                    console.log("[useTimeClock] RPC response:", { data, error });
+                    // console.log("[useTimeClock] RPC response:", { data, error });
 
                     if (error) throw error;
 

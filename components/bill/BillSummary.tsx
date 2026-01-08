@@ -1,4 +1,5 @@
 import { CartItem } from "@/lib/types";
+import { selectActiveEditingItemId, useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import React, { useEffect, useMemo, useRef } from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -39,12 +40,29 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
 
+  // Track which item is being edited in modifier panel (for visual highlight)
+  const activeEditingItemId = useModifierSidebarStore(selectActiveEditingItemId);
+
   // O(1) lookup instead of O(n) find
   const activeOrder = useMemo(
     () => (activeOrderId ? ordersById[activeOrderId] : undefined),
     [activeOrderId, ordersById]
   );
-  // console.log('[activeOrder | BillSummary] activeOrder', activeOrder.items);
+
+  // OPTIMIZED: Pre-compute grouped courses outside render for O(1) lookup
+  const groupedCourses = useMemo(() => {
+    const grouped: Record<number, CartItem[]> = {};
+    cart.forEach((item) => {
+      const course = itemCourseMap?.[item.id] ?? 1;
+      if (!grouped[course]) grouped[course] = [];
+      grouped[course].push(item);
+    });
+    return Object.keys(grouped)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((course) => ({ course, items: grouped[course] }));
+  }, [cart, itemCourseMap]);
+
   return (
     <View className="flex-1 bg-[#212121]">
       <View className=" px-6 h-full">
@@ -68,44 +86,34 @@ const BillSummaryComponent: React.FC<BillSummaryProps> = ({
             nestedScrollEnabled={true}
           >
             {cart.length > 0 ? (
-              (() => {
-                const grouped: Record<number, CartItem[]> = {};
-                cart.forEach((item) => {
-                  const course = itemCourseMap?.[item.id] ?? 1;
-                  if (!grouped[course]) grouped[course] = [];
-                  grouped[course].push(item);
-                });
-                const courses = Object.keys(grouped)
-                  .map((c) => Number(c))
-                  .sort((a, b) => a - b);
-
-                return (
-                  <View>
-                    {courses.map((course) => {
-                      const isSent = !!sentCourses?.[course];
-                      const isActive =
-                        currentCourse !== undefined && course === currentCourse;
-                      return (
-                        <View key={`course-${course}`} className="mb-3">
-                          {grouped[course].map((item, index) => {
-                            const highlight = isActive;
-                            return (
-                              <View
-                                key={`${item.id}-${index}`}
-                                className={`rounded-xl mb-1.5 ${
-                                  highlight ? "border border-blue-500" : ""
-                                }`}
-                              >
-                                <BillItem item={item} isEditable={true} />
-                              </View>
-                            );
-                          })}
-                        </View>
-                      );
-                    })}
-                  </View>
-                );
-              })()
+              <View>
+                {groupedCourses.map(({ course, items }) => {
+                  const isCourseActive =
+                    currentCourse !== undefined && course === currentCourse;
+                  return (
+                    <View key={`course-${course}`} className="mb-3">
+                      {items.map((item, index) => {
+                        // Highlight if: being actively edited OR is a draft item
+                        const shouldHighlight = item.id === activeEditingItemId || item.isDraft === true;
+                        return (
+                          <View
+                            key={`${item.id}-${index}`}
+                            className={`rounded-xl mb-1.5 ${
+                              isCourseActive ? "border border-blue-500" : ""
+                            }`}
+                          >
+                            <BillItem
+                              item={item}
+                              isEditable={true}
+                              isActive={shouldHighlight}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </View>
             ) : (
               <View className="h-full items-center justify-center">
                 <Text className="text-xl text-gray-400">Order is empty.</Text>

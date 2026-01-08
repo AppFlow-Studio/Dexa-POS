@@ -223,7 +223,7 @@ export class OrderService {
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     console.log(`[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`);
 
-    const { data, error } = await client.rpc("process_payment_v2", params);
+    const { data, error } = await client.rpc("process_payment_v5", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);

@@ -81,16 +81,57 @@ export interface OrderItem {
   quantity: number;
   unit_price: number;
   cash_price?: number;
+  cash_unit_price?: number;
   price_paid: number;
   subtotal: number;
+  cash_subtotal?: number;
   selected_size_id?: string;
   selected_size_name?: string;
   size_price_modifier: number;
   item_status: string;
   is_voided: boolean;
+  void_reason?: string;
+  voided_at?: string;
+  voided_by?: string;
+  course_number?: number;
+  fire_time?: string;
+  rush?: boolean;
   special_instructions?: string;
+  kitchen_notes?: string;
+  prep_station?: string;
+  assigned_to_staff_id?: string;
   created_at: string;
   updated_at: string;
+  sent_to_kitchen_at?: string;
+  started_preparing_at?: string;
+  completed_at?: string;
+  display_order?: number;
+  metadata?: Record<string, any>;
+  is_tax_exempt?: boolean;
+  // Discount fields
+  discount_id?: string;
+  discount_name?: string;
+  discount_type?: string;
+  discount_value?: number;
+  discount_amount?: number;
+  discount_source?: string;
+  discount_reason?: string;
+  discount_applied_by?: string;
+  discount_approved_by?: string;
+  pre_discount_subtotal?: number;
+  discount_cash_amount?: number;
+  // Open item fields
+  is_open_item?: boolean;
+  open_item_name?: string;
+  open_item_description?: string;
+  open_item_price?: number;
+  // Tax fields
+  tax_rate?: number;
+  tax_amount?: number;
+  cash_tax_amount?: number;
+  // Payment tracking
+  paid_quantity?: number;
+  payment_id?: string;
 }
 
 export interface OrderItemModifier {

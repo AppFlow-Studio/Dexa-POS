@@ -21,7 +21,6 @@ export function useNetworkStatus(): NetworkStatus {
   // Get from store (reactive)
   const isOnline = useOrderStore((state) => state.isOnline);
   const pendingSyncCount = useOrderStore((state) => state.pendingSyncCount);
-
   return {
     isOnline,
     pendingSyncCount,

@@ -1,9 +1,11 @@
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
+import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
@@ -105,6 +107,8 @@ const useTableData = (table: FloorPlanObject) => {
         displayName: table.name,
         status: status,
         guestCount: 0,
+        subtotal: 0,
+        tax: 0,
         total: 0,
         seatedTime: null,
         server: "N/A",
@@ -128,6 +132,8 @@ const useTableData = (table: FloorPlanObject) => {
         displayName: table.name,
         status: status,
         guestCount: table.session?.party_size || 0,
+        subtotal: 0,
+        tax: 0,
         total: 0,
         seatedTime: table.session?.seated_at
           ? new Date(table.session.seated_at)
@@ -164,6 +170,8 @@ const useTableData = (table: FloorPlanObject) => {
           : table.name,
         status: status,
         guestCount: table.session?.party_size || 0,
+        subtotal: 0,
+        tax: 0,
         total: 0,
         seatedTime: table.session?.seated_at
           ? new Date(table.session.seated_at)
@@ -182,6 +190,17 @@ const useTableData = (table: FloorPlanObject) => {
     const seatedTime = order.opened_at ? new Date(order.opened_at) : null;
     const serverDisplay = order.server_name || "N/A";
 
+    // Calculate subtotal and tax from items
+    const subtotal = order.items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    const tax = order.items.reduce(
+      (sum, item) => sum + (item.taxAmount || 0),
+      0
+    );
+    const total = order.total_amount || subtotal + tax;
+
     return {
       isMerged: isMerged,
       primaryTableId: table.id,
@@ -193,10 +212,9 @@ const useTableData = (table: FloorPlanObject) => {
         : table.name,
       status: status,
       guestCount: order.guest_count || table.session?.party_size || 0,
-      total: order.items.reduce(
-        (sum, item) => sum + item.price * item.quantity,
-        0
-      ),
+      subtotal,
+      tax,
+      total,
       seatedTime: seatedTime || (table.session?.seated_at ? new Date(table.session.seated_at) : null),
       server: serverDisplay,
       orders: groupOrders,
@@ -212,30 +230,29 @@ const ExpandedView: React.FC<{
 }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
   const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
-  const { menuItems } = useMenuStore();
+  const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
   const { show } = useToast();
   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
-
-  const getCategoryForItem = (itemId: string) => {
-    const menuItem = menuItems.find((mi) => mi.id === itemId);
-    return menuItem?.category?.[0] || "Miscellaneous";
-  };
+  const [isReceiptOpen, setReceiptOpen] = useState(false);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
   const groupedItems = useMemo(() => {
     const groups: Record<
-      string,
+      number,
       { orderId: string; items: (typeof tableData.orders)[0]["items"] }
     > = {};
     tableData.orders.forEach((order) => {
+      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
+
       order.items.forEach((item) => {
-        const category = getCategoryForItem(item.menuItemId);
-        if (!groups[category])
-          groups[category] = { orderId: order.id, items: [] };
-        groups[category].items.push(item);
+        const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
+        if (!groups[courseNumber])
+          groups[courseNumber] = { orderId: order.id, items: [] };
+        groups[courseNumber].items.push(item);
       });
     });
     return groups;
-  }, [tableData.orders, menuItems]);
+  }, [tableData.orders, coursingByOrderId]);
 
   const handleCloseTable = async () => {
     if (!tableData) return;
@@ -317,7 +334,7 @@ const ExpandedView: React.FC<{
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(100)}
-      className="mt-3 pl-6"
+      className="mt-3"
     >
       <View className="flex-row items-center gap-4 mb-3">
         <Text className="text-sm text-gray-300">
@@ -333,45 +350,58 @@ const ExpandedView: React.FC<{
       </View>
 
       <View className="mb-4 pr-2">
-        {Object.entries(groupedItems).map(([category, { items }]) => (
-          <View key={category} className="mb-2">
-            <Text className="text-base font-semibold text-blue-400 mb-1">
-              {category}
-            </Text>
-            {items.map((item) => (
-              <View key={item.id} className="flex-row items-center ml-2">
-                <Text className="text-base text-gray-300">
-                  {item.quantity}x {item.name}
-                </Text>
-                <View className="ml-2">
-                  {(item.item_status === "Ready" ||
-                    item.item_status === "Served") && (
-                      <CheckCircle size={14} color="#22C55E" />
-                    )}
-                  {(item.kitchen_status === "sent" ||
-                    item.item_status === "Preparing") && (
-                      <Clock size={14} color="#F59E0B" />
-                    )}
+        {Object.entries(groupedItems)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([courseNumber, { items }]) => (
+            <View key={courseNumber} className="mb-2">
+              <Text className="text-base font-semibold text-blue-400 mb-1">
+                Course {courseNumber}
+              </Text>
+              {items.map((item) => (
+                <View key={item.id} className="flex-row items-center ml-2">
+                  <Text className="text-base text-gray-300">
+                    {item.quantity}x {item.name}
+                  </Text>
+                  <View className="ml-2">
+                    {(item.item_status === "Ready" ||
+                      item.item_status === "Served") && (
+                        <CheckCircle size={14} color="#22C55E" />
+                      )}
+                    {(item.kitchen_status === "sent" ||
+                      item.item_status === "Preparing") && (
+                        <Clock size={14} color="#F59E0B" />
+                      )}
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))}
+            </View>
+          ))}
+        <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
+          <View className="flex-row justify-between">
+            <Text className="text-sm text-gray-400">Subtotal</Text>
+            <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
           </View>
-        ))}
-        <View className="border-t border-gray-700 mt-2 pt-2 pr-2 flex-row justify-between">
-          <Text className="text-base font-bold text-white">Total</Text>
-          <Text className="text-base font-bold text-white">
-            ${tableData.total?.toFixed(2)}
-          </Text>
+          <View className="flex-row justify-between">
+            <Text className="text-sm text-gray-400">Tax</Text>
+            <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
+          </View>
+          <View className="flex-row justify-between mt-1">
+            <Text className="text-base font-bold text-white">Total</Text>
+            <Text className="text-base font-bold text-white">${tableData.total?.toFixed(2)}</Text>
+          </View>
         </View>
       </View>
 
       <View className="flex-row items-center gap-2">
         <QuickActionButton
-          label="Open Table"
+          label="Table"
           onPress={onNavigateToOrder}
           variant="primary"
         />
-        <QuickActionButton label="Print Bill" onPress={() => { }} />
+        <QuickActionButton
+          label="Print Bill"
+          onPress={() => setReceiptOpen(true)}
+        />
         <QuickActionButton
           label="Close Table"
           onPress={handleCloseTable}
@@ -387,6 +417,19 @@ const ExpandedView: React.FC<{
         confirmText="Yes, Void Order"
         variant="destructive"
       />
+      {tableData.orders[0] && (
+        <ReceiptModal
+          isOpen={isReceiptOpen}
+          onClose={() => setReceiptOpen(false)}
+          order={tableData.orders[0]}
+          location={selectedStore}
+          onPrint={() => {
+            // TODO: Integrate with thermal printer
+            console.log("Print receipt for order:", tableData.orders[0]?.id);
+            setReceiptOpen(false);
+          }}
+        />
+      )}
     </Animated.View>
   );
 };

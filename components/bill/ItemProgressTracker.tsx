@@ -7,6 +7,13 @@ import {
 } from "lucide-react-native";
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  Layout,
+} from "react-native-reanimated";
 
 interface ItemProgressTrackerProps {
   selectedCourse: number;

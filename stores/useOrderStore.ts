@@ -8,7 +8,7 @@ import type {
   OrderType as DbOrderType
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
   createJSONStorage,
@@ -494,7 +494,7 @@ const ensureOrderCreated = async (
             : (order.order_type.toLowerCase() as DbOrderType)
         : ("dine_in" as DbOrderType),
       p_table_number: order.service_location_id || undefined,
-      p_created_by_staff_id: undefined,
+      p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || undefined,
     };
 
     console.log(`[ensureOrderCreated] Queueing create_order operation...`);
@@ -594,7 +594,7 @@ const ensureOrderCreated = async (
               : (order.order_type.toLowerCase() as DbOrderType)
           : ("dine_in" as DbOrderType),
         p_table_number: order.service_location_id || undefined,
-        p_created_by_staff_id: undefined,
+        p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || undefined,
       };
 
       console.log("[ensureOrderCreated] Creating order with params:", JSON.stringify(createOrderParams, null, 2));
@@ -1558,6 +1558,11 @@ interface OrderState {
   isOnline: boolean;
   pendingSyncCount: number;
 
+  // === REALTIME SUBSCRIPTION STATE ===
+  orderRealtimeChannel: RealtimeChannel | null;
+  setupOrderRealtimeSubscriptions: (locationId: string) => void;
+  cleanupOrderRealtime: () => void;
+
   // === SYNC TRACKING STATE ===
   // Maps itemId -> sync promise for pending operations
   pendingSyncOperations: Map<string, Promise<boolean>>;
@@ -1694,6 +1699,8 @@ interface OrderState {
   retryFailedSyncs: (orderId: string) => Promise<void>;
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<{ success: boolean; error?: string }>;
+  // Prefetch multiple orders by their database IDs (for cache warming)
+  prefetchOrders: (orderIds: string[]) => Promise<void>;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -2219,6 +2226,8 @@ export const useOrderStore = create<OrderState>()(
           // Offline sync state
           isOnline: true,
           pendingSyncCount: 0,
+          // Realtime subscription state
+          orderRealtimeChannel: null,
           // Sync tracking state
           pendingSyncOperations: new Map<string, Promise<boolean>>(),
           activeOrderSubtotal: 0,
@@ -2236,6 +2245,107 @@ export const useOrderStore = create<OrderState>()(
           setOnlineStatus: (isOnline: boolean) => set({ isOnline }),
           setPendingSyncCount: (count: number) =>
             set({ pendingSyncCount: count }),
+
+          // --- REALTIME SUBSCRIPTION METHODS ---
+          setupOrderRealtimeSubscriptions: async (locationId: string) => {
+            const supabase = _supabaseClient;
+            if (!supabase) {
+              console.warn('[OrderStore] Cannot setup realtime: no Supabase client');
+              return;
+            }
+
+            // Clean up existing subscription
+            const existingChannel = get().orderRealtimeChannel;
+            if (existingChannel) {
+              supabase.removeChannel(existingChannel);
+            }
+
+            await supabase.realtime.setAuth();
+
+            // Debounce helper for order syncs
+            let syncTimeoutId: ReturnType<typeof setTimeout> | null = null;
+            const debouncedSync = (orderId: string) => {
+              if (syncTimeoutId) clearTimeout(syncTimeoutId);
+              syncTimeoutId = setTimeout(() => {
+                // Only sync if order exists in local store
+                const localOrder = Object.values(get().ordersById).find(
+                  (o) => o.db_order_id === orderId
+                );
+                if (localOrder) {
+                  console.log('[OrderStore Realtime] Syncing order:', localOrder.id);
+                  get().syncOrderFromDatabase(localOrder.id);
+                }
+              }, 300); // 300ms debounce
+            };
+
+            const channel = supabase
+              .channel(`orders-${locationId}`)
+              // Listen to order changes
+              .on(
+                "postgres_changes",
+                {
+                  event: "UPDATE",
+                  schema: "public",
+                  table: "orders",
+                  filter: `location_id=eq.${locationId}`,
+                },
+                (payload) => {
+                  const orderId = (payload.new as any)?.id;
+                  if (orderId) {
+                    console.log('[OrderStore Realtime] Order updated:', orderId);
+                    debouncedSync(orderId);
+                  }
+                }
+              )
+              // Listen to order_items changes
+              .on(
+                "postgres_changes",
+                {
+                  event: "*",
+                  schema: "public",
+                  table: "order_items",
+                },
+                (payload) => {
+                  const orderId = (payload.new as any)?.order_id || (payload.old as any)?.order_id;
+                  if (orderId) {
+                    console.log('[OrderStore Realtime] Order item changed for order:', orderId);
+                    debouncedSync(orderId);
+                  }
+                }
+              )
+              // Listen to order_payments changes
+              .on(
+                "postgres_changes",
+                {
+                  event: "*",
+                  schema: "public",
+                  table: "order_payments",
+                },
+                (payload) => {
+                  const orderId = (payload.new as any)?.order_id || (payload.old as any)?.order_id;
+                  if (orderId) {
+                    console.log('[OrderStore Realtime] Payment changed for order:', orderId);
+                    debouncedSync(orderId);
+                  }
+                }
+              )
+              .subscribe((status) => {
+                console.log('[OrderStore Realtime] Subscription status:', status);
+              });
+
+            set({ orderRealtimeChannel: channel });
+            console.log('[OrderStore] Realtime subscriptions enabled for location:', locationId);
+          },
+
+          cleanupOrderRealtime: () => {
+            const supabase = _supabaseClient;
+            const channel = get().orderRealtimeChannel;
+            if (channel && supabase) {
+              supabase.removeChannel(channel);
+              console.log('[OrderStore] Realtime subscriptions cleaned up');
+            }
+            set({ orderRealtimeChannel: null });
+          },
 
           // --- SYNC BARRIER METHODS ---
           hasPendingSyncs: (orderId: string) => {
@@ -2938,8 +3048,8 @@ export const useOrderStore = create<OrderState>()(
           },
 
           removeItemFromActiveOrder: (itemId, voidReason) => {
-            console.log('[removeItemFromActiveOrder] itemId', itemId);
-            console.log('[removeItemFromActiveOrder] voidReason', voidReason);
+            // console.log('[removeItemFromActiveOrder] itemId', itemId);
+            // console.log('[removeItemFromActiveOrder] voidReason', voidReason);
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) return;
 
@@ -2948,7 +3058,7 @@ export const useOrderStore = create<OrderState>()(
 
             const itemToHandle = order.items.find((i) => i.id === itemId);
             if (!itemToHandle) return;
-            console.log('[removeItemFromActiveOrder] itemToHandle', itemToHandle);
+            // console.log('[removeItemFromActiveOrder] itemToHandle', itemToHandle);
             // Check if item is a kitchen item (sent/ready/served) - should mark as voided, not remove
             const isKitchenItem =
               itemToHandle.kitchen_status === "sent" ||
@@ -5306,11 +5416,13 @@ export const useOrderStore = create<OrderState>()(
                       id: `db_${dbItem.id}`,
                       db_order_item_id: dbItem.id,
                       menuItemId: dbItem.menu_item_id || "",
-                      name: dbItem.item_name || "Unknown Item",
-                      price: dbItem.unit_price || 0,
-                      unitPrice: dbItem.unit_price || 0,
-                      cashPrice: dbItem.cash_price || dbItem.unit_price || 0,
-                      originalPrice: dbItem.cash_price || dbItem.unit_price || 0,
+                      // For open items, use open_item_name; otherwise use item_name
+                      name: dbItem.is_open_item ? (dbItem.open_item_name || "Open Item") : (dbItem.item_name || "Unknown Item"),
+                      // For open items, use open_item_price; otherwise use unit_price
+                      price: dbItem.is_open_item ? (dbItem.open_item_price || 0) : (dbItem.unit_price || 0),
+                      unitPrice: dbItem.is_open_item ? (dbItem.open_item_price || 0) : (dbItem.unit_price || 0),
+                      cashPrice: dbItem.cash_price || dbItem.cash_unit_price || (dbItem.is_open_item ? dbItem.open_item_price : dbItem.unit_price) || 0,
+                      originalPrice: dbItem.cash_price || dbItem.cash_unit_price || (dbItem.is_open_item ? dbItem.open_item_price : dbItem.unit_price) || 0,
                       quantity: dbItem.quantity || 1,
                       paidQuantity: dbItem.paid_quantity || 0,
                       // Preserve course number from backend to prevent items being grouped into course 1
@@ -5318,7 +5430,13 @@ export const useOrderStore = create<OrderState>()(
                       category_name: dbItem.category_name || "Uncategorized",
                       is_voided: dbItem.is_voided || false,
                       sync_status: "synced" as const,
-                      customizations: {}, // Empty customizations object
+                      customizations: {
+                        notes: dbItem.special_instructions || undefined,
+                      },
+                      // Open item support
+                      is_open_item: dbItem.is_open_item || false,
+                      open_item_name: dbItem.open_item_name || undefined,
+                      open_item_price: dbItem.open_item_price || undefined,
                       // Required CartItem financial fields
                       subtotal: dbItem.subtotal || (dbItem.unit_price * dbItem.quantity) || 0,
                       cashSubtotal: dbItem.cash_subtotal || (dbItem.cash_price * dbItem.quantity) || 0,
@@ -5404,6 +5522,124 @@ export const useOrderStore = create<OrderState>()(
             } catch (error: any) {
               console.error("[syncOrderFromDatabase] Error:", error);
               return { success: false, error: error?.message || "Sync failed" };
+            }
+          },
+
+          // Prefetch multiple orders by their database IDs for cache warming
+          prefetchOrders: async (orderIds: string[]): Promise<void> => {
+            const supabase = _supabaseClient;
+            if (!supabase || orderIds.length === 0) return;
+
+            // Filter out already cached orders (check by db_order_id)
+            const uncachedIds = orderIds.filter((id) => {
+              const exists = get().ordersByDbId[id];
+              return !exists;
+            });
+
+            if (uncachedIds.length === 0) {
+              console.log("[prefetchOrders] All orders already cached");
+              return;
+            }
+
+            console.log("[prefetchOrders] Fetching", uncachedIds.length, "orders");
+
+            try {
+              // Batch fetch orders with items
+              const { data, error } = await supabase
+                .from("orders")
+                .select("*, order_items(*)")
+                .in("id", uncachedIds);
+
+              if (error) {
+                console.error("[prefetchOrders] Fetch error:", error);
+                return;
+              }
+
+              if (!data || data.length === 0) {
+                console.log("[prefetchOrders] No orders found");
+                return;
+              }
+
+              // Transform and inject into store
+              const newOrders: Record<string, OrderProfile> = {};
+              const newOrderIds: string[] = [];
+
+              for (const order of data) {
+                const localId = `prefetch_${order.id}_${Date.now()}`;
+                const orderProfile: OrderProfile = {
+                  id: localId,
+                  db_order_id: order.id,
+                  order_number: order.order_number,
+                  display_number: order.display_number,
+                  sync_status: "synced",
+                  service_location_id: order.table_id || "",
+                  order_status: order.status || "draft",
+                  check_status: order.status === "completed" ? "Closed" : "Opened",
+                  paid_status:
+                    order.payment_status === "paid"
+                      ? "Paid"
+                      : order.payment_status === "partial"
+                        ? "Partial"
+                        : "Unpaid",
+                  order_type: (order.order_type as any) || "Dine In",
+                  items:
+                    (order.order_items || []).map((item: any) => ({
+                      id: `item_${item.id}`,
+                      isDraft: false,
+                      menuItemId: item.menu_item_id || "",
+                      // For open items, use open_item_name; otherwise use item_name
+                      name: item.is_open_item ? (item.open_item_name || "Open Item") : (item.item_name || "Unknown Item"),
+                      // For open items, use open_item_price; otherwise use unit_price
+                      price: item.is_open_item ? (item.open_item_price || 0) : (item.unit_price || 0),
+                      unitPrice: item.is_open_item ? (item.open_item_price || 0) : (item.unit_price || 0),
+                      cashPrice: item.cash_price || item.cash_unit_price || (item.is_open_item ? item.open_item_price : item.unit_price) || 0,
+                      originalPrice: item.cash_price || item.cash_unit_price || (item.is_open_item ? item.open_item_price : item.unit_price) || 0,
+                      quantity: item.quantity || 1,
+                      paidQuantity: item.paid_quantity || 0,
+                      db_order_item_id: item.id,
+                      courseNumber: item.course_number || 1,
+                      category_name: item.category_name || "Uncategorized",
+                      item_status: item.item_status || "pending",
+                      kitchen_status: item.item_status || "pending",
+                      is_voided: item.is_voided || false,
+                      // Open item support
+                      is_open_item: item.is_open_item || false,
+                      open_item_name: item.open_item_name || undefined,
+                      open_item_price: item.open_item_price || undefined,
+                      customizations: {
+                        notes: item.special_instructions || undefined,
+                        modifiers: [],
+                      },
+                      // Financial fields
+                      subtotal: item.subtotal || ((item.is_open_item ? item.open_item_price : item.unit_price) * item.quantity) || 0,
+                      cashSubtotal: item.cash_subtotal || (item.cash_price * item.quantity) || 0,
+                      taxRate: item.tax_rate || 0,
+                      taxAmount: item.tax_amount || 0,
+                      cashTaxAmount: item.cash_tax_amount || 0,
+                      // Discount distribution fields
+                      discount_amount: item.discount_amount ?? 0,
+                      discount_cash_amount: item.discount_cash_amount ?? item.discount_amount ?? 0,
+                    })) || [],
+                  payments: [],
+                  opened_at: order.created_at,
+                  amount_due: order.amount_due,
+                  cash_amount_due: order.cash_amount_due,
+                  amount_paid: order.amount_paid,
+                };
+
+                newOrders[localId] = orderProfile;
+                newOrderIds.push(localId);
+              }
+
+              // Merge into store
+              set((state) => ({
+                ordersById: { ...state.ordersById, ...newOrders },
+                orderIds: [...state.orderIds, ...newOrderIds],
+              }));
+
+              console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
+            } catch (error: any) {
+              console.error("[prefetchOrders] Error:", error);
             }
           },
         };

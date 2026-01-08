@@ -5,7 +5,6 @@ import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Minus, Plus } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   LayoutChangeEvent,
   StyleSheet,
   TouchableOpacity,
@@ -13,12 +12,14 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import Svg, { Line } from "react-native-svg";
 import DraggableTable from "./DraggableTable";
+import TableLayoutSkeleton from "./TableLayoutSkeleton";
 
 interface TableLayoutViewProps {
   tables: FloorPlanObject[];
@@ -66,6 +67,10 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
   const savedTranslateY = useSharedValue(0);
   const opacity = useSharedValue(0);
 
+  // Crossfade animation shared values
+  const skeletonOpacity = useSharedValue(1);
+  const contentOpacity = useSharedValue(0);
+
   // 1. Calculate the bounding box of the tables
   useEffect(() => {
     setIsLoading(true);
@@ -111,10 +116,18 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 
       setIsLoading(false);
       opacity.value = withTiming(1);
+      // Crossfade: fade out skeleton, fade in content
+      skeletonOpacity.value = withTiming(0, { duration: 200 });
+      contentOpacity.value = withTiming(1, {
+        duration: 300,
+        easing: Easing.out(Easing.quad),
+      });
     } else if (containerDims.width > 0) {
       // Handle case with no tables
       setIsLoading(false);
       opacity.value = withTiming(1);
+      skeletonOpacity.value = withTiming(0, { duration: 200 });
+      contentOpacity.value = withTiming(1, { duration: 300 });
     }
   }, [containerDims, contentDims]);
 
@@ -151,21 +164,36 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
     ],
   }));
 
+  // Crossfade animated styles
+  const skeletonAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: skeletonOpacity.value,
+    position: "absolute" as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: skeletonOpacity.value > 0 ? 30 : -1,
+  }));
+
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    flex: 1,
+  }));
+
   return (
     // 3. Add onLayout prop to the container
     <View
       onLayout={onLayout}
       className={`flex-1 relative overflow-hidden ${className}`}
     >
-      {isLoading && (
-        <View
-          style={StyleSheet.absoluteFill}
-          className="items-center justify-center bg-[#212121] z-30"
-        >
-          <ActivityIndicator size="large" color="#60A5FA" />
-        </View>
-      )}
-      <View className="absolute top-2 left-2 flex flex-col z-20 gap-y-2">
+      {/* Skeleton Crossfade Layer */}
+      <Animated.View style={skeletonAnimatedStyle}>
+        <TableLayoutSkeleton tableCount={8} showControls={false} />
+      </Animated.View>
+
+      {/* Main Content with Crossfade */}
+      <Animated.View style={contentAnimatedStyle}>
+        <View className="absolute top-2 left-2 flex flex-col z-20 gap-y-2">
         <TouchableOpacity
           onPress={() => {
             scale.value += 0.1;
@@ -221,7 +249,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
               })}
             </Svg>
           )}
-          {tables.map((table) => (
+          {tables.map((table, index) => (
             <DraggableTable
               key={table.id}
               table={table}
@@ -239,10 +267,12 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                   : () => toggleTableSelection(table.id)
               }
               canvasScale={scale}
+              index={index}
             />
           ))}
         </Animated.View>
       </GestureDetector>
+      </Animated.View>
     </View>
   );
 };

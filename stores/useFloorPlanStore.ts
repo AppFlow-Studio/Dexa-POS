@@ -70,6 +70,7 @@ interface FloorPlanState {
   updateFloorPlan: (id: string, name: string) => Promise<void>;
   deleteFloorPlan: (id: string) => Promise<void>;
   loadFloorPlanStatus: () => Promise<void>;
+  loadFloorPlanStatusIfStale: (ttlMs?: number) => Promise<void>;
 
   // Table Design Actions (Design Mode)
   setDesignMode: (enabled: boolean) => void;
@@ -548,6 +549,55 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             lastSyncAt: new Date().toISOString(),
             error: null,
           });
+
+          // OPTIMIZATION: Prefetch orders for occupied tables in background
+          // This warms the cache for faster table view loading
+          const occupiedTables = tables.filter((t) => t.session?.order_id);
+          const orderIds = occupiedTables
+            .map((t) => t.session!.order_id!)
+            .filter(Boolean);
+
+          if (orderIds.length > 0) {
+            // Use queueMicrotask to defer prefetch without blocking
+            queueMicrotask(async () => {
+              try {
+                // Dynamic import to avoid circular dependency
+                const { useOrderStore } = await import("./useOrderStore");
+                // Limit to first 10 orders for performance
+                await useOrderStore.getState().prefetchOrders(orderIds.slice(0, 10));
+              } catch (err) {
+                console.warn("[loadFloorPlanStatus] Order prefetch failed:", err);
+              }
+            });
+          }
+        },
+
+        loadFloorPlanStatusIfStale: async (ttlMs: number = 30000) => {
+          const { lastSyncAt, isLoading } = get();
+
+          // Don't refresh if already loading
+          if (isLoading) {
+            console.log("[loadFloorPlanStatusIfStale] Skipping - already loading");
+            return;
+          }
+
+          // Check if offline - use cached data
+          const isOnline = getIsOnline();
+          if (!isOnline) {
+            console.log("[loadFloorPlanStatusIfStale] Offline - using cached data");
+            return;
+          }
+
+          // Check if data is stale
+          const isStale =
+            !lastSyncAt || Date.now() - new Date(lastSyncAt).getTime() > ttlMs;
+
+          if (isStale) {
+            console.log("[loadFloorPlanStatusIfStale] Data is stale - refreshing");
+            await get().loadFloorPlanStatus();
+          } else {
+            console.log("[loadFloorPlanStatusIfStale] Data is fresh - skipping refresh");
+          }
         },
 
         // ====================================================================

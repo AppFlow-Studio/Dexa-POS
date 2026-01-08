@@ -63,6 +63,8 @@ const useTableData = (table: TableType) => {
         displayName: table.name,
         status: sessionStatus,
         guestCount: 0,
+        subtotal: 0,
+        tax: 0,
         total: 0,
         seatedTime: null,
         server: "N/A",

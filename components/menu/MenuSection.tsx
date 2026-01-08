@@ -12,7 +12,7 @@ import { MenuItemType } from "@/lib/types";
 import { useMenuStore } from "@/stores/useMenuStore";
 import {
   isMenuBlockedSync,
-  selectClose,
+  selectCancelAndRemoveDraft,
   selectIsMenuBlocked,
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
@@ -104,7 +104,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // MENU BLOCKING - For inline overlay pattern
   // ============================================================
   const isMenuBlocked = useModifierSidebarStore(selectIsMenuBlocked);
-  const closeModifier = useModifierSidebarStore(selectClose);
+  const cancelAndRemoveDraft = useModifierSidebarStore(selectCancelAndRemoveDraft);
 
   // State for the active filters
   const menus = useMenuStore((s) => s.menus);
@@ -663,11 +663,12 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             BLOCKING OVERLAY - Prevents touch during modifier editing
             Native-level blocking via Pressable for 60fps performance
             Checks BOTH React state AND sync ref for zero-gap blocking
+            Clicking overlay cancels and removes draft items
             ============================================================ */}
         {(isMenuBlocked || isMenuBlockedSync()) && (
           <Pressable
             style={menuSectionStyles.blockingOverlay}
-            onPress={closeModifier}
+            onPress={cancelAndRemoveDraft}
           />
         )}
       </View>

@@ -1,7 +1,6 @@
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useAuth } from "@clerk/clerk-expo";
 import { Redirect } from "expo-router";
-import React from "react";
 import { ActivityIndicator, View } from "react-native";
 
 const StartPage = () => {

@@ -18,16 +18,74 @@ import VoidItemDialog from "./VoidItemDialog";
 interface BillItemProps {
   item: CartItem;
   isEditable?: boolean;
+  isActive?: boolean; // Highlight when being edited in modifier panel
 }
 
 const DELETE_BUTTON_WIDTH = 90;
 
-const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }) => {
+// Type for modifier structure
+interface ModifierDisplay {
+  categoryId: string;
+  categoryName?: string;
+  options: Array<{ id: string; name: string; price: number }>;
+}
+
+/**
+ * ModifiersList - Memoized component for rendering item modifiers
+ * PERFORMANCE: Extracted to avoid recreating nested maps on every render
+ */
+const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
+  ({ modifiers }) => (
+    <View className="py-1">
+      {modifiers.map((modifier, index) => (
+        <View key={`mod-${index}`} className="ml-4">
+          {modifier.options.length > 0 && (
+            <View className="flex flex-row flex-wrap items-center mb-1">
+              {modifier.categoryName && (
+                <Text className="text-sm font-medium text-gray-300">
+                  {modifier.categoryName}:
+                </Text>
+              )}
+              {modifier.options.map((option, optionIndex) => (
+                <View
+                  key={`opt-${optionIndex}`}
+                  className="flex-row justify-between items-center ml-1"
+                >
+                  <Text className="text-sm text-gray-200">
+                    {option.name}
+                    {optionIndex < modifier.options.length - 1 && " • "}
+                  </Text>
+                  {option.price > 0 && (
+                    <Text className="text-sm font-medium ml-1 text-green-400">
+                      +${option.price.toFixed(2)}
+                      {optionIndex < modifier.options.length - 1 && ","}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ))}
+    </View>
+  ),
+  (prev, next) => {
+    // Deep comparison for modifiers array
+    if (prev.modifiers.length !== next.modifiers.length) return false;
+    for (let i = 0; i < prev.modifiers.length; i++) {
+      if (prev.modifiers[i].categoryId !== next.modifiers[i].categoryId) return false;
+      if (prev.modifiers[i].options.length !== next.modifiers[i].options.length) return false;
+    }
+    return true;
+  }
+);
+
+const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, isActive = false }) => {
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const removeItemFromActiveOrder = useOrderStore((s) => s.removeItemFromActiveOrder);
   const openToView = useModifierSidebarStore((s) => s.openToView);
-  const openFullscreenEdit = useModifierSidebarStore((s) => s.openFullscreenEdit);
+  const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
   const setSelectedItemPosition = useModifierSidebarStore(selectSetSelectedItemPosition);
 
   // Ref for position tracking (attached modifier panel positioning)
@@ -127,7 +185,8 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
     captureItemPosition();
 
     if (isEditable) {
-      openFullscreenEdit(item, activeOrderId);
+      // Use attached panel mode (not fullscreen) to show arrow pointing to bill item
+      openToEdit(item, activeOrderId);
     } else {
       openToView(item, activeOrderId);
     }
@@ -145,11 +204,14 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
   return (
     <View
       ref={itemRef}
-      className={`rounded-xl overflow-hidden border ${
-        isVoided
-          ? "bg-[#2a2020] border-red-900/50 opacity-60"
-          : "bg-[#303030] border-gray-600"
+      className={`rounded-xl overflow-hidden ${
+        isActive
+          ? "border-2 border-blue-400 bg-blue-500/5"
+          : isVoided
+          ? "border bg-[#2a2020] border-red-900/50 opacity-60"
+          : "border bg-[#303030] border-gray-600"
       }`}
+      style={isActive ? { shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 8 } : undefined}
     >
       {isEditable && !isVoided && (
         <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
@@ -248,57 +310,12 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false }
             </View>
 
             {hasModifiers && (
-              <Animated.View className={`overflow-hidden `}>
+              <Animated.View className="overflow-hidden">
                 <View className="px-2 border-t border-gray-600">
-                  {/* Modifiers */}
+                  {/* OPTIMIZED: Use memoized ModifiersList component */}
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (
-                      <View className=" py-1">
-                        {item.customizations.modifiers.map(
-                          (modifier, index) => (
-                            <View key={index} className="ml-4">
-                              {modifier.options.length > 0 && (
-                                <View
-                                  key={index}
-                                  className="flex flex-row flex-wrap items-center mb-1"
-                                >
-                                  {/* Only show category name if it exists */}
-                                  {modifier.categoryName && (
-                                    <Text className="text-sm font-medium text-gray-300 ">
-                                      {modifier.categoryName}:
-                                    </Text>
-                                  )}
-                                  {modifier.options.map(
-                                    (option, optionIndex) => {
-                                      return (
-                                        <View
-                                          key={optionIndex}
-                                          className="flex-row justify-between items-center ml-1"
-                                        >
-                                          <Text className="text-sm text-gray-200">
-                                            {option.name}
-                                            {optionIndex <
-                                              modifier.options.length - 1 &&
-                                              " • "}
-                                          </Text>
-                                          {option.price > 0 && (
-                                            <Text className="text-sm font-medium ml-1 text-green-400">
-                                              +${option.price.toFixed(2)}{" "}
-                                              {optionIndex <
-                                                modifier.options.length - 1 &&
-                                                ","}
-                                            </Text>
-                                          )}
-                                        </View>
-                                      );
-                                    }
-                                  )}
-                                </View>
-                              )}
-                            </View>
-                          )
-                        )}
-                      </View>
+                      <ModifiersList modifiers={item.customizations.modifiers} />
                     )}
 
                   {item.customizations.notes && (
@@ -343,7 +360,8 @@ const BillItem = React.memo(BillItemComponent, (prev, next) => {
     // OPTIMIZED: Deep compare customizations instead of reference comparison
     prev.item.customizations?.notes === next.item.customizations?.notes &&
     prev.item.customizations?.modifiers?.length === next.item.customizations?.modifiers?.length &&
-    prev.isEditable === next.isEditable
+    prev.isEditable === next.isEditable &&
+    prev.isActive === next.isActive
   );
 });
 

@@ -16,11 +16,12 @@ import {
 } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useMenuStore } from "@/stores/useMenuStore";
-import { setOrderStoreSupabaseClient } from "@/stores/useOrderStore";
+import { setOrderStoreSupabaseClient, useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { setWaitlistSupabaseClient } from "@/stores/useWaitlistStore";
 import { TaxRate } from "@/types/menu";
 import React, { useCallback, useEffect, useRef } from "react";
+import { AppState, AppStateStatus } from "react-native";
 
 // Debug server URL - use your machine's local IP (run: ipconfig getifaddr en0)
 // Change this IP to match your machine's IP address
@@ -38,7 +39,6 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   const supabase = useSupabaseClient();
   const setEmployees = useEmployeeStore((state) => state.setEmployees);
   const setEmployeeSyncState = useEmployeeStore((state) => state.setSyncState);
-  const floorPlanLocationId = useFloorPlanStore((state) => state.locationId);
   const offlineSyncInitialized = useRef(false);
 
   // Register Supabase client with order store, floor plan store, coursing store, and offline sync
@@ -344,24 +344,45 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   //   });
   // }, [isSyncing, isSyncError, syncError, setSyncState]);
 
-  // Setup and cleanup realtime subscriptions for floor plans
-  // useEffect(() => {
-  //   // Use store's locationId if available, otherwise use selectedStore.id
-  //   const activeLocationId = floorPlanLocationId || selectedStore?.id;
+  // Setup and cleanup realtime subscriptions for floor plans and orders
+  // Use a ref to track if we've already subscribed to prevent duplicate setups
+  const realtimeLocationRef = useRef<string | null>(null);
 
-  //   if (!activeLocationId) {
-  //     return;
-  //   }
+  useEffect(() => {
+    const locationId = selectedStore?.id;
 
-  //   // Setup realtime subscriptions
-  //   useFloorPlanStore.getState().setupRealtimeSubscriptions(activeLocationId);
+    if (!locationId) {
+      return;
+    }
 
-  //   console.log('[PosSyncProvider] setupRealtimeSubscriptions', activeLocationId)
-  //   // Cleanup function
-  //   return () => {
-  //     useFloorPlanStore.getState().cleanup();
-  //   };
-  // }, [selectedStore?.id, floorPlanLocationId]);
+    // Skip if already subscribed to this location
+    if (realtimeLocationRef.current === locationId) {
+      return;
+    }
+
+    // Cleanup previous subscriptions if switching locations
+    if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
+      useFloorPlanStore.getState().cleanup();
+      useOrderStore.getState().cleanupOrderRealtime();
+    }
+
+    realtimeLocationRef.current = locationId;
+
+    // Setup realtime subscriptions for tables/sessions
+    useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
+
+    // Setup realtime subscriptions for orders
+    useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);
+
+    console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
+
+    // Cleanup function
+    return () => {
+      useFloorPlanStore.getState().cleanup();
+      useOrderStore.getState().cleanupOrderRealtime();
+      realtimeLocationRef.current = null;
+    };
+  }, [selectedStore?.id]);
 
   useEffect(() => {
     if (selectedStore?.id) {
@@ -376,6 +397,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       syncTaxRates(selectedStore.id);
     }
   }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
+
+  // App state listener - refresh stale data when app becomes active
+  useEffect(() => {
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === "active") {
+        // App came to foreground - refresh stale data
+        console.log("[PosSyncProvider] App became active - checking for stale data");
+        useFloorPlanStore.getState().loadFloorPlanStatusIfStale();
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   return <>{children}</>;
 }

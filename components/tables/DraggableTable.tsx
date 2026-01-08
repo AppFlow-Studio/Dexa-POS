@@ -17,6 +17,9 @@ import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 
 interface DraggableTableProps {
@@ -27,6 +30,7 @@ interface DraggableTableProps {
   onSelect: () => void;
   canvasScale: SharedValue<number>;
   onPress?: () => void;
+  index?: number; // For staggered entry animation
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -59,6 +63,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onSelect,
   canvasScale,
   onPress,
+  index = 0,
 }) => {
   const { tables, updateTablePosition, removeTable, saveSnapshot } =
     useFloorPlanStore();
@@ -165,6 +170,34 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   const dragContext = useSharedValue({ x: 0, y: 0 });
   const rotateContext = useSharedValue(0);
 
+  // Entry animation shared values
+  const entryScale = useSharedValue(0.8);
+  const entryOpacity = useSharedValue(0);
+
+  // Pulse animation for realtime updates
+  const pulseScale = useSharedValue(1);
+
+  // Staggered entry animation on mount
+  useEffect(() => {
+    const delay = index * 30; // 30ms stagger per table
+    const timeout = setTimeout(() => {
+      entryScale.value = withSpring(1, { damping: 15, stiffness: 200 });
+      entryOpacity.value = withTiming(1, { duration: 200 });
+    }, delay);
+    return () => clearTimeout(timeout);
+  }, [index]);
+
+  // Pulse animation when session status changes
+  useEffect(() => {
+    // Skip initial render
+    if (entryOpacity.value === 0) return;
+
+    pulseScale.value = withSequence(
+      withTiming(1.05, { duration: 100 }),
+      withSpring(1, { damping: 10 })
+    );
+  }, [table.session?.status, table.session?.order_id]);
+
   // --- SYNC WITH UNDO/REDO ---
   useAnimatedReaction(
     () => ({ x: table.x, y: table.y, r: table.rotation }),
@@ -248,7 +281,9 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
         { translateX: translateX.value },
         { translateY: translateY.value },
         { rotate: `${rotation.value}deg` },
+        { scale: entryScale.value * pulseScale.value },
       ],
+      opacity: entryOpacity.value,
       borderWidth: 2,
       borderColor: isSelected
         ? "#3B82F6"

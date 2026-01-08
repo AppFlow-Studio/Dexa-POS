@@ -43,7 +43,7 @@ export function NetworkStatusBadge(): React.ReactElement {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSyncingOrder, setIsSyncingOrder] = useState(false);
-
+  console.log(isOnline)
   // Get active order info from store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const syncOrderFromDatabase = useOrderStore((s) => s.syncOrderFromDatabase);

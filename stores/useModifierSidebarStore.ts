@@ -44,6 +44,7 @@ interface ModifierSidebarState {
   // ============================================================
   isMenuBlocked: boolean; // Block menu input during modifier editing
   selectedItemPosition: ItemPosition | null; // Position of selected item in bill
+  activeEditingItemId: string | null; // Track which cart item is being edited (for visual highlight)
 
   // ============================================================
   // PRE-COMPUTED DATA - For instant ModifierScreen render
@@ -71,6 +72,7 @@ interface ModifierSidebarState {
   ) => void;
   openFullscreenEdit: (item: CartItem, orderId: string | null) => void;
   close: () => void;
+  cancelAndRemoveDraft: () => void; // Cancel and remove draft item if adding new
   setSelectedItemPosition: (position: ItemPosition | null) => void;
 }
 
@@ -214,6 +216,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
   // Menu blocking & position
   isMenuBlocked: false,
   selectedItemPosition: null,
+  activeEditingItemId: null, // Track which bill item is being edited
 
   // Pre-computed data starts empty
   precomputedModifiers: null,
@@ -239,7 +242,8 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
     set({
       isOpen: true,
       isMenuBlocked: true, // Block menu immediately
-      mode: "add",
+      mode: "fullscreen",
+    
       menuItem: item,
       cartItem: null,
       categoryId: categoryId || null,
@@ -268,7 +272,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       set({
         isOpen: true,
         isMenuBlocked: true,
-        mode: "edit",
+        mode: "fullscreen",
         menuItem: null,
         cartItem: item,
         categoryId: item.addedFromCategoryId || null,
@@ -279,12 +283,13 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
         precomputedForItemId: precomputed.forItemId,
+        activeEditingItemId: item.id, // Track which cart item is being edited
       });
     } else {
       set({
         isOpen: true,
         isMenuBlocked: true,
-        mode: "edit",
+        mode: "fullscreen",
         menuItem: null,
         cartItem: item,
         categoryId: item.addedFromCategoryId || null,
@@ -295,6 +300,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
         precomputedForItemId: item.menuItemId,
+        activeEditingItemId: item.id, // Track which cart item is being edited
       });
     }
   },
@@ -314,7 +320,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       set({
         isOpen: true,
         isMenuBlocked: true, // Block menu for consistent behavior
-        mode: "view",
+        mode: "fullscreen",
         menuItem: null,
         cartItem: item,
         categoryId: item.addedFromCategoryId || null,
@@ -325,12 +331,14 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
         precomputedForItemId: precomputed.forItemId,
+        activeEditingItemId: item.id, // Track which cart item is being viewed
       });
     } else {
       set({
         isOpen: true,
         isMenuBlocked: true, // Block menu for consistent behavior
-        mode: "view",
+        mode: "fullscreen",
+        activeEditingItemId: item.id, // Track which cart item is being viewed
         menuItem: null,
         cartItem: item,
         categoryId: item.addedFromCategoryId || null,
@@ -401,6 +409,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemCashPrice: precomputed.itemCashPrice,
         activeModifierCategory: precomputed.activeCategory,
         precomputedForItemId: precomputed.forItemId,
+        activeEditingItemId: item.id, // Track which cart item is being edited
       });
     } else {
       set({
@@ -417,6 +426,7 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
         itemCashPrice: item.cashPrice ?? item.price,
         activeModifierCategory: null,
         precomputedForItemId: item.menuItemId,
+        activeEditingItemId: item.id, // Track which cart item is being edited
       });
     }
   },
@@ -429,12 +439,62 @@ export const useModifierSidebarStore = create<ModifierSidebarState>((set) => ({
       isOpen: false,
       isMenuBlocked: false, // Unblock menu on close
       selectedItemPosition: null, // Clear position tracking
+      activeEditingItemId: null, // Clear active item highlight
       mode: "add",
       menuItem: null,
       cartItem: null,
       categoryId: null,
       menuId: null,
       // Clear pre-computed data
+      precomputedModifiers: null,
+      initialSelections: null,
+      itemPrice: 0,
+      itemCashPrice: 0,
+      activeModifierCategory: null,
+      precomputedForItemId: null,
+    });
+  },
+
+  cancelAndRemoveDraft: () => {
+    // CRITICAL: Unblock touches synchronously FIRST (same frame)
+    setMenuBlockedSync(false);
+
+    // Get current state to check if we need to remove draft items
+    const state = useModifierSidebarStore.getState();
+    const { mode, menuItem, cartItem } = state;
+
+    // If in add mode (not editing an existing cart item), remove any draft items
+    // This matches the cancel logic in ModifierScreen
+    if (mode !== "edit" && !cartItem && menuItem) {
+      // Import dynamically to avoid circular dependency
+      const { useOrderStore } = require("./useOrderStore");
+      const { activeOrderId, ordersById, removeItemFromActiveOrder } =
+        useOrderStore.getState();
+      const activeOrder = activeOrderId ? ordersById[activeOrderId] : null;
+
+      // Find and remove draft items with matching menuItemId
+      const draftItems = activeOrder?.items?.filter(
+        (i: any) => i.isDraft && i.menuItemId === menuItem.id
+      );
+
+      if (draftItems && draftItems.length > 0) {
+        draftItems.forEach((draftItem: any) => {
+          removeItemFromActiveOrder(draftItem.id);
+        });
+      }
+    }
+
+    // Close the modal
+    set({
+      isOpen: false,
+      isMenuBlocked: false,
+      selectedItemPosition: null,
+      activeEditingItemId: null,
+      mode: "add",
+      menuItem: null,
+      cartItem: null,
+      categoryId: null,
+      menuId: null,
       precomputedModifiers: null,
       initialSelections: null,
       itemPrice: 0,
@@ -494,6 +554,10 @@ export const selectPrecomputedForItemId = (state: ModifierSidebarState) =>
 /** Selector for close action - stable reference, no re-renders */
 export const selectClose = (state: ModifierSidebarState) => state.close;
 
+/** Selector for cancelAndRemoveDraft action - use for overlay cancel that removes draft items */
+export const selectCancelAndRemoveDraft = (state: ModifierSidebarState) =>
+  state.cancelAndRemoveDraft;
+
 /** Combined selector for fullscreen mode check */
 export const selectIsFullscreen = (state: ModifierSidebarState) =>
   state.isOpen && state.mode === "fullscreen";
@@ -513,3 +577,7 @@ export const selectSelectedItemPosition = (state: ModifierSidebarState) =>
 /** Selector for setSelectedItemPosition action - stable reference */
 export const selectSetSelectedItemPosition = (state: ModifierSidebarState) =>
   state.setSelectedItemPosition;
+
+/** Selector for activeEditingItemId - use for bill item highlight */
+export const selectActiveEditingItemId = (state: ModifierSidebarState) =>
+  state.activeEditingItemId;

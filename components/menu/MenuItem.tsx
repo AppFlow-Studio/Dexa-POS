@@ -268,10 +268,11 @@ const MenuItem: React.FC<MenuItemProps> = ({
     }
 
     // Use getState() to avoid subscribing to store changes
-    // Note: openFullscreen also calls setMenuBlockedSync(true), which is idempotent
+    // Use openToAdd for attached panel mode (compact UI with arrow indicator)
+    // Note: openToAdd also calls setMenuBlockedSync(true), which is idempotent
     useModifierSidebarStore
       .getState()
-      .openFullscreen(item, currentOrderId, categoryId, menuId);
+      .openToAdd(item, currentOrderId, categoryId, menuId);
   }, [
     item,
     categoryId,

@@ -1,5 +1,6 @@
 import { GuestCountModal } from "@/components/tables/GuestCountModal";
 import Sidebar from "@/components/tables/Sidebar";
+import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -36,6 +37,7 @@ const TablesScreen = () => {
     clearSelection,
     mergeTable,
     unmergeTable,
+    isLoading: floorPlanLoading,
   } = useFloorPlanStore();
   const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
   const { show } = useToast();
@@ -393,13 +395,17 @@ const TablesScreen = () => {
 
           {/* Map Container */}
           <View className="bg-[#212121] border border-gray-700 rounded-xl flex-1 relative">
-            <TableLayoutView
-              tables={tables || []}
-              isSelectionMode={true}
-              onTableSelect={handleTablePress}
-              showConnections={true}
-              layoutId={activeFloorPlanId || ""}
-            />
+            {floorPlanLoading && tables.length === 0 ? (
+              <TableLayoutSkeleton tableCount={10} showControls={true} />
+            ) : (
+              <TableLayoutView
+                tables={tables || []}
+                isSelectionMode={true}
+                onTableSelect={handleTablePress}
+                showConnections={true}
+                layoutId={activeFloorPlanId || ""}
+              />
+            )}
 
             {/* Top Right Buttons: Merge + Edit Layout */}
             <View className="absolute top-4 right-4 z-10 flex-row gap-2">

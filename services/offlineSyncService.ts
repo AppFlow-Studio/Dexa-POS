@@ -1120,18 +1120,39 @@ export async function reconcileOrderWithBackend(
       reconciledItems.push({
         id: `sync_${backendItem.id}`,
         db_order_item_id: backendItem.id,
-        menuItemId: backendItem.menu_item_id,
-        name: backendItem.item_name,
-        quantity: backendItem.quantity,
-        price: backendItem.unit_price,
-        originalPrice: backendItem.unit_price,
+        menuItemId: backendItem.menu_item_id || "",
+        // For open items, use open_item_name; otherwise use item_name
+        name: backendItem.is_open_item ? (backendItem.open_item_name || "Open Item") : (backendItem.item_name || "Unknown Item"),
+        quantity: backendItem.quantity || 1,
+        // For open items, use open_item_price; otherwise use unit_price
+        price: backendItem.is_open_item ? (backendItem.open_item_price || 0) : (backendItem.unit_price || 0),
+        unitPrice: backendItem.is_open_item ? (backendItem.open_item_price || 0) : (backendItem.unit_price || 0),
+        cashPrice: backendItem.cash_price || backendItem.cash_unit_price || (backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) || 0,
+        originalPrice: backendItem.cash_price || (backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) || 0,
+        paidQuantity: backendItem.paid_quantity || 0,
+        // Open item support
+        is_open_item: backendItem.is_open_item || false,
+        open_item_name: backendItem.open_item_name || undefined,
+        open_item_price: backendItem.open_item_price || undefined,
         kitchen_status: backendItem.kitchen_status,
         item_status: backendItem.item_status,
+        courseNumber: backendItem.course_number || 1,
+        category_name: backendItem.category_name || "Uncategorized",
+        is_voided: backendItem.is_voided || false,
         sync_status: "synced" as const,
         customizations: {
-          notes: backendItem.special_instructions,
+          notes: backendItem.special_instructions || undefined,
           modifiers: [], // Would need more data to populate
         },
+        // Financial fields
+        subtotal: backendItem.subtotal || ((backendItem.is_open_item ? backendItem.open_item_price : backendItem.unit_price) * backendItem.quantity) || 0,
+        cashSubtotal: backendItem.cash_subtotal || (backendItem.cash_price * backendItem.quantity) || 0,
+        taxRate: backendItem.tax_rate || 0,
+        taxAmount: backendItem.tax_amount || 0,
+        cashTaxAmount: backendItem.cash_tax_amount || 0,
+        // Discount distribution fields
+        discount_amount: backendItem.discount_amount ?? 0,
+        discount_cash_amount: backendItem.discount_cash_amount ?? backendItem.discount_amount ?? 0,
       });
     });
 

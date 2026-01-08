@@ -1,10 +1,10 @@
-import AttachedModifierPanel from "@/components/bill/AttachedModifierPanel";
 import DiscountBottomSheet from "@/components/bill/DiscountBottomSheet";
 import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
+import TableDetailSkeleton from "@/components/tables/TableDetailSkeleton";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -29,6 +29,7 @@ const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
   const [duration, setDuration] = useState("");
   const [isOvertime, setIsOvertime] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const isNavigatingAwayRef = useRef(false);
   const hasInitializedRef = useRef(false);
   const wasPaymentSheetOpenRef = useRef(false);
@@ -60,10 +61,10 @@ const UpdateTableScreen = () => {
   const discountSheetRef = useRef<BottomSheetMethods>(null);
 
   const {
-    tables,
+    // tables,
     updateSessionStatus,
     loadFloorPlanStatus,
-    unmergeTable,
+    // unmergeTable,
     getTableById,
     clearTableSession,
   } = useFloorPlanStore();
@@ -130,7 +131,7 @@ const UpdateTableScreen = () => {
   const storeActiveOrderTotal = useOrderStore(
     (state) => state.activeOrderTotal
   );
-
+  console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder?.items);
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
@@ -213,6 +214,17 @@ const UpdateTableScreen = () => {
     }
     return () => setActiveOrder(null);
   }, [currentTableId, existingOrderId, setActiveOrder]);
+
+  // Mark initialization complete when table and order are ready
+  useEffect(() => {
+    if (table && (activeOrder || tableStatus === "available")) {
+      // Small delay to ensure smooth transition
+      const timer = setTimeout(() => {
+        setIsInitializing(false);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [table, activeOrder, tableStatus]);
 
   useEffect(() => {
     if (currentTableId) {
@@ -956,6 +968,11 @@ const UpdateTableScreen = () => {
     );
   }, [activeOrder?.items, activeOrder?.id, selectedCourseIdForTracker, coursingStore.byOrderId[activeOrder?.id || ""]?.itemCourseMap]);
 
+  // Show skeleton during initial load for smooth transition
+  if (isInitializing) {
+    return <TableDetailSkeleton />;
+  }
+
   if (!table) {
     return (
       <View className="flex-1 items-center justify-center bg-[#212121]">
@@ -971,9 +988,6 @@ const UpdateTableScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121]">
-      {/* AttachedModifierPanel - Renders over menu area for inline editing */}
-      <AttachedModifierPanel />
-
       {isOvertime && (
         <View className="p-2 bg-yellow-500 items-center">
           <Text className="text-base font-bold text-yellow-900">

@@ -171,7 +171,7 @@ const OrderProcessing = () => {
   return (
     <View className="flex-1 flex-col bg-[#212121]">
       {/* AttachedModifierPanel - Renders over menu area for inline editing */}
-      <AttachedModifierPanel />
+      {/* <AttachedModifierPanel /> */}
 
       <View className="flex-1 flex-row">
         <BillSection
