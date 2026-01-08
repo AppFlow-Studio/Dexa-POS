@@ -79,7 +79,8 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    syncOrderFromDatabase
+    syncOrderFromDatabase,
+    syncPaymentStatus,
   } = useOrderStore();
 
   const {
@@ -236,25 +237,25 @@ const UpdateTableScreen = () => {
     };
   }, [currentTableId]);
 
-  // --- Sync order from database after payment sheet closes ---
+  // --- Sync payment status from database after payment sheet closes ---
   useEffect(() => {
     // Detect when payment sheet closes (was open -> now closed)
     if (wasPaymentSheetOpenRef.current && !isPaymentSheetOpen) {
-      console.log("[Payment] Sheet closed. Syncing order from database...");
+      console.log("[Payment] Sheet closed. Syncing payment status from database...");
 
       // Add delay to allow backend to process payment before syncing
-      // This prevents race condition where stale amount_due overwrites local calculations
+      // Uses syncPaymentStatus which shows loading state during sync
       const orderId = activeOrder?.id;
       if (orderId) {
         setTimeout(() => {
-          syncOrderFromDatabase(orderId);
+          syncPaymentStatus(orderId);
         }, 500);
       }
     }
 
     // Update ref
     wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
-  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus, activeOrder?.id]);
+  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus, activeOrder?.id, syncPaymentStatus]);
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {

@@ -592,6 +592,27 @@ const ModifierScreen = () => {
     prevMenuItemIdRef.current = menuItem.id;
   }, [isOpen, menuItem?.id, mode, storeInitialSelections, precomputedActiveCategory]);
 
+  // Reset state when editing a DIFFERENT cart item (edit/fullscreen mode with cartItem)
+  // This ensures the existing modifiers from the cart item are properly restored
+  const prevCartItemIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !cartItem) return;
+
+    // Reset when opening or switching to a different cart item
+    if (prevCartItemIdRef.current !== cartItem.id) {
+      dispatch({
+        type: "INITIALIZE",
+        payload: {
+          quantity: cartItem.quantity ?? 1,
+          notes: cartItem.customizations?.notes ?? "",
+          modifierSelections: storeInitialSelections ?? {},
+          activeCategory: precomputedActiveCategory ?? null,
+        },
+      });
+      prevCartItemIdRef.current = cartItem.id;
+    }
+  }, [isOpen, cartItem?.id, storeInitialSelections, precomputedActiveCategory]);
+
   // ============================================================================
   // DRAFT ITEM CREATION (Deferred via microtask for non-blocking UI)
   // ============================================================================

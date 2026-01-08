@@ -1,14 +1,16 @@
 import { OrderProfile } from "@/lib/types";
+import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
   CreditCard,
+  Loader2,
   MoreHorizontal,
   Percent,
   RotateCcw,
   Trash2,
 } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from "react-native";
 
 interface BottomActionBarProps {
   activeOrder: OrderProfile | undefined;
@@ -31,6 +33,34 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressDiscount,
   totalDisplayAmount,
 }) => {
+  // Subscribe to payment sync status for loading state
+  const paymentSyncStatus = useOrderStore((state) => state.paymentSyncStatus);
+  const isSyncing = paymentSyncStatus === "syncing";
+
+  // Pulsing animation for syncing state
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (isSyncing) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 0.6,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isSyncing]);
+
   // Shared styling: flex-1 ensures they all take equal width
   const buttonBaseClass =
     "flex-1 flex-row items-center justify-center h-12 px-2 rounded-lg gap-2";
@@ -47,12 +77,33 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         <Text className="font-semibold text-white text-base">Discount</Text>
       </TouchableOpacity>
 
-      {/* Total Button: Blue (Primary Action) or Green (Paid) */}
+      {/* Total Button: Blue (Primary Action), Green (Paid), or Gray (Syncing) */}
       {(() => {
         // Only show "Paid" if order has items AND balance is zero
         const hasItems = (activeOrder?.items?.length ?? 0) > 0;
-        const isFullyPaid = hasItems && totalDisplayAmount <= 0;
-        // console.log('[totalDisplayAmount] totalDisplayAmount', totalDisplayAmount);
+        const isFullyPaid = hasItems && totalDisplayAmount <= 0 && !isSyncing;
+
+        // Show syncing state with pulsing animation
+        if (isSyncing) {
+          return (
+            <Animated.View
+              style={{ opacity: pulseAnim, flex: 1 }}
+            >
+              <View
+                className={`${buttonBaseClass} bg-gray-600`}
+              >
+                <ActivityIndicator size="small" color="white" />
+                <Text
+                  className="font-semibold text-white text-base"
+                  numberOfLines={1}
+                >
+                  Syncing...
+                </Text>
+              </View>
+            </Animated.View>
+          );
+        }
+
         return (
           <TouchableOpacity
             onPress={onPressTotal}

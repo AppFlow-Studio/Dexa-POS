@@ -99,6 +99,35 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
 }
 
 /**
+ * Calculate paid_status PURELY from the order's payments array.
+ * This is the single source of truth for payment status - no backend reliance.
+ *
+ * @param payments - The order's payments array
+ * @param totalAmount - The order's total amount (card price)
+ * @returns The calculated paid status
+ */
+export function calculatePaidStatusFromPayments(
+  payments: { amount: number; isVoided?: boolean }[] | undefined,
+  totalAmount: number
+): "Paid" | "Partial" | "Pending" | "Unpaid" {
+  const nonVoidedPayments = payments?.filter(p => !p.isVoided) || [];
+  const totalPaid = nonVoidedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+  // No payments or zero total paid
+  if (totalPaid <= 0 || nonVoidedPayments.length === 0) {
+    return "Pending";
+  }
+
+  // Fully paid (within rounding tolerance)
+  if (totalPaid >= totalAmount - 0.01) {
+    return "Paid";
+  }
+
+  // Has some payments but not fully paid
+  return "Partial";
+}
+
+/**
  * Distribute an order-level discount proportionally to individual items.
  * This mirrors the database's discount distribution algorithm to ensure consistency
  * between local state (for offline) and backend values.
@@ -1558,6 +1587,10 @@ interface OrderState {
   isOnline: boolean;
   pendingSyncCount: number;
 
+  // === PAYMENT SYNC STATE ===
+  // Tracks whether we're syncing payment status from backend
+  paymentSyncStatus: "idle" | "syncing" | "error";
+
   // === REALTIME SUBSCRIPTION STATE ===
   orderRealtimeChannel: RealtimeChannel | null;
   setupOrderRealtimeSubscriptions: (locationId: string) => void;
@@ -1701,6 +1734,8 @@ interface OrderState {
   syncOrderFromDatabase: (orderId: string) => Promise<{ success: boolean; error?: string }>;
   // Prefetch multiple orders by their database IDs (for cache warming)
   prefetchOrders: (orderIds: string[]) => Promise<void>;
+  // Sync payment status from backend (shows loading state during sync)
+  syncPaymentStatus: (orderId: string) => Promise<void>;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -2031,39 +2066,31 @@ export const useOrderStore = create<OrderState>()(
                 }));
               }
 
-              // Auto-manage paid_status based on payment state
-              // Use backend amount_due as authoritative when available
+              // ================================================================
+              // AUTO-MANAGE paid_status FROM LOCAL PAYMENTS ONLY
+              // ================================================================
+              // CRITICAL: Calculate paid_status ONLY from local payments array
+              // This prevents flicker caused by stale/racing backend values
               const hasItems = (activeOrder.items?.length || 0) > 0;
-              const nonVoidedPayments = activeOrder.payments?.filter(p => !p.isVoided) || [];
-              const hasNonVoidedPayments = nonVoidedPayments.length > 0;
-
-              // Use backend amount_due if available, otherwise use local calculation
-              const effectiveOutstanding = hasBackendAmountDue
-                ? activeOrder.amount_due!
-                : outstandingSubtotal;
 
               if (hasItems) {
-                // Determine the correct paid_status based on outstanding amount and payments
-                let correctPaidStatus: "Paid" | "Partial" | "Pending" | "Unpaid" = activeOrder.paid_status;
-
-                if (effectiveOutstanding <= 0.01) {
-                  // Fully paid - no outstanding amount
-                  correctPaidStatus = "Paid";
-                } else if (hasNonVoidedPayments) {
-                  // Has payments but still has outstanding - Partial
-                  correctPaidStatus = "Partial";
-                } else {
-                  // No payments yet - keep as Pending or Unpaid
-                  correctPaidStatus = activeOrder.paid_status === "Unpaid" ? "Unpaid" : "Pending";
-                }
+                // Use the pure function - payments are the single source of truth
+                const correctPaidStatus = calculatePaidStatusFromPayments(
+                  activeOrder.payments,
+                  safeTotal
+                );
 
                 // Only update if status needs to change
                 if (correctPaidStatus !== activeOrder.paid_status) {
-                  console.log(`[recalculateTotals] Updating paid_status: ${activeOrder.paid_status} -> ${correctPaidStatus} (outstanding: ${effectiveOutstanding})`);
+                  console.log(`[recalculateTotals] Updating paid_status from payments: ${activeOrder.paid_status} -> ${correctPaidStatus}`);
                   set((state) => ({
-                    orders: state.orders.map((o) =>
-                      o.id === orderId ? { ...o, paid_status: correctPaidStatus } : o
-                    ),
+                    ordersById: {
+                      ...state.ordersById,
+                      [orderId]: {
+                        ...state.ordersById[orderId],
+                        paid_status: correctPaidStatus,
+                      },
+                    },
                   }));
                 }
               }
@@ -2240,6 +2267,8 @@ export const useOrderStore = create<OrderState>()(
           activeOrderTotalCash: 0,
           activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
+          // Payment sync status for loading UI
+          paymentSyncStatus: "idle",
 
           // --- OFFLINE SYNC ACTIONS ---
           setOnlineStatus: (isOnline: boolean) => set({ isOnline }),
@@ -5466,20 +5495,17 @@ export const useOrderStore = create<OrderState>()(
                     isVoided: p.status === "voided",
                   })) || localOrder.payments;
 
-                // Determine payment status from backend
-                const isPaid = dbOrder.payment_status === "paid" || (dbOrder.amount_due <= 0.01 && dbOrder.amount_paid > 0);
-                const isPartiallyPaid = dbOrder.payment_status === "partial" ||
-                  (dbOrder.amount_paid > 0 && dbOrder.amount_due > 0.01);
-
-                // Map backend payment_status to local paid_status
-                let syncedPaidStatus: "Paid" | "Partial" | "Pending" | "Unpaid" = "Pending";
-                if (isPaid) {
-                  syncedPaidStatus = "Paid";
-                } else if (isPartiallyPaid) {
-                  syncedPaidStatus = "Partial";
-                } else if (dbOrder.amount_paid === 0 && dbOrder.amount_due > 0) {
-                  syncedPaidStatus = "Pending";
-                }
+                // ================================================================
+                // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
+                // ================================================================
+                // CRITICAL: Use local payments array as single source of truth
+                // This prevents flicker caused by stale/racing backend values
+                const orderTotalAmount = dbOrder.card_total || dbOrder.total_amount || 0;
+                const syncedPaidStatus = calculatePaidStatusFromPayments(
+                  syncedPayments,
+                  orderTotalAmount
+                );
+                const isPaid = syncedPaidStatus === "Paid";
 
                 return {
                   ordersById: {
@@ -5522,6 +5548,110 @@ export const useOrderStore = create<OrderState>()(
             } catch (error: any) {
               console.error("[syncOrderFromDatabase] Error:", error);
               return { success: false, error: error?.message || "Sync failed" };
+            }
+          },
+
+          // ============================================================================
+          // PAYMENT STATUS SYNC WITH LOADING STATE
+          // ============================================================================
+          /**
+           * Syncs payment status from backend with loading state for UI feedback.
+           * Shows spinner during sync instead of potentially incorrect status.
+           *
+           * @param orderId - The local order ID to sync payment status for
+           */
+          syncPaymentStatus: async (orderId: string): Promise<void> => {
+            const supabase = _supabaseClient;
+            if (!supabase) {
+              console.log("[syncPaymentStatus] No Supabase client available");
+              return;
+            }
+
+            const order = get().ordersById[orderId];
+            if (!order || !order.db_order_id) {
+              console.log("[syncPaymentStatus] Order not found or not synced to DB");
+              return;
+            }
+
+            console.log(`[syncPaymentStatus] Starting sync for order ${orderId}`);
+            set({ paymentSyncStatus: "syncing" });
+
+            try {
+              // Fetch fresh payment data from backend
+              const { data: dbOrder, error: orderError } = await supabase
+                .from("orders")
+                .select("payment_status, amount_due, amount_paid, card_total, total_amount")
+                .eq("id", order.db_order_id)
+                .single();
+
+              if (orderError) throw orderError;
+
+              // Fetch fresh payments list
+              const { data: dbPayments, error: paymentsError } = await supabase
+                .from("order_payments")
+                .select("*")
+                .eq("order_id", order.db_order_id)
+                .eq("status", "captured");
+
+              if (paymentsError) {
+                console.warn("[syncPaymentStatus] Payments fetch error:", paymentsError);
+              }
+
+              // Map payments to local format
+              const syncedPayments = dbPayments?.map((p) => ({
+                id: p.id,
+                amount: p.amount,
+                method: (p.payment_method === "card" ? "Card" : "Cash") as PaymentType,
+                cardBrand: p.card_brand,
+                last4: p.card_last4,
+                tip_amount: p.tip_amount,
+                itemsCovered: (p.item_ids || []).map((itemId: string) => ({ itemId, quantity: 1 })),
+                timestamp: p.created_at,
+                isVoided: p.status === "voided",
+              })) || [];
+
+              // Calculate status from fresh payments
+              const orderTotalAmount = dbOrder.card_total || dbOrder.total_amount || 0;
+              const freshPaidStatus = calculatePaidStatusFromPayments(syncedPayments, orderTotalAmount);
+              const isPaid = freshPaidStatus === "Paid";
+
+              console.log("[syncPaymentStatus] Fresh status:", {
+                paidStatus: freshPaidStatus,
+                amountDue: dbOrder.amount_due,
+                amountPaid: dbOrder.amount_paid,
+                paymentsCount: syncedPayments.length,
+              });
+
+              // Update order with fresh backend values
+              set((state) => ({
+                paymentSyncStatus: "idle",
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: {
+                    ...state.ordersById[orderId],
+                    amount_due: dbOrder.amount_due ?? 0,
+                    amount_paid: dbOrder.amount_paid ?? 0,
+                    paid_status: freshPaidStatus,
+                    check_status: isPaid ? ("Closed" as const) : ("Opened" as const),
+                    payments: syncedPayments.length > 0 ? syncedPayments : state.ordersById[orderId]?.payments,
+                  },
+                },
+                // Update outstanding totals if this is the active order
+                ...(orderId === state.activeOrderId
+                  ? {
+                    activeOrderOutstandingTotal: dbOrder.amount_due ?? 0,
+                  }
+                  : {}),
+              }));
+
+              console.log("[syncPaymentStatus] Successfully synced payment status");
+            } catch (error: any) {
+              console.error("[syncPaymentStatus] Error:", error);
+              set({ paymentSyncStatus: "error" });
+              // Auto-reset to idle after 3 seconds on error
+              setTimeout(() => {
+                set({ paymentSyncStatus: "idle" });
+              }, 3000);
             }
           },
 

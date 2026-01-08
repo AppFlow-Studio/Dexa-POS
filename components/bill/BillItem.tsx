@@ -70,12 +70,23 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
     </View>
   ),
   (prev, next) => {
-    // Deep comparison for modifiers array
+    // Deep comparison for modifiers array - compare actual option content
     if (prev.modifiers.length !== next.modifiers.length) return false;
+
     for (let i = 0; i < prev.modifiers.length; i++) {
-      if (prev.modifiers[i].categoryId !== next.modifiers[i].categoryId) return false;
-      if (prev.modifiers[i].options.length !== next.modifiers[i].options.length) return false;
+      const prevMod = prev.modifiers[i];
+      const nextMod = next.modifiers[i];
+
+      if (prevMod.categoryId !== nextMod.categoryId) return false;
+      if (prevMod.options.length !== nextMod.options.length) return false;
+
+      // Compare actual option IDs and names to detect changes
+      for (let j = 0; j < prevMod.options.length; j++) {
+        if (prevMod.options[j].id !== nextMod.options[j].id) return false;
+        if (prevMod.options[j].name !== nextMod.options[j].name) return false;
+      }
     }
+
     return true;
   }
 );
@@ -347,22 +358,44 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
 const BillItem = React.memo(BillItemComponent, (prev, next) => {
   // Return true if props are equal (skip re-render)
-  return (
-    prev.item.id === next.item.id &&
-    prev.item.quantity === next.item.quantity &&
-    prev.item.price === next.item.price &&
-    prev.item.is_voided === next.item.is_voided &&
-    prev.item.void_reason === next.item.void_reason &&
-    prev.item.sync_status === next.item.sync_status &&
-    prev.item.paidQuantity === next.item.paidQuantity &&
-    prev.item.kitchen_status === next.item.kitchen_status &&
-    prev.item.isDraft === next.item.isDraft &&
-    // OPTIMIZED: Deep compare customizations instead of reference comparison
-    prev.item.customizations?.notes === next.item.customizations?.notes &&
-    prev.item.customizations?.modifiers?.length === next.item.customizations?.modifiers?.length &&
-    prev.isEditable === next.isEditable &&
-    prev.isActive === next.isActive
-  );
+  // Quick checks first
+  if (
+    prev.item.id !== next.item.id ||
+    prev.item.quantity !== next.item.quantity ||
+    prev.item.price !== next.item.price ||
+    prev.item.is_voided !== next.item.is_voided ||
+    prev.item.void_reason !== next.item.void_reason ||
+    prev.item.sync_status !== next.item.sync_status ||
+    prev.item.paidQuantity !== next.item.paidQuantity ||
+    prev.item.kitchen_status !== next.item.kitchen_status ||
+    prev.item.isDraft !== next.item.isDraft ||
+    prev.item.customizations?.notes !== next.item.customizations?.notes ||
+    prev.isEditable !== next.isEditable ||
+    prev.isActive !== next.isActive
+  ) {
+    return false;
+  }
+
+  // Deep compare modifiers - check actual option IDs, not just length
+  const prevModifiers = prev.item.customizations?.modifiers || [];
+  const nextModifiers = next.item.customizations?.modifiers || [];
+
+  if (prevModifiers.length !== nextModifiers.length) return false;
+
+  for (let i = 0; i < prevModifiers.length; i++) {
+    const prevMod = prevModifiers[i];
+    const nextMod = nextModifiers[i];
+
+    if (prevMod.categoryId !== nextMod.categoryId) return false;
+    if (prevMod.options.length !== nextMod.options.length) return false;
+
+    // Compare actual option IDs to detect when options change
+    for (let j = 0; j < prevMod.options.length; j++) {
+      if (prevMod.options[j].id !== nextMod.options[j].id) return false;
+    }
+  }
+
+  return true;
 });
 
 export default BillItem;

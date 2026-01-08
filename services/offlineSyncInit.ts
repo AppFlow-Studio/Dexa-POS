@@ -21,6 +21,7 @@ import {
   getFailedPayments,
   getIsOnline,
   getPendingPaymentsCount,
+  hasPendingOrderCreation,
   initOfflineSyncService,
   OfflineOperation,
   OPERATION_PRIORITY,
@@ -31,7 +32,7 @@ import { OrderDiscountService } from "@/services/orderDiscountService";
 import { AddOpenItemParams, OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import { calculatePaidStatusFromPayments, useOrderStore } from "@/stores/useOrderStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import type { AddOrderItemParams } from "@/types/db-order-management-types";
 
@@ -451,6 +452,21 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           terminalResponse,
         } = op.params;
 
+        // ============================================================
+        // MIGRATE OLD PARAMETER NAMES FOR BACKWARDS COMPATIBILITY
+        // ============================================================
+        // Old queued payments may use p_item_ids instead of p_item_allocations
+        if (paymentParams?.p_item_ids && !paymentParams?.p_item_allocations) {
+          console.log(`[OfflineSync:payment] Migrating p_item_ids to p_item_allocations`);
+          // Old format: p_item_ids was just an array of order_item_ids
+          // New format: p_item_allocations is array of { order_item_id, quantity, amount? }
+          paymentParams.p_item_allocations = paymentParams.p_item_ids.map((id: string) => ({
+            order_item_id: id,
+            quantity: 1, // Default to 1 for old format
+          }));
+          delete paymentParams.p_item_ids;
+        }
+
         console.log(`[OfflineSync:payment] ====== PROCESSING PAYMENT ======`);
         console.log(`[OfflineSync:payment] Type: ${op.type}`);
         console.log(`[OfflineSync:payment] Local Order ID: ${localOrderId || 'N/A'}`);
@@ -462,6 +478,28 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           console.log(`[OfflineSync:payment] Order ID is local, resolving...`);
           const resolvedOrderId = resolveOrderId(localOrderId);
           if (!resolvedOrderId) {
+            // ============================================================
+            // CHECK FOR ORPHANED PAYMENTS
+            // ============================================================
+            // If there's no create_order pending AND order not in store,
+            // this payment will never succeed - discard it
+            const hasCreateOrderOp = hasPendingOrderCreation(localOrderId);
+            const orderInStore = useOrderStore.getState().ordersById[localOrderId];
+
+            if (!hasCreateOrderOp && !orderInStore) {
+              console.log(`[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no create_order and not in store`);
+              console.log(`[OfflineSync:payment] Discarding orphaned payment operation`);
+              // Return true to remove this operation from queue (it will never succeed)
+              return true;
+            }
+
+            // Also check if order exists in store but has no db_order_id and no pending create_order
+            if (orderInStore && !orderInStore.db_order_id && !hasCreateOrderOp) {
+              console.log(`[OfflineSync:payment] ORPHANED - Order ${localOrderId} has no db_order_id and no create_order`);
+              console.log(`[OfflineSync:payment] Discarding orphaned payment operation`);
+              return true;
+            }
+
             console.log(`[OfflineSync:payment] BLOCKED - Order ${localOrderId} not synced yet`);
             return false;
           }
@@ -521,7 +559,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
           ...(finalTerminalResponse && { p_terminal_response: finalTerminalResponse }),
         };
 
-        console.log("[OfflineSync:payment] Calling process_payment_v2 with:", JSON.stringify({
+        console.log("[OfflineSync:payment] Calling process_payment_v5 with:", JSON.stringify({
           orderId: finalParams.p_order_id,
           method: finalParams.p_payment_method,
           amount: finalParams.p_amount,
@@ -623,6 +661,14 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 sync_error: undefined,
               };
 
+              // Calculate paid_status from LOCAL payments, not backend
+              // This prevents flicker caused by stale/racing backend values
+              const localPaidStatus = calculatePaidStatusFromPayments(
+                payments,
+                currentOrder.total_amount || 0
+              );
+              const isPaid = localPaidStatus === "Paid";
+
               return {
                 ordersById: {
                   ...state.ordersById,
@@ -632,8 +678,8 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                     amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
                     amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
                     cash_amount_due: responseData.order_cash_amount_due ?? currentOrder.cash_amount_due,
-                    paid_status: responseData.order_fully_paid ? ("Paid" as const) : (currentOrder.paid_status ?? "Pending"),
-                    check_status: responseData.order_fully_paid ? ("Closed" as const) : (currentOrder.check_status ?? "Opened"),
+                    paid_status: localPaidStatus,
+                    check_status: isPaid ? ("Closed" as const) : (currentOrder.check_status ?? "Opened"),
                   },
                 },
               };
@@ -666,6 +712,13 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                 };
               }
 
+              // Calculate paid_status from LOCAL payments, not backend
+              const localPaidStatus = calculatePaidStatusFromPayments(
+                payments,
+                currentOrder.total_amount || 0
+              );
+              const isPaid = localPaidStatus === "Paid";
+
               return {
                 ordersById: {
                   ...state.ordersById,
@@ -674,13 +727,20 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                     payments,
                     amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
                     amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
-                    paid_status: responseData.order_fully_paid ? ("Paid" as const) : ("Pending" as const),
-                    check_status: responseData.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
+                    paid_status: localPaidStatus,
+                    check_status: isPaid ? ("Closed" as const) : ("Opened" as const),
                   },
                 },
               };
             });
           }
+
+          // Trigger payment status sync from backend for fresh data
+          // This ensures UI shows confirmed status after offline payment syncs
+          console.log(`[OfflineSync:payment] Triggering payment status sync for order ${localOrderId}`);
+          setTimeout(() => {
+            useOrderStore.getState().syncPaymentStatus(localOrderId);
+          }, 300);
         }
 
         return true;

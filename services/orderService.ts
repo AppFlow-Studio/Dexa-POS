@@ -219,7 +219,7 @@ export class OrderService {
     client: SupabaseClient,
     params: ProcessPaymentV2Params
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
-    console.log(`[OrderService:processPayment] ====== CALLING process_payment_v2 ======`);
+    console.log(`[OrderService:processPayment] ====== CALLING process_payment_v5 ======`);
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     console.log(`[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`);
 
