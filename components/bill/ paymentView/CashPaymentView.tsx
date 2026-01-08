@@ -33,7 +33,7 @@ const CashPaymentView = () => {
   // Priority: backend cash_amount_due > store outstanding cash > full cash total
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const effectiveOutstandingCash =
-    activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
+    activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0.01 // never pay 0.00
       ? activeOrder.cash_amount_due
       : activeOrderOutstandingCash > 0
         ? activeOrderOutstandingCash

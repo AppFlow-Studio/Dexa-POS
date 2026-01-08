@@ -132,28 +132,21 @@ const UpdateTableScreen = () => {
   const storeActiveOrderTotal = useOrderStore(
     (state) => state.activeOrderTotal
   );
-  console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder?.items);
+  console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder);
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
 
   // Calculate the amount to display on the Pay button
-  // NO useMemo - calculate fresh every render to avoid caching stale values
-  // Priority: backend amount_due > calculated outstanding total > total
+  // Use locally calculated values - fast and accurate
+  // Properly accounts for: item prices, discounts, and payments
   let displayBalanceDue: number;
-  // console.log('[activeOrder] activeOrder', activeOrder);
-  if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
-    // 1. Use backend's authoritative amount_due if available
-    displayBalanceDue = activeOrder.amount_due;
-  } else if (
-    activeOrder?.payments &&
-    activeOrder.payments.length > 0 &&
-    storeActiveOrderOutstandingTotal > 0
-  ) {
-    // 2. Use calculated outstanding total if there are payments
+
+  if (activeOrder?.payments && activeOrder.payments.length > 0) {
+    // Has payments - show outstanding balance (unpaid items)
     displayBalanceDue = storeActiveOrderOutstandingTotal;
   } else {
-    // 3. Fall back to full order total for new orders
+    // No payments - show full order total
     displayBalanceDue = storeActiveOrderTotal;
   }
 
@@ -1035,6 +1028,7 @@ const UpdateTableScreen = () => {
           onClosePricingSheet={() => pricingSheetRef.current?.close()}
           onPressProceedToPayment={handleProceedToPayment}
           onPressStartNewCourse={finalizeCurrentCourse}
+          isFullyPaid={isFullyPaid}
         />
         <View className="flex-1 p-4 px-3 pt-0">
           {(() => {

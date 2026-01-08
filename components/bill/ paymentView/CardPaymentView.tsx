@@ -56,15 +56,15 @@ const CardPaymentView = () => {
   // Priority: backend amount_due > store outstanding total > full order total
   // Use backend's authoritative amount_due when available
   const effectiveOutstandingTotal =
-    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0
-      ? activeOrder.amount_due
+    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01 // never pay 0.00
+      ? activeOrder.amount_due // TODO: FIX COULD BE STALE
       : activeOrderOutstandingTotal > 0
         ? activeOrderOutstandingTotal
         : activeOrderTotal;
   const totalToPay = activeSplit
     ? activeSplit.amount
     : effectiveOutstandingTotal;
-
+  console.log('CardPaymentView', activeOrder.amount_due);
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 

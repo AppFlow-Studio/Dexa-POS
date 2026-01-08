@@ -29,6 +29,7 @@ const TableBillSection = ({
   onClosePricingSheet,
   onPressProceedToPayment,
   setCurrentCourse,
+  isFullyPaid,
 }: {
   showOrderDetails?: boolean;
   itemCourseMap?: Record<string, number>;
@@ -48,6 +49,7 @@ const TableBillSection = ({
   onClosePricingSheet: () => void;
   onPressProceedToPayment: () => void;
   setCurrentCourse: (course: number) => void;
+  isFullyPaid?: boolean; // LOCAL-FIRST: Use local calculation from parent
 }) => {
   // O(1) lookups with individual selectors - only re-renders when specific values change
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
@@ -74,6 +76,7 @@ const TableBillSection = ({
     }
   };
 
+  console.log('TableBillSection', totalDisplayAmount);
   return (
     <>
       <View className="max-w-lg  flex-1 flex-col">
@@ -123,6 +126,7 @@ const TableBillSection = ({
           onPressClearTable={onPressClearTable}
           totalDisplayAmount={totalDisplayAmount}
           onPressDiscount={() => discountSheetRef.current?.expand()}
+          isFullyPaid={isFullyPaid}
         />
 
         <PricingBreakdownSheet

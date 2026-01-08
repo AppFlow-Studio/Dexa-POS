@@ -329,6 +329,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
   location,
   onPrint,
 }) => {
+  console.log('ReceiptModal', order);
   const slideAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -433,18 +434,28 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
       return sum + (item.subtotal || item.price * item.quantity);
     }, 0);
 
-    const tax = items.reduce((sum, item) => {
-      return sum + (item.taxAmount || 0);
-    }, 0);
-
     // Cash prices
     const cashSubtotal = items.reduce((sum, item) => {
       return sum + (item.cashSubtotal || (item.cashPrice || item.price) * item.quantity);
     }, 0);
 
-    const cashTax = items.reduce((sum, item) => {
-      return sum + (item.cashTaxAmount || item.taxAmount || 0);
+    // Use order-level tax for card, fall back to item-level calculation
+    const tax = order.total_tax ?? items.reduce((sum, item) => {
+      return sum + (item.taxAmount || 0);
     }, 0);
+
+    // Calculate cash tax using the same tax rate applied to cash subtotal
+    // Derive tax rate from card pricing, apply to cash subtotal
+    let cashTax = 0;
+    if (subtotal > 0 && tax > 0) {
+      const effectiveTaxRate = tax / subtotal;
+      cashTax = cashSubtotal * effectiveTaxRate;
+    } else {
+      // Fall back to item-level if available
+      cashTax = items.reduce((sum, item) => {
+        return sum + (item.cashTaxAmount || 0);
+      }, 0);
+    }
 
     const discount = order.total_discount || 0;
 
@@ -557,7 +568,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
             <View className="relative mt-3 mb-3 items-center">
               {/* Paper Container - Fixed width for receipt-like appearance */}
               <View
-                className="bg-[#FAF9F6] px-5 py-6 rounded-sm"
+                className="bg-[#FAF9F6] py-6 rounded-sm"
                 style={{
                   width: 320, // Receipt paper width (80mm thermal receipt)
                   maxWidth: '100%',
@@ -572,7 +583,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <TornEdgeBottom />
 
                 {/* Business Header */}
-                <View className="items-center mb-4">
+                <View className="items-center mb-4 px-5">
                   <Text
                     className="text-base font-semibold text-zinc-900 tracking-tight"
                     style={{ fontFamily: "monospace" }}
@@ -597,10 +608,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   )}
                 </View>
 
-                <DottedLine />
+                <View className="px-5"><DottedLine /></View>
 
                 {/* Order Info */}
-                <View className="mb-1">
+                <View className="mb-1 px-5">
                   <InfoRow
                     label="Order #:"
                     value={order.display_number || order.order_number || `#${order.id.slice(-4)}`}
@@ -622,10 +633,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                   )}
                 </View>
 
-                <DoubleLine />
+                <View className="px-5"><DoubleLine /></View>
 
                 {/* Items */}
-                <View className="mb-1">
+                <View className="mb-1 px-5">
                   {order.items
                     .filter((item) => !item.is_voided)
                     .map((item) => (
@@ -633,10 +644,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                     ))}
                 </View>
 
-                <DottedLine />
+                <View className="px-5"><DottedLine /></View>
 
                 {/* Totals */}
-                <View className="mb-1">
+                <View className="mb-1 px-5">
                   {/* Card Prices Section */}
                   <Text
                     className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1"
@@ -671,7 +682,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
                   {/* Cash Prices Section - Only show if different from card */}
                   {totals.cashTotal !== totals.total && (
-                    <View className="mt-3 pt-2 border-t border-dashed border-zinc-300">
+                    <View className="mt-3 pt-2 border-t border-dashed border-zinc-300 px-5">
                       <Text
                         className="text-[10px] text-green-700 uppercase tracking-wider mb-1"
                         style={{ fontFamily: "monospace" }}
@@ -718,8 +729,8 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 {/* Payments */}
                 {completedPayments.length > 0 && (
                   <>
-                    <DottedLine />
-                    <View className="mb-1">
+                    <View className="px-5"><DottedLine /></View>
+                    <View className="mb-1 px-5" >
                       <Text
                         className="text-[10px] text-zinc-500 text-center uppercase tracking-wider mb-2"
                         style={{ fontFamily: "monospace" }}
@@ -782,7 +793,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
                 <DoubleLine />
 
                 {/* Footer */}
-                <View className="items-center">
+                <View className="items-center px-5">
                   <Text
                     className="text-xs font-medium text-zinc-800"
                     style={{ fontFamily: "monospace" }}

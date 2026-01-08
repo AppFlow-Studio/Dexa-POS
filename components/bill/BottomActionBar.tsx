@@ -21,6 +21,7 @@ interface BottomActionBarProps {
   onPressClearTable: () => void;
   onPressDiscount: () => void;
   totalDisplayAmount: number;
+  isFullyPaid?: boolean; // LOCAL-FIRST: Use local calculation from parent
 }
 
 const BottomActionBar: React.FC<BottomActionBarProps> = ({
@@ -32,6 +33,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressClearTable,
   onPressDiscount,
   totalDisplayAmount,
+  isFullyPaid: isFullyPaidProp,
 }) => {
   // Subscribe to payment sync status for loading state
   const paymentSyncStatus = useOrderStore((state) => state.paymentSyncStatus);
@@ -179,11 +181,19 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
     if (!activeOrder) {
       return renderDefaultButtons();
     }
+
+    // LOCAL-FIRST: Prioritize local isFullyPaid calculation from parent
+    // This ensures buttons update immediately without waiting for backend sync
+    if (isFullyPaidProp) {
+      return renderClosedButtons(); // Reopen + Clear - order is fully paid locally
+    }
+
+    // Fallback to backend status if local calculation not provided
     if (activeOrder.check_status === "Closed") {
       return renderClosedButtons();
     }
     if (activeOrder.paid_status === "Paid") {
-      return renderPaidButtons();
+      return renderClosedButtons(); // Changed from renderPaidButtons to show Reopen + Clear
     }
     return renderDefaultButtons();
   };
