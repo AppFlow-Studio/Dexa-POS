@@ -79,11 +79,11 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         <Text className="font-semibold text-white text-base">Discount</Text>
       </TouchableOpacity>
 
-      {/* Total Button: Blue (Primary Action), Green (Paid), or Gray (Syncing) */}
+      {/* Total Button: Blue (Primary Action), Green Close Check (balance $0), or Gray (Syncing) */}
       {(() => {
-        // Only show "Paid" if order has items AND balance is zero
+        // Check if balance is zero (order is fully paid but may be reopened)
         const hasItems = (activeOrder?.items?.length ?? 0) > 0;
-        const isFullyPaid = hasItems && totalDisplayAmount <= 0 && !isSyncing;
+        const isBalanceZero = hasItems && totalDisplayAmount <= 0 && !isSyncing;
 
         // Show syncing state with pulsing animation
         if (isSyncing) {
@@ -106,23 +106,40 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
           );
         }
 
+        // When balance is $0, show clickable "Close Check" button
+        // This allows closing a reopened order without adding items
+        if (isBalanceZero) {
+          return (
+            <TouchableOpacity
+              onPress={onPressCloseCheck}
+              className={`${buttonBaseClass} bg-emerald-600`}
+              activeOpacity={0.7}
+            >
+              <CheckCircle size={18} color="white" />
+              <Text
+                className="font-semibold text-white text-base"
+                numberOfLines={1}
+              >
+                Close Check
+              </Text>
+            </TouchableOpacity>
+          );
+        }
+
+        // Normal case - show Total amount
         return (
           <TouchableOpacity
             onPress={onPressTotal}
-            className={`${buttonBaseClass} ${
-              isFullyPaid ? "bg-emerald-600" : "bg-blue-600"
-            }`}
+            className={`${buttonBaseClass} bg-blue-600`}
             activeOpacity={0.7}
-            disabled={isFullyPaid}
           >
-            {/* Truncate text if it gets too long on small screens */}
             <Text
               className="font-semibold text-white text-base"
               numberOfLines={1}
             >
-              {isFullyPaid ? "Paid" : `$${totalDisplayAmount.toFixed(2)}`}
+              ${totalDisplayAmount.toFixed(2)}
             </Text>
-            {!isFullyPaid && <CreditCard size={18} color="white" />}
+            <CreditCard size={18} color="white" />
           </TouchableOpacity>
         );
       })()}

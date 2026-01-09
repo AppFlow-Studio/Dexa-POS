@@ -153,11 +153,16 @@ const UpdateTableScreen = () => {
 
   // Check if order is fully paid
   const isFullyPaid = useMemo(() => {
+    // If check is explicitly reopened, don't consider it fully paid
+    // This allows adding items or closing the check again without changes
+    if (activeOrder?.check_status === "Opened") {
+      return false;
+    }
     return (
       activeOrder?.paid_status === "Paid" ||
       (hasPayments && displayBalanceDue <= 0)
     );
-  }, [activeOrder?.paid_status, hasPayments, displayBalanceDue]);
+  }, [activeOrder?.check_status, activeOrder?.paid_status, hasPayments, displayBalanceDue]);
 
   useEffect(() => {
     if (
@@ -808,10 +813,21 @@ const UpdateTableScreen = () => {
 
   const handleCloseCheck = async () => {
     if (!activeOrder || !currentTableId) return;
+
+    // Case 1: Already marked as Paid
     if (activeOrder.paid_status === "Paid") {
       await handleClearTable();
       return;
     }
+
+    // Case 2: All items are paid (reopened order with $0 balance)
+    // Check if balance is $0 - means fully paid but order was reopened
+    if (hasPayments && displayBalanceDue <= 0) {
+      await handleClearTable();
+      return;
+    }
+
+    // Case 3: Order has unpaid items or exists in DB - show void confirm
     if ((!hasPayments && hasAnyItems) || existingOrderForTable?.db_order_id) {
       setVoidConfirmOpen(true);
       return;
@@ -934,7 +950,9 @@ const UpdateTableScreen = () => {
   };
 
   const checkOrderClosedAndWarn = () => {
-    if (activeOrder?.check_status === "Closed") {
+    // LOCAL-FIRST: Block item additions if order is fully paid OR check is closed
+    // This ensures menu is blocked immediately after payment without waiting for backend sync
+    if (isFullyPaid || activeOrder?.check_status === "Closed") {
       setOrderClosedWarningOpen(true);
       return true;
     }
