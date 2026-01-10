@@ -226,6 +226,7 @@ export interface MenuItemType {
   priceSource?: PriceSource;
   // Location ownership - null = global (merchant-wide), UUID = local to that location
   location_id?: string | null;
+  displayOrder?: number;
 }
 
 export interface CustomPricing {
@@ -245,6 +246,7 @@ export interface Menu {
   name: string;
   description?: string;
   isActive: boolean;
+  displayOrder?: number;
   categories: Category[]; // Changed to array of full Category objects (Tree Structure)
   schedules?: Schedule[];
   createdAt: string;
@@ -258,6 +260,7 @@ export interface Category {
   name: string;
   isActive: boolean;
   order: number;
+  displayOrder?: number;
   createdAt: string;
   schedules?: Schedule[];
   // Location ownership - null = global (merchant-wide), UUID = local to that location

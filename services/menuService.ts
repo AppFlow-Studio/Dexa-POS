@@ -908,4 +908,50 @@ export class MenuService {
 
     return { success: true, error: null };
   }
+
+  // ============================================================
+  // REORDERING OPERATIONS
+  // ============================================================
+
+  /**
+   * Reorder categories within a menu
+   */
+  static async reorderMenuCategories(
+    client: SupabaseClient,
+    menuId: string,
+    categoryIds: string[]
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc("reorder_menu_categories", {
+      p_menu_id: menuId,
+      p_category_ids: categoryIds,
+    });
+
+    if (error) {
+      console.error("Failed to reorder menu categories:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
+
+  /**
+   * Reorder items within a category
+   */
+  static async reorderCategoryItems(
+    client: SupabaseClient,
+    categoryId: string,
+    itemIds: string[]
+  ): Promise<{ success: boolean; error: any }> {
+    const { error } = await client.rpc("reorder_category_items", {
+      p_category_id: categoryId,
+      p_item_ids: itemIds,
+    });
+
+    if (error) {
+      console.error("Failed to reorder category items:", error);
+      return { success: false, error };
+    }
+
+    return { success: true, error: null };
+  }
 }

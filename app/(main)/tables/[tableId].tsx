@@ -8,9 +8,11 @@ import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
+import { InventoryService } from "@/services/inventoryService";
 import { OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import {
   getOrderStoreSupabaseClient,
@@ -967,6 +969,25 @@ const UpdateTableScreen = () => {
       if (dbOrderId) {
         const supabase = getOrderStoreSupabaseClient();
         if (supabase) {
+          // Deduct inventory BEFORE voiding (items already consumed/wasted)
+          const deductResult =
+            await InventoryService.processOrderInventoryDeduction(
+              supabase,
+              dbOrderId
+            );
+          if (!deductResult.success) {
+            console.warn(
+              "[confirmVoid] Inventory deduction failed, proceeding with void"
+            );
+          }
+
+          // Also update local inventory store
+          if (activeOrder.items?.length > 0) {
+            useInventoryStore
+              .getState()
+              .decrementStockFromSale(activeOrder.items);
+          }
+
           const { error } = await supabase.rpc("void_order", {
             p_order_id: dbOrderId,
             p_void_reason: "Order voided by staff",
@@ -1048,8 +1069,9 @@ const UpdateTableScreen = () => {
   // };
 
   // Extracted clearing logic for reuse
+  // Note: archiveOrder now handles inventory deduction automatically (local + backend)
   const doClearTable = async () => {
-    if (!activeOrderId) return;
+    if (!activeOrderId || !activeOrder) return;
     showLoading("Clearing table...");
     isNavigatingAwayRef.current = true;
 

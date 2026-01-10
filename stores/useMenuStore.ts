@@ -110,6 +110,11 @@ interface MenuState {
   deleteMenu: (id: string) => void;
   toggleMenuActive: (id: string) => void;
   reorderMenus: (fromIndex: number, toIndex: number) => void;
+  reorderCategoryItems: (
+    categoryId: string,
+    fromIndex: number,
+    toIndex: number
+  ) => void;
   getMenuItems: (menuId: string) => MenuItemType[];
 
   // CRUD Operations for Modifier Groups
@@ -282,6 +287,8 @@ const transformMenuItemsFromSync = (
       priceLevels: dbItem.price_levels,
       priceSource: dbItem.price_source as MenuItemType["priceSource"],
       location_id: dbItem.location_id,
+      // Map display order from the join table (syncItem) if available, or fallback
+      displayOrder: syncItem.display_order ?? dbItem.display_order,
       // Map override fields for reference (though effective_price is what matters)
       menuPriceOverrides: context.menuId
         ? { [context.menuId]: dbItem.effective_price }
@@ -294,47 +301,78 @@ const transformMenuItemsFromSync = (
   };
 
   // 1. Build the Menu Tree (Menu -> Category -> Item)
-  const menus: Menu[] = syncMenus.map((menu) => {
-    const categories: Category[] = (menu.categories || []).map((catEntry) => {
-      // Map items specifically for this menu/category context
-      const items = (catEntry.items || []).map((itemEntry) =>
-        mapSyncItem(itemEntry, {
-          menuId: menu.id,
-          categoryId: catEntry.category_id,
-        })
-      );
+  const menus: Menu[] = syncMenus
+    .map((menu) => {
+      const categories: Category[] = (menu.categories || []).map((catEntry) => {
+        // Map items specifically for this menu/category context
+        const items = (catEntry.items || [])
+          .sort((a, b) => {
+            // Website Logic: Missing display_order goes to the BOTTOM
+            const aOrder = a.display_order ?? 999999;
+            const bOrder = b.display_order ?? 999999;
+            const orderDiff = aOrder - bOrder;
+            if (orderDiff !== 0) return orderDiff;
+            // Fallback to name if order is missing or equal
+            const nameA = a.menu_item?.name || "";
+            const nameB = b.menu_item?.name || "";
+            return nameA.localeCompare(nameB);
+          })
+          .map((itemEntry) =>
+            mapSyncItem(itemEntry, {
+              menuId: menu.id,
+              categoryId: catEntry.category_id,
+            })
+          );
+
+        return {
+          id: catEntry.category.id, // Use actual Category ID
+          name: catEntry.category.name,
+          isActive: catEntry.is_active,
+          order: catEntry.display_order,
+          createdAt: new Date().toISOString(),
+          location_id: catEntry.category.location_id,
+          location_name: undefined, // Could map if available
+          items: items, // NESTED ITEMS specific to this context
+        };
+      });
 
       return {
-        id: catEntry.category.id, // Use actual Category ID
-        name: catEntry.category.name,
-        isActive: catEntry.is_active,
-        order: catEntry.display_order,
-        createdAt: new Date().toISOString(),
-        location_id: catEntry.category.location_id,
-        location_name: undefined, // Could map if available
-        items: items, // NESTED ITEMS specific to this context
+        id: menu.id,
+        name: menu.name,
+        description: menu.description || undefined,
+        isActive: menu.is_active,
+        displayOrder: (menu as any).display_order,
+        categories: categories.sort((a, b) => {
+          // Website Logic: Missing order goes to the BOTTOM
+          const aOrder = a.displayOrder ?? a.order ?? 999999;
+          const bOrder = b.displayOrder ?? b.order ?? 999999;
+          const orderDiff = aOrder - bOrder;
+          if (orderDiff !== 0) return orderDiff;
+          return a.name.localeCompare(b.name);
+        }), // Full Category Objects, sorted
+        schedules: (menu.schedules || []).map((s) => ({
+          id: s.id,
+          name: s.schedule.name,
+          startTime: s.schedule.time_slots[0]?.start_time || "00:00:00", // Simplified for now
+          endTime: s.schedule.time_slots[0]?.end_time || "23:59:59",
+          days: s.schedule.time_slots.map((ts: any) =>
+            ts.day_of_week.toString()
+          ), // TODO: map days correctly
+          isActive: s.schedule.is_active,
+        })),
+        createdAt: menu.created_at,
+        updatedAt: menu.updated_at,
+        location_id: menu.location_id,
       };
+    })
+    .sort((a, b) => {
+      // Website Logic: Missing display_order goes to the BOTTOM (Infinity/999999)
+      const aOrder = a.displayOrder ?? 999999;
+      const bOrder = b.displayOrder ?? 999999;
+      const orderDiff = aOrder - bOrder;
+      if (orderDiff !== 0) return orderDiff;
+      return a.name.localeCompare(b.name);
     });
-
-    return {
-      id: menu.id,
-      name: menu.name,
-      description: menu.description || undefined,
-      isActive: menu.is_active,
-      categories: categories, // Full Category Objects
-      schedules: (menu.schedules || []).map((s) => ({
-        id: s.id,
-        name: s.schedule.name,
-        startTime: s.schedule.time_slots[0]?.start_time || "00:00:00", // Simplified for now
-        endTime: s.schedule.time_slots[0]?.end_time || "23:59:59",
-        days: s.schedule.time_slots.map((ts: any) => ts.day_of_week.toString()), // TODO: map days correctly
-        isActive: s.schedule.is_active,
-      })),
-      createdAt: menu.created_at,
-      updatedAt: menu.updated_at,
-      location_id: menu.location_id,
-    };
-  });
 
   // 2. Build Global Item Map (for "Item Library"/Inventory view)
   // We perform a second pass or extract from a specific "All Items" list if available
@@ -1038,6 +1076,46 @@ export const useMenuStore = create<MenuState>((set, get) => {
         const newMenus = [...state.menus];
         const [movedItem] = newMenus.splice(fromIndex, 1);
         newMenus.splice(toIndex, 0, movedItem);
+        return { menus: newMenus };
+      });
+    },
+
+    reorderCategoryItems: (
+      categoryId: string,
+      fromIndex: number,
+      toIndex: number
+    ) => {
+      set((state) => {
+        // Deep update: Find the category in ALL menus and reorder items
+        // Since categories are shared across menus, reordering items in a Category usually affects that Category everywhere
+        // (unless it's a menu-specific override, BUT `category_items` is the table, which is per-category).
+        // `reorderCategoryItems` RPC updates `category_items` display_order.
+        // So we should update the item order in EVERY menu instance that contains this category.
+
+        const newMenus = state.menus.map((menu) => {
+          const catIndex = menu.categories.findIndex(
+            (c) => c.id === categoryId
+          );
+          if (catIndex === -1) return menu;
+
+          const category = menu.categories[catIndex];
+          if (!category.items) return menu;
+
+          const newItems = [...category.items];
+          const [movedItem] = newItems.splice(fromIndex, 1);
+          newItems.splice(toIndex, 0, movedItem);
+
+          const newCategories = [...menu.categories];
+          newCategories[catIndex] = {
+            ...category,
+            items: newItems,
+          };
+
+          return { ...menu, categories: newCategories };
+        });
+
+        // Also update the global categories map if we track items there (we don't currently, they are undefined)
+
         return { menus: newMenus };
       });
     },

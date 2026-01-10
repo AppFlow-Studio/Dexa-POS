@@ -37,8 +37,9 @@ export const usePosSync = (locationId: string | null) => {
 
       const data = syncResult.data as unknown as PosSyncData;
 
+      console.log("DEBUG: Synced Menu Data:", data.menus?.[0]);
+
       // Attach ingredients to the sync data object
-      // (The type matches because we updated PosSyncData in types/menu.ts)
       return {
         ...data,
         menu_item_ingredients: menuItemIngredientsResult.data || [],
