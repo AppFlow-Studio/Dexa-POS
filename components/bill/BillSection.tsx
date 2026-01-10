@@ -58,6 +58,7 @@ const BillSection = ({
     state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
   );
 
+  // console.log('[BillSection] activeOrder', activeOrder);
   const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
   const activeOrderOutstandingTotal = useOrderStore(
     (state) => state.activeOrderOutstandingTotal

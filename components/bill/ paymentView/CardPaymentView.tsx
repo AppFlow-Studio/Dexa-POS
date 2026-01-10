@@ -64,7 +64,7 @@ const CardPaymentView = () => {
   const totalToPay = activeSplit
     ? activeSplit.amount
     : effectiveOutstandingTotal;
-  console.log('CardPaymentView', activeOrder.amount_due);
+  console.log('CardPaymentView', activeOrderOutstandingTotal);
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 

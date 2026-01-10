@@ -99,8 +99,8 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
 
         // console.log("Employee Sync Data received!");
-        console.log("Employees count:", data?.length || 0);
-        console.log("Employees data:", data);
+        // console.log("Employees count:", data?.length || 0);
+        // console.log("Employees data:", data);
 
         // Map Supabase data to EmployeeProfile format
         const mappedEmployees: EmployeeProfile[] = (data || []).map(

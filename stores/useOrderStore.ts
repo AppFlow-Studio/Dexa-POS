@@ -8,6 +8,7 @@ import type {
   OrderType as DbOrderType
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
+import type { ItemPaymentAllocation, OrderTotals } from "@/types/order-calculations";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -24,6 +25,15 @@ import {
   mapLocalToBackend,
   registerLocalId
 } from "@/lib/offlineIdRegistry";
+// Import pure calculation functions from order-calculator module
+import {
+  calculateOrderTotals as calculateOrderTotalsFromModule,
+  calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  calculatePaidStatus,
+  applyPaymentToItems,
+} from "@/lib/order-calculator";
+import { paymentPreviewService } from "@/services/paymentPreviewService";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
   getIsOnline,
@@ -35,327 +45,49 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 
 // ============================================================================
-// PURE CALCULATION FUNCTIONS (No async, no side effects)
+// PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
 // ============================================================================
-
-interface OrderTotals {
-  subtotal: number;
-  discount_amount: number;
-  tax_amount: number;
-  total_amount: number;
-  outstanding_subtotal: number;
-  outstanding_tax: number;
-  outstanding_total: number;
-  // Cash pricing totals
-  cash_subtotal: number;
-  cash_tax_amount: number;
-  cash_total_amount: number;
-  // Outstanding cash totals (unpaid items using cash pricing)
-  cash_outstanding_subtotal: number;
-  cash_outstanding_tax: number;
-  cash_outstanding_total: number;
-}
-
-function round2(num: number): number {
-  return Math.ceil(num * 100) / 100;
-}
+// NOTE: The actual implementations are in @/lib/order-calculator.ts
+// These re-exports maintain backward compatibility for existing imports.
 
 /**
  * Calculate the effective cash price for a single cart item.
- * This calculates: cash price (base) + size modifier + all modifier options + all add-ons
- * 
- * @param item - The cart item to calculate the price for
- * @returns The effective unit price for the item using cash pricing (before quantity multiplication)
- * 
- * Exported for use in split payment calculations (SplitByItemView, usePaymentStore)
+ * @see @/lib/order-calculator.ts for implementation
+ * @deprecated Import from @/lib/order-calculator instead
  */
-export function calculateItemEffectiveCashPrice(item: CartItem): number {
-  // Start with the base/cash price (originalPrice is the cash/base price)
-  // Use originalPrice first, then fallback to cashPrice if available, then regular price
-  let effectivePrice = item.originalPrice || item.cashPrice || item.price || 0;
-
-  // Add size modifier if present
-  if (item.customizations?.size?.priceModifier) {
-    effectivePrice += item.customizations.size.priceModifier;
-  }
-
-  // Add all modifier options
-  if (item.customizations?.modifiers) {
-    for (const modifierGroup of item.customizations.modifiers) {
-      for (const option of modifierGroup.options) {
-        effectivePrice += option.price || 0;
-      }
-    }
-  }
-
-  // Add all add-ons
-  if (item.customizations?.addOns) {
-    for (const addOn of item.customizations.addOns) {
-      effectivePrice += addOn.price || 0;
-    }
-  }
-
-  return round2(effectivePrice);
-}
+export const calculateItemEffectiveCashPrice = calculateItemEffectiveCashPriceFromModule;
 
 /**
  * Calculate paid_status PURELY from the order's payments array.
- * This is the single source of truth for payment status - no backend reliance.
- *
- * @param payments - The order's payments array
- * @param totalAmount - The order's total amount (card price)
- * @returns The calculated paid status
+ * @see @/lib/order-calculator.ts for implementation
+ * @deprecated Import from @/lib/order-calculator instead
  */
-export function calculatePaidStatusFromPayments(
-  payments: { amount: number; isVoided?: boolean }[] | undefined,
-  totalAmount: number
-): "Paid" | "Partial" | "Pending" | "Unpaid" {
-  const nonVoidedPayments = payments?.filter(p => !p.isVoided) || [];
-  const totalPaid = nonVoidedPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-
-  // No payments or zero total paid
-  if (totalPaid <= 0 || nonVoidedPayments.length === 0) {
-    return "Pending";
-  }
-
-  // Fully paid (within rounding tolerance)
-  if (totalPaid >= totalAmount - 0.01) {
-    return "Paid";
-  }
-
-  // Has some payments but not fully paid
-  return "Partial";
-}
+export const calculatePaidStatusFromPayments = calculatePaidStatus;
 
 /**
  * Distribute an order-level discount proportionally to individual items.
- * This mirrors the database's discount distribution algorithm to ensure consistency
- * between local state (for offline) and backend values.
- *
- * @param items - The cart items to distribute the discount across
- * @param totalDiscount - The total card-price discount to distribute
- * @param totalCashDiscount - The total cash-price discount (optional, defaults to totalDiscount)
- * @returns Items with updated discount_amount, discount_cash_amount, subtotal, cashSubtotal
+ * @see @/lib/order-calculator.ts for implementation
+ * @deprecated Import from @/lib/order-calculator instead
  */
-export function distributeDiscountToItems(
-  items: CartItem[],
-  totalDiscount: number,
-  totalCashDiscount?: number
-): CartItem[] {
-  // Calculate order subtotals for proportion calculation
-  const orderSubtotal = items.reduce(
-    (sum, item) => item.is_voided ? sum : sum + item.price * item.quantity,
-    0
-  );
-  const orderCashSubtotal = items.reduce(
-    (sum, item) => item.is_voided ? sum : sum + calculateItemEffectiveCashPrice(item) * item.quantity,
-    0
-  );
-
-  const cashDiscount = totalCashDiscount ?? totalDiscount;
-
-  return items.map(item => {
-    if (item.is_voided) return item;
-
-    const itemSubtotal = item.price * item.quantity;
-    const itemCashSubtotal = calculateItemEffectiveCashPrice(item) * item.quantity;
-
-    // Calculate proportional discount based on item's share of order subtotal
-    const proportion = orderSubtotal > 0 ? itemSubtotal / orderSubtotal : 0;
-    const cashProportion = orderCashSubtotal > 0 ? itemCashSubtotal / orderCashSubtotal : 0;
-
-    const itemDiscount = round2(totalDiscount * proportion);
-    const itemCashDiscount = round2(cashDiscount * cashProportion);
-
-    return {
-      ...item,
-      discount_amount: itemDiscount,
-      discount_cash_amount: itemCashDiscount,
-      subtotal: round2(itemSubtotal - itemDiscount),
-      cashSubtotal: round2(itemCashSubtotal - itemCashDiscount),
-    };
-  });
-}
+export const distributeDiscountToItems = distributeDiscountToItemsFromModule;
 
 /**
  * Calculate all order totals - PURE FUNCTION, SYNCHRONOUS
- * This replaces the async recalculateTotals for instant UI updates.
- * Uses per-item tax rates based on tax_category.
+ * This is a wrapper around the module function for backward compatibility.
+ * @see @/lib/order-calculator.ts for implementation
  */
 function calculateOrderTotals(
   items: CartItem[],
   checkDiscount: Discount | null | undefined,
   payments: { amount: number }[],
-  taxRatesMap: TaxRatesMap // Map of tax_category -> rate percentage
+  taxRatesMap: TaxRatesMap
 ): OrderTotals {
-  // ============================================================================
-  // SINGLE-PASS OPTIMIZATION: Calculate all values in ONE loop iteration
-  // Previous: 8 separate loops/reduces = O(8n)
-  // Now: 1 loop = O(n)
-  // ============================================================================
-  
-  // First pass accumulators
-  let subtotal = 0;
-  let itemDiscountsTotal = 0;
-  let cash_subtotal = 0;
-  
-  // We need subtotals first to calculate proportional discounts for taxes
-  // So we collect per-item data for the tax calculation phase
-  interface ItemTaxData {
-    itemSubtotal: number;
-    itemCashSubtotal: number;
-    unpaidQty: number;
-    unpaidSubtotal: number;
-    unpaidCashSubtotal: number;
-    taxRateDecimal: number;
-    isTaxExempt: boolean;
-  }
-  const itemsData: ItemTaxData[] = [];
-  
-  // SINGLE PASS: Collect all item data at once
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    
-    // Skip voided items
-    if (item.is_voided) continue;
-    
-    // Calculate card price subtotal
-    const itemSubtotal = item.price * item.quantity;
-    subtotal += itemSubtotal;
-    
-    // Calculate item-level discounts
-    if (item.appliedDiscount) {
-      itemDiscountsTotal += item.originalPrice * item.appliedDiscount.value * item.quantity;
-    }
-    
-    // Calculate cash price subtotal
-    const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-    const itemCashSubtotal = effectiveCashPrice * item.quantity;
-    cash_subtotal += itemCashSubtotal;
-    
-    // Calculate unpaid quantities
-    const unpaidQty = item.quantity - (item.paidQuantity || 0);
-    const unpaidSubtotal = unpaidQty > 0 ? unpaidQty * item.price : 0;
-    const unpaidCashSubtotal = unpaidQty > 0 ? unpaidQty * effectiveCashPrice : 0;
-    
-    // Get tax rate
-    const taxCategory = item.tax_category || "standard";
-    const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-    const taxRateDecimal = taxRatePercent / 100;
-    
-    // Store for second phase (tax calculations need complete subtotals)
-    itemsData.push({
-      itemSubtotal,
-      itemCashSubtotal,
-      unpaidQty,
-      unpaidSubtotal,
-      unpaidCashSubtotal,
-      taxRateDecimal,
-      isTaxExempt: item.is_tax_exempt || false,
-    });
-  }
-  
-  // Calculate check-level discount
-  const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
-  let checkDiscountAmount = 0;
-  if (checkDiscount) {
-    if (checkDiscount.type === "percentage") {
-      checkDiscountAmount = subtotalAfterItemDiscounts * checkDiscount.value;
-    } else {
-      checkDiscountAmount = checkDiscount.value;
-    }
-  }
-  const discount_amount = round2(itemDiscountsTotal + checkDiscountAmount);
-  
-  // SECOND PHASE: Calculate taxes and outstanding amounts
-  // (Needs discount_amount and subtotals from first phase)
-  let tax_amount = 0;
-  let outstanding_subtotal = 0;
-  let outstanding_tax = 0;
-  let cash_tax_amount = 0;
-  let cash_outstanding_subtotal = 0;
-  let cash_outstanding_tax = 0;
-  
-  for (let i = 0; i < itemsData.length; i++) {
-    const data = itemsData[i];
-    
-    // Skip tax calculation for tax-exempt items
-    if (!data.isTaxExempt && data.taxRateDecimal > 0) {
-      // Card price tax
-      const itemDiscountProportion = subtotal > 0 ? data.itemSubtotal / subtotal : 0;
-      const itemDiscountAmount = discount_amount * itemDiscountProportion;
-      const itemTaxableAmount = Math.max(0, data.itemSubtotal - itemDiscountAmount);
-      tax_amount += itemTaxableAmount * data.taxRateDecimal;
-      
-      // Cash price tax
-      const cashDiscountProportion = cash_subtotal > 0 ? data.itemCashSubtotal / cash_subtotal : 0;
-      const cashItemDiscountAmount = discount_amount * cashDiscountProportion;
-      const cashItemTaxableAmount = Math.max(0, data.itemCashSubtotal - cashItemDiscountAmount);
-      cash_tax_amount += cashItemTaxableAmount * data.taxRateDecimal;
-    }
-    
-    // Outstanding calculations
-    if (data.unpaidQty > 0) {
-      outstanding_subtotal += data.unpaidSubtotal;
-      cash_outstanding_subtotal += data.unpaidCashSubtotal;
-      
-      if (!data.isTaxExempt && data.taxRateDecimal > 0) {
-        // Outstanding card tax
-        const outstandingDiscountProportion = subtotal > 0 ? data.unpaidSubtotal / subtotal : 0;
-        const outstandingDiscountAmount = discount_amount * outstandingDiscountProportion;
-        const outstandingTaxableAmount = Math.max(0, data.unpaidSubtotal - outstandingDiscountAmount);
-        outstanding_tax += outstandingTaxableAmount * data.taxRateDecimal;
-        
-        // Outstanding cash tax
-        const cashOutstandingDiscountProportion = cash_subtotal > 0 ? data.unpaidCashSubtotal / cash_subtotal : 0;
-        const cashOutstandingDiscountAmount = discount_amount * cashOutstandingDiscountProportion;
-        const cashOutstandingTaxableAmount = Math.max(0, data.unpaidCashSubtotal - cashOutstandingDiscountAmount);
-        cash_outstanding_tax += cashOutstandingTaxableAmount * data.taxRateDecimal;
-      }
-    }
-  }
-  
-  // Round all tax values
-  tax_amount = round2(tax_amount);
-  outstanding_subtotal = round2(outstanding_subtotal);
-  outstanding_tax = round2(outstanding_tax);
-  cash_tax_amount = round2(cash_tax_amount);
-  cash_outstanding_subtotal = round2(cash_outstanding_subtotal);
-  cash_outstanding_tax = round2(cash_outstanding_tax);
-  
-  // Calculate totals
-  const taxableAmount = Math.max(0, subtotal - discount_amount);
-  const total_amount = round2(taxableAmount + tax_amount);
-  
-  const proportionOutstanding = subtotal > 0 ? outstanding_subtotal / subtotal : 0;
-  const outstandingDiscount = discount_amount * proportionOutstanding;
-  const outstandingSubtotalAfterDiscount = outstanding_subtotal - outstandingDiscount;
-  const outstanding_total = round2(outstandingSubtotalAfterDiscount + outstanding_tax);
-  
-  // Cash totals
-  const cashTaxableAmount = Math.max(0, cash_subtotal - discount_amount);
-  const cash_total_amount = round2(cashTaxableAmount + cash_tax_amount);
-  
-  const cash_proportionOutstanding = cash_subtotal > 0 ? cash_outstanding_subtotal / cash_subtotal : 0;
-  const cash_outstandingDiscount = discount_amount * cash_proportionOutstanding;
-  const cash_outstandingSubtotalAfterDiscount = cash_outstanding_subtotal - cash_outstandingDiscount;
-  const cash_outstanding_total = round2(cash_outstandingSubtotalAfterDiscount + cash_outstanding_tax);
-
-  return {
-    subtotal: round2(subtotal),
-    discount_amount,
-    tax_amount,
-    total_amount,
-    outstanding_subtotal,
-    outstanding_tax,
-    outstanding_total,
-    cash_subtotal: round2(cash_subtotal),
-    cash_tax_amount,
-    cash_total_amount,
-    cash_outstanding_subtotal,
-    cash_outstanding_tax,
-    cash_outstanding_total,
-  };
+  return calculateOrderTotalsFromModule({
+    items,
+    checkDiscount: checkDiscount ?? null,
+    taxRatesMap,
+    payments,
+  });
 }
 
 // Module-level Supabase client for backend sync
@@ -1736,6 +1468,14 @@ interface OrderState {
   prefetchOrders: (orderIds: string[]) => Promise<void>;
   // Sync payment status from backend (shows loading state during sync)
   syncPaymentStatus: (orderId: string) => Promise<void>;
+
+  // === NEW: Order Calculation Actions ===
+  // Recalculate order totals and update state (call after any item/discount change)
+  recalculateOrder: (orderId: string) => OrderTotals;
+  // Mark items as paid after a successful payment
+  markItemsPaid: (orderId: string, allocations: ItemPaymentAllocation[]) => void;
+  // Sync order from backend after payment to ensure consistency
+  syncOrderFromBackend: (orderId: string) => Promise<void>;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -5667,7 +5407,7 @@ export const useOrderStore = create<OrderState>()(
             });
 
             if (uncachedIds.length === 0) {
-              console.log("[prefetchOrders] All orders already cached");
+              // console.log("[prefetchOrders] All orders already cached");
               return;
             }
 
@@ -5767,9 +5507,215 @@ export const useOrderStore = create<OrderState>()(
                 orderIds: [...state.orderIds, ...newOrderIds],
               }));
 
-              console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
+              // console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
             } catch (error: any) {
               console.error("[prefetchOrders] Error:", error);
+            }
+          },
+
+          // ============================================================================
+          // NEW: Order Calculation Actions
+          // ============================================================================
+
+          /**
+           * Recalculate order totals and update state.
+           * Call this after any item/discount change for instant UI updates.
+           *
+           * @param orderId - The local order ID to recalculate
+           * @returns The calculated OrderTotals
+           */
+          recalculateOrder: (orderId: string): OrderTotals => {
+            const order = get().ordersById[orderId];
+            if (!order) {
+              return {
+                subtotal: 0,
+                discount_amount: 0,
+                tax_amount: 0,
+                total_amount: 0,
+                outstanding_subtotal: 0,
+                outstanding_tax: 0,
+                outstanding_total: 0,
+                cash_subtotal: 0,
+                cash_tax_amount: 0,
+                cash_total_amount: 0,
+                cash_outstanding_subtotal: 0,
+                cash_outstanding_tax: 0,
+                cash_outstanding_total: 0,
+              };
+            }
+
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+            const totals = calculateOrderTotals(
+              order.items,
+              order.checkDiscount ?? null,
+              order.payments ?? [],
+              taxRatesMap
+            );
+
+            // Update order with new totals
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  total_amount: totals.total_amount,
+                  total_tax: totals.tax_amount,
+                  total_discount: totals.discount_amount,
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
+                },
+              },
+              // Update active order derived state if this is the active order
+              ...(orderId === state.activeOrderId
+                ? {
+                    activeOrderSubtotal: totals.subtotal,
+                    activeOrderTax: totals.tax_amount,
+                    activeOrderTotal: totals.total_amount,
+                    activeOrderDiscount: totals.discount_amount,
+                    activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+                    activeOrderOutstandingTax: totals.outstanding_tax,
+                    activeOrderOutstandingTotal: totals.outstanding_total,
+                    activeOrderTotalCash: totals.cash_total_amount,
+                    activeOrderOutstandingCash: totals.cash_outstanding_total,
+                  }
+                : {}),
+            }));
+
+            // Invalidate payment preview cache
+            paymentPreviewService.invalidateCache(orderId);
+
+            return totals;
+          },
+
+          /**
+           * Mark items as paid after a successful payment.
+           * Updates paidQuantity on items and recalculates totals.
+           *
+           * @param orderId - The local order ID
+           * @param allocations - Array of item payment allocations
+           */
+          markItemsPaid: (orderId: string, allocations: ItemPaymentAllocation[]): void => {
+            const order = get().ordersById[orderId];
+            if (!order) return;
+
+            const updatedItems = applyPaymentToItems(order.items, allocations);
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                },
+              },
+            }));
+
+            // Recalculate after marking paid
+            get().recalculateOrder(orderId);
+          },
+
+          /**
+           * Sync order from backend after payment to ensure consistency.
+           * Fetches fresh data from backend and updates local state.
+           *
+           * @param orderId - The local order ID to sync
+           */
+          syncOrderFromBackend: async (orderId: string): Promise<void> => {
+            const order = get().ordersById[orderId];
+            if (!order?.db_order_id) {
+              console.log("[syncOrderFromBackend] Order not found or not synced to DB");
+              return;
+            }
+
+            const supabase = _supabaseClient;
+            if (!supabase || !getIsOnline()) {
+              console.log("[syncOrderFromBackend] Offline or no client");
+              return;
+            }
+
+            try {
+              // Fetch fresh order data
+              const { data: dbOrder, error: orderError } = await supabase
+                .from("orders")
+                .select(`
+                  id, total_amount, subtotal, tax_amount, discount_amount,
+                  amount_paid, amount_due, payment_status,
+                  card_total, cash_total, cash_amount_due
+                `)
+                .eq("id", order.db_order_id)
+                .single();
+
+              if (orderError) throw orderError;
+
+              // Fetch fresh item data
+              const { data: dbItems, error: itemsError } = await supabase
+                .from("order_items")
+                .select("id, paid_quantity, subtotal, tax_amount, discount_amount")
+                .eq("order_id", order.db_order_id);
+
+              if (itemsError) throw itemsError;
+
+              // Update local state with backend values
+              set((state) => {
+                const currentOrder = state.ordersById[orderId];
+                if (!currentOrder) return state;
+
+                // Update items with backend paid_quantity
+                const updatedItems = currentOrder.items.map((item) => {
+                  const dbItem = dbItems?.find(
+                    (di) => di.id === item.db_order_item_id
+                  );
+                  if (!dbItem) return item;
+                  return {
+                    ...item,
+                    paidQuantity: dbItem.paid_quantity ?? item.paidQuantity,
+                    subtotal: dbItem.subtotal ?? item.subtotal,
+                    taxAmount: dbItem.tax_amount ?? item.taxAmount,
+                    discount_amount: dbItem.discount_amount ?? item.discount_amount,
+                  };
+                });
+
+                const paidStatus =
+                  dbOrder.payment_status === "paid"
+                    ? "Paid"
+                    : dbOrder.payment_status === "partial"
+                      ? "Partial"
+                      : "Pending";
+
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: {
+                      ...currentOrder,
+                      items: updatedItems,
+                      total_amount: dbOrder.card_total ?? dbOrder.total_amount,
+                      total_tax: dbOrder.tax_amount,
+                      total_discount: dbOrder.discount_amount,
+                      amount_paid: dbOrder.amount_paid,
+                      amount_due: dbOrder.amount_due,
+                      cash_amount_due: dbOrder.cash_amount_due,
+                      paid_status: paidStatus,
+                    },
+                  },
+                  // Update active order derived state if this is the active order
+                  ...(orderId === state.activeOrderId
+                    ? {
+                        activeOrderTotal: dbOrder.card_total ?? dbOrder.total_amount,
+                        activeOrderTax: dbOrder.tax_amount,
+                        activeOrderDiscount: dbOrder.discount_amount,
+                        activeOrderOutstandingTotal: dbOrder.amount_due,
+                        activeOrderOutstandingCash: dbOrder.cash_amount_due,
+                      }
+                    : {}),
+                };
+              });
+
+              // Invalidate cache
+              paymentPreviewService.invalidateCache(orderId);
+
+              console.log("[syncOrderFromBackend] Successfully synced order", orderId);
+            } catch (error: any) {
+              console.error("[syncOrderFromBackend] Error:", error);
             }
           },
         };
