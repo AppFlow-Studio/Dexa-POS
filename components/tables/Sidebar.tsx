@@ -1,5 +1,6 @@
 import { images } from "@/lib/image";
 import { cn } from "@/lib/utils";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import {
   BarChart3,
   ChevronLeft,
@@ -50,6 +51,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   // Shared values for animations
   const widthSV = useSharedValue(EXPANDED_WIDTH);
   const opacitySV = useSharedValue(1);
+
+  const {
+    realtimeStatus,
+  } = useFloorPlanStore();
 
   useEffect(() => {
     const config = {
@@ -118,6 +123,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  
+
   return (
     <>
       <Animated.View
@@ -152,14 +159,25 @@ const Sidebar: React.FC<SidebarProps> = ({
             />
           </View>
 
-          <Animated.View style={[textStyle, { marginLeft: 12, flex: 1 }]}>
+          {/* <Animated.View style={[textStyle, { marginLeft: 12, flex: 1 }]}>
             <Text className="text-lg font-bold text-white" numberOfLines={1}>
               DexaPOS
             </Text>
             <Text className="text-xs text-gray-400" numberOfLines={1}>
               Main Floor
             </Text>
-          </Animated.View>
+          </Animated.View> */}
+           {/* Live indicator */}
+        <View className="ml-3 flex-row items-center">
+            <View className={`w-2 h-2 rounded-full ${
+              realtimeStatus === 'connected' ? 'bg-green-500' : 
+              realtimeStatus === 'reconnecting' ? 'bg-amber-500' : 'bg-red-500'
+            }`} />
+            <Text className="text-xs text-gray-400 ml-1">
+              {realtimeStatus === 'connected' ? 'Live' : 
+               realtimeStatus === 'reconnecting' ? 'Syncing' : 'Offline'}
+            </Text>
+          </View>
         </TouchableOpacity>
 
         {/* Navigation Tabs */}

@@ -9,6 +9,9 @@ import {
   TableStatus,
   WaitlistEntry,
 } from "@/types/db-floor-plan-types";
+import type {
+  TableSessionPayload
+} from '@/types/real-time';
 import { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -42,6 +45,16 @@ interface FloorPlanState {
   tablesById: Record<string, FloorPlanObject>; // O(1) lookup map
   waitlist: WaitlistEntry[];
   reservations: Reservation[];
+  
+  // Realtime State
+  realtimeStatus: 'connected' | 'reconnecting' | 'disconnected';
+  realtimeError: string | null;
+  _reconnectAttempts: number;
+  _reconnectTimeout: ReturnType<typeof setTimeout> | null;
+  _isCleaningUp: boolean;
+  _handleSessionChange: (payload: TableSessionPayload) => void;
+  _handleReconnect: (locationId: string) => void;
+  manualReconnect: () => void;
 
   // UI State
   selectedTableIds: string[];
@@ -210,6 +223,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         isOnline: true,
         realtimeChannel: null,
 
+        realtimeStatus: 'disconnected',
+        realtimeError: null,
         // ====================================================================
         // SETTER ACTIONS (for external sync)
         // ====================================================================
@@ -222,195 +237,198 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           set({ activeFloorPlanId: floorPlanId });
         },
 
-        // ====================================================================
-        // REALTIME SUBSCRIPTIONS
-        // ====================================================================
+       // setupRealtimeSubscriptions with broadcast messages:
+setupRealtimeSubscriptions: async (locationId: string) => {
+  const supabase = getClient();
+  if (!supabase) return;
 
-        // setupRealtimeSubscriptions: async (locationId: string) => {
-        //   const supabase = getClient();
-        //   await supabase.realtime.setAuth() // Needed for Realtime Authorization
-        //   if (!supabase) return;
+  // Clean up existing
+  const existingChannel = get().realtimeChannel;
+  if (existingChannel) {
+    supabase.removeChannel(existingChannel);
+  }
 
-        //   // Clean up existing subscription
-        //   const existingChannel = get().realtimeChannel;
-        //   if (existingChannel) {
-        //     supabase.removeChannel(existingChannel);
-        //   }
-        //   const config = {
-        //     private: true,
-        //     broadcast: {
-        //       replay: {
-        //         since: 1697472000000, // Unix timestamp in milliseconds
-        //         limit: 10
-        //       }
-        //     }
-        //   }
+  // IMPORTANT: Set auth for private channels
+  await supabase.realtime.setAuth();
 
-        //   // Subscribe to table sessions (most frequent updates)
-        //   console.log('[setupRealtimeSubscriptions] ', locationId)
-        //   const channel = supabase
-        //     .channel(`floor-plan-${locationId}`, { config })
-        //     .on(
-        //       "broadcast",
-        //       {
-        //         event: "*",
-        //         // schema: "public",
-        //         // table: "table_sessions",
-        //         // filter: `location_id=eq.${locationId}`,
-        //       },
-        //       (payload) => {
-        //         console.log("Table session change:", payload);
-        //         // Reload floor plan status
-        //         get().loadFloorPlanStatus();
-        //       }
-        //     )
-        //     // .on(
-        //     //   "postgres_changes",
-        //     //   {
-        //     //     event: "*",
-        //     //     schema: "public",
-        //     //     table: "table_session_tables",
-        //     //   },
-        //     //   () => {
-        //     //     get().loadFloorPlanStatus();
-        //     //   }
-        //     // )
-        //     // .on(
-        //     //   "postgres_changes",
-        //     //   {
-        //     //     event: "*",
-        //     //     schema: "public",
-        //     //     table: "waitlist",
-        //     //     filter: `location_id=eq.${locationId}`,
-        //     //   },
-        //     //   () => {
-        //     //     get().loadWaitlist();
-        //     //   }
-        //     // )
-        //     // .on(
-        //     //   "postgres_changes",
-        //     //   {
-        //     //     event: "*",
-        //     //     schema: "public",
-        //     //     table: "reservations",
-        //     //     filter: `location_id=eq.${locationId}`,
-        //     //   },
-        //     //   () => {
-        //     //     get().loadReservations();
-        //     //   }
-        //     // )
-        //     // .on(
-        //     //   "postgres_changes",
-        //     //   {
-        //     //     event: "*",
-        //     //     schema: "public",
-        //     //     table: "floor_plan_objects",
-        //     //     filter: `location_id=eq.${locationId}`,
-        //     //   },
-        //     //   () => {
-        //     //     // Only reload in design mode or if objects change significantly
-        //     //     if (get().isDesignMode) {
-        //     //       get().loadFloorPlanStatus();
-        //     //     }
-        //     //   }
-        //     // )
-        //     .subscribe((status) => {
-        //       console.log('[setupRealtimeSubscriptions] status', status)
-        //       set({ isOnline: status === "SUBSCRIBED" });
-        //     });
-
-        //   set({ realtimeChannel: channel });
-        //   return true
-        // },
-        setupRealtimeSubscriptions: async (locationId: string) => {
-          const supabase = getClient();
-          if (!supabase) return;
-
-          // Clean up existing subscription
-          const existingChannel = get().realtimeChannel;
-          if (existingChannel) {
-            supabase.removeChannel(existingChannel);
+  const channel = supabase
+    .channel(`location:${locationId}:tables`, {
+      config: { private: true }, // Use private channel with RLS
+    })
+    // Listen for session changes (INSERT/UPDATE/DELETE)
+    .on('broadcast', { event: 'INSERT' }, (payload) => {
+      console.log('[Realtime] Session INSERT:', payload.payload);
+      get()._handleSessionChange(payload.payload as TableSessionPayload);
+    })
+    .on('broadcast', { event: 'UPDATE' }, (payload) => {
+      console.log('[Realtime] Session UPDATE:', payload.payload);
+      get()._handleSessionChange(payload.payload as TableSessionPayload);
+    })
+    .on('broadcast', { event: 'DELETE' }, (payload) => {
+      console.log('[Realtime] Session DELETE:', payload.payload);
+      get()._handleSessionChange(payload.payload as TableSessionPayload);
+    })
+    // Listen for table assignment changes
+    .on('broadcast', { event: 'TABLE_ASSIGNMENT_INSERT' }, (payload) => {
+      get()._debouncedRefresh();
+    })
+    .on('broadcast', { event: 'TABLE_ASSIGNMENT_UPDATE' }, (payload) => {
+      get()._debouncedRefresh();
+    })
+    .on('broadcast', { event: 'TABLE_ASSIGNMENT_DELETE' }, (payload) => {
+      get()._debouncedRefresh();
+    })
+    // Listen for order updates linked to sessions
+    .on('broadcast', { event: 'SESSION_ORDER_UPDATE' }, (payload) => {
+      // Notify order store if needed
+      get()._debouncedRefresh();
+    })
+    .subscribe((status, err) => {
+      console.log('[Realtime] Status:', status, err);
+      
+      switch (status) {
+        case 'SUBSCRIBED':
+          set({ 
+            realtimeStatus: 'connected', 
+            realtimeError: null,
+            isOnline: true 
+          });
+          // Full refresh on (re)connect to catch missed changes
+          get().loadFloorPlanStatus();
+          break;
+          
+        case 'CHANNEL_ERROR':
+          set({ 
+            realtimeStatus: 'reconnecting',
+            realtimeError: err?.message || 'Connection error'
+          });
+          // Auto-reconnect with backoff
+          get()._handleReconnect(locationId);
+          break;
+          
+        case 'TIMED_OUT':
+          set({ realtimeStatus: 'reconnecting' });
+          get()._handleReconnect(locationId);
+          break;
+          
+        case 'CLOSED':
+          set({ realtimeStatus: 'disconnected', isOnline: false });
+          // Auto-reconnect on close (unless cleanup was called intentionally)
+          if (!get()._isCleaningUp) {
+            get()._handleReconnect(locationId);
           }
+          break;
+      }
+    });
 
-          await supabase.realtime.setAuth();
+  set({ realtimeChannel: channel, locationId });
+},
 
-          // Use postgres_changes for automatic DB change detection
-          const channel = supabase
-            .channel(`floor-plan-${locationId}`)
-            // Listen to table_sessions changes (most important!)
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "table_sessions",
-                filter: `location_id=eq.${locationId}`,
-              },
-              (payload) => {
-                console.log("[Realtime] table_sessions change:", payload);
-                // Debounce to avoid rapid reloads
-                get()._debouncedRefresh();
-              }
-            )
-            // Listen to table_session_tables changes (for merges/transfers)
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "table_session_tables",
-              },
-              (payload) => {
-                console.log("[Realtime] table_session_tables change:", payload);
-                get()._debouncedRefresh();
-              }
-            )
-            // Listen to orders changes (for void/complete status)
-            .on(
-              "postgres_changes",
-              {
-                event: "UPDATE",
-                schema: "public",
-                table: "orders",
-                filter: `location_id=eq.${locationId}`,
-              },
-              (payload) => {
-                console.log("[Realtime] orders change:", payload);
-                // Only refresh if status changed to void/completed
-                const newStatus = (payload.new as any)?.status;
-                if (newStatus === "void" || newStatus === "completed") {
-                  get()._debouncedRefresh();
-                }
-              }
-            )
-            // Listen to waitlist and reservations
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "waitlist",
-                filter: `location_id=eq.${locationId}`,
-              },
-              () => get().loadWaitlist()
-            )
-            .on(
-              "postgres_changes",
-              {
-                event: "*",
-                schema: "public",
-                table: "reservations",
-                filter: `location_id=eq.${locationId}`,
-              },
-              () => get().loadReservations()
-            )
-            .subscribe((status) => {
-              console.log("[Realtime] Subscription status:", status);
-              set({ isOnline: status === "SUBSCRIBED" });
-            });
+// NEW: Smart session change handler (avoids full refresh when possible)
+_handleSessionChange: (payload: TableSessionPayload) => {
+  const { operation, data } = payload;
+  
+  if (operation === 'DELETE' || !data?.session) {
+    // Full refresh for deletes (simpler)
+    get()._debouncedRefresh();
+    return;
+  }
 
-          set({ realtimeChannel: channel, locationId });
-        },
+  // For INSERT/UPDATE, try to patch local state
+  const sessionId = data.session.id;
+  const tableIds = data.tables?.map(t => t.table_id) || [];
+  
+  set((state) => {
+    const newTables = state.tables.map((t) => {
+      // Check if this table is part of the updated session
+      if (tableIds.includes(t.id)) {
+        return {
+          ...t,
+          session: {
+            id: sessionId,
+            status: data.session.status,
+            party_size: data.session.party_size,
+            server_user_id: data.session.server_user_id,
+            guest_name: data.session.guest_name,
+            seated_at: data.session.seated_at,
+            current_course: data.session.current_course,
+            working_course: data.session.working_course,
+            needs_attention: data.session.needs_attention,
+            is_vip: data.session.is_vip,
+            is_complaint: data.session.is_complaint,
+            order_id: data.session.order_id,
+            session_number: data.session.session_number,
+            table_ids: tableIds,
+          },
+        };
+      }
+      // Clear session if table was previously in this session but isn't anymore
+      if (t.session?.id === sessionId && !tableIds.includes(t.id)) {
+        return { ...t, session: undefined };
+      }
+      return t;
+    });
+    
+    return {
+      tables: newTables,
+      tablesById: buildTablesById(newTables),
+    };
+  });
+},
+
+// NEW: Reconnection with exponential backoff
+_reconnectAttempts: 0,
+_reconnectTimeout: null as ReturnType<typeof setTimeout> | null,
+_isCleaningUp: false,
+
+_handleReconnect: (locationId: string) => {
+  const maxAttempts = 5;
+  const state = get();
+  
+  if (state._reconnectAttempts >= maxAttempts) {
+    console.warn('[Realtime] Max reconnect attempts reached');
+    set({ 
+      realtimeStatus: 'disconnected',
+      realtimeError: 'Connection failed. Tap to retry.'
+    });
+    return;
+  }
+
+  // Clear existing timeout
+  if (state._reconnectTimeout) {
+    clearTimeout(state._reconnectTimeout);
+  }
+
+  // Faster backoff: 0ms (instant), 500ms, 1s, 2s, 4s
+  const delay = state._reconnectAttempts === 0 ? 0 : 500 * Math.pow(2, state._reconnectAttempts - 1);
+  
+  console.log(`[Realtime] Reconnecting in ${delay}ms (attempt ${state._reconnectAttempts + 1})`);
+  
+  const timeout = setTimeout(async () => {
+    set({ _reconnectAttempts: get()._reconnectAttempts + 1 });
+    
+    // Unsubscribe first (Reddit pattern)
+    const channel = get().realtimeChannel;
+    if (channel) {
+      const supabase = getClient();
+      if (supabase) await supabase.removeChannel(channel);
+    }
+    
+    // Re-subscribe
+    get().setupRealtimeSubscriptions(locationId);
+  }, delay);
+  
+  set({ _reconnectTimeout: timeout });
+},
+
+// NEW: Manual reconnect (for UI button)
+manualReconnect: () => {
+  const locationId = get().locationId;
+  if (!locationId) return;
+  
+  set({ _reconnectAttempts: 0, realtimeStatus: 'reconnecting' });
+  get().setupRealtimeSubscriptions(locationId);
+},
 
         // Add debounced refresh helper (prevents rapid reloads)
         _debouncedRefresh: (() => {
@@ -424,10 +442,16 @@ export const useFloorPlanStore = create<FloorPlanState>()(
         })(),
 
         cleanup: () => {
+          set({ _isCleaningUp: true });
           const supabase = getClient();
           const channel = get().realtimeChannel;
           if (channel && supabase) {
             supabase.removeChannel(channel);
+          }
+          // Clear any pending reconnect timeout
+          const timeout = get()._reconnectTimeout;
+          if (timeout) {
+            clearTimeout(timeout);
           }
           set({
             realtimeChannel: null,
@@ -438,6 +462,9 @@ export const useFloorPlanStore = create<FloorPlanState>()(
             tablesById: {},
             waitlist: [],
             reservations: [],
+            _reconnectAttempts: 0,
+            _reconnectTimeout: null,
+            _isCleaningUp: false,
           });
         },
 

@@ -1,17 +1,18 @@
 import { toastService } from "@/lib/toastService";
 import { CartItem } from "@/lib/types";
 import {
-  getIsOnline,
-  getPendingPaymentsCount,
   getFailedPayments,
-  queueOperation,
-  retryFailedOperation,
+  getPendingPaymentsCount,
   OfflineOperation,
+  retryFailedOperation,
 } from "@/services/offlineSyncService";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
-import { calculateItemEffectiveCashPrice, useOrderStore } from "./useOrderStore";
+import {
+  calculateItemEffectiveCashPrice,
+  useOrderStore,
+} from "./useOrderStore";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
@@ -34,8 +35,8 @@ export interface Split {
   id: string;
   customerName: string;
   items: CartItem[];
-  amount: number;         // Default/card amount
-  cashAmount?: number;    // Cash amount (for dual-price compliance)
+  amount: number; // Default/card amount
+  cashAmount?: number; // Cash amount (for dual-price compliance)
   status: "pending" | "paid";
   // FIXED: Removed splitSourceView from here. It belongs in the global store state, not per-guest.
 }
@@ -128,7 +129,11 @@ interface PaymentState {
   ) => void; // New action to set ref
   setPaymentClean: () => void; // New action to set isDirty to false
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
-  splitEvenly: (numberOfPeople: number, amountPerPerson: number, cashAmountPerPerson?: number) => void; // New action for evenly splitting with dual pricing
+  splitEvenly: (
+    numberOfPeople: number,
+    amountPerPerson: number,
+    cashAmountPerPerson?: number
+  ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
   openPayForItems: () => void; // Action to open the pay-for-items split review view
@@ -424,7 +429,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
     const orderCashSubtotal = masterItems.reduce(
-      (acc, item) => acc + calculateItemEffectiveCashPrice(item) * item.quantity,
+      (acc, item) =>
+        acc + calculateItemEffectiveCashPrice(item) * item.quantity,
       0
     );
 
@@ -542,8 +548,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     transactionDetails?: Record<string, any>
   ) => {
     const { activeSplitId, splits, splitSourceView, close } = get();
-    const { activeOrderId, addPaymentToOrder } =
-      useOrderStore.getState();
+    const { activeOrderId, addPaymentToOrder } = useOrderStore.getState();
 
     if (!activeOrderId) return;
 
@@ -585,9 +590,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Use cash amount when paying with cash, otherwise card amount
       // For split-evenly: cashAmount is set when splits were created
       // For split-by-item: amount is calculated from items at startSplitPaymentFlow time
-      const paymentAmount = isCashPayment && currentSplit.cashAmount !== undefined
-        ? currentSplit.cashAmount
-        : currentSplit.amount;
+      const paymentAmount =
+        isCashPayment && currentSplit.cashAmount !== undefined
+          ? currentSplit.cashAmount
+          : currentSplit.amount;
 
 
       // Include splitLabel and cash pricing flag for backend
@@ -634,7 +640,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         set({ view: "split-payment-success" });
       } else {
         // All splits paid - check if we need to send items to kitchen
-        const { ordersById, sendNewItemsToKitchenForOrder } = useOrderStore.getState();
+        const { ordersById, sendNewItemsToKitchenForOrder } =
+          useOrderStore.getState();
         const order = ordersById[activeOrderId];
 
         // If order was in draft status, send items to kitchen (preparing state)
@@ -680,10 +687,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         return;
       }
 
+      // Refresh order state after payment
+      const updatedOrder = useOrderStore.getState().ordersById[activeOrderId];
+
       // Payment succeeded - addPaymentToOrder already set the paid status
       // If order was in draft status, send it to kitchen
       if (currentOrder?.order_status === "draft") {
         sendNewItemsToKitchenForOrder(activeOrderId);
+      }
+
+      // If this is a takeaway/delivery order that's already ready and now paid, archive it
+      // This triggers inventory deduction via archiveOrder
+      if (
+        updatedOrder &&
+        (updatedOrder.order_type === "Takeaway" ||
+          updatedOrder.order_type === "takeout" ||
+          updatedOrder.order_type === "Delivery") &&
+        updatedOrder.order_status === "ready" &&
+        updatedOrder.paid_status === "Paid"
+      ) {
+        // Use a slight delay to ensure payment state is fully updated
+        setTimeout(() => {
+          useOrderStore.getState().archiveOrder(activeOrderId);
+        }, 300);
       }
 
       set({ view: "success" });

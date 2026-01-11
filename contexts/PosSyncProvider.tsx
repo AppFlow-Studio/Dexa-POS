@@ -399,13 +399,20 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
 
-  // App state listener - refresh stale data when app becomes active
+  // App state listener - reconnect realtime and refresh stale data when app becomes active
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active") {
-        // App came to foreground - refresh stale data
-        console.log("[PosSyncProvider] App became active - checking for stale data");
-        useFloorPlanStore.getState().loadFloorPlanStatusIfStale();
+        console.log("[PosSyncProvider] App became active - reconnecting realtime");
+        const floorPlanStore = useFloorPlanStore.getState();
+        
+        // Reconnect realtime if disconnected or reconnecting
+        if (floorPlanStore.realtimeStatus !== 'connected') {
+          floorPlanStore.manualReconnect();
+        }
+        
+        // Also refresh stale data
+        floorPlanStore.loadFloorPlanStatusIfStale();
       }
     };
 

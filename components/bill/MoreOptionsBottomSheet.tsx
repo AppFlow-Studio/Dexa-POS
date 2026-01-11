@@ -1,6 +1,10 @@
 import { useToast } from "@/contexts/ToastContext";
+import { InventoryService } from "@/services/inventoryService";
 import { useCustomerSheetStore } from "@/stores/useCustomerSheetStore";
-import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  getOrderStoreSupabaseClient,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
@@ -52,8 +56,8 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const voidOrder = useOrderStore((state) => state.voidOrder);
 
   // FIX: Get the active order directly without using orders array
-  const activeOrder = useOrderStore((state) =>
-    state.ordersById[state?.activeOrderId || ""]
+  const activeOrder = useOrderStore(
+    (state) => state.ordersById[state?.activeOrderId || ""]
   );
 
   const handleClearCart = () => {
@@ -82,8 +86,29 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
     }, 250);
   };
 
-  const onConfirmVoid = () => {
-    if (activeOrderId) {
+  const onConfirmVoid = async () => {
+    if (activeOrderId && activeOrder) {
+      // Deduct inventory before voiding (items already consumed/wasted)
+      if (activeOrder.db_order_id) {
+        const supabase = getOrderStoreSupabaseClient();
+        if (supabase) {
+          const result = await InventoryService.processOrderInventoryDeduction(
+            supabase,
+            activeOrder.db_order_id
+          );
+          if (!result.success) {
+            console.warn(
+              "[onConfirmVoid] Inventory deduction failed, proceeding with void"
+            );
+          }
+        }
+      }
+      // Also update local inventory
+      if (activeOrder.items?.length > 0) {
+        const { useInventoryStore } = require("@/stores/useInventoryStore");
+        useInventoryStore.getState().decrementStockFromSale(activeOrder.items);
+      }
+
       voidOrder(activeOrderId);
       setVoidConfirmOpen(false);
       show({
@@ -180,23 +205,24 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
   // FIX: Use optional chaining to prevent errors
   const canVoid =
-    activeOrder &&
-    (activeOrder.items?.length > 0 &&
-    activeOrder.paid_status !== "Paid")
-    || activeOrder?.db_order_id;
+    (activeOrder &&
+      activeOrder.items?.length > 0 &&
+      activeOrder.paid_status !== "Paid") ||
+    activeOrder?.db_order_id;
 
   // Animated style for shake effect
   const shakeStyle = useAnimatedStyle(() => {

@@ -147,4 +147,33 @@ export const InventoryService = {
 
     if (error) throw error;
   },
+
+  /**
+   * Deduct inventory for a completed order (calls backend RPC)
+   */
+  async processOrderInventoryDeduction(
+    supabase: SupabaseClient,
+    orderId: string
+  ): Promise<{ success: boolean; error?: any }> {
+    console.log("we are reduming the stock");
+
+    try {
+      const { error } = await supabase.rpc(
+        "process_order_inventory_deduction",
+        {
+          p_order_id: orderId,
+        }
+      );
+
+      if (error) {
+        console.error("[InventoryService] Deduction RPC error:", error);
+        return { success: false, error };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error("[InventoryService] Deduction exception:", err);
+      return { success: false, error: err };
+    }
+  },
 };

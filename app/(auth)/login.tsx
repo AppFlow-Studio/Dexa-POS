@@ -102,7 +102,7 @@ const MerchantLoginScreen = () => {
         router.replace("/store-select");
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2));
-        console.log(signInAttempt)
+        // console.log(signInAttempt)
         setError("Sign-in incomplete. Please try again.");
       }
     } catch (err: any) {

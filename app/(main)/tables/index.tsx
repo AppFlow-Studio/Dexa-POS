@@ -15,7 +15,7 @@ import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
 import { GitMerge, Search, X } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -38,6 +38,10 @@ const TablesScreen = () => {
     mergeTable,
     unmergeTable,
     isLoading: floorPlanLoading,
+    realtimeStatus,
+    realtimeChannel,
+    realtimeError,
+    manualReconnect,
   } = useFloorPlanStore();
   const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
   const { show } = useToast();
@@ -337,10 +341,28 @@ const TablesScreen = () => {
     setMergeMode(false);
     router.push(`/tables/${primaryTableId}`);
   };
-  // console.log("[TablesScreen] tables", tables);
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">
+      {realtimeStatus !== 'connected' && (
+        <TouchableOpacity 
+          onPress={manualReconnect}
+          className={`py-2 px-4 flex-row items-center justify-center ${
+            realtimeStatus === 'reconnecting' 
+              ? 'bg-amber-600' 
+              : 'bg-red-600'
+          }`}
+        >
+          <View className={`w-2 h-2 rounded-full mr-2 ${
+            realtimeStatus === 'reconnecting' ? 'bg-amber-300' : 'bg-red-300'
+          }`} />
+          <Text className="text-white font-medium">
+            {realtimeStatus === 'reconnecting' 
+              ? 'Reconnecting...' 
+              : 'Offline - Tap to reconnect'}
+          </Text>
+        </TouchableOpacity>
+      )}
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* NEW: Sidebar Component */}
         <Sidebar
@@ -348,6 +370,7 @@ const TablesScreen = () => {
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
         />
+       
 
         {/* Right Side: Floor Plan */}
         <View className="flex-1 p-4">

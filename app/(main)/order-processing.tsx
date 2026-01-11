@@ -124,9 +124,11 @@ const OrderProcessing = () => {
   const handleMarkReady = (order: OrderProfile) => {
     // First, mark the order as ready
     markAllItemsAsReady(order.id);
+    console.log("we are readying", order.order_type, order.paid_status);
 
     // Then, check if it's a Takeaway order and archive it
-    if (order.order_type === "takeout" && order.paid_status === "Paid") {
+    // Note: archiveOrder now handles inventory deduction automatically
+    if (order.order_type === "Takeaway" && order.paid_status === "Paid") {
       // A small delay can improve UX, ensuring the user sees the status change before it disappears.
       setTimeout(() => {
         archiveOrder(order.id);

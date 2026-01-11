@@ -39,6 +39,7 @@ import {
  * round2(0.1 + 0.2) // 0.30 (handles floating point)
  */
 export function round2(num: number): number {
+  console.log('[round2] num', num);
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
