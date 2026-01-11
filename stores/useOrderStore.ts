@@ -9,7 +9,6 @@ import type {
 import { TaxRatesMap } from "@/types/menu";
 import type { ItemPaymentAllocation, OrderTotals } from "@/types/order-calculations";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
-import debounce from "lodash.debounce";
 import { create } from "zustand";
 import {
   createJSONStorage,
@@ -32,8 +31,7 @@ import {
   calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
   calculateOrderTotals as calculateOrderTotalsFromModule,
   calculatePaidStatus,
-  distributeDiscountToItems as distributeDiscountToItemsFromModule,
-  round2,
+  distributeDiscountToItems as distributeDiscountToItemsFromModule
 } from "@/lib/order-calculator";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
@@ -1385,7 +1383,7 @@ const syncPaymentToBackend = async (
   }
 };
 
-// Tax calculation is now handled in recalculateTotals using dynamic rate from store settings
+// Tax calculation is handled in calculateOrderTotals (lib/order-calculator.ts) using dynamic rate from store settings
 
 interface OrderState {
   // === OPTIMIZED DATA STRUCTURE (O(1) lookup) ===
@@ -1671,367 +1669,6 @@ export const useOrderStore = create<OrderState>()(
           }
           // For takeaway orders, the order status is managed manually (not based on item statuses)
         };
-        // Re-entry guard to prevent infinite loops when state updates trigger re-calculations
-        let isRecalculating = false;
-
-        const recalculateTotals = async (orderId: string | null) => {
-          // Prevent re-entry - if already recalculating, skip
-          if (isRecalculating) {
-            console.log("Skipping recalculateTotals - already in progress");
-            return;
-          }
-          isRecalculating = true;
-
-          try {
-            const { orders, activeOrderId: currentActiveOrderId, ordersById } = get();
-            const activeOrder = orderId ? ordersById[orderId] : null;
-
-            // Safety check: Only update derived state if this orderId is still the active order
-            // This prevents stale async calculations from overwriting the current order's totals
-            const isStillActiveOrder = orderId === currentActiveOrderId;
-
-            // Only calculate if order exists and has items - empty orders reset to 0 immediately
-            if (
-              activeOrder &&
-              activeOrder.items &&
-              activeOrder.items.length > 0
-            ) {
-              // Get tax rates map from store settings for per-item tax calculation
-              const storeSettings = useStoreSettingsStore.getState();
-              const taxRatesMap = storeSettings.taxRatesMap;
-
-              // Filter out voided items - they should not be included in totals
-              const activeItems = activeOrder.items.filter(
-                (item) => !item.is_voided
-              );
-
-              // Subtotal must reflect modifiers (size/add-ons) captured in item.price
-              const subtotal = activeItems.reduce(
-                (acc, item) => acc + item.price * item.quantity,
-                0
-              );
-
-              const itemDiscountsTotal = activeItems.reduce((acc, item) => {
-                if (item.appliedDiscount) {
-                  return (
-                    acc +
-                    item.originalPrice *
-                      item.appliedDiscount.value *
-                      item.quantity
-                  );
-                }
-                return acc;
-              }, 0);
-
-              const subtotalAfterItemDiscounts = subtotal - itemDiscountsTotal;
-
-              let checkDiscountAmount = 0;
-              if (activeOrder.checkDiscount) {
-                checkDiscountAmount =
-                  subtotalAfterItemDiscounts * activeOrder.checkDiscount.value;
-              }
-
-              const totalDiscountAmount =
-                itemDiscountsTotal + checkDiscountAmount;
-              const finalSubtotal = subtotal - totalDiscountAmount;
-
-              // Calculate local tax using per-item tax rates
-              let localTax = 0;
-              for (const item of activeItems) {
-                if (item.is_tax_exempt) continue;
-                const taxCategory = item.tax_category || "standard";
-                const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                const taxRateDecimal = taxRatePercent / 100;
-
-                const itemSubtotal = item.price * item.quantity;
-                const itemDiscountProportion =
-                  subtotal > 0 ? itemSubtotal / subtotal : 0;
-                const itemDiscountAmount =
-                  totalDiscountAmount * itemDiscountProportion;
-                const itemTaxableAmount = Math.max(
-                  0,
-                  itemSubtotal - itemDiscountAmount
-                );
-
-                localTax += itemTaxableAmount * taxRateDecimal;
-              }
-              let localTotal = finalSubtotal + localTax;
-
-              // If order has a db_order_id, call backend to calculate tax
-              let backendTaxAmount: number | undefined;
-              const supabase = _supabaseClient;
-              if (supabase && activeOrder.db_order_id) {
-                try {
-                  const { data, error } = await OrderService.calculateOrderTax(
-                    supabase,
-                    activeOrder.db_order_id
-                  );
-
-                  console.log("Backend tax calculation response:", data);
-
-                  if (!error && data && data.success) {
-                    backendTaxAmount = data.tax_amount;
-                    console.log("Using backend tax:", data.tax_amount);
-                  } else if (error) {
-                    console.warn(
-                      "Failed to calculate tax from backend:",
-                      error
-                    );
-                  }
-                } catch (err) {
-                  console.warn("Backend tax calculation error:", err);
-                }
-              }
-
-              // Use backend tax if available, otherwise use local calculation
-              const tax =
-                backendTaxAmount !== undefined ? backendTaxAmount : localTax;
-              const total = finalSubtotal + tax;
-
-              // Compute outstanding subtotal (unpaid amount) used for badges/logic
-              // Use activeItems (voided items filtered out)
-              let outstandingSubtotal = 0;
-              let outstandingTax = 0;
-              for (const item of activeItems) {
-                const unpaidQty = item.quantity - (item.paidQuantity || 0);
-                if (unpaidQty <= 0) continue;
-
-                const itemSubtotal = unpaidQty * item.price;
-                outstandingSubtotal += itemSubtotal;
-
-                if (!item.is_tax_exempt) {
-                  const taxCategory = item.tax_category || "standard";
-                  const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                  const taxRateDecimal = taxRatePercent / 100;
-
-                  const itemDiscountProportion =
-                    subtotal > 0 ? itemSubtotal / subtotal : 0;
-                  const itemDiscountAmount =
-                    totalDiscountAmount * itemDiscountProportion;
-                  const itemTaxableAmount = Math.max(
-                    0,
-                    itemSubtotal - itemDiscountAmount
-                  );
-
-                  outstandingTax += itemTaxableAmount * taxRateDecimal;
-                }
-              }
-
-              // Calculate the final outstanding total, including discounts
-              const proportionOfSubtotalOutstanding =
-                subtotal > 0 ? outstandingSubtotal / subtotal : 0;
-              const outstandingDiscountAmount =
-                totalDiscountAmount * proportionOfSubtotalOutstanding;
-              const outstandingSubtotalAfterDiscount =
-                outstandingSubtotal - outstandingDiscountAmount;
-              const outstandingTotal = round2(
-                outstandingSubtotalAfterDiscount + outstandingTax
-              );
-
-              // === CASH PRICING CALCULATIONS ===
-              // Calculate cash subtotal using cash prices (originalPrice + modifiers + add-ons)
-              const cashSubtotal = activeItems.reduce((acc, item) => {
-                const effectiveCashPrice =
-                  calculateItemEffectiveCashPrice(item);
-                return acc + effectiveCashPrice * item.quantity;
-              }, 0);
-
-              // Calculate cash tax (same discount logic, but using cash subtotal)
-              let cashTax = 0;
-              for (const item of activeItems) {
-                if (item.is_tax_exempt) continue;
-                const taxCategory = item.tax_category || "standard";
-                const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                const taxRateDecimal = taxRatePercent / 100;
-
-                // Calculate item's taxable amount using cash price
-                const effectiveCashPrice =
-                  calculateItemEffectiveCashPrice(item);
-                const itemCashSubtotal = effectiveCashPrice * item.quantity;
-
-                // Apply proportional discount to this item (based on cash subtotal)
-                const itemDiscountProportion =
-                  cashSubtotal > 0 ? itemCashSubtotal / cashSubtotal : 0;
-                const itemDiscountAmount =
-                  totalDiscountAmount * itemDiscountProportion;
-                const itemTaxableAmount = Math.max(
-                  0,
-                  itemCashSubtotal - itemDiscountAmount
-                );
-
-                // Calculate tax for this item
-                cashTax += itemTaxableAmount * taxRateDecimal;
-              }
-
-              // Calculate cash total (cash subtotal - discount + cash tax)
-              const cashTaxableAmount = Math.max(
-                0,
-                cashSubtotal - totalDiscountAmount
-              );
-              const cashTotal = cashTaxableAmount + cashTax;
-
-              // Outstanding cash totals (unpaid items only using cash pricing)
-              let cashOutstandingSubtotal = 0;
-              let cashOutstandingTax = 0;
-              for (const item of activeItems) {
-                const unpaidQty = item.quantity - (item.paidQuantity || 0);
-                if (unpaidQty <= 0) continue;
-
-                // Use cash price for unpaid quantity
-                const effectiveCashPrice =
-                  calculateItemEffectiveCashPrice(item);
-                const itemCashSubtotal = unpaidQty * effectiveCashPrice;
-                cashOutstandingSubtotal += itemCashSubtotal;
-
-                if (!item.is_tax_exempt) {
-                  const taxCategory = item.tax_category || "standard";
-                  const taxRatePercent = taxRatesMap[taxCategory] ?? 0;
-                  const taxRateDecimal = taxRatePercent / 100;
-
-                  // Apply proportional discount (based on cash subtotal)
-                  const itemDiscountProportion =
-                    cashSubtotal > 0 ? itemCashSubtotal / cashSubtotal : 0;
-                  const itemDiscountAmount =
-                    totalDiscountAmount * itemDiscountProportion;
-                  const itemTaxableAmount = Math.max(
-                    0,
-                    itemCashSubtotal - itemDiscountAmount
-                  );
-
-                  cashOutstandingTax += itemTaxableAmount * taxRateDecimal;
-                }
-              }
-
-              // Calculate the final cash outstanding total, including discounts
-              const cashProportionOutstanding =
-                cashSubtotal > 0 ? cashOutstandingSubtotal / cashSubtotal : 0;
-              const cashOutstandingDiscountAmount =
-                totalDiscountAmount * cashProportionOutstanding;
-              const cashOutstandingSubtotalAfterDiscount =
-                cashOutstandingSubtotal - cashOutstandingDiscountAmount;
-              const cashOutstandingTotal = round2(
-                cashOutstandingSubtotalAfterDiscount + cashOutstandingTax
-              );
-
-              // Ensure no undefined values propagate
-              const safeSubtotal = Number(finalSubtotal) || 0;
-              const safeTax = Number(tax) || 0;
-              const safeTotal = Number(total) || 0;
-              const safeDiscount = Number(totalDiscountAmount) || 0;
-              const safeCashTotal = Number(cashTotal) || 0;
-              const safeCashOutstandingTotal =
-                Number(cashOutstandingTotal) || 0;
-
-              // RE-CHECK if this order is still the active one AFTER async operations
-              // This is crucial because the active order might have changed while we were awaiting
-              const stillActiveAfterAsync = orderId === get().activeOrderId;
-
-              // PRIORITY: If order has backend-synced amount_due, use it as the authoritative value
-              // Backend is source of truth after payments have been processed
-              const hasBackendAmountDue = activeOrder.amount_due !== undefined && activeOrder.amount_due >= 0;
-              console.log('[recalculateTotals] hasBackendAmountDue', hasBackendAmountDue);
-
-              const finalOutstandingTotal = hasBackendAmountDue ? activeOrder.amount_due : outstandingTotal;
-              // Check cash_amount_due independently - never fall back to card price (amount_due)
-              const finalCashOutstandingTotal =
-                activeOrder.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
-                  ? activeOrder.cash_amount_due   // Backend cash value (authoritative)
-                  : safeCashOutstandingTotal;     // Local cash calculation (fallback)
-              console.log('[recalculateTotals] finalOutstandingTotal', (finalOutstandingTotal));
-              console.log('[recalculateTotals] finalCashOutstandingTotal', (finalCashOutstandingTotal));
-              // Only update active order derived state if this order is still the active one
-              if (stillActiveAfterAsync) {
-                set({
-                  activeOrderSubtotal: safeSubtotal,
-                  activeOrderTax: safeTax,
-                  activeOrderTotal: safeTotal,
-                  activeOrderDiscount: safeDiscount,
-                  activeOrderOutstandingSubtotal: hasBackendAmountDue
-                    ? activeOrder.amount_due!
-                    : outstandingSubtotal,
-                  activeOrderOutstandingTax: hasBackendAmountDue
-                    ? 0
-                    : outstandingTax, // Tax included in backend amount_due
-                  activeOrderOutstandingTotal: finalOutstandingTotal,
-                  activeOrderTotalCash: safeCashTotal,
-                  activeOrderOutstandingCash: finalCashOutstandingTotal,
-                });
-              }
-
-              // Update order with backend-calculated totals if we got them
-              if (backendTaxAmount !== undefined) {
-                set((state) => ({
-                  orders: state.orders.map((o) =>
-                    o.id === orderId
-                      ? {
-                          ...o,
-                          total_tax: safeTax,
-                          total_amount: safeTotal,
-                          // Store subtotal for reference (if field exists on OrderProfile)
-                        }
-                      : o
-                  ),
-                }));
-              }
-
-              // ================================================================
-              // AUTO-MANAGE paid_status FROM LOCAL PAYMENTS ONLY
-              // ================================================================
-              // CRITICAL: Calculate paid_status ONLY from local payments array
-              // This prevents flicker caused by stale/racing backend values
-              const hasItems = (activeOrder.items?.length || 0) > 0;
-
-              if (hasItems) {
-                // Use the pure function - payments are the single source of truth
-                const correctPaidStatus = calculatePaidStatusFromPayments(
-                  activeOrder.payments,
-                  safeTotal
-                );
-
-                // Only update if status needs to change
-                if (correctPaidStatus !== activeOrder.paid_status) {
-                  console.log(`[recalculateTotals] Updating paid_status from payments: ${activeOrder.paid_status} -> ${correctPaidStatus}`);
-                  set((state) => ({
-                    ordersById: {
-                      ...state.ordersById,
-                      [orderId]: {
-                        ...state.ordersById[orderId],
-                        paid_status: correctPaidStatus,
-                      },
-                    },
-                  }));
-                }
-              }
-            } else {
-              // Only reset if this order is still the active one
-              if (isStillActiveOrder) {
-                set({
-                  activeOrderSubtotal: 0,
-                  activeOrderTax: 0,
-                  activeOrderTotal: 0,
-                  activeOrderDiscount: 0,
-                  activeOrderOutstandingSubtotal: 0,
-                  activeOrderOutstandingTax: 0,
-                  activeOrderOutstandingTotal: 0,
-                  activeOrderTotalCash: 0,
-                  activeOrderOutstandingCash: 0,
-                });
-              }
-            }
-          } finally {
-            isRecalculating = false;
-          }
-        };
-
-        // OPTIMIZED: Debounced version for non-critical updates (e.g., setActiveOrder)
-        // This prevents blocking UI when rapidly switching between orders
-        // Uses trailing: true to ensure final value is always calculated
-        const debouncedRecalculateTotals = debounce(
-          (orderId: string | null) => recalculateTotals(orderId),
-          50,
-          { leading: false, trailing: true }
-        );
-
         // --- Helper function to generate a unique composite key for cart items ---
         const generateItemCompositeKey = (
           menuItemId: string,
@@ -2594,23 +2231,28 @@ export const useOrderStore = create<OrderState>()(
           },
 
           setActiveOrder: (orderId) => {
-            // Immediately reset totals to 0 before async recalculation
-            // This ensures UI shows 0 for new/empty orders without delay
-            set({
-              activeOrderId: orderId,
-              activeOrderSubtotal: 0,
-              activeOrderTax: 0,
-              activeOrderTotal: 0,
-              activeOrderDiscount: 0,
-              activeOrderOutstandingSubtotal: 0,
-              activeOrderOutstandingTax: 0,
-              activeOrderOutstandingTotal: 0,
-              activeOrderTotalCash: 0,
-              activeOrderOutstandingCash: 0,
-            });
-            // OPTIMIZED: Use debounced version to prevent UI blocking
-            // when rapidly switching between orders
-            debouncedRecalculateTotals(orderId);
+            // Handle null/undefined orderId - reset all derived state
+            if (!orderId) {
+              set({
+                activeOrderId: null,
+                activeOrderSubtotal: 0,
+                activeOrderTax: 0,
+                activeOrderTotal: 0,
+                activeOrderDiscount: 0,
+                activeOrderOutstandingSubtotal: 0,
+                activeOrderOutstandingTax: 0,
+                activeOrderOutstandingTotal: 0,
+                activeOrderTotalCash: 0,
+                activeOrderOutstandingCash: 0,
+              });
+              return;
+            }
+
+            // Set active order ID first
+            set({ activeOrderId: orderId });
+
+            // Synchronously calculate and update all derived state - instant!
+            get().recalculateOrder(orderId);
           },
 
           startNewOrder: (details) => {
@@ -4346,14 +3988,28 @@ export const useOrderStore = create<OrderState>()(
               (id) => id !== orderId
             );
 
-            set((state) => ({
-              ordersById: remainingOrdersById,
-              orderIds: remainingOrderIds,
-              activeOrderId:
-                state.activeOrderId === orderId ? null : state.activeOrderId,
-            }));
-
-            recalculateTotals(null);
+            set((state) => {
+              const wasActiveOrder = state.activeOrderId === orderId;
+              return {
+                ordersById: remainingOrdersById,
+                orderIds: remainingOrderIds,
+                activeOrderId: wasActiveOrder ? null : state.activeOrderId,
+                // Reset derived state if this was the active order
+                ...(wasActiveOrder
+                  ? {
+                      activeOrderSubtotal: 0,
+                      activeOrderTax: 0,
+                      activeOrderTotal: 0,
+                      activeOrderDiscount: 0,
+                      activeOrderOutstandingSubtotal: 0,
+                      activeOrderOutstandingTax: 0,
+                      activeOrderOutstandingTotal: 0,
+                      activeOrderTotalCash: 0,
+                      activeOrderOutstandingCash: 0,
+                    }
+                  : {}),
+              };
+            });
 
             return tableId;
           },
@@ -4959,15 +4615,43 @@ export const useOrderStore = create<OrderState>()(
           clearCart: () => {
             const { activeOrderId } = get();
             if (!activeOrderId) return;
+            const order = get().ordersById[activeOrderId];
 
+            // Update ordersById (not deprecated orders array)
             set((state) => ({
-              orders: state.orders.map(
-                (o) => (o.id === activeOrderId ? { ...o, items: [] } : o) // Set items to an empty array
-              ),
+              ordersById: {
+                ...state.ordersById,
+                [activeOrderId]: {
+                  ...state.ordersById[activeOrderId],
+                  items: [],
+                },
+              },
             }));
 
-            // After clearing the cart, recalculate totals to update them to $0.00
-            recalculateTotals(activeOrderId);
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order?.db_order_id) {
+              OrderService.removeOrderItemsBatch(
+                supabase,
+                order.items.map((item) => item.id)
+              )
+                .then(({ error }) => {
+                  if (error) {
+                    console.error("[useOrderStore.voidOrder] DB error:", error);
+                    // Rollback optimistic update on failure
+                    set((state) => ({
+                      ordersById: {
+                        ...state.ordersById,
+                        [activeOrderId]: order, // Restore original
+                      },
+                    }));
+                    return false;
+                  }
+                })
+                .catch((err) => console.error("Void order sync failed:", err));
+            }
+
+            // Synchronously recalculate (will result in all zeros)
+            get().recalculateOrder(activeOrderId);
 
             toastService.show({
               title: "Cart Cleared",
@@ -6050,10 +5734,22 @@ export const useOrderStore = create<OrderState>()(
               order.payments ?? [],
               taxRatesMap
             );
-            
-            console.log('[recalculateOrder] totals', totals);
 
-            // Update order with new totals
+            // PRIORITY: If order has backend-synced amount_due, use it as authoritative
+            // This is crucial after payments have been processed
+            const hasBackendAmountDue =
+              order.amount_due !== undefined && order.amount_due >= 0;
+
+            const finalOutstandingTotal = hasBackendAmountDue
+              ? order.amount_due
+              : totals.outstanding_total;
+
+            const finalCashOutstandingTotal =
+              order.cash_amount_due !== undefined && order.cash_amount_due >= 0
+                ? order.cash_amount_due
+                : totals.cash_outstanding_total;
+
+            // Update order with new totals (use backend values for outstanding if available)
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
@@ -6062,8 +5758,8 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
-                  amount_due: totals.outstanding_total,
-                  cash_amount_due: totals.cash_outstanding_total,
+                  amount_due: finalOutstandingTotal,
+                  cash_amount_due: finalCashOutstandingTotal,
                 },
               },
               // Update active order derived state if this is the active order
@@ -6075,12 +5771,32 @@ export const useOrderStore = create<OrderState>()(
                     activeOrderDiscount: totals.discount_amount,
                     activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
                     activeOrderOutstandingTax: totals.outstanding_tax,
-                    activeOrderOutstandingTotal: totals.outstanding_total,
+                    activeOrderOutstandingTotal: finalOutstandingTotal,
                     activeOrderTotalCash: totals.cash_total_amount,
-                    activeOrderOutstandingCash: totals.cash_outstanding_total,
+                    activeOrderOutstandingCash: finalCashOutstandingTotal,
                   }
                 : {}),
             }));
+
+            // Auto-manage paid_status from payments
+            const hasItems = (order.items?.length || 0) > 0;
+            if (hasItems) {
+              const correctPaidStatus = calculatePaidStatusFromPayments(
+                order.payments,
+                totals.total_amount
+              );
+              if (correctPaidStatus !== order.paid_status) {
+                set((state) => ({
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: {
+                      ...state.ordersById[orderId],
+                      paid_status: correctPaidStatus,
+                    },
+                  },
+                }));
+              }
+            }
 
             // Invalidate payment preview cache
             paymentPreviewService.invalidateCache(orderId);
