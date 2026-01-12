@@ -8,6 +8,7 @@ import type {
 } from "@/types/db-order-management-types";
 import { TaxRatesMap } from "@/types/menu";
 import type { ItemPaymentAllocation, OrderTotals } from "@/types/order-calculations";
+import type { Station } from "@/types/station";
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
 import {
@@ -33,6 +34,11 @@ import {
   calculatePaidStatus,
   distributeDiscountToItems as distributeDiscountToItemsFromModule
 } from "@/lib/order-calculator";
+import { generateRemoteOrderId, isRemoteOrder } from "@/utils/orderIdHelpers";
+import {
+  transformBroadcastItems,
+  transformBroadcastToRemoteOrder,
+} from "@/utils/orderTransformers";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
   getIsOnline,
@@ -42,7 +48,10 @@ import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
-import { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
+import {
+  BroadcastOrderData,
+  OrderBroadcastPayload,
+} from "@/hooks/realtime/useOrdersRealtime";
 import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
@@ -251,6 +260,7 @@ const ensureOrderCreated = async (
     pendingOrderCreations.set(order.id, Promise.resolve("pending_offline"));
 
     // Build the create order params for later execution
+    // NOTE: Pass null (not undefined) for all optional params so Supabase RPC includes them
     const createOrderParams: CreateOrderParams = {
       p_merchant_id: selectedStore.merchant_id,
       p_location_id: selectedStore.id,
@@ -261,8 +271,13 @@ const ensureOrderCreated = async (
           ? "dine_in"
           : (order.order_type.toLowerCase() as DbOrderType)
         : ("dine_in" as DbOrderType),
-      p_table_number: order.service_location_id || undefined,
-      p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || undefined,
+      p_table_number: order.service_location_id || null,
+      p_customer_name: null,
+      p_customer_phone: null,
+      p_special_instructions: null,
+      p_device_id: null,
+      p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+      p_station_id: useStoreSettingsStore.getState().selectedStation?.id || null,
     };
 
     console.log(`[ensureOrderCreated] Queueing create_order operation...`);
@@ -362,6 +377,7 @@ const ensureOrderCreated = async (
         return recheckOrder.db_order_id;
       }
 
+      // NOTE: Pass null (not undefined) for all optional params so Supabase RPC includes them
       const createOrderParams: CreateOrderParams = {
         p_merchant_id: selectedStore.merchant_id,
         p_location_id: selectedStore.id,
@@ -372,8 +388,13 @@ const ensureOrderCreated = async (
             ? "dine_in"
             : (order.order_type.toLowerCase() as DbOrderType)
           : ("dine_in" as DbOrderType),
-        p_table_number: order.service_location_id || undefined,
-        p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || undefined,
+        p_table_number: order.service_location_id || null,
+        p_customer_name: null,
+        p_customer_phone: null,
+        p_special_instructions: null,
+        p_device_id: null,
+        p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || null,
+        p_station_id: useStoreSettingsStore.getState().selectedStation?.id || null,
       };
 
       console.log(
@@ -1443,9 +1464,19 @@ interface OrderState {
   // --- PENDING TABLE SELECTION ---
   pendingTableSelection: string | null; // Store pending table selection
 
+  // === STATION CONTEXT (Phase 1 Foundation) ===
+  currentStationId: string | null;
+  currentStation: Station | null;
+  remoteOrdersEnabled: boolean;
+  isLoadingPreviousOrders: boolean;
+  lastReconciliationAt: string | null;
+
   // --- OFFLINE SYNC ACTIONS ---
   setOnlineStatus: (isOnline: boolean) => void;
   setPendingSyncCount: (count: number) => void;
+
+  // --- STATION ACTIONS (Phase 1 Foundation) ---
+  setCurrentStation: (station: Station) => void;
 
   // --- ACTIONS ---
   setActiveOrder: (orderId: string | null) => void;
@@ -1592,6 +1623,15 @@ interface OrderState {
     _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
     _debouncedOrderRefresh: (dbOrderId: string) => void;
     _handleOrderReconnect: (locationId: string) => void;
+
+    // === REMOTE ORDER MANAGEMENT (Phase 2) ===
+    _shouldAcceptRemoteOrder: (
+      backendOrder: BroadcastOrderData,
+      currentLocationId: string
+    ) => boolean;
+    _createRemoteOrder: (backendOrder: BroadcastOrderData) => void;
+    _updateRemoteOrder: (backendOrder: BroadcastOrderData) => void;
+    _removeRemoteOrder: (dbOrderId: string) => void;
 }
 
 // Debounced refresh helper (per-order)
@@ -1729,64 +1769,6 @@ export const useOrderStore = create<OrderState>()(
           return `${compositeKey}_${timestamp}_${randomSuffix}`;
         };
 
-        // --- Helper function to check for deep equality of customizations ---
-        const areCustomizationsEqual = (
-          custA: CartItem["customizations"],
-          custB: CartItem["customizations"]
-        ): boolean => {
-          // 1. Check if sizes are the same
-          if (custA.size?.id !== custB.size?.id) {
-            return false;
-          }
-          // 2. Check if notes are the same
-          if (custA.notes !== custB.notes) {
-            return false;
-          }
-          // 3. Check if add-ons are the same (must have same add-ons in any order)
-          const addOnsA = custA.addOns?.map((a) => a.id).sort() || [];
-          const addOnsB = custB.addOns?.map((a) => a.id).sort() || [];
-          if (
-            addOnsA.length !== addOnsB.length ||
-            !addOnsA.every((id, index) => id === addOnsB[index])
-          ) {
-            return false;
-          }
-          // 4. Check if modifiers are the same
-          const modifiersA =
-            custA.modifiers
-              ?.map((mod) => ({
-                categoryId: mod.categoryId,
-                options: mod.options.map((opt) => opt.id).sort(),
-              }))
-              .sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
-          const modifiersB =
-            custB.modifiers
-              ?.map((mod) => ({
-                categoryId: mod.categoryId,
-                options: mod.options.map((opt) => opt.id).sort(),
-              }))
-              .sort((a, b) => a.categoryId.localeCompare(b.categoryId)) || [];
-
-          if (modifiersA.length !== modifiersB.length) {
-            return false;
-          }
-
-          for (let i = 0; i < modifiersA.length; i++) {
-            if (
-              modifiersA[i].categoryId !== modifiersB[i].categoryId ||
-              modifiersA[i].options.length !== modifiersB[i].options.length ||
-              !modifiersA[i].options.every(
-                (opt, idx) => opt === modifiersB[i].options[idx]
-              )
-            ) {
-              return false;
-            }
-          }
-
-          // 5. If all checks pass, they are equal
-          return true;
-        };
-
         return {
           // --- INITIAL STATE (OPTIMIZED STRUCTURE) ---
           ordersById: {},
@@ -1812,6 +1794,14 @@ export const useOrderStore = create<OrderState>()(
           activeOrderTotalCash: 0,
           activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
+
+          // === STATION CONTEXT (Phase 1 Foundation) ===
+          currentStationId: null,
+          currentStation: null,
+          remoteOrdersEnabled: false,
+          isLoadingPreviousOrders: false,
+          lastReconciliationAt: null,
+
           // Payment sync status for loading UI
           paymentSyncStatus: "idle",
 
@@ -1819,6 +1809,18 @@ export const useOrderStore = create<OrderState>()(
           setOnlineStatus: (isOnline: boolean) => set({ isOnline }),
           setPendingSyncCount: (count: number) =>
             set({ pendingSyncCount: count }),
+
+          // --- STATION ACTIONS (Phase 1 Foundation) ---
+          setCurrentStation: (station) => {
+            console.log(
+              `[OrderStore] Station context set: ${station.station_name} (${station.view_scope || "own"})`
+            );
+            set({
+              currentStationId: station.id,
+              currentStation: station,
+              remoteOrdersEnabled: station.view_scope !== "own",
+            });
+          },
 
           // --- REALTIME SUBSCRIPTION METHODS ---
           setupOrderRealtimeSubscriptions: async (locationId: string) => {
@@ -1861,14 +1863,14 @@ export const useOrderStore = create<OrderState>()(
               // ----------------------------------------------------------------
               // ORDER ITEM EVENTS
               // ----------------------------------------------------------------
-              // .on('broadcast', { event: 'ITEM_INSERT' }, (msg) => {
-              //   console.log('[OrderRealtime] Item INSERT:', msg.payload);
-              //   get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
-              // })
-              // .on('broadcast', { event: 'ITEM_UPDATE' }, (msg) => {
-              //   console.log('[OrderRealtime] Item UPDATE:', msg.payload);
-              //   get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
-              // })
+              .on('broadcast', { event: 'ITEM_INSERT' }, (msg) => {
+                console.log('[OrderRealtime] Item INSERT:', msg.payload);
+                get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
+              })
+              .on('broadcast', { event: 'ITEM_UPDATE' }, (msg) => {
+                console.log('[OrderRealtime] Item UPDATE:', msg.payload);
+                get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
+              })
               .on('broadcast', { event: 'ITEM_DELETE' }, (msg) => {
                 console.log('[OrderRealtime] Item DELETE:', msg.payload);
                 get()._handleItemBroadcast(msg.payload as OrderBroadcastPayload);
@@ -1927,103 +1929,364 @@ export const useOrderStore = create<OrderState>()(
           },
           
           // ============================================================================
-          // ORDER BROADCAST HANDLER
+          // ORDER BROADCAST HANDLER (Phase 2: Remote Order Management)
           // ============================================================================
-          
+
           _handleOrderBroadcast: (payload: OrderBroadcastPayload) => {
             const { operation, data } = payload;
             const backendOrder = data.order;
             const dbOrderId = backendOrder?.id;
-            
-            if (!dbOrderId) return;
-            
+
+            if (!dbOrderId) {
+              console.warn("[OrderBroadcast] No order ID in payload");
+              return;
+            }
+
             const state = get();
+            const { currentStationId } = state;
             const localOrder = state.ordersByDbId[dbOrderId];
-            
-            switch (operation) {
-              case 'INSERT':
-                if (!localOrder) {
-                  console.log('[OrderRealtime] New order from another device:', dbOrderId);
-                  // Could optionally create a local order entry here
-                }
-                break;
-                
-              case 'UPDATE':
-                if (localOrder) {
-                  const localOrderId = localOrder.id;
-                  
-                  // Check for pending local changes
-                  const hasPendingChanges = localOrder.sync_status === 'pending' ||
-                    localOrder.items.some(item => item.sync_status === 'pending');
-                  
-                  set((state) => {
-                    const existingOrder = state.ordersById[localOrderId];
-                    if (!existingOrder) return state;
-                    
-                    // Build updated order
-                    const updatedOrder: OrderProfile = {
-                      ...existingOrder,
-                      
-                      // Always update payment-related fields (backend is source of truth)
-                      amount_paid: backendOrder.amount_paid,
-                      amount_due: backendOrder.amount_due,
-                      cash_amount_due: backendOrder.cash_amount_due,
-                      paid_status: mapPaymentStatus(backendOrder.payment_status),
-                      
-                      // Update totals if no pending changes
-                      ...(!hasPendingChanges ? {
-                        // Status
-                        order_status: backendOrder.status,
-                        check_status: backendOrder.amount_due <= 0.01 ? 'Closed' : 'Opened',
-                        
-                        // Card totals (default display)
-                        total_amount: backendOrder.card_total,
-                        total_tax: backendOrder.card_tax_amount,
-                        
-                        // Timestamps
-                        sent_to_kitchen_at: backendOrder.sent_to_kitchen_at || existingOrder.sent_to_kitchen_at,
-                      } : {}),
-                    };
-                    
-                    return {
-                      ordersById: {
-                        ...state.ordersById,
-                        [localOrderId]: updatedOrder,
-                      },
-                      ordersByDbId: {
-                        ...state.ordersByDbId,
-                        [dbOrderId]: updatedOrder,
-                      },
-                      // Update derived state if active order
-                      ...(localOrderId === state.activeOrderId ? {
-                        activeOrderTotal: backendOrder.card_total,
-                        activeOrderTax: backendOrder.card_tax_amount,
-                        activeOrderSubtotal: backendOrder.card_subtotal,
-                        activeOrderDiscount: backendOrder.discount_amount,
-                        activeOrderOutstandingTotal: backendOrder.amount_due,
-                        activeOrderOutstandingCash: backendOrder.cash_amount_due,
-                        activeOrderTotalCash: backendOrder.cash_total,
-                      } : {}),
-                    };
-                  });
-                  
-                  // Full sync if status changed
-                  if (localOrder.order_status !== backendOrder.status) {
-                    get()._debouncedOrderRefresh(dbOrderId);
+            const currentLocationId =
+              useStoreSettingsStore.getState().selectedStore?.id;
+
+            // DECISION POINT 1: Is this our own station's order?
+            const isOwnStationOrder = backendOrder.station_id === currentStationId;
+
+            if (isOwnStationOrder || localOrder) {
+              // ═══════════════════════════════════════════════════════════
+              // OWN STATION ORDER - Use existing local order handling
+              // ═══════════════════════════════════════════════════════════
+
+              switch (operation) {
+                case "INSERT":
+                  if (!localOrder) {
+                    console.log(
+                      "[OrderBroadcast] Own INSERT confirmed:",
+                      dbOrderId
+                    );
+                    // Order creation is handled by sync response, not broadcast
                   }
-                }
+                  break;
+
+                case "UPDATE":
+                  if (localOrder) {
+                    const localOrderId = localOrder.id;
+
+                    // Check for pending local changes
+                    const hasPendingChanges =
+                      localOrder.sync_status === "pending" ||
+                      localOrder.items.some(
+                        (item) => item.sync_status === "pending"
+                      );
+
+                    // Phase 2.5: Transform fresh items from broadcast (if available)
+                    const broadcastItems = backendOrder.order_items
+                      ? transformBroadcastItems(backendOrder.order_items)
+                      : null;
+
+                    set((state) => {
+                      const existingOrder = state.ordersById[localOrderId];
+                      if (!existingOrder) return state;
+
+                      // Phase 2.5: Merge broadcast items with local items
+                      // Strategy: Keep pending local items, update synced items from broadcast
+                      let mergedItems = existingOrder.items;
+                      if (broadcastItems && !hasPendingChanges) {
+                        // Build a map of broadcast items by db_order_item_id
+                        const broadcastItemMap = new Map(
+                          broadcastItems.map((item) => [
+                            item.db_order_item_id,
+                            item,
+                          ])
+                        );
+
+                        // Keep local pending/draft items, replace synced items with broadcast data
+                        const localPendingItems = existingOrder.items.filter(
+                          (item) =>
+                            item.sync_status === "pending" ||
+                            item.sync_status === "syncing" ||
+                            item.isDraft
+                        );
+
+                        // Use broadcast items for all synced items (they have modifiers)
+                        // Preserve local item IDs for items we already have
+                        const updatedSyncedItems = broadcastItems.map(
+                          (broadcastItem) => {
+                            // Find if we have a local item with this db_order_item_id
+                            const localItem = existingOrder.items.find(
+                              (li) =>
+                                li.db_order_item_id ===
+                                broadcastItem.db_order_item_id
+                            );
+                            if (localItem && localItem.sync_status !== "pending") {
+                              // Merge: keep local ID but update everything else from broadcast
+                              return {
+                                ...broadcastItem,
+                                id: localItem.id, // Keep local ID
+                              };
+                            }
+                            return broadcastItem;
+                          }
+                        );
+
+                        // Combine: synced items from broadcast + local pending items
+                        mergedItems = [...updatedSyncedItems, ...localPendingItems];
+                      }
+
+                      // Build updated order
+                      const updatedOrder: OrderProfile = {
+                        ...existingOrder,
+
+                        // Always update payment-related fields (backend is source of truth)
+                        amount_paid: backendOrder.amount_paid,
+                        amount_due: backendOrder.amount_due,
+                        cash_amount_due: backendOrder.cash_amount_due,
+                        paid_status: mapPaymentStatus(
+                          backendOrder.payment_status
+                        ),
+
+                        // Update items with merged data (Phase 2.5)
+                        items: mergedItems,
+
+                        // Update totals if no pending changes
+                        ...(!hasPendingChanges
+                          ? {
+                              // Status
+                              order_status: backendOrder.status,
+                              check_status:
+                                backendOrder.amount_due <= 0.01
+                                  ? "Closed"
+                                  : "Opened",
+
+                              // Card totals (default display)
+                              total_amount: backendOrder.card_total,
+                              total_tax: backendOrder.card_tax_amount,
+
+                              // Timestamps
+                              sent_to_kitchen_at:
+                                backendOrder.sent_to_kitchen_at ||
+                                existingOrder.sent_to_kitchen_at,
+                            }
+                          : {}),
+                      };
+
+                      return {
+                        ordersById: {
+                          ...state.ordersById,
+                          [localOrderId]: updatedOrder,
+                        },
+                        ordersByDbId: {
+                          ...state.ordersByDbId,
+                          [dbOrderId]: updatedOrder,
+                        },
+                        // Update derived state if active order
+                        ...(localOrderId === state.activeOrderId
+                          ? {
+                              activeOrderTotal: backendOrder.card_total,
+                              activeOrderTax: backendOrder.card_tax_amount,
+                              activeOrderSubtotal: backendOrder.card_subtotal,
+                              activeOrderDiscount: backendOrder.discount_amount,
+                              activeOrderOutstandingTotal:
+                                backendOrder.amount_due,
+                              activeOrderOutstandingCash:
+                                backendOrder.cash_amount_due,
+                              activeOrderTotalCash: backendOrder.cash_total,
+                            }
+                          : {}),
+                      };
+                    });
+
+                    // Full sync if status changed
+                    if (localOrder.order_status !== backendOrder.status) {
+                      get()._debouncedOrderRefresh(dbOrderId);
+                    }
+                  }
+                  break;
+
+                case "DELETE":
+                  if (localOrder) {
+                    console.log("[OrderBroadcast] Own DELETE:", dbOrderId);
+                    // Could archive or remove the local order
+                  }
+                  break;
+              }
+              return;
+            }
+
+            // DECISION POINT 2: Should we accept this remote order?
+            if (
+              !currentLocationId ||
+              !state._shouldAcceptRemoteOrder(backendOrder, currentLocationId)
+            ) {
+              console.log("[OrderBroadcast] Rejected (view_scope):", dbOrderId);
+              return;
+            }
+
+            // ═══════════════════════════════════════════════════════════
+            // REMOTE ORDER - Handle differently
+            // ═══════════════════════════════════════════════════════════
+
+            switch (operation) {
+              case "INSERT":
+                console.log("[OrderBroadcast] Remote INSERT:", dbOrderId);
+                state._createRemoteOrder(backendOrder);
                 break;
-                
-              case 'DELETE':
-                // ... same as before
+
+              case "UPDATE":
+                console.log("[OrderBroadcast] Remote UPDATE:", dbOrderId);
+                state._updateRemoteOrder(backendOrder);
+                break;
+
+              case "DELETE":
+                console.log("[OrderBroadcast] Remote DELETE:", dbOrderId);
+                state._removeRemoteOrder(dbOrderId);
                 break;
             }
+          },
+
+          // ============================================================================
+          // REMOTE ORDER VIEW SCOPE FILTER (Phase 2)
+          // ============================================================================
+
+          _shouldAcceptRemoteOrder: (backendOrder, currentLocationId) => {
+            const { currentStation, currentStationId } = get();
+
+            // 1. If no currentStation set, reject all remote orders
+            if (!currentStation || !currentStationId) {
+              console.log("[RemoteOrder] No station context, rejecting");
+              return false;
+            }
+
+            // 2. If order is from our own station, this isn't a "remote" order
+            if (backendOrder.station_id === currentStationId) {
+              return false;
+            }
+
+            // 3. Check view_scope
+            const viewScope = currentStation.view_scope || "own";
+
+            switch (viewScope) {
+              case "own":
+                // Never accept remote orders
+                return false;
+
+              case "location":
+                // Accept all orders from this location
+                return backendOrder.location_id === currentLocationId;
+
+              case "online":
+                // Accept only online/delivery orders from this location
+                return (
+                  backendOrder.location_id === currentLocationId &&
+                  ["delivery", "takeout"].includes(backendOrder.order_type)
+                );
+
+              default:
+                return false;
+            }
+          },
+
+          // ============================================================================
+          // REMOTE ORDER CRUD ACTIONS (Phase 2)
+          // ============================================================================
+
+          _createRemoteOrder: (backendOrder) => {
+            const remoteId = generateRemoteOrderId(backendOrder.id);
+
+            // Check if already exists (idempotency)
+            if (get().ordersById[remoteId]) {
+              console.log("[RemoteOrder] Already exists, updating:", remoteId);
+              return get()._updateRemoteOrder(backendOrder);
+            }
+
+            // Transform to OrderProfile
+            const remoteOrder = transformBroadcastToRemoteOrder(backendOrder);
+
+            // Add to store (BOTH maps)
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [remoteId]: remoteOrder,
+              },
+              ordersByDbId: {
+                ...state.ordersByDbId,
+                [backendOrder.id]: remoteOrder,
+              },
+              orderIds: [...state.orderIds, remoteId],
+            }));
+
+            console.log(
+              "[RemoteOrder] Created:",
+              remoteId,
+              "from station:",
+              remoteOrder._sourceStationId
+            );
+          },
+
+          _updateRemoteOrder: (backendOrder) => {
+            const remoteId = generateRemoteOrderId(backendOrder.id);
+            const existing = get().ordersById[remoteId];
+
+            // If doesn't exist, create it
+            if (!existing) {
+              return get()._createRemoteOrder(backendOrder);
+            }
+
+            // Transform fresh data
+            const freshOrder = transformBroadcastToRemoteOrder(
+              backendOrder,
+              existing._sourceStationName
+            );
+
+            // Preserve adoption status if adopted
+            const updated: OrderProfile = {
+              ...freshOrder,
+              _isAdopted: existing._isAdopted,
+              _canModify: existing._isAdopted || false,
+              _receivedAt: existing._receivedAt, // Keep original receive time
+            };
+
+            // Update store
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [remoteId]: updated,
+              },
+              ordersByDbId: {
+                ...state.ordersByDbId,
+                [backendOrder.id]: updated,
+              },
+            }));
+
+            console.log("[RemoteOrder] Updated:", remoteId);
+          },
+
+          _removeRemoteOrder: (dbOrderId) => {
+            const remoteId = generateRemoteOrderId(dbOrderId);
+
+            if (!get().ordersById[remoteId]) {
+              console.log("[RemoteOrder] Not found for removal:", remoteId);
+              return;
+            }
+
+            set((state) => {
+              const { [remoteId]: removedById, ...restById } = state.ordersById;
+              const { [dbOrderId]: removedByDbId, ...restByDbId } =
+                state.ordersByDbId;
+
+              return {
+                ordersById: restById,
+                ordersByDbId: restByDbId,
+                orderIds: state.orderIds.filter((id) => id !== remoteId),
+              };
+            });
+
+            console.log("[RemoteOrder] Removed:", remoteId);
           },
 
           // ====================================================================
           // DEBOUNCED REFRESH
           // ====================================================================
-          
+
           _debouncedOrderRefresh: createDebouncedOrderRefresh(get),
           
           // ====================================================================
@@ -2261,6 +2524,9 @@ export const useOrderStore = create<OrderState>()(
               (e) => e.id === activeEmployeeId
             );
 
+            // Phase 1 Foundation: Get station context for new orders
+            const { currentStationId, currentStation } = get();
+
             const newOrder: OrderProfile = {
               id: `order_${Date.now()}`,
               service_location_id: details?.tableId || null,
@@ -2273,6 +2539,16 @@ export const useOrderStore = create<OrderState>()(
               opened_at: null,
               guest_count: details?.guestCount || 1,
               server_name: activeEmployee?.fullName || "Unknown",
+
+              // Phase 1 Foundation: Station tracking fields
+              station_id: currentStationId,
+              _isRemoteOrder: false,
+              _isAdopted: false,
+              _isTransferred: false,
+              _sourceStationId: currentStationId,
+              _sourceStationName: currentStation?.station_name || null,
+              _receivedAt: null,
+              _canModify: true,
             };
             set((state) => ({
               ordersById: { ...state.ordersById, [newOrder.id]: newOrder },
@@ -2287,6 +2563,15 @@ export const useOrderStore = create<OrderState>()(
 
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
+
+            // Phase 2: Guard - Cannot add items to remote orders
+            if (activeOrder._isRemoteOrder && !activeOrder._isAdopted) {
+              console.warn(
+                "[OrderStore] Cannot add items to remote order:",
+                activeOrderId
+              );
+              return;
+            }
 
             // ================================================================
             // FAST PATH: Draft items skip all expensive operations
@@ -2567,6 +2852,15 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
+            // Phase 2: Guard - Cannot modify items in remote orders (unless adopted)
+            if (order._isRemoteOrder && !order._isAdopted) {
+              console.warn(
+                "[OrderStore] Cannot modify items in remote order:",
+                activeOrderId
+              );
+              return;
+            }
+
             const originalItem = order.items.find(
               (i) => i.id === updatedItem.id
             );
@@ -2808,6 +3102,15 @@ export const useOrderStore = create<OrderState>()(
 
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
+
+            // Phase 2: Guard - Cannot remove items from remote orders (unless adopted)
+            if (order._isRemoteOrder && !order._isAdopted) {
+              console.warn(
+                "[OrderStore] Cannot remove items from remote order:",
+                activeOrderId
+              );
+              return;
+            }
 
             const itemToHandle = order.items.find((i) => i.id === itemId);
             if (!itemToHandle) return;
@@ -4550,23 +4853,23 @@ export const useOrderStore = create<OrderState>()(
 
             if (isOnlineNow && supabase && order.db_order_id) {
               // Online + order synced: sync immediately
-              // Update order status
-              supabase
-                .rpc("update_order_status", {
-                  p_order_id: order.db_order_id,
-                  p_new_status: "preparing",
-                })
-                .then(({ error }) => {
-                  if (error) {
-                    console.error("Failed to sync status for order:", error);
-                    // Queue for retry
-                    queueFailedOperation(
-                      "send_to_kitchen",
-                      { localOrderId: orderId, localItemIds },
-                      orderId
-                    );
-                  }
-                });
+              // IMPORTANT: Await status update to prevent race condition with realtime
+              // If we don't await, realtime might receive payment update with old status
+              // and overwrite our local "preparing" status back to "draft"
+              const { error } = await supabase.rpc("update_order_status", {
+                p_order_id: order.db_order_id,
+                p_new_status: "preparing",
+              });
+
+              if (error) {
+                console.error("Failed to sync status for order:", error);
+                // Queue for retry
+                queueFailedOperation(
+                  "send_to_kitchen",
+                  { localOrderId: orderId, localItemIds },
+                  orderId
+                );
+              }
 
               // Bulk update item statuses to 'sent' with sent_to_kitchen_at timestamp
               const dbItemIds = newItems
@@ -5983,6 +6286,80 @@ useOrderStore.subscribe(
     useOrderStore.setState({ ordersByDbId });
   }
 );
+
+// ============================================================================
+// PHASE 1 FOUNDATION: Auto-sync station context from useStoreSettingsStore
+// ============================================================================
+// This ensures order store has station context when selectedStation changes
+// Station context includes view_scope and capabilities for station-based order management
+
+// Track previous station to detect changes
+let _previousSelectedStationId: string | null = null;
+
+// Initial sync on module load
+const initialStation = useStoreSettingsStore.getState().selectedStation;
+if (initialStation) {
+  const station: Station = {
+    id: initialStation.id,
+    station_name: initialStation.station_name,
+    station_type: initialStation.station_type as Station["station_type"],
+    station_number: initialStation.station_number,
+    is_active: true,
+    is_available: true,
+    current_session: null,
+    view_scope: initialStation.view_scope,
+    can_create_orders: initialStation.can_create_orders,
+    can_process_payments: initialStation.can_process_payments,
+    can_void_orders: initialStation.can_void_orders,
+    can_apply_discounts: initialStation.can_apply_discounts,
+    can_update_kitchen_status: initialStation.can_update_kitchen_status,
+  };
+  // Defer to avoid circular dependency during initialization
+  setTimeout(() => {
+    useOrderStore.getState().setCurrentStation(station);
+  }, 0);
+  _previousSelectedStationId = initialStation.id;
+}
+
+// Subscribe to changes
+useStoreSettingsStore.subscribe((state) => {
+  const selectedStation = state.selectedStation;
+  const currentStationId = selectedStation?.id || null;
+
+  // Only update if station changed
+  if (currentStationId !== _previousSelectedStationId) {
+    _previousSelectedStationId = currentStationId;
+
+    if (selectedStation) {
+      // Convert SelectedStation to Station format with capability fields
+      const station: Station = {
+        id: selectedStation.id,
+        station_name: selectedStation.station_name,
+        station_type: selectedStation.station_type as Station["station_type"],
+        station_number: selectedStation.station_number,
+        is_active: true,
+        is_available: true,
+        current_session: null,
+        // Phase 1 Foundation: view_scope and capabilities from SelectedStation
+        view_scope: selectedStation.view_scope,
+        can_create_orders: selectedStation.can_create_orders,
+        can_process_payments: selectedStation.can_process_payments,
+        can_void_orders: selectedStation.can_void_orders,
+        can_apply_discounts: selectedStation.can_apply_discounts,
+        can_update_kitchen_status: selectedStation.can_update_kitchen_status,
+      };
+      useOrderStore.getState().setCurrentStation(station);
+    } else {
+      // Clear station context when station is deselected
+      useOrderStore.setState({
+        currentStationId: null,
+        currentStation: null,
+        remoteOrdersEnabled: false,
+      });
+      console.log("[OrderStore] Station context cleared");
+    }
+  }
+});
 
 
 // ============================================================================

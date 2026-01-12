@@ -12,6 +12,7 @@
  */
 
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
+import { isRemoteOrder } from "@/utils/orderIdHelpers";
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
@@ -371,6 +372,17 @@ function findCollapseTarget(
 export async function queueOperation(
   op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">
 ): Promise<string> {
+  // Phase 2: Guard - Never queue operations for remote orders
+  // Remote orders are "guests" in our store and don't participate in sync operations
+  if (op.localOrderId && isRemoteOrder(op.localOrderId)) {
+    console.log(
+      "[OfflineSync] Rejected remote order operation:",
+      op.type,
+      op.localOrderId
+    );
+    return ""; // Return empty string to indicate rejection
+  }
+
   const priority = OPERATION_PRIORITY[op.type] ?? 99;
   const entityKey = generateEntityKey(op);
 

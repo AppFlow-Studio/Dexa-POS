@@ -167,13 +167,14 @@ export interface OrderPayment {
 export interface CreateOrderParams {
   p_merchant_id: string;
   p_location_id: string;
-  p_order_type?: OrderType;
-  p_table_number?: string;
-  p_customer_name?: string;
-  p_customer_phone?: string;
-  p_special_instructions?: string;
-  p_device_id?: string;
-  p_created_by_staff_id?: string;
+  p_order_type: OrderType;
+  p_table_number: string | null;
+  p_customer_name: string | null;
+  p_customer_phone: string | null;
+  p_special_instructions: string | null;
+  p_device_id: string | null;
+  p_created_by_staff_id: string | null;
+  p_station_id: string | null;
 }
 
 export interface AddOrderItemParams {

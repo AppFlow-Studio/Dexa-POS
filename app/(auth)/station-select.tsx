@@ -29,7 +29,6 @@ const StationSelectItem = ({
   onTakeOver,
 }: StationSelectItemProps) => {
   const isAvailable = station.is_available;
-
   return (
     <TouchableOpacity
       onPress={isAvailable ? onPress : undefined}
@@ -184,6 +183,13 @@ const StationSelectScreen = () => {
         station_name: station.station_name,
         station_type: station.station_type,
         station_number: station.station_number,
+        // Phase 1 Foundation: Include view_scope and capabilities for station-based order management
+        view_scope: station.view_scope,
+        can_create_orders: station.can_create_orders,
+        can_process_payments: station.can_process_payments,
+        can_void_orders: station.can_void_orders,
+        can_apply_discounts: station.can_apply_discounts,
+        can_update_kitchen_status: station.can_update_kitchen_status,
       };
       setSelectedStation(stationData);
       router.push({
@@ -200,6 +206,13 @@ const StationSelectScreen = () => {
         station_name: stationToTakeover.station_name,
         station_type: stationToTakeover.station_type,
         station_number: stationToTakeover.station_number,
+        // Phase 1 Foundation: Include view_scope and capabilities for station-based order management
+        view_scope: stationToTakeover.view_scope,
+        can_create_orders: stationToTakeover.can_create_orders,
+        can_process_payments: stationToTakeover.can_process_payments,
+        can_void_orders: stationToTakeover.can_void_orders,
+        can_apply_discounts: stationToTakeover.can_apply_discounts,
+        can_update_kitchen_status: stationToTakeover.can_update_kitchen_status,
       };
       setSelectedStation(stationData);
       setShowTakeoverConfirm(false);

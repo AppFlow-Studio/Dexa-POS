@@ -645,8 +645,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const order = ordersById[activeOrderId];
 
         // If order was in draft status, send items to kitchen (preparing state)
-        if (order?.order_status === "draft") {
-          sendNewItemsToKitchenForOrder(activeOrderId);
+        // IMPORTANT: Await this to ensure backend status is updated before continuing
+        if (order?.order_status === "draft" || order?.order_status === "pending") {
+          await sendNewItemsToKitchenForOrder(activeOrderId);
         }
 
         // Order is fully paid - addPaymentToOrder already set the paid status
@@ -692,8 +693,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       // Payment succeeded - addPaymentToOrder already set the paid status
       // If order was in draft status, send it to kitchen
-      if (currentOrder?.order_status === "draft") {
-        sendNewItemsToKitchenForOrder(activeOrderId);
+      // IMPORTANT: Await this to ensure backend status is updated before continuing
+      // This prevents race condition where realtime overwrites status to "draft"
+      if (currentOrder?.order_status === "draft" || currentOrder?.order_status === "pending") {
+        await sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
       // If this is a takeaway/delivery order that's already ready and now paid, archive it

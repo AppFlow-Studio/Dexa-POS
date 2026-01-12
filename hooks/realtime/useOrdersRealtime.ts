@@ -11,13 +11,51 @@ import type {
   UseOrdersRealtimeOptions,
 } from '@/types/real-time';
 
+// Modifier data in broadcast payload (Phase 2.5: Order Item Sync with Modifiers)
+export interface BroadcastModifierData {
+  modifier_group_id: string | null;
+  modifier_item_id: string | null;
+  modifier_group_name: string;
+  modifier_name: string;
+  price_modifier: number;
+  quantity: number;
+}
+
+// Order items in broadcast payload (Phase 2: Remote Order Management)
+export interface BroadcastOrderItemData {
+  id: string;
+  menu_item_id: string | null;
+  item_name: string;
+  quantity: number;
+  unit_price: number;
+  cash_price: number;
+  subtotal: number;
+  cash_subtotal: number;
+  tax_amount: number;
+  cash_tax_amount: number;
+  discount_amount: number;
+  item_status: string;
+  kitchen_status: string | null;
+  paid_quantity: number;
+  course_number: number | null;
+  is_voided: boolean;
+  is_open_item: boolean;
+  open_item_name: string | null;
+  open_item_price: number | null;
+  special_instructions: string | null;
+  category_name: string | null;
+
+  // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
+  modifiers?: BroadcastModifierData[];
+}
+
 export interface BroadcastOrderData {
   // Identifiers
   id: string;
   order_number: string;
   display_number: string;
   external_id: string | null;
-  
+
   // Relationships
   merchant_id: string;
   location_id: string;
@@ -25,6 +63,9 @@ export interface BroadcastOrderData {
   created_by_staff_id: string | null;
   created_by_user_id: string | null;
   assigned_server_id: string | null;
+
+  // Station tracking (Phase 2: Remote Order Management)
+  station_id: string | null;
   
   // Order info
   order_type: 'dine_in' | 'takeout' | 'delivery';
@@ -82,6 +123,9 @@ export interface BroadcastOrderData {
   // Sync info
   sync_version: number;
   is_offline: boolean;
+
+  // Order items (Phase 2: Remote Order Management)
+  order_items?: BroadcastOrderItemData[];
 }
 
 export interface OrderBroadcastPayload {

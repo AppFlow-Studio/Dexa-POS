@@ -59,6 +59,10 @@ export type UpdateOpenItemResult = {
 export class OrderService {
   /**
    * Create a new order
+   * @param client - Supabase client
+   * @param params - CreateOrderParams
+   * @returns { Promise<{ data: Order | null; error: any }> }
+   * @description Creates a new order in the database Calls create_order rpc
    */
   static async createOrder(
     client: SupabaseClient,
@@ -67,7 +71,7 @@ export class OrderService {
     console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
     console.log(`[OrderService:createOrder] Params:`, JSON.stringify(params, null, 2));
 
-    const { data, error } = await client.rpc("create_order", params);
+    const { data, error } = await client.rpc("create_order_v2", params);
 
     if (error) {
       console.error(`[OrderService:createOrder] FAILED:`, error);

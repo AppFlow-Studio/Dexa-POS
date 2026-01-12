@@ -33,8 +33,8 @@ const PaymentSuccessView = () => {
 
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const items = activeOrder?.items || [];
-  console.log("items", items);
-  console.log("activeOrder", activeOrder);
+  // console.log("[PaymentSuccessView] items", items);
+  // console.log("[PaymentSuccessView] activeOrder", activeOrder);
   const handleDone = () => {
     const {
       activeOrderId,

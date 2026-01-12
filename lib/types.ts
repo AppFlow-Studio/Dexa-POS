@@ -778,6 +778,18 @@ export interface OrderProfile {
     sync_attempt_count?: number; // Number of sync attempts made
   }[]; // Payment records
   notes?: string; // Order-level notes (customer requests, special instructions)
+
+  // === STATION TRACKING (Phase 1 Foundation) ===
+  station_id?: string | null; // Station that created this order
+
+  // Remote order tracking - used for station-based order management
+  _isRemoteOrder?: boolean; // Default: false - order from another station
+  _isAdopted?: boolean; // Default: false - we took over this order
+  _isTransferred?: boolean; // Default: false - order transferred away
+  _sourceStationId?: string | null; // Original creating station ID
+  _sourceStationName?: string | null; // Original creating station name
+  _receivedAt?: string | null; // When we received a remote order
+  _canModify?: boolean; // Whether current station can modify
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

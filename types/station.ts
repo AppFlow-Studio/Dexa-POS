@@ -1,3 +1,20 @@
+// === STATION VIEW SCOPE (Phase 1 Foundation) ===
+// Determines what orders a station can see:
+// - 'own': Only orders created by this station
+// - 'location': All orders at this location
+// - 'online': All online/delivery orders
+export type StationViewScope = 'own' | 'location' | 'online';
+
+// === STATION CAPABILITIES (Phase 1 Foundation) ===
+// Defines what actions a station can perform
+export interface StationCapabilities {
+  can_create_orders: boolean;
+  can_process_payments: boolean;
+  can_void_orders: boolean;
+  can_apply_discounts: boolean;
+  can_update_kitchen_status: boolean;
+}
+
 // Station as returned from get_location_stations_with_status RPC
 export interface Station {
   id: string;
@@ -7,6 +24,17 @@ export interface Station {
   is_active: boolean;
   is_available: boolean;
   current_session: StationCurrentSession | null;
+
+  // === EXTENDED FIELDS (Phase 1 Foundation) ===
+  // Optional for backward compatibility with existing RPC responses
+  view_scope?: StationViewScope;
+  can_create_orders?: boolean;
+  can_process_payments?: boolean;
+  can_void_orders?: boolean;
+  can_apply_discounts?: boolean;
+  can_update_kitchen_status?: boolean;
+  is_online?: boolean;
+  last_heartbeat_at?: string | null;
 }
 
 export interface StationCurrentSession {
@@ -17,11 +45,19 @@ export interface StationCurrentSession {
 }
 
 // Selected station to persist in store
+// Extended in Phase 1 to include view_scope and capabilities
 export interface SelectedStation {
   id: string;
   station_name: string;
   station_type: string;
   station_number: number;
+  // Phase 1 Foundation: view_scope and capabilities for station-based order management
+  view_scope?: StationViewScope;
+  can_create_orders?: boolean;
+  can_process_payments?: boolean;
+  can_void_orders?: boolean;
+  can_apply_discounts?: boolean;
+  can_update_kitchen_status?: boolean;
 }
 
 // Response from pos_staff_login RPC
