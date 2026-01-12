@@ -1,4 +1,4 @@
-import { SignOutButton } from "@/components/auth/SignOutButton";
+import { SessionLogoutButton } from "@/components/auth/SessionLogoutButton";
 import { OperatingHoursTimeSheet } from "@/components/settings/OperatingHoursTimeSheet";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import { Switch } from "@/components/ui/switch";
@@ -607,11 +607,11 @@ const GeneralSettingsScreen = () => {
                 <View>
                   <Text className="text-white font-bold text-lg">Log Out</Text>
                   <Text className="text-gray-400 text-sm">
-                    Sign out of your account
+                    End station session or sign out completely
                   </Text>
                 </View>
               </View>
-              <SignOutButton />
+              <SessionLogoutButton />
             </View>
           </View>
         </ScrollView>

@@ -2,12 +2,15 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { useTimeClock } from "@/hooks/useTimeclock";
 import { getDeviceId } from "@/lib/deviceId";
+import { getDeviceName } from "@/lib/deviceName";
 import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
-import { useFocusEffect, useRouter } from "expo-router";
+import { PosStaffLoginResponse } from "@/types/station";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -22,8 +25,10 @@ const MAX_PIN_LENGTH = 4;
 
 const PinLoginScreen = () => {
   const router = useRouter();
+  const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
   const [pin, setPin] = useState("");
   const [deviceId, setDeviceId] = useState<string>("");
+  const supabase = useSupabaseClient();
 
   // Clear PIN when screen comes into focus
   useFocusEffect(
@@ -40,6 +45,12 @@ const PinLoginScreen = () => {
     clockIn: employeeClockIn,
   } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const selectedStation = useStoreSettingsStore(
+    (state) => state.selectedStation
+  );
+  const setStationSessionId = useStoreSettingsStore(
+    (state) => state.setStationSessionId
+  );
   const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
 
   const timeClock = useTimeClock();
@@ -49,8 +60,9 @@ const PinLoginScreen = () => {
       pin.length === MAX_PIN_LENGTH &&
       !isLoading &&
       !!deviceId &&
-      !!selectedStore,
-    [pin, isLoading, deviceId, selectedStore]
+      !!selectedStore &&
+      !!selectedStation,
+    [pin, isLoading, deviceId, selectedStore, selectedStation]
   );
 
   // Get device ID on mount (synchronous with MMKV)
@@ -58,6 +70,13 @@ const PinLoginScreen = () => {
     console.log("getDeviceId", getDeviceId());
     setDeviceId(getDeviceId());
   }, []);
+
+  // Redirect to station select if no station is selected
+  useEffect(() => {
+    if (!selectedStation && selectedStore) {
+      router.replace("/station-select");
+    }
+  }, [selectedStation, selectedStore, router]);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
@@ -103,10 +122,18 @@ const PinLoginScreen = () => {
   };
 
   const handleLogin = async () => {
-    if (!canSubmit || !selectedStore) {
+    if (!canSubmit || !selectedStore || !selectedStation) {
       showDialog(
-        !selectedStore ? "No Store Selected" : "Invalid PIN",
-        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
+        !selectedStore
+          ? "No Store Selected"
+          : !selectedStation
+          ? "No Station Selected"
+          : "Invalid PIN",
+        !selectedStore
+          ? "Please select a store first."
+          : !selectedStation
+          ? "Please select a station first."
+          : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
         "error"
       );
       return;
@@ -115,16 +142,70 @@ const PinLoginScreen = () => {
     showLoading("Signing in...");
 
     try {
+      const deviceName = getDeviceName();
+
+      // Call the new combined RPC for station + clock in
+      console.log("Calling pos_staff_login with:", {
+        p_location_id: selectedStore.id,
+        p_pin_code: pin,
+        p_station_id: selectedStation.id,
+        p_device_id: deviceId,
+        p_device_name: deviceName,
+        p_auto_clock_in: true,
+        p_force_takeover: forceTakeover === "true",
+      });
+      const { data, error } = await supabase.rpc("pos_staff_login", {
+        p_location_id: selectedStore.id,
+        p_pin_code: pin,
+        p_station_id: selectedStation.id,
+        p_device_id: deviceId,
+        p_device_name: deviceName,
+        p_auto_clock_in: true,
+        p_force_takeover: forceTakeover === "true",
+      });
+
+      console.log("pos_staff_login response:", data, error);
+
+      if (error) throw error;
+      
+
+      const response = data as PosStaffLoginResponse;
+
+      if (!response.success) {
+        hideLoading();
+
+        if (response.error_code === "STATION_IN_USE") {
+          showDialog(
+            "Station In Use",
+            response.current_session
+              ? `This station is currently being used by ${response.current_session.staff_name}. Please select a different station or use the Take Over option.`
+              : "This station is currently in use.",
+            "warning"
+          );
+          setPin("");
+          return;
+        }
+
+        triggerShakeAnimation();
+        showDialog(
+          "Sign In Failed",
+          response.error || "Unable to sign in.",
+          "error"
+        );
+        setPin("");
+        return;
+      }
+
+      // Store session ID for later logout
+      if (response.session?.session_id) {
+        setStationSessionId(response.session.session_id);
+      }
+
       let employee: EmployeeProfile | null = null;
 
-      // Try server-side verification first (works online, queues offline)
-      const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
-      if (result?.staff_id) {
-        // Server returned employee ID - get local employee record
-        employee = getEmployeeByStaffId(result.staff_id) || null;
-      } else if (result?.queued) {
-        // Request was queued (offline) - verify locally
-        employee = await findEmployeeByPin(pin);
+      // Get employee from local store using staff profile ID
+      if (response.staff?.staff_profile_id) {
+        employee = getEmployeeByStaffId(response.staff.staff_profile_id) || null;
       }
 
       if (employee) {
@@ -140,18 +221,23 @@ const PinLoginScreen = () => {
       hideLoading();
 
       if (!employee) {
-        triggerShakeAnimation();
-        showDialog("Invalid PIN", "The PIN you entered is incorrect.", "error");
-        setPin("");
-        return;
+        // Staff found in database but not synced locally - still allow login
+        console.warn(
+          "Staff profile not found locally:",
+          response.staff?.staff_profile_id
+        );
       }
 
       setPin("");
       router.replace("/home");
-    } catch (error) {
+    } catch (error: any) {
       hideLoading();
       triggerShakeAnimation();
-      showDialog("Sign In Failed", "Unable to sign in. Please try again.", "error");
+      const errorMessage =
+        error?.message?.includes("PIN") || error?.message?.includes("pin")
+          ? "The PIN you entered is incorrect."
+          : "Unable to sign in. Please try again.";
+      showDialog("Sign In Failed", errorMessage, "error");
       setPin("");
     }
   };

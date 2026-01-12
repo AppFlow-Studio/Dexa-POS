@@ -344,7 +344,6 @@ BEGIN
 END;
 $$;
 
-
 -- Get decrypted terminal credentials (for API calls)
 CREATE OR REPLACE FUNCTION get_terminal_credentials(
   p_terminal_id UUID

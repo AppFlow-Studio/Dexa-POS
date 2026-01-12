@@ -1,6 +1,7 @@
 import { mmkvStorage } from "@/lib/storage";
 import { toastService } from "@/lib/toastService";
 import { TaxRate, TaxRatesMap } from "@/types/menu";
+import { SelectedStation } from "@/types/station";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -82,6 +83,11 @@ export interface StoreSettings {
 
   // Selected store from database
   selectedStore: SelectedLocation | null;
+
+  // Station session management
+  selectedStation: SelectedStation | null;
+  stationSessionId: string | null;
+  deviceName: string;
 }
 
 interface StoreSettingsState extends StoreSettings {
@@ -114,6 +120,13 @@ interface StoreSettingsState extends StoreSettings {
 
   // Break duration action
   setBreakDurationMinutes: (minutes: number) => void;
+
+  // Station session actions
+  setSelectedStation: (station: SelectedStation) => void;
+  clearSelectedStation: () => void;
+  setStationSessionId: (sessionId: string | null) => void;
+  setDeviceName: (name: string) => void;
+  clearStationSession: () => void;
 }
 
 const initialData: StoreSettings = {
@@ -161,6 +174,11 @@ const initialData: StoreSettings = {
 
   // No store selected initially
   selectedStore: null,
+
+  // Station session defaults
+  selectedStation: null,
+  stationSessionId: null,
+  deviceName: "",
 };
 
 export const useStoreSettingsStore = create<StoreSettingsState>()(
@@ -332,6 +350,27 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         }
         set({ taxRates: rates, taxRatesMap });
       },
+
+      // Station session actions
+      setSelectedStation: (station: SelectedStation) => {
+        set({ selectedStation: station });
+      },
+
+      clearSelectedStation: () => {
+        set({ selectedStation: null, stationSessionId: null });
+      },
+
+      setStationSessionId: (sessionId: string | null) => {
+        set({ stationSessionId: sessionId });
+      },
+
+      setDeviceName: (name: string) => {
+        set({ deviceName: name });
+      },
+
+      clearStationSession: () => {
+        set({ selectedStation: null, stationSessionId: null });
+      },
     }),
     {
       name: "store-settings-storage",
@@ -360,6 +399,10 @@ export const useStoreSettingsStore = create<StoreSettingsState>()(
         preOrderMaxDays: state.preOrderMaxDays,
         preOrderMinAdvanceMinutes: state.preOrderMinAdvanceMinutes,
         preOrderMaxDaily: state.preOrderMaxDaily,
+        // Station session fields
+        selectedStation: state.selectedStation,
+        stationSessionId: state.stationSessionId,
+        deviceName: state.deviceName,
       }),
     }
   )

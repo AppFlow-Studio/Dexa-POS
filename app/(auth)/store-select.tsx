@@ -190,7 +190,8 @@ const StoreSelectScreen = () => {
       setSelectedStore(storeToSave as SelectedLocation);
     }
 
-    router.replace("/pin-login");
+    // Navigate to station select instead of pin-login
+    router.replace("/station-select");
   };
 
   // Loading state
