@@ -32,6 +32,7 @@ const Header = () => {
     pathname === "/analytics" ||
     pathname === "/previous-orders" ||
     pathname === "/order-processing" ||
+    pathname === "/kds" ||
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname.startsWith("/settings") ||
@@ -60,6 +61,7 @@ const Header = () => {
       return "Scheduling Dashboard";
     if (pathname === "/pto") return "PTO";
     if (pathname === "/order-processing") return "Back to Menu";
+    if (pathname === "/kds") return "Kitchen Display";
     if (pathname.startsWith("/previous-orders")) return "Back to Menu";
     if (pathname.startsWith("/inventory/vendors")) return "Vendors";
     if (pathname.startsWith("/inventory/purchase-orders"))

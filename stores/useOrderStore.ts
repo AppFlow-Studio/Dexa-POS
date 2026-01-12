@@ -1473,6 +1473,10 @@ interface OrderState {
   archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
   markAllItemsAsReady: (orderId: string) => void;
   markAllItemsAsServed: (orderId: string) => void;
+  // Course-specific KDS functions
+  markCourseItemsAsCooking: (orderId: string, itemIds: string[]) => void;
+  markCourseItemsAsReady: (orderId: string, itemIds: string[]) => void;
+  markCourseItemsAsServed: (orderId: string, itemIds: string[]) => void;
   consolidateOrdersForTables: (
     tableIds: string[],
     tableNames: string[]
@@ -3685,63 +3689,61 @@ export const useOrderStore = create<OrderState>()(
 
             if (!order) return;
 
-            // Note: Inventory deduction is handled by archiveOrder when order is archived/completed
+            // Simple map updates all items to ready without merging/consolidating
+            // This preserves course info and individual item tracking
+            const updatedItems = order.items.map((item) => {
+              if (item.isDraft) return item;
+              return {
+                ...item,
+                item_status: "ready" as const,
+                kitchen_status: "ready" as const,
+              };
+            });
 
-            const mergedItemsMap = new Map<string, CartItem>();
-
-            for (const item of order.items) {
-              // Don't process draft items
-              if (item.isDraft) continue;
-
-              const itemKey = generateItemCompositeKey(
-                item.menuItemId,
-                item.customizations
-              );
-
-              if (mergedItemsMap.has(itemKey)) {
-                // If this item already exists in our map, just update its quantity
-                const existingItem = mergedItemsMap.get(itemKey)!;
-                existingItem.quantity += item.quantity;
-              } else {
-                // If it's the first time we've seen this item, add it to the map
-                // and set its status to Ready.
-                mergedItemsMap.set(itemKey, {
-                  ...item,
-                  item_status: "ready" as const,
-                  kitchen_status: "ready" as const,
-                });
-              }
-            }
-
-            // Convert the map back to an array of items
-            const updatedItems = Array.from(mergedItemsMap.values());
-
+            // Force update order status to ready + update items
+            // This ensures "Mark as Done" turns the order green and enables payment
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [orderId]: {
                   ...state.ordersById[orderId],
                   items: updatedItems,
-                  order_status: "ready" as const,
+                  order_status: "ready",
                 },
               },
             }));
 
-            // Sync status to backend
+            // Sync item statuses and order status to backend
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
-              OrderService.updateOrderStatus(
-                supabase,
-                order.db_order_id,
-                "ready"
-              ).then(({ error }) => {
-                if (error) {
+              const dbItemIds = updatedItems
+                .filter((item) => !item.isDraft && item.db_order_item_id)
+                .map((item) => item.db_order_item_id as string);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "ready"
+                ).catch((err) => {
                   console.error(
-                    "Failed to update backend order status:",
-                    error
+                    "Failed to update backend item statuses to ready:",
+                    err
                   );
-                }
-              });
+                });
+
+                // Explicitly sync order status to ready
+                OrderService.updateOrderStatus(
+                  supabase,
+                  order.db_order_id,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend order status to ready:",
+                    err
+                  );
+                });
+              }
             }
           },
 
@@ -3753,12 +3755,64 @@ export const useOrderStore = create<OrderState>()(
 
             // Note: Inventory deduction is handled by archiveOrder when order is archived/completed
 
-            // Create a new items array where every item's status is "Served"
+            // Create a new items array where every item's kitchen_status is "served"
             const updatedItems = order.items.map((item) => ({
               ...item,
               item_status: "served" as const,
               kitchen_status: "served" as const,
             }));
+
+            // KDS BEHAVIOR: Only update item kitchen_status, NOT order_status
+            // Order status is managed by payment/checkout workflow, not kitchen
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                  // Do NOT change order_status here - kitchen tracks items, not order lifecycle
+                },
+              },
+            }));
+
+            // Sync item statuses to backend (not order status)
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              const dbItemIds = updatedItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "served"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend item statuses to served:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
+          markCourseItemsAsCooking: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            // Updated items list: only items in the provided list get updated
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "preparing" as const,
+                  kitchen_status: "preparing" as const,
+                };
+              }
+              return item;
+            });
 
             set((state) => ({
               ordersById: {
@@ -3766,28 +3820,163 @@ export const useOrderStore = create<OrderState>()(
                 [orderId]: {
                   ...state.ordersById[orderId],
                   items: updatedItems,
-                  order_status: "completed" as const,
                 },
               },
             }));
 
-            // Sync status to backend
+            // Sync to backend
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
-              OrderService.updateOrderStatus(
-                supabase,
-                order.db_order_id,
-                "completed"
-              ).then(({ error }) => {
-                if (error) {
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "preparing"
+                ).catch((err) => {
                   console.error(
-                    "Failed to update backend order status:",
-                    error
+                    "Failed to update backend items to preparing:",
+                    err
                   );
-                }
-              });
+                });
+              }
             }
           },
+
+          markCourseItemsAsReady: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "ready" as const,
+                  kitchen_status: "ready" as const,
+                };
+              }
+              return item;
+            });
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                },
+              },
+            }));
+
+            // Sync to backend
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend items to ready:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
+          markCourseItemsAsServed: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "served" as const,
+                  kitchen_status: "served" as const,
+                };
+              }
+              return item;
+            });
+
+            // Check if ALL items in the order are now served
+            const allItemsServed = updatedItems.every(
+              (item) => item.kitchen_status === "served"
+            );
+
+            // If all items served, set order_status to "ready" (ready for payment/pickup)
+            const newOrderStatus = allItemsServed
+              ? "ready"
+              : order.order_status;
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                  order_status: newOrderStatus as any,
+                },
+              },
+            }));
+
+            // Sync to backend
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              // Update item statuses
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "served"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend items to served:",
+                    err
+                  );
+                });
+              }
+
+              // If all items served, also update order status to 'ready'
+              if (allItemsServed) {
+                OrderService.updateOrderStatus(
+                  supabase,
+                  order.db_order_id,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend order status to ready:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
           consolidateOrdersForTables: (tableIds, tableNames) => {
             const { orders, startNewOrder } = get();
             const ordersToMerge = orders.filter(

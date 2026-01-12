@@ -696,7 +696,9 @@ const UpdateTableScreen = () => {
     const order = activeOrder;
     if (order) {
       const preparingItems = order.items.filter(
-        (i) => (i.item_status || "preparing") !== "ready"
+        (i) =>
+          (i.item_status || "preparing") !== "ready" &&
+          i.item_status !== "served"
       );
       if (preparingItems.length > 0) {
         setNotReadyItems(

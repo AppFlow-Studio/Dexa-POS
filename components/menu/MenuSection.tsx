@@ -99,6 +99,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     temporaryActiveMenus,
     isCategoryAvailableNow,
     categories,
+    lastSelectedMenuId,
+    setLastSelectedMenuId,
   } = useMenuStore();
   const { requestPinOverride } = usePinOverrideStore();
 
@@ -118,21 +120,46 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const [activeTab, setActiveTab] = useState("Menu");
 
-  // Helper to find the first menu that is currently available or unlocked
-  const getFirstAvailableMenu = () => {
+  // Helper to check if a menu has items (not empty)
+  const menuHasItems = (menu: (typeof menus)[0]) => {
+    return menu.categories.some((cat) => cat.items && cat.items.length > 0);
+  };
+
+  // Helper to find the first menu that is currently available, unlocked, and has items
+  const getFirstAvailableMenuWithItems = () => {
     return menus.find(
-      (m) => isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)
+      (m) =>
+        (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
+        menuHasItems(m)
     );
   };
 
-  // Initialize with an available menu if possible, otherwise null
+  // Helper to get the preferred menu: last used (if valid) OR first available with items
+  const getPreferredMenu = () => {
+    // Priority 1: Check last selected menu
+    if (lastSelectedMenuId) {
+      const lastMenu = menus.find((m) => m.id === lastSelectedMenuId);
+      if (
+        lastMenu &&
+        (isMenuAvailableNow(lastMenu.id) ||
+          temporaryActiveMenus.includes(lastMenu.name)) &&
+        menuHasItems(lastMenu)
+      ) {
+        return lastMenu;
+      }
+    }
+    // Priority 2: First available menu with items
+    return getFirstAvailableMenuWithItems() || null;
+  };
+
+  // Initialize with the preferred menu (last used or first available with items)
   const [activeMeal, setActiveMeal] = useState<string | null>(() => {
-    const startMenu = getFirstAvailableMenu();
-    return startMenu ? startMenu.name : null; // activeMeal is now nullable string
+    const startMenu = getPreferredMenu();
+    return startMenu ? startMenu.name : null;
   });
 
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
-    const startMenu = getFirstAvailableMenu();
+    const startMenu = getPreferredMenu();
     return startMenu ? startMenu.categories[0]?.name || "" : null;
   });
 
@@ -165,22 +192,23 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     // If we have an active selection...
     if (activeMeal) {
       const currentMenu = menus.find((m) => m.name === activeMeal);
-      // Check if it's still available
+      // Check if it's still available and has items
       if (currentMenu) {
         const isAvailable =
           isMenuAvailableNow(currentMenu.id) ||
           temporaryActiveMenus.includes(currentMenu.name);
-        // If it IS available, we are good.
-        if (isAvailable) return;
+        const hasItems = menuHasItems(currentMenu);
+        // If it IS available and has items, we are good.
+        if (isAvailable && hasItems) return;
       }
     }
 
-    // If we reached here, either activeMeal is null OR the current selection is unavailable.
-    // Try to auto-switch to the next available one.
-    const nextAvailable = getFirstAvailableMenu();
+    // If we reached here, either activeMeal is null OR the current selection is unavailable/empty.
+    // Try to auto-switch to the next preferred one.
+    const nextAvailable = getPreferredMenu();
 
     if (nextAvailable) {
-      // Switch to next available
+      // Switch to next available with items
       if (activeMeal !== nextAvailable.name) {
         setActiveMeal(nextAvailable.name);
         setActiveCategory(nextAvailable.categories[0]?.name || "");
@@ -198,6 +226,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     isMenuAvailableNow,
     temporaryActiveMenus,
     availabilityTick,
+    lastSelectedMenuId,
   ]);
   // ModifierScreen is now rendered via ModifierScreenOverlay - no subscription needed here
 
@@ -227,6 +256,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       setActiveMeal(menuName);
       setActiveCategory(menu.categories[0]?.name || "");
       setIsMenuDialogOpen(false);
+      // Persist the selection for next launch
+      setLastSelectedMenuId(menu.id);
     } else {
       // Request override
       requestPinOverride({ type: "select_menu", payload: { menuName } });

@@ -350,7 +350,7 @@ export interface CartItem {
     | "ready"
     | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
-  kitchen_status?: "new" | "sent" | "ready" | "served";
+  kitchen_status?: "new" | "sent" | "preparing" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;
