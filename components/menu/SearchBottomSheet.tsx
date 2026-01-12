@@ -1,74 +1,160 @@
+import { MenuItemType, Schedule } from "@/lib/types";
 import { useSearchStore } from "@/stores/searchStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import BottomSheet, {
   BottomSheetBackdrop,
+  BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search, X } from "lucide-react-native";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { FlatList } from "react-native-gesture-handler";
 import SearchResultItem from "./SearchResultItem";
+
+// Helper to check schedule availability
+const isScheduleActive = (schedules: Schedule[] | undefined): boolean => {
+  if (!schedules || schedules.length === 0) return true;
+
+  const now = new Date();
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const currentDay = days[now.getDay()];
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  return schedules.some((schedule) => {
+    if (!schedule.isActive) return false;
+    if (!schedule.days.includes(currentDay)) return false;
+
+    const [startH, startM] = schedule.startTime.split(":").map(Number);
+    const [endH, endM] = schedule.endTime.split(":").map(Number);
+    const startTotal = startH * 60 + startM;
+    const endTotal = endH * 60 + endM;
+
+    if (endTotal < startTotal) {
+      // Overnight schedule (e.g. 10PM to 2AM)
+      return currentMinutes >= startTotal || currentMinutes <= endTotal;
+    }
+    return currentMinutes >= startTotal && currentMinutes <= endTotal;
+  });
+};
+
+interface SearchSection {
+  title: string;
+  data: (MenuItemType & {
+    menuName: string;
+    displayPrice: number;
+    isDisabled: boolean;
+    disabledReason?: string;
+    uniqueKey: string;
+  })[];
+}
 
 const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
   const searchSheetRef = useRef<BottomSheetMethods>(null);
-  const snapPoints = useMemo(() => ["70%", "75%"], []);
+  const snapPoints = useMemo(() => ["85%"], []);
   const [searchText, setSearchText] = useState("");
 
-  // Get menu items directly from store - only re-renders when menuItems array changes
-  const menuItems = useMenuStore((state) => state.menuItems);
+  const { menus } = useMenuStore((state) => state);
   const { closeSearch, setSearchSheetRef } = useSearchStore();
 
-  // Optimized search with useMemo - only recalculates when searchText or menuItems change
-  const searchResults = useMemo(() => {
+  // Menu-Aware Search Logic
+  const searchResults = useMemo<SearchSection[]>(() => {
     const trimmedSearch = searchText.trim().toLowerCase();
+    if (!trimmedSearch) return [];
 
-    // If no search text, return all available items
-    if (!trimmedSearch) {
-      return menuItems.filter((item) => item.availability !== false);
-    }
+    const availableSections: SearchSection[] = [];
+    const unavailableSections: SearchSection[] = [];
 
-    // Fast filtering - search in name, description, and category
-    return menuItems.filter((item) => {
-      // Skip unavailable items
-      if (item.availability === false) return false;
+    menus.forEach((menu) => {
+      // 1. Check Menu Schedule
+      const isMenuAvailable = isScheduleActive(menu.schedules);
+      const menuItems: SearchSection["data"] = [];
 
-      // Search in name (most common)
-      if (item.name.toLowerCase().includes(trimmedSearch)) return true;
+      menu.categories.forEach((category) => {
+        // 2. Check Category Schedule (if categories have schedules?)
+        // Assuming undefined schedules means available
+        const isCategoryAvailable = isScheduleActive(category.schedules);
 
-      // Search in description
-      if (item.description?.toLowerCase().includes(trimmedSearch)) return true;
+        category.items?.forEach((item) => {
+          // 3. Match Search Text
+          const matchName = item.name.toLowerCase().includes(trimmedSearch);
+          const matchDesc = item.description
+            ?.toLowerCase()
+            .includes(trimmedSearch);
 
-      // Search in category names
-      const categories = Array.isArray(item.category)
-        ? item.category
-        : item.category
-          ? [item.category]
-          : [];
-      if (categories.some((cat) => cat.toLowerCase().includes(trimmedSearch))) {
-        return true;
+          if (matchName || matchDesc) {
+            // 4. Calculate Price (Menu > Category > Item)
+            let price = item.price;
+            if (
+              item.menuPriceOverrides &&
+              item.menuPriceOverrides[menu.id] !== undefined
+            ) {
+              price = item.menuPriceOverrides[menu.id];
+            } else if (
+              item.categoryPriceOverrides &&
+              item.categoryPriceOverrides[category.id] !== undefined
+            ) {
+              price = item.categoryPriceOverrides[category.id];
+            }
+
+            // 5. Determine Availability
+            let isDisabled = false;
+            let disabledReason = undefined;
+
+            if (item.availability === false) {
+              isDisabled = true;
+              disabledReason = "Out of Stock";
+            } else if (!isMenuAvailable) {
+              isDisabled = true;
+              disabledReason = "Menu Unavailable";
+            } else if (!isCategoryAvailable) {
+              isDisabled = true;
+              disabledReason = "Category Unavailable";
+            }
+
+            menuItems.push({
+              ...item,
+              uniqueKey: `${menu.id}-${category.id}-${item.id}`, // Unique key for list
+              menuName: menu.name,
+              displayPrice: price,
+              isDisabled,
+              disabledReason,
+            });
+          }
+        });
+      });
+
+      if (menuItems.length > 0) {
+        const section = {
+          title: menu.name,
+          data: menuItems,
+        };
+
+        if (isMenuAvailable) {
+          availableSections.push(section);
+        } else {
+          unavailableSections.push(section);
+        }
       }
-
-      return false;
     });
-  }, [searchText, menuItems]);
 
-  // Set ref once on mount
+    return [...availableSections, ...unavailableSections];
+  }, [searchText, menus]);
+
   useLayoutEffect(() => {
     setSearchSheetRef(searchSheetRef as React.RefObject<BottomSheetMethods>);
   }, [setSearchSheetRef]);
 
   const renderBackdrop = useMemo(
-    () => (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.7}
-      />
-    ),
+    () => (props: any) =>
+      (
+        <BottomSheetBackdrop
+          {...props}
+          appearsOnIndex={0}
+          disappearsOnIndex={-1}
+          opacity={0.7}
+        />
+      ),
     []
   );
 
@@ -81,54 +167,86 @@ const SearchBottomSheet = React.forwardRef<BottomSheet>(() => {
       onClose={closeSearch}
       backdropComponent={renderBackdrop}
       keyboardBehavior="extend"
+      backgroundStyle={{ backgroundColor: "#1e1e1e" }}
+      handleIndicatorStyle={{ backgroundColor: "#4b5563" }}
     >
-      {/* Header */}
-      <BottomSheetView className="flex-row items-center border-b border-background-400 rounded-2xl px-2">
-        <View className="flex-row items-center flex-1  rounded-lg px-2 bg-gray-100">
-          <Search color="#6b7280" size={20} />
-          <BottomSheetTextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search Item"
-            className="flex-1 py-3 ml-2 text-lg text-gray-900"
-            placeholderTextColor="#6b7280"
-            focusable
-          />
-        </View>
-        <TouchableOpacity
-          onPress={closeSearch}
-          className="flex-row items-center ml-2 p-2"
-        >
-          <X color="#4b5563" size={20} />
-          <Text className="ml-1 text-lg font-semibold text-gray-600">
-            Cancel
-          </Text>
-        </TouchableOpacity>
-      </BottomSheetView>
-
-      {/* Results List */}
-      <View className="mt-14">
-        <FlatList
-          data={searchResults}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <SearchResultItem item={item} />}
-          className="px-4"
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          initialNumToRender={15}
-          windowSize={10}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center h-48">
-              <Text className="text-lg text-gray-500">
-                {searchText.trim()
-                  ? `No items found for "${searchText}"`
-                  : "No menu items available"}
-              </Text>
+      <BottomSheetScrollView
+        className="flex-1 bg-[#1e1e1e]"
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        {/* Header - Fixed inside ScrollView or part of it? 
+            If inside, it scrolls. Usually nicer if fixed. 
+            But to keep it simple and within one scrollView as requested:
+        */}
+        <View className="bg-[#1e1e1e] border-b border-gray-700 pb-4 px-4 pt-2">
+          <View className="flex-row items-center">
+            <View className="flex-row items-center flex-1 rounded-xl px-3 bg-[#303030] h-12">
+              <Search color="#9ca3af" size={20} />
+              <BottomSheetTextInput
+                value={searchText}
+                onChangeText={setSearchText}
+                placeholder="Search items..."
+                className="flex-1 py-2 ml-3 text-lg text-white"
+                placeholderTextColor="#9ca3af"
+                style={{ color: "white" }}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText("")}>
+                  <X color="#9ca3af" size={18} />
+                </TouchableOpacity>
+              )}
             </View>
-          }
-        />
-      </View>
+            <TouchableOpacity onPress={closeSearch} className="ml-4 p-2">
+              <Text className="text-lg font-medium text-blue-400">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Manual List Rendering */}
+        <View className="px-4 mt-2">
+          {searchResults.length === 0 ? (
+            <View className="flex-1 items-center justify-center h-48 mt-10">
+              {searchText ? (
+                <>
+                  <Search size={48} color="#374151" />
+                  <Text className="text-gray-500 mt-4 text-center">
+                    No items found using "{searchText}"
+                  </Text>
+                </>
+              ) : (
+                <Text className="text-gray-500 mt-4 text-center">
+                  Start typing to search the menu...
+                </Text>
+              )}
+            </View>
+          ) : (
+            searchResults.map((section, sectionIndex) => (
+              <View key={`section-${sectionIndex}`} className="mb-6">
+                {/* Section Header */}
+                <View className="bg-[#1e1e1e] py-2 border-b border-gray-800 mb-1">
+                  <Text className="text-sm font-bold text-gray-400 uppercase tracking-widest">
+                    {section.title}
+                  </Text>
+                </View>
+
+                {/* Section Items */}
+                <View>
+                  {section.data.map((item) => (
+                    <SearchResultItem
+                      key={item.uniqueKey}
+                      item={item}
+                      menuName={item.menuName}
+                      displayPrice={item.displayPrice}
+                      isDisabled={item.isDisabled}
+                      disabledReason={item.disabledReason}
+                    />
+                  ))}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 });
