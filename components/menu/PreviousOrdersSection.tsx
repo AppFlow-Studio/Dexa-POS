@@ -1,7 +1,8 @@
 import { useToast } from "@/contexts/ToastContext";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore"; // New import
-import { Eye, Plus } from "lucide-react-native";
+import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
+import { Eye, Plus, Repeat2 } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
@@ -129,7 +130,7 @@ const OrderRow: React.FC<OrderRowProps> = ({
             </View>
           </View>
           <Text className="text-lg font-bold text-white mb-1">
-            {order.customer_name || "Walk-In"} #{order?.id?.slice(-5)}
+            {order.customer_name || "Walk-In"} {order?.display_number}
           </Text>
           <View className="flex-row items-center gap-2">
             <Text className="text-sm text-gray-400">
@@ -143,6 +144,16 @@ const OrderRow: React.FC<OrderRowProps> = ({
               • ${totalAmount.toFixed(2)}
             </Text>
           </View>
+
+          {/* Show source station for orders from other stations */}
+          {order._sourceStationName && order.station_id !== useOrderStore.getState().currentStationId && (
+            <View className="flex-row items-center mt-1">
+              <Repeat2 color="#3b82f6" size={12} />
+              <Text className="text-blue-400 text-xs ml-1">
+                From: {order._sourceStationName}
+              </Text>
+            </View>
+          )}
 
           {/* Show outstanding amount for unpaid/partial orders */}
           {order.paid_status !== "Paid" && outstandingAmount > 0 && (
@@ -234,10 +245,21 @@ const PreviousOrdersSection = () => {
     setIsRefreshing(false);
   };
 
-  // Get all orders (including completed ones)
-  const allOrders = orders.filter(
-    (o) => o.order_status !== "void" && o.items.length > 0
-  );
+  // Phase 4: Use selector for view_scope-aware filtering
+  // showCompleted: true to include all orders in history view
+  const previousOrders = usePreviousOrders({ showCompleted: true });
+
+  // Get all orders - combine previous orders selector with local orders for compatibility
+  const allOrders = useMemo(() => {
+    // Merge selector results with any local orders not yet in the selector
+    const selectorOrderIds = new Set(previousOrders.map(o => o.id));
+    const localOrdersNotInSelector = orders.filter(
+      (o) => o.order_status !== "void" &&
+             o.items.length > 0 &&
+             !selectorOrderIds.has(o.id)
+    );
+    return [...previousOrders, ...localOrdersNotInSelector];
+  }, [previousOrders, orders]);
 
   const totalOrder = allOrders.length;
 

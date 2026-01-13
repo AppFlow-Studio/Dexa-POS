@@ -34,10 +34,14 @@ import {
   calculatePaidStatus,
   distributeDiscountToItems as distributeDiscountToItemsFromModule
 } from "@/lib/order-calculator";
-import { generateRemoteOrderId, isRemoteOrder } from "@/utils/orderIdHelpers";
+import { isLocalOrder } from "@/utils/orderIdHelpers";
 import {
   transformBroadcastItems,
-  transformBroadcastToRemoteOrder,
+  transformBroadcastToOrder,
+  normalizeFetchedOrder,
+  mapPaymentStatus,
+  mapOrderType,
+  type FetchedOrderData,
 } from "@/utils/orderTransformers";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
@@ -55,6 +59,18 @@ import {
 import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
+// Phase 6: Conflict detection imports
+import {
+  detectConflict,
+  hasLocalPendingChanges,
+  getOrderVersion,
+} from "@/services/conflictDetectionService";
+import { useConflictStore } from "@/stores/useConflictStore";
+import {
+  ConflictInfo,
+  generateConflictToast,
+  isConflictCritical,
+} from "@/types/conflict-resolution";
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -1464,19 +1480,29 @@ interface OrderState {
   // --- PENDING TABLE SELECTION ---
   pendingTableSelection: string | null; // Store pending table selection
 
-  // === STATION CONTEXT (Phase 1 Foundation) ===
+  // === STATION CONTEXT ===
   currentStationId: string | null;
   currentStation: Station | null;
   remoteOrdersEnabled: boolean;
   isLoadingPreviousOrders: boolean;
   lastReconciliationAt: string | null;
 
+  // === WORKING SET (Phase 5) ===
+  // Orders the user is actively working on - persists across restarts, clears on logout
+  workingSetOrderIds: string[]; // db_order_ids in working set
+
   // --- OFFLINE SYNC ACTIONS ---
   setOnlineStatus: (isOnline: boolean) => void;
   setPendingSyncCount: (count: number) => void;
 
-  // --- STATION ACTIONS (Phase 1 Foundation) ---
+  // --- STATION ACTIONS ---
   setCurrentStation: (station: Station) => void;
+
+  // --- WORKING SET ACTIONS (Phase 5) ---
+  addToWorkingSet: (dbOrderId: string) => void;
+  removeFromWorkingSet: (dbOrderId: string) => void;
+  clearWorkingSet: () => void;
+  isInWorkingSet: (dbOrderId: string) => boolean;
 
   // --- ACTIONS ---
   setActiveOrder: (orderId: string | null) => void;
@@ -1624,14 +1650,40 @@ interface OrderState {
     _debouncedOrderRefresh: (dbOrderId: string) => void;
     _handleOrderReconnect: (locationId: string) => void;
 
-    // === REMOTE ORDER MANAGEMENT (Phase 2) ===
+    // === ORDER VISIBILITY & MANAGEMENT (Phase 5) ===
+    isOrderVisible: (
+      backendOrder: BroadcastOrderData,
+      currentLocationId: string
+    ) => boolean;
+    upsertOrder: (backendOrder: BroadcastOrderData, sourceStationName?: string | null) => void;
+    removeOrder: (dbOrderId: string) => void;
+
+    // @deprecated - use isOrderVisible instead
     _shouldAcceptRemoteOrder: (
       backendOrder: BroadcastOrderData,
       currentLocationId: string
     ) => boolean;
+    // @deprecated - use upsertOrder instead
     _createRemoteOrder: (backendOrder: BroadcastOrderData) => void;
+    // @deprecated - use upsertOrder instead
     _updateRemoteOrder: (backendOrder: BroadcastOrderData) => void;
+    // @deprecated - use removeOrder instead
     _removeRemoteOrder: (dbOrderId: string) => void;
+
+    // === FETCH & RECONCILIATION ===
+    fetchVisibleOrders: (options?: {
+      limit?: number;
+      includeCompleted?: boolean;
+    }) => Promise<void>;
+    // @deprecated - use fetchVisibleOrders instead
+    fetchRemoteOrders: (options?: {
+      limit?: number;
+      includeCompleted?: boolean;
+    }) => Promise<void>;
+    fetchOwnStationOrders: () => Promise<void>;
+    reconcileOrders: () => Promise<void>;
+    _createLocalOrderFromServer: (serverOrder: FetchedOrderData) => void;
+    _cleanupStaleRemoteOrders: (locationId: string) => Promise<void>;
 }
 
 // Debounced refresh helper (per-order)
@@ -1795,12 +1847,15 @@ export const useOrderStore = create<OrderState>()(
           activeOrderOutstandingCash: 0,
           pendingTableSelection: null,
 
-          // === STATION CONTEXT (Phase 1 Foundation) ===
+          // === STATION CONTEXT ===
           currentStationId: null,
           currentStation: null,
           remoteOrdersEnabled: false,
           isLoadingPreviousOrders: false,
           lastReconciliationAt: null,
+
+          // === WORKING SET (Phase 5) ===
+          workingSetOrderIds: [],
 
           // Payment sync status for loading UI
           paymentSyncStatus: "idle",
@@ -1810,7 +1865,7 @@ export const useOrderStore = create<OrderState>()(
           setPendingSyncCount: (count: number) =>
             set({ pendingSyncCount: count }),
 
-          // --- STATION ACTIONS (Phase 1 Foundation) ---
+          // --- STATION ACTIONS ---
           setCurrentStation: (station) => {
             console.log(
               `[OrderStore] Station context set: ${station.station_name} (${station.view_scope || "own"})`
@@ -1820,6 +1875,33 @@ export const useOrderStore = create<OrderState>()(
               currentStation: station,
               remoteOrdersEnabled: station.view_scope !== "own",
             });
+          },
+
+          // --- WORKING SET ACTIONS (Phase 5) ---
+          addToWorkingSet: (dbOrderId: string) => {
+            const current = get().workingSetOrderIds;
+            if (!current.includes(dbOrderId)) {
+              set({ workingSetOrderIds: [...current, dbOrderId] });
+              console.log(`[WorkingSet] Added order ${dbOrderId}`);
+            }
+          },
+
+          removeFromWorkingSet: (dbOrderId: string) => {
+            set({
+              workingSetOrderIds: get().workingSetOrderIds.filter(
+                (id) => id !== dbOrderId
+              ),
+            });
+            console.log(`[WorkingSet] Removed order ${dbOrderId}`);
+          },
+
+          clearWorkingSet: () => {
+            set({ workingSetOrderIds: [] });
+            console.log("[WorkingSet] Cleared");
+          },
+
+          isInWorkingSet: (dbOrderId: string) => {
+            return get().workingSetOrderIds.includes(dbOrderId);
           },
 
           // --- REALTIME SUBSCRIPTION METHODS ---
@@ -1894,6 +1976,10 @@ export const useOrderStore = create<OrderState>()(
                 
                 switch (status) {
                   case 'SUBSCRIBED':
+                    // Check reconnect state BEFORE resetting
+                    const wasReconnecting = get()._orderReconnectAttempts > 0;
+                    const hasReconciledBefore = get().lastReconciliationAt !== null;
+
                     set({
                       orderRealtimeStatus: 'connected',
                       orderRealtimeError: null,
@@ -1901,6 +1987,15 @@ export const useOrderStore = create<OrderState>()(
                       _orderLocationId: locationId,
                     });
                     console.log('[OrderRealtime] ✅ Connected to orders channel');
+
+                    // Reconcile after reconnection (not on initial connection)
+                    if (wasReconnecting && hasReconciledBefore) {
+                      console.log('[OrderRealtime] Reconnected after disconnect, triggering reconciliation');
+                      // Small delay to let connection stabilize
+                      setTimeout(() => {
+                        get().reconcileOrders();
+                      }, 500);
+                    }
                     break;
                     
                   case 'CHANNEL_ERROR':
@@ -1977,6 +2072,56 @@ export const useOrderStore = create<OrderState>()(
                       localOrder.items.some(
                         (item) => item.sync_status === "pending"
                       );
+
+                    // ═══════════════════════════════════════════════════════════
+                    // Phase 6: Conflict Detection
+                    // ═══════════════════════════════════════════════════════════
+                    const serverOrderForConflict = {
+                      ...backendOrder,
+                      sync_version: backendOrder.sync_version ?? 0,
+                      total_amount: backendOrder.card_total,
+                      amount_paid: backendOrder.amount_paid,
+                      order_status: backendOrder.status,
+                      paid_status: mapPaymentStatus(backendOrder.payment_status),
+                      total_discount: backendOrder.discount_amount,
+                      items: backendOrder.order_items
+                        ? transformBroadcastItems(backendOrder.order_items)
+                        : [],
+                      _sourceStationName: backendOrder.station?.name,
+                    };
+
+                    const conflict = detectConflict(
+                      localOrder,
+                      serverOrderForConflict as any
+                    );
+
+                    if (conflict) {
+                      // Add source station info
+                      conflict.sourceStationName = backendOrder.station?.name;
+                      conflict.sourceStationId = backendOrder.station_id;
+
+                      if (isConflictCritical(conflict)) {
+                        // Payment conflict - needs modal
+                        useConflictStore.getState().addPaymentConflict(conflict);
+                        console.log(
+                          "[OrderBroadcast] Payment conflict detected:",
+                          conflict.conflictType
+                        );
+                      } else {
+                        // Non-critical - record and show toast
+                        useConflictStore.getState().recordConflict(conflict);
+
+                        // Show toast notification for significant conflicts
+                        const toastData = generateConflictToast(conflict);
+                        if (conflict.severity !== "info") {
+                          toastService.show({
+                            type: toastData.type === "error" ? "error" : "info",
+                            message: toastData.message,
+                            duration: toastData.duration ?? 5000,
+                          });
+                        }
+                      }
+                    }
 
                     // Phase 2.5: Transform fresh items from broadcast (if available)
                     const broadcastItems = backendOrder.order_items
@@ -2186,101 +2331,471 @@ export const useOrderStore = create<OrderState>()(
           },
 
           // ============================================================================
-          // REMOTE ORDER CRUD ACTIONS (Phase 2)
+          // ORDER VISIBILITY & MANAGEMENT (Phase 5)
           // ============================================================================
 
-          _createRemoteOrder: (backendOrder) => {
-            const remoteId = generateRemoteOrderId(backendOrder.id);
+          /**
+           * Check if an order should be visible to this station.
+           * Simplified: includes own station orders, no ownership distinction.
+           */
+          isOrderVisible: (backendOrder, currentLocationId) => {
+            const { currentStation, currentStationId } = get();
 
-            // Check if already exists (idempotency)
-            if (get().ordersById[remoteId]) {
-              console.log("[RemoteOrder] Already exists, updating:", remoteId);
-              return get()._updateRemoteOrder(backendOrder);
+            // No station context = only show local orders
+            if (!currentStation || !currentStationId) {
+              return false;
             }
 
-            // Transform to OrderProfile
-            const remoteOrder = transformBroadcastToRemoteOrder(backendOrder);
+            // Check view_scope
+            const viewScope = currentStation.view_scope || "own";
 
-            // Add to store (BOTH maps)
-            set((state) => ({
-              ordersById: {
-                ...state.ordersById,
-                [remoteId]: remoteOrder,
-              },
-              ordersByDbId: {
-                ...state.ordersByDbId,
-                [backendOrder.id]: remoteOrder,
-              },
-              orderIds: [...state.orderIds, remoteId],
-            }));
+            switch (viewScope) {
+              case "own":
+                // Only our station's orders
+                return backendOrder.station_id === currentStationId;
 
-            console.log(
-              "[RemoteOrder] Created:",
-              remoteId,
-              "from station:",
-              remoteOrder._sourceStationId
-            );
-          },
+              case "location":
+                // All orders from this location
+                return backendOrder.location_id === currentLocationId;
 
-          _updateRemoteOrder: (backendOrder) => {
-            const remoteId = generateRemoteOrderId(backendOrder.id);
-            const existing = get().ordersById[remoteId];
+              case "online":
+                // Our station's orders + online orders from this location
+                return (
+                  backendOrder.station_id === currentStationId ||
+                  (backendOrder.location_id === currentLocationId &&
+                    ["delivery", "takeout"].includes(backendOrder.order_type))
+                );
 
-            // If doesn't exist, create it
-            if (!existing) {
-              return get()._createRemoteOrder(backendOrder);
+              default:
+                return backendOrder.station_id === currentStationId;
             }
-
-            // Transform fresh data
-            const freshOrder = transformBroadcastToRemoteOrder(
-              backendOrder,
-              existing._sourceStationName
-            );
-
-            // Preserve adoption status if adopted
-            const updated: OrderProfile = {
-              ...freshOrder,
-              _isAdopted: existing._isAdopted,
-              _canModify: existing._isAdopted || false,
-              _receivedAt: existing._receivedAt, // Keep original receive time
-            };
-
-            // Update store
-            set((state) => ({
-              ordersById: {
-                ...state.ordersById,
-                [remoteId]: updated,
-              },
-              ordersByDbId: {
-                ...state.ordersByDbId,
-                [backendOrder.id]: updated,
-              },
-            }));
-
-            console.log("[RemoteOrder] Updated:", remoteId);
           },
 
-          _removeRemoteOrder: (dbOrderId) => {
-            const remoteId = generateRemoteOrderId(dbOrderId);
+          /**
+           * Unified upsert for any order (from broadcast or fetch).
+           * Uses db_order_id directly as local ID - no ownership flags.
+           */
+          upsertOrder: (backendOrder, sourceStationName) => {
+            const dbOrderId = backendOrder.id;
+            const existing = get().ordersByDbId[dbOrderId];
 
-            if (!get().ordersById[remoteId]) {
-              console.log("[RemoteOrder] Not found for removal:", remoteId);
+            // Don't overwrite orders with pending local changes
+            if (existing?.sync_status === "pending") {
+              console.log("[UpsertOrder] Skipping - has pending sync:", dbOrderId);
               return;
             }
 
+            // Transform to OrderProfile
+            const orderProfile = transformBroadcastToOrder(backendOrder, sourceStationName);
+
+            // Upsert to both maps
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderProfile.id]: orderProfile,
+              },
+              ordersByDbId: {
+                ...state.ordersByDbId,
+                [dbOrderId]: orderProfile,
+              },
+              // Only add to orderIds if new
+              orderIds: existing
+                ? state.orderIds
+                : [...state.orderIds, orderProfile.id],
+            }));
+
+            console.log(
+              existing ? "[UpsertOrder] Updated:" : "[UpsertOrder] Created:",
+              dbOrderId
+            );
+          },
+
+          /**
+           * Remove an order by its database ID.
+           */
+          removeOrder: (dbOrderId) => {
+            const existing = get().ordersByDbId[dbOrderId];
+            if (!existing) {
+              console.log("[RemoveOrder] Not found:", dbOrderId);
+              return;
+            }
+
+            const localId = existing.id;
+
             set((state) => {
-              const { [remoteId]: removedById, ...restById } = state.ordersById;
-              const { [dbOrderId]: removedByDbId, ...restByDbId } =
-                state.ordersByDbId;
+              const { [localId]: removedById, ...restById } = state.ordersById;
+              const { [dbOrderId]: removedByDbId, ...restByDbId } = state.ordersByDbId;
 
               return {
                 ordersById: restById,
                 ordersByDbId: restByDbId,
-                orderIds: state.orderIds.filter((id) => id !== remoteId),
+                orderIds: state.orderIds.filter((id) => id !== localId),
+                // Also remove from working set
+                workingSetOrderIds: state.workingSetOrderIds.filter((id) => id !== dbOrderId),
               };
             });
 
-            console.log("[RemoteOrder] Removed:", remoteId);
+            console.log("[RemoveOrder] Removed:", dbOrderId);
+          },
+
+          // ============================================================================
+          // DEPRECATED REMOTE ORDER CRUD ACTIONS (Phase 2)
+          // Use upsertOrder and removeOrder instead
+          // ============================================================================
+
+          _createRemoteOrder: (backendOrder) => {
+            // Deprecated: now just calls upsertOrder
+            get().upsertOrder(backendOrder);
+          },
+
+          _updateRemoteOrder: (backendOrder) => {
+            // Deprecated: now just calls upsertOrder
+            get().upsertOrder(backendOrder);
+          },
+
+          _removeRemoteOrder: (dbOrderId) => {
+            // Deprecated: now just calls removeOrder
+            get().removeOrder(dbOrderId);
+          },
+
+          // ====================================================================
+          // PHASE 3: INITIAL FETCH & RECONCILIATION
+          // ====================================================================
+
+          /**
+           * Fetch visible orders from other stations based on view_scope.
+           * Phase 5: Simplified - uses upsertOrder, no remote ID prefix.
+           */
+          fetchVisibleOrders: async (options) => {
+            const { currentStation, currentStationId } = get();
+            const locationId =
+              useStoreSettingsStore.getState().selectedStore?.location_id;
+
+            // Guard: No station context
+            if (!currentStation || !currentStationId || !locationId) {
+              console.warn("[FetchVisible] No station context, skipping");
+              return;
+            }
+
+            // Guard: View scope doesn't allow other station orders
+            if (currentStation.view_scope === "own") {
+              console.log(
+                '[FetchVisible] view_scope is "own", no other station orders needed'
+              );
+              return;
+            }
+
+            set({ isLoadingPreviousOrders: true });
+
+            try {
+              const supabase = OrderService.getSupabaseClient();
+              if (!supabase) {
+                throw new Error("Supabase client not available");
+              }
+
+              // Build base query
+              let query = supabase
+                .from("orders")
+                .select(
+                  `
+                  *,
+                  order_items (
+                    *,
+                    order_item_modifiers (*)
+                  ),
+                  stations:station_id (name)
+                `
+                )
+                .eq("location_id", locationId)
+                .neq("station_id", currentStationId) // Exclude our own station
+                .order("created_at", { ascending: false })
+                .limit(options?.limit ?? 50);
+
+              // Apply view_scope specific filters
+              if (currentStation.view_scope === "online") {
+                query = query.in("order_type", ["delivery", "takeout"]);
+              }
+
+              // Optionally exclude completed orders
+              if (!options?.includeCompleted) {
+                query = query.not(
+                  "status",
+                  "in",
+                  '("completed","voided","cancelled")'
+                );
+              }
+
+              const { data, error } = await query;
+
+              if (error) throw error;
+
+              console.log(
+                `[FetchVisible] Fetched ${data?.length ?? 0} orders from other stations`
+              );
+
+              // Upsert each order
+              for (const fetchedOrder of data ?? []) {
+                const normalized = normalizeFetchedOrder(
+                  fetchedOrder as FetchedOrderData
+                );
+                const sourceStationName = fetchedOrder.stations?.name ?? null;
+
+                // Use unified upsertOrder (handles idempotency, passes station name)
+                get().upsertOrder(normalized, sourceStationName);
+              }
+
+              // Update reconciliation timestamp
+              set({ lastReconciliationAt: new Date().toISOString() });
+            } catch (error) {
+              console.error("[FetchVisible] Error:", error);
+              // Don't throw - other station orders are non-critical
+            } finally {
+              set({ isLoadingPreviousOrders: false });
+            }
+          },
+
+          // @deprecated - use fetchVisibleOrders instead
+          fetchRemoteOrders: async (options) => {
+            return get().fetchVisibleOrders(options);
+          },
+
+          /**
+           * Fetch own station orders not in local store (handles orphaned orders).
+           * Orphaned orders are server orders for our station that don't exist locally
+           * (e.g., after app reinstall or created on another device with same station).
+           */
+          fetchOwnStationOrders: async () => {
+            const { currentStation, currentStationId, ordersByDbId } = get();
+            const locationId =
+              useStoreSettingsStore.getState().selectedStore?.location_id;
+
+            if (!currentStation || !currentStationId || !locationId) {
+              console.warn("[FetchOwn] No station context, skipping");
+              return;
+            }
+
+            try {
+              const supabase = OrderService.getSupabaseClient();
+              if (!supabase) {
+                throw new Error("Supabase client not available");
+              }
+
+              // Fetch active orders from our station
+              const { data, error } = await supabase
+                .from("orders")
+                .select(
+                  `
+                  *,
+                  order_items (
+                    *,
+                    order_item_modifiers (*)
+                  )
+                `
+                )
+                .eq("location_id", locationId)
+                .eq("station_id", currentStationId)
+                .not("status", "in", '("completed","voided","cancelled")')
+                .order("created_at", { ascending: false });
+
+              if (error) throw error;
+
+              console.log(
+                `[FetchOwn] Fetched ${data?.length ?? 0} own station orders`
+              );
+
+              // Check for orphaned orders (on server but not locally)
+              for (const serverOrder of data ?? []) {
+                const existsLocally = ordersByDbId[serverOrder.id];
+
+                if (!existsLocally) {
+                  console.log(
+                    `[FetchOwn] Found orphaned order: ${serverOrder.id}`
+                  );
+                  // Create as local order (full editing capability)
+                  get()._createLocalOrderFromServer(
+                    serverOrder as FetchedOrderData
+                  );
+                }
+              }
+            } catch (error) {
+              console.error("[FetchOwn] Error:", error);
+            }
+          },
+
+          /**
+           * Create a local order from server data (for orphaned orders).
+           * These are our station's orders that we don't have locally.
+           */
+          _createLocalOrderFromServer: (serverOrder) => {
+            // Generate a local ID that indicates this came from server
+            const localId = `local_order_${serverOrder.id}`;
+
+            // Check if already exists
+            if (
+              get().ordersById[localId] ||
+              get().ordersByDbId[serverOrder.id]
+            ) {
+              console.log("[CreateFromServer] Already exists:", serverOrder.id);
+              return;
+            }
+
+            // Normalize and transform items
+            const normalized = normalizeFetchedOrder(serverOrder);
+            const items = transformBroadcastItems(normalized.order_items);
+
+            // Map to local OrderProfile format
+            const localOrder: OrderProfile = {
+              id: localId,
+              db_order_id: serverOrder.id,
+              order_number: serverOrder.order_number,
+              display_number: serverOrder.display_number,
+
+              // Station tracking - this IS our station
+              station_id: serverOrder.station_id ?? null,
+
+              // Order info
+              order_type: mapOrderType(serverOrder.order_type),
+              order_status: serverOrder.status as OrderProfile["order_status"],
+              check_status:
+                (serverOrder.amount_due ?? 0) <= 0.01 ? "Closed" : "Opened",
+              paid_status: mapPaymentStatus(serverOrder.payment_status),
+              service_location_id: serverOrder.table_number ?? null,
+              customer_name: "",
+
+              // Financial - use server values
+              total_amount:
+                serverOrder.card_total ?? serverOrder.total_amount ?? 0,
+              total_tax:
+                serverOrder.card_tax_amount ?? serverOrder.tax_amount ?? 0,
+              total_discount: serverOrder.discount_amount ?? 0,
+              amount_paid: serverOrder.amount_paid ?? 0,
+              amount_due: serverOrder.amount_due ?? 0,
+              cash_amount_due: serverOrder.cash_amount_due ?? 0,
+
+              // Items
+              items,
+
+              // Timestamps
+              opened_at: serverOrder.created_at,
+              sent_to_kitchen_at: serverOrder.sent_to_kitchen_at ?? undefined,
+              closed_at: serverOrder.completed_at ?? undefined,
+
+              // Sync status - already synced since from DB
+              sync_status: "synced",
+              sync_version: serverOrder.sync_version ?? 1,
+
+              // Station tracking (for display)
+              _sourceStationId: serverOrder.station_id ?? null,
+              _sourceStationName: null,
+            };
+
+            // Add to store
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [localId]: localOrder,
+              },
+              ordersByDbId: {
+                ...state.ordersByDbId,
+                [serverOrder.id]: localOrder,
+              },
+              orderIds: [...state.orderIds, localId],
+            }));
+
+            console.log("[CreateFromServer] Created local order:", localId);
+          },
+
+          /**
+           * Clean up orders from other stations that no longer exist on server.
+           * Phase 5: Simplified - uses db_order_id directly, no remote prefix.
+           */
+          _cleanupStaleRemoteOrders: async (locationId) => {
+            const { currentStationId, ordersById } = get();
+
+            if (!currentStationId) return;
+
+            try {
+              const supabase = OrderService.getSupabaseClient();
+              if (!supabase) {
+                throw new Error("Supabase client not available");
+              }
+
+              // Fetch active order IDs from server (other stations only)
+              const { data, error } = await supabase
+                .from("orders")
+                .select("id")
+                .eq("location_id", locationId)
+                .neq("station_id", currentStationId)
+                .not("status", "in", '("completed","voided","cancelled")');
+
+              if (error) throw error;
+
+              // Build set of valid db_order_ids from server
+              const serverDbIds = new Set((data ?? []).map((o) => o.id));
+
+              // Find local orders from other stations that no longer exist on server
+              const otherStationOrders = Object.values(ordersById).filter(
+                (o) =>
+                  o.station_id !== currentStationId &&
+                  o.db_order_id &&
+                  !["completed", "voided", "cancelled"].includes(
+                    o.order_status ?? ""
+                  )
+              );
+
+              for (const order of otherStationOrders) {
+                if (order.db_order_id && !serverDbIds.has(order.db_order_id)) {
+                  console.log(
+                    `[Cleanup] Removing stale order: ${order.db_order_id}`
+                  );
+                  get().removeOrder(order.db_order_id);
+                }
+              }
+            } catch (error) {
+              console.error("[Cleanup] Error:", error);
+            }
+          },
+
+          /**
+           * Full reconciliation action - called on reconnect or manual refresh.
+           */
+          reconcileOrders: async () => {
+            const { currentStation, currentStationId, lastReconciliationAt } =
+              get();
+            const locationId =
+              useStoreSettingsStore.getState().selectedStore?.location_id;
+
+            if (!currentStation || !currentStationId || !locationId) {
+              console.warn("[Reconcile] No station context");
+              return;
+            }
+
+            console.log("[Reconcile] Starting reconciliation...");
+            console.log("[Reconcile] Last reconciliation:", lastReconciliationAt);
+
+            set({ isLoadingPreviousOrders: true });
+
+            try {
+              // STEP 1: Fetch own station orders (handles orphaned orders)
+              await get().fetchOwnStationOrders();
+
+              // STEP 2: Fetch remote orders (if view_scope allows)
+              if (currentStation.view_scope !== "own") {
+                await get().fetchRemoteOrders();
+              }
+
+              // STEP 3: Clean up stale remote orders
+              await get()._cleanupStaleRemoteOrders(locationId);
+
+              // Update reconciliation timestamp
+              set({ lastReconciliationAt: new Date().toISOString() });
+
+              console.log("[Reconcile] Completed successfully");
+            } catch (error) {
+              console.error("[Reconcile] Error:", error);
+            } finally {
+              set({ isLoadingPreviousOrders: false });
+            }
           },
 
           // ====================================================================
@@ -2514,6 +3029,12 @@ export const useOrderStore = create<OrderState>()(
             // Set active order ID first
             set({ activeOrderId: orderId });
 
+            // Phase 5: Auto-add to working set when setting active order
+            const order = get().ordersById[orderId];
+            if (order?.db_order_id) {
+              get().addToWorkingSet(order.db_order_id);
+            }
+
             // Synchronously calculate and update all derived state - instant!
             get().recalculateOrder(orderId);
           },
@@ -2540,15 +3061,10 @@ export const useOrderStore = create<OrderState>()(
               guest_count: details?.guestCount || 1,
               server_name: activeEmployee?.fullName || "Unknown",
 
-              // Phase 1 Foundation: Station tracking fields
+              // Station tracking
               station_id: currentStationId,
-              _isRemoteOrder: false,
-              _isAdopted: false,
-              _isTransferred: false,
               _sourceStationId: currentStationId,
               _sourceStationName: currentStation?.station_name || null,
-              _receivedAt: null,
-              _canModify: true,
             };
             set((state) => ({
               ordersById: { ...state.ordersById, [newOrder.id]: newOrder },
@@ -2564,14 +3080,7 @@ export const useOrderStore = create<OrderState>()(
             const activeOrder = ordersById[activeOrderId]; // O(1) lookup
             if (!activeOrder) return;
 
-            // Phase 2: Guard - Cannot add items to remote orders
-            if (activeOrder._isRemoteOrder && !activeOrder._isAdopted) {
-              console.warn(
-                "[OrderStore] Cannot add items to remote order:",
-                activeOrderId
-              );
-              return;
-            }
+            // Phase 5: Any visible order can be modified - no ownership guard needed
 
             // ================================================================
             // FAST PATH: Draft items skip all expensive operations
@@ -2852,14 +3361,7 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
-            // Phase 2: Guard - Cannot modify items in remote orders (unless adopted)
-            if (order._isRemoteOrder && !order._isAdopted) {
-              console.warn(
-                "[OrderStore] Cannot modify items in remote order:",
-                activeOrderId
-              );
-              return;
-            }
+            // Phase 5: Any visible order can be modified - no ownership guard needed
 
             const originalItem = order.items.find(
               (i) => i.id === updatedItem.id
@@ -3103,14 +3605,7 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[activeOrderId]; // O(1) lookup
             if (!order) return;
 
-            // Phase 2: Guard - Cannot remove items from remote orders (unless adopted)
-            if (order._isRemoteOrder && !order._isAdopted) {
-              console.warn(
-                "[OrderStore] Cannot remove items from remote order:",
-                activeOrderId
-              );
-              return;
-            }
+            // Phase 5: Any visible order can be modified - no ownership guard needed
 
             const itemToHandle = order.items.find((i) => i.id === itemId);
             if (!itemToHandle) return;
@@ -6248,6 +6743,8 @@ export const useOrderStore = create<OrderState>()(
           ordersById: state.ordersById,
           orderIds: state.orderIds,
           activeOrderId: state.activeOrderId,
+          // Persist working set (Phase 5)
+          workingSetOrderIds: state.workingSetOrderIds,
         }),
         onRehydrateStorage: () => {
           return (state, error) => {
@@ -6349,6 +6846,23 @@ useStoreSettingsStore.subscribe((state) => {
         can_update_kitchen_status: selectedStation.can_update_kitchen_status,
       };
       useOrderStore.getState().setCurrentStation(station);
+
+      // Phase 3: Trigger initial order fetch after station is set
+      // Small delay to ensure station context is fully applied
+      setTimeout(async () => {
+        const orderStore = useOrderStore.getState();
+
+        // Fetch orphaned orders from our station (handles app reinstall scenario)
+        await orderStore.fetchOwnStationOrders();
+
+        // Fetch remote orders based on view_scope
+        await orderStore.fetchRemoteOrders();
+
+        // Set initial reconciliation timestamp
+        useOrderStore.setState({ lastReconciliationAt: new Date().toISOString() });
+
+        console.log("[OrderStore] Initial order fetch completed for station:", station.station_name);
+      }, 100);
     } else {
       // Clear station context when station is deselected
       useOrderStore.setState({
@@ -6380,12 +6894,4 @@ function mapBackendOrderStatus(status: string): OrderProfile['order_status'] {
   return map[status] || 'pending';
 }
 
-function mapPaymentStatus(status: string): OrderProfile['paid_status'] {
-  const map: Record<string, OrderProfile['paid_status']> = {
-    'paid': 'Paid',
-    'partial': 'Partial',
-    'pending': 'Pending',
-    'unpaid': 'Unpaid',
-  };
-  return map[status] || 'Pending';
-}
+// mapPaymentStatus is now imported from @/utils/orderTransformers

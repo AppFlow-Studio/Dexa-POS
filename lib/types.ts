@@ -474,6 +474,9 @@ export interface PreviousOrder {
   refundedAmount?: number;
   originalTotal?: number;
   service_location_id?: string; // Added service_location_id
+  // Station tracking for view_scope awareness
+  station_id?: string | null;
+  station_name?: string | null;
 }
 
 export type InventoryItemStatus =
@@ -779,17 +782,10 @@ export interface OrderProfile {
   }[]; // Payment records
   notes?: string; // Order-level notes (customer requests, special instructions)
 
-  // === STATION TRACKING (Phase 1 Foundation) ===
+  // === STATION TRACKING ===
   station_id?: string | null; // Station that created this order
-
-  // Remote order tracking - used for station-based order management
-  _isRemoteOrder?: boolean; // Default: false - order from another station
-  _isAdopted?: boolean; // Default: false - we took over this order
-  _isTransferred?: boolean; // Default: false - order transferred away
-  _sourceStationId?: string | null; // Original creating station ID
-  _sourceStationName?: string | null; // Original creating station name
-  _receivedAt?: string | null; // When we received a remote order
-  _canModify?: boolean; // Whether current station can modify
+  _sourceStationId?: string | null; // Original creating station ID (for display)
+  _sourceStationName?: string | null; // Original creating station name (for display)
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

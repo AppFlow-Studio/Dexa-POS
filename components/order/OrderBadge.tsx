@@ -1,7 +1,9 @@
 import { OrderProfile } from "@/lib/types";
-import { CheckCircle, CreditCard, Eye } from "lucide-react-native";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { useWasOrderRecentlyUpdated } from "@/stores/useConflictStore";
+import { CheckCircle, CreditCard, Eye, Repeat2, RefreshCw } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View, Animated } from "react-native";
 import Popover from "react-native-popover-view";
 
 interface OrderBadgeProps {
@@ -18,11 +20,10 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   onRetrieve,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
-  
-  // if( order.display_number === "#0065" ) {
-  //   console.log('[order | OrderBadge] order', order);
-  //   console.log('[order | OrderBadge] order', order.payments?.[0]?.itemsCovered);
-  // }
+
+  // Phase 6: Check if order was recently updated by another station
+  const wasRecentlyUpdated = useWasOrderRecentlyUpdated(order.db_order_id || order.id);
+
   // Calculate payment info - prioritize backend values
   const amountDue = order.amount_due ?? order.total_amount ?? 0;
   const amountPaid = order.amount_paid ?? 0;
@@ -89,9 +90,16 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
           className="flex-row items-center px-3 py-2 rounded-lg border"
           style={{
             backgroundColor: colors.bg,
-            borderColor: colors.border,
+            borderColor: wasRecentlyUpdated ? "#3b82f6" : colors.border,
+            borderWidth: wasRecentlyUpdated ? 2 : 1,
           }}
         >
+          {/* Phase 6: Updated indicator */}
+          {wasRecentlyUpdated && (
+            <View className="mr-1.5">
+              <RefreshCw color="#3b82f6" size={14} />
+            </View>
+          )}
           <View
             className="w-2.5 h-2.5 rounded-full mr-2"
             style={{ backgroundColor: colors.dot }}
@@ -168,6 +176,16 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
               </Text>
             </View>
           </View>
+
+          {/* Show source station for orders from other stations */}
+          {order._sourceStationName && order.station_id !== useOrderStore.getState().currentStationId && (
+            <View className="flex-row items-center mt-2 pt-2 border-t border-gray-700">
+              <Repeat2 color="#3b82f6" size={14} />
+              <Text className="text-blue-400 text-xs ml-1">
+                From: {order._sourceStationName}
+              </Text>
+            </View>
+          )}
 
           <View className="flex-row justify-between items-center w-full">
             <View>
@@ -299,7 +317,10 @@ const OrderBadge = React.memo(OrderBadgeComponent, (prev, next) => {
     prev.order.amount_paid === next.order.amount_paid &&
     prev.order.total_amount === next.order.total_amount &&
     prev.order.customer_name === next.order.customer_name &&
-    prev.order.payments?.length === next.order.payments?.length
+    prev.order.payments?.length === next.order.payments?.length &&
+    // Station-related fields for display
+    prev.order.station_id === next.order.station_id &&
+    prev.order._sourceStationName === next.order._sourceStationName
   );
 });
 

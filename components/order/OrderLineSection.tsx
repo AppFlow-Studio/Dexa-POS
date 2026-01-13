@@ -1,4 +1,8 @@
 import { useOrderStore } from "@/stores/useOrderStore";
+import {
+  useStationOrders,
+  useOrderTypeCounts,
+} from "@/stores/selectors/orderSelectors";
 import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import React, { useMemo, useRef, useState } from "react";
 import { FlatList, Text, TouchableOpacity, View } from "react-native";
@@ -11,58 +15,29 @@ import OrderTabs from "./OrderTabs";
 const CARD_WIDTH_WITH_MARGIN = 288 + 16; // 288px card width + 16px right margin
 
 const OrderLineSection: React.FC = () => {
-  // OPTIMIZED: Use granular selectors instead of full store destructure
-  const ordersById = useOrderStore((s) => s.ordersById);
+  // Store actions
   const markAllItemsAsReady = useOrderStore((s) => s.markAllItemsAsReady);
   const setActiveOrder = useOrderStore((s) => s.setActiveOrder);
   const archiveOrder = useOrderStore((s) => s.archiveOrder);
 
-  // Memoize the orders array transformation
-  const orders = useMemo(() => Object.values(ordersById), [ordersById]);
+  // Phase 4: Use selectors for station-based order filtering
+  // This ensures only orders from this station (or adopted orders) are shown
+  const stationOrders = useStationOrders();
+  const orderCounts = useOrderTypeCounts();
 
   // State for the active filter tab
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
+  // Filter station orders to only show those that are preparing or unpaid
+  // (preserves original logic but now applies to station-filtered orders)
   const visibleOrders = useMemo(() => {
-    return orders.filter(
+    return stationOrders.filter(
       (o) =>
-        // Exclude Dine In orders - they belong on Tables view
-        o.order_type !== "Dine In" &&
-        o.order_type !== "dine_in" &&
-        o.items?.length > 0 &&
-        o.order_status !== "completed" &&
-        o.order_status !== "draft" &&
-        (o.order_status === "preparing" || o.paid_status !== "Paid") &&
-        o.order_status !== "void"
+        o.order_status === "preparing" || o.paid_status !== "Paid"
     );
-  }, [orders]);
-
-  const orderCounts = useMemo(() => {
-    return {
-      All: visibleOrders.length,
-      Takeaway: visibleOrders.filter(
-        (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
-      ).length,
-      Delivery: visibleOrders.filter(
-        (o) => o.order_type === "delivery" || o.order_type === "Delivery"
-      ).length,
-    };
-  }, [visibleOrders]);
-
-  const totalOrder = orders.filter(
-    (o) =>
-      (o.order_type !== "dine_in" &&
-        o.order_type !== "Dine In" &&
-        // Condition 1: Must be in preparing state
-        o.order_status === "preparing" &&
-        // Condition 2: Must have one or more items
-        o.items.length > 0) ||
-      (o.paid_status === "Unpaid" &&
-        o.order_status !== "completed" &&
-        o.order_status !== "draft")
-  ).length;
+  }, [stationOrders]);
 
   // Map tab names to order_type values for filtering
   const tabToOrderType: Record<string, string[]> = {

@@ -65,6 +65,9 @@ DECLARE
     -- Full remaining payment detection
     v_is_full_remaining boolean := false;
     v_target_unpaid numeric := 0;
+
+    -- Phase 6: Sync version for conflict detection
+    v_new_sync_version integer;
 BEGIN
     v_is_cash := p_payment_method = 'cash';
     v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
@@ -1011,7 +1014,12 @@ BEGIN
     --     'unpaid_cash_total', v_unpaid_cash_total
     -- );
     -- ============================================
-    -- 15. Return Result
+    -- 15. Phase 6: Increment sync_version
+    -- ============================================
+    v_new_sync_version := increment_order_sync_version(p_order_id);
+
+    -- ============================================
+    -- 16. Return Result
     -- ============================================
     RETURN jsonb_build_object(
         'success', true,
@@ -1023,12 +1031,12 @@ BEGIN
         'change_given', v_change_given,
         'is_cash_priced', v_is_cash,
         'pricing_mode', v_new_pricing_mode,
-        
+
         -- Payment type flags
         'is_item_payment', v_is_item_payment,
         'is_split_payment', v_is_split_payment,
         'is_full_remaining', v_is_full_remaining,
-        
+
         -- Split info
         'split_count', p_split_count,
         'split_portion_index', p_split_portion_index,
@@ -1036,25 +1044,28 @@ BEGIN
         'portions_remaining', v_portions_remaining,
         'split_card_portion', v_split_card_portion,
         'split_cash_portion', v_split_cash_portion,
-        
+
         -- Item info
         'items_paid', v_covered_items_json,
         'items_covered', v_covered_items,
-        
+
         -- Payment totals by type
         'total_cash_paid', v_total_cash_paid,
         'total_card_paid', v_total_card_paid,
-        
+
         -- Order state (ALWAYS calculated from unpaid items)
         'order_amount_paid', v_new_amount_paid,
         'order_amount_due', v_new_amount_due,
         'order_cash_amount_due', v_new_cash_amount_due,
         'order_fully_paid', v_order_fully_paid,
-        
+
         -- Unpaid details
         'unpaid_items_count', v_unpaid_items_count,
         'unpaid_card_total', v_unpaid_card_total,
-        'unpaid_cash_total', v_unpaid_cash_total
+        'unpaid_cash_total', v_unpaid_cash_total,
+
+        -- Phase 6: Conflict detection
+        'sync_version', v_new_sync_version
     );
 END;
 $$

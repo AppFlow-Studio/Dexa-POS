@@ -1,6 +1,7 @@
 import { OrderProfile } from "@/lib/types";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
-import { ArrowUpRight } from "lucide-react-native";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { ArrowUpRight, Repeat2 } from "lucide-react-native";
 import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
@@ -72,6 +73,15 @@ const OrderCard: React.FC<OrderCardProps> = ({
           })}
         </Text>
       </View>
+      {/* Phase 5: Show source station for orders from other stations */}
+      {order._sourceStationName && order.station_id !== useOrderStore.getState().currentStationId && (
+        <View className="flex-row items-center mt-1">
+          <Repeat2 color="#3b82f6" size={12} />
+          <Text className="text-blue-400 text-xs ml-1">
+            From {order._sourceStationName}
+          </Text>
+        </View>
+      )}
       <View className="flex-row justify-between items-center mt-4">
         <TouchableOpacity
           onPress={onViewItems}

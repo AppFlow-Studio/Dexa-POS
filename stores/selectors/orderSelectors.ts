@@ -1,0 +1,281 @@
+/**
+ * Order Selectors for Station-Based Order Management
+ *
+ * Phase 5: Shared Visibility & Working Set
+ *
+ * These selectors filter orders for different views based on station context,
+ * view_scope settings, and working set membership.
+ *
+ * Guiding Principle: "The store holds everything; selectors decide what each component sees."
+ */
+
+import { useMemo } from "react";
+import { useOrderStore } from "../useOrderStore";
+import type { OrderProfile } from "@/lib/types";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Working Set Orders (Phase 5)
+// ═══════════════════════════════════════════════════════════════════════════
+// Orders the user is actively working on (persisted across restarts)
+
+export function useWorkingSetOrders(): OrderProfile[] {
+  const ordersByDbId = useOrderStore((s) => s.ordersByDbId);
+  const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+
+  return useMemo(() => {
+    return workingSetOrderIds
+      .map((dbId) => ordersByDbId[dbId])
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aTime = new Date(a.opened_at || 0).getTime();
+        const bTime = new Date(b.opened_at || 0).getTime();
+        return bTime - aTime;
+      });
+  }, [ordersByDbId, workingSetOrderIds]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Station Orders (for OrderLineSection)
+// ═══════════════════════════════════════════════════════════════════════════
+// Returns orders for this station's active order line:
+// - Working set orders OR orders from this station
+// - Excludes Dine In orders (handled by table/floor plan flow)
+// - order_status NOT IN ('completed', 'voided', 'cancelled', 'void')
+// - Must have items
+
+export function useStationOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+
+  return useMemo(() => {
+    if (!currentStationId) return [];
+
+    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
+    const dineInTypes = ["Dine In", "dine_in"];
+    const workingSet = new Set(workingSetOrderIds);
+
+    return Object.values(ordersById)
+      .filter((order) => {
+        // Exclude Dine In orders (handled by table/floor plan flow)
+        if (dineInTypes.includes(order.order_type ?? "")) return false;
+
+        // Must not be inactive
+        if (inactiveStatuses.includes(order.order_status ?? "")) return false;
+
+        // Must have items
+        if (!order.items || order.items.length === 0) return false;
+
+        // Must not be draft status
+        if (order.order_status === "draft") return false;
+
+        // Include if: in working set OR our station's order
+        const isInWorkingSet = order.db_order_id && workingSet.has(order.db_order_id);
+        const isOurStationOrder = order.station_id === currentStationId;
+
+        return isInWorkingSet || isOurStationOrder;
+      })
+      .sort((a, b) => {
+        // Most recent first
+        const aTime = new Date(a.opened_at || 0).getTime();
+        const bTime = new Date(b.opened_at || 0).getTime();
+        return bTime - aTime;
+      });
+  }, [ordersById, currentStationId, workingSetOrderIds]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Station Order Count (for badge)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function useStationOrderCount(): number {
+  const stationOrders = useStationOrders();
+  return stationOrders.length;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Other Station Orders
+// ═══════════════════════════════════════════════════════════════════════════
+// Orders from other stations (for "From Other Stations" view)
+// Phase 5: These are visible orders not from our station and not in working set
+
+export function useOtherStationOrders(): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+
+  return useMemo(() => {
+    if (!currentStationId) return [];
+
+    const workingSet = new Set(workingSetOrderIds);
+    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
+
+    return Object.values(ordersById)
+      .filter((order) => {
+        // Must be from another station
+        if (order.station_id === currentStationId) return false;
+
+        // Must not be in working set (those show in StationOrders)
+        if (order.db_order_id && workingSet.has(order.db_order_id)) return false;
+
+        // Must not be inactive
+        if (inactiveStatuses.includes(order.order_status ?? "")) return false;
+
+        return true;
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.opened_at || 0).getTime();
+        const bTime = new Date(b.opened_at || 0).getTime();
+        return bTime - aTime;
+      });
+  }, [ordersById, currentStationId, workingSetOrderIds]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Order Type Counts (for filter tabs in OrderLineSection)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function useOrderTypeCounts(): Record<string, number> {
+  const stationOrders = useStationOrders();
+
+  return useMemo(() => {
+    return {
+      All: stationOrders.length,
+      Takeaway: stationOrders.filter(
+        (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
+      ).length,
+      Delivery: stationOrders.filter(
+        (o) => o.order_type === "delivery" || o.order_type === "Delivery"
+      ).length,
+    };
+  }, [stationOrders]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Previous Orders (for Previous Orders / History views)
+// ═══════════════════════════════════════════════════════════════════════════
+// Orders visible based on view_scope that are NOT in OrderLineSection
+// Used by both PreviousOrdersSection and previous-orders.tsx page
+
+export interface OrdersFilterState {
+  orderTypes?: string[];
+  status?: string[];
+  showCompleted?: boolean;
+}
+
+export function usePreviousOrders(filters?: OrdersFilterState): OrderProfile[] {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+  const currentStation = useOrderStore((s) => s.currentStation);
+  const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
+
+  return useMemo(() => {
+    if (!currentStationId || !currentStation) return [];
+
+    const inactiveStatuses = ["completed", "voided", "cancelled", "void"];
+    const dineInTypes = ["Dine In", "dine_in"];
+    const workingSet = new Set(workingSetOrderIds);
+
+    // Get IDs that are in OrderLineSection to exclude (avoid duplicates)
+    const stationOrderIds = new Set(
+      Object.values(ordersById)
+        .filter((o) => {
+          if (dineInTypes.includes(o.order_type ?? "")) return false;
+          if (inactiveStatuses.includes(o.order_status ?? "")) return false;
+          if (o.order_status === "draft") return false;
+          if (!o.items || o.items.length === 0) return false;
+
+          // In working set OR our station's order
+          const isInWorkingSet = o.db_order_id && workingSet.has(o.db_order_id);
+          const isOurStationOrder = o.station_id === currentStationId;
+
+          return isInWorkingSet || isOurStationOrder;
+        })
+        .map((o) => o.id)
+    );
+
+    let result = Object.values(ordersById).filter((order) => {
+      // Exclude orders already in OrderLineSection
+      if (stationOrderIds.has(order.id)) return false;
+
+      // Apply view_scope rules
+      const viewScope = currentStation.view_scope || "own";
+
+      switch (viewScope) {
+        case "own":
+          // Only our station's orders
+          if (order.station_id !== currentStationId) return false;
+          break;
+
+        case "location":
+          // All orders allowed (already filtered by location in fetch)
+          break;
+
+        case "online":
+          // Only online order types
+          const onlineTypes = ["delivery", "takeout", "Delivery", "Takeaway"];
+          if (!onlineTypes.includes(order.order_type ?? "")) return false;
+          break;
+      }
+
+      return true;
+    });
+
+    // Apply user filters
+    if (filters?.orderTypes?.length) {
+      result = result.filter((o) =>
+        filters.orderTypes!.includes(o.order_type as string)
+      );
+    }
+
+    if (filters?.status?.length) {
+      result = result.filter((o) =>
+        filters.status!.includes(o.order_status as string)
+      );
+    }
+
+    // Filter completed orders unless explicitly requested
+    if (!filters?.showCompleted) {
+      result = result.filter(
+        (o) => !inactiveStatuses.includes(o.order_status ?? "")
+      );
+    }
+
+    // Sort by created_at descending (most recent first)
+    return result.sort((a, b) => {
+      const aTime = new Date(a.opened_at || 0).getTime();
+      const bTime = new Date(b.opened_at || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [ordersById, currentStationId, currentStation, workingSetOrderIds, filters]);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Other Station Order Count
+// ═══════════════════════════════════════════════════════════════════════════
+// Count of visible orders from other stations (for badge display)
+
+export function useOtherStationOrderCount(): number {
+  const otherOrders = useOtherStationOrders();
+  return otherOrders.length;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// @deprecated - use useOtherStationOrders instead
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const useRemoteOrders = useOtherStationOrders;
+export const useRemoteOrderCount = useOtherStationOrderCount;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER: Check if order is from current station
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function useIsOwnStationOrder(order: OrderProfile | null): boolean {
+  const currentStationId = useOrderStore((s) => s.currentStationId);
+
+  return useMemo(() => {
+    if (!order || !currentStationId) return false;
+    return order.station_id === currentStationId;
+  }, [order, currentStationId]);
+}

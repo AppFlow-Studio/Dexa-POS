@@ -532,4 +532,117 @@ export class OrderService {
     });
     return { data, error };
   }
+
+  // ============================================
+  // Phase 6: Conflict Detection & Payment Locking
+  // ============================================
+
+  /**
+   * Update an order with version checking (optimistic locking)
+   * Returns VERSION_CONFLICT error if expected_version doesn't match current
+   */
+  static async updateOrderWithVersion(
+    client: SupabaseClient,
+    orderId: string,
+    expectedVersion: number,
+    updates?: {
+      customer_name?: string;
+      customer_phone?: string;
+      special_instructions?: string;
+      status?: string;
+    }
+  ): Promise<{
+    data: {
+      success: boolean;
+      error?: string;
+      message?: string;
+      new_version?: number;
+      current_version?: number;
+      expected_version?: number;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.rpc("update_order_with_version", {
+      p_order_id: orderId,
+      p_expected_version: expectedVersion,
+      p_updates: updates ? updates : null,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Lock an order for payment processing
+   * Prevents other stations from modifying the order during payment
+   */
+  static async lockOrderForPayment(
+    client: SupabaseClient,
+    orderId: string,
+    expectedVersion: number,
+    stationId: string,
+    lockDurationSeconds: number = 60
+  ): Promise<{
+    data: {
+      success: boolean;
+      error?: string;
+      message?: string;
+      lock_expires_at?: string;
+      sync_version?: number;
+      current_version?: number;
+      locked_by_station?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.rpc("lock_order_for_payment", {
+      p_order_id: orderId,
+      p_expected_version: expectedVersion,
+      p_station_id: stationId,
+      p_lock_duration_seconds: lockDurationSeconds,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Unlock an order after payment processing
+   */
+  static async unlockOrderForPayment(
+    client: SupabaseClient,
+    orderId: string,
+    stationId: string
+  ): Promise<{
+    data: {
+      success: boolean;
+      error?: string;
+      message?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.rpc("unlock_order_for_payment", {
+      p_order_id: orderId,
+      p_station_id: stationId,
+    });
+    return { data, error };
+  }
+
+  /**
+   * Check if an order is currently locked for payment
+   */
+  static async isOrderLocked(
+    client: SupabaseClient,
+    orderId: string
+  ): Promise<{
+    data: {
+      success: boolean;
+      is_locked?: boolean;
+      locked_by_station?: string;
+      lock_expires_at?: string;
+      sync_version?: number;
+      error?: string;
+    } | null;
+    error: any;
+  }> {
+    const { data, error } = await client.rpc("is_order_locked", {
+      p_order_id: orderId,
+    });
+    return { data, error };
+  }
 }

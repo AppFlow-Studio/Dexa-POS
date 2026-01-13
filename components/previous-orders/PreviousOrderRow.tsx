@@ -1,6 +1,6 @@
 import { PreviousOrder } from "@/lib/types";
 import { Href, Link } from "expo-router";
-import { MoreHorizontal, Pencil, Printer, Trash2 } from "lucide-react-native";
+import { MoreHorizontal, Pencil, Printer, Repeat2, Trash2 } from "lucide-react-native";
 import React from "react";
 import { DimensionValue, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -104,12 +104,20 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
         >
           {order.itemCount}
         </Text>
-        <Text
-          style={{ width: columnWidths.type }}
-          className="text-base font-semibold text-gray-300 px-1.5"
-        >
-          {order.type}
-        </Text>
+        <View style={{ width: columnWidths.type }} className="px-1.5">
+          <Text className="text-base font-semibold text-gray-300">
+            {order.type}
+          </Text>
+          {/* Show source station for orders from other stations */}
+          {order.station_name && (
+            <View className="flex-row items-center mt-0.5">
+              <Repeat2 color="#3b82f6" size={10} />
+              <Text className="text-blue-400 text-xs ml-1">
+                {order.station_name}
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={{ width: columnWidths.total }}>
           <Text className="text-base font-bold text-white px-1.5">
             ${order.total.toFixed(2)}

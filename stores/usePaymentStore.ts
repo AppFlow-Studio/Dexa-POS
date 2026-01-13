@@ -6,6 +6,8 @@ import {
   OfflineOperation,
   retryFailedOperation,
 } from "@/services/offlineSyncService";
+import { OrderService } from "@/services/orderService";
+import { useConflictStore } from "@/stores/useConflictStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
@@ -13,6 +15,7 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore,
 } from "./useOrderStore";
+import { createBrowserClient } from "@/utils/supabase/client";
 
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
@@ -144,6 +147,14 @@ interface PaymentState {
   refreshOfflinePaymentStatus: () => void;
   retryFailedPayment: (operationId: string) => Promise<void>;
   isPaymentQueued: boolean; // True if current payment was queued for offline sync
+
+  // Phase 6: Payment locking
+  lockedOrderId: string | null; // Currently locked order ID
+  lockExpiresAt: string | null; // ISO timestamp when lock expires
+  isLocking: boolean; // True while acquiring/releasing lock
+  lockOrderForPayment: (orderId: string, expectedVersion: number) => Promise<boolean>;
+  unlockOrderForPayment: (orderId: string) => Promise<void>;
+  checkAndRefreshLock: () => Promise<boolean>; // Refresh lock if about to expire
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -161,6 +172,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   pendingPaymentsCount: 0,
   failedPayments: [],
   isPaymentQueued: false,
+  // Phase 6: Payment locking state
+  lockedOrderId: null,
+  lockExpiresAt: null,
+  isLocking: false,
 
   setPaymentBottomSheetRef: (ref) => set({ paymentBottomSheetRef: ref }),
 
@@ -770,5 +785,159 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         type: "error",
       });
     }
+  },
+
+  // ============================================================================
+  // Phase 6: Payment Locking Methods
+  // ============================================================================
+
+  lockOrderForPayment: async (orderId: string, expectedVersion: number) => {
+    const { lockedOrderId, isLocking } = get();
+
+    // Already locking or already have this order locked
+    if (isLocking) return false;
+    if (lockedOrderId === orderId) return true;
+
+    set({ isLocking: true });
+
+    try {
+      const supabase = createBrowserClient();
+      const stationId = useOrderStore.getState().currentStationId;
+
+      if (!stationId) {
+        console.warn("[PaymentLocking] No station ID available");
+        set({ isLocking: false });
+        return false;
+      }
+
+      const { data, error } = await OrderService.lockOrderForPayment(
+        supabase,
+        orderId,
+        expectedVersion,
+        stationId,
+        60 // 60 second lock duration
+      );
+
+      if (error || !data?.success) {
+        const errorCode = data?.error || "UNKNOWN_ERROR";
+
+        // Handle specific error types
+        if (errorCode === "VERSION_MISMATCH") {
+          toastService.show({
+            type: "error",
+            message: "Order was modified. Please refresh and try again.",
+          });
+        } else if (errorCode === "ORDER_LOCKED_FOR_PAYMENT") {
+          toastService.show({
+            type: "error",
+            message: `Order is being paid by another station`,
+          });
+        } else if (errorCode === "ORDER_LOCKED_BY_TRANSACTION") {
+          toastService.show({
+            type: "error",
+            message: "Order is being modified. Please wait.",
+          });
+        }
+
+        set({ isLocking: false });
+        return false;
+      }
+
+      // Lock acquired successfully
+      set({
+        lockedOrderId: orderId,
+        lockExpiresAt: data.lock_expires_at,
+        isLocking: false,
+      });
+
+      // Update conflict store with lock info
+      useConflictStore.getState().setPaymentLock({
+        orderId,
+        stationId,
+        lockedAt: new Date().toISOString(),
+        expiresAt: data.lock_expires_at,
+      });
+
+      console.log("[PaymentLocking] Lock acquired:", orderId);
+      return true;
+    } catch (error) {
+      console.error("[PaymentLocking] Error acquiring lock:", error);
+      set({ isLocking: false });
+      return false;
+    }
+  },
+
+  unlockOrderForPayment: async (orderId: string) => {
+    const { lockedOrderId } = get();
+
+    // Only unlock if we have this order locked
+    if (lockedOrderId !== orderId) {
+      return;
+    }
+
+    try {
+      const supabase = createBrowserClient();
+      const stationId = useOrderStore.getState().currentStationId;
+
+      if (!stationId) {
+        console.warn("[PaymentLocking] No station ID for unlock");
+        return;
+      }
+
+      await OrderService.unlockOrderForPayment(supabase, orderId, stationId);
+
+      // Clear local lock state
+      set({
+        lockedOrderId: null,
+        lockExpiresAt: null,
+      });
+
+      // Clear from conflict store
+      useConflictStore.getState().clearPaymentLock(orderId);
+
+      console.log("[PaymentLocking] Lock released:", orderId);
+    } catch (error) {
+      console.error("[PaymentLocking] Error releasing lock:", error);
+      // Clear local state anyway - lock will expire
+      set({
+        lockedOrderId: null,
+        lockExpiresAt: null,
+      });
+    }
+  },
+
+  checkAndRefreshLock: async () => {
+    const { lockedOrderId, lockExpiresAt } = get();
+
+    if (!lockedOrderId || !lockExpiresAt) {
+      return true; // No lock to refresh
+    }
+
+    // Check if lock is about to expire (within 15 seconds)
+    const expiresAt = new Date(lockExpiresAt).getTime();
+    const now = Date.now();
+    const timeRemaining = expiresAt - now;
+
+    if (timeRemaining > 15000) {
+      return true; // Still have plenty of time
+    }
+
+    if (timeRemaining <= 0) {
+      // Lock has expired
+      set({
+        lockedOrderId: null,
+        lockExpiresAt: null,
+      });
+      return false;
+    }
+
+    // Try to refresh the lock by acquiring a new one
+    const order = useOrderStore.getState().ordersByDbId[lockedOrderId];
+    if (!order) {
+      return false;
+    }
+
+    const version = (order as any).sync_version ?? 0;
+    return await get().lockOrderForPayment(lockedOrderId, version);
   },
 }));

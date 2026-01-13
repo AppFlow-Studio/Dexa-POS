@@ -12,7 +12,7 @@
  */
 
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
-import { isRemoteOrder } from "@/utils/orderIdHelpers";
+import { isLocalOrder } from "@/utils/orderIdHelpers";
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from "@react-native-community/netinfo";
 // @ts-ignore
@@ -90,6 +90,11 @@ export interface OfflineOperation {
   dependsOn?: string; // ID of operation this depends on (must complete first)
   entityKey?: string; // Unique key for collapsing (e.g., "item:localItemId")
   contextSnapshot?: Record<string, any>; // Full context at time of queueing
+  // Phase 6: Operation bundling for atomic execution
+  bundleId?: string;           // Groups related operations for atomic execution
+  bundleSequence?: number;     // Order within bundle (0-indexed)
+  rollbackOnBundleFailure?: boolean; // Whether to rollback if bundle fails
+  expectedVersion?: number;    // For optimistic locking checks
 }
 
 export interface SyncResult {
@@ -372,16 +377,9 @@ function findCollapseTarget(
 export async function queueOperation(
   op: Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">
 ): Promise<string> {
-  // Phase 2: Guard - Never queue operations for remote orders
-  // Remote orders are "guests" in our store and don't participate in sync operations
-  if (op.localOrderId && isRemoteOrder(op.localOrderId)) {
-    console.log(
-      "[OfflineSync] Rejected remote order operation:",
-      op.type,
-      op.localOrderId
-    );
-    return ""; // Return empty string to indicate rejection
-  }
+  // Phase 5: All visible orders can have operations queued
+  // Local orders (order_xxx) need CREATE_ORDER first
+  // Backend orders (UUIDs) already exist and can accept item operations directly
 
   const priority = OPERATION_PRIORITY[op.type] ?? 99;
   const entityKey = generateEntityKey(op);
@@ -447,6 +445,117 @@ export async function queueDependentOperation(
 ): Promise<string> {
   const opWithDep = { ...op, dependsOn: dependsOnOperationId };
   return queueOperation(opWithDep);
+}
+
+// ============================================================================
+// Phase 6: OPERATION BUNDLING
+// ============================================================================
+
+/**
+ * Bundle options for atomic operation execution.
+ */
+export interface BundleOptions {
+  rollbackOnFailure?: boolean;  // If true, mark all ops as failed if any fail
+  expectedVersion?: number;     // Version check before executing bundle
+}
+
+/**
+ * Queue multiple operations as an atomic bundle.
+ * All operations in the bundle will be executed in sequence.
+ * If any operation fails and rollbackOnFailure is true, remaining ops are marked failed.
+ *
+ * @param operations Array of operations to bundle (executed in order)
+ * @param options Bundle execution options
+ * @returns Array of operation IDs in bundle order
+ */
+export async function queueOperationBundle(
+  operations: Array<Omit<OfflineOperation, "id" | "timestamp" | "retryCount" | "status" | "priority">>,
+  options: BundleOptions = {}
+): Promise<string[]> {
+  if (operations.length === 0) {
+    return [];
+  }
+
+  const bundleId = `bundle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const operationIds: string[] = [];
+
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
+    const priority = OPERATION_PRIORITY[op.type] ?? 99;
+    const entityKey = generateEntityKey(op);
+
+    const operation: OfflineOperation = {
+      ...op,
+      id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      retryCount: 0,
+      status: "pending",
+      priority,
+      entityKey,
+      // Bundle-specific fields
+      bundleId,
+      bundleSequence: i,
+      rollbackOnBundleFailure: options.rollbackOnFailure ?? true,
+      expectedVersion: i === 0 ? options.expectedVersion : undefined, // Only first op checks version
+      // Chain dependency within bundle
+      dependsOn: i > 0 ? operationIds[i - 1] : op.dependsOn,
+    };
+
+    pendingOperations.push(operation);
+    operationIds.push(operation.id);
+
+    console.log(
+      "[OfflineSync] Bundled operation:",
+      operation.type,
+      operation.id,
+      `(bundle: ${bundleId}, seq: ${i})`
+    );
+  }
+
+  await saveQueueToStorage();
+  onQueueChange?.(getActivePendingCount());
+
+  // If online, schedule immediate sync
+  if (isOnline) {
+    scheduleSync();
+  }
+
+  return operationIds;
+}
+
+/**
+ * Get all operations in a bundle.
+ */
+export function getBundleOperations(bundleId: string): OfflineOperation[] {
+  return pendingOperations
+    .filter((op) => op.bundleId === bundleId)
+    .sort((a, b) => (a.bundleSequence ?? 0) - (b.bundleSequence ?? 0));
+}
+
+/**
+ * Mark all remaining operations in a bundle as failed.
+ * Called when a bundle operation fails and rollbackOnBundleFailure is true.
+ */
+export async function failBundle(bundleId: string, failedOpId: string): Promise<void> {
+  pendingOperations = pendingOperations.map((op) => {
+    if (op.bundleId === bundleId && op.id !== failedOpId && op.status === "pending") {
+      return { ...op, status: "discarded" as const };
+    }
+    return op;
+  });
+
+  await saveQueueToStorage();
+  console.log("[OfflineSync] Bundle failed, discarded remaining ops:", bundleId);
+}
+
+/**
+ * Check if all operations in a bundle have completed successfully.
+ */
+export function isBundleComplete(bundleId: string): boolean {
+  const bundleOps = getBundleOperations(bundleId);
+  if (bundleOps.length === 0) return true;
+
+  return bundleOps.every((op) => op.status !== "pending" && op.status !== "processing");
 }
 
 /**
@@ -1059,6 +1168,59 @@ export async function reconcileOrderWithBackend(
       return result;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase 6: Version-based reconciliation
+    // ═══════════════════════════════════════════════════════════════════════
+    const localVersion = (localOrder as any).sync_version ?? 0;
+    const serverVersion = data.sync_version ?? 0;
+
+    // Check for pending local changes
+    const hasPendingLocalChanges =
+      localOrder.sync_status === "pending" ||
+      localOrder.items?.some((item: any) => item.sync_status === "pending");
+
+    // Track version mismatch for reporting
+    if (serverVersion > localVersion) {
+      console.log(
+        "[Reconciliation] Version mismatch - local:",
+        localVersion,
+        "server:",
+        serverVersion
+      );
+
+      if (hasPendingLocalChanges) {
+        // Check if we can merge (non-overlapping changes)
+        const localPendingItems = localOrder.items?.filter(
+          (item: any) => item.sync_status === "pending" || !item.db_order_item_id
+        ) || [];
+
+        const serverItemIds = new Set(
+          (data.items || []).map((item: any) => item.id)
+        );
+
+        // Local pending items that don't exist on server can be pushed
+        const nonConflictingLocalItems = localPendingItems.filter(
+          (item: any) => !item.db_order_item_id || !serverItemIds.has(item.db_order_item_id)
+        );
+
+        if (nonConflictingLocalItems.length > 0) {
+          console.log(
+            "[Reconciliation] Merge possible - pushing",
+            nonConflictingLocalItems.length,
+            "non-conflicting local items"
+          );
+          // These will be synced in the next queue processing
+        }
+      }
+    } else if (serverVersion < localVersion && !hasPendingLocalChanges) {
+      console.log(
+        "[Reconciliation] Local version newer - skipping server merge"
+      );
+      // Local is newer and synced - no need to pull from server
+      result.success = true;
+      return result;
+    }
+
     // Build a map of backend items by their ID
     const backendItemsMap = new Map<string, any>();
     (data.items || []).forEach((item: any) => {
@@ -1169,15 +1331,20 @@ export async function reconcileOrderWithBackend(
     });
 
     // Update local order with reconciled state
+    // Phase 6: Include sync_version in reconciled state
     updateLocalOrder({
       items: reconciledItems,
       total_amount: data.total_amount,
       total_tax: data.tax_amount,
       order_status: data.status,
+      sync_version: serverVersion, // Phase 6: Update local version to match server
+      amount_paid: data.amount_paid,
+      amount_due: data.amount_due,
+      cash_amount_due: data.cash_amount_due,
     });
 
     result.success = true;
-    console.log("[Reconciliation] Complete:", result);
+    console.log("[Reconciliation] Complete:", result, "- sync_version updated to:", serverVersion);
 
     return result;
   } catch (err: any) {

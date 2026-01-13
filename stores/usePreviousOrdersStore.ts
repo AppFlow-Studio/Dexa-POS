@@ -98,7 +98,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         refundedAmount: 0,
         originalTotal: finalTotal,
         payments: order.payments,
-        service_location_id: order.service_location_id, // Add this line
+        service_location_id: order.service_location_id,
+        // Station tracking for view_scope awareness
+        station_id: order.station_id,
+        station_name: order._sourceStationName || undefined,
       };
 
       set((state) => ({
