@@ -3,8 +3,11 @@ import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import {
+  ArrowLeft,
   Check,
   ChefHat,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Flame,
   Inbox,
@@ -22,6 +25,7 @@ import React, {
 } from "react";
 import {
   Animated,
+  FlatList,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -83,6 +87,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
   const { order, courseNumber, items, status, startTime, tableName } = data;
 
   const [timeElapsed, setTimeElapsed] = useState(getTimeElapsed(startTime));
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // Double-tap detection
   const lastTapRef = useRef<number>(0);
@@ -215,6 +220,83 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
 
   const buttonConfig = getButtonConfig();
 
+  const toggleItemExpanded = (itemId: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const renderItemDetails = (item: CartItem) => {
+    const details: React.ReactNode[] = [];
+
+    // Size
+    if (item.customizations?.size) {
+      details.push(
+        <Text key="size" className="text-blue-400 text-xs ml-6 mt-1">
+          Size: {item.customizations.size.name}
+        </Text>
+      );
+    }
+
+    // Modifiers
+    if (
+      item.customizations?.modifiers &&
+      item.customizations.modifiers.length > 0
+    ) {
+      item.customizations.modifiers.forEach((mod, modIndex) => {
+        const optionNames = mod.options.map((opt) => opt.name).join(", ");
+        details.push(
+          <View key={`mod-${modIndex}`} className="ml-6 mt-1">
+            <Text className="text-purple-400 text-xs">
+              • {mod.categoryName}: {optionNames}
+            </Text>
+          </View>
+        );
+      });
+    }
+
+    // Add-ons
+    if (item.customizations?.addOns && item.customizations.addOns.length > 0) {
+      item.customizations.addOns.forEach((addon, addonIndex) => {
+        details.push(
+          <Text
+            key={`addon-${addonIndex}`}
+            className="text-green-400 text-xs ml-6 mt-1"
+          >
+            + {addon.name} (+${addon.price.toFixed(2)})
+          </Text>
+        );
+      });
+    }
+
+    // Notes
+    if (item.customizations?.notes) {
+      details.push(
+        <Text
+          key="notes"
+          className="text-yellow-500 text-xs italic ml-6 mt-1"
+          numberOfLines={2}
+        >
+          "{item.customizations.notes}"
+        </Text>
+      );
+    }
+
+    return details.length > 0 ? (
+      details
+    ) : (
+      <Text className="text-gray-500 text-xs ml-6 mt-1 italic">
+        No special instructions
+      </Text>
+    );
+  };
+
   return (
     <TouchableOpacity activeOpacity={1} onPress={handleDoubleTap}>
       <Animated.View
@@ -284,46 +366,70 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
 
         {/* Items */}
         <View style={{ padding: 8, backgroundColor: "#252528" }}>
-          {items.slice(0, 4).map((item, index) => (
-            <View
-              key={`${item.id}_${index}`}
-              className={`flex-row items-start ${
-                index !== Math.min(items.length - 1, 3) ? "mb-2" : ""
-              }`}
-            >
+          {items.slice(0, 4).map((item, index) => {
+            const itemKey = `${item.id}_${index}`;
+            const isExpanded = expandedItems.has(itemKey);
+            const hasDetails =
+              item.customizations?.size ||
+              (item.customizations?.modifiers &&
+                item.customizations.modifiers.length > 0) ||
+              (item.customizations?.addOns &&
+                item.customizations.addOns.length > 0) ||
+              item.customizations?.notes;
+
+            return (
               <View
-                style={{
-                  backgroundColor: "#3a3a40",
-                  width: 24,
-                  height: 24,
-                  borderRadius: 5,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginRight: 6,
-                }}
+                key={itemKey}
+                className={
+                  index !== Math.min(items.length - 1, 3) ? "mb-2" : ""
+                }
               >
-                <Text className="text-white text-sm font-bold">
-                  {item.quantity}
-                </Text>
-              </View>
-              <View className="flex-1">
-                <Text
-                  className="text-white text-sm font-medium"
-                  numberOfLines={1}
+                <TouchableOpacity
+                  onPress={() => hasDetails && toggleItemExpanded(itemKey)}
+                  activeOpacity={hasDetails ? 0.7 : 1}
+                  className="flex-row items-start"
                 >
-                  {item.name}
-                </Text>
-                {item.customizations?.notes && (
-                  <Text
-                    className="text-yellow-500 text-xs italic"
-                    numberOfLines={1}
+                  <View
+                    style={{
+                      backgroundColor: "#3a3a40",
+                      width: 24,
+                      height: 24,
+                      borderRadius: 5,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      marginRight: 6,
+                    }}
                   >
-                    "{item.customizations.notes}"
-                  </Text>
+                    <Text className="text-white text-sm font-bold">
+                      {item.quantity}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      className="text-white text-sm font-medium"
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </Text>
+                  </View>
+                  {hasDetails && (
+                    <View style={{ paddingLeft: 4 }}>
+                      {isExpanded ? (
+                        <ChevronUp size={14} color="#9ca3af" />
+                      ) : (
+                        <ChevronDown size={14} color="#9ca3af" />
+                      )}
+                    </View>
+                  )}
+                </TouchableOpacity>
+                {isExpanded && (
+                  <View style={{ paddingBottom: 4 }}>
+                    {renderItemDetails(item)}
+                  </View>
                 )}
               </View>
-            </View>
-          ))}
+            );
+          })}
           {items.length > 4 && (
             <Text className="text-gray-500 text-xs text-center mt-1">
               +{items.length - 4} more items
@@ -351,6 +457,9 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
 };
 
 // Column Component
+const MIN_CARD_HEIGHT = 140;
+const MAX_VISIBLE_ROWS = 4;
+
 interface KDSColumnProps {
   title: string;
   count: number;
@@ -359,6 +468,8 @@ interface KDSColumnProps {
   headerColor: string;
   cards: KDSCardData[];
   emptyMessage: string;
+  isFocused: boolean;
+  onHeaderPress: () => void;
   onStartCooking: (orderId: string, itemIds: string[]) => void;
   onMarkReady: (orderId: string, itemIds: string[]) => void;
   onMarkServed: (orderId: string, itemIds: string[]) => void;
@@ -372,10 +483,61 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
   headerColor,
   cards,
   emptyMessage,
+  isFocused,
+  onHeaderPress,
   onStartCooking,
   onMarkReady,
   onMarkServed,
 }) => {
+  const [containerHeight, setContainerHeight] = useState(0);
+
+  // Calculate card height based on number of cards and available space
+  const getCardStyle = () => {
+    if (cards.length === 0 || containerHeight === 0) return {};
+
+    const availableHeight = containerHeight - 20; // Account for padding
+
+    if (cards.length < MAX_VISIBLE_ROWS) {
+      // Stretch cards to fill available space
+      const cardHeight = Math.max(
+        availableHeight / cards.length,
+        MIN_CARD_HEIGHT
+      );
+      return { height: cardHeight };
+    } else {
+      // Fixed height when 4+ cards, allow scrolling
+      const cardHeight = Math.max(
+        availableHeight / MAX_VISIBLE_ROWS,
+        MIN_CARD_HEIGHT
+      );
+      return { height: cardHeight };
+    }
+  };
+
+  const renderCard = (card: KDSCardData) => (
+    <KDSOrderCard
+      data={card}
+      onStartCooking={() =>
+        onStartCooking(
+          card.order.id,
+          card.items.map((i) => i.id)
+        )
+      }
+      onMarkReady={() =>
+        onMarkReady(
+          card.order.id,
+          card.items.map((i) => i.id)
+        )
+      }
+      onMarkServed={() =>
+        onMarkServed(
+          card.order.id,
+          card.items.map((i) => i.id)
+        )
+      }
+    />
+  );
+
   return (
     <View
       style={{
@@ -386,8 +548,10 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
         overflow: "hidden",
       }}
     >
-      {/* Column Header */}
-      <View
+      {/* Column Header - Tappable */}
+      <TouchableOpacity
+        onPress={onHeaderPress}
+        activeOpacity={0.8}
         style={{
           backgroundColor: headerColor,
           paddingVertical: 10,
@@ -398,6 +562,9 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
         }}
       >
         <View className="flex-row items-center">
+          {isFocused && (
+            <ArrowLeft size={18} color="white" style={{ marginRight: 8 }} />
+          )}
           {icon}
           <Text className="text-white font-bold text-base ml-2">{title}</Text>
         </View>
@@ -411,47 +578,46 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
         >
           <Text className="text-white font-bold text-sm">{count}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
 
-      {/* Cards List */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {cards.length === 0 ? (
-          <View className="items-center justify-center py-8">
-            <Text className="text-gray-500 text-sm text-center">
-              {emptyMessage}
-            </Text>
-          </View>
-        ) : (
-          cards.map((card) => (
-            <KDSOrderCard
-              key={card.id}
-              data={card}
-              onStartCooking={() =>
-                onStartCooking(
-                  card.order.id,
-                  card.items.map((i) => i.id)
-                )
-              }
-              onMarkReady={() =>
-                onMarkReady(
-                  card.order.id,
-                  card.items.map((i) => i.id)
-                )
-              }
-              onMarkServed={() =>
-                onMarkServed(
-                  card.order.id,
-                  card.items.map((i) => i.id)
-                )
-              }
-            />
-          ))
-        )}
-      </ScrollView>
+      {/* Cards Container */}
+      {isFocused ? (
+        // Focused mode: 4-column grid using FlatList
+        <FlatList
+          data={cards}
+          keyExtractor={(item) => item.id}
+          numColumns={4}
+          contentContainerStyle={{ padding: 8, paddingBottom: 20 }}
+          columnWrapperStyle={{ gap: 8 }}
+          renderItem={({ item }) => (
+            <View style={{ flex: 1, marginBottom: 8 }}>{renderCard(item)}</View>
+          )}
+          ListEmptyComponent={
+            <View className="flex-1 items-center justify-center py-8">
+              <Text className="text-gray-500 text-sm text-center">
+                {emptyMessage}
+              </Text>
+            </View>
+          }
+        />
+      ) : (
+        // Unfocused mode: Simple scrollable list
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 4, paddingBottom: 20 }}
+          showsVerticalScrollIndicator={true}
+        >
+          {cards.length === 0 ? (
+            <View className="items-center justify-center py-8">
+              <Text className="text-gray-500 text-sm text-center">
+                {emptyMessage}
+              </Text>
+            </View>
+          ) : (
+            cards.map((card) => <View key={card.id}>{renderCard(card)}</View>)
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 };
@@ -466,6 +632,7 @@ const KitchenDisplayScreen = () => {
   const { tables } = useFloorPlanStore();
   const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
 
   // Load coursing data for all active orders
   useEffect(() => {
@@ -641,42 +808,97 @@ const KitchenDisplayScreen = () => {
 
       {/* Columns */}
       <View style={{ flex: 1, flexDirection: "row", padding: 4 }}>
-        <KDSColumn
-          title="PENDING"
-          count={counts.pending}
-          icon={<Inbox size={18} color="#fbbf24" />}
-          backgroundColor="#1f1d1a"
-          headerColor="#92400e"
-          cards={pendingCards}
-          emptyMessage="No pending orders"
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
-        />
-        <KDSColumn
-          title="COOKING"
-          count={counts.cooking}
-          icon={<Flame size={18} color="#fb923c" />}
-          backgroundColor="#1f1a18"
-          headerColor="#c2410c"
-          cards={cookingCards}
-          emptyMessage="No orders cooking"
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
-        />
-        <KDSColumn
-          title="READY"
-          count={counts.ready}
-          icon={<Check size={18} color="#4ade80" />}
-          backgroundColor="#1a1f1a"
-          headerColor="#15803d"
-          cards={readyCards}
-          emptyMessage="No orders ready"
-          onStartCooking={handleStartCooking}
-          onMarkReady={handleMarkReady}
-          onMarkServed={handleMarkServed}
-        />
+        {focusedColumn === "PENDING" ? (
+          <KDSColumn
+            title="PENDING"
+            count={counts.pending}
+            icon={<Inbox size={18} color="#60a5fa" />}
+            backgroundColor="#1a1f2e"
+            headerColor="#1e40af"
+            cards={pendingCards}
+            emptyMessage="No pending orders"
+            isFocused={true}
+            onHeaderPress={() => setFocusedColumn(null)}
+            onStartCooking={handleStartCooking}
+            onMarkReady={handleMarkReady}
+            onMarkServed={handleMarkServed}
+          />
+        ) : focusedColumn === "COOKING" ? (
+          <KDSColumn
+            title="COOKING"
+            count={counts.cooking}
+            icon={<Flame size={18} color="#fb923c" />}
+            backgroundColor="#1f1a18"
+            headerColor="#c2410c"
+            cards={cookingCards}
+            emptyMessage="No orders cooking"
+            isFocused={true}
+            onHeaderPress={() => setFocusedColumn(null)}
+            onStartCooking={handleStartCooking}
+            onMarkReady={handleMarkReady}
+            onMarkServed={handleMarkServed}
+          />
+        ) : focusedColumn === "READY" ? (
+          <KDSColumn
+            title="READY"
+            count={counts.ready}
+            icon={<Check size={18} color="#4ade80" />}
+            backgroundColor="#1a1f1a"
+            headerColor="#15803d"
+            cards={readyCards}
+            emptyMessage="No orders ready"
+            isFocused={true}
+            onHeaderPress={() => setFocusedColumn(null)}
+            onStartCooking={handleStartCooking}
+            onMarkReady={handleMarkReady}
+            onMarkServed={handleMarkServed}
+          />
+        ) : (
+          <>
+            <KDSColumn
+              title="PENDING"
+              count={counts.pending}
+              icon={<Inbox size={18} color="#60a5fa" />}
+              backgroundColor="#1a1f2e"
+              headerColor="#1e40af"
+              cards={pendingCards}
+              emptyMessage="No pending orders"
+              isFocused={false}
+              onHeaderPress={() => setFocusedColumn("PENDING")}
+              onStartCooking={handleStartCooking}
+              onMarkReady={handleMarkReady}
+              onMarkServed={handleMarkServed}
+            />
+            <KDSColumn
+              title="COOKING"
+              count={counts.cooking}
+              icon={<Flame size={18} color="#fb923c" />}
+              backgroundColor="#1f1a18"
+              headerColor="#c2410c"
+              cards={cookingCards}
+              emptyMessage="No orders cooking"
+              isFocused={false}
+              onHeaderPress={() => setFocusedColumn("COOKING")}
+              onStartCooking={handleStartCooking}
+              onMarkReady={handleMarkReady}
+              onMarkServed={handleMarkServed}
+            />
+            <KDSColumn
+              title="READY"
+              count={counts.ready}
+              icon={<Check size={18} color="#4ade80" />}
+              backgroundColor="#1a1f1a"
+              headerColor="#15803d"
+              cards={readyCards}
+              emptyMessage="No orders ready"
+              isFocused={false}
+              onHeaderPress={() => setFocusedColumn("READY")}
+              onStartCooking={handleStartCooking}
+              onMarkReady={handleMarkReady}
+              onMarkServed={handleMarkServed}
+            />
+          </>
+        )}
       </View>
     </View>
   );
