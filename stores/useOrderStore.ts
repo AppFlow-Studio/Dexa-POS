@@ -20,7 +20,7 @@ import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
-
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 // import {
 //   mapLocalToBackend,
 //   registerLocalId

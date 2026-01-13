@@ -15,8 +15,6 @@ import {
   calculateItemEffectiveCashPrice,
   useOrderStore,
 } from "./useOrderStore";
-import { createBrowserClient } from "@/utils/supabase/client";
-
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
   | "review"
