@@ -1,8 +1,29 @@
+-- ============================================
+-- add_order_item_v2: Captures tax rate at insert time
+-- Called by your addItemToBackend
+-- IMPORTANT: INSERT BASE PRICES, MODIFIERS WILL BE APPLIED IN THE FUNCTION ITSELF
+-- ============================================
+CREATE OR REPLACE FUNCTION add_order_item_v2(
+    p_order_id uuid,
+    p_menu_item_id uuid DEFAULT NULL,
+    p_quantity integer DEFAULT 1,
+    p_unit_price numeric DEFAULT 0, -- Card price (effective price NO MODIFIERS)
+    p_cash_unit_price numeric DEFAULT NULL, -- Cash price (base cash price NO MODIFIERS)
+    p_item_name text DEFAULT NULL,
+    p_category_name text DEFAULT NULL,
+    p_location_exclusive_item_id uuid DEFAULT NULL,
+    p_selected_size_id uuid DEFAULT NULL,
+    p_selected_size_name text DEFAULT NULL,
+    p_size_price_modifier numeric DEFAULT 0,
+    p_modifiers jsonb DEFAULT NULL,
+    p_special_instructions text DEFAULT NULL,
+    p_course_number integer DEFAULT 1,
+
+)
 DECLARE
     v_location_id uuid;
     v_merchant_id uuid;
-    v_check_status text;
-    v_tax_rate numeric := 8.0;  -- Default fallback
+    v_tax_rate numeric := 0;  -- Default fallback
     v_is_tax_exempt boolean := false;
     v_item_id uuid;
     
@@ -18,6 +39,7 @@ DECLARE
     
     v_cash_discount_rate numeric := 0.04;
     v_has_active_discount boolean := false;
+    v_new_sync_version integer;
 BEGIN
      -- ============================================
     -- 1. Validate & Get Order Context (with RLS)
@@ -25,22 +47,17 @@ BEGIN
     -- FOR UPDATE: Acquires exclusive row lock to prevent race conditions
     -- when multiple items are added concurrently. Second transaction waits
     -- until first completes, ensuring calculate_order_totals_fast sees all items.
-    SELECT o.location_id, o.merchant_id, o.check_status
-    INTO v_location_id, v_merchant_id, v_check_status
+    SELECT o.location_id, o.merchant_id 
+    INTO v_location_id, v_merchant_id
     FROM public.orders o
     WHERE o.id = p_order_id
       AND o.status NOT IN ('completed', 'cancelled', 'void')
       AND o.merchant_id = user_merchant_id()
       AND o.location_id = ANY(user_location_ids())
     FOR UPDATE;
-
+    
     IF v_location_id IS NULL THEN
         RAISE EXCEPTION 'Order not found or access denied: %', p_order_id;
-    END IF;
-
-    -- Validate check is not closed
-    IF v_check_status = 'Closed' THEN
-        RAISE EXCEPTION 'Cannot add items to a closed check. Please reopen the check first.';
     END IF;
     
     
@@ -50,7 +67,7 @@ BEGIN
     IF p_menu_item_id IS NOT NULL THEN
         -- Get tax rate and exemption status in one query
         SELECT 
-            COALESCE(tr.percentage, 8.0),
+            COALESCE(tr.percentage, 0),
             COALESCE(lio.is_tax_exempt, mi.is_tax_exempt, false)
         INTO v_tax_rate, v_is_tax_exempt
         FROM public.menu_items mi
@@ -69,7 +86,7 @@ BEGIN
         END IF;
     ELSE
         -- Open item - get default rate
-        SELECT COALESCE(tr.percentage, 8.0)
+        SELECT COALESCE(tr.percentage, 0)
         INTO v_tax_rate
         FROM public.tax_rates tr
         WHERE tr.location_id = v_location_id 
@@ -79,7 +96,7 @@ BEGIN
     END IF;
     
     -- Ensure we have a rate
-    v_tax_rate := COALESCE(v_tax_rate, 8.0);
+    v_tax_rate := COALESCE(v_tax_rate, 0);
 
     -- ============================================
     -- 3. Calculate Modifier Total
@@ -228,7 +245,8 @@ BEGIN
     -- 7. Recalculate Order Totals
     -- ============================================
     -- PERFORM calculate_order_totals_fast(p_order_id);
-    
+    v_new_sync_version := increment_order_sync_version(p_order_id);
+
     -- ============================================
     -- 8. Return Result
     -- ============================================
@@ -244,6 +262,7 @@ BEGIN
         'cash_subtotal', v_cash_subtotal,
         'tax_rate', v_tax_rate,
         'tax_amount', v_tax_amount,
-        'cash_tax_amount', v_cash_tax_amount
+        'cash_tax_amount', v_cash_tax_amount,
+        'sync_version', v_new_sync_version
     );
 END;

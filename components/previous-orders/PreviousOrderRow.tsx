@@ -1,7 +1,6 @@
-import { PreviousOrder } from "@/lib/types";
-import { Href, Link } from "expo-router";
+import { OrderProfile } from "@/lib/types";
 import { CheckCircle, DollarSign, MoreHorizontal, Pencil, Printer, RefreshCw, Repeat2, Trash2 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import { DimensionValue, Text, TouchableOpacity, View } from "react-native";
 import {
   DropdownMenu,
@@ -11,13 +10,14 @@ import {
 } from "../ui/dropdown-menu";
 
 interface PreviousOrderRowProps {
-  order: PreviousOrder;
-  onViewNotes: (order: PreviousOrder) => void;
-  onPrint: (order: PreviousOrder) => void;
-  onDelete: (order: PreviousOrder) => void;
-  onCloseCheck?: (order: PreviousOrder) => void;
-  onReopenCheck?: (order: PreviousOrder) => void;
-  onRefund?: (order: PreviousOrder) => void;
+  order: OrderProfile;
+  onViewNotes: (order: OrderProfile) => void;
+  onPrint: (order: OrderProfile) => void;
+  onDelete: (order: OrderProfile) => void;
+  onCloseCheck?: (order: OrderProfile) => void;
+  onReopenCheck?: (order: OrderProfile) => void;
+  onRefund?: (order: OrderProfile) => void;
+  onDoublePress?: (order: OrderProfile) => void;
 }
 
 const statusClasses: Record<string, string> = {
@@ -50,51 +50,83 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
   onCloseCheck,
   onReopenCheck,
   onRefund,
+  onDoublePress,
 }) => {
-  const orderPath = `/previous-orders/${order.orderId}`;
+  const [lastPress, setLastPress] = useState<number>(0);
+  const DOUBLE_PRESS_DELAY = 500; // milliseconds
+
+  const handlePress = () => {
+    const now = Date.now();
+    if (now - lastPress < DOUBLE_PRESS_DELAY && lastPress !== 0) {
+      // Double press detected
+      if (onDoublePress) {
+        onDoublePress(order);
+      }
+      setLastPress(0); // Reset
+    } else {
+      // Single press - just update timestamp
+      setLastPress(now);
+    }
+  };
+
+  // Format date and time from opened_at
+  const orderDate = order.opened_at
+    ? new Date(order.opened_at).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "-";
+
+  const orderTime = order.opened_at
+    ? new Date(order.opened_at).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "-";
 
   return (
-    <Link href={orderPath as Href} asChild>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        className="flex-row items-center p-4 border-b border-gray-700"
-      >
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={handlePress}
+      className="flex-row items-center p-4 border-b border-gray-700"
+    >
         <Text
           style={{ width: columnWidths.serial }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
-          {order.serialNo}
+          {order.display_number || order.order_number || order.id}
         </Text>
         <View style={{ width: columnWidths.date }} className="px-1.5">
           <Text className="text-lg text-white font-semibold">
-            {order.orderDate}
+            {orderDate}
           </Text>
-          <Text className="text-base text-gray-400">{order.orderTime}</Text>
+          <Text className="text-base text-gray-400">{orderTime}</Text>
         </View>
         <Text
           style={{ width: columnWidths.orderId }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
-          {order.orderId}
+          {order.order_number || order.id}
         </Text>
         <Text
           style={{ width: columnWidths.customer }}
           className="text-base font-semibold text-white px-1.5"
         >
-          {order.customer}
+          {order.customer_name || "Walk-In"}
         </Text>
         <View style={{ width: columnWidths.paymentStatus }} className="px-1.5">
           <View
             className={`px-3 py-1.5 rounded-md  self-start ${
-              statusClasses[order.paymentStatus]
+              statusClasses[order.paid_status || "Unpaid"]
             }`}
           >
             <Text
               className={`font-bold text-base ${
-                statusClasses[order.paymentStatus]
+                statusClasses[order.paid_status || "Unpaid"]
               }`}
             >
-              {order.paymentStatus}
+              {order.paid_status || "Unpaid"}
             </Text>
           </View>
         </View>
@@ -102,35 +134,35 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           style={{ width: columnWidths.server }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
-          {order.server}
+          {order.server_name || "-"}
         </Text>
         <Text
           style={{ width: columnWidths.items }}
           className="text-base font-semibold text-gray-300 text-center px-1.5"
         >
-          {order.itemCount}
+          {order.items?.length || 0}
         </Text>
         <View style={{ width: columnWidths.type }} className="px-1.5">
           <Text className="text-base font-semibold text-gray-300">
-            {order.type}
+            {order.order_type || "Dine In"}
           </Text>
           {/* Show source station for orders from other stations */}
-          {order.station_name && (
+          {order._sourceStationName && (
             <View className="flex-row items-center mt-0.5">
               <Repeat2 color="#3b82f6" size={10} />
               <Text className="text-blue-400 text-xs ml-1">
-                {order.station_name}
+                {order._sourceStationName}
               </Text>
             </View>
           )}
         </View>
         <View style={{ width: columnWidths.total }}>
           <Text className="text-base font-bold text-white px-1.5">
-            ${order.total.toFixed(2)}
+            ${order.total_amount?.toFixed(2) || "0.00"}
           </Text>
-          {order.refundedAmount != null && order.refundedAmount > 0 && (
+          {order.total_discount != null && order.total_discount > 0 && (
             <Text className="text-base text-red-400">
-              -${order.refundedAmount.toFixed(2)}
+              -${order.total_discount?.toFixed(2)}
             </Text>
           )}
         </View>
@@ -155,7 +187,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 bg-[#303030] border-gray-600">
               {/* Close Check (if paid and not closed) */}
-              {order.paymentStatus === "Paid" && order.checkStatus !== "Closed" && onCloseCheck && (
+              {order.paid_status === "Paid" && order.check_status !== "Closed" && onCloseCheck && (
                 <DropdownMenuItem
                   onTouchStart={(e) => e.stopPropagation()}
                   onPress={() => onCloseCheck(order)}
@@ -166,7 +198,7 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
               )}
 
               {/* Reopen Check (if closed) */}
-              {order.checkStatus === "Closed" && onReopenCheck && (
+              {order.check_status === "Closed" && onReopenCheck && (
                 <DropdownMenuItem
                   onTouchStart={(e) => e.stopPropagation()}
                   onPress={() => onReopenCheck(order)}
@@ -212,7 +244,6 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           </DropdownMenu>
         </View>
       </TouchableOpacity>
-    </Link>
   );
 };
 

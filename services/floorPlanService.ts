@@ -185,10 +185,12 @@ export class FloorPlanService {
 
   static async advanceCourse(
     client: SupabaseClient,
-    sessionId: string
+    sessionId: string,
+    staffId?: string
   ): Promise<{ data: { current_course: number } | null; error: any }> {
     const { data, error } = await client.rpc("advance_course", {
       p_session_id: sessionId,
+      p_staff_id: staffId,
     });
     return { data, error };
   }

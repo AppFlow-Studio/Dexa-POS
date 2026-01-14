@@ -186,12 +186,14 @@ export interface SeatGuestsParams {
   p_reservation_id?: string;
   p_waitlist_id?: string;
   p_create_order?: boolean;
+  p_staff_id?: string;
 }
 
 export interface UpdateTableSessionStatusParams {
   p_session_id: string;
   p_status: TableStatus;
   p_notes?: string;
+  p_staff_id?: string;
 }
 
 export interface TransferTableSessionParams {

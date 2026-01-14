@@ -122,6 +122,14 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
     transform: [{ translateX: translateX.value }],
   }));
 
+  // Delete button opacity - only visible when swiping
+  const deleteButtonStyle = useAnimatedStyle(() => ({
+    opacity:
+      translateX.value < -10
+        ? withTiming(1, { duration: 100 })
+        : withTiming(0, { duration: 100 }),
+  }));
+
   // Pan gesture to reveal delete
   // OPTIMIZED: Memoize gesture to prevent recreation on each render
   const MAX_LEFT = -DELETE_BUTTON_WIDTH;
@@ -231,14 +239,17 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
       style={isActive ? { shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 8 } : undefined}
     >
       {isEditable && !isVoided && (
-        <View className="absolute top-0 right-1 h-full justify-center items-end self-center z-10">
+        <Animated.View
+          style={deleteButtonStyle}
+          className="absolute top-0 right-1 h-full justify-center items-end self-center z-10"
+        >
           <TouchableOpacity
             onPress={handleDelete}
             className="w-20 h-[85%] bg-red-500 items-center rounded-lg justify-center"
           >
             <Trash2 color="white" size={20} />
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       )}
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>

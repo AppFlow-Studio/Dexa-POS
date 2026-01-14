@@ -3,10 +3,12 @@ import { OrderProfile } from "@/lib/types";
 import { useCoursingStore } from "@/stores/useCoursingStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import ReceiptModal from "@/components/receipts/ReceiptModal";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
+import { PaymentStatusBadge, type PaymentStatus } from "./PaymentStatusBadge";
 import { CheckCircle, Clock, Send } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -22,12 +24,8 @@ import ConfirmationModal from "../settings/reset-application/ConfirmationModal";
 const formatDuration = (milliseconds: number): string => {
   if (isNaN(milliseconds) || milliseconds < 0) return "0m";
   const totalSeconds = Math.floor(milliseconds / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(
-    2,
-    "0"
-  );
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const minutes = Math.floor(totalSeconds / 60)
+  return `${minutes}m`;
 };
 
 const StatusIndicator = ({
@@ -53,7 +51,7 @@ const StatusIndicator = ({
   // Note: Previous logic mapped "In Use" to blue.
   // We should map DB usage statuses to blue properly.
 
-  return <View className={`w-3 h-3 rounded-full ${color}`} />;
+  return <View className={`w-2 h-2 rounded-full ${color}`} />;
 };
 
 const QuickActionButton: React.FC<{
@@ -87,6 +85,22 @@ const useTableData = (table: FloorPlanObject) => {
   const { orders, ordersById } = useOrderStore();
   const { tables } = useFloorPlanStore();
 
+  // Get session order ID for payment calculations
+  const sessionOrderId = table.session?.order_id || null;
+  const orderIdForPayments = useMemo(() => {
+    if (!sessionOrderId) return null;
+    // Try direct lookup first
+    if (ordersById[sessionOrderId]) return sessionOrderId;
+    // Fallback: search by db_order_id
+    const order = Object.values(ordersById).find(
+      (o) => o.db_order_id === sessionOrderId
+    );
+    return order?.id || null;
+  }, [sessionOrderId, ordersById]);
+
+  // Get payment-aware totals for this order
+  const orderTotals = useOrderTotals(orderIdForPayments);
+
   // table.session?.merged_tables -> array of strings (IDs)
 
   return useMemo(() => {
@@ -110,6 +124,9 @@ const useTableData = (table: FloorPlanObject) => {
         subtotal: 0,
         tax: 0,
         total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: "Unpaid" as PaymentStatus,
         seatedTime: null,
         server: "N/A",
         orders: [],
@@ -135,6 +152,9 @@ const useTableData = (table: FloorPlanObject) => {
         subtotal: 0,
         tax: 0,
         total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: "Unpaid" as PaymentStatus,
         seatedTime: table.session?.seated_at
           ? new Date(table.session.seated_at)
           : null,
@@ -173,6 +193,9 @@ const useTableData = (table: FloorPlanObject) => {
         subtotal: 0,
         tax: 0,
         total: 0,
+        amountDue: 0,
+        amountPaid: 0,
+        paidStatus: "Unpaid" as PaymentStatus,
         seatedTime: table.session?.seated_at
           ? new Date(table.session.seated_at)
           : null,
@@ -190,16 +213,31 @@ const useTableData = (table: FloorPlanObject) => {
     const seatedTime = order.opened_at ? new Date(order.opened_at) : null;
     const serverDisplay = order.server_name || "N/A";
 
-    // Calculate subtotal and tax from items
-    const subtotal = order.items.reduce(
+    // Use payment-aware totals from orderTotals selector
+    // Falls back to simple calculation if selector not available
+    const subtotal = orderTotals?.subtotal ?? order.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
-    const tax = order.items.reduce(
+    const tax = orderTotals?.tax ?? order.items.reduce(
       (sum, item) => sum + (item.taxAmount || 0),
       0
     );
-    const total = order.total_amount || subtotal + tax;
+    const total = orderTotals?.total ?? order.total_amount ?? (subtotal + tax);
+
+    // Payment information (Phase 3: Fine Dining Table Management)
+    const amountDue = orderTotals?.amountDue ?? total;
+    const amountPaid = (order.amount_paid ?? 0);
+
+    // Determine payment status
+    let paidStatus: PaymentStatus = "Unpaid";
+    if (amountPaid >= total && total > 0) {
+      paidStatus = "Paid";
+    } else if (amountPaid > 0) {
+      paidStatus = "Partial";
+    } else if (order.payments?.some(p => p.sync_status === "pending")) {
+      paidStatus = "Pending";
+    }
 
     return {
       isMerged: isMerged,
@@ -215,224 +253,246 @@ const useTableData = (table: FloorPlanObject) => {
       subtotal,
       tax,
       total,
+      amountDue,
+      amountPaid,
+      paidStatus,
       seatedTime: seatedTime || (table.session?.seated_at ? new Date(table.session.seated_at) : null),
       server: serverDisplay,
       orders: groupOrders,
     };
-  }, [table, ordersById, tables]);
+  }, [table, ordersById, tables, orderTotals]);
 };
 
-const ExpandedView: React.FC<{
-  tableData: NonNullable<ReturnType<typeof useTableData>>;
-  onNavigateToOrder: () => void;
-  onToggleExpand: () => void;
-  table: FloorPlanObject; // Need table obj to get IDs
-}> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
-  const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
-  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
-  const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
-  const { show } = useToast();
-  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
-  const [isReceiptOpen, setReceiptOpen] = useState(false);
-  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+// const ExpandedView: React.FC<{
+//   tableData: NonNullable<ReturnType<typeof useTableData>>;
+//   onNavigateToOrder: () => void;
+//   onToggleExpand: () => void;
+//   table: FloorPlanObject; // Need table obj to get IDs
+// }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
+// //   const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
+// //   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
+// //   const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
+// //   const { show } = useToast();
+// //   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+// //   const [isReceiptOpen, setReceiptOpen] = useState(false);
+// //   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
-  const groupedItems = useMemo(() => {
-    const groups: Record<
-      number,
-      { orderId: string; items: (typeof tableData.orders)[0]["items"] }
-    > = {};
-    tableData.orders.forEach((order) => {
-      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
+// //   const groupedItems = useMemo(() => {
+// //     const groups: Record<
+// //       number,
+// //       { orderId: string; items: (typeof tableData.orders)[0]["items"] }
+// //     > = {};
+// //     tableData.orders.forEach((order) => {
+// //       const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
 
-      order.items.forEach((item) => {
-        const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
-        if (!groups[courseNumber])
-          groups[courseNumber] = { orderId: order.id, items: [] };
-        groups[courseNumber].items.push(item);
-      });
-    });
-    return groups;
-  }, [tableData.orders, coursingByOrderId]);
+// //       order.items.forEach((item) => {
+// //         const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
+// //         if (!groups[courseNumber])
+// //           groups[courseNumber] = { orderId: order.id, items: [] };
+// //         groups[courseNumber].items.push(item);
+// //       });
+// //     });
+// //     return groups;
+// //   }, [tableData.orders, coursingByOrderId]);
 
-  const handleCloseTable = async () => {
-    if (!tableData) return;
+// //   const handleCloseTable = async () => {
+// //     if (!tableData) return;
 
-    // We update session status. Assuming we have session ID.
-    // tableData doesn't have session ID explicitly returned in my hook above?
-    // table object has it.
+// //     // We update session status. Assuming we have session ID.
+// //     // tableData doesn't have session ID explicitly returned in my hook above?
+// //     // table object has it.
 
-    if (!table.session?.id) {
-      show({
-        title: "Error",
-        message: "No active session found.",
-        type: "error",
-      });
-      return;
-    }
-    const sessionId = table.session.id;
+// //     if (!table.session?.id) {
+// //       show({
+// //         title: "Error",
+// //         message: "No active session found.",
+// //         type: "error",
+// //       });
+// //       return;
+// //     }
+// //     const sessionId = table.session.id;
 
-    if (tableData.orders.length === 0) {
-      // Just seated or empty. Free up.
-      await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
-      // Actually DB might require 'available' to clear session?
-      // updateSessionStatus usually updates status field.
-      // If we want to CLEAR session (remove it), we might need `closeSession`.
-      // But let's assume 'available' or 'cleaning' is fine.
-      onToggleExpand();
-      return;
-    }
+// //     if (tableData.orders.length === 0) {
+// //       // Just seated or empty. Free up.
+// //       await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
+// //       // Actually DB might require 'available' to clear session?
+// //       // updateSessionStatus usually updates status field.
+// //       // If we want to CLEAR session (remove it), we might need `closeSession`.
+// //       // But let's assume 'available' or 'cleaning' is fine.
+// //       onToggleExpand();
+// //       return;
+// //     }
 
-    const allOrdersArePaid = tableData.orders.every(
-      (o) => o.paid_status === "Paid"
-    );
+// //     const allOrdersArePaid = tableData.orders.every(
+// //       (o) => o.paid_status === "Paid"
+// //     );
 
-    if (allOrdersArePaid) {
-      const allItemsInGroupAreReady = tableData.orders.every((order) =>
-        order.items.every(
-          (item) =>
-            item.item_status === "Ready" || item.item_status === "Served"
-        )
-      );
+// //     if (allOrdersArePaid) {
+// //       const allItemsInGroupAreReady = tableData.orders.every((order) =>
+// //         order.items.every(
+// //           (item) =>
+// //             item.item_status === "Ready" || item.item_status === "Served"
+// //         )
+// //       );
 
-      if (allItemsInGroupAreReady) {
-        tableData.orders.forEach((order) => archiveOrder(order.id));
-        await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
-        show({
-          title: "Tables Cleared",
-          message: `Tables ${tableData.displayName} are now marked for cleaning.`,
-          type: "success",
-        });
-      } else {
-        show({
-          title: "Action Restricted",
-          message:
-            "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
-          type: "error",
-        });
-      }
-    } else {
-      const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
-      if (groupHasAnyItems) {
-        setVoidConfirmOpen(true);
-      } else {
-        tableData.orders.forEach((order) => deleteOrder(order.id));
-        await updateSessionStatus(sessionId, "available");
-      }
-    }
-  };
+// //       if (allItemsInGroupAreReady) {
+// //         tableData.orders.forEach((order) => archiveOrder(order.id));
+// //         await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
+// //         show({
+// //           title: "Tables Cleared",
+// //           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
+// //           type: "success",
+// //         });
+// //       } else {
+// //         show({
+// //           title: "Action Restricted",
+// //           message:
+// //             "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
+// //           type: "error",
+// //         });
+// //       }
+// //     } else {
+// //       const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
+// //       if (groupHasAnyItems) {
+// //         setVoidConfirmOpen(true);
+// //       } else {
+// //         tableData.orders.forEach((order) => deleteOrder(order.id));
+// //         await updateSessionStatus(sessionId, "available");
+// //       }
+// //     }
+// //   };
 
-  const onConfirmVoid = async () => {
-    if (!tableData || !table.session?.id) return;
+// //   const onConfirmVoid = async () => {
+// //     if (!tableData || !table.session?.id) return;
 
-    tableData.orders.forEach((order) => voidOrder(order.id));
-    await updateSessionStatus(table.session.id, "available");
-    setVoidConfirmOpen(false);
-    onToggleExpand();
-  };
+// //     tableData.orders.forEach((order) => voidOrder(order.id));
+// //     await updateSessionStatus(table.session.id, "available");
+// //     setVoidConfirmOpen(false);
+// //     onToggleExpand();
+// //   };
 
-  return (
-    <Animated.View
-      entering={FadeIn.duration(200)}
-      exiting={FadeOut.duration(100)}
-      className="mt-3"
-    >
-      <View className="flex-row items-center gap-4 mb-3">
-        <Text className="text-sm text-gray-300">
-          Server: {tableData.server}
-        </Text>
-        <Text className="text-sm text-gray-300">
-          Seated:{" "}
-          {tableData.seatedTime?.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
-      </View>
+// //   return (
+// //     <Animated.View
+// //       entering={FadeIn.duration(200)}
+// //       exiting={FadeOut.duration(100)}
+// //       className="mt-3"
+// //     >
+// //       <View className="flex-row items-center gap-4 mb-3">
+// //         <Text className="text-sm text-gray-300">
+// //           Server: {tableData.server}
+// //         </Text>
+// //         <Text className="text-sm text-gray-300">
+// //           Seated:{" "}
+// //           {tableData.seatedTime?.toLocaleTimeString([], {
+// //             hour: "2-digit",
+// //             minute: "2-digit",
+// //           })}
+// //         </Text>
+// //       </View>
 
-      <View className="mb-4 pr-2">
-        {Object.entries(groupedItems)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([courseNumber, { items }]) => (
-            <View key={courseNumber} className="mb-2">
-              <Text className="text-base font-semibold text-blue-400 mb-1">
-                Course {courseNumber}
-              </Text>
-              {items.map((item) => (
-                <View key={item.id} className="flex-row items-center ml-2">
-                  <Text className="text-base text-gray-300">
-                    {item.quantity}x {item.name}
-                  </Text>
-                  <View className="ml-2">
-                    {(item.item_status === "Ready" ||
-                      item.item_status === "Served") && (
-                        <CheckCircle size={14} color="#22C55E" />
-                      )}
-                    {(item.kitchen_status === "sent" ||
-                      item.item_status === "Preparing") && (
-                        <Clock size={14} color="#F59E0B" />
-                      )}
-                  </View>
-                </View>
-              ))}
-            </View>
-          ))}
-        <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-400">Subtotal</Text>
-            <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-400">Tax</Text>
-            <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
-          </View>
-          <View className="flex-row justify-between mt-1">
-            <Text className="text-base font-bold text-white">Total</Text>
-            <Text className="text-base font-bold text-white">${tableData.total?.toFixed(2)}</Text>
-          </View>
-        </View>
-      </View>
+// //       <View className="mb-4 pr-2">
+// //         {Object.entries(groupedItems)
+// //           .sort(([a], [b]) => Number(a) - Number(b))
+// //           .map(([courseNumber, { items }]) => (
+// //             <View key={courseNumber} className="mb-2">
+// //               <Text className="text-base font-semibold text-blue-400 mb-1">
+// //                 Course {courseNumber}
+// //               </Text>
+// //               {items.map((item) => (
+// //                 <View key={item.id} className="flex-row items-center ml-2">
+// //                   <Text className="text-base text-gray-300">
+// //                     {item.quantity}x {item.name}
+// //                   </Text>
+// //                   <View className="ml-2">
+// //                     {(item.item_status === "Ready" ||
+// //                       item.item_status === "Served") && (
+// //                         <CheckCircle size={14} color="#22C55E" />
+// //                       )}
+// //                     {(item.kitchen_status === "sent" ||
+// //                       item.item_status === "Preparing") && (
+// //                         <Clock size={14} color="#F59E0B" />
+// //                       )}
+// //                   </View>
+// //                 </View>
+// //               ))}
+// //             </View>
+// //           ))}
+// //         <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
+// //           <View className="flex-row justify-between">
+// //             <Text className="text-sm text-gray-400">Subtotal</Text>
+// //             <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
+// //           </View>
+// //           <View className="flex-row justify-between">
+// //             <Text className="text-sm text-gray-400">Tax</Text>
+// //             <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
+// //           </View>
+// //           <View className="flex-row justify-between mt-1">
+// //             <Text className="text-base font-semibold text-white">Total</Text>
+// //             <Text className="text-base font-semibold text-white">${tableData.total?.toFixed(2)}</Text>
+// //           </View>
 
-      <View className="flex-row items-center gap-2">
-        <QuickActionButton
-          label="Table"
-          onPress={onNavigateToOrder}
-          variant="primary"
-        />
-        <QuickActionButton
-          label="Print Bill"
-          onPress={() => setReceiptOpen(true)}
-        />
-        <QuickActionButton
-          label="Close Table"
-          onPress={handleCloseTable}
-          variant="destructive"
-        />
-      </View>
-      <ConfirmationModal
-        isOpen={isVoidConfirmOpen}
-        onClose={() => setVoidConfirmOpen(false)}
-        onConfirm={onConfirmVoid}
-        title="Void This Order?"
-        description={`No payment has been made. Do you want to void the order for ${tableData.displayName}? This cannot be undone.`}
-        confirmText="Yes, Void Order"
-        variant="destructive"
-      />
-      {tableData.orders[0] && (
-        <ReceiptModal
-          isOpen={isReceiptOpen}
-          onClose={() => setReceiptOpen(false)}
-          order={tableData.orders[0]}
-          location={selectedStore}
-          onPrint={() => {
-            // TODO: Integrate with thermal printer
-            console.log("Print receipt for order:", tableData.orders[0]?.id);
-            setReceiptOpen(false);
-          }}
-        />
-      )}
-    </Animated.View>
-  );
-};
+// //           {/* Payment Information */}
+// //           {tableData.amountPaid > 0 && (
+// //             <>
+// //               <View className="border-t border-gray-600 mt-2 pt-2" />
+// //               <View className="flex-row justify-between">
+// //                 <Text className="text-sm text-blue-400">Amount Paid</Text>
+// //                 <Text className="text-sm text-blue-400">-${tableData.amountPaid.toFixed(2)}</Text>
+// //               </View>
+// //             </>
+// //           )}
+
+// //           <View className="flex-row justify-between mt-2 items-center">
+// //             <View className="flex-row items-center gap-2">
+// //               <Text className="text-lg font-bold text-white">Amount Due</Text>
+// //               <PaymentStatusBadge status={tableData.paidStatus} size="md" />
+// //             </View>
+// //             <Text className="text-lg font-bold text-white">${tableData.amountDue.toFixed(2)}</Text>
+// //           </View>
+// //         </View>
+// //       </View>
+
+// //       <View className="flex-row items-center gap-2">
+// //         <QuickActionButton
+// //           label="Table"
+// //           onPress={onNavigateToOrder}
+// //           variant="primary"
+// //         />
+// //         <QuickActionButton
+// //           label="Print Bill"
+// //           onPress={() => setReceiptOpen(true)}
+// //         />
+// //         <QuickActionButton
+// //           label="Close Table"
+// //           onPress={handleCloseTable}
+// //           variant="destructive"
+// //         />
+// //       </View>
+// //       <ConfirmationModal
+// //         isOpen={isVoidConfirmOpen}
+// //         onClose={() => setVoidConfirmOpen(false)}
+// //         onConfirm={onConfirmVoid}
+// //         title="Void This Order?"
+// //         description={`No payment has been made. Do you want to void the order for ${tableData.displayName}? This cannot be undone.`}
+// //         confirmText="Yes, Void Order"
+// //         variant="destructive"
+// //       />
+// //       {tableData.orders[0] && (
+// //         <ReceiptModal
+// //           isOpen={isReceiptOpen}
+// //           onClose={() => setReceiptOpen(false)}
+// //           order={tableData.orders[0]}
+// //           location={selectedStore}
+// //           onPrint={() => {
+// //             // TODO: Integrate with thermal printer
+// //             console.log("Print receipt for order:", tableData.orders[0]?.id);
+// //             setReceiptOpen(false);
+// //           }}
+// //         />
+// //       )}
+// //     </Animated.View>
+// //   );
+// // };
 
 const TableListItem: React.FC<{
   table: FloorPlanObject;
@@ -503,7 +563,7 @@ const TableListItem: React.FC<{
     return (
       <Animated.View
         layout={Layout.easing(Easing.inOut(Easing.ease)).duration(250)}
-        className="border-b border-gray-700 overflow-hidden "
+        className="border-b border-gray-700 overflow-hidden   "
       >
         <TouchableOpacity
           onPress={handlePress}
@@ -516,34 +576,45 @@ const TableListItem: React.FC<{
                 isOvertime={isOvertime}
               />
               <Text
-                className="text-lg font-semibold text-white"
+                className="text-md font-semibold text-white"
                 numberOfLines={1}
               >
                 {tableData.displayName}
               </Text>
+              {/* Payment Status Badge in collapsed view */}
+              {/* {showActiveDetails && tableData.paidStatus && (
+                <PaymentStatusBadge status={tableData.paidStatus} size="sm" />
+              )} */}
             </View>
             {showActiveDetails && (
               <>
-                <Text className="text-base text-gray-300 w-20 text-center">
+                <Text className="text-base text-gray-300 w-24  text-center">
                   {duration}
                 </Text>
-                <Text className="text-base text-gray-300 w-24 text-center">
+                <Text className="text-sm text-gray-300  text-center">
                   {tableData.guestCount} Guests
                 </Text>
-                <Text className="text-base font-bold text-white w-24 text-right">
-                  ${tableData.total?.toFixed(2) || "0.00"}
-                </Text>
+                <View className="w-32 items-end">
+                  <Text className="text-base font-bold text-white">
+                    ${tableData.amountDue?.toFixed(2) || "0.00"} Due
+                  </Text>
+                  {tableData.amountPaid > 0 && (
+                    <Text className="text-xs text-gray-400">
+                      (Paid: ${tableData.amountPaid.toFixed(2)})
+                    </Text>
+                  )}
+                </View>
               </>
             )}
           </View>
-          {isExpanded && showActiveDetails && (
+          {/* {isExpanded && showActiveDetails && (
             <ExpandedView
               tableData={tableData}
               table={table}
               onToggleExpand={onToggleExpand}
               onNavigateToOrder={onNavigateToOrder}
             />
-          )}
+          )} */}
         </TouchableOpacity>
       </Animated.View>
     );

@@ -46,6 +46,7 @@ import OrderTypeDrawer from "./OrderTypeDrawer";
 import PreviousOrdersSection from "./PreviousOrdersSection";
 interface MenuSectionProps {
   onOrderClosedCheck?: () => boolean;
+  isTableOrder?: boolean;
 }
 
 // OPTIMIZED: Pre-compiled StyleSheet for spacer (no runtime parsing)
@@ -99,7 +100,7 @@ const getImageSource = (item: MenuItemType) => {
 // OPTIMIZED: Memoized spacer component
 const SpacerItem = React.memo(() => <View style={menuSectionStyles.spacer} />);
 SpacerItem.displayName = "SpacerItem";
-const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
+const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck, isTableOrder = false }) => {
   // ============================================================
   // MENU BLOCKING - For inline overlay pattern
   // ============================================================
@@ -112,6 +113,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   const temporaryActiveMenus = useMenuStore((s) => s.temporaryActiveMenus);
   const isCategoryAvailableNow = useMenuStore((s) => s.isCategoryAvailableNow);
   const categories = useMenuStore((s) => s.categories);
+  const lastSelectedMenuId = useMenuStore((s) => s.lastSelectedMenuId);
+  const setLastSelectedMenuId = useMenuStore((s) => s.setLastSelectedMenuId); 
+
   const { requestPinOverride } = usePinOverrideStore();
 
   // OPTIMIZED: Use computed selector to get only order_type, avoiding re-renders on item changes
@@ -137,21 +141,46 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
   const [activeTab, setActiveTab] = useState("Menu");
 
-  // Helper to find the first menu that is currently available or unlocked
-  const getFirstAvailableMenu = () => {
+  // Helper to check if a menu has items (not empty)
+  const menuHasItems = (menu: (typeof menus)[0]) => {
+    return menu.categories.some((cat) => cat.items && cat.items.length > 0);
+  };
+
+  // Helper to find the first menu that is currently available, unlocked, and has items
+  const getFirstAvailableMenuWithItems = () => {
     return menus.find(
-      (m) => isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)
+      (m) =>
+        (isMenuAvailableNow(m.id) || temporaryActiveMenus.includes(m.name)) &&
+        menuHasItems(m)
     );
   };
 
-  // Initialize with an available menu if possible, otherwise null
+  // Helper to get the preferred menu: last used (if valid) OR first available with items
+  const getPreferredMenu = () => {
+    // Priority 1: Check last selected menu
+    if (lastSelectedMenuId) {
+      const lastMenu = menus.find((m) => m.id === lastSelectedMenuId);
+      if (
+        lastMenu &&
+        (isMenuAvailableNow(lastMenu.id) ||
+          temporaryActiveMenus.includes(lastMenu.name)) &&
+        menuHasItems(lastMenu)
+      ) {
+        return lastMenu;
+      }
+    }
+    // Priority 2: First available menu with items
+    return getFirstAvailableMenuWithItems() || null;
+  };
+
+  // Initialize with the preferred menu (last used or first available with items)
   const [activeMeal, setActiveMeal] = useState<string | null>(() => {
-    const startMenu = getFirstAvailableMenu();
-    return startMenu ? startMenu.name : null; // activeMeal is now nullable string
+    const startMenu = getPreferredMenu();
+    return startMenu ? startMenu.name : null;
   });
 
   const [activeCategory, setActiveCategory] = useState<string | null>(() => {
-    const startMenu = getFirstAvailableMenu();
+    const startMenu = getPreferredMenu();
     return startMenu ? startMenu.categories[0]?.name || "" : null;
   });
 
@@ -184,22 +213,23 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     // If we have an active selection...
     if (activeMeal) {
       const currentMenu = menus.find((m) => m.name === activeMeal);
-      // Check if it's still available
+      // Check if it's still available and has items
       if (currentMenu) {
         const isAvailable =
           isMenuAvailableNow(currentMenu.id) ||
           temporaryActiveMenus.includes(currentMenu.name);
-        // If it IS available, we are good.
-        if (isAvailable) return;
+        const hasItems = menuHasItems(currentMenu);
+        // If it IS available and has items, we are good.
+        if (isAvailable && hasItems) return;
       }
     }
 
-    // If we reached here, either activeMeal is null OR the current selection is unavailable.
-    // Try to auto-switch to the next available one.
-    const nextAvailable = getFirstAvailableMenu();
+    // If we reached here, either activeMeal is null OR the current selection is unavailable/empty.
+    // Try to auto-switch to the next preferred one.
+    const nextAvailable = getPreferredMenu();
 
     if (nextAvailable) {
-      // Switch to next available
+      // Switch to next available with items
       if (activeMeal !== nextAvailable.name) {
         setActiveMeal(nextAvailable.name);
         setActiveCategory(nextAvailable.categories[0]?.name || "");
@@ -217,6 +247,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
     isMenuAvailableNow,
     temporaryActiveMenus,
     availabilityTick,
+    lastSelectedMenuId,
   ]);
   // ModifierScreen is now rendered via ModifierScreenOverlay - no subscription needed here
 
@@ -244,6 +275,8 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
       setActiveMeal(menuName);
       setActiveCategory(menu.categories[0]?.name || "");
       setIsMenuDialogOpen(false);
+      // Persist the selection for next launch
+      setLastSelectedMenuId(menu.id);
     } else {
       // Request override
       requestPinOverride({ type: "select_menu", payload: { menuName } });
@@ -390,11 +423,11 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
   // This eliminates re-renders when opening/closing the modifier screen
   return (
     <>
-      <View className="mt-4 flex-1 bg-[#212121]">
-        <View className="flex flex-row items-center justify-between pb-3">
+      <View className={`mt-4 flex-1 bg-[#323232] ${isTableOrder ? "rounded-tl-3xl" : ""}`}>
+        <View className={`${isTableOrder ? "px-3 py-2" : ""} flex flex-row items-center justify-between pb-3`}>
           <View className="flex-row items-center gap-3">
             <Text className="text-xl font-bold text-white">Menu</Text>
-            <TouchableOpacity
+            {!isTableOrder && <TouchableOpacity
               onPress={() => { }}
               className="flex-row items-center bg-[#303030] border border-gray-600 rounded-lg px-3 py-2"
             >
@@ -406,9 +439,9 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
                   ? currentOrderType
                   : (currentOrderType as any)?.label || "Takeaway"}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
           </View>
-          <View className="flex-1 flex-row justify-end items-center gap-x-2">
+          <View className={`flex-1 flex-row justify-end items-center gap-x-2 ${isTableOrder ? "px-3" : ""}`}>
             <TouchableOpacity
               onPress={() => setActiveTab("Menu")}
               className={`flex-row items-center bg-[#303030] rounded-lg p-3 justify-start ${activeTab == "Menu"
@@ -434,14 +467,14 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
               <PackagePlus color="#9CA3AF" size={20} />
             </TouchableOpacity>
 
-            <Link
+            {!isTableOrder && <Link
               href="/tables"
               className={`flex-row items-center bg-[#303030] border border-gray-600 rounded-lg p-3 justify-start`}
             >
               <Sofa color="#9CA3AF" size={20} />
-            </Link>
+            </Link>}
 
-            <TouchableOpacity
+            {!isTableOrder && <TouchableOpacity
               onPress={() => setActiveTab("Orders")}
               className={`flex-row items-center bg-[#303030] rounded-lg px-3 py-2.5 justify-start ${activeTab == "Orders"
                 ? "border-2 border-blue-400"
@@ -450,7 +483,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
             >
               <Logs color="#9CA3AF" size={20} />
               <Text className="text-gray-300 ml-2 text-base">Orders</Text>
-            </TouchableOpacity>
+            </TouchableOpacity>}
 
             <Dialog open={isMenuDialogOpen} onOpenChange={setIsMenuDialogOpen}>
               <DialogTrigger asChild>
@@ -555,7 +588,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
           </View>
         </View>
 
-        <View className="flex-1">
+        <View className={`flex-1 ${isTableOrder ? "px-3" : ""}`}>
           {activeTab === "Menu" &&
             (activeMeal ? (
               <MenuControls
@@ -615,7 +648,7 @@ const MenuSection: React.FC<MenuSectionProps> = ({ onOrderClosedCheck }) => {
 
           {activeTab === "Menu" ? (
             activeMeal ? (
-              <View key={"Menu"}>
+              <View key={"Menu"} className={`${isTableOrder ? "px-3" : ""}`}>
                 <FlatList
                   data={dataWithSpacers}
                   keyExtractor={keyExtractor}

@@ -63,10 +63,12 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
   const hasPayments =
     hasPaymentsProp ?? (activeOrder?.payments?.length ?? 0) > 0;
 
+  const PaidAmount =  activeOrder?.payments?.reduce((acc, payment) => acc + payment.amount, 0)
+
   // When there are payments, always show simplified view
   // We can't reliably break down subtotal/tax after partial payments due to store sync issues
   const showSimplifiedView = hasPayments;
-
+  
   // Calculate display amounts - NO useMemo to avoid stale cached values
   // Show outstanding if partially paid, otherwise full totals
   let displaySubtotal: number;
@@ -136,12 +138,13 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
         </View>
         <View className="p-4 flex-1">
           {/* Show simplified view when backend provides amount_due (tax included) */}
-          {showSimplifiedView ? (
+          {/* {showSimplifiedView ? (
             <>
               <View className="flex-row justify-between items-center py-2">
                 <Text className="text-gray-400 text-base">
-                  Tax included in balance
+                  Tax included in balance 
                 </Text>
+                <Text className="text-gray-400 text-base">${activeOrderOutstandingTax.toFixed(2)}</Text>
               </View>
               <View className="h-[1px] bg-gray-700 my-3" />
               <View className="flex-row justify-between items-center py-2">
@@ -153,15 +156,23 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                 </Text>
               </View>
             </>
-          ) : (
-            <>
-              {/* Full breakdown when no backend amount_due */}
+          ) : ( */}
+            
+              {/* Full breakdown */}
+              {
+                  hasPayments && (
+                    <View className="flex-row justify-between items-center border-b border-gray-700 pb-2">
+                      <Text className="text-white text-base">Paid Amount:</Text>
+                      <Text className="text-white text-base">${PaidAmount?.toFixed(2)}</Text>
+                    </View>
+                  )
+                }
               <View className="flex-row justify-between items-center py-2">
                 <Text className="text-white text-lg">
                   {hasPayments ? "Unpaid Subtotal:" : "Subtotal:"}
                 </Text>
                 <Text className="text-white text-lg">
-                  ${displaySubtotal.toFixed(2)}
+                  ${activeOrderOutstandingSubtotal.toFixed(2)}
                 </Text>
               </View>
               {displayDiscount > 0 && (
@@ -177,7 +188,7 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                   {hasPayments ? "Unpaid Tax:" : "Tax:"}
                 </Text>
                 <Text className="text-white text-lg">
-                  ${displayTax.toFixed(2)}
+                  ${activeOrderOutstandingTax.toFixed(2)}
                 </Text>
               </View>
               {voucher > 0 && (
@@ -201,8 +212,8 @@ const PricingBreakdownSheetComponent: React.ForwardRefRenderFunction<
                   ${displayTotal.toFixed(2)}
                 </Text>
               </View>
-            </>
-          )}
+            
+        
 
           <TouchableOpacity
             onPress={onPressProceedToPayment}

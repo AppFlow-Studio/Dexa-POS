@@ -10,13 +10,14 @@ import React, { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { NetworkStatusBadge } from "./NetworkStatusBadge";
 import SessionDock from "./SessionDock";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 
 const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const { tables } = useFloorPlanStore();
+  const { tables, tablesById } = useFloorPlanStore();
   const globalParams = useGlobalSearchParams();
-
+  
   const showBackButton =
     pathname === "/open-shifts" ||
     pathname === "/pto" ||
@@ -32,6 +33,7 @@ const Header = () => {
     pathname === "/analytics" ||
     pathname === "/previous-orders" ||
     pathname === "/order-processing" ||
+    pathname === "/kds" ||
     pathname === "/online-orders" ||
     pathname === "/customers-list" ||
     pathname.startsWith("/settings") ||
@@ -48,7 +50,8 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4);
-
+   const cancelAndRemoveDraft = useModifierSidebarStore((state) => state.cancelAndRemoveDraft);
+   const closeModifierSidebar = useModifierSidebarStore((state) => state.close);
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
     if (pathname === "/scheduling/reports") return "Reports";
@@ -60,6 +63,7 @@ const Header = () => {
       return "Scheduling Dashboard";
     if (pathname === "/pto") return "PTO";
     if (pathname === "/order-processing") return "Back to Menu";
+    if (pathname === "/kds") return "Kitchen Display";
     if (pathname.startsWith("/previous-orders")) return "Back to Menu";
     if (pathname.startsWith("/inventory/vendors")) return "Vendors";
     if (pathname.startsWith("/inventory/purchase-orders"))
@@ -88,7 +92,7 @@ const Header = () => {
       pathname.split("/").length === 3
     ) {
       const tableId = pathname.split("/")[2];
-      const table = tables.find((t) => t.id === tableId);
+      const table = tablesById[tableId];
       if (table) {
         return `Tables / ${table.name}`;
       }
@@ -98,7 +102,7 @@ const Header = () => {
       pathname.split("/").length === 4
     ) {
       const tableId = pathname.split("/")[3];
-      const table = tables.find((t) => t.id === tableId);
+      const table = tablesById[tableId];
       if (table) {
         return `Clean / ${table.name}`;
       }
@@ -122,6 +126,8 @@ const Header = () => {
       router.push(globalParams.returnTo as Href);
       return;
     }
+    cancelAndRemoveDraft();
+    closeModifierSidebar();
 
     const pathParts = pathname.split("/").filter(Boolean);
 

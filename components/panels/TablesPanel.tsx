@@ -68,14 +68,22 @@ const TablesPanel: React.FC = () => {
   const activeTables = tables; // These are already the tables for the active floor plan.
 
   const occupiedTables = useMemo(
-    () =>
-      activeTables.filter(
+    () => {
+      // Active session statuses (Phase 4.1: Include paid but not closed tables)
+      const activeSessionStatuses = [
+        "seated",
+        "ordered",
+        "served",
+        "check_presented",
+        "paid", // Include paid tables (not yet cleared/closed)
+      ];
+
+      return activeTables.filter(
         (table) =>
           table.category === "table" &&
-          (table.session?.status === "seated" ||
-            table.session?.status === "ordered" ||
-            table.session?.status === "served")
-      ),
+          activeSessionStatuses.includes(table.session?.status?.toLowerCase() || "")
+      );
+    },
     [activeTables]
   );
 

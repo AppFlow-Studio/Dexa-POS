@@ -1,13 +1,17 @@
 import { CartItem, OrderProfile } from "@/lib/types";
-import React, { useMemo, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native"; // Added TouchableOpacity back for the Start Button
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import BillItem from "./BillItem";
 
@@ -32,8 +36,7 @@ interface CourseGroupProps {
   onDoubleTap: (id: number) => void;
 }
 
-// --- Sub-Component: CourseGroup ---
-// We need this sub-component to safely use Hooks (useSharedValue) for each row
+// --- Sub-Component: CourseGroup with Animations ---
 const CourseGroup: React.FC<CourseGroupProps> = ({
   courseId,
   items,
@@ -44,10 +47,37 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
   onDoubleTap,
 }) => {
   const scale = useSharedValue(1);
+  const contentHeight = useSharedValue(0);
+  const contentOpacity = useSharedValue(0);
 
-  // Animation Style
-  const animatedStyle = useAnimatedStyle(() => ({
+  // Animate content height and opacity when expanded state changes
+  useEffect(() => {
+    if (isExpanded) {
+      contentHeight.value = withTiming(1, { duration: 250 });
+      contentOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      contentOpacity.value = withTiming(0, { duration: 150 });
+      contentHeight.value = withTiming(0, { duration: 200 });
+    }
+  }, [isExpanded]);
+
+  // Header tap animation
+  const animatedHeaderStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+  }));
+
+  // Content container animation
+  const animatedContentStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+    maxHeight: contentHeight.value === 0 ? 0 : undefined,
+    overflow: "hidden" as const,
+  }));
+
+  // Chevron rotation animation
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [
+      { rotate: withTiming(isExpanded ? "90deg" : "0deg", { duration: 200 }) },
+    ],
   }));
 
   // Gesture Definitions
@@ -55,31 +85,31 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
     .numberOfTaps(2)
     .maxDuration(250)
     .onStart(() => {
-      // Trigger Animation
       scale.value = withSequence(
         withSpring(0.95, { damping: 10, stiffness: 200 }),
         withSpring(1)
       );
-      // Call JS function safely
       runOnJS(onDoubleTap)(courseId);
     });
 
   const singleTap = Gesture.Tap().onEnd(() => {
-    // Call JS function safely
+    scale.value = withSequence(
+      withSpring(0.98, { damping: 15, stiffness: 300 }),
+      withSpring(1)
+    );
     runOnJS(onToggle)(courseId);
   });
 
-  // Exclusive: Double tap takes priority. If it fails, Single tap fires.
   const composedTap = Gesture.Exclusive(doubleTap, singleTap);
 
   const courseItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <View className="mb-2">
-      {/* 1. The Header: Wrapped in GestureDetector */}
+    <Animated.View layout={LinearTransition.duration(200)} className="mb-2">
+      {/* Header */}
       <GestureDetector gesture={composedTap}>
         <Animated.View
-          style={animatedStyle}
+          style={animatedHeaderStyle}
           className={`flex-row items-center justify-between p-3 rounded-lg border ${
             isExpanded
               ? "border-blue-500 bg-blue-900/20"
@@ -100,19 +130,32 @@ const CourseGroup: React.FC<CourseGroupProps> = ({
               • {courseItemCount} item{courseItemCount !== 1 ? "s" : ""}
             </Text>
           </View>
-          <Text className="text-white text-lg">{isExpanded ? "▼" : "▶"}</Text>
+          <Animated.View style={chevronStyle}>
+            <Text className="text-white text-lg">▶</Text>
+          </Animated.View>
         </Animated.View>
       </GestureDetector>
 
-      {/* 2. The Content: Rendered OUTSIDE GestureDetector so items are clickable */}
+      {/* Content with Animation */}
       {isExpanded && (
-        <View className="mt-2 pl-4 gap-y-2">
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          layout={LinearTransition.duration(200)}
+          className="mt-2 pl-4 gap-y-2 overflow-hidden"
+        >
           {items.map((item) => (
-            <BillItem key={item.id} item={item} isEditable={true} />
+            <Animated.View
+              key={item.id}
+              layout={LinearTransition.duration(150)}
+              className="overflow-hidden"
+            >
+              <BillItem item={item} isEditable={true} />
+            </Animated.View>
           ))}
-        </View>
+        </Animated.View>
       )}
-    </View>
+    </Animated.View>
   );
 };
 
@@ -127,6 +170,7 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
   onDoubleTapCourse,
 }) => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
+  const prevItemCount = useRef<number>(0);
 
   // Group items by course
   const groupedItems = useMemo(() => {
@@ -153,7 +197,40 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
     return Array.from(allCourses).sort((a, b) => a - b);
   }, [groupedItems, activeOrder, currentCourse]);
 
+  // Track previous values to prevent re-triggering
+  const prevCurrentCourse = useRef<number | undefined>(currentCourse);
+
+  // Auto-expand logic: When items are added, expand the current/working course
+  useEffect(() => {
+    const currentItemCount = activeOrder?.items?.length ?? 0;
+
+    // Only auto-expand when items are ADDED (count increased)
+    if (
+      currentItemCount > prevItemCount.current &&
+      currentCourse !== undefined
+    ) {
+      // Auto-expand the current working course, collapsing others
+      setExpandedCourseId(currentCourse);
+    }
+
+    prevItemCount.current = currentItemCount;
+  }, [activeOrder?.items?.length, currentCourse]);
+
+  // Also auto-expand when currentCourse changes (e.g., "Start New Course")
+  useEffect(() => {
+    // Only trigger when currentCourse actually changes to a new value
+    if (
+      currentCourse !== undefined &&
+      currentCourse !== null &&
+      currentCourse !== prevCurrentCourse.current
+    ) {
+      setExpandedCourseId(currentCourse);
+      prevCurrentCourse.current = currentCourse;
+    }
+  }, [currentCourse]);
+
   const handleToggleCourse = (courseId: number) => {
+    // Toggle: if already expanded, collapse; otherwise expand this one (collapsing others)
     const newExpandedCourseId = expandedCourseId === courseId ? null : courseId;
     setExpandedCourseId(newExpandedCourseId);
     if (onSelectCourse) {
@@ -194,26 +271,28 @@ const CourseAccordion: React.FC<CourseAccordionProps> = ({
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {sortedCourses.length > 0 ? (
-          sortedCourses.map((courseId) => (
-            <CourseGroup
-              key={`course-${courseId}`}
-              courseId={courseId}
-              items={groupedItems[courseId] || []}
-              isExpanded={expandedCourseId === courseId}
-              isSent={!!sentCourses?.[courseId]}
-              isCurrent={currentCourse === courseId}
-              onToggle={handleToggleCourse}
-              onDoubleTap={onDoubleTapCourse}
-            />
-          ))
-        ) : (
-          <View className="flex-1 items-center justify-center mt-10">
-            <Text className="text-gray-400 text-lg">
-              Add items to start an order.
-            </Text>
-          </View>
-        )}
+        <Animated.View layout={LinearTransition.duration(250)}>
+          {sortedCourses.length > 0 ? (
+            sortedCourses.map((courseId) => (
+              <CourseGroup
+                key={`course-${courseId}`}
+                courseId={courseId}
+                items={groupedItems[courseId] || []}
+                isExpanded={expandedCourseId === courseId}
+                isSent={!!sentCourses?.[courseId]}
+                isCurrent={currentCourse === courseId}
+                onToggle={handleToggleCourse}
+                onDoubleTap={onDoubleTapCourse}
+              />
+            ))
+          ) : (
+            <View className="flex-1 items-center justify-center mt-10">
+              <Text className="text-gray-400 text-lg">
+                Add items to start an order.
+              </Text>
+            </View>
+          )}
+        </Animated.View>
       </ScrollView>
     </View>
   );

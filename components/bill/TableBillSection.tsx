@@ -77,8 +77,8 @@ const TableBillSection = ({
     }
   };
 
-  console.log('TableBillSection', totalDisplayAmount);
-  console.log("activeOrder [TableBillSection]", activeOrder);
+  // console.log('TableBillSection', totalDisplayAmount);
+  // console.log("activeOrder [TableBillSection]", activeOrder);
   return (
     <>
       <View className="max-w-lg  flex-1 flex-col">

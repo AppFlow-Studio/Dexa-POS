@@ -1,14 +1,15 @@
 import { useToast } from "@/contexts/ToastContext";
+import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore"; // New import
-import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
-import { Eye, Plus, Repeat2 } from "lucide-react-native";
+import { Eye, Plus, Repeat2, Search, X } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
   RefreshControl,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -233,18 +234,19 @@ const PreviousOrdersSection = () => {
   const { orders, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
   const { refreshPreviousOrders } = usePreviousOrdersStore(); // Access refresh action
+
   const { show } = useToast();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false); // New state for refreshing
+  const [searchQuery, setSearchQuery] = useState(""); // New state for search
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refreshPreviousOrders(); // Call the store action
     setIsRefreshing(false);
   };
-
   // Phase 4: Use selector for view_scope-aware filtering
   // showCompleted: true to include all orders in history view
   const previousOrders = usePreviousOrders({ showCompleted: true });
@@ -264,15 +266,29 @@ const PreviousOrdersSection = () => {
 
   const totalOrder = allOrders.length;
 
-  // Filter orders based on active tab
+  // Filter orders based on active tab and search query
   const filteredOrders = useMemo(() => {
-    if (activeTab === "All") {
-      return allOrders;
+    let filtered = allOrders;
+
+    // Filter by tab
+    if (activeTab !== "All") {
+      filtered = filtered.filter(
+        (o) => o.order_type === activeTab && o.items.length > 0
+      );
     }
-    return allOrders.filter(
-      (o) => o.order_type === activeTab && o.items.length > 0
-    );
-  }, [allOrders, activeTab]);
+
+    // Filter by search query (customer name or display number)
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((o) => {
+        const customerName = (o.customer_name || "walk-in").toLowerCase();
+        const displayNumber = String(o.display_number || "").toLowerCase();
+        return customerName.includes(query) || displayNumber.includes(query);
+      });
+    }
+
+    return filtered;
+  }, [allOrders, activeTab, searchQuery]);
 
   const handleTabChange = (tabName: TabName) => {
     setActiveTab(tabName);
@@ -334,9 +350,32 @@ const PreviousOrdersSection = () => {
 
   return (
     <View className="flex-1">
-      <View className="flex-row justify-between items-center mb-4">
+      <View className="flex-row justify-between items-center mb-4 gap-x-4">
         <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder || 0} />
+         {/* Search Bar */}
+        <View className="bg-[#303030] border border-gray-600 rounded-xl p-1 mb-4 flex-row items-center w-1/2">
+          <Search color="#9CA3AF" size={20} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search by order number or customer name..."
+            placeholderTextColor="#6B7280"
+            className="flex-1 ml-3 text-white text-base"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery("")}
+              className="ml-2 p-1"
+            >
+              <X color="#9CA3AF" size={20} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
+
+     
 
       <FlatList
         data={filteredOrders.slice().reverse()}

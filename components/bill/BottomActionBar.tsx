@@ -72,14 +72,14 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const renderDefaultButtons = () => (
     <>
       {/* Discount Button: Indigo (Distinct from Blue, fits dark theme) */}
-      <TouchableOpacity
+      {/* <TouchableOpacity
         onPress={onPressDiscount}
         className={`${buttonBaseClass} bg-indigo-600`}
         activeOpacity={0.7}
       >
         <Percent size={18} color="white" />
         <Text className="font-semibold text-white text-base">Discount</Text>
-      </TouchableOpacity>
+      </TouchableOpacity> */}
 
       {/* Total Button: Blue (Primary Action), Green Close Check (balance $0), or Gray (Syncing) */}
       {(() => {

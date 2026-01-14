@@ -65,7 +65,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
   onPress,
   index = 0,
 }) => {
-  const { tables, updateTablePosition, removeTable, saveSnapshot } =
+  const { tables, tablesById, updateTablePosition, removeTable, saveSnapshot } =
     useFloorPlanStore();
   const { orders, ordersById } = useOrderStore();
   const { defaultSittingTimeMinutes } = useSettingsStore();
@@ -152,7 +152,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
     ) {
       const otherTableNames = table.session.merged_tables
         .filter((id) => id !== table.id)
-        .map((id) => tables.find((obj) => obj.id === id)?.name)
+        .map((id) => tablesById[id]?.name)
         .filter(Boolean)
         .join(", ");
 
@@ -161,7 +161,7 @@ const DraggableTable: React.FC<DraggableTableProps> = ({
       }
     }
     return table.name;
-  }, [table, tables]);
+  }, [table, tablesById]);
 
   // --- ANIMATED VALUES ---
   const translateX = useSharedValue(table.x);

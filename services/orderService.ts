@@ -14,7 +14,7 @@ import {
   ReplaceOrderItemModifiersResult,
   UpdateOrderItemParams,
   UpdateOrderItemQuantityResult,
-  UpdateOrderItemResult
+  UpdateOrderItemResult,
 } from "@/types/db-order-management-types";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -69,7 +69,10 @@ export class OrderService {
     params: CreateOrderParams
   ): Promise<{ data: Order | null; error: any }> {
     console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
-    console.log(`[OrderService:createOrder] Params:`, JSON.stringify(params, null, 2));
+    console.log(
+      `[OrderService:createOrder] Params:`,
+      JSON.stringify(params, null, 2)
+    );
 
     const { data, error } = await client.rpc("create_order_v2", params);
 
@@ -78,8 +81,16 @@ export class OrderService {
     } else {
       const orderData = Array.isArray(data) ? data[0] : data;
       console.log(`[OrderService:createOrder] SUCCESS!`);
-      console.log(`[OrderService:createOrder] Order ID: ${orderData?.order_id || orderData?.id}`);
-      console.log(`[OrderService:createOrder] Order Number: ${orderData?.order_number || orderData?.display_number}`);
+      console.log(
+        `[OrderService:createOrder] Order ID: ${
+          orderData?.order_id || orderData?.id
+        }`
+      );
+      console.log(
+        `[OrderService:createOrder] Order Number: ${
+          orderData?.order_number || orderData?.display_number
+        }`
+      );
     }
 
     return { data, error };
@@ -225,14 +236,19 @@ export class OrderService {
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
     console.log(`[OrderService:processPayment] ====== CALLING process_payment_v5 ======`);
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
-    console.log(`[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`);
+    console.log(
+      `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`
+    );
 
     const { data, error } = await client.rpc("process_payment_v5", params);
 
     if (error) {
       console.error(`[OrderService:processPayment] FAILED:`, error);
     } else {
-      console.log(`[OrderService:processPayment] SUCCESS:`, JSON.stringify(data, null, 2));
+      console.log(
+        `[OrderService:processPayment] SUCCESS:`,
+        JSON.stringify(data, null, 2)
+      );
     }
 
     return { data, error };
@@ -521,7 +537,8 @@ export class OrderService {
   static async bulkUpdateOrderItemStatus(
     client: SupabaseClient,
     orderItemIds: string[],
-    status: "sent" | "preparing" | "ready" | "served"
+    status: "sent" | "preparing" | "ready" | "served",
+    staffId?: string
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
@@ -529,6 +546,7 @@ export class OrderService {
     const { data, error } = await client.rpc("bulk_update_order_item_status", {
       p_order_item_ids: orderItemIds,
       p_status: status,
+      p_staff_id: staffId,
     });
     return { data, error };
   }
@@ -656,7 +674,7 @@ export class OrderService {
   static async closeCheck(
     client: SupabaseClient,
     orderId: string,
-    staffId?: string
+    staffId?: string | null
   ): Promise<{ success: boolean; error?: string }> {
     console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
     console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);

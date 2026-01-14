@@ -185,7 +185,7 @@ const OrderProcessing = () => {
           }
         />
 
-        <View className="flex-1 py-4 px-2 pt-0 bg-[#212121]">
+        <View className="flex-1 py-4 px-2 pt-0 bg-[#323232] rounded-tl-3xl ">
           <Accordion
             type="single"
             collapsible

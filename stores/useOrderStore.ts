@@ -524,6 +524,7 @@ const ensureOrderCreated = async (
         p_device_id: null,
         p_created_by_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId || null,
         p_station_id: useStoreSettingsStore.getState().selectedStation?.id || null,
+     
       };
 
       console.log(
@@ -1727,6 +1728,10 @@ interface OrderState {
   cleanupDraftDuplicates: () => void;
   markAllItemsAsReady: (orderId: string) => void;
   markAllItemsAsServed: (orderId: string) => void;
+  // Course-specific KDS functions
+  markCourseItemsAsCooking: (orderId: string, itemIds: string[]) => void;
+  markCourseItemsAsReady: (orderId: string, itemIds: string[]) => void;
+  markCourseItemsAsServed: (orderId: string, itemIds: string[]) => void;
   consolidateOrdersForTables: (
     tableIds: string[],
     tableNames: string[]
@@ -1808,27 +1813,27 @@ interface OrderState {
   // Clean up stale queued updates (older than TTL)
   cleanupStaleQueuedUpdates: () => void;
 
-  // === REALTIME SUBSCRIPTION STATE ===
-    orderRealtimeChannel: RealtimeChannel | null;
-    // Realtime state
-    orderRealtimeStatus: 'connected' | 'reconnecting' | 'disconnected';
-    orderRealtimeError: string | null;
-    _orderLocationId: string | null;
-    _orderReconnectAttempts: number;
-    _orderReconnectTimeout: ReturnType<typeof setTimeout> | null;
-    _isOrderCleaningUp: boolean;
-    
-    // Realtime actions
-    setupOrderRealtimeSubscriptions: (locationId: string) => void;
-    cleanupOrderRealtime: () => void;
-    manualOrderReconnect: () => void;
-    
-    // Internal handlers
-    _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
-    _handleItemBroadcast: (payload: OrderItemBroadcastPayload) => void;
-    _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
-    _debouncedOrderRefresh: (dbOrderId: string) => void;
-    _handleOrderReconnect: (locationId: string) => void;
+  // === REALTIME SUBSCRIPTION STATE (DISABLED - using useOrdersRealtime hook instead) ===
+    // REMOVED: Duplicate realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
+    // orderRealtimeChannel: RealtimeChannel | null;
+    // orderRealtimeStatus: 'connected' | 'reconnecting' | 'disconnected';
+    // orderRealtimeError: string | null;
+    // _orderLocationId: string | null;
+    // _orderReconnectAttempts: number;
+    // _orderReconnectTimeout: ReturnType<typeof setTimeout> | null;
+    // _isOrderCleaningUp: boolean;
+
+    // REMOVED: Realtime actions (now handled by useOrdersRealtime hook)
+    // setupOrderRealtimeSubscriptions: (locationId: string) => void;
+    // cleanupOrderRealtime: () => void;
+    // manualOrderReconnect: () => void;
+
+    // REMOVED: Internal realtime handlers (now handled by useOrdersRealtime hook)
+    // _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
+    // _handleItemBroadcast: (payload: OrderItemBroadcastPayload) => void;
+    // _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
+    // _debouncedOrderRefresh: (dbOrderId: string) => void;
+    // _handleOrderReconnect: (locationId: string) => void;
 
     // === ORDER VISIBILITY & MANAGEMENT (Phase 5) ===
     isOrderVisible: (
@@ -2016,8 +2021,8 @@ export const useOrderStore = create<OrderState>()(
           // Offline sync state
           isOnline: true,
           pendingSyncCount: 0,
-          // Realtime subscription state
-          orderRealtimeChannel: null,
+          // REMOVED: Realtime subscription state (now handled by useOrdersRealtime hook)
+          // orderRealtimeChannel: null,
           // Sync tracking state
           pendingSyncOperations: new Map<string, Promise<boolean>>(),
           // Queued backend updates (Phase 3: Race Condition Prevention)
@@ -2091,134 +2096,14 @@ export const useOrderStore = create<OrderState>()(
           },
 
           // --- REALTIME SUBSCRIPTION METHODS ---
+          // REMOVED: Duplicate realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
+          // This function is kept as a stub for backward compatibility but does nothing
           setupOrderRealtimeSubscriptions: async (locationId: string) => {
-            const supabase = _supabaseClient;
-            if (!supabase) {
-              console.warn('[OrderRealtime] No Supabase client available');
-              return;
-            }
-            
-            // Clean up existing subscription
-            const existingChannel = get().orderRealtimeChannel;
-            if (existingChannel) {
-              await supabase.removeChannel(existingChannel);
-            }
-            
-            // Set auth for private channels (required for RLS)
-            await supabase.realtime.setAuth();
-            
-            console.log('[OrderRealtime] Setting up broadcast subscriptions for location:', locationId);
-            
-            const channel = supabase
-              .channel(`location:${locationId}:orders`, {
-                config: { private: true },
-              })
-              // ----------------------------------------------------------------
-              // ORDER EVENTS
-              // ----------------------------------------------------------------
-              .on('broadcast', { event: 'INSERT' }, (msg) => {
-                console.log('[OrderRealtime] Order INSERT:', msg.payload);
-                get()._handleOrderBroadcast(msg.payload as OrderBroadcastPayload);
-              })
-              .on('broadcast', { event: 'UPDATE' }, (msg) => {
-                console.log('[OrderRealtime] Order UPDATE: Card Due', msg.payload.data.order.amount_due);
-                console.log('[OrderRealtime] Order UPDATE: Cash Due:', msg.payload.data.order.cash_amount_due);
-                // console.log('[OrderRealtime] Order UPDATE:', msg.payload.data.order);
-
-                get()._handleOrderBroadcast(msg.payload as OrderBroadcastPayload);
-              })
-              .on('broadcast', { event: 'DELETE' }, (msg) => {
-                console.log('[OrderRealtime] Order DELETE:', msg.payload);
-                get()._handleOrderBroadcast(msg.payload as OrderBroadcastPayload);
-              })
-              // ----------------------------------------------------------------
-              // ORDER ITEM EVENTS
-              // ----------------------------------------------------------------
-              .on('broadcast', { event: 'ITEM_INSERT' }, (msg) => {
-                console.log('[OrderRealtime] Item INSERT:', msg.payload);
-                get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
-              })
-              .on('broadcast', { event: 'ITEM_UPDATE' }, (msg) => {
-                console.log('[OrderRealtime] Item UPDATE:', msg.payload);
-                get()._handleItemBroadcast(msg.payload as OrderItemBroadcastPayload);
-              })
-              .on('broadcast', { event: 'ITEM_DELETE' }, (msg) => {
-                console.log('[OrderRealtime] Item DELETE:', msg.payload);
-                get()._handleItemBroadcast(msg.payload as OrderBroadcastPayload);
-              })
-              // ----------------------------------------------------------------
-              // PAYMENT EVENTS
-              // ----------------------------------------------------------------
-              .on('broadcast', { event: 'PAYMENT_INSERT' }, (msg) => {
-                console.log('[OrderRealtime] Payment INSERT:', msg.payload);
-                get()._handlePaymentBroadcast(msg.payload as PaymentBroadcastPayload);
-              })
-              .on('broadcast', { event: 'PAYMENT_UPDATE' }, (msg) => {
-                console.log('[OrderRealtime] Payment UPDATE:', msg.payload);
-                get()._handlePaymentBroadcast(msg.payload as PaymentBroadcastPayload);
-              })
-              // ----------------------------------------------------------------
-              // CONNECTION STATUS
-              // ----------------------------------------------------------------
-              .subscribe((status, err) => {
-                console.log('[OrderRealtime] Status:', status, err);
-                
-                switch (status) {
-                  case 'SUBSCRIBED':
-                    // Check reconnect state BEFORE resetting
-                    const wasReconnecting = get()._orderReconnectAttempts > 0;
-                    const hasReconciledBefore = get().lastReconciliationAt !== null;
-
-                    set({
-                      orderRealtimeStatus: 'connected',
-                      orderRealtimeError: null,
-                      _orderReconnectAttempts: 0,
-                      _orderLocationId: locationId,
-                    });
-                    console.log('[OrderRealtime] ✅ Connected to orders channel');
-
-                    // Reconcile after reconnection (not on initial connection)
-                    if (wasReconnecting && hasReconciledBefore) {
-                      console.log('[OrderRealtime] Reconnected after disconnect, triggering reconciliation');
-                      // Small delay to let connection stabilize
-                      setTimeout(() => {
-                        get().reconcileOrders();
-                      }, 500);
-                    }
-                    break;
-                    
-                  case 'CHANNEL_ERROR':
-                    set({
-                      orderRealtimeStatus: 'reconnecting',
-                      orderRealtimeError: err?.message || 'Connection error',
-                    });
-                    get()._handleOrderReconnect(locationId);
-                    break;
-                    
-                  case 'TIMED_OUT':
-                    set({ orderRealtimeStatus: 'reconnecting' });
-                    get()._handleOrderReconnect(locationId);
-                    break;
-                    
-                  case 'CLOSED':
-                    set({ orderRealtimeStatus: 'disconnected' });
-                    if (!get()._isOrderCleaningUp) {
-                      get()._handleOrderReconnect(locationId);
-                    }
-                    break;
-                }
-              });
-
-            set({ orderRealtimeChannel: channel, _orderLocationId: locationId });
-
-            // === PHASE 3: Start periodic cleanup for stale queued updates ===
-            // Clean up every 2 minutes to prevent memory leaks
-            const cleanupInterval = setInterval(() => {
-              get().cleanupStaleQueuedUpdates();
-            }, 2 * 60 * 1000); // 2 minutes
-
-            // Store interval for cleanup on disconnect
-            (channel as any)._queueCleanupInterval = cleanupInterval;
+            console.warn(
+              '[OrderRealtime] setupOrderRealtimeSubscriptions is disabled. ' +
+              'Realtime subscriptions are now handled by LocationRealtimeProvider with useOrdersRealtime hook.'
+            );
+            // No-op: Realtime subscription is now handled by React Query hook
           },
 
           // ============================================================================
@@ -2319,7 +2204,7 @@ export const useOrderStore = create<OrderState>()(
                       items: backendOrder.order_items
                         ? transformBroadcastItems(backendOrder.order_items)
                         : [],
-                      _sourceStationName: backendOrder.station?.name,
+                      _sourceStationName: backendOrder.station_name,
                     };
 
                     const conflict = detectConflict(
@@ -2329,7 +2214,7 @@ export const useOrderStore = create<OrderState>()(
 
                     if (conflict) {
                       // Add source station info
-                      conflict.sourceStationName = backendOrder.station?.name;
+                      conflict.sourceStationName = backendOrder.station_name;
                       conflict.sourceStationId = backendOrder.station_id;
 
                       if (isConflictCritical(conflict)) {
@@ -2367,7 +2252,7 @@ export const useOrderStore = create<OrderState>()(
                       // Phase 2.5: Merge broadcast items with local items
                       // Strategy: Keep pending local items, update synced items from broadcast
                       let mergedItems = existingOrder.items;
-                      if (broadcastItems && !hasPendingChanges) {
+                      if (broadcastItems && broadcastItems.length > 0 && !hasPendingChanges) {
                         // Build a map of broadcast items by db_order_item_id
                         const broadcastItemMap = new Map(
                           broadcastItems.map((item) => [
@@ -2765,7 +2650,7 @@ export const useOrderStore = create<OrderState>()(
           fetchVisibleOrders: async (options) => {
             const { currentStation, currentStationId } = get();
             const locationId =
-              useStoreSettingsStore.getState().selectedStore?.location_id;
+              useStoreSettingsStore.getState().selectedStore?.id;
 
             // Guard: No station context
             if (!currentStation || !currentStationId || !locationId) {
@@ -2863,7 +2748,7 @@ export const useOrderStore = create<OrderState>()(
           fetchOwnStationOrders: async () => {
             const { currentStation, currentStationId, ordersByDbId } = get();
             const locationId =
-              useStoreSettingsStore.getState().selectedStore?.location_id;
+              useStoreSettingsStore.getState().selectedStore?.id;
 
             if (!currentStation || !currentStationId || !locationId) {
               console.warn("[FetchOwn] No station context, skipping");
@@ -3103,64 +2988,18 @@ export const useOrderStore = create<OrderState>()(
           // RECONNECTION LOGIC
           // ====================================================================
           
+          // REMOVED: Reconnect logic (now handled by useOrdersRealtime hook)
           _handleOrderReconnect: (locationId: string) => {
-            const maxAttempts = 5;
-            const state = get();
-            
-            if (state._orderReconnectAttempts >= maxAttempts) {
-              console.warn('[OrderRealtime] Max reconnect attempts reached');
-              set({
-                orderRealtimeStatus: 'disconnected',
-                orderRealtimeError: 'Connection failed. Tap to retry.',
-              });
-              return;
-            }
-            
-            // Clear existing timeout
-            if (state._orderReconnectTimeout) {
-              clearTimeout(state._orderReconnectTimeout);
-            }
-            
-            // Exponential backoff: 0ms, 500ms, 1s, 2s, 4s
-            const delay = state._orderReconnectAttempts === 0 
-              ? 0 
-              : 500 * Math.pow(2, state._orderReconnectAttempts - 1);
-            
-            console.log(`[OrderRealtime] Reconnecting in ${delay}ms (attempt ${state._orderReconnectAttempts + 1})`);
-            
-            const timeout = setTimeout(async () => {
-              set({ _orderReconnectAttempts: get()._orderReconnectAttempts + 1 });
-              
-              // Unsubscribe first
-              const channel = get().orderRealtimeChannel;
-              if (channel && _supabaseClient) {
-                await _supabaseClient.removeChannel(channel);
-              }
-              
-              // Re-subscribe
-              get().setupOrderRealtimeSubscriptions(locationId);
-            }, delay);
-            
-            set({ _orderReconnectTimeout: timeout });
+            console.warn('[OrderRealtime] _handleOrderReconnect is disabled. Reconnection is now handled by useOrdersRealtime hook.');
+            // No-op: Reconnection is now handled by React Query hook
           },
 
         
 
+          // REMOVED: Cleanup logic (now handled by useOrdersRealtime hook)
           cleanupOrderRealtime: () => {
-            const supabase = _supabaseClient;
-            const channel = get().orderRealtimeChannel;
-            if (channel && supabase) {
-              supabase.removeChannel(channel);
-
-              // Clean up the queued update cleanup interval
-              if ((channel as any)._queueCleanupInterval) {
-                clearInterval((channel as any)._queueCleanupInterval);
-                console.log('[OrderStore] Queue cleanup interval cleared');
-              }
-
-              console.log('[OrderStore] Realtime subscriptions cleaned up');
-            }
-            set({ orderRealtimeChannel: null });
+            console.warn('[OrderRealtime] cleanupOrderRealtime is disabled. Cleanup is now handled by useOrdersRealtime hook.');
+            // No-op: Cleanup is now handled by React Query hook
           },
 
           // --- SYNC BARRIER METHODS ---
@@ -5596,63 +5435,61 @@ export const useOrderStore = create<OrderState>()(
 
             if (!order) return;
 
-            // Note: Inventory deduction is handled by archiveOrder when order is archived/completed
+            // Simple map updates all items to ready without merging/consolidating
+            // This preserves course info and individual item tracking
+            const updatedItems = order.items.map((item) => {
+              if (item.isDraft) return item;
+              return {
+                ...item,
+                item_status: "ready" as const,
+                kitchen_status: "ready" as const,
+              };
+            });
 
-            const mergedItemsMap = new Map<string, CartItem>();
-
-            for (const item of order.items) {
-              // Don't process draft items
-              if (item.isDraft) continue;
-
-              const itemKey = generateItemCompositeKey(
-                item.menuItemId,
-                item.customizations
-              );
-
-              if (mergedItemsMap.has(itemKey)) {
-                // If this item already exists in our map, just update its quantity
-                const existingItem = mergedItemsMap.get(itemKey)!;
-                existingItem.quantity += item.quantity;
-              } else {
-                // If it's the first time we've seen this item, add it to the map
-                // and set its status to Ready.
-                mergedItemsMap.set(itemKey, {
-                  ...item,
-                  item_status: "ready" as const,
-                  kitchen_status: "ready" as const,
-                });
-              }
-            }
-
-            // Convert the map back to an array of items
-            const updatedItems = Array.from(mergedItemsMap.values());
-
+            // Force update order status to ready + update items
+            // This ensures "Mark as Done" turns the order green and enables payment
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [orderId]: {
                   ...state.ordersById[orderId],
                   items: updatedItems,
-                  order_status: "ready" as const,
+                  order_status: "ready",
                 },
               },
             }));
 
-            // Sync status to backend
+            // Sync item statuses and order status to backend
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
-              OrderService.updateOrderStatus(
-                supabase,
-                order.db_order_id,
-                "ready"
-              ).then(({ error }) => {
-                if (error) {
+              const dbItemIds = updatedItems
+                .filter((item) => !item.isDraft && item.db_order_item_id)
+                .map((item) => item.db_order_item_id as string);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "ready"
+                ).catch((err) => {
                   console.error(
-                    "Failed to update backend order status:",
-                    error
+                    "Failed to update backend item statuses to ready:",
+                    err
                   );
-                }
-              });
+                });
+
+                // Explicitly sync order status to ready
+                OrderService.updateOrderStatus(
+                  supabase,
+                  order.db_order_id,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend order status to ready:",
+                    err
+                  );
+                });
+              }
             }
           },
 
@@ -5664,12 +5501,64 @@ export const useOrderStore = create<OrderState>()(
 
             // Note: Inventory deduction is handled by archiveOrder when order is archived/completed
 
-            // Create a new items array where every item's status is "Served"
+            // Create a new items array where every item's kitchen_status is "served"
             const updatedItems = order.items.map((item) => ({
               ...item,
               item_status: "served" as const,
               kitchen_status: "served" as const,
             }));
+
+            // KDS BEHAVIOR: Only update item kitchen_status, NOT order_status
+            // Order status is managed by payment/checkout workflow, not kitchen
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                  // Do NOT change order_status here - kitchen tracks items, not order lifecycle
+                },
+              },
+            }));
+
+            // Sync item statuses to backend (not order status)
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              const dbItemIds = updatedItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "served"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend item statuses to served:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
+          markCourseItemsAsCooking: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            // Updated items list: only items in the provided list get updated
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "preparing" as const,
+                  kitchen_status: "preparing" as const,
+                };
+              }
+              return item;
+            });
 
             set((state) => ({
               ordersById: {
@@ -5677,28 +5566,163 @@ export const useOrderStore = create<OrderState>()(
                 [orderId]: {
                   ...state.ordersById[orderId],
                   items: updatedItems,
-                  order_status: "completed" as const,
                 },
               },
             }));
 
-            // Sync status to backend
+            // Sync to backend
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
-              OrderService.updateOrderStatus(
-                supabase,
-                order.db_order_id,
-                "completed"
-              ).then(({ error }) => {
-                if (error) {
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "preparing"
+                ).catch((err) => {
                   console.error(
-                    "Failed to update backend order status:",
-                    error
+                    "Failed to update backend items to preparing:",
+                    err
                   );
-                }
-              });
+                });
+              }
             }
           },
+
+          markCourseItemsAsReady: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "ready" as const,
+                  kitchen_status: "ready" as const,
+                };
+              }
+              return item;
+            });
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                },
+              },
+            }));
+
+            // Sync to backend
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend items to ready:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
+          markCourseItemsAsServed: (orderId, itemIds) => {
+            const { ordersById } = get();
+            const order = ordersById[orderId];
+            if (!order) return;
+
+            const updatedItems = order.items.map((item) => {
+              if (itemIds.includes(item.id)) {
+                return {
+                  ...item,
+                  item_status: "served" as const,
+                  kitchen_status: "served" as const,
+                };
+              }
+              return item;
+            });
+
+            // Check if ALL items in the order are now served
+            const allItemsServed = updatedItems.every(
+              (item) => item.kitchen_status === "served"
+            );
+
+            // If all items served, set order_status to "ready" (ready for payment/pickup)
+            const newOrderStatus = allItemsServed
+              ? "ready"
+              : order.order_status;
+
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...state.ordersById[orderId],
+                  items: updatedItems,
+                  order_status: newOrderStatus as any,
+                },
+              },
+            }));
+
+            // Sync to backend
+            const supabase = getOrderStoreSupabaseClient();
+            if (supabase && order.db_order_id) {
+              // Update item statuses
+              const targetItems = updatedItems.filter((item) =>
+                itemIds.includes(item.id)
+              );
+              const dbItemIds = targetItems
+                .map((item) => item.db_order_item_id)
+                .filter((id): id is string => !!id);
+
+              if (dbItemIds.length > 0) {
+                OrderService.bulkUpdateOrderItemStatus(
+                  supabase,
+                  dbItemIds,
+                  "served"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend items to served:",
+                    err
+                  );
+                });
+              }
+
+              // If all items served, also update order status to 'ready'
+              if (allItemsServed) {
+                OrderService.updateOrderStatus(
+                  supabase,
+                  order.db_order_id,
+                  "ready"
+                ).catch((err) => {
+                  console.error(
+                    "Failed to update backend order status to ready:",
+                    err
+                  );
+                });
+              }
+            }
+          },
+
           consolidateOrdersForTables: (tableIds, tableNames) => {
             const { orders, startNewOrder } = get();
             const ordersToMerge = orders.filter(
@@ -6283,10 +6307,29 @@ export const useOrderStore = create<OrderState>()(
             //   ],
             // });
 
-            // CRITICAL: Force floor plan refresh after void
-            setTimeout(() => {
-              useFloorPlanStore.getState().loadFloorPlanStatus();
-            }, 100);
+            // OPTIMISTIC UPDATE (Phase 1.3): Instead of full refresh, update affected table optimistically
+            // Find and clear the table session for this order
+            const { tables, tablesById } = useFloorPlanStore.getState();
+            const affectedTable = Object.values(tablesById).find(
+              t => t.session?.order_id === order.db_order_id
+            );
+            if (affectedTable) {
+              useFloorPlanStore.setState((state) => {
+                const newTables = state.tables.map(t =>
+                  t.id === affectedTable.id
+                    ? { ...t, session: undefined } // Clear session
+                    : t
+                );
+                return {
+                  tables: newTables,
+                  tablesById: tables.reduce((acc, table) => {
+                    acc[table.id] = table;
+                    return acc;
+                  }, {} as Record<string, typeof tables[0]>),
+                };
+              });
+            }
+            // Let realtime sync handle the rest (debounced)
             return true;
           },
 
@@ -6778,30 +6821,41 @@ export const useOrderStore = create<OrderState>()(
            * @returns Promise with success status and optional error message
            */
           syncOrderFromDatabase: async (
-            orderId: string
-          ): Promise<{ success: boolean; error?: string }> => {
+            dbOrderIdOrLocalId: string
+          ): Promise<string | null> => {
             const supabase = _supabaseClient;
             if (!supabase) {
               console.log(
                 "[syncOrderFromDatabase] No Supabase client available"
               );
-              return { success: false, error: "No database connection" };
+              return null;
             }
 
-            const order = get().ordersById[orderId];
+            // Check if we have this order locally (by local ID or db_order_id)
+            let order = get().ordersById[dbOrderIdOrLocalId];
+            let localOrderId = dbOrderIdOrLocalId;
+            let isNewOrder = false;
+
             if (!order) {
-              return { success: false, error: "Order not found locally" };
+              // Try to find by db_order_id
+              const orderByDbId = Object.values(get().ordersById).find(
+                (o) => o.db_order_id === dbOrderIdOrLocalId
+              );
+              if (orderByDbId) {
+                order = orderByDbId;
+                localOrderId = orderByDbId.id;
+              } else {
+                // Creating new order - generate a local ID
+                localOrderId = `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                isNewOrder = true;
+              }
             }
 
-            if (!order.db_order_id) {
-              return {
-                success: false,
-                error: "Order not synced to database yet",
-              };
-            }
+            // Determine which database ID to use for fetching
+            const dbOrderId = order?.db_order_id || dbOrderIdOrLocalId;
 
             console.log(
-              `[syncOrderFromDatabase] Syncing order ${orderId} (db: ${order.db_order_id})`
+              `[syncOrderFromDatabase] Syncing order (local: ${localOrderId}, db: ${dbOrderId})`
             );
 
             try {
@@ -6809,7 +6863,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbOrder, error: orderError } = await supabase
                 .from("orders")
                 .select("*")
-                .eq("id", order.db_order_id)
+                .eq("id", dbOrderId)
                 .single();
 
               if (orderError) {
@@ -6828,7 +6882,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbItems, error: itemsError } = await supabase
                 .from("order_items")
                 .select("*")
-                .eq("order_id", order.db_order_id)
+                .eq("order_id", dbOrderId)
                 .eq("is_voided", false);
 
               if (itemsError) {
@@ -6843,14 +6897,14 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbPayments, error: paymentsError } = await supabase
                 .from("order_payments")
                 .select("*")
-                .eq("order_id", order.db_order_id)
+                .eq("order_id", dbOrderId)
                 .eq("status", "captured");
 
               // 4. Fetch items payment allocations from database
               const { data: dbItemPayments, error: itemPaymentsError } = await supabase
                 .from("order_item_payments")
                 .select("*")
-                .eq("order_id", order.db_order_id);
+                .eq("order_id", dbOrderId);
 
               if (paymentsError) {
                 console.error(
@@ -6868,12 +6922,12 @@ export const useOrderStore = create<OrderState>()(
 
               // 4. Update local state with database values
               set((state) => {
-                const localOrder = state.ordersById[orderId];
-                if (!localOrder) return state;
+                const localOrder = state.ordersById[localOrderId];
 
-                // Map database items to local items format
-                // Match by db_order_item_id, update quantities, prices, and discount distribution
-                const syncedItems = localOrder.items.map((localItem) => {
+                // If order doesn't exist locally, we need to create it from DB data
+                // Otherwise, sync existing order with DB data
+                const syncedItems = localOrder
+                  ? localOrder.items.map((localItem) => {
                   const dbItem = dbItems?.find(
                     (db) => db.id === localItem.db_order_item_id
                   );
@@ -6899,11 +6953,12 @@ export const useOrderStore = create<OrderState>()(
                     };
                   }
                   return localItem;
-                });
+                })
+                  : []; // If no local order, start with empty array
 
                 // Also add any items from DB that aren't in local state
                 const localItemDbIds = new Set(
-                  localOrder.items
+                  (localOrder?.items || [])
                     .map((i) => i.db_order_item_id)
                     .filter(Boolean)
                 );
@@ -6970,7 +7025,7 @@ export const useOrderStore = create<OrderState>()(
                     itemsCovered: (p.item_ids || []).map((itemId: string) => ({ itemId, quantity: 1 })),
                     timestamp: p.created_at,
                     isVoided: p.status === "voided",
-                  })) || localOrder.payments;
+                  })) || localOrder?.payments || [];
 
                 // ================================================================
                 // CALCULATE paid_status FROM LOCAL PAYMENTS ONLY
@@ -6984,11 +7039,26 @@ export const useOrderStore = create<OrderState>()(
                 );
                 const isPaid = syncedPaidStatus === "Paid";
 
+                // Create base order profile (either update existing or create new)
+                const baseOrderProfile = localOrder || {
+                  id: localOrderId,
+                  db_order_id: dbOrderId,
+                  service_location_id: dbOrder.table_id || dbOrder.service_location_id,
+                  order_status: (dbOrder.status as any) || "preparing",
+                  order_type: "Dine In",
+                  opened_at: dbOrder.created_at,
+                };
+
+                // If creating new order, add to orderIds array
+                const newOrderIds = localOrder
+                  ? state.orderIds
+                  : [...state.orderIds, localOrderId];
+
                 return {
                   ordersById: {
                     ...state.ordersById,
-                    [orderId]: {
-                      ...localOrder,
+                    [localOrderId]: {
+                      ...baseOrderProfile,
                       items: allItems,
                       payments: syncedPayments,
                       // Use database as source of truth for financial data
@@ -7003,15 +7073,16 @@ export const useOrderStore = create<OrderState>()(
                       sync_status: "synced" as const,
                     },
                   },
+                  orderIds: newOrderIds,
                   // Update outstanding totals if this is the active order
-                  ...(orderId === state.activeOrderId
+                  ...(localOrderId === state.activeOrderId
                     ? {
                         activeOrderOutstandingTotal: dbOrder.amount_due || 0,
                         // Priority: backend cash_amount_due > current local value > card amount_due
-                        activeOrderOutstandingCash: 
-                          dbOrder.cash_amount_due ?? 
-                          state.activeOrderOutstandingCash ?? 
-                          dbOrder.amount_due ?? 
+                        activeOrderOutstandingCash:
+                          dbOrder.cash_amount_due ??
+                          state.activeOrderOutstandingCash ??
+                          dbOrder.amount_due ??
                           0,
                         activeOrderTotal:
                           dbOrder.card_total || dbOrder.total_amount || 0,
@@ -7027,10 +7098,10 @@ export const useOrderStore = create<OrderState>()(
               console.log(
                 "[syncOrderFromDatabase] Successfully synced order from database"
               );
-              return { success: true };
+              return localOrderId;
             } catch (error: any) {
               console.error("[syncOrderFromDatabase] Error:", error);
-              return { success: false, error: error?.message || "Sync failed" };
+              return null;
             }
           },
 

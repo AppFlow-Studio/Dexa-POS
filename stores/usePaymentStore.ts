@@ -238,15 +238,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
   // Called when success view is dismissed by dragging down
   handleSuccessClose: () => {
-    const { activeTableId } = get();
     const { activeOrderId, ordersById, startNewOrder, setActiveOrder } =
       useOrderStore.getState();
 
     // OPTIMIZED: Use O(1) lookup instead of O(n) orders.find()
     const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
+    // Use order's service_location_id instead of cleared activeTableId
+    // This prevents race condition where close() clears activeTableId before sheet animation completes
+    const tableId = activeOrder?.service_location_id;
+
     // For dine-in orders on a table, just close (table keeps the paid order)
-    if (activeOrder?.order_type === "Dine In" && activeTableId) {
+    if (activeOrder?.order_type === "Dine In" && tableId) {
       get().close();
       return;
     }

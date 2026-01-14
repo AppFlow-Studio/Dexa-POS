@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import {
   BarChart3,
   CalendarClock,
-  FlaskConical,
+  ChefHat,
   History,
   Home,
   Lock,
@@ -10,12 +10,10 @@ import {
   Settings,
   ShoppingBag,
   Table,
-  Table2,
-  TestTube,
   UtensilsCrossed,
 } from "lucide-react-native";
 import React, { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 import PinDisplay from "./auth/PinDisplay";
 import PinNumpad from "./auth/PinNumpad";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -42,8 +40,9 @@ const MenuCard: React.FC<MenuCardProps> = ({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${isHighlighted ? "bg-blue-50" : "bg-[#303030]"
-        }`}
+      className={`w-full h-full rounded-2xl border border-gray-700 p-6 ${
+        isHighlighted ? "bg-blue-50" : "bg-[#303030]"
+      }`}
       style={{ minHeight: 140 }}
     >
       <View className="justify-center h-full w-full flex">
@@ -128,6 +127,14 @@ const MainMenu: React.FC = () => {
       route: "/online-orders",
       isHighlighted: false,
     },
+    {
+      id: "kds",
+      icon: <ChefHat color="#3b82f6" size={48} />,
+      title: "Kitchen Display",
+      subtitle: "Manage Orders",
+      route: "/kds",
+      isHighlighted: false,
+    },
     // {
     //   id: "order-test",
     //   icon: <FlaskConical color="#10b981" size={48} />,
@@ -210,36 +217,43 @@ const MainMenu: React.FC = () => {
   ];
 
   return (
-    <View className="w-full h-full flex-1">
-      <View className="flex-1 p-6 w-full h-full items-center justify-center">
-        <View className="flex-1 w-full h-full items-center justify-center">
-          <View className="flex-row flex-wrap gap-4 w-full h-full items-center justify-center">
-            {menuItems.map((item, index) => (
-              <View
-                key={item.id}
-                className="w-1/4 h-1/4"
-                style={{ marginBottom: 16 }}
-              >
-                <MenuCard
-                  icon={item.icon}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  onPress={() => {
-                    if (item.isLocked) {
-                      handleLockedAccess(item.route);
-                    } else {
-                      router.push(item.route as any);
-                    }
-                  }}
-                  isLocked={item.isLocked}
-                  onLockPress={() => handleLockedAccess(item.route)}
-                  isHighlighted={item.isHighlighted}
-                />
-              </View>
-            ))}
-          </View>
+    <View className="w-full h-full flex-1 bg-[#212121]">
+      <ScrollView
+        className="w-full flex-1"
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 24,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="flex-row flex-wrap gap-4 w-full items-center justify-center">
+          {menuItems.map((item, index) => (
+            <View
+              key={item.id}
+              className="w-1/4 h-48"
+              style={{ marginBottom: 16 }}
+            >
+              <MenuCard
+                icon={item.icon}
+                title={item.title}
+                subtitle={item.subtitle}
+                onPress={() => {
+                  if (item.isLocked) {
+                    handleLockedAccess(item.route);
+                  } else {
+                    router.push(item.route as any);
+                  }
+                }}
+                isLocked={item.isLocked}
+                onLockPress={() => handleLockedAccess(item.route)}
+                isHighlighted={item.isHighlighted}
+              />
+            </View>
+          ))}
         </View>
-      </View>
+      </ScrollView>
 
       {/* Manager PIN Dialog */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>

@@ -376,9 +376,7 @@ export interface CartItem {
     | "ready"
     | "served";
   // Kitchen send status - tracks whether item has been sent to kitchen
-  kitchen_status?: "new" | "sent" | "ready" | "served";
-  // Course number for coursing workflow (fine dining)
-  courseNumber?: number;
+  kitchen_status?: "new" | "sent" | "preparing" | "ready" | "served";
   // Indicates if this item is a draft (not yet confirmed)
   isDraft?: boolean;
   originalPrice: number;
@@ -461,10 +459,18 @@ export interface PreviousOrder {
   orderTime: string; // e.g., "09:31 AM"
   timestamp: string; // ISO timestamp for filtering/sorting (e.g., "2026-01-13T23:56:00.000Z")
   orderId: string;
+  display_number: string;
   paymentStatus: PaymentStatus;
   customer: string;
   server: string;
+  opened_at: string;
+  closed_at: string;
+  sent_to_kitchen_at: string;
+  last_activity_at: string;
   itemCount: number;
+  amount_paid: number;
+  amount_due: number;
+  cash_amount_due: number;
   type: OrderType;
   total: number;
   items: CartItem[]; // The detailed list of items for the notes modal

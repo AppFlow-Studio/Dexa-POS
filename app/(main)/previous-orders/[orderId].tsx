@@ -105,15 +105,15 @@ const OrderDetailsScreen = () => {
             {order.refundedAmount != null && order.refundedAmount > 0 && (
               <DetailRow
                 label="Refunded"
-                value={`$${order.refundedAmount.toFixed(2)}`}
+                value={`$${order?.refundedAmount?.toFixed(2)}`}
               />
             )}
-            <DetailRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} />
-            <DetailRow label="Tax" value={`$${tax.toFixed(2)}`} />
+            <DetailRow label="Subtotal" value={`$${subtotal?.toFixed(2)}`} />
+            <DetailRow label="Tax" value={`$${tax?.toFixed(2)}`} />
             <View className="flex-row justify-between items-center pt-3 mt-1.5 border-t border-gray-600">
               <Text className="text-2xl font-bold text-white">Total</Text>
               <Text className="text-2xl font-bold text-white">
-                ${order.total.toFixed(2)}
+                ${order?.total?.toFixed(2)}
               </Text>
             </View>
 
@@ -134,7 +134,7 @@ const OrderDetailsScreen = () => {
                       value={
                         payment.last4
                           ? `•••• ${payment.last4}`
-                          : `$${payment.amount.toFixed(2)}`
+                          : `$${payment.amount?.toFixed(2)}`
                       }
                     />
                   ))}

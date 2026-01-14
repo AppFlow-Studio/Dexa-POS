@@ -384,11 +384,13 @@ const ModifierScreen = () => {
     },
     [getMenuItemById, precomputedCashPrice, precomputedForItemId]
   );
-
+  // WE SHOULD BE PASSING THIS TO ANY CALCULATIONS THAT NEED THE BASE ITEM PRICE
   const baseMenuItem = useMemo(
     () => menuItem || (cartItem ? getMenuItemById(cartItem.menuItemId) : null),
     [menuItem, cartItem, getMenuItemById]
   );
+
+  console.log("[ModifierScreen] baseMenuItem:", baseMenuItem?.price, baseMenuItem?.cashPrice);
 
   const menuItemForModifiers = useMemo(() => {
     if (!baseMenuItem) return null;

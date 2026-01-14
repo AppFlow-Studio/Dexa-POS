@@ -36,6 +36,7 @@ const UpdateTableScreen = () => {
   const isNavigatingAwayRef = useRef(false);
   const hasInitializedRef = useRef(false);
   const wasPaymentSheetOpenRef = useRef(false);
+  const isPaymentProcessingRef = useRef(false); // Prevent auto-session during payment sync
   const isAutoSessionRunningRef = useRef(false); // Prevent re-entry during async operations
 
   const router = useRouter();
@@ -83,7 +84,7 @@ const UpdateTableScreen = () => {
     syncOrderStatus,
     archiveOrder,
     syncOrderFromDatabase,
-    syncPaymentStatus,
+    syncOrderFromBackend,
   } = useOrderStore();
 
   const {
@@ -242,21 +243,33 @@ const UpdateTableScreen = () => {
   useEffect(() => {
     // Detect when payment sheet closes (was open -> now closed)
     if (wasPaymentSheetOpenRef.current && !isPaymentSheetOpen) {
-      console.log("[Payment] Sheet closed. Syncing payment status from database...");
+      console.log("[Payment] Sheet closed. Syncing from database...");
 
-      // Add delay to allow backend to process payment before syncing
-      // Uses syncPaymentStatus which shows loading state during sync
+      // SET GUARD: Block auto-session during payment sync
+      isPaymentProcessingRef.current = true;
+
       const orderId = activeOrder?.id;
       if (orderId) {
-        setTimeout(() => {
-          syncPaymentStatus(orderId);
+        setTimeout(async () => {
+          try {
+            // Use syncOrderFromDatabase instead of syncPaymentStatus
+            // This fetches FULL order including items and payments
+            await syncOrderFromBackend(orderId);
+          } catch (error) {
+            console.error("[Payment] Failed to sync order:", error);
+          } finally {
+            // CLEAR GUARD: Allow auto-session again
+            isPaymentProcessingRef.current = false;
+          }
         }, 500);
+      } else {
+        isPaymentProcessingRef.current = false;
       }
     }
 
     // Update ref
     wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
-  }, [isPaymentSheetOpen, currentTableId, loadFloorPlanStatus, activeOrder?.id, syncPaymentStatus]);
+  }, [isPaymentSheetOpen, activeOrder?.id, syncOrderFromDatabase]);
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
@@ -276,6 +289,12 @@ const UpdateTableScreen = () => {
       // Double-check navigation guard (async timing)
       if (isNavigatingAwayRef.current) {
         console.log("[AutoSession] Skipping async - navigating away");
+        return;
+      }
+
+      // NEW GUARD: Block during payment processing
+      if (isPaymentProcessingRef.current) {
+        console.log("[AutoSession] Skipping - payment processing in progress");
         return;
       }
 
@@ -309,6 +328,13 @@ const UpdateTableScreen = () => {
 
       // Case 1: Session exists with an order
       if (updatedTable.session?.order_id) {
+        // NEW CHECK: If active order already matches, don't re-fetch
+        const activeOrderDbId = activeOrder?.db_order_id;
+        if (activeOrderDbId === updatedTable.session.order_id) {
+          console.log("[AutoSession] Active order already matches session, skipping");
+          return;
+        }
+
         // Use getState() for fresh data instead of stale orders array
         const currentOrders = Object.values(useOrderStore.getState().ordersById);
         const foundOrder = currentOrders.find(
@@ -338,96 +364,48 @@ const UpdateTableScreen = () => {
             return;
           }
 
-          console.log(
-            "[AutoSession] Fetching missing order:",
-            updatedTable.session.order_id
+          // Before fetching, check if order already exists in store by db_order_id
+          const existingOrderByDbId = currentOrders.find(
+            (o) => o.db_order_id === updatedTable.session?.order_id
           );
+
+          if (existingOrderByDbId) {
+            // Order exists locally but wasn't found by ID
+            // Just set it active, don't fetch
+            console.log("[AutoSession] Found order by db_id:", existingOrderByDbId.id);
+            setActiveOrder(existingOrderByDbId.id);
+            return;
+          }
+
+          // Order not found - use syncOrderFromDatabase instead of manual creation
+          console.log("[AutoSession] Syncing order from database:", updatedTable.session.order_id);
           showLoading("Restoring table session...");
 
-          const supabase = getOrderStoreSupabaseClient();
-          if (supabase) {
-            const { data: fetchedOrder, error } =
-              await OrderService.fetchOrderById(
-                supabase,
-                updatedTable.session.order_id
-              );
+          try {
+            // Use the proper sync function that fetches items + payments
+            const localOrderId = await syncOrderFromDatabase(updatedTable.session.order_id);
 
             hideLoading();
 
             // Check again after async operation
             if (isNavigatingAwayRef.current) {
-              console.log(
-                "[AutoSession] Skipping order restore - navigated away"
-              );
+              console.log("[AutoSession] Skipping order restore - navigated away");
               return;
             }
 
-            if (fetchedOrder && !error) {
-              console.log("Fetched order from backend:", fetchedOrder.id);
-              // Transform to local OrderProfile
-              const newOrderProfile: OrderProfile = {
-                id: `order_${Date.now()}`, // Local ID
-                db_order_id: fetchedOrder.id,
-                service_location_id: currentTableId,
-                order_status: (fetchedOrder.status as any) || "preparing",
-                check_status:
-                  fetchedOrder.status === "completed" ? "Closed" : "Opened",
-                paid_status:
-                  (fetchedOrder.payment_status as string) === "paid" // Cast to string to avoid overlap error with strict Enum
-                    ? ("Paid" as const)
-                    : ("Unpaid" as const),
-                order_type: "Dine In",
-                items:
-                  (fetchedOrder as any).order_items?.map((item: any) => {
-                    // Determine proper item status - default to "preparing" for items that can be marked ready
-                    // Only use "ordered" if explicitly set from backend, otherwise "preparing"
-                    const itemStatus = item.status === "ready" || item.status === "served"
-                      ? item.status
-                      : item.status === "ordered"
-                        ? "preparing" // Upgrade "ordered" to "preparing" so items can be marked ready
-                        : "preparing"; // Default to preparing for null/undefined
-
-                    return {
-                      id: `item_${Date.now()}_${Math.random()}`, // New local ID
-                      isDraft: false,
-                      menuItemId: item.menu_item_id,
-                      name: item.item_name,
-                      price: item.unit_price,
-                      cashPrice: item.cash_price,
-                      originalPrice: item.unit_price,
-                      quantity: item.quantity,
-                      paidQuantity: item.paid_quantity || 0,
-                      db_order_item_id: item.id,
-                      courseNumber: item.course_number || 1, // Include course number from backend
-                      item_status: itemStatus,
-                      kitchen_status: itemStatus,
-                      is_voided: item.is_voided || false,
-                      customizations: {
-                        notes: item.special_instructions,
-                        modifiers: [],
-                      },
-                    };
-                  }) || [],
-                payments: [],
-                opened_at: fetchedOrder.created_at,
-                // Include payment-related fields
-                amount_due: (fetchedOrder as any).amount_due,
-                cash_amount_due: (fetchedOrder as any).cash_amount_due,
-                amount_paid: (fetchedOrder as any).amount_paid,
-              };
-
-              // Inject into store
-              useOrderStore.setState((state) => ({
-                ordersById: {
-                  ...state.ordersById,
-                  [newOrderProfile.id]: newOrderProfile,
-                },
-                orderIds: [...state.orderIds, newOrderProfile.id],
-              }));
-              setActiveOrder(newOrderProfile.id);
+            if (localOrderId) {
+              console.log("[AutoSession] Order synced successfully:", localOrderId);
+              setActiveOrder(localOrderId);
             }
-          } else {
+          } catch (error) {
+            console.error("[AutoSession] Failed to sync order:", error);
             hideLoading();
+
+            show({
+              title: "Error Loading Order",
+              message: "Failed to restore table session. Please try again.",
+              type: "error",
+            });
           }
         }
         return;
@@ -531,7 +509,9 @@ const UpdateTableScreen = () => {
     const order = activeOrder;
     if (order) {
       const preparingItems = order.items.filter(
-        (i) => (i.item_status || "preparing") !== "ready"
+        (i) =>
+          (i.item_status || "preparing") !== "ready" &&
+          i.item_status !== "served"
       );
       if (preparingItems.length > 0) {
         setNotReadyItems(
@@ -1185,7 +1165,7 @@ const UpdateTableScreen = () => {
               );
             } else {
               return (
-                <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} />
+                <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} isTableOrder={true} />
               );
             }
           })()}

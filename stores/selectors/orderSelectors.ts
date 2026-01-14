@@ -119,6 +119,78 @@ export function useActiveOrderTotals(): ActiveOrderTotals | null {
   }, [activeOrderId, ordersById, taxRatesMap]);
 }
 
+/**
+ * Generalized order totals selector for any order ID.
+ *
+ * Phase 3.1: Fine Dining Table Management
+ * Enables payment display for any table/order without needing it to be the active order.
+ *
+ * Uses the same authority logic as useActiveOrderTotals:
+ * - Backend values authoritative after first payment
+ * - Frontend calculation used before payments
+ *
+ * @param orderId - Local order ID (not db_order_id) to calculate totals for
+ * @returns Order totals or null if order not found
+ */
+export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null {
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+
+  return useMemo(() => {
+    if (!orderId) return null;
+
+    const order = ordersById[orderId];
+    if (!order) return null;
+
+    const activeItems = order.items.filter((item) => !item.is_voided);
+
+    // Use backend values if available (authoritative for payment state)
+    const backendAmountDue = order.amount_due;
+    const backendCashAmountDue = order.cash_amount_due;
+
+    // Calculate totals (uses TTL cache internally)
+    const totals = calculateOrderTotals({
+      items: order.items,
+      checkDiscount: order.checkDiscount ?? null,
+      taxRatesMap,
+      payments: order.payments ?? [],
+    });
+
+    // Get tip from payments array (sum of all non-voided payment tips)
+    const tip = (order.payments ?? [])
+      .filter(p => !p.isVoided)
+      .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
+
+    // Check if any payments exist (excluding voided) - determines authority
+    const hasPayments = (order.payments ?? []).some(p => !p.isVoided);
+
+    // Authority logic: frontend before first payment, backend after
+    const amountDue = hasPayments
+      ? (backendAmountDue ?? totals.outstanding_total)
+      : totals.outstanding_total;
+
+    const cashAmountDue = hasPayments
+      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      : totals.cash_outstanding_total;
+
+    return {
+      subtotal: totals.subtotal,
+      tax: totals.tax_amount,
+      cashTax: totals.cash_tax_amount,
+      total: totals.total_amount,
+      discount: totals.discount_amount,
+      itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
+      tip,
+      amountDue,
+      cashAmountDue,
+      outstandingSubtotal: totals.outstanding_subtotal,
+      outstandingTax: totals.outstanding_tax,
+      cashSubtotal: totals.cash_subtotal,
+      cashTotal: totals.cash_total_amount,
+    };
+  }, [orderId, ordersById, taxRatesMap]);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR: Working Set Orders (Phase 5)
 // ═══════════════════════════════════════════════════════════════════════════

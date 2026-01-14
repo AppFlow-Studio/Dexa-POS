@@ -18,14 +18,14 @@ const OrderCard: React.FC<OrderCardProps> = ({
   onComplete,
   onRetrieve,
 }) => {
-  const { tables } = useFloorPlanStore();
+  const { tablesById } = useFloorPlanStore();
 
   // Look up table name from service_location_id
   const tableName = useMemo(() => {
     if (!order.service_location_id) return null;
-    const table = tables.find((t) => t.id === order.service_location_id);
+    const table = tablesById[order.service_location_id];
     return table?.name || null;
-  }, [order.service_location_id, tables]);
+  }, [order.service_location_id, tablesById]);
 
   const isReady =
     order.order_status === "ready" || order.order_status === "completed";

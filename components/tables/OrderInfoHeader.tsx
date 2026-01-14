@@ -31,7 +31,7 @@ interface OrderInfoHeaderProps {
 const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { activeOrderId, orders, updateActiveOrderDetails } = useOrderStore();
-  const { tables } = useFloorPlanStore();
+  const { tablesById } = useFloorPlanStore();
   const activeOrder = orders.find((o) => o.id === activeOrderId);
 
   const [numberOfGuests, setNumberOfGuests] = useState(1);
@@ -44,8 +44,8 @@ const OrderInfoHeader: React.FC<OrderInfoHeaderProps> = ({ duration }) => {
 
   const table = useMemo(() => {
     if (!activeOrder?.service_location_id) return null;
-    return tables.find((t) => t.id === activeOrder.service_location_id) || null;
-  }, [tables, activeOrder?.service_location_id]);
+    return tablesById[activeOrder.service_location_id] || null;
+  }, [tablesById, activeOrder?.service_location_id]);
 
   const handleCustomerNameChange = (name: string) => {
     if (activeOrder) {

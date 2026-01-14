@@ -3,7 +3,7 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Minus, Plus } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   LayoutChangeEvent,
   StyleSheet,
@@ -46,6 +46,14 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
 }) => {
   const { toggleTableSelection, selectedTableIds: globallySelectedTableIds } =
     useFloorPlanStore();
+
+  // Create O(1) lookup map for tables
+  const tablesById = useMemo(() => {
+    return tables.reduce((acc, table) => {
+      acc[table.id] = table;
+      return acc;
+    }, {} as Record<string, FloorPlanObject>);
+  }, [tables]);
 
   // Use the correct selection state:
   // - In selection mode: use global store (supports multi-select for merge)
@@ -225,7 +233,7 @@ const TableLayoutView: React.FC<TableLayoutViewProps> = ({
                     // Only draw if this table ID is "less than" the other ID to avoid double drawing
                     if (table.id >= mergedId) return null;
 
-                    const mergedTable = tables.find((t) => t.id === mergedId);
+                    const mergedTable = tablesById[mergedId];
                     if (!mergedTable) return null;
                     const mergedCenter = {
                       x: mergedTable.x + 50,

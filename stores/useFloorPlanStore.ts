@@ -19,6 +19,7 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
+import { useEmployeeStore } from "./useEmployeeStore";
 
 // Global client reference to avoid direct dependency loops or hook usage outside components
 let _supabaseClient: SupabaseClient | null = null;
@@ -288,13 +289,20 @@ setupRealtimeSubscriptions: async (locationId: string) => {
       
       switch (status) {
         case 'SUBSCRIBED':
-          set({ 
-            realtimeStatus: 'connected', 
+          set({
+            realtimeStatus: 'connected',
             realtimeError: null,
-            isOnline: true 
+            isOnline: true,
+            _reconnectAttempts: 0 // Reset counter on success
           });
-          // Full refresh on (re)connect to catch missed changes
-          get().loadFloorPlanStatus();
+          // THROTTLE (Phase 1.3): Only refresh if last refresh was > 2 seconds ago
+          const lastSync = get().lastSyncAt;
+          const now = Date.now();
+          if (!lastSync || now - new Date(lastSync).getTime() > 2000) {
+            get().loadFloorPlanStatus();
+          } else {
+            console.log('[FloorPlanStore] Skipping refresh - last sync was < 2s ago');
+          }
           break;
           
         case 'CHANNEL_ERROR':
@@ -431,13 +439,14 @@ manualReconnect: () => {
 },
 
         // Add debounced refresh helper (prevents rapid reloads)
+        // UPDATED (Phase 1.3): Increased from 300ms to 500ms to reduce refresh frequency
         _debouncedRefresh: (() => {
           let timeoutId: ReturnType<typeof setTimeout> | null = null;
           return () => {
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
               useFloorPlanStore.getState().loadFloorPlanStatus();
-            }, 300); // 300ms debounce
+            }, 500); // Increased from 300ms to 500ms
           };
         })(),
 
@@ -590,8 +599,19 @@ manualReconnect: () => {
               try {
                 // Dynamic import to avoid circular dependency
                 const { useOrderStore } = await import("./useOrderStore");
-                // Limit to first 10 orders for performance
-                await useOrderStore.getState().prefetchOrders(orderIds.slice(0, 10));
+                const { ordersById, ordersByDbId } = useOrderStore.getState();
+
+                // OPTIMIZED (Phase 1.4): Filter out already-cached orders
+                const uncachedOrderIds = orderIds.filter(
+                  id => !ordersById[id] && !ordersByDbId[id]
+                );
+
+                // Reduced from 10 → 5 and only prefetch if not empty
+                if (uncachedOrderIds.length > 0) {
+                  await useOrderStore.getState().prefetchOrders(
+                    uncachedOrderIds.slice(0, 5)
+                  );
+                }
               } catch (err) {
                 console.warn("[loadFloorPlanStatus] Order prefetch failed:", err);
               }
@@ -854,6 +874,8 @@ manualReconnect: () => {
                   p_reservation_id: params.reservationId,
                   p_waitlist_id: params.waitlistId,
                   p_create_order: params.createOrder ?? true,
+                  p_staff_id:
+                    useEmployeeStore.getState().loggedInEmployee?.profileId,
                 }
               );
 
@@ -878,8 +900,9 @@ manualReconnect: () => {
                   };
                 });
 
-                // Refresh from backend to ensure consistency
-                await get().loadFloorPlanStatus();
+                // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
+                // Realtime sync will handle any additional changes
+                // await get().loadFloorPlanStatus();
 
                 return {
                   sessionId: data.session_id,
@@ -986,12 +1009,15 @@ manualReconnect: () => {
           // 2. Try backend if online
           if (isOnline && supabase) {
             try {
+              const p_staff_id =
+                useEmployeeStore.getState().loggedInEmployee?.profileId;
               const { error } = await FloorPlanService.updateTableSessionStatus(
                 supabase,
                 {
                   p_session_id: sessionId,
                   p_status: status,
                   p_notes: notes,
+                  p_staff_id,
                 }
               );
 
@@ -1006,8 +1032,9 @@ manualReconnect: () => {
                   localOrderId: sessionId,
                 });
               } else {
-                // Refresh from backend
-                await get().loadFloorPlanStatus();
+                // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
+                // Realtime sync will handle any additional changes
+                // await get().loadFloorPlanStatus();
               }
             } catch (err) {
               console.error("[updateSessionStatus] Exception, queuing:", err);
@@ -1076,9 +1103,12 @@ manualReconnect: () => {
 
         advanceCourse: async (sessionId: string) => {
           const supabase = getClient();
+          const p_staff_id =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
           const { data, error } = await FloorPlanService.advanceCourse(
             supabase,
-            sessionId
+            sessionId,
+            p_staff_id
           );
 
           if (error) throw error;
@@ -1106,9 +1136,12 @@ manualReconnect: () => {
 
         linkOrderToSession: async (sessionId: string, orderId: string) => {
           const supabase = getClient();
+          const p_staff_id =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
           const { error } = await supabase.rpc("link_order_to_session", {
             p_session_id: sessionId,
             p_order_id: orderId,
+            p_staff_id,
           });
           if (error) throw error;
         },
@@ -1135,20 +1168,24 @@ manualReconnect: () => {
           if (isOnline && supabase && sessionId) {
             try {
               // End the session by setting status to 'available'
+              const p_staff_id =
+                useEmployeeStore.getState().loggedInEmployee?.profileId;
               const { error } = await FloorPlanService.updateTableSessionStatus(
                 supabase,
                 {
                   p_session_id: sessionId,
                   p_status: "available",
                   p_notes: "Order voided",
+                  p_staff_id,
                 }
               );
 
               if (error) {
                 console.error("[clearTableSession] Backend error:", error);
               } else {
-                // Refresh from backend
-                await get().loadFloorPlanStatus();
+                // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
+                // Realtime sync will handle any additional changes
+                // await get().loadFloorPlanStatus();
               }
             } catch (err) {
               console.error("[clearTableSession] Exception:", err);

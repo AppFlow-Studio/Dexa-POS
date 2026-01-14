@@ -161,7 +161,10 @@ interface PaymentRowProps {
         cardBrand?: string;
         last4?: string;
         timestamp?: string;
-        itemsCovered?: string[];
+        itemsCovered?: {
+            itemId: string;
+            quantity: number;
+        }[];
     };
     index: number;
     onVoid: () => void;

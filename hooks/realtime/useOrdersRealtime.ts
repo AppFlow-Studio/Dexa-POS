@@ -1,8 +1,9 @@
 // hooks/useOrdersRealtime.ts
 // Real-time updates for order management
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { debounce } from 'lodash';
 import { useRealtimeChannel } from './useRealtimechannel';
 import type {
   OrderPayload,
@@ -66,7 +67,7 @@ export interface BroadcastOrderData {
 
   // Station tracking (Phase 2: Remote Order Management)
   station_id: string | null;
-  
+  station_name: string | null;  
   // Order info
   order_type: 'dine_in' | 'takeout' | 'delivery';
   status: 'draft' | 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'void';
@@ -104,6 +105,7 @@ export interface BroadcastOrderData {
   amount_paid: number;
   amount_due: number;          // Card price remaining
   cash_amount_due: number;     // Cash price remaining
+  check_status: 'Opened' | 'Closed' | null;
   
   // Timestamps
   created_at: string;
@@ -177,6 +179,56 @@ export function useOrdersRealtime({
     []
   );
 
+  // ====================================================================
+  // DEBOUNCED INVALIDATION FUNCTIONS (Phase 1.2: Reduce cache thrashing)
+  // ====================================================================
+
+  // Debounced 300ms: Lists and aggregates (batch multiple updates)
+  const debouncedInvalidateList = useMemo(
+    () =>
+      debounce((locationId: string) => {
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.list(locationId) });
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.openOrders(locationId) });
+      }, 300),
+    [queryClient]
+  );
+
+  // Debounced 300ms: Kitchen queue
+  const debouncedInvalidateKitchen = useMemo(
+    () =>
+      debounce((locationId: string) => {
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.kitchenQueue(locationId) });
+      }, 300),
+    [queryClient]
+  );
+
+  // Debounced 500ms: Stats (less time-sensitive)
+  const debouncedInvalidateStats = useMemo(
+    () =>
+      debounce((locationId: string) => {
+        queryClient.invalidateQueries({ queryKey: ordersQueryKeys.stats(locationId) });
+      }, 500),
+    [queryClient]
+  );
+
+  // IMMEDIATE: Single order detail (critical for UI responsiveness)
+  const invalidateOrderDetail = useCallback(
+    (orderId: string) => {
+      queryClient.invalidateQueries({ queryKey: ordersQueryKeys.detail(orderId) });
+      queryClient.invalidateQueries({ queryKey: ordersQueryKeys.payments(orderId) });
+    },
+    [queryClient]
+  );
+
+  // Cleanup debounced functions on unmount
+  useEffect(() => {
+    return () => {
+      debouncedInvalidateList.cancel();
+      debouncedInvalidateKitchen.cancel();
+      debouncedInvalidateStats.cancel();
+    };
+  }, [debouncedInvalidateList, debouncedInvalidateKitchen, debouncedInvalidateStats]);
+
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
       console.log(`[OrdersRealtime] Event: ${event}`, payload);
@@ -185,42 +237,29 @@ export function useOrdersRealtime({
       if (event.startsWith('ORDER_')) {
         const orderPayload = payload as OrderPayload;
 
-        // Invalidate orders list
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.list(locationId),
-        });
-
-        // Invalidate specific order detail
+        // IMMEDIATE: Specific order (< 50ms perceived latency)
         if (orderPayload.order?.id) {
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.detail(orderPayload.order.id),
-          });
+          invalidateOrderDetail(orderPayload.order.id);
         }
 
-        // Invalidate open orders (for quick service / order list views)
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.openOrders(locationId),
-        });
+        // DEBOUNCED: Lists and aggregates (300ms batch window)
+        debouncedInvalidateList(locationId);
 
-        // If order completed/paid, refresh stats
-        if (
-          orderPayload.order?.status === 'completed' ||
-          orderPayload.previous_status === 'completed'
-        ) {
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.stats(locationId),
-          });
-        }
-
-        // If order sent/preparing/ready, invalidate kitchen queue
+        // CONDITIONAL + DEBOUNCED: Kitchen queue
         if (
           orderPayload.order?.status === 'sent' ||
           orderPayload.order?.status === 'preparing' ||
           orderPayload.order?.status === 'ready'
         ) {
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.kitchenQueue(locationId),
-          });
+          debouncedInvalidateKitchen(locationId);
+        }
+
+        // CONDITIONAL + DEBOUNCED: Stats
+        if (
+          orderPayload.order?.status === 'completed' ||
+          orderPayload.previous_status === 'completed'
+        ) {
+          debouncedInvalidateStats(locationId);
         }
 
         onOrderChange?.(orderPayload);
@@ -230,34 +269,31 @@ export function useOrdersRealtime({
       if (event.startsWith('PAYMENT_')) {
         const paymentPayload = payload as PaymentPayload;
 
-        // Invalidate order detail (payment affects balance)
+        // IMMEDIATE: Order detail + payments
         if (paymentPayload.order?.id) {
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.detail(paymentPayload.order.id),
-          });
-
-          // Invalidate payments list for order
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.payments(paymentPayload.order.id),
-          });
+          invalidateOrderDetail(paymentPayload.order.id);
         }
 
-        // Invalidate orders list (paid amount changed)
-        queryClient.invalidateQueries({
-          queryKey: ordersQueryKeys.list(locationId),
-        });
+        // DEBOUNCED: Orders list
+        debouncedInvalidateList(locationId);
 
-        // Payment completed = refresh stats
+        // CONDITIONAL + DEBOUNCED: Stats
         if (paymentPayload.payment?.status === 'completed') {
-          queryClient.invalidateQueries({
-            queryKey: ordersQueryKeys.stats(locationId),
-          });
+          debouncedInvalidateStats(locationId);
         }
 
         onPaymentChange?.(paymentPayload);
       }
     },
-    [locationId, queryClient, onOrderChange, onPaymentChange]
+    [
+      locationId,
+      invalidateOrderDetail,
+      debouncedInvalidateList,
+      debouncedInvalidateKitchen,
+      debouncedInvalidateStats,
+      onOrderChange,
+      onPaymentChange,
+    ]
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({

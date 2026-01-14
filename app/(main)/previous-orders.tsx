@@ -1,5 +1,6 @@
 import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
 import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModal";
+import OrderDetailsBottomSheet from "@/components/previous-orders/OrderDetailsBottomSheet";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
 import OrderTypeFilterDropdown from "@/components/previous-orders/OrderTypeFilterDropdown";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
@@ -7,21 +8,24 @@ import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
 import SortControls from "@/components/previous-orders/SortControls";
 import StatusFilterDropdown from "@/components/previous-orders/StatusFilterDropdown";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { getOrderStoreSupabaseClient } from "@/lib/supabase";
-import { CartItem, OrderType, PaymentStatus, PreviousOrder } from "@/lib/types";
+import { CartItem, OrderProfile, OrderType, PaymentStatus } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useOrderStore } from "@/stores/useOrderStore";
+import { deduplicateOrders, filterPreviousOrders } from "@/utils/orderUtils";
+import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   DimensionValue,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Text,
   TextInput,
   View,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
+import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 
 const columns: { label: string; width: DimensionValue }[] = [
   { label: "# Serial No", width: "8%" },
@@ -57,9 +61,13 @@ const PreviousOrdersScreen = () => {
   >(null);
 
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<PreviousOrder | null>(
+  const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(
     null
   );
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<OrderProfile | null>(
+    null
+  );
+  const orderDetailsSheetRef = useRef<BottomSheetMethods>(null);
   const [dateRange, setDateRange] = useState<DateRange>({
     from: new Date(),
     to: new Date(),
@@ -72,120 +80,71 @@ const PreviousOrdersScreen = () => {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus[]>([]);
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
-  const { previousOrders } = usePreviousOrdersStore();
-  console.log("previousOrders", previousOrders);
+  const previousOrders = usePreviousOrders({ showCompleted: true });
 
-  // Get orders from the store with enhanced filtering and sorting
+  // Process orders: deduplicate, filter, and apply search/sort
   const filteredOrders = useMemo(() => {
-    let orders = [...previousOrders];
+    // Step 1: Deduplicate prefetch orders
+    const deduplicated = deduplicateOrders(previousOrders);
 
-    // Date range filtering
-    if (dateRange.from) {
-      // Create start of day (00:00:00) for the from date
-      const startDate = new Date(dateRange.from);
-      startDate.setHours(0, 0, 0, 0);
-      const startTimestamp = startDate.getTime();
+    // Step 2: Filter to show only relevant orders
+    let filtered = filterPreviousOrders(deduplicated);
 
-      // Create end of day (23:59:59.999) for the to date
-      const endDate = dateRange.to
-        ? new Date(dateRange.to)
-        : new Date(dateRange.from);
-      endDate.setHours(23, 59, 59, 999);
-      const endTimestamp = endDate.getTime();
-
-      orders = orders.filter((order) => {
-        // Use the timestamp field directly (no parsing needed!)
-        let orderTimestamp: number;
-
-        if (order.timestamp) {
-          // New format: use timestamp directly
-          orderTimestamp = new Date(order.timestamp).getTime();
-        } else {
-          // Old format: fallback to parsing orderDate for backward compatibility
-          try {
-            const dateParts = order.orderDate.split(" ");
-            const monthNames = [
-              "Jan",
-              "Feb",
-              "Mar",
-              "Apr",
-              "May",
-              "Jun",
-              "Jul",
-              "Aug",
-              "Sep",
-              "Oct",
-              "Nov",
-              "Dec",
-            ];
-            const month = monthNames.indexOf(dateParts[0]);
-            const day = parseInt(dateParts[1].replace(",", ""));
-            const year = parseInt(dateParts[2]);
-            orderTimestamp = new Date(year, month, day).getTime();
-          } catch (err) {
-            // If parsing fails, exclude from results
-            return false;
-          }
-        }
-
-        return orderTimestamp >= startTimestamp && orderTimestamp <= endTimestamp;
-      });
-    }
-
-    // Search filtering
+    // Step 3: Apply search filter
     if (searchText.trim()) {
       const lowerQuery = searchText.toLowerCase();
-      orders = orders.filter(
+      filtered = filtered.filter(
         (order) =>
-          order.orderId.toLowerCase().includes(lowerQuery) ||
-          order.customer.toLowerCase().includes(lowerQuery)
+          (order.display_number || order.order_number || order.id).toLowerCase().includes(lowerQuery) ||
+          (order.customer_name || "walk-in").toLowerCase().includes(lowerQuery)
       );
     }
 
-    // Status filtering
+    // Step 4: Apply status filter
     if (statusFilter.length > 0) {
-      orders = orders.filter((o) => statusFilter.includes(o.paymentStatus));
+      filtered = filtered.filter((o) =>
+        statusFilter.includes(o.paid_status as PaymentStatus)
+      );
     }
 
-    // Order type filtering
+    // Step 5: Apply order type filter
     if (orderTypeFilter.length > 0) {
-      orders = orders.filter((o) => orderTypeFilter.includes(o.type));
+      filtered = filtered.filter((o) => orderTypeFilter.includes(o.order_type as OrderType));
     }
 
-    // Sorting
-    orders.sort((a, b) => {
+    // Step 6: Sort orders
+    filtered.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
         case "date":
-          // Use timestamp field directly (more reliable than parsing orderDate)
-          const aTimestamp = a.timestamp ? new Date(a.timestamp).getTime() : new Date(a.orderDate).getTime();
-          const bTimestamp = b.timestamp ? new Date(b.timestamp).getTime() : new Date(b.orderDate).getTime();
-          comparison = bTimestamp - aTimestamp;
+          const aTime = a.opened_at ? new Date(a.opened_at).getTime() : 0;
+          const bTime = b.opened_at ? new Date(b.opened_at).getTime() : 0;
+          comparison = bTime - aTime;
           break;
         case "total":
-          comparison = b.total - a.total;
+          comparison = (b.total_amount || 0) - (a.total_amount || 0);
           break;
         case "status":
-          comparison = a.paymentStatus.localeCompare(b.paymentStatus);
+          comparison = (a.paid_status || "").localeCompare(b.paid_status || "");
           break;
       }
       return sortOrder === "asc" ? -comparison : comparison;
     });
 
-    return orders;
-  }, [previousOrders, searchText, dateRange, statusFilter, orderTypeFilter, sortBy, sortOrder]);
+    return filtered;
+  }, [previousOrders, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
 
-  const handleOpenNotes = (order: PreviousOrder) => {
+  const handleOpenNotes = (order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("notes");
   };
 
-  const handleOpenDelete = (order: PreviousOrder) => {
+  const handleOpenDelete = (order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("delete");
   };
 
-  const handleOpenPrint = (order: PreviousOrder) => {
+  const handleOpenPrint = (order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("print");
   };
@@ -193,19 +152,19 @@ const PreviousOrdersScreen = () => {
   const handleConfirmDelete = () => {
     if (selectedOrderItems) {
       // This needs to be implemented with actual state management for MOCK_PREVIOUS_ORDERS
-      console.log("Deleting order:", selectedOrder?.orderId);
+      console.log("Deleting order:", selectedOrder?.id);
     }
     setActiveModal(null); // Close the modal
   };
 
-  const handleCloseCheck = async (order: PreviousOrder) => {
+  const handleCloseCheck = async (order: OrderProfile) => {
     if (!order.db_order_id) {
       console.warn("Cannot close check - no db_order_id");
       return;
     }
 
     try {
-      const supabase = getOrderStoreSupabaseClient();
+      const supabase = useSupabaseClient();
       const { activeEmployeeId } = useEmployeeStore.getState();
 
       const { data, error } = await supabase?.rpc("close_check", {
@@ -222,14 +181,14 @@ const PreviousOrdersScreen = () => {
     }
   };
 
-  const handleReopenCheck = async (order: PreviousOrder) => {
+  const handleReopenCheck = async (order: OrderProfile) => {
     if (!order.db_order_id) {
       console.warn("Cannot reopen check - no db_order_id");
       return;
     }
 
     try {
-      const supabase = getOrderStoreSupabaseClient();
+      const supabase = useSupabaseClient();
       const { activeEmployeeId } = useEmployeeStore.getState();
 
       const { data, error } = await supabase?.rpc("reopen_check", {
@@ -246,11 +205,17 @@ const PreviousOrdersScreen = () => {
     }
   };
 
-  const handleRefund = (order: PreviousOrder) => {
+  const handleRefund = (order: OrderProfile) => {
     setSelectedOrder(order);
     setActiveModal("refund");
   };
 
+  const handleDoublePress = (order: OrderProfile) => {
+    setSelectedOrderForDetails(order);
+    orderDetailsSheetRef.current?.snapToIndex?.(0);
+  };
+
+  console.log("filteredOrders", filteredOrders[21]);
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -308,7 +273,7 @@ const PreviousOrdersScreen = () => {
           {/* Table Body */}
           <FlatList
             data={filteredOrders}
-            keyExtractor={(item) => item.serialNo}
+            keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <PreviousOrderRow
                 order={item}
@@ -318,6 +283,7 @@ const PreviousOrdersScreen = () => {
                 onCloseCheck={handleCloseCheck}
                 onReopenCheck={handleReopenCheck}
                 onRefund={handleRefund}
+                onDoublePress={handleDoublePress}
               />
             )}
             ListEmptyComponent={
@@ -355,6 +321,14 @@ const PreviousOrdersScreen = () => {
           isOpen={activeModal === "refund"}
           onClose={() => setActiveModal(null)}
           order={selectedOrder}
+        />
+
+        <OrderDetailsBottomSheet
+          ref={orderDetailsSheetRef}
+          order={selectedOrderForDetails}
+          onClose={() => setSelectedOrderForDetails(null)}
+          onPrint={handleOpenPrint}
+          onRefund={handleRefund}
         />
       </View>
     </KeyboardAvoidingView>

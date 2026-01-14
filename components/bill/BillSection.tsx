@@ -257,7 +257,7 @@ const BillSection = ({
       return;
     }
     // Directly open the payment bottom sheet to the method selection
-    usePaymentStore.getState().open("Card", null, "payment-method-selection");
+    usePaymentStore.getState().open("Card", activeOrder?.service_location_id || null, "payment-method-selection");
   };
 
   const handleSendToKitchen = () => {

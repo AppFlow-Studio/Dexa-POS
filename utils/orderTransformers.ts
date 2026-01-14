@@ -252,6 +252,8 @@ export interface FetchedOrderData {
   created_by_user_id?: string | null;
   assigned_server_id?: string | null;
   station_id?: string | null;
+  station_name?: string | null;
+  check_status?: string | null;
   order_type: string;
   status: string;
   table_number?: string | null;

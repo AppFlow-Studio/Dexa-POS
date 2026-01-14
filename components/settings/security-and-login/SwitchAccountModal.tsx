@@ -2,7 +2,11 @@ import PinDisplay from "@/components/auth/PinDisplay";
 import PinNumpad, { NumpadInput } from "@/components/auth/PinNumpad";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useLoading } from "@/contexts/LoadingContext";
+import { useTimeClock } from "@/hooks/useTimeclock";
+import { getDeviceId } from "@/lib/deviceId";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Clock } from "lucide-react-native";
 import React, { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
@@ -22,14 +26,28 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { signInWithPin } = useEmployeeStore();
+  const {
+    getEmployeeByStaffId,
+    setActiveSession,
+    clockIn: employeeClockIn,
+  } = useEmployeeStore();
+  const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
+  const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
+  const timeClock = useTimeClock();
+
   const { showLoading, hideLoading } = useLoading();
   const [pin, setPin] = useState("");
+  const [deviceId, setDeviceId] = useState<string>("");
   const MAX_PIN_LENGTH = 4;
   const [error, setError] = useState<string | null>(null);
 
   // Animation values for shake effect
   const shakeX = useSharedValue(0);
+
+  // Get device ID on mount
+  useEffect(() => {
+    setDeviceId(getDeviceId());
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -54,33 +72,65 @@ const SwitchAccountModal: React.FC<SwitchAccountModalProps> = ({
     }
   };
 
+  const triggerShakeAnimation = () => {
+    shakeX.value = withSequence(
+      withTiming(-10, { duration: 100 }),
+      withTiming(10, { duration: 100 }),
+      withTiming(-10, { duration: 100 }),
+      withTiming(10, { duration: 100 }),
+      withTiming(0, { duration: 100 })
+    );
+  };
+
   const handleSwitchUser = async () => {
     if (pin.length !== MAX_PIN_LENGTH) {
       setError(`PIN must be ${MAX_PIN_LENGTH} digits`);
       return;
     }
 
-    showLoading("Switching account...");
-    const res = await signInWithPin(pin);
-    hideLoading();
-
-    if (!res.ok) {
-      // Trigger shake animation for wrong PIN
-      shakeX.value = withSequence(
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(-10, { duration: 100 }),
-        withTiming(10, { duration: 100 }),
-        withTiming(0, { duration: 100 })
-      );
-      setError("Incorrect PIN. Please try again.");
-      setPin("");
+    if (!selectedStore || !deviceId) {
+      setError("Store or device not configured");
       return;
     }
 
-    setPin("");
-    setError(null);
-    onClose();
+    showLoading("Switching account...");
+
+    try {
+      // Use server-side PIN validation (fast, no local bcrypt)
+      const result = await timeClock.signIn(pin, selectedStore.id, deviceId);
+
+      if (result?.staff_id) {
+        // Server returned employee ID - get local employee record
+        const employee = getEmployeeByStaffId(result.staff_id);
+
+        if (employee) {
+          // Sync local session state
+          const existingSession = getSession(employee.id);
+          if (!existingSession) {
+            employeeClockIn(employee.id);
+            timeclockClockIn(employee.id);
+          }
+          setActiveSession(employee);
+
+          hideLoading();
+          setPin("");
+          setError(null);
+          onClose();
+          return;
+        }
+      }
+
+      // If we get here, the sign in failed
+      hideLoading();
+      triggerShakeAnimation();
+      setError("Incorrect PIN. Please try again.");
+      setPin("");
+    } catch (error) {
+      hideLoading();
+      triggerShakeAnimation();
+      setError("Incorrect PIN. Please try again.");
+      setPin("");
+    }
   };
 
   // Animated style for shake effect

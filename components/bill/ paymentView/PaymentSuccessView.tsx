@@ -22,7 +22,7 @@ const PaymentSuccessView = () => {
     activeOrderOutstandingTotal,
   } = useOrderStore();
   const { menuItems } = useMenuStore();
-  const { addSaleEvent, forceRefresh } = useAnalyticsStore();
+  // const { addSaleEvent, forceRefresh } = useAnalyticsStore();
   // NOTE: Payment was already processed by handlePaymentCompletion
   // before navigating to this view. No need to call addPaymentToOrder again.
 
@@ -48,24 +48,24 @@ const PaymentSuccessView = () => {
     } = useOrderStore.getState();
 
     // Analytics...
-    const saleEvents = items.map((item) => ({
-      date: new Date().toISOString(),
-      itemName: item.name,
-      menuItemId: item.menuItemId,
-      quantitySold: item.quantity,
-      salePrice: item.price,
-      costOfGoods: getMenuItemCostOfGoods(item.menuItemId, menuItems),
-      category: getMenuItemCategory(item.menuItemId, menuItems),
-      employeeId: activeOrder?.server_name || "Unknown",
-      paymentMethod: paymentMethod || "Card",
-      orderId: activeOrderId || undefined,
-    }));
-    addSaleEvent(saleEvents);
-    setTimeout(() => {
-      try {
-        forceRefresh();
-      } catch {}
-    }, 150);
+    // const saleEvents = items.map((item) => ({
+    //   date: new Date().toISOString(),
+    //   itemName: item.name,
+    //   menuItemId: item.menuItemId,
+    //   quantitySold: item.quantity,
+    //   salePrice: item.price,
+    //   costOfGoods: getMenuItemCostOfGoods(item.menuItemId, menuItems),
+    //   category: getMenuItemCategory(item.menuItemId, menuItems),
+    //   employeeId: activeOrder?.server_name || "Unknown",
+    //   paymentMethod: paymentMethod || "Card",
+    //   orderId: activeOrderId || undefined,
+    // }));
+    // addSaleEvent(saleEvents);
+    // setTimeout(() => {
+    //   try {
+    //     forceRefresh();
+    //   } catch {}
+    // }, 150);
 
     // For dine-in orders on a table, we just want to close the sheet
     // The payment is already processed and status is set optimistically
@@ -154,6 +154,7 @@ const PaymentSuccessView = () => {
               0
             );
             console.log("totalPaid", totalPaid);
+
             const totalTips = payments.reduce((sum, p) => {
               const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
               return sum + tip;

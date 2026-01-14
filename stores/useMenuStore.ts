@@ -52,6 +52,10 @@ interface MenuState {
   temporaryActiveMenus: string[]; // IDs of menus unlocked by PIN
   temporaryActiveCategories: string[]; // Names of categories unlocked by PIN
 
+  // Last selected menu (persisted to avoid blank state on launch)
+  lastSelectedMenuId: string | null;
+  setLastSelectedMenuId: (id: string | null) => void;
+
   // ============================================================
   // SYNC ACTIONS
   // ============================================================
@@ -583,6 +587,10 @@ export const useMenuStore = create<MenuState>((set, get) => {
     menuCategoryOverrides: {},
     temporaryActiveMenus: [],
     temporaryActiveCategories: [],
+
+    // Last selected menu (persisted to avoid blank state)
+    lastSelectedMenuId: null,
+    setLastSelectedMenuId: (id) => set({ lastSelectedMenuId: id }),
 
     // ============================================================
     // SYNC ACTIONS
