@@ -449,6 +449,11 @@ const ensureOrderCreated = async (
       return "pending_offline";
     }
 
+    console.log(
+      "p_created_by_staff_id",
+      useEmployeeStore.getState().loggedInEmployee?.profileId
+    );
+
     // Build the create order params for later execution
     const createOrderParams: CreateOrderParams = {
       p_merchant_id: selectedStore.merchant_id,
@@ -461,7 +466,8 @@ const ensureOrderCreated = async (
           : (order.order_type.toLowerCase() as DbOrderType)
         : ("dine_in" as DbOrderType),
       p_table_number: order.service_location_id || undefined,
-      p_created_by_staff_id: undefined,
+      p_created_by_staff_id:
+        useEmployeeStore.getState().loggedInEmployee?.profileId,
     };
 
     console.log(`[ensureOrderCreated] Queueing create_order operation...`);
@@ -575,7 +581,8 @@ const ensureOrderCreated = async (
             : (order.order_type.toLowerCase() as DbOrderType)
           : ("dine_in" as DbOrderType),
         p_table_number: order.service_location_id || undefined,
-        p_created_by_staff_id: undefined,
+        p_created_by_staff_id:
+          useEmployeeStore.getState().loggedInEmployee?.profileId,
       };
 
       console.log(

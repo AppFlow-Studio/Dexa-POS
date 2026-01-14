@@ -16,6 +16,7 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
+import { useEmployeeStore } from "./useEmployeeStore";
 
 // Global client reference to avoid direct dependency loops or hook usage outside components
 let _supabaseClient: SupabaseClient | null = null;
@@ -777,6 +778,8 @@ export const useFloorPlanStore = create<FloorPlanState>()(
                   p_reservation_id: params.reservationId,
                   p_waitlist_id: params.waitlistId,
                   p_create_order: params.createOrder ?? true,
+                  p_staff_id:
+                    useEmployeeStore.getState().loggedInEmployee?.profileId,
                 }
               );
 
@@ -909,12 +912,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           // 2. Try backend if online
           if (isOnline && supabase) {
             try {
+              const p_staff_id =
+                useEmployeeStore.getState().loggedInEmployee?.profileId;
               const { error } = await FloorPlanService.updateTableSessionStatus(
                 supabase,
                 {
                   p_session_id: sessionId,
                   p_status: status,
                   p_notes: notes,
+                  p_staff_id,
                 }
               );
 
@@ -999,9 +1005,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         advanceCourse: async (sessionId: string) => {
           const supabase = getClient();
+          const p_staff_id =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
           const { data, error } = await FloorPlanService.advanceCourse(
             supabase,
-            sessionId
+            sessionId,
+            p_staff_id
           );
 
           if (error) throw error;
@@ -1029,9 +1038,12 @@ export const useFloorPlanStore = create<FloorPlanState>()(
 
         linkOrderToSession: async (sessionId: string, orderId: string) => {
           const supabase = getClient();
+          const p_staff_id =
+            useEmployeeStore.getState().loggedInEmployee?.profileId;
           const { error } = await supabase.rpc("link_order_to_session", {
             p_session_id: sessionId,
             p_order_id: orderId,
+            p_staff_id,
           });
           if (error) throw error;
         },
@@ -1058,12 +1070,15 @@ export const useFloorPlanStore = create<FloorPlanState>()(
           if (isOnline && supabase && sessionId) {
             try {
               // End the session by setting status to 'available'
+              const p_staff_id =
+                useEmployeeStore.getState().loggedInEmployee?.profileId;
               const { error } = await FloorPlanService.updateTableSessionStatus(
                 supabase,
                 {
                   p_session_id: sessionId,
                   p_status: "available",
                   p_notes: "Order voided",
+                  p_staff_id,
                 }
               );
 
