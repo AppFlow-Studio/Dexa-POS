@@ -77,7 +77,10 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         return;
       }
 
-      const now = new Date();
+      // Use the actual order timestamp, not current time
+      const orderTimestamp = order.opened_at || new Date().toISOString();
+      const orderDate = new Date(orderTimestamp);
+
       const serialNo = (get().previousOrders.length + 1)
         .toString()
         .padStart(3, "0");
@@ -87,12 +90,15 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       const previousOrder: PreviousOrder = {
         serialNo,
-        orderDate: now.toLocaleDateString("en-US", {
+        // Store ISO timestamp for filtering/sorting
+        timestamp: orderTimestamp,
+        // Keep formatted strings for display
+        orderDate: orderDate.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
         }),
-        orderTime: now.toLocaleTimeString("en-US", {
+        orderTime: orderDate.toLocaleTimeString("en-US", {
           hour: "2-digit",
           minute: "2-digit",
           hour12: true,

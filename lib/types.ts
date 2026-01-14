@@ -459,6 +459,7 @@ export interface PreviousOrder {
   serialNo: string;
   orderDate: string; // e.g., "Oct 16, 2024"
   orderTime: string; // e.g., "09:31 AM"
+  timestamp: string; // ISO timestamp for filtering/sorting (e.g., "2026-01-13T23:56:00.000Z")
   orderId: string;
   paymentStatus: PaymentStatus;
   customer: string;

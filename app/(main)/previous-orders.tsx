@@ -73,6 +73,7 @@ const PreviousOrdersScreen = () => {
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
   const { previousOrders } = usePreviousOrdersStore();
+  console.log("previousOrders", previousOrders);
 
   // Get orders from the store with enhanced filtering and sorting
   const filteredOrders = useMemo(() => {
@@ -80,41 +81,54 @@ const PreviousOrdersScreen = () => {
 
     // Date range filtering
     if (dateRange.from) {
-      // 1. Create a UTC start date for comparison
+      // Create start of day (00:00:00) for the from date
       const startDate = new Date(dateRange.from);
-      startDate.setUTCHours(0, 0, 0, 0);
+      startDate.setHours(0, 0, 0, 0);
+      const startTimestamp = startDate.getTime();
 
-      // 2. Create a UTC end date for comparison
+      // Create end of day (23:59:59.999) for the to date
       const endDate = dateRange.to
         ? new Date(dateRange.to)
         : new Date(dateRange.from);
-      endDate.setUTCHours(23, 59, 59, 999);
+      endDate.setHours(23, 59, 59, 999);
+      const endTimestamp = endDate.getTime();
 
       orders = orders.filter((order) => {
-        // Parse the date string manually
-        const dateParts = order.orderDate.split(" ");
-        const monthNames = [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
-        ];
-        const month = monthNames.indexOf(dateParts[0]);
-        const day = parseInt(dateParts[1].replace(",", ""));
-        const year = parseInt(dateParts[2]);
+        // Use the timestamp field directly (no parsing needed!)
+        let orderTimestamp: number;
 
-        // Create date as UTC
-        const orderDate = new Date(Date.UTC(year, month, day));
+        if (order.timestamp) {
+          // New format: use timestamp directly
+          orderTimestamp = new Date(order.timestamp).getTime();
+        } else {
+          // Old format: fallback to parsing orderDate for backward compatibility
+          try {
+            const dateParts = order.orderDate.split(" ");
+            const monthNames = [
+              "Jan",
+              "Feb",
+              "Mar",
+              "Apr",
+              "May",
+              "Jun",
+              "Jul",
+              "Aug",
+              "Sep",
+              "Oct",
+              "Nov",
+              "Dec",
+            ];
+            const month = monthNames.indexOf(dateParts[0]);
+            const day = parseInt(dateParts[1].replace(",", ""));
+            const year = parseInt(dateParts[2]);
+            orderTimestamp = new Date(year, month, day).getTime();
+          } catch (err) {
+            // If parsing fails, exclude from results
+            return false;
+          }
+        }
 
-        return orderDate >= startDate && orderDate <= endDate;
+        return orderTimestamp >= startTimestamp && orderTimestamp <= endTimestamp;
       });
     }
 
@@ -143,7 +157,10 @@ const PreviousOrdersScreen = () => {
       let comparison = 0;
       switch (sortBy) {
         case "date":
-          comparison = new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+          // Use timestamp field directly (more reliable than parsing orderDate)
+          const aTimestamp = a.timestamp ? new Date(a.timestamp).getTime() : new Date(a.orderDate).getTime();
+          const bTimestamp = b.timestamp ? new Date(b.timestamp).getTime() : new Date(b.orderDate).getTime();
+          comparison = bTimestamp - aTimestamp;
           break;
         case "total":
           comparison = b.total - a.total;
