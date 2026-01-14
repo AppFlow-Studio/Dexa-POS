@@ -4,6 +4,7 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useItemSyncStatus, useItemSyncError } from "@/stores/useSyncStatusStore";
 import { AlertCircle, Trash2 } from "lucide-react-native";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
@@ -99,6 +100,11 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
   const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
   const setSelectedItemPosition = useModifierSidebarStore(selectSetSelectedItemPosition);
 
+  // Phase 7D: Sync status from dedicated store (not from item)
+  // This prevents re-renders of other components when sync status changes
+  const syncStatus = useItemSyncStatus(item.id);
+  const syncError = useItemSyncError(item.id);
+
   // Ref for position tracking (attached modifier panel positioning)
   const itemRef = useRef<View>(null);
 
@@ -150,7 +156,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
       // Delay removal to allow animation to complete
       setTimeout(() => {
         removeItemFromActiveOrder(item.id);
-      }, 200);
+      }, 50);
     } else {
       // Kitchen item - show void reason dialog
       setShowVoidDialog(true);
@@ -166,7 +172,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
     if (activeOrderId) {
       setTimeout(() => {
         removeItemFromActiveOrder(item.id, reason);
-      }, 200);
+      }, 50);
     }
   };
 
@@ -279,15 +285,15 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
                   >
                     {item.name}
                   </Text>
-                  {/* Sync status indicator */}
-                  {item.sync_status === "pending" ||
-                  item.sync_status === "syncing" ? (
+                  {/* Sync status indicator - Phase 7D: from dedicated store */}
+                  {syncStatus === "pending" ||
+                  syncStatus === "syncing" ? (
                     <ActivityIndicator
                       size={10}
                       color="#60A5FA"
                       style={{ marginLeft: 12 }}
                     />
-                  ) : item.sync_status === "failed" ? (
+                  ) : syncStatus === "failed" ? (
                     <AlertCircle
                       size={16}
                       color="#EF4444"
@@ -356,16 +362,18 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
 };
 
 // OPTIMIZED: Memoize to prevent re-renders when parent updates
+// Phase 7D: sync_status is now in useSyncStatusStore, not on item
+// BillItem re-renders for sync status changes via its own useItemSyncStatus subscription
 const BillItem = React.memo(BillItemComponent, (prev, next) => {
   // Return true if props are equal (skip re-render)
   // Quick checks first
+  // Note: sync_status removed - it's now managed by useSyncStatusStore
   if (
     prev.item.id !== next.item.id ||
     prev.item.quantity !== next.item.quantity ||
     prev.item.price !== next.item.price ||
     prev.item.is_voided !== next.item.is_voided ||
     prev.item.void_reason !== next.item.void_reason ||
-    prev.item.sync_status !== next.item.sync_status ||
     prev.item.paidQuantity !== next.item.paidQuantity ||
     prev.item.kitchen_status !== next.item.kitchen_status ||
     prev.item.isDraft !== next.item.isDraft ||

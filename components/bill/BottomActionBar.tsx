@@ -22,6 +22,7 @@ interface BottomActionBarProps {
   onPressDiscount: () => void;
   totalDisplayAmount: number;
   isFullyPaid?: boolean; // LOCAL-FIRST: Use local calculation from parent
+  paymentCount?: number; // Number of payments made for displaying badge
 }
 
 const BottomActionBar: React.FC<BottomActionBarProps> = ({
@@ -34,6 +35,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   onPressDiscount,
   totalDisplayAmount,
   isFullyPaid: isFullyPaidProp,
+  paymentCount,
 }) => {
   // Subscribe to payment sync status for loading state
   const paymentSyncStatus = useOrderStore((state) => state.paymentSyncStatus);
@@ -106,23 +108,25 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
           );
         }
 
-        // When balance is $0, show clickable "Close Check" button
-        // This allows closing a reopened order without adding items
+        // When balance is $0, show payment status badge (non-clickable indicator)
+        // Close Check action has been moved to the More button's bottom sheet
         if (isBalanceZero) {
+          const paymentsText = paymentCount
+            ? `${paymentCount} payment${paymentCount > 1 ? 's' : ''} made`
+            : "Partially Paid";
+
           return (
-            <TouchableOpacity
-              onPress={onPressCloseCheck}
-              className={`${buttonBaseClass} bg-emerald-600`}
-              activeOpacity={0.7}
+            <View
+              className={`${buttonBaseClass} bg-emerald-600/20 border border-emerald-500`}
             >
-              <CheckCircle size={18} color="white" />
+              <CheckCircle size={18} color="#10b981" />
               <Text
-                className="font-semibold text-white text-base"
+                className="font-semibold text-emerald-400 text-base"
                 numberOfLines={1}
               >
-                Close Check
+                {paymentsText}
               </Text>
-            </TouchableOpacity>
+            </View>
           );
         }
 

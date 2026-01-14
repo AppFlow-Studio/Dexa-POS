@@ -5,12 +5,12 @@
  * Simplified - no ownership flags, uses db_order_id directly as local ID.
  */
 
-import type { CartItem, OrderProfile } from "@/lib/types";
 import type {
-  BroadcastModifierData,
-  BroadcastOrderData,
-  BroadcastOrderItemData,
+    BroadcastModifierData,
+    BroadcastOrderData,
+    BroadcastOrderItemData,
 } from "@/hooks/realtime/useOrdersRealtime";
+import type { CartItem, OrderProfile } from "@/lib/types";
 
 /**
  * Transform broadcast modifiers to CartItem customizations.modifiers format.
@@ -202,7 +202,7 @@ export function transformBroadcastToOrder(
     // Order info
     order_type: mapOrderType(backendOrder.order_type),
     order_status: backendOrder.status,
-    check_status: backendOrder.amount_due <= 0.01 ? "Closed" : "Opened",
+    check_status: backendOrder.check_status || "Opened",
     paid_status: mapPaymentStatus(backendOrder.payment_status),
     service_location_id: backendOrder.table_number,
     customer_name: "",

@@ -29,7 +29,7 @@ const OrderBadgeComponent: React.FC<OrderBadgeProps> = ({
   const amountPaid = order.amount_paid ?? 0;
   const isPartiallyPaid = amountPaid > 0 && order.paid_status !== "Paid";
   const hasPayments = (order.payments?.length ?? 0) > 0;
-
+//  console.log("order [OrderBadgeComponent]", order.display_number,  order.amount_due);
   // Cash pricing - use backend value or fallback to amountDue (no savings if not available)
   const cashAmountDue = order.cash_amount_due ?? amountDue;
   const cashSavings = amountDue - cashAmountDue;

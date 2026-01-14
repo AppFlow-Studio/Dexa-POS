@@ -20,7 +20,6 @@ import { useCoursingStore } from "./useCoursingStore";
 import { useEmployeeStore } from "./useEmployeeStore";
 import { useInventoryStore } from "./useInventoryStore";
 import { usePreviousOrdersStore } from "./usePreviousOrdersStore";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 // import {
 //   mapLocalToBackend,
 //   registerLocalId
@@ -32,17 +31,9 @@ import {
   calculateItemEffectiveCashPrice as calculateItemEffectiveCashPriceFromModule,
   calculateOrderTotals as calculateOrderTotalsFromModule,
   calculatePaidStatus,
-  distributeDiscountToItems as distributeDiscountToItemsFromModule
+  distributeDiscountToItems as distributeDiscountToItemsFromModule,
+  invalidateCalculationCache
 } from "@/lib/order-calculator";
-import { isLocalOrder } from "@/utils/orderIdHelpers";
-import {
-  transformBroadcastItems,
-  transformBroadcastToOrder,
-  normalizeFetchedOrder,
-  mapPaymentStatus,
-  mapOrderType,
-  type FetchedOrderData,
-} from "@/utils/orderTransformers";
 import { queueFailedOperation } from "@/services/offlineSyncInit";
 import {
   getIsOnline,
@@ -50,6 +41,15 @@ import {
 } from "@/services/offlineSyncService";
 import { OrderDiscountService } from "@/services/orderDiscountService";
 import { paymentPreviewService } from "@/services/paymentPreviewService";
+import {
+  mapOrderType,
+  mapPaymentStatus,
+  normalizeFetchedOrder,
+  transformBroadcastItems,
+  transformBroadcastToOrder,
+  type FetchedOrderData,
+} from "@/utils/orderTransformers";
+import { useSyncStatusStore } from "./useSyncStatusStore";
 // import { queueFailedOperation } from "@/services/offlineSyncInit";
 // import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import {
@@ -61,15 +61,12 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
 import {
-  detectConflict,
-  hasLocalPendingChanges,
-  getOrderVersion,
+  detectConflict
 } from "@/services/conflictDetectionService";
 import { useConflictStore } from "@/stores/useConflictStore";
 import {
-  ConflictInfo,
   generateConflictToast,
-  isConflictCritical,
+  isConflictCritical
 } from "@/types/conflict-resolution";
 
 // ============================================================================
@@ -118,6 +115,114 @@ function calculateOrderTotals(
   });
 }
 
+// ============================================================================
+// HELPER FUNCTIONS FOR ITEM SYNC AND BROADCAST
+// ============================================================================
+
+/**
+ * Transform backend OrderItemModifier[] to CartItem modifiers format.
+ * Groups modifiers by modifier_group_name into categories with options.
+ */
+function transformBackendModifiers(
+  backendModifiers: Array<{
+    modifier_item_id: string;
+    modifier_name: string;
+    modifier_group_id: string;
+    modifier_group_name: string;
+    price_modifier: number;
+    quantity: number;
+  }> | undefined
+): CartItem['customizations']['modifiers'] {
+  if (!backendModifiers || backendModifiers.length === 0) return undefined;
+
+  const grouped = new Map<string, {
+    categoryId: string;
+    categoryName: string;
+    options: { id: string; name: string; price: number }[];
+  }>();
+
+  for (const mod of backendModifiers) {
+    const groupKey = mod.modifier_group_name;
+
+    if (!grouped.has(groupKey)) {
+      grouped.set(groupKey, {
+        categoryId: mod.modifier_group_id || groupKey,
+        categoryName: mod.modifier_group_name,
+        options: [],
+      });
+    }
+
+    // Handle quantity > 1 by adding option multiple times
+    for (let i = 0; i < mod.quantity; i++) {
+      grouped.get(groupKey)!.options.push({
+        id: mod.modifier_item_id,
+        name: mod.modifier_name,
+        price: mod.price_modifier,
+      });
+    }
+  }
+
+  return Array.from(grouped.values());
+}
+
+/**
+ * Detect if item-level data has changed between local and backend.
+ * Checks subtotals, tax amounts, quantities, modifiers (not just item counts).
+ *
+ * Performance: O(n) single pass with early exit.
+ * Used by: noMeaningfulChange check in broadcast handler.
+ */
+function hasItemLevelChanges(
+  localItems: CartItem[],
+  backendItems: BroadcastOrderData["order_items"] | undefined
+): boolean {
+  if (!backendItems || localItems.length !== backendItems.length) {
+    return true;
+  }
+
+  // Build map of backend items by db ID for O(1) lookup
+  const backendMap = new Map<string, NonNullable<BroadcastOrderData["order_items"]>[0]>();
+  for (const bItem of backendItems) {
+    backendMap.set(bItem.id, bItem);
+  }
+
+  // Check each local item against backend
+  for (const localItem of localItems) {
+    if (!localItem.db_order_item_id) {
+      continue; // Pending item (not yet synced), skip comparison
+    }
+
+    const backendItem = backendMap.get(localItem.db_order_item_id);
+    if (!backendItem) {
+      return true; // Item missing from backend (shouldn't happen)
+    }
+
+    // Compare critical financial fields (backend is source of truth)
+    if (
+      localItem.quantity !== backendItem.quantity ||
+      localItem.subtotal !== backendItem.subtotal ||
+      localItem.cashSubtotal !== backendItem.cash_subtotal ||
+      localItem.taxAmount !== backendItem.tax_amount ||
+      localItem.cashTaxAmount !== backendItem.cash_tax_amount
+    ) {
+      return true; // Financial data differs
+    }
+
+    // Check modifier structure (count comparison, not deep equality)
+    const localModCount = localItem.customizations?.modifiers?.reduce(
+      (sum, group) => sum + group.options.length,
+      0
+    ) ?? 0;
+    const backendModCount = backendItem.modifiers?.length ?? 0;
+
+    if (localModCount !== backendModCount) {
+      return true; // Modifier count changed
+    }
+  }
+
+  return false; // No meaningful item-level changes detected
+}
+
 // Module-level Supabase client for backend sync
 // Components register the client via setOrderStoreSupabaseClient
 let _supabaseClient: SupabaseClient | null = null;
@@ -149,6 +254,13 @@ const ORDER_CREATION_TIMEOUT_MS = 30000; // 30 seconds
 // calculate_order_totals_fast always sees all previously added items
 const pendingItemAdditions: Map<string, Promise<void>> = new Map();
 
+// ============================================================================
+// DRAFT ORDER CLEANUP CONFIGURATION
+// ============================================================================
+const DRAFT_CLEANUP_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const DRAFT_CLEANUP_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+let draftCleanupInterval: NodeJS.Timeout | null = null;
+
 /**
  * Queues an item addition to run after any pending additions complete.
  * This prevents race conditions where concurrent item additions cause
@@ -164,46 +276,46 @@ const pendingItemAdditions: Map<string, Promise<void>> = new Map();
  * @param addFn - The function that performs the item addition
  * @returns Promise<boolean> - true if item was added successfully
  */
+/**
+ * PERFORMANCE FIX: Run item additions in parallel instead of serializing.
+ *
+ * Previous behavior: Serialized all additions (5 items = 5× network latency)
+ * New behavior: Run additions concurrently (5 items ≈ 1× network latency)
+ *
+ * This is safe because:
+ * 1. ensureOrderCreated() already handles order creation race conditions
+ * 2. Each item addition is atomic at the database level (single RPC call)
+ * 3. Item IDs are unique, so concurrent additions don't conflict
+ *
+ * We still track pending additions for waitForPendingSyncs() to work.
+ */
 const queueItemAddition = async (
   orderId: string,
   addFn: () => Promise<boolean>
 ): Promise<boolean> => {
-  // Get existing queue or start with resolved promise
-  const existingQueue = pendingItemAdditions.get(orderId) || Promise.resolve();
+  // Track this addition in the pending map (for sync barrier support)
+  const additionPromise = (async () => {
+    try {
+      return await addFn();
+    } catch (error) {
+      console.error("[queueItemAddition] Error adding item:", error);
+      return false;
+    }
+  })();
 
-  let result = false;
+  // Store the promise (overwrites previous, but that's fine - we only need to track "any pending")
+  pendingItemAdditions.set(orderId, additionPromise);
 
-  // Chain our addition to run after any pending ones
-  const newQueue = existingQueue
-    .then(async () => {
-      try {
-        result = await addFn();
-      } catch (error) {
-        console.error("[queueItemAddition] Error adding item:", error);
-        result = false;
-      }
-    })
-    .catch((error) => {
-      console.error("[queueItemAddition] Queue error:", error);
-    });
+  // Run immediately without waiting for other additions
+  const result = await additionPromise;
 
-  // Store the new chain
-  pendingItemAdditions.set(orderId, newQueue);
-
-  // Wait for our addition to complete
-  await newQueue;
-
-  // Clean up the map if the queue is empty (no more pending operations)
-  // This prevents memory leaks for orders that are no longer being modified
-  const currentQueue = pendingItemAdditions.get(orderId);
-  if (currentQueue === newQueue) {
-    // We're the last in the chain, safe to clean up after a small delay
-    setTimeout(() => {
-      if (pendingItemAdditions.get(orderId) === newQueue) {
-        pendingItemAdditions.delete(orderId);
-      }
-    }, 100);
-  }
+  // Clean up after completion (with small delay to prevent race with other additions)
+  setTimeout(() => {
+    const current = pendingItemAdditions.get(orderId);
+    if (current === additionPromise) {
+      pendingItemAdditions.delete(orderId);
+    }
+  }, 50);
 
   return result;
 };
@@ -214,7 +326,8 @@ type SetOrderDbIdFn = (
   dbOrderId: string,
   orderNumber: string,
   displayNumber: string,
-  createdAt: string
+  createdAt: string,
+  syncVersion?: number
 ) => void;
 
 /**
@@ -472,7 +585,8 @@ const ensureOrderCreated = async (
             backendId,
             orderData.order_number,
             orderData.display_number,
-            orderData.created_at || new Date().toISOString()
+            orderData.created_at || new Date().toISOString(),
+            orderData.sync_version // Pass sync_version from backend response
           );
 
           // Register mapping in ID registry
@@ -790,7 +904,6 @@ const addItemToBackend = async (
               ? {
                 ...i,
                 db_order_item_id: addResult.order_item_id,
-                sync_status: "synced" as const,
               }
               : i
           );
@@ -805,6 +918,14 @@ const addItemToBackend = async (
             },
           };
         });
+        // Phase 7D: Set sync status in dedicated store (not on item)
+        useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
+
+        // Invalidate calculation cache after item sync
+        invalidateCalculationCache();
+
+        // Apply any queued backend updates now that local sync is complete
+        useOrderStore.getState().applyQueuedUpdates(order.id);
       }
 
       if (onSyncComplete) {
@@ -851,27 +972,15 @@ const addItemToBackend = async (
 
       console.log("Item quantity updated in backend successfully:", updateResult);
 
-      // Update sync status to synced
-      useOrderStore.setState((state) => {
-        const currentOrder = state.ordersById[order.id];
-        if (!currentOrder) return state;
+      // Phase 7D: Set sync status in dedicated store (not on item)
+      // No need to update ordersById here - quantity is already correct
+      useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
 
-        const updatedItems = currentOrder.items.map((i) =>
-          i.id === item.id
-            ? { ...i, sync_status: "synced" as const }
-            : i
-        );
+      // Invalidate calculation cache after item quantity update
+      invalidateCalculationCache();
 
-        return {
-          ordersById: {
-            ...state.ordersById,
-            [order.id]: {
-              ...currentOrder,
-              items: updatedItems,
-            },
-          },
-        };
-      });
+      // Apply any queued backend updates now that local sync is complete
+      useOrderStore.getState().applyQueuedUpdates(order.id);
 
       if (onSyncComplete) {
         onSyncComplete(order.id);
@@ -890,6 +999,9 @@ const addItemToBackend = async (
     // Card price is the effective price per unit (already includes modifiers)
     const cardUnitPrice = item.price;
     console.log('[addItemToBackend] item 3', item);
+    console.log('[addItemToBackend] effectiveCashPrice (base + modifiers):', effectiveCashPrice);
+    console.log('[addItemToBackend] item.originalPrice (base only):', item.originalPrice);
+    console.log('[addItemToBackend] item.cashPrice (base only):', item.cashPrice);
 
     const addItemParams: AddOrderItemParams = {
       p_order_id: dbOrderId,
@@ -970,7 +1082,6 @@ const addItemToBackend = async (
             ? {
                 ...i,
                 db_order_item_id: addResult.order_item_id,
-                sync_status: "synced" as const,
               }
             : i
         );
@@ -985,6 +1096,15 @@ const addItemToBackend = async (
           },
         };
       });
+      // Phase 7D: Set sync status in dedicated store (not on item)
+      useSyncStatusStore.getState().setSyncStatus(item.id, "synced");
+
+      // Invalidate calculation cache after new item added
+      invalidateCalculationCache();
+
+      // Apply any queued backend updates now that local sync is complete
+      useOrderStore.getState().applyQueuedUpdates(order.id);
+
       console.log(
         `Saved db_order_item_id: ${addResult.order_item_id} for item: ${item.id}`
       );
@@ -1353,7 +1473,9 @@ const syncPaymentToBackend = async (
               amount_due: data.order_amount_due, // Card price (always source of truth)
               cash_amount_due: data.order_cash_amount_due ?? data.unpaid_cash_total, // Cash price for discount display
               paid_status: data.order_fully_paid ? ("Paid" as const) : ("Partial" as const),
-              check_status: data.order_fully_paid ? ("Closed" as const) : ("Opened" as const),
+              check_status: currentOrder.check_status || "Opened",
+              // PRESERVE order_status - payment sync should not affect kitchen/preparation status
+              order_status: data.order_status || currentOrder.order_status,
             },
           },
           // Update outstanding totals if this is the active order
@@ -1372,6 +1494,14 @@ const syncPaymentToBackend = async (
             : {}),
         };
       });
+
+      // Invalidate calculation cache after successful payment sync
+      invalidateCalculationCache();
+
+      // Apply any queued backend updates now that payment sync is complete
+      useOrderStore.getState().applyQueuedUpdates(order.id);
+
+      console.log('[OrderStore] Cache invalidated after payment sync');
     }
 
     return true;
@@ -1422,6 +1552,20 @@ const syncPaymentToBackend = async (
 
 // Tax calculation is handled in calculateOrderTotals (lib/order-calculator.ts) using dynamic rate from store settings
 
+// ============================================================================
+// QUEUED UPDATE INTERFACE (Phase 3: Race Condition Prevention)
+// ============================================================================
+/**
+ * Represents a backend update that was queued because local changes were pending.
+ * These updates are applied after local changes sync to prevent race conditions.
+ */
+interface QueuedUpdate {
+  orderId: string; // Local order ID
+  timestamp: number; // When the update was queued
+  updates: Partial<OrderProfile>; // Backend fields to update
+  source: 'broadcast' | 'payment_sync' | 'reconciliation'; // Where the update came from
+}
+
 interface OrderState {
   // === OPTIMIZED DATA STRUCTURE (O(1) lookup) ===
   ordersById: Record<string, OrderProfile>;
@@ -1444,6 +1588,10 @@ interface OrderState {
   // === SYNC TRACKING STATE ===
   // Maps itemId -> sync promise for pending operations
   pendingSyncOperations: Map<string, Promise<boolean>>;
+
+  // === QUEUED BACKEND UPDATES (Phase 3: Race Condition Prevention) ===
+  // Maps local orderId -> queued update (backend updates delayed while local changes pending)
+  pendingBackendUpdates: Map<string, QueuedUpdate>;
 
   // Sync barrier methods
   hasPendingSyncs: (orderId: string) => boolean;
@@ -1512,6 +1660,29 @@ interface OrderState {
   }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
+  applyBackendItemData: (
+    itemId: string,
+    backendData: {
+      card_subtotal?: number;
+      card_tax_amount?: number;
+      unit_price?: number;
+      cash_unit_price?: number;
+      cash_subtotal?: number;
+      cash_tax_amount?: number;
+      quantity?: number;
+      discount_amount?: number;
+      discount_cash_amount?: number;
+      modifiers?: Array<{
+        modifier_item_id: string;
+        modifier_name: string;
+        modifier_group_id: string;
+        modifier_group_name: string;
+        price_modifier: number;
+        quantity: number;
+      }>;
+      sync_version?: number;
+    }
+  ) => void;
   removeItemFromActiveOrder: (itemId: string, voidReason?: string) => void;
   confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
@@ -1550,6 +1721,10 @@ interface OrderState {
   syncOrderStatus: (orderId: string) => void;
 
   archiveOrder: (orderId: string) => string | null; // Returns the tableId if it exists
+  cleanupAbandonedDrafts: () => void;
+  startDraftCleanup: () => void;
+  stopDraftCleanup: () => void;
+  cleanupDraftDuplicates: () => void;
   markAllItemsAsReady: (orderId: string) => void;
   markAllItemsAsServed: (orderId: string) => void;
   consolidateOrdersForTables: (
@@ -1627,6 +1802,11 @@ interface OrderState {
   // Sync order from backend after payment to ensure consistency
   syncOrderFromBackend: (orderId: string) => Promise<void>;
 
+  // === QUEUED UPDATE ACTIONS (Phase 3: Race Condition Prevention) ===
+  // Apply queued backend updates after local sync completes
+  applyQueuedUpdates: (orderId: string) => void;
+  // Clean up stale queued updates (older than TTL)
+  cleanupStaleQueuedUpdates: () => void;
 
   // === REALTIME SUBSCRIPTION STATE ===
     orderRealtimeChannel: RealtimeChannel | null;
@@ -1689,6 +1869,10 @@ interface OrderState {
 // Debounced refresh helper (per-order)
 const orderRefreshTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
+// PERFORMANCE: Per-order broadcast throttle to prevent rapid-fire updates
+const lastBroadcastTime: Record<string, number> = {};
+const BROADCAST_THROTTLE_MS = 500; // Max 1 update per 500ms per order
+
 const createDebouncedOrderRefresh = (get: () => OrderState) => {
   return (orderId: string) => {
     // Clear existing timeout for this order
@@ -1708,7 +1892,7 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
       }
       
       delete orderRefreshTimeouts[orderId];
-    }, 300); // 300ms debounce
+    }, 500); // 500ms debounce (increased from 300ms for performance)
   };
 };
 
@@ -1836,6 +2020,8 @@ export const useOrderStore = create<OrderState>()(
           orderRealtimeChannel: null,
           // Sync tracking state
           pendingSyncOperations: new Map<string, Promise<boolean>>(),
+          // Queued backend updates (Phase 3: Race Condition Prevention)
+          pendingBackendUpdates: new Map<string, QueuedUpdate>(),
           activeOrderSubtotal: 0,
           activeOrderTax: 0,
           activeOrderTotal: 0,
@@ -1935,7 +2121,10 @@ export const useOrderStore = create<OrderState>()(
                 get()._handleOrderBroadcast(msg.payload as OrderBroadcastPayload);
               })
               .on('broadcast', { event: 'UPDATE' }, (msg) => {
-                console.log('[OrderRealtime] Order UPDATE:', msg.payload);
+                console.log('[OrderRealtime] Order UPDATE: Card Due', msg.payload.data.order.amount_due);
+                console.log('[OrderRealtime] Order UPDATE: Cash Due:', msg.payload.data.order.cash_amount_due);
+                // console.log('[OrderRealtime] Order UPDATE:', msg.payload.data.order);
+
                 get()._handleOrderBroadcast(msg.payload as OrderBroadcastPayload);
               })
               .on('broadcast', { event: 'DELETE' }, (msg) => {
@@ -2019,10 +2208,19 @@ export const useOrderStore = create<OrderState>()(
                     break;
                 }
               });
-            
+
             set({ orderRealtimeChannel: channel, _orderLocationId: locationId });
+
+            // === PHASE 3: Start periodic cleanup for stale queued updates ===
+            // Clean up every 2 minutes to prevent memory leaks
+            const cleanupInterval = setInterval(() => {
+              get().cleanupStaleQueuedUpdates();
+            }, 2 * 60 * 1000); // 2 minutes
+
+            // Store interval for cleanup on disconnect
+            (channel as any)._queueCleanupInterval = cleanupInterval;
           },
-          
+
           // ============================================================================
           // ORDER BROADCAST HANDLER (Phase 2: Remote Order Management)
           // ============================================================================
@@ -2037,6 +2235,13 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
+            // PERFORMANCE: Throttle broadcasts per-order to prevent rapid-fire updates
+            const now = Date.now();
+            if (lastBroadcastTime[dbOrderId] && now - lastBroadcastTime[dbOrderId] < BROADCAST_THROTTLE_MS) {
+              return; // Skip - too soon since last update for this order
+            }
+            lastBroadcastTime[dbOrderId] = now;
+
             const state = get();
             const { currentStationId } = state;
             const localOrder = state.ordersByDbId[dbOrderId];
@@ -2045,6 +2250,18 @@ export const useOrderStore = create<OrderState>()(
 
             // DECISION POINT 1: Is this our own station's order?
             const isOwnStationOrder = backendOrder.station_id === currentStationId;
+
+            // PERFORMANCE FIX: Skip broadcast processing while user has pending local changes
+            // This prevents cascading re-renders during rapid item additions
+            if (isOwnStationOrder && localOrder) {
+              const hasPendingItems = localOrder.items.some(
+                (item) => !item.db_order_item_id && !item.isDraft
+              );
+              if (hasPendingItems) {
+                // Let local sync complete first - broadcast will arrive again after sync
+                return;
+              }
+            }
 
             if (isOwnStationOrder || localOrder) {
               // ═══════════════════════════════════════════════════════════
@@ -2066,12 +2283,27 @@ export const useOrderStore = create<OrderState>()(
                   if (localOrder) {
                     const localOrderId = localOrder.id;
 
-                    // Check for pending local changes
+                    // Phase 7D: Check for pending local changes using db_order_item_id
+                    // Items without db_order_item_id are pending (not yet synced)
                     const hasPendingChanges =
-                      localOrder.sync_status === "pending" ||
+                      !localOrder.db_order_id || // Order not yet created in backend
                       localOrder.items.some(
-                        (item) => item.sync_status === "pending"
+                        (item) => !item.db_order_item_id && !item.isDraft
                       );
+
+                    // PERFORMANCE: Skip update if no meaningful data changed
+                    // Compare key fields that actually affect UI
+                    const noMeaningfulChange =
+                      localOrder.amount_paid === backendOrder.amount_paid &&
+                      localOrder.order_status === backendOrder.status &&
+                      localOrder.total_amount === backendOrder.card_total &&
+                      localOrder.items.length === (backendOrder.order_items?.length ?? localOrder.items.length) &&
+                      !hasItemLevelChanges(localOrder.items, backendOrder.order_items); // NEW: Check item-level changes
+
+                    if (noMeaningfulChange && !hasPendingChanges) {
+                      // No meaningful change - skip state update to prevent re-renders
+                      return;
+                    }
 
                     // ═══════════════════════════════════════════════════════════
                     // Phase 6: Conflict Detection
@@ -2144,11 +2376,12 @@ export const useOrderStore = create<OrderState>()(
                           ])
                         );
 
-                        // Keep local pending/draft items, replace synced items with broadcast data
+                        // Phase 7D: Use db_order_item_id check instead of sync_status
+                        // Items without db_order_item_id haven't synced to backend yet
+                        // and must be preserved during broadcast merge
                         const localPendingItems = existingOrder.items.filter(
                           (item) =>
-                            item.sync_status === "pending" ||
-                            item.sync_status === "syncing" ||
+                            !item.db_order_item_id || // Not yet synced
                             item.isDraft
                         );
 
@@ -2162,7 +2395,8 @@ export const useOrderStore = create<OrderState>()(
                                 li.db_order_item_id ===
                                 broadcastItem.db_order_item_id
                             );
-                            if (localItem && localItem.sync_status !== "pending") {
+                            // Phase 7D: Check db_order_item_id instead of sync_status
+                            if (localItem && localItem.db_order_item_id) {
                               // Merge: keep local ID but update everything else from broadcast
                               return {
                                 ...broadcastItem,
@@ -2192,15 +2426,15 @@ export const useOrderStore = create<OrderState>()(
                         // Update items with merged data (Phase 2.5)
                         items: mergedItems,
 
+                        // UPDATE sync_version from broadcast to prevent false conflict detection
+                        sync_version: backendOrder.sync_version ?? existingOrder.sync_version ?? 0,
+
                         // Update totals if no pending changes
                         ...(!hasPendingChanges
                           ? {
                               // Status
                               order_status: backendOrder.status,
-                              check_status:
-                                backendOrder.amount_due <= 0.01
-                                  ? "Closed"
-                                  : "Opened",
+                              check_status: backendOrder.check_status || existingOrder.check_status || "Opened",
 
                               // Card totals (default display)
                               total_amount: backendOrder.card_total,
@@ -2223,8 +2457,9 @@ export const useOrderStore = create<OrderState>()(
                           ...state.ordersByDbId,
                           [dbOrderId]: updatedOrder,
                         },
-                        // Update derived state if active order
-                        ...(localOrderId === state.activeOrderId
+                        // Update derived state if active order AND no pending changes
+                        // PERFORMANCE FIX: Don't overwrite local totals while user is actively editing
+                        ...(localOrderId === state.activeOrderId && !hasPendingChanges
                           ? {
                               activeOrderTotal: backendOrder.card_total,
                               activeOrderTax: backendOrder.card_tax_amount,
@@ -2239,6 +2474,50 @@ export const useOrderStore = create<OrderState>()(
                           : {}),
                       };
                     });
+
+                    // === PHASE 3: Queue updates if local changes pending ===
+                    if (hasPendingChanges) {
+                      // Queue backend updates that were skipped due to pending local changes
+                      const queuedUpdate: QueuedUpdate = {
+                        orderId: localOrderId,
+                        timestamp: Date.now(),
+                        updates: {
+                          // Order status and totals (skipped above when hasPendingChanges)
+                          order_status: backendOrder.status,
+                          check_status: backendOrder.check_status || localOrder.check_status || "Opened",
+                          total_amount: backendOrder.card_total,
+                          total_tax: backendOrder.card_tax_amount,
+                          sent_to_kitchen_at: backendOrder.sent_to_kitchen_at || localOrder.sent_to_kitchen_at,
+                          // Active order derived state (if applicable)
+                          ...(localOrderId === get().activeOrderId ? {
+                            _queuedActiveOrderState: {
+                              activeOrderTotal: backendOrder.card_total,
+                              activeOrderTax: backendOrder.card_tax_amount,
+                              activeOrderSubtotal: backendOrder.card_subtotal,
+                              activeOrderDiscount: backendOrder.discount_amount,
+                              activeOrderOutstandingTotal: backendOrder.amount_due,
+                              activeOrderOutstandingCash: backendOrder.cash_amount_due,
+                              activeOrderTotalCash: backendOrder.cash_total,
+                            }
+                          } : {}),
+                        },
+                        source: 'broadcast',
+                      };
+
+                      set((state) => {
+                        const newMap = new Map(state.pendingBackendUpdates);
+                        newMap.set(localOrderId, queuedUpdate);
+                        return { pendingBackendUpdates: newMap };
+                      });
+
+                      console.log('[OrderBroadcast] Queued backend update due to pending changes:', {
+                        orderId: localOrderId,
+                        fields: Object.keys(queuedUpdate.updates),
+                      });
+                    }
+
+                    // Invalidate calculation cache after broadcast update
+                    invalidateCalculationCache();
 
                     // Full sync if status changed
                     if (localOrder.order_status !== backendOrder.status) {
@@ -2272,7 +2551,13 @@ export const useOrderStore = create<OrderState>()(
 
             switch (operation) {
               case "INSERT":
-                console.log("[OrderBroadcast] Remote INSERT:", dbOrderId);
+                // DEDUPLICATION: Only create if order doesn't exist locally
+                const existingOrder = state.ordersByDbId[dbOrderId];
+                if (existingOrder) {
+                  console.log("[OrderBroadcast] Remote INSERT - order already exists:", dbOrderId);
+                  return; // Skip duplicate creation
+                }
+                console.log("[OrderBroadcast] Remote INSERT - creating:", dbOrderId);
                 state._createRemoteOrder(backendOrder);
                 break;
 
@@ -2377,12 +2662,23 @@ export const useOrderStore = create<OrderState>()(
            */
           upsertOrder: (backendOrder, sourceStationName) => {
             const dbOrderId = backendOrder.id;
-            const existing = get().ordersByDbId[dbOrderId];
 
-            // Don't overwrite orders with pending local changes
-            if (existing?.sync_status === "pending") {
-              console.log("[UpsertOrder] Skipping - has pending sync:", dbOrderId);
-              return;
+            // ============================================================================
+            // DEDUPLICATION: Check if order already exists before creating
+            // ============================================================================
+            const existingByDbId = get().ordersByDbId[dbOrderId];
+            const existingById = get().ordersById[dbOrderId]; // Since db_order_id = id for remote orders
+            const existing = existingByDbId || existingById;
+
+            if (existing) {
+              // Don't overwrite orders with pending local changes
+              if (existing.sync_status === "pending") {
+                console.log("[UpsertOrder] Skipping - has pending sync:", dbOrderId);
+                return;
+              }
+
+              // Order already exists - this will be an update operation
+              console.log("[UpsertOrder] Updating existing order:", dbOrderId);
             }
 
             // Transform to OrderProfile
@@ -2488,7 +2784,7 @@ export const useOrderStore = create<OrderState>()(
             set({ isLoadingPreviousOrders: true });
 
             try {
-              const supabase = OrderService.getSupabaseClient();
+              const supabase = _supabaseClient;
               if (!supabase) {
                 throw new Error("Supabase client not available");
               }
@@ -2575,7 +2871,7 @@ export const useOrderStore = create<OrderState>()(
             }
 
             try {
-              const supabase = OrderService.getSupabaseClient();
+              const supabase = _supabaseClient;
               if (!supabase) {
                 throw new Error("Supabase client not available");
               }
@@ -2656,8 +2952,7 @@ export const useOrderStore = create<OrderState>()(
               // Order info
               order_type: mapOrderType(serverOrder.order_type),
               order_status: serverOrder.status as OrderProfile["order_status"],
-              check_status:
-                (serverOrder.amount_due ?? 0) <= 0.01 ? "Closed" : "Opened",
+              check_status: serverOrder.check_status || "Opened",
               paid_status: mapPaymentStatus(serverOrder.payment_status),
               service_location_id: serverOrder.table_number ?? null,
               customer_name: "",
@@ -2715,7 +3010,7 @@ export const useOrderStore = create<OrderState>()(
             if (!currentStationId) return;
 
             try {
-              const supabase = OrderService.getSupabaseClient();
+              const supabase = _supabaseClient;
               if (!supabase) {
                 throw new Error("Supabase client not available");
               }
@@ -2856,6 +3151,13 @@ export const useOrderStore = create<OrderState>()(
             const channel = get().orderRealtimeChannel;
             if (channel && supabase) {
               supabase.removeChannel(channel);
+
+              // Clean up the queued update cleanup interval
+              if ((channel as any)._queueCleanupInterval) {
+                clearInterval((channel as any)._queueCleanupInterval);
+                console.log('[OrderStore] Queue cleanup interval cleared');
+              }
+
               console.log('[OrderStore] Realtime subscriptions cleaned up');
             }
             set({ orderRealtimeChannel: null });
@@ -2865,13 +3167,13 @@ export const useOrderStore = create<OrderState>()(
           hasPendingSyncs: (orderId: string) => {
             const order = get().ordersById[orderId];
             if (!order) return false;
-            // Check if any non-draft items have pending or syncing status
-            return order.items.some(
-              (item) =>
-                !item.isDraft &&
-                (item.sync_status === "pending" ||
-                  item.sync_status === "syncing")
-            );
+            // Phase 7D: Check sync store for pending status
+            const syncStore = useSyncStatusStore.getState();
+            return order.items.some((item) => {
+              if (item.isDraft) return false;
+              const status = syncStore.itemSyncStatus.get(item.id);
+              return status === "pending" || status === "syncing";
+            });
           },
 
           waitForPendingSyncs: async (orderId: string) => {
@@ -2879,14 +3181,14 @@ export const useOrderStore = create<OrderState>()(
             const order = ordersById[orderId];
             if (!order) return;
 
-            // Get all item IDs with pending sync status
+            // Phase 7D: Get item IDs with pending sync status from sync store
+            const syncStore = useSyncStatusStore.getState();
             const pendingItemIds = order.items
-              .filter(
-                (item) =>
-                  !item.isDraft &&
-                  (item.sync_status === "pending" ||
-                    item.sync_status === "syncing")
-              )
+              .filter((item) => {
+                if (item.isDraft) return false;
+                const status = syncStore.itemSyncStatus.get(item.id);
+                return status === "pending" || status === "syncing";
+              })
               .map((item) => item.id);
 
             // Wait for all pending sync operations
@@ -2911,13 +3213,17 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order) return { pending: 0, failed: 0, synced: 0 };
 
+            // Phase 7D: Check sync store for status instead of item properties
+            const syncStore = useSyncStatusStore.getState();
             let pending = 0;
             let failed = 0;
             let synced = 0;
 
             for (const item of order.items) {
               if (item.isDraft) continue; // Skip draft items
-              switch (item.sync_status) {
+
+              const status = syncStore.itemSyncStatus.get(item.id);
+              switch (status) {
                 case "pending":
                 case "syncing":
                   pending++;
@@ -2929,7 +3235,8 @@ export const useOrderStore = create<OrderState>()(
                   synced++;
                   break;
                 default:
-                  // Items without sync_status are treated as synced (legacy items)
+                  // Items without sync status in store are treated as synced
+                  // (they have db_order_item_id or are legacy items)
                   synced++;
               }
             }
@@ -2943,34 +3250,11 @@ export const useOrderStore = create<OrderState>()(
             status: "pending" | "syncing" | "synced" | "failed",
             error?: string
           ) => {
-            set((state) => {
-              const order = state.ordersById[orderId];
-              if (!order) return state;
-
-              const updatedItems = order.items.map((item) =>
-                item.id === itemId
-                  ? {
-                      ...item,
-                      sync_status: status,
-                      sync_error: error,
-                      sync_retry_count:
-                        status === "failed"
-                          ? (item.sync_retry_count || 0) + 1
-                          : item.sync_retry_count,
-                    }
-                  : item
-              );
-
-              return {
-                ordersById: {
-                  ...state.ordersById,
-                  [orderId]: {
-                    ...order,
-                    items: updatedItems,
-                  },
-                },
-              };
-            });
+            // Phase 7D: Redirect to dedicated sync status store
+            // This prevents ordersById from changing on every sync status update,
+            // eliminating the render cascade that blocked touch events.
+            // Only BillItem subscribes to the sync store for UI indicators.
+            useSyncStatusStore.getState().setSyncStatus(itemId, status, error);
           },
 
           registerSyncOperation: (
@@ -3055,11 +3339,20 @@ export const useOrderStore = create<OrderState>()(
               customer_name: "",
               check_status: "Opened",
               paid_status: "Unpaid",
+              sync_version: 0, // Initialize at 0 for new orders (before backend creation)
               order_type: details?.tableId ? "Dine In" : "Takeaway",
               items: [],
               opened_at: null,
               guest_count: details?.guestCount || 1,
               server_name: activeEmployee?.fullName || "Unknown",
+
+              // Financial fields - initialize to 0 for new orders
+              total_amount: 0,
+              total_tax: 0,
+              total_discount: 0,
+              amount_due: 0,
+              cash_amount_due: 0,
+              amount_paid: 0,
 
               // Station tracking
               station_id: currentStationId,
@@ -3099,6 +3392,7 @@ export const useOrderStore = create<OrderState>()(
                   [activeOrderId]: {
                     ...state.ordersById[activeOrderId],
                     items: [...state.ordersById[activeOrderId].items, draftCartItem],
+                    last_activity_at: new Date().toISOString(),
                   },
                 },
               }));
@@ -3191,70 +3485,53 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // ================================================================
-            // STEP 1: Update items IMMEDIATELY (instant UI response)
+            // SINGLE BATCHED UPDATE: Items + Totals together (no double render)
+            // Performance fix: Removed queueMicrotask - now synchronous
+            // calculateOrderTotals is O(n) and takes <5ms for typical orders
             // ================================================================
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+            const totals = calculateOrderTotals(
+              updatedCart,
+              activeOrder.checkDiscount,
+              activeOrder.payments || [],
+              taxRatesMap
+            );
+
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
                 [activeOrderId]: {
                   ...state.ordersById[activeOrderId],
                   items: updatedCart,
+                  total_amount: totals.total_amount,
+                  total_tax: totals.tax_amount,
+                  total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
+                  last_activity_at: new Date().toISOString(),
                 },
               },
+              activeOrderSubtotal: totals.subtotal,
+              activeOrderTax: totals.tax_amount,
+              activeOrderTotal: totals.total_amount,
+              activeOrderDiscount: totals.discount_amount,
+              activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+              activeOrderOutstandingTax: totals.outstanding_tax,
+              activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
-
-            // ================================================================
-            // STEP 2: Defer totals calculation to microtask (non-blocking)
-            // ================================================================
-            const orderIdForTotals = activeOrderId;
-            const cartForTotals = updatedCart;
-            const discountForTotals = activeOrder.checkDiscount;
-            const paymentsForTotals = activeOrder.payments || [];
-            
-            queueMicrotask(() => {
-              const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
-              const totals = calculateOrderTotals(
-                cartForTotals,
-                discountForTotals,
-                paymentsForTotals,
-                taxRatesMap
-              );
-
-              // Update totals in a separate setState
-              set((state) => {
-                // Verify order still exists (might have been deleted)
-                if (!state.ordersById[orderIdForTotals]) return state;
-                
-                return {
-                  ordersById: {
-                    ...state.ordersById,
-                    [orderIdForTotals]: {
-                      ...state.ordersById[orderIdForTotals],
-                      total_amount: totals.total_amount,
-                      total_tax: totals.tax_amount,
-                      total_discount: totals.discount_amount,
-                    },
-                  },
-                  activeOrderSubtotal: totals.subtotal,
-                  activeOrderTax: totals.tax_amount,
-                  activeOrderTotal: totals.total_amount,
-                  activeOrderDiscount: totals.discount_amount,
-                  activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
-                  activeOrderOutstandingTax: totals.outstanding_tax,
-                  activeOrderOutstandingTotal: totals.outstanding_total,
-                  activeOrderTotalCash: totals.cash_total_amount,
-                  activeOrderOutstandingCash: totals.cash_outstanding_total,
-                };
-              });
-            });
 
             // 7. Background sync with promise tracking for sync barriers
             // Use the merged item with updated quantity, or the new item
-            const itemToSync = isMergeOperation && mergedItemWithNewQuantity 
-              ? mergedItemWithNewQuantity 
+            const itemToSync = isMergeOperation && mergedItemWithNewQuantity
+              ? mergedItemWithNewQuantity
               : (mergeCandidate || newItem);
 
             if (!itemToSync.isDraft) {
+              // Phase 7D: Set pending status in sync store for BillItem indicator
+              useSyncStatusStore.getState().setSyncStatus(syncItemId, "pending");
               const orderToSync = get().ordersById[activeOrderId];
               if (orderToSync) {
                 const updateItemSyncStatusAction = get().updateItemSyncStatus;
@@ -3280,7 +3557,8 @@ export const useOrderStore = create<OrderState>()(
                   dbOrderId: string,
                   orderNumber: string,
                   displayNumber: string,
-                  createdAt: string
+                  createdAt: string,
+                  syncVersion?: number
                 ) => {
                   set((state) => ({
                     ordersById: {
@@ -3291,6 +3569,7 @@ export const useOrderStore = create<OrderState>()(
                         order_number: orderNumber,
                         display_number: displayNumber,
                         sync_status: "synced" as const,
+                        sync_version: syncVersion ?? 1, // Store sync_version from backend
                         // Set opened_at from backend's created_at (when 1st item was added)
                         opened_at:
                           state.ordersById[orderId]?.opened_at || createdAt,
@@ -3315,15 +3594,10 @@ export const useOrderStore = create<OrderState>()(
                   )
                 )
                   .then((success) => {
-                    if (success) {
-                      // Update item sync status to synced
-                      updateItemSyncStatusAction(
-                        currentOrderId,
-                        syncItemId,
-                        "synced"
-                      );
-                    } else {
-                      // Update item sync status to failed
+                    // Phase 7C: Removed redundant "synced" call - addItemToBackend
+                    // already sets sync status to "synced" via useSyncStatusStore
+                    if (!success) {
+                      // Only need to set failed status here
                       updateItemSyncStatusAction(
                         currentOrderId,
                         syncItemId,
@@ -3371,6 +3645,7 @@ export const useOrderStore = create<OrderState>()(
             const updatedItems = order.items.map((i) =>
               i.id === updatedItem.id ? updatedItem : i
             );
+            console.log("updatedItems [updateItemInActiveOrder]",updatedItems.length , updatedItems);
 
             // Calculate totals SYNCHRONOUSLY
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -3391,6 +3666,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               activeOrderSubtotal: totals.subtotal,
@@ -3411,7 +3689,12 @@ export const useOrderStore = create<OrderState>()(
 
             if (dbOrderItemId && _supabaseClient) {
               const orderId = activeOrderId;
-
+              console.log("syncing item update", updatedItem);
+              console.log("originalItem", originalItem);  
+              console.log("updatedItem", updatedItem);
+              console.log("originalItem quantity", originalItem?.quantity);
+              console.log("updatedItem quantity", updatedItem.quantity);
+              console.log("originalItem quantity !== updatedItem quantity", originalItem?.quantity !== updatedItem.quantity);
               // 1. Sync quantity change (independent check)
               if (
                 originalItem &&
@@ -3421,45 +3704,96 @@ export const useOrderStore = create<OrderState>()(
                   _supabaseClient,
                   dbOrderItemId,
                   updatedItem.quantity
-                ).catch(async (err) => {
-                  console.error("Failed to sync quantity:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "update_item_quantity",
-                    params: {
-                      orderItemId: dbOrderItemId,
-                      quantity: updatedItem.quantity,
-                    },
-                    localOrderId: orderId,
-                    localItemId: updatedItem.id,
+                )
+                  .then((response) => {
+                    if (response.data && response.data.success) {
+                      // SUCCESS: Apply backend-calculated data immediately
+                      console.log('[updateOrderItemQuantity] Sync succeeded, applying backend data');
+
+                      try {
+                        get().applyBackendItemData(updatedItem.id, {
+                          quantity: response.data.quantity,
+
+                          // Card pricing
+                          card_subtotal: response.data.card_subtotal,
+                          card_tax_amount: response.data.card_tax_amount,
+                          unit_price: response.data.unit_price,
+
+                          // Cash pricing
+                          cash_unit_price: response.data.cash_unit_price,
+                          cash_subtotal: response.data.cash_subtotal,
+                          cash_tax_amount: response.data.cash_tax_amount,
+
+                          // Discounts
+                          discount_amount: response.data.discount_amount,
+                          discount_cash_amount: response.data.discount_cash_amount,
+
+                          sync_version: response.data.sync_version,
+                        });
+                      } catch (err) {
+                        console.error('[updateOrderItemQuantity] Failed to apply backend data:', err);
+                      }
+                    }
+                  })
+                  .catch(async (err) => {
+                    console.error("Failed to sync quantity:", err);
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: "update_item_quantity",
+                      params: {
+                        orderItemId: dbOrderItemId,
+                        quantity: updatedItem.quantity,
+                      },
+                      localOrderId: orderId,
+                      localItemId: updatedItem.id,
+                    });
                   });
-                });
               }
 
               // 2. Sync instructions change (independent check)
+              const originalNotes = originalItem?.customizations?.notes?.trim() == undefined ? '' : originalItem?.customizations?.notes?.trim();
               const instructionsChanged =
-                updatedItem.customizations?.notes !==
-                originalItem?.customizations?.notes;
-
+                updatedItem.customizations?.notes?.trim() !==
+                originalNotes;
               if (instructionsChanged) {
                 OrderService.updateOrderItem(_supabaseClient, {
                   p_order_item_id: dbOrderItemId,
                   p_special_instructions:
                     updatedItem.customizations?.notes || null,
-                }).catch(async (err) => {
-                  console.error("Failed to sync item update:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "update_item",
-                    params: {
-                      orderItemId: dbOrderItemId,
-                      specialInstructions:
-                        updatedItem.customizations?.notes || null,
-                    },
-                    localOrderId: orderId,
-                    localItemId: updatedItem.id,
+                })
+                  .then((response) => {
+                    if (response.data && response.data.success) {
+                      // SUCCESS: Apply backend data (instructions don't change pricing, but include for consistency)
+                      console.log('[updateOrderItem] Sync succeeded');
+
+                      try {
+                        get().applyBackendItemData(updatedItem.id, {
+                          // Include any pricing data returned (for consistency)
+                          card_subtotal: response.data.card_subtotal,
+                          cash_subtotal: response.data.cash_subtotal,
+                          card_tax_amount: response.data.card_tax_amount,
+                          cash_tax_amount: response.data.cash_tax_amount,
+                          sync_version: response.data.sync_version,
+                        });
+                      } catch (err) {
+                        console.error('[updateOrderItem] Failed to apply backend data:', err);
+                      }
+                    }
+                  })
+                  .catch(async (err) => {
+                    console.error("Failed to sync item update:", err);
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: "update_item",
+                      params: {
+                        orderItemId: dbOrderItemId,
+                        specialInstructions:
+                          updatedItem.customizations?.notes || null,
+                      },
+                      localOrderId: orderId,
+                      localItemId: updatedItem.id,
+                    });
                   });
-                });
               }
 
               // 3. Sync modifiers/add-ons change (independent check)
@@ -3505,21 +3839,236 @@ export const useOrderStore = create<OrderState>()(
                   _supabaseClient,
                   dbOrderItemId,
                   allModifiers
-                ).catch(async (err) => {
-                  console.error("Failed to sync modifiers:", err);
-                  // Queue for offline retry
-                  await queueOperation({
-                    type: "replace_modifiers",
-                    params: {
-                      orderItemId: dbOrderItemId,
-                      modifiers: allModifiers,
-                    },
-                    localOrderId: orderId,
-                    localItemId: updatedItem.id,
+                )
+                  .then((response) => {
+                    if (response.data && response.data.success) {
+                      // SUCCESS: Apply backend-calculated data immediately
+                      console.log('[replaceOrderItemModifiers] Sync succeeded, applying backend data');
+
+                      try {
+                        get().applyBackendItemData(updatedItem.id, {
+                          // Card pricing
+                          card_subtotal: response.data.card_subtotal ?? response.data.new_subtotal,
+                          card_tax_amount: response.data.card_tax_amount ?? response.data.tax_update,
+                          unit_price: response.data.new_unit_price,
+
+                          // Cash pricing
+                          cash_unit_price: response.data.cash_unit_price,
+                          cash_subtotal: response.data.cash_subtotal,
+                          cash_tax_amount: response.data.cash_tax_amount,
+
+                          // Discounts
+                          discount_amount: response.data.discount_amount,
+                          discount_cash_amount: response.data.discount_cash_amount,
+
+                          // Modifiers (full array from backend)
+                          modifiers: response.data.modifiers,
+
+                          // Sync version for conflict detection
+                          sync_version: response.data.sync_version,
+                        });
+                      } catch (err) {
+                        // Don't propagate - broadcast will catch it later
+                        console.error('[replaceOrderItemModifiers] Failed to apply backend data:', err);
+                      }
+                    }
+                  })
+                  .catch(async (err) => {
+                    console.error("Failed to sync modifiers:", err);
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: "replace_modifiers",
+                      params: {
+                        orderItemId: dbOrderItemId,
+                        modifiers: allModifiers,
+                      },
+                      localOrderId: orderId,
+                      localItemId: updatedItem.id,
+                    });
                   });
-                });
               }
             }
+          },
+
+          /**
+           * Apply backend-calculated item data to local item.
+           * Called after successful sync operations (replaceModifiers, updateQuantity, updateItem).
+           *
+           * Merges backend financial calculations into local item while preserving
+           * local UI state (selection, draft status, etc.).
+           *
+           * Handles sync_version to prevent applying stale data (race conditions).
+           */
+          applyBackendItemData: (
+            itemId: string,
+            backendData: {
+              // Card pricing (primary)
+              card_subtotal?: number;
+              card_tax_amount?: number;
+              unit_price?: number;
+
+              // Cash pricing
+              cash_unit_price?: number;
+              cash_subtotal?: number;
+              cash_tax_amount?: number;
+
+              // Other fields
+              quantity?: number;
+              discount_amount?: number;
+              discount_cash_amount?: number;
+
+              // Modifiers (only from replaceOrderItemModifiers)
+              modifiers?: Array<{
+                modifier_item_id: string;
+                modifier_name: string;
+                modifier_group_id: string;
+                modifier_group_name: string;
+                price_modifier: number;
+                quantity: number;
+              }>;
+
+              // Sync tracking
+              sync_version?: number;
+            }
+          ) => {
+            const { activeOrderId, ordersById } = get();
+            if (!activeOrderId) {
+              console.warn('[applyBackendItemData] No active order');
+              return;
+            }
+
+            const order = ordersById[activeOrderId];
+            if (!order) {
+              console.warn('[applyBackendItemData] Active order not found');
+              return;
+            }
+
+            // Check sync_version to prevent applying stale data
+            if (backendData.sync_version !== undefined) {
+              const currentOrderVersion = order.sync_version ?? 0;
+
+              if (backendData.sync_version < currentOrderVersion) {
+                // Backend version is older - skip stale data
+                // This can happen if broadcast arrives before delayed sync callback
+                console.warn(
+                  `[applyBackendItemData] Skipping stale backend data for item ${itemId} ` +
+                  `(backend v${backendData.sync_version} < local v${currentOrderVersion})`
+                );
+                return;
+              }
+            }
+
+            // Find and update the item
+            const itemIndex = order.items.findIndex(item => item.id === itemId);
+            if (itemIndex === -1) {
+              console.warn(`[applyBackendItemData] Item ${itemId} not found in order`);
+              return;
+            }
+
+            const currentItem = order.items[itemIndex];
+
+            // Merge backend data into item (only provided fields)
+            const updatedItem: CartItem = {
+              ...currentItem,
+
+              // Backend-calculated financial fields (card pricing)
+              ...(backendData.card_subtotal !== undefined && {
+                subtotal: backendData.card_subtotal
+              }),
+              ...(backendData.card_tax_amount !== undefined && {
+                taxAmount: backendData.card_tax_amount
+              }),
+              ...(backendData.unit_price !== undefined && {
+                price: backendData.unit_price,
+                unitPrice: backendData.unit_price,
+              }),
+
+              // Backend-calculated financial fields (cash pricing)
+              ...(backendData.cash_unit_price !== undefined && {
+                cashPrice: backendData.cash_unit_price
+              }),
+              ...(backendData.cash_subtotal !== undefined && {
+                cashSubtotal: backendData.cash_subtotal
+              }),
+              ...(backendData.cash_tax_amount !== undefined && {
+                cashTaxAmount: backendData.cash_tax_amount
+              }),
+
+              // Other fields
+              ...(backendData.quantity !== undefined && {
+                quantity: backendData.quantity
+              }),
+              ...(backendData.discount_amount !== undefined && {
+                discount_amount: backendData.discount_amount
+              }),
+              ...(backendData.discount_cash_amount !== undefined && {
+                discount_cash_amount: backendData.discount_cash_amount
+              }),
+
+              // Update modifiers if provided (from replaceOrderItemModifiers)
+              ...(backendData.modifiers !== undefined && {
+                customizations: {
+                  ...currentItem.customizations,
+                  modifiers: transformBackendModifiers(backendData.modifiers),
+                },
+              }),
+
+              // Mark as synced
+              sync_status: 'synced' as const,
+            };
+
+            // Create updated items array
+            const updatedItems = [...order.items];
+            updatedItems[itemIndex] = updatedItem;
+
+            // Recalculate order totals with updated items
+            const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
+            const totals = calculateOrderTotals(
+              updatedItems,
+              order.checkDiscount,
+              order.payments || [],
+              taxRatesMap
+            );
+
+            // Single atomic state update
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [activeOrderId]: {
+                  ...state.ordersById[activeOrderId],
+                  items: updatedItems,
+
+                  // Update order-level totals from calculation
+                  total_amount: totals.total_amount,
+                  total_tax: totals.tax_amount,
+                  total_discount: totals.discount_amount,
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
+
+                  // Update sync_version if provided
+                  ...(backendData.sync_version !== undefined && {
+                    sync_version: backendData.sync_version,
+                  }),
+                },
+              },
+
+              // Update derived active order state
+              activeOrderSubtotal: totals.subtotal,
+              activeOrderTax: totals.tax_amount,
+              activeOrderTotal: totals.total_amount,
+              activeOrderDiscount: totals.discount_amount,
+              activeOrderOutstandingSubtotal: totals.outstanding_subtotal,
+              activeOrderOutstandingTax: totals.outstanding_tax,
+              activeOrderOutstandingTotal: totals.outstanding_total,
+              activeOrderTotalCash: totals.cash_total_amount,
+              activeOrderOutstandingCash: totals.cash_outstanding_total,
+            }));
+
+            console.log(`[applyBackendItemData] Applied backend data to item ${itemId}`, {
+              card_subtotal: backendData.card_subtotal,
+              cash_subtotal: backendData.cash_subtotal,
+              sync_version: backendData.sync_version,
+            });
           },
 
           updateItemStatusInActiveOrder: (itemId, status) => {
@@ -3653,6 +4202,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               activeOrderSubtotal: totals.subtotal,
@@ -3727,6 +4279,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               activeOrderSubtotal: totals.subtotal,
@@ -3739,6 +4294,9 @@ export const useOrderStore = create<OrderState>()(
               activeOrderTotalCash: totals.cash_total_amount,
               activeOrderOutstandingCash: totals.cash_outstanding_total,
             }));
+
+            // Phase 7D: Set pending status in sync store for BillItem indicator
+            useSyncStatusStore.getState().setSyncStatus(itemId, "pending");
 
             // Sync the confirmed item to backend
             const orderToSync = get().ordersById[activeOrderId];
@@ -3766,7 +4324,8 @@ export const useOrderStore = create<OrderState>()(
                 dbOrderId: string,
                 orderNumber: string,
                 displayNumber: string,
-                createdAt: string
+                createdAt: string,
+                syncVersion?: number
               ) => {
                 set((state) => ({
                   ordersById: {
@@ -3777,6 +4336,7 @@ export const useOrderStore = create<OrderState>()(
                       order_number: orderNumber,
                       display_number: displayNumber,
                       sync_status: "synced" as const,
+                      sync_version: syncVersion ?? 1, // Store sync_version from backend
                       opened_at:
                         state.ordersById[orderId]?.opened_at || createdAt,
                     },
@@ -3795,13 +4355,9 @@ export const useOrderStore = create<OrderState>()(
                 )
               )
                 .then((success) => {
-                  if (success) {
-                    updateItemSyncStatusAction(
-                      currentOrderId,
-                      itemId,
-                      "synced"
-                    );
-                  } else {
+                  // Phase 7C: Removed redundant "synced" call - addItemToBackend
+                  // already sets sync status to "synced" via useSyncStatusStore
+                  if (!success) {
                     updateItemSyncStatusAction(
                       currentOrderId,
                       itemId,
@@ -3979,6 +4535,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               ...(orderId === get().activeOrderId
@@ -4137,6 +4696,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               ...(orderId === get().activeOrderId
@@ -4236,6 +4798,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               ...(orderId === get().activeOrderId
@@ -4279,6 +4844,9 @@ export const useOrderStore = create<OrderState>()(
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Keep amount_due in sync with outstanding_total for OrderBadge display
+                  amount_due: totals.outstanding_total,
+                  cash_amount_due: totals.cash_outstanding_total,
                 },
               },
               ...(orderId === get().activeOrderId
@@ -4607,9 +5175,7 @@ export const useOrderStore = create<OrderState>()(
                   paid_status: isFullyPaid
                     ? ("Paid" as const)
                     : ("Pending" as const),
-                  check_status: isFullyPaid
-                    ? ("Closed" as const)
-                    : ("Opened" as const),
+                  check_status: state.ordersById[orderId].check_status || "Opened",
                 },
               },
               ...(orderId === get().activeOrderId
@@ -4686,10 +5252,13 @@ export const useOrderStore = create<OrderState>()(
                 [orderId]: {
                   ...state.ordersById[orderId],
                   paid_status: "Paid" as const,
-                  check_status: "Closed" as const,
+                  check_status: state.ordersById[orderId].check_status || "Opened",
                   total_amount: totals.total_amount,
                   total_tax: totals.tax_amount,
                   total_discount: totals.discount_amount,
+                  // Fully paid orders have 0 outstanding
+                  amount_due: 0,
+                  cash_amount_due: 0,
                 },
               },
             }));
@@ -4707,34 +5276,65 @@ export const useOrderStore = create<OrderState>()(
             const { ordersById, orderIds } = get();
             const order = ordersById[orderId];
 
-            if (!order) return null;
+            if (!order) {
+              console.warn(`[archiveOrder] Order ${orderId} not found`);
+              return null;
+            }
+
+            // Validate order is in archivable state
+            const isArchivable =
+              ["void", "completed", "cancelled"].includes(order.order_status as string) ||
+              order.check_status === "Closed" ||
+              order.paid_status === "Paid";
+
+            if (!isArchivable) {
+              console.warn(
+                `[archiveOrder] Order ${orderId} not archivable:`,
+                { order_status: order.order_status, check_status: order.check_status, paid_status: order.paid_status }
+              );
+              return null;
+            }
+
+            console.log(`[archiveOrder] Archiving order ${orderId}`, {
+              status: order.order_status,
+              check_status: order.check_status,
+              total: order.total_amount,
+              items: order.items.length,
+            });
 
             // Trigger stock deduction: Local + Backend
             if (order.items.length > 0) {
-              // 1. Update local store immediately
-              useInventoryStore.getState().decrementStockFromSale(order.items);
+              try {
+                // 1. Update local store immediately
+                useInventoryStore.getState().decrementStockFromSale(order.items);
+                console.log(`[archiveOrder] Local inventory decremented`);
 
-              // 2. Sync to backend (non-blocking)
-              if (order.db_order_id) {
-                const supabase = getOrderStoreSupabaseClient();
-                if (supabase) {
-                  supabase
-                    .rpc("process_order_inventory_deduction", {
-                      p_order_id: order.db_order_id,
-                    })
-                    .then(({ error }) => {
-                      if (error) {
-                        console.error(
-                          "[archiveOrder] Backend inventory deduction failed:",
-                          error
-                        );
-                      } else {
-                        console.log(
-                          "[archiveOrder] Backend inventory deduction successful"
-                        );
-                      }
-                    });
+                // 2. Sync to backend (non-blocking)
+                if (order.db_order_id) {
+                  const supabase = getOrderStoreSupabaseClient();
+                  if (supabase) {
+                    supabase
+                      .rpc("process_order_inventory_deduction", {
+                        p_order_id: order.db_order_id,
+                      })
+                      .then(({ error }) => {
+                        if (error) {
+                          console.error(
+                            "[archiveOrder] Backend inventory deduction failed:",
+                            error
+                          );
+                          // Queue for retry if needed
+                        } else {
+                          console.log(
+                            "[archiveOrder] Backend inventory deduction successful"
+                          );
+                        }
+                      });
+                  }
                 }
+              } catch (err) {
+                console.error("[archiveOrder] Inventory deduction error:", err);
+                // Continue archiving despite error
               }
             }
 
@@ -4777,6 +5377,16 @@ export const useOrderStore = create<OrderState>()(
             const { addOrderToHistory } = usePreviousOrdersStore.getState();
             addOrderToHistory(finalOrder);
 
+            // Audit log
+            console.log(`[archiveOrder] Successfully archived`, {
+              orderId,
+              db_order_id: order.db_order_id,
+              final_status: finalOrder.order_status,
+              total: finalOrder.total_amount,
+              items: order.items.length,
+              table_id: tableId,
+            });
+
             // Finally, remove the order from the active orders list
             // Finally, remove the order from the active orders list
             // Update ordersById and orderIds
@@ -4811,6 +5421,153 @@ export const useOrderStore = create<OrderState>()(
 
             return tableId;
           },
+
+          /**
+           * Clean up abandoned draft orders
+           * Removes draft orders inactive for > 30 minutes with no db_id
+           */
+          cleanupAbandonedDrafts: () => {
+            const { ordersById, orderIds } = get();
+            const now = Date.now();
+            const idsToRemove: string[] = [];
+
+            Object.values(ordersById).forEach((order) => {
+              // Only process draft orders without backend ID
+              if (order.order_status !== "draft" || order.db_order_id) return;
+
+              // Calculate inactivity duration
+              const lastActivity = order.last_activity_at
+                ? new Date(order.last_activity_at).getTime()
+                : new Date(order.opened_at || 0).getTime();
+
+              const inactivityMs = now - lastActivity;
+
+              // Mark for removal if abandoned
+              if (inactivityMs > DRAFT_CLEANUP_TIMEOUT_MS) {
+                idsToRemove.push(order.id);
+                console.log(
+                  `[cleanupAbandonedDrafts] Removing abandoned draft: ${order.id}`,
+                  `(inactive for ${Math.floor(inactivityMs / 60000)} minutes)`
+                );
+              }
+            });
+
+            // Remove abandoned drafts
+            if (idsToRemove.length > 0) {
+              const newOrdersById = { ...ordersById };
+              idsToRemove.forEach(id => delete newOrdersById[id]);
+
+              const newOrderIds = orderIds.filter(id => !idsToRemove.includes(id));
+
+              set({
+                ordersById: newOrdersById,
+                orderIds: newOrderIds,
+              });
+
+              console.log(`[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`);
+            }
+          },
+
+          /**
+           * Start periodic draft cleanup (runs every 15 minutes)
+           */
+          startDraftCleanup: () => {
+            // Run initial cleanup
+            get().cleanupAbandonedDrafts();
+
+            // Clear any existing interval
+            if (draftCleanupInterval) {
+              clearInterval(draftCleanupInterval);
+            }
+
+            // Schedule periodic cleanup
+            draftCleanupInterval = setInterval(() => {
+              get().cleanupAbandonedDrafts();
+            }, DRAFT_CLEANUP_INTERVAL_MS);
+
+            console.log("[startDraftCleanup] Started (runs every 15 minutes)");
+          },
+
+          /**
+           * Stop periodic draft cleanup
+           */
+          stopDraftCleanup: () => {
+            if (draftCleanupInterval) {
+              clearInterval(draftCleanupInterval);
+              draftCleanupInterval = null;
+              console.log("[stopDraftCleanup] Stopped");
+            }
+          },
+
+          /**
+           * One-time cleanup: Remove duplicate draft orders
+           * Keeps oldest order, removes subsequent duplicates with same display_number + station_id
+           */
+          cleanupDraftDuplicates: () => {
+            const { ordersById, ordersByDbId, orderIds } = get();
+
+            // Group drafts by display_number and station_id
+            const draftGroups = new Map<string, OrderProfile[]>();
+
+            Object.values(ordersById).forEach(order => {
+              if (
+                order.order_status === "draft" &&
+                !order.db_order_id &&
+                order.display_number &&
+                order.station_id
+              ) {
+                const key = `${order.display_number}_${order.station_id}`;
+                const group = draftGroups.get(key) || [];
+                group.push(order);
+                draftGroups.set(key, group);
+              }
+            });
+
+            // For each group, keep oldest and remove rest
+            const idsToRemove: string[] = [];
+
+            draftGroups.forEach((orders, key) => {
+              if (orders.length > 1) {
+                // Sort by creation time (oldest first)
+                orders.sort((a, b) =>
+                  new Date(a.opened_at || 0).getTime() -
+                  new Date(b.opened_at || 0).getTime()
+                );
+
+                // Keep first, remove rest
+                const duplicates = orders.slice(1);
+                duplicates.forEach(order => {
+                  idsToRemove.push(order.id);
+                  console.log(`[CleanupDuplicates] Removing duplicate: ${order.display_number} (${order.id})`);
+                });
+              }
+            });
+
+            // Remove duplicates
+            if (idsToRemove.length > 0) {
+              const newOrdersById = { ...ordersById };
+              const newOrdersByDbId = { ...ordersByDbId };
+
+              idsToRemove.forEach(id => {
+                const order = ordersById[id];
+                delete newOrdersById[id];
+                if (order?.db_order_id) {
+                  delete newOrdersByDbId[order.db_order_id];
+                }
+              });
+
+              set({
+                ordersById: newOrdersById,
+                ordersByDbId: newOrdersByDbId,
+                orderIds: orderIds.filter(id => !idsToRemove.includes(id)),
+              });
+
+              console.log(`[CleanupDuplicates] Removed ${idsToRemove.length} duplicate drafts`);
+            } else {
+              console.log(`[CleanupDuplicates] No duplicates found`);
+            }
+          },
+
           setOpenedAt: (orderId, openedAt) => {
             set((state) => ({
               ordersById: {
@@ -5134,6 +5891,7 @@ export const useOrderStore = create<OrderState>()(
 
             if (newItems.length === 0) return;
 
+            
             let cartToProcess = [...currentOrder.items];
             const itemsToKeep: CartItem[] = [];
             const mergedItemIds = new Set<string>();
@@ -5851,6 +6609,8 @@ export const useOrderStore = create<OrderState>()(
           // Get all orders that have items with failed sync status
           getOrdersWithFailedSyncs: () => {
             const { ordersById } = get();
+            // Phase 7D: Check sync store for failed/pending status
+            const syncStore = useSyncStatusStore.getState();
             const ordersWithFailedSyncs: Array<{
               localId: string;
               dbId: string | undefined;
@@ -5858,13 +6618,12 @@ export const useOrderStore = create<OrderState>()(
 
             for (const orderId of Object.keys(ordersById)) {
               const order = ordersById[orderId];
-              const hasFailedItems = order.items.some(
-                (item) =>
-                  item.sync_status === "failed" ||
-                  item.sync_status === "pending"
-              );
+              const hasFailedItems = order.items.some((item) => {
+                const status = syncStore.itemSyncStatus.get(item.id);
+                return status === "failed" || status === "pending";
+              });
 
-              if (hasFailedItems || order.sync_status === "failed") {
+              if (hasFailedItems) {
                 ordersWithFailedSyncs.push({
                   localId: orderId,
                   dbId: order.db_order_id,
@@ -5921,9 +6680,12 @@ export const useOrderStore = create<OrderState>()(
               return;
             }
 
-            const failedItems = order.items.filter(
-              (item) => item.sync_status === "failed" && !item.isDraft
-            );
+            // Phase 7D: Check sync store for failed status
+            const syncStore = useSyncStatusStore.getState();
+            const failedItems = order.items.filter((item) => {
+              if (item.isDraft) return false;
+              return syncStore.itemSyncStatus.get(item.id) === "failed";
+            });
 
             if (failedItems.length === 0) {
               console.log(
@@ -5950,7 +6712,8 @@ export const useOrderStore = create<OrderState>()(
                 dbOrderId: string,
                 orderNumber: string,
                 displayNumber: string,
-                createdAt: string
+                createdAt: string,
+                syncVersion?: number
               ) => {
                 set((state) => ({
                   ordersById: {
@@ -5961,6 +6724,7 @@ export const useOrderStore = create<OrderState>()(
                       order_number: orderNumber,
                       display_number: displayNumber,
                       sync_status: "synced" as const,
+                      sync_version: syncVersion ?? 1, // Store sync_version from backend
                       opened_at: state.ordersById[id]?.opened_at || createdAt,
                     },
                   },
@@ -5978,9 +6742,8 @@ export const useOrderStore = create<OrderState>()(
                 )
               )
                 .then((success) => {
-                  if (success) {
-                    updateItemSyncStatus(orderId, item.id, "synced");
-                  }
+                  // Phase 7C: Removed redundant "synced" call - addItemToBackend
+                  // already sets sync status to "synced" via useSyncStatusStore
                   return success;
                 })
                 .catch((err) => {
@@ -6231,9 +6994,7 @@ export const useOrderStore = create<OrderState>()(
                       // Use database as source of truth for financial data
                       amount_paid: dbOrder.amount_paid || 0,
                       amount_due: dbOrder.amount_due || 0,
-                      cash_amount_due: dbOrder.cash_total
-                        ? dbOrder.cash_total - (dbOrder.amount_paid || 0)
-                        : undefined,
+                      cash_amount_due: dbOrder.cash_amount_due,  // Direct from DB - authoritative
                       total_amount: dbOrder.card_total || dbOrder.total_amount,
                       total_tax: dbOrder.card_tax_amount || dbOrder.tax_amount,
                       subtotal: dbOrder.card_subtotal || dbOrder.subtotal,
@@ -6246,9 +7007,12 @@ export const useOrderStore = create<OrderState>()(
                   ...(orderId === state.activeOrderId
                     ? {
                         activeOrderOutstandingTotal: dbOrder.amount_due || 0,
-                        activeOrderOutstandingCash: dbOrder.cash_total
-                          ? dbOrder.cash_total - (dbOrder.amount_paid || 0)
-                          : dbOrder.amount_due || 0,
+                        // Priority: backend cash_amount_due > current local value > card amount_due
+                        activeOrderOutstandingCash: 
+                          dbOrder.cash_amount_due ?? 
+                          state.activeOrderOutstandingCash ?? 
+                          dbOrder.amount_due ?? 
+                          0,
                         activeOrderTotal:
                           dbOrder.card_total || dbOrder.total_amount || 0,
                         activeOrderTax:
@@ -6732,6 +7496,103 @@ export const useOrderStore = create<OrderState>()(
             } catch (error: any) {
               console.error("[syncOrderFromBackend] Error:", error);
             }
+          },
+
+          // ===================================================================
+          // QUEUED UPDATE ACTIONS (Phase 3: Race Condition Prevention)
+          // ===================================================================
+
+          /**
+           * Apply queued backend updates after local sync completes.
+           * Called after item sync to apply updates that were queued while local changes were pending.
+           *
+           * @param orderId - The local order ID to apply queued updates for
+           */
+          applyQueuedUpdates: (orderId: string) => {
+            const { pendingBackendUpdates, ordersById } = get();
+            const queuedUpdate = pendingBackendUpdates.get(orderId);
+
+            if (!queuedUpdate) {
+              // No queued updates for this order
+              return;
+            }
+
+            const order = ordersById[orderId];
+            if (!order) {
+              console.warn('[applyQueuedUpdates] Order not found:', orderId);
+              // Clean up orphaned queue entry
+              set((state) => {
+                const newMap = new Map(state.pendingBackendUpdates);
+                newMap.delete(orderId);
+                return { pendingBackendUpdates: newMap };
+              });
+              return;
+            }
+
+            console.log('[applyQueuedUpdates] Applying queued update for order:', orderId, {
+              source: queuedUpdate.source,
+              queuedAt: new Date(queuedUpdate.timestamp).toISOString(),
+              fields: Object.keys(queuedUpdate.updates)
+            });
+
+            // Apply the queued updates
+            set((state) => {
+              const updatedOrder = { ...order, ...queuedUpdate.updates };
+
+              // Remove from queue
+              const newMap = new Map(state.pendingBackendUpdates);
+              newMap.delete(orderId);
+
+              return {
+                ordersById: {
+                  ...state.ordersById,
+                  [orderId]: updatedOrder,
+                },
+                // Update ordersByDbId if db_order_id exists
+                ...(updatedOrder.db_order_id ? {
+                  ordersByDbId: {
+                    ...state.ordersByDbId,
+                    [updatedOrder.db_order_id]: updatedOrder,
+                  }
+                } : {}),
+                pendingBackendUpdates: newMap,
+              };
+            });
+
+            console.log('[applyQueuedUpdates] Successfully applied queued updates for order:', orderId);
+          },
+
+          /**
+           * Clean up stale queued updates (older than 5 minutes).
+           * Called periodically to prevent memory leaks from abandoned updates.
+           */
+          cleanupStaleQueuedUpdates: () => {
+            const TTL_MS = 5 * 60 * 1000; // 5 minutes
+            const now = Date.now();
+
+            set((state) => {
+              const newMap = new Map(state.pendingBackendUpdates);
+              let cleanedCount = 0;
+
+              for (const [orderId, update] of newMap.entries()) {
+                if (now - update.timestamp > TTL_MS) {
+                  console.log('[cleanupStaleQueuedUpdates] Removing stale update:', {
+                    orderId,
+                    age: Math.round((now - update.timestamp) / 1000),
+                    source: update.source,
+                  });
+                  newMap.delete(orderId);
+                  cleanedCount++;
+                }
+              }
+
+              if (cleanedCount > 0) {
+                console.log('[cleanupStaleQueuedUpdates] Cleaned up', cleanedCount, 'stale updates');
+                return { pendingBackendUpdates: newMap };
+              }
+
+              return state; // No changes
+            });
           },
         };
       },

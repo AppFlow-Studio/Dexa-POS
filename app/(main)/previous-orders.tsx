@@ -1,9 +1,15 @@
 import DateRangePicker, { DateRange } from "@/components/DateRangePicker";
+import AdvancedRefundModal from "@/components/previous-orders/AdvancedRefundModal";
 import OrderNotesModal from "@/components/previous-orders/OrderNotesModal";
+import OrderTypeFilterDropdown from "@/components/previous-orders/OrderTypeFilterDropdown";
 import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
+import SortControls from "@/components/previous-orders/SortControls";
+import StatusFilterDropdown from "@/components/previous-orders/StatusFilterDropdown";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
-import { CartItem, PreviousOrder } from "@/lib/types";
+import { getOrderStoreSupabaseClient } from "@/lib/supabase";
+import { CartItem, OrderType, PaymentStatus, PreviousOrder } from "@/lib/types";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { Search } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
@@ -47,7 +53,7 @@ const HeaderCell = ({
 const PreviousOrdersScreen = () => {
   // State for the notes modal
   const [activeModal, setActiveModal] = useState<
-    "notes" | "print" | "delete" | "modifiers" | null
+    "notes" | "print" | "delete" | "modifiers" | "refund" | null
   >(null);
 
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
@@ -59,15 +65,20 @@ const PreviousOrdersScreen = () => {
     to: new Date(),
   });
 
-  // State for filters would go here
+  // Enhanced filtering and sorting state
   const [searchText, setSearchText] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "total" | "status">("date");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [statusFilter, setStatusFilter] = useState<PaymentStatus[]>([]);
+  const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
   const { previousOrders } = usePreviousOrdersStore();
 
-  // Get orders from the store
+  // Get orders from the store with enhanced filtering and sorting
   const filteredOrders = useMemo(() => {
     let orders = [...previousOrders];
 
+    // Date range filtering
     if (dateRange.from) {
       // 1. Create a UTC start date for comparison
       const startDate = new Date(dateRange.from);
@@ -107,6 +118,7 @@ const PreviousOrdersScreen = () => {
       });
     }
 
+    // Search filtering
     if (searchText.trim()) {
       const lowerQuery = searchText.toLowerCase();
       orders = orders.filter(
@@ -116,11 +128,35 @@ const PreviousOrdersScreen = () => {
       );
     }
 
-    return orders.sort(
-      (a, b) =>
-        new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()
-    );
-  }, [previousOrders, searchText, dateRange]);
+    // Status filtering
+    if (statusFilter.length > 0) {
+      orders = orders.filter((o) => statusFilter.includes(o.paymentStatus));
+    }
+
+    // Order type filtering
+    if (orderTypeFilter.length > 0) {
+      orders = orders.filter((o) => orderTypeFilter.includes(o.type));
+    }
+
+    // Sorting
+    orders.sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case "date":
+          comparison = new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime();
+          break;
+        case "total":
+          comparison = b.total - a.total;
+          break;
+        case "status":
+          comparison = a.paymentStatus.localeCompare(b.paymentStatus);
+          break;
+      }
+      return sortOrder === "asc" ? -comparison : comparison;
+    });
+
+    return orders;
+  }, [previousOrders, searchText, dateRange, statusFilter, orderTypeFilter, sortBy, sortOrder]);
 
   const handleOpenNotes = (order: PreviousOrder) => {
     setSelectedOrder(order);
@@ -145,6 +181,59 @@ const PreviousOrdersScreen = () => {
     setActiveModal(null); // Close the modal
   };
 
+  const handleCloseCheck = async (order: PreviousOrder) => {
+    if (!order.db_order_id) {
+      console.warn("Cannot close check - no db_order_id");
+      return;
+    }
+
+    try {
+      const supabase = getOrderStoreSupabaseClient();
+      const { activeEmployeeId } = useEmployeeStore.getState();
+
+      const { data, error } = await supabase?.rpc("close_check", {
+        p_order_id: order.db_order_id,
+        p_staff_id: activeEmployeeId,
+      });
+
+      if (error) throw error;
+
+      console.log("Check closed successfully");
+      // The store will update automatically via realtime sync
+    } catch (err) {
+      console.error("Failed to close check:", err);
+    }
+  };
+
+  const handleReopenCheck = async (order: PreviousOrder) => {
+    if (!order.db_order_id) {
+      console.warn("Cannot reopen check - no db_order_id");
+      return;
+    }
+
+    try {
+      const supabase = getOrderStoreSupabaseClient();
+      const { activeEmployeeId } = useEmployeeStore.getState();
+
+      const { data, error } = await supabase?.rpc("reopen_check", {
+        p_order_id: order.db_order_id,
+        p_staff_id: activeEmployeeId,
+      });
+
+      if (error) throw error;
+
+      console.log("Check reopened successfully");
+      // The store will update automatically via realtime sync
+    } catch (err) {
+      console.error("Failed to reopen check:", err);
+    }
+  };
+
+  const handleRefund = (order: PreviousOrder) => {
+    setSelectedOrder(order);
+    setActiveModal("refund");
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -152,18 +241,38 @@ const PreviousOrdersScreen = () => {
     >
       <View className="flex-1 p-4 bg-[#212121]">
         {/* Toolbar */}
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
-            <Search color="#9CA3AF" size={20} />
-            <TextInput
-              placeholder="Search Order ID or Customer..."
-              placeholderTextColor="#9CA3AF"
-              value={searchText}
-              onChangeText={setSearchText}
-              className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
+        <View className="mb-4 gap-3">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center bg-[#303030] border border-gray-700 rounded-lg px-3 w-[450px]">
+              <Search color="#9CA3AF" size={20} />
+              <TextInput
+                placeholder="Search Order ID or Customer..."
+                placeholderTextColor="#9CA3AF"
+                value={searchText}
+                onChangeText={setSearchText}
+                className="ml-2 text-lg px-4 py-3 h-16 flex-1 text-white"
+              />
+            </View>
+            <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
+          </View>
+
+          {/* Filters and Sort Controls */}
+          <View className="flex-row items-center gap-3">
+            <StatusFilterDropdown
+              selected={statusFilter}
+              onChange={setStatusFilter}
+            />
+            <OrderTypeFilterDropdown
+              selected={orderTypeFilter}
+              onChange={setOrderTypeFilter}
+            />
+            <SortControls
+              sortBy={sortBy}
+              sortOrder={sortOrder}
+              onSortByChange={setSortBy}
+              onSortOrderChange={setSortOrder}
             />
           </View>
-          <DateRangePicker range={dateRange} onRangeChange={setDateRange} />
         </View>
 
         {/* Table */}
@@ -189,6 +298,9 @@ const PreviousOrdersScreen = () => {
                 onViewNotes={handleOpenNotes}
                 onDelete={() => handleOpenDelete(item)}
                 onPrint={() => handleOpenPrint(item)}
+                onCloseCheck={handleCloseCheck}
+                onReopenCheck={handleReopenCheck}
+                onRefund={handleRefund}
               />
             )}
             ListEmptyComponent={
@@ -218,6 +330,12 @@ const PreviousOrdersScreen = () => {
 
         <PrintReceiptModal
           isOpen={activeModal === "print"}
+          onClose={() => setActiveModal(null)}
+          order={selectedOrder}
+        />
+
+        <AdvancedRefundModal
+          isOpen={activeModal === "refund"}
           onClose={() => setActiveModal(null)}
           order={selectedOrder}
         />

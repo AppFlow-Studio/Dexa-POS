@@ -62,10 +62,11 @@ const TableBillSection = ({
   // O(1) lookup instead of O(n) find
   const activeOrder = useMemo(
     () =>
-      passedActiveOrder ||
+  
       (activeOrderId ? ordersById[activeOrderId] : undefined),
     [passedActiveOrder, activeOrderId, ordersById]
   );
+
   // Derived check discount
   const appliedDiscount = activeOrder?.checkDiscount;
 
@@ -77,6 +78,7 @@ const TableBillSection = ({
   };
 
   console.log('TableBillSection', totalDisplayAmount);
+  console.log("activeOrder [TableBillSection]", activeOrder);
   return (
     <>
       <View className="max-w-lg  flex-1 flex-col">
@@ -127,6 +129,7 @@ const TableBillSection = ({
           totalDisplayAmount={totalDisplayAmount}
           onPressDiscount={() => discountSheetRef.current?.expand()}
           isFullyPaid={isFullyPaid}
+          paymentCount={activeOrder?.payments?.length ?? 0}
         />
 
         <PricingBreakdownSheet

@@ -11,7 +11,113 @@
 
 import { useMemo } from "react";
 import { useOrderStore } from "../useOrderStore";
+import { useStoreSettingsStore } from "../useStoreSettingsStore";
+import { calculateOrderTotals } from "@/lib/order-calculator";
 import type { OrderProfile } from "@/lib/types";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SELECTOR: Active Order Totals (Phase 7 - Derived State)
+// ═══════════════════════════════════════════════════════════════════════════
+// Replaces 9 activeOrder* state fields with a single derived computation.
+// Uses memoization and calculation caching for performance.
+
+export interface ActiveOrderTotals {
+  subtotal: number;
+  tax: number;
+  total: number;
+  discount: number;
+  itemCount: number;
+  tip: number;
+  // Outstanding amounts (what's left to pay)
+  amountDue: number;
+  cashAmountDue: number;
+  // Full breakdown if needed
+  outstandingSubtotal: number;
+  outstandingTax: number;
+  cashSubtotal: number;
+  cashTotal: number;
+}
+
+/**
+ * Derived selector for active order totals.
+ *
+ * Replaces 9 separate state fields with computed values:
+ * - activeOrderSubtotal → subtotal
+ * - activeOrderTax → tax
+ * - activeOrderTotal → total
+ * - activeOrderDiscount → discount
+ * - activeOrderItemCount → itemCount
+ * - activeOrderTip → tip
+ * - activeOrderAmountDue → amountDue
+ * - activeOrderCashAmountDue → cashAmountDue
+ *
+ * Uses calculateOrderTotals with TTL caching (order-calculator.ts).
+ * Prioritizes backend values for amount_due/cash_amount_due when available.
+ */
+export function useActiveOrderTotals(): ActiveOrderTotals | null {
+  const activeOrderId = useOrderStore((s) => s.activeOrderId);
+  const ordersById = useOrderStore((s) => s.ordersById);
+  const taxRatesMap = useStoreSettingsStore((s) => s.taxRatesMap);
+
+  return useMemo(() => {
+    if (!activeOrderId) return null;
+
+    const activeOrder = ordersById[activeOrderId];
+    if (!activeOrder) return null;
+
+    const activeItems = activeOrder.items.filter((item) => !item.is_voided);
+
+    // Use backend values if available (authoritative for payment state)
+    // console.log("activeOrder [useActiveOrderTotals]", activeOrder);
+    const backendAmountDue = activeOrder.amount_due;
+    const backendCashAmountDue = activeOrder.cash_amount_due;
+//  console.log("backendCashAmountDue [useActiveOrderTotals] backendCashAmountDue", backendCashAmountDue);
+    // Calculate totals (uses TTL cache internally)
+    const totals = calculateOrderTotals({
+      items: activeOrder.items,
+      checkDiscount: activeOrder.checkDiscount ?? null,
+      taxRatesMap,
+      payments: activeOrder.payments ?? [],
+    });
+
+    // Get tip from payments array (sum of all non-voided payment tips)
+    const tip = (activeOrder.payments ?? [])
+      .filter(p => !p.isVoided)
+      .reduce((sum, p) => sum + (p.tip_amount ?? 0), 0);
+
+    // Check if any payments exist (excluding voided) - determines authority
+    const hasPayments = (activeOrder.payments ?? []).some(p => !p.isVoided);
+
+    // Authority logic: frontend before first payment, backend after
+    // Before payment: use frontend calculations for real-time accuracy
+    // After payment: use backend values as source of truth for payment state
+    const amountDue = hasPayments
+      ? (backendAmountDue ?? totals.outstanding_total)
+      : totals.outstanding_total;
+
+    const cashAmountDue = hasPayments
+      ? (backendCashAmountDue ?? totals.cash_outstanding_total)
+      : totals.cash_outstanding_total;
+
+
+
+    return {
+      subtotal: totals.subtotal,
+      tax: totals.tax_amount,
+      cashTax: totals.cash_tax_amount,
+      total: totals.total_amount,
+      discount: totals.discount_amount,
+      itemCount: activeItems.reduce((sum, item) => sum + item.quantity, 0),
+      tip,
+      amountDue,
+      cashAmountDue,  // ✅ FIX: Use the calculated variable, not totals.cash_outstanding_total
+      outstandingSubtotal: totals.outstanding_subtotal,
+      outstandingTax: totals.outstanding_tax,
+      cashSubtotal: totals.cash_subtotal,
+      cashTotal: totals.cash_total_amount,
+    };
+  }, [activeOrderId, ordersById, taxRatesMap]);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SELECTOR: Working Set Orders (Phase 5)

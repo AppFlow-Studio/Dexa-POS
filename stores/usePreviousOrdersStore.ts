@@ -55,11 +55,24 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
     addOrderToHistory: (order: OrderProfile) => {
       // An order should be added to history if it has reached a final state.
-      // Final states are: Closed, Voided, or Paid.
-      const isFinalState =
-        order.order_status === "Closed" ||
-        order.order_status === "Voided" ||
+      // Final states are:
+      // 1. Order Status: completed, void, or cancelled (order lifecycle complete)
+      // 2. Check Status: Closed (dine-in check has been closed for audit trail)
+      // 3. Payment Status: Paid (order has been fully paid regardless of other status)
+
+      const isFinalOrderStatus =
+        order.order_status === "completed" ||
+        order.order_status === "void" ||
+        order.order_status === "cancelled";
+
+      const isClosedCheck =
+        order.check_status === "Closed";
+
+      const isPaid =
         order.paid_status === "Paid";
+
+      const isFinalState = isFinalOrderStatus || isClosedCheck || isPaid;
+
       if (!isFinalState) {
         return;
       }
@@ -102,6 +115,9 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         // Station tracking for view_scope awareness
         station_id: order.station_id,
         station_name: order._sourceStationName || undefined,
+        // Check management
+        checkStatus: order.check_status || "Opened",
+        db_order_id: order.db_order_id,
       };
 
       set((state) => ({

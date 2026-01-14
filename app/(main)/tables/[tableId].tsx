@@ -25,7 +25,8 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 
 const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
@@ -134,7 +135,7 @@ const UpdateTableScreen = () => {
   const storeActiveOrderTotal = useOrderStore(
     (state) => state.activeOrderTotal
   );
-  console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder);
+  // console.log('[activeOrder] activeOrder Items', activeOrder?.items.length, activeOrder);
   // --- Derived helpers ---
   const hasAnyItems = !!activeOrder && activeOrder.items?.length > 0;
   const hasPayments = !!activeOrder && (activeOrder.payments?.length || 0) > 0;
@@ -547,23 +548,74 @@ const UpdateTableScreen = () => {
     openPaymentSheet("Card", currentTableId, "payment-method-selection");
   };
 
-  const handleReopenCheck = () => {
-    if (!activeOrderId) return;
-    // Mark as pending to allow adding new items and reopen the order
-    updateActiveOrderDetails({
-      paid_status: "Pending",
-      check_status: "Opened",
-      order_status: "preparing",
-    });
+  const handleReopenCheck = async () => {
+    if (!activeOrderId || !activeOrder?.db_order_id) return;
 
-    // Sync order status based on existing items
-    syncOrderStatus(activeOrderId);
+    // Show confirmation dialog
+    Alert.alert(
+      "Reopen Check?",
+      "Are you sure you want to reopen this closed check? This will allow adding new items.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reopen",
+          style: "default",
+          onPress: async () => {
+            try {
+              showLoading("Reopening check...");
 
-    show({
-      title: "Check Reopened",
-      message: "You can now add new items to the order.",
-      type: "success",
-    });
+              const supabase = getOrderStoreSupabaseClient();
+              const { activeEmployeeId } = useEmployeeStore.getState();
+
+              if (!supabase) {
+                throw new Error("Database connection unavailable");
+              }
+
+              if (!activeEmployeeId) {
+                throw new Error("No active employee found");
+              }
+
+              // Call backend RPC
+              const result = await OrderService.reopenCheck(
+                supabase,
+                activeOrder.db_order_id,
+                activeEmployeeId,
+                "Adding more items" // Default reason
+              );
+
+              if (!result.success) {
+                throw new Error(result.error || "Failed to reopen check");
+              }
+
+              // Update local state
+              updateActiveOrderDetails({
+                paid_status: "Partial",
+                check_status: "Opened",
+              });
+
+              // Sync order status based on items
+              syncOrderStatus(activeOrderId);
+
+              show({
+                title: "Check Reopened",
+                message: "You can now add new items to the order.",
+                type: "success",
+              });
+
+            } catch (error: any) {
+              console.error("Failed to reopen check:", error);
+              show({
+                title: "Failed to Reopen Check",
+                message: error.message || "An error occurred",
+                type: "error",
+              });
+            } finally {
+              hideLoading();
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleMarkAllReadyForCourse = (itemIds: string[]) => {
@@ -816,30 +868,68 @@ const UpdateTableScreen = () => {
   const handleCloseCheck = async () => {
     if (!activeOrder || !currentTableId) return;
 
-    // Case 1: Already marked as Paid
-    if (activeOrder.paid_status === "Paid") {
-      await handleClearTable();
+    // Validate order is fully paid
+    if (displayBalanceDue > 0.01) {
+      show({
+        title: "Cannot Close Check",
+        message: "Outstanding balance must be $0.00 to close check",
+        type: "error",
+      });
       return;
     }
 
-    // Case 2: All items are paid (reopened order with $0 balance)
-    // Check if balance is $0 - means fully paid but order was reopened
-    if (hasPayments && displayBalanceDue <= 0) {
-      await handleClearTable();
+    // Validate order has backend ID
+    if (!activeOrder.db_order_id) {
+      show({
+        title: "Cannot Close Check",
+        message: "Order must be synced to close check",
+        type: "error",
+      });
       return;
     }
 
-    // Case 3: Order has unpaid items or exists in DB - show void confirm
-    if ((!hasPayments && hasAnyItems) || existingOrderForTable?.db_order_id) {
-      setVoidConfirmOpen(true);
-      return;
-    }
+    try {
+      showLoading("Closing check...");
 
-    updateOrderStatus(activeOrder.id, "completed");
-    if (table?.session?.id) {
-      await updateSessionStatus(table.session.id, "cleaning");
+      const supabase = getOrderStoreSupabaseClient();
+      const { activeEmployeeId } = useEmployeeStore.getState();
+
+      if (!supabase) {
+        throw new Error("Database connection unavailable");
+      }
+
+      // Call backend RPC
+      const result = await OrderService.closeCheck(
+        supabase,
+        activeOrder.db_order_id,
+        activeEmployeeId
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to close check");
+      }
+
+      // Update local state
+      updateActiveOrderDetails({
+        check_status: "Closed",
+      });
+
+      show({
+        title: "Check Closed",
+        message: "The check has been finalized. You can now clear the table.",
+        type: "success",
+      });
+
+    } catch (error: any) {
+      console.error("Failed to close check:", error);
+      show({
+        title: "Failed to Close Check",
+        message: error.message || "An error occurred",
+        type: "error",
+      });
+    } finally {
+      hideLoading();
     }
-    router.back();
   };
 
   const confirmVoid = async () => {
@@ -1145,6 +1235,7 @@ const UpdateTableScreen = () => {
         discountSheetRef={
           discountSheetRef as React.RefObject<BottomSheetMethods>
         }
+        onCloseCheck={handleCloseCheck}
       />
       <DiscountBottomSheet
         ref={discountSheetRef}

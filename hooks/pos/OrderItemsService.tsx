@@ -730,7 +730,7 @@ class OrderItemService {
             break;
 
           case 'update_quantity':
-            await supabase.rpc('update_order_item_quantity', {
+            await supabase.rpc('update_order_item_quantity_v2', {
               p_order_item_id: operation.params.orderItemId,
               p_quantity: operation.params.quantity
             });
@@ -748,7 +748,7 @@ class OrderItemService {
             break;
 
           case 'replace_modifiers':
-            await supabase.rpc('replace_order_item_modifiers', {
+            await supabase.rpc('replace_order_item_modifiers_v2', {
               p_order_item_id: operation.params.orderItemId,
               p_modifiers: operation.params.modifiers
             });

@@ -1,6 +1,6 @@
 import { PreviousOrder } from "@/lib/types";
 import { Href, Link } from "expo-router";
-import { MoreHorizontal, Pencil, Printer, Repeat2, Trash2 } from "lucide-react-native";
+import { CheckCircle, DollarSign, MoreHorizontal, Pencil, Printer, RefreshCw, Repeat2, Trash2 } from "lucide-react-native";
 import React from "react";
 import { DimensionValue, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -15,6 +15,9 @@ interface PreviousOrderRowProps {
   onViewNotes: (order: PreviousOrder) => void;
   onPrint: (order: PreviousOrder) => void;
   onDelete: (order: PreviousOrder) => void;
+  onCloseCheck?: (order: PreviousOrder) => void;
+  onReopenCheck?: (order: PreviousOrder) => void;
+  onRefund?: (order: PreviousOrder) => void;
 }
 
 const statusClasses: Record<string, string> = {
@@ -44,6 +47,9 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
   onViewNotes,
   onPrint,
   onDelete,
+  onCloseCheck,
+  onReopenCheck,
+  onRefund,
 }) => {
   const orderPath = `/previous-orders/${order.orderId}`;
 
@@ -148,6 +154,39 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
               </TouchableOpacity>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56 bg-[#303030] border-gray-600">
+              {/* Close Check (if paid and not closed) */}
+              {order.paymentStatus === "Paid" && order.checkStatus !== "Closed" && onCloseCheck && (
+                <DropdownMenuItem
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onPress={() => onCloseCheck(order)}
+                >
+                  <CheckCircle className="mr-2 h-5 w-5" color="#4ade80" />
+                  <Text className="text-xl text-white">Close Check</Text>
+                </DropdownMenuItem>
+              )}
+
+              {/* Reopen Check (if closed) */}
+              {order.checkStatus === "Closed" && onReopenCheck && (
+                <DropdownMenuItem
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onPress={() => onReopenCheck(order)}
+                >
+                  <RefreshCw className="mr-2 h-5 w-5" color="#60a5fa" />
+                  <Text className="text-xl text-white">Reopen Check</Text>
+                </DropdownMenuItem>
+              )}
+
+              {/* Process Refund */}
+              {onRefund && (
+                <DropdownMenuItem
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onPress={() => onRefund(order)}
+                >
+                  <DollarSign className="mr-2 h-5 w-5" color="#f59e0b" />
+                  <Text className="text-xl text-white">Process Refund</Text>
+                </DropdownMenuItem>
+              )}
+
               <DropdownMenuItem
                 onTouchStart={(e) => e.stopPropagation()}
                 onPress={() => onViewNotes(order)}

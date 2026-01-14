@@ -477,6 +477,9 @@ export interface PreviousOrder {
   // Station tracking for view_scope awareness
   station_id?: string | null;
   station_name?: string | null;
+  // Check management
+  checkStatus?: "Opened" | "Closed";
+  db_order_id?: string; // For RPC calls
 }
 
 export type InventoryItemStatus =
@@ -743,6 +746,7 @@ export interface OrderProfile {
   opened_at: string | null; // ISO String format is recommended
   closed_at?: string; // Optional, set when the order is closed
   sent_to_kitchen_at?: string; // When order was sent to kitchen
+  last_activity_at?: string; // Track last activity for draft cleanup
 
   // Final calculated values, set upon closing the order
   total_amount?: number;

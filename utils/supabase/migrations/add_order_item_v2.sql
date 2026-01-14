@@ -1,6 +1,7 @@
 DECLARE
     v_location_id uuid;
     v_merchant_id uuid;
+    v_check_status text;
     v_tax_rate numeric := 8.0;  -- Default fallback
     v_is_tax_exempt boolean := false;
     v_item_id uuid;
@@ -24,17 +25,22 @@ BEGIN
     -- FOR UPDATE: Acquires exclusive row lock to prevent race conditions
     -- when multiple items are added concurrently. Second transaction waits
     -- until first completes, ensuring calculate_order_totals_fast sees all items.
-    SELECT o.location_id, o.merchant_id 
-    INTO v_location_id, v_merchant_id
+    SELECT o.location_id, o.merchant_id, o.check_status
+    INTO v_location_id, v_merchant_id, v_check_status
     FROM public.orders o
     WHERE o.id = p_order_id
       AND o.status NOT IN ('completed', 'cancelled', 'void')
       AND o.merchant_id = user_merchant_id()
       AND o.location_id = ANY(user_location_ids())
     FOR UPDATE;
-    
+
     IF v_location_id IS NULL THEN
         RAISE EXCEPTION 'Order not found or access denied: %', p_order_id;
+    END IF;
+
+    -- Validate check is not closed
+    IF v_check_status = 'Closed' THEN
+        RAISE EXCEPTION 'Cannot add items to a closed check. Please reopen the check first.';
     END IF;
     
     

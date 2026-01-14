@@ -362,7 +362,7 @@ export class OrderService {
     orderItemId: string,
     quantity: number
   ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
-    const { data, error } = await client.rpc("update_order_item_quantity", {
+    const { data, error } = await client.rpc("update_order_item_quantity_v2", {
       p_order_item_id: orderItemId,
       p_quantity: quantity,
     });
@@ -388,7 +388,7 @@ export class OrderService {
     orderItemId: string,
     modifiers: OrderItemModifier[]
   ): Promise<{ data: ReplaceOrderItemModifiersResult | null; error: any }> {
-    const { data, error } = await client.rpc("replace_order_item_modifiers", {
+    const { data, error } = await client.rpc("replace_order_item_modifiers_v2", {
       p_order_item_id: orderItemId,
       p_modifiers: modifiers,
     });
@@ -644,5 +644,81 @@ export class OrderService {
       p_order_id: orderId,
     });
     return { data, error };
+  }
+
+  /**
+   * Close a check after full payment
+   * @param client - Supabase client
+   * @param orderId - Order database ID (UUID)
+   * @param staffId - Optional staff ID performing the action
+   * @returns Promise<{ success: boolean; error?: string }>
+   */
+  static async closeCheck(
+    client: SupabaseClient,
+    orderId: string,
+    staffId?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
+    console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);
+    console.log(`[OrderService:closeCheck] Staff ID: ${staffId || 'none'}`);
+
+    const { data, error } = await client.rpc('close_check', {
+      p_order_id: orderId,
+      p_staff_id: staffId || null,
+    });
+
+    if (error) {
+      console.error('[OrderService:closeCheck] RPC error:', error);
+      return { success: false, error: error.message };
+    }
+
+    const result = data as { success: boolean; error?: string };
+    if (!result.success) {
+      console.error('[OrderService:closeCheck] Failed:', result.error);
+    } else {
+      console.log('[OrderService:closeCheck] SUCCESS!');
+    }
+
+    return result;
+  }
+
+  /**
+   * Reopen a closed check to add more items
+   * @param client - Supabase client
+   * @param orderId - Order database ID (UUID)
+   * @param staffId - Staff ID performing the action (required)
+   * @param reason - Optional reason for reopening
+   * @returns Promise<{ success: boolean; error?: string }>
+   */
+  static async reopenCheck(
+    client: SupabaseClient,
+    orderId: string,
+    staffId: string,
+    reason?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
+    console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
+    console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`);
+    console.log(`[OrderService:reopenCheck] Reason: ${reason || 'No reason provided'}`);
+
+    const { data, error } = await client.rpc('reopen_check', {
+      p_order_id: orderId,
+      p_staff_id: staffId,
+      p_reason: reason || null,
+    });
+
+    if (error) {
+      console.error('[OrderService:reopenCheck] RPC error:', error);
+      return { success: false, error: error.message };
+    }
+
+    const result = data as { success: boolean; error?: string };
+    if (!result.success) {
+      console.error('[OrderService:reopenCheck] Failed:', result.error);
+    } else {
+      console.log('[OrderService:reopenCheck] SUCCESS!');
+    }
+
+    return result;
   }
 }

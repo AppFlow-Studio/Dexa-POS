@@ -1,3 +1,4 @@
+--TODOOO: 
 -- ============================================
 -- FIX: Discount-Before-Tax Calculation
 -- 
@@ -427,7 +428,7 @@ DECLARE
     v_is_open_item boolean;
     v_location_id uuid;
     v_tax_rate numeric;
-    
+
     v_new_quantity integer;
     v_new_price numeric;
     v_cash_price numeric;
@@ -435,24 +436,29 @@ DECLARE
     v_cash_subtotal numeric;
     v_tax_amount numeric;
     v_cash_tax_amount numeric;
-    
+    v_discount_amount numeric := 0;
+    v_discount_cash_amount numeric := 0;
+
     v_cash_discount_rate numeric := 0.04;
     v_has_active_discount boolean := false;
+    v_new_sync_version integer;
 BEGIN
     -- Get current item details
-    SELECT 
+    SELECT
         oi.order_id,
         oi.is_open_item,
         oi.quantity,
         oi.unit_price,
         oi.tax_rate,
-        o.location_id
-    INTO v_order_id, v_is_open_item, v_new_quantity, v_new_price, v_tax_rate, v_location_id
+        o.location_id,
+        o.sync_version + 1  -- Increment sync version
+    INTO v_order_id, v_is_open_item, v_new_quantity, v_new_price, v_tax_rate, v_location_id, v_new_sync_version
     FROM public.order_items oi
     JOIN public.orders o ON o.id = oi.order_id
     WHERE oi.id = p_order_item_id
       AND o.merchant_id = user_merchant_id()
-      AND o.location_id = ANY(user_location_ids());
+      AND o.location_id = ANY(user_location_ids())
+    FOR UPDATE;  -- Lock row to prevent race conditions
     
     IF v_order_id IS NULL THEN
         RAISE EXCEPTION 'Order item not found or access denied';
@@ -504,24 +510,61 @@ BEGIN
     -- If discount exists, redistribute across all items
     IF v_has_active_discount THEN
         PERFORM redistribute_order_discount(v_order_id);
-        
-        -- Get updated values
-        SELECT subtotal, tax_amount, cash_subtotal, cash_tax_amount
-        INTO v_subtotal, v_tax_amount, v_cash_subtotal, v_cash_tax_amount
+
+        -- Get updated values including discount amounts
+        SELECT
+            subtotal,
+            tax_amount,
+            cash_subtotal,
+            cash_tax_amount,
+            COALESCE(discount_amount, 0),
+            COALESCE(discount_cash_amount, 0)
+        INTO
+            v_subtotal,
+            v_tax_amount,
+            v_cash_subtotal,
+            v_cash_tax_amount,
+            v_discount_amount,
+            v_discount_cash_amount
         FROM public.order_items
         WHERE id = p_order_item_id;
     END IF;
-    
+
+    -- Update order sync version
+    UPDATE public.orders
+    SET sync_version = v_new_sync_version,
+        updated_at = now()
+    WHERE id = v_order_id;
+
     -- Recalculate order totals
     PERFORM calculate_order_totals_fast(v_order_id);
     
     RETURN jsonb_build_object(
         'success', true,
         'order_item_id', p_order_item_id,
+
+        -- Backward compatibility (existing fields)
         'quantity', v_new_quantity,
         'unit_price', v_new_price,
         'subtotal', v_subtotal,
-        'discount_applied', v_has_active_discount
+        'discount_applied', v_has_active_discount,
+
+        -- NEW: Complete item data with explicit naming
+        -- Card pricing (explicit)
+        'card_subtotal', v_subtotal,
+        'card_tax_amount', v_tax_amount,
+
+        -- Cash pricing
+        'cash_unit_price', v_cash_price,
+        'cash_subtotal', v_cash_subtotal,
+        'cash_tax_amount', v_cash_tax_amount,
+
+        -- Discounts
+        'discount_amount', v_discount_amount,
+        'discount_cash_amount', v_discount_cash_amount,
+
+        -- Sync version for conflict detection
+        'sync_version', v_new_sync_version
     );
 END;
 $$;

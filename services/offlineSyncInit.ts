@@ -679,7 +679,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                     amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
                     cash_amount_due: responseData.order_cash_amount_due ?? currentOrder.cash_amount_due,
                     paid_status: localPaidStatus,
-                    check_status: isPaid ? ("Closed" as const) : (currentOrder.check_status ?? "Opened"),
+                    check_status: currentOrder.check_status ?? "Opened",
                   },
                 },
               };
@@ -728,7 +728,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
                     amount_paid: responseData.order_amount_paid ?? currentOrder.amount_paid,
                     amount_due: responseData.order_amount_due ?? currentOrder.amount_due,
                     paid_status: localPaidStatus,
-                    check_status: isPaid ? ("Closed" as const) : ("Opened" as const),
+                    check_status: currentOrder.check_status ?? "Opened",
                   },
                 },
               };

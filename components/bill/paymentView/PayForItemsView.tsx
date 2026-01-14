@@ -1,3 +1,4 @@
+import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { CartItem } from "@/lib/types";
 import {
     calculateItemEffectiveCashPrice,
@@ -244,11 +245,14 @@ const PaymentRow: React.FC<PaymentRowProps> = ({
 // MAIN COMPONENT
 // ============================================================================
 const PayForItemsView: React.FC = () => {
+    // Refresh order data on mount and realtime reconnection
+    useRefreshActiveOrder();
+
     // --- STORE STATE ---
     const activeOrderId = useOrderStore((state) => state.activeOrderId);
     const ordersById = useOrderStore((state) => state.ordersById);
     const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
-    const activeOrderTotalCash = useOrderStore((state) => state.activeOrderTotalCash);
+    const activeOrderOutstandingCash = useOrderStore((state) => state.activeOrderOutstandingCash);
     const voidPayment = useOrderStore((state) => state.voidPayment);
     const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
@@ -282,9 +286,13 @@ const PayForItemsView: React.FC = () => {
         : Math.max(0, (activeOrder?.total_amount || activeOrderTotal) - collectedAmount);
     
     // Cash remaining (for showing cash discount option)
-    const remainingCashAmount = activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
-        ? activeOrder.cash_amount_due  // Use backend's cash_amount_due
-        : Math.max(0, (activeOrderTotalCash || activeOrderTotal) - collectedAmount);
+    // Priority: order.cash_amount_due (synced) > activeOrderOutstandingCash (local calc) > card remaining
+    const remainingCashAmount = 
+        activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0
+            ? activeOrder.cash_amount_due                    // 1st: Backend authoritative value
+            : activeOrderOutstandingCash > 0
+                ? activeOrderOutstandingCash                 // 2nd: Local calculation from items
+                : remainingAmount;                           // 3rd: Fall back to card remaining
     
     // Calculate cash savings for remaining
     const remainingCashSavings = Math.max(0, remainingAmount - remainingCashAmount);

@@ -1,3 +1,4 @@
+import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
@@ -11,6 +12,9 @@ import {
 } from "react-native";
 
 const CashPaymentView = () => {
+  // Refresh order data on mount and realtime reconnection
+  useRefreshActiveOrder();
+
   const { activeOrderOutstandingCash, activeOrderTotalCash, activeOrderId, ordersById } = useOrderStore();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =

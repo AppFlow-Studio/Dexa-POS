@@ -14,6 +14,7 @@ import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
 import { useColorScheme } from "@/lib/useColorScheme";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
@@ -88,6 +89,17 @@ export default function RootLayout() {
     useTimeclockStore.getState().initializeHistory();
     // Then initialize PTO history based on the timeclock history
     usePtoStore.getState().initializePtoFromHistory();
+    // Start draft order cleanup
+    useOrderStore.getState().startDraftCleanup();
+    // One-time cleanup: Remove duplicate draft orders (safe to run on every startup)
+    useOrderStore.getState().cleanupDraftDuplicates();
+  }, []);
+
+  // Cleanup draft cleanup interval on unmount
+  React.useEffect(() => {
+    return () => {
+      useOrderStore.getState().stopDraftCleanup();
+    };
   }, []);
 
   if (!isColorSchemeLoaded) {

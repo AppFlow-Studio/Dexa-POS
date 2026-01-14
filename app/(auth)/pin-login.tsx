@@ -164,7 +164,7 @@ const PinLoginScreen = () => {
         p_force_takeover: forceTakeover === "true",
       });
 
-      console.log("pos_staff_login response:", data, error);
+      // console.log("pos_staff_login response:", data, error);
 
       if (error) throw error;
       

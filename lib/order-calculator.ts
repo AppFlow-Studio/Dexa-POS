@@ -8,21 +8,54 @@
  * Used by: store, payment preview, offline mode, tests
  */
 
-import { CartItem, Discount } from "@/lib/types";
-import { TaxRatesMap } from "@/types/menu";
+import { CartItem } from "@/lib/types";
 import {
-  OrderCalculationInput,
-  OrderTotals,
-  OrderCalculationResult,
-  ItemCalculationDetail,
-  PaymentPreviewInput,
-  PaymentPreviewResult,
-  ItemPaymentAllocation,
-  EvenSplitResult,
   DualPriceSplitResult,
+  EvenSplitResult,
+  ItemCalculationDetail,
+  ItemPaymentAllocation,
+  OrderCalculationInput,
+  OrderCalculationResult,
+  OrderTotals,
   PaidStatus,
   PaymentForCalculation,
+  PaymentPreviewInput,
+  PaymentPreviewResult,
 } from "@/types/order-calculations";
+
+// ============================================================================
+// CALCULATION CACHE - TTL-based memoization for performance
+// ============================================================================
+
+interface CacheEntry {
+  result: OrderTotals;
+  timestamp: number;
+}
+
+const calculationCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 2000; // 2 seconds - covers rapid UI updates
+const MAX_CACHE_SIZE = 20; // Limit memory usage
+
+/**
+ * Clear the calculation cache.
+ * Call when tax rates change or on critical actions like payment.
+ */
+export function invalidateCalculationCache(): void {
+  calculationCache.clear();
+}
+
+/**
+ * Prune expired entries from cache.
+ * Called automatically during cache operations.
+ */
+function pruneCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of calculationCache) {
+    if (now - entry.timestamp > CACHE_TTL_MS * 2) {
+      calculationCache.delete(key);
+    }
+  }
+}
 
 // ============================================================================
 // ROUNDING UTILITY - Matches PostgreSQL ROUND(x, 2)
@@ -49,15 +82,38 @@ export function round2(num: number): number {
 
 /**
  * Calculate the effective cash price for a single cart item.
- * Formula: base cash price + size modifier + all modifier options + all add-ons
+ *
+ * **Logic:**
+ * - Backend-synced items (has db_order_item_id): Returns cashPrice as-is
+ *   (backend already stored base + modifiers)
+ * - Local items (no db_order_item_id): Calculates base + modifiers
+ *
+ * Formula for local items: base cash price + size modifier + all modifier options
  *
  * @param item - The cart item
  * @returns The effective unit price using cash pricing (before quantity)
  */
 export function calculateItemEffectiveCashPrice(item: CartItem): number {
-  // Use originalPrice (cash/base price), then cashPrice, then price
-  let effectivePrice = item.originalPrice ?? item.cashPrice ?? item.price ?? 0;
+  // For synced items (from backend), cash_price already includes modifiers
+  // Return it directly to avoid double-counting
+  if (item.db_order_item_id && item.cashPrice !== undefined && item.cashPrice > 0) {
+    // return round2(item.cashPrice);
+    let effectivePrice = item.cashPrice ?? 0;
+    // if (item.customizations?.modifiers) {
+    //   for (const modifierGroup of item.customizations.modifiers) {
+    //     for (const option of modifierGroup.options) {
+    //       effectivePrice += option.price ?? 0;
+    //     }
+    //   }
+    // }
+  
+    return round2(effectivePrice);
+  }
 
+  // For local items, calculate including modifiers
+  // Use originalPrice (base cash price), then cashPrice, then unitPrice as fallback
+  let effectivePrice = item.originalPrice ?? item.cashPrice ?? item.unitPrice ?? 0;
+  console.log('CalculateItemEffective', effectivePrice)
   // Add size modifier if present
   if (item.customizations?.size?.priceModifier) {
     effectivePrice += item.customizations.size.priceModifier;
@@ -69,13 +125,6 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
       for (const option of modifierGroup.options) {
         effectivePrice += option.price ?? 0;
       }
-    }
-  }
-
-  // Add all add-ons
-  if (item.customizations?.addOns) {
-    for (const addOn of item.customizations.addOns) {
-      effectivePrice += addOn.price ?? 0;
     }
   }
 
@@ -245,6 +294,19 @@ export function distributeDiscountToItems(
  * @returns OrderTotals with all calculated values
  */
 export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals {
+  // =========================================================================
+  // CACHE CHECK - Return cached result if valid
+  // =========================================================================
+  const cacheKey = hashCalculationInput(input);
+  const cached = calculationCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  // =========================================================================
+  // CALCULATION - No valid cache, compute result
+  // =========================================================================
   const { items, checkDiscount, taxRatesMap, payments = [] } = input;
 
   // Filter active items once
@@ -287,6 +349,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
     // Cash price subtotal
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
+    console.log("effectiveCashPrice [calculateOrderTotals]", effectiveCashPrice);
     const itemCashSubtotal = effectiveCashPrice * item.quantity;
     cashSubtotal += itemCashSubtotal;
 
@@ -434,7 +497,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     cashOutstandingSubtotalAfterDiscount + cashOutstandingTax
   );
 
-  return {
+  const result: OrderTotals = {
     subtotal: round2(subtotal),
     discount_amount: totalDiscountAmount,
     tax_amount: taxAmount,
@@ -449,6 +512,25 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     cash_outstanding_tax: cashOutstandingTax,
     cash_outstanding_total: cashOutstandingTotal,
   };
+
+  // =========================================================================
+  // CACHE STORE - Save result for future calls
+  // =========================================================================
+
+  // Prune expired entries periodically
+  if (calculationCache.size >= MAX_CACHE_SIZE) {
+    pruneCache();
+  }
+
+  // If still at max after pruning, remove oldest entry
+  if (calculationCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = calculationCache.keys().next().value;
+    if (oldestKey) calculationCache.delete(oldestKey);
+  }
+
+  calculationCache.set(cacheKey, { result, timestamp: Date.now() });
+
+  return result;
 }
 
 /**

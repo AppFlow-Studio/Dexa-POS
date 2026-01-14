@@ -260,15 +260,15 @@ const ModifierScreen = () => {
   const precomputedForItemId = useModifierSidebarStore(selectPrecomputedForItemId);
 
   // ============================================================================
-  // TWO-STAGE HYDRATION - Skeleton first, then rich content
-  // Shows skeleton UI instantly (<16ms) while heavy content hydrates
+  // HYDRATION - Set immediately for instant content display
+  // Removed requestAnimationFrame delay (was adding 16-32ms perceived lag)
   // ============================================================================
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     if (isOpen && !isHydrated) {
-      // Defer hydration to next frame for instant skeleton display
-      requestAnimationFrame(() => setIsHydrated(true));
+      // Set immediately - no RAF delay needed since content is precomputed
+      setIsHydrated(true);
     }
     if (!isOpen && isHydrated) {
       setIsHydrated(false);
@@ -518,7 +518,7 @@ const ModifierScreen = () => {
         };
         updateItemInActiveOrder(updatedDraftItem);
       },
-      50
+      8  // Reduced from 50ms to 8ms (half a frame) for faster UI response
     );
 
     return () => {
@@ -942,8 +942,17 @@ const ModifierScreen = () => {
         price: currentTotal / Math.max(1, currentState.quantity),
         customizations: finalCustomizations,
         isDraft: false,
+        // Clear calculated fields - will be recalculated by calculateOrderTotals
+        // These values become stale when quantity/modifiers change
+        subtotal: undefined,
+        cashSubtotal: undefined,
+        taxAmount: undefined,
+        cashTaxAmount: undefined,
       };
 
+      console.log('UpdatedItem [Modifier Screens]', updatedItem)
+
+      console.log("updatedItem [handleSave]", updatedItem);
       updateItemInActiveOrder(updatedItem);
       showToast({
         title: "Item Updated",

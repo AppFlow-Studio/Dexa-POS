@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { CartItem } from "@/lib/types";
 import { getAutoRetryCount, isAutoRetryInProgress } from "@/services/offlineSyncService";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import { useDineInStore } from "@/stores/useDineInStore";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
@@ -58,15 +59,9 @@ const BillSection = ({
     state.activeOrderId ? state.ordersById[state.activeOrderId] : undefined
   );
 
-  // console.log('[BillSection] activeOrder', activeOrder);
-  const activeOrderTotal = useOrderStore((state) => state.activeOrderTotal);
-  const activeOrderOutstandingTotal = useOrderStore(
-    (state) => state.activeOrderOutstandingTotal
-  );
-  const activeOrderOutstandingCash = useOrderStore(
-    (state) => state.activeOrderOutstandingCash
-  );
-  // console.log('[activeOrderOutstandingCash] activeOrderOutstandingCash', activeOrderOutstandingCash);
+  // Phase 7: Use derived selector instead of 3 individual store selectors
+  const orderTotals = useActiveOrderTotals();
+
   const startNewOrder = useOrderStore((state) => state.startNewOrder);
   const sendNewItemsToKitchen = useOrderStore(
     (state) => state.sendNewItemsToKitchen
@@ -135,28 +130,18 @@ const BillSection = ({
   }, [hasFailedSyncs, hasPendingSyncs, syncStatus]);
 
   // Calculate the amount to display on the Pay button
-  // Priority: backend amount_due > calculated outstanding total > total
+  // Phase 7: Now uses derived selector which already prioritizes backend values
   const displayBalanceDue = useMemo(() => {
-    // 1. Use backend's authoritative amount_due if available
-    if (activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0) {
-      return activeOrder.amount_due;
+    if (!orderTotals) return 0;
+
+    // Derived selector's amountDue already prioritizes backend amount_due
+    // For new orders without payments, use total
+    if (!activeOrder?.payments?.length) {
+      return orderTotals.total;
     }
-    // 2. Use calculated outstanding total if there are payments
-    if (
-      activeOrder?.payments &&
-      activeOrder.payments.length > 0 &&
-      activeOrderOutstandingTotal > 0
-    ) {
-      return activeOrderOutstandingTotal;
-    }
-    // 3. Fall back to full order total for new orders
-    return activeOrderTotal;
-  }, [
-    activeOrder?.amount_due,
-    activeOrder?.payments,
-    activeOrderOutstandingTotal,
-    activeOrderTotal,
-  ]);
+
+    return orderTotals.amountDue;
+  }, [orderTotals, activeOrder?.payments]);
 
   // Check if order is partially paid (has payments but not fully paid)
   const isPartiallyPaid = useMemo(() => {
@@ -167,22 +152,24 @@ const BillSection = ({
   }, [activeOrder?.payments, activeOrder?.paid_status]);
 
   // Calculate cash savings for dual-price display
+  // Phase 7: Now uses derived selector which already prioritizes backend values
+  // console.log("orderTotals", orderTotals);
   const { cashBalanceDue, cashSavings } = useMemo(() => {
-    // Use backend cash_amount_due if available, otherwise use local calculation
-    const cashDue =
-      activeOrder?.cash_amount_due ??
-      activeOrderOutstandingCash ??
-      displayBalanceDue;
+    if (!orderTotals) {
+      return { cashBalanceDue: 0, cashSavings: 0 };
+    }
+
+    // if (!activeOrder?.payments?.length) {
+    //   return { cashBalanceDue: orderTotals.cashAmountDue, cashSavings: 0 };
+    // }
+    // Derived selector's cashAmountDue already prioritizes backend cash_amount_due
+    const cashDue = orderTotals.cashAmountDue;
     const savings = displayBalanceDue - cashDue;
     return {
       cashBalanceDue: cashDue,
       cashSavings: savings > 0.01 ? savings : 0,
     };
-  }, [
-    activeOrder?.cash_amount_due,
-    activeOrderOutstandingCash,
-    displayBalanceDue,
-  ]);
+  }, [orderTotals, displayBalanceDue]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const isPaymentSheetOpen = usePaymentStore((state) => state.isOpen);
@@ -487,13 +474,7 @@ const BillSection = ({
             </TouchableOpacity>
           </View>
           {/* Cash Discount Option */}
-          {/* {cashSavings > 0 && displayBalanceDue > 0 && (
-            <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
-              <Text className="text-center text-sm text-green-400">
-                Pay cash: ${cashBalanceDue.toFixed(2)} (save ${cashSavings.toFixed(2)})
-              </Text>
-            </View>
-          )} */}
+         
           <View className="mt-2 px-2 py-1.5 bg-green-900/20 rounded-lg border border-green-600/30">
             <Text className="text-center text-sm text-green-400">
               Pay cash: ${cashBalanceDue?.toFixed(2)} (save $

@@ -142,6 +142,7 @@ BEGIN
       'effective_total', NEW.effective_total,
       'payment_pricing_mode', NEW.payment_pricing_mode,
       'payment_status', NEW.payment_status,
+      'check_status', NEW.check_status,
       'amount_paid', NEW.amount_paid,
       'amount_due', NEW.amount_due,
       'cash_amount_due', NEW.cash_amount_due

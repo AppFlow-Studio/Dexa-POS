@@ -103,7 +103,7 @@ const OrderProcessing = () => {
         // Condition 1: Any "preparing" order with items (Takeaway, Delivery only)
         ((o.order_status === "preparing" && o.items.length > 0) ||
           // Condition 2: Unpaid orders that need payment
-          (o.paid_status === "Unpaid" &&
+          ((o.paid_status === "Unpaid" || o.paid_status === "Pending" || o.paid_status === "Partial") &&
             o.order_status !== "completed" &&
             o.order_status !== "draft" &&
             o.order_status !== "void"))

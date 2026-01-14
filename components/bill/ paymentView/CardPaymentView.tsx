@@ -1,3 +1,4 @@
+import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
@@ -12,6 +13,9 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 const CardPaymentView = () => {
+  // Refresh order data on mount and realtime reconnection
+  useRefreshActiveOrder();
+
   const {
     activeOrderDiscount,
     activeOrderOutstandingSubtotal,
@@ -54,10 +58,10 @@ const CardPaymentView = () => {
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // Priority: backend amount_due > store outstanding total > full order total
-  // Use backend's authoritative amount_due when available
+  // Note: useRefreshActiveOrder ensures data is fresh on mount and reconnection
   const effectiveOutstandingTotal =
-    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01 // never pay 0.00
-      ? activeOrder.amount_due // TODO: FIX COULD BE STALE
+    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01
+      ? activeOrder.amount_due
       : activeOrderOutstandingTotal > 0
         ? activeOrderOutstandingTotal
         : activeOrderTotal;

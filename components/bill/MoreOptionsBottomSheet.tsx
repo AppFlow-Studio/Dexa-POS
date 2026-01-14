@@ -11,7 +11,7 @@ import BottomSheet, {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
-import { Lock, Tag, Trash2, User, X } from "lucide-react-native";
+import { CheckCircle, Lock, Tag, Trash2, User, X } from "lucide-react-native";
 import React, { forwardRef, useMemo, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, {
@@ -28,12 +28,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 interface MoreOptionsProps {
   discountSheetRef?: React.RefObject<BottomSheetMethods>;
   onVoidSuccess?: () => void;
+  onCloseCheck?: () => void;
 }
 
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
-> = function MoreOptionsComponent({ discountSheetRef, onVoidSuccess }, ref) {
+> = function MoreOptionsComponent({ discountSheetRef, onVoidSuccess, onCloseCheck }, ref) {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -59,6 +60,11 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   const activeOrder = useOrderStore(
     (state) => state.ordersById[state?.activeOrderId || ""]
   );
+
+  // Calculate if balance is zero for Close Check option
+  const hasItems = (activeOrder?.items?.length ?? 0) > 0;
+  const balance = activeOrder?.amount_due ?? 0;
+  const isBalanceZero = hasItems && balance <= 0;
 
   const handleClearCart = () => {
     setClearCartConfirmOpen(true);
@@ -313,6 +319,37 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Close Check Section - Only show when balance is $0 */}
+            {isBalanceZero && (
+              <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
+                <View>
+                  <Text className="text-xl font-semibold text-white">
+                    Close Check
+                  </Text>
+                  <Text className="text-sm text-gray-500">
+                    Finalize this order
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (ref && "current" in ref && ref.current) {
+                      ref.current.close();
+                    }
+                    setTimeout(() => {
+                      onCloseCheck?.();
+                    }, 250);
+                  }}
+                  className="flex-row items-center gap-x-2 bg-emerald-600 p-3 rounded-lg"
+                >
+                  <CheckCircle color="white" size={18} />
+                  <Text className="text-base text-white font-semibold">
+                    Close Check
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View className="p-4 border-b border-gray-700 flex-row justify-between items-center">
               <Text className="text-xl font-semibold text-white">Customer</Text>
               <TouchableOpacity

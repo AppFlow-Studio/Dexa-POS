@@ -1,5 +1,6 @@
 import { CartItem } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { useActiveOrderTotals } from "@/stores/selectors/orderSelectors";
 import React, { useMemo } from "react";
 import { Text, View } from "react-native";
 
@@ -8,42 +9,38 @@ interface TotalsProps {
 }
 
 const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
-  // OPTIMIZED: Use individual selectors instead of destructuring entire store
+  // Phase 7: Use derived selector instead of 6 individual store selectors
+  const totals = useActiveOrderTotals();
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
   const ordersById = useOrderStore((s) => s.ordersById);
-  const activeOrderSubtotal = useOrderStore((s) => s.activeOrderSubtotal);
-  const activeOrderTax = useOrderStore((s) => s.activeOrderTax);
-  const activeOrderTotal = useOrderStore((s) => s.activeOrderTotal);
-  const activeOrderDiscount = useOrderStore((s) => s.activeOrderDiscount);
-  const activeOrderOutstandingTotal = useOrderStore((s) => s.activeOrderOutstandingTotal);
-  const activeOrderOutstandingCash = useOrderStore((s) => s.activeOrderOutstandingCash);
-
-  const voucher = 0.0;
 
   // Get the active order to check for partial payments
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
 
   // Calculate amount paid and balance due
   const paymentInfo = useMemo(() => {
+    if (!totals) {
+      return {
+        hasPayments: false,
+        isPaid: false,
+        balanceDue: 0,
+        cashBalanceDue: 0,
+        cashSavings: 0,
+        amountPaid: 0,
+      };
+    }
+
     const hasPayments = (activeOrder?.payments?.length ?? 0) > 0;
     const isPaid = activeOrder?.paid_status === "Paid";
 
-    // Use backend's authoritative amount_due if available (always CARD price)
-    const balanceDue =
-      activeOrder?.amount_due !== undefined
-        ? activeOrder.amount_due
-        : activeOrderOutstandingTotal;
-
-    // Use backend's cash_amount_due if available, otherwise use local calculation
-    const cashBalanceDue =
-      activeOrder?.cash_amount_due !== undefined
-        ? activeOrder.cash_amount_due
-        : activeOrderOutstandingCash;
+    // Derived selector already prioritizes backend values for amountDue
+    const balanceDue = totals.amountDue;
+    const cashBalanceDue = totals.cashAmountDue;
 
     const amountPaid =
       activeOrder?.amount_paid !== undefined
         ? activeOrder.amount_paid
-        : activeOrderTotal - activeOrderOutstandingTotal;
+        : totals.total - totals.amountDue;
 
     // Calculate savings if paying cash
     const cashSavings = balanceDue - cashBalanceDue;
@@ -56,12 +53,11 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       cashSavings: cashSavings > 0.01 ? cashSavings : 0,
       amountPaid: Math.max(0, amountPaid),
     };
-  }, [
-    activeOrder,
-    activeOrderTotal,
-    activeOrderOutstandingTotal,
-    activeOrderOutstandingCash,
-  ]);
+  }, [totals, activeOrder]);
+
+  if (!totals) {
+    return null;
+  }
 
   return (
     <View className="px-6 py-0.5 bg-[#212121]">
@@ -69,15 +65,15 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         {/* <View className="flex-row justify-between items-center">
           <Text className="text-lg text-gray-300">Subtotal</Text>
           <Text className="text-lg font-medium text-white">
-            ${activeOrderSubtotal.toFixed(2)}
+            ${totals.subtotal.toFixed(2)}
           </Text>
         </View> */}
 
-        {activeOrderDiscount > 0 && (
+        {totals.discount > 0 && (
           <View className="flex-row justify-between items-center">
             <Text className="text-base text-green-400">Discount</Text>
             <Text className="text-base font-medium text-green-400">
-              -${activeOrderDiscount.toFixed(2)}
+              -${totals.discount.toFixed(2)}
             </Text>
           </View>
         )}
@@ -85,7 +81,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
         <View className="flex-row justify-between items-center">
           <Text className="text-base text-gray-300">Tax</Text>
           <Text className="text-base font-medium text-white">
-            ${activeOrderTax.toFixed(2)}
+            ${totals.tax.toFixed(2)}
           </Text>
         </View>
 
@@ -101,7 +97,7 @@ const TotalsComponent: React.FC<TotalsProps> = ({ cart }) => {
       {/* <View className="border-t border-dashed border-gray-600 mt-2 flex-row justify-between items-center">
         <Text className="text-lg font-bold text-white">Total</Text>
         <Text className="text-lg font-bold text-white">
-          ${activeOrderTotal.toFixed(2)}
+          ${totals.total.toFixed(2)}
         </Text>
       </View> */}
 

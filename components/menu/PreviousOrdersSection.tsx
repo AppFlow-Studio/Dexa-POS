@@ -255,6 +255,7 @@ const PreviousOrdersSection = () => {
     const selectorOrderIds = new Set(previousOrders.map(o => o.id));
     const localOrdersNotInSelector = orders.filter(
       (o) => o.order_status !== "void" &&
+             o.order_status !== "draft" &&
              o.items.length > 0 &&
              !selectorOrderIds.has(o.id)
     );
