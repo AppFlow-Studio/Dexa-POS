@@ -1,10 +1,8 @@
-import {
-  isLocalId,
-  resolveToBackendId,
-} from "@/lib/offlineIdRegistry";
+import { isLocalId, resolveToBackendId } from "@/lib/offlineIdRegistry";
 import { getIsOnline, queueOperation } from "@/services/offlineSyncService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { useEmployeeStore } from "./useEmployeeStore";
 
 // ============================================================================
 // SUPABASE CLIENT (Global pattern like useOrderStore)
@@ -620,9 +618,12 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
     // 2. Try backend if online and have a dbOrderId
     if (isOnline && _supabaseClient && dbOrderId) {
       try {
+        const p_staff_id =
+          useEmployeeStore.getState().loggedInEmployee?.profileId;
         const { error } = await _supabaseClient.rpc("fire_course", {
           p_order_id: dbOrderId,
           p_course_number: courseNumber,
+          p_staff_id: p_staff_id,
         });
         console.log(
           "Fired course on server:",
@@ -632,13 +633,18 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
         );
 
         if (error) {
-          console.error("[fireCourse] Backend error, queuing for retry:", error);
+          console.error(
+            "[fireCourse] Backend error, queuing for retry:",
+            error
+          );
           // OFFLINE-FIRST: Don't revert, queue for retry instead
           await queueOperation({
             type: "fire_course",
             params: {
               dbOrderId,
               courseNumber,
+              p_staff_id:
+                useEmployeeStore.getState().loggedInEmployee?.profileId,
               localOrderId: orderId, // Include for ID resolution during sync
             },
             localOrderId: orderId,
@@ -655,6 +661,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
           params: {
             dbOrderId,
             courseNumber,
+            p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId,
             localOrderId: orderId, // Include for ID resolution during sync
           },
           localOrderId: orderId,
@@ -668,6 +675,7 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
         params: {
           dbOrderId,
           courseNumber,
+          p_staff_id: useEmployeeStore.getState().loggedInEmployee?.profileId,
           localOrderId: orderId, // Include for ID resolution during sync
         },
         localOrderId: orderId,
@@ -697,9 +705,12 @@ export const useCoursingStore = create<CoursingState>((set, get) => ({
 
     const dbOrderId = get().byOrderId[orderId]?.dbOrderId;
     if (_supabaseClient && dbOrderId) {
+      const p_staff_id =
+        useEmployeeStore.getState().loggedInEmployee?.profileId;
       const { error } = await _supabaseClient.rpc("mark_course_served", {
         p_order_id: dbOrderId,
         p_course_number: courseNumber,
+        p_staff_id: p_staff_id,
       });
       if (error) {
         console.error("Failed to mark course served:", error);

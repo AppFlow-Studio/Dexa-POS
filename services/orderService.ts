@@ -424,7 +424,8 @@ export class OrderService {
   static async bulkUpdateOrderItemStatus(
     client: SupabaseClient,
     orderItemIds: string[],
-    status: "sent" | "preparing" | "ready" | "served"
+    status: "sent" | "preparing" | "ready" | "served",
+    staffId?: string
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
@@ -432,6 +433,7 @@ export class OrderService {
     const { data, error } = await client.rpc("bulk_update_order_item_status", {
       p_order_item_ids: orderItemIds,
       p_status: status,
+      p_staff_id: staffId,
     });
     return { data, error };
   }
