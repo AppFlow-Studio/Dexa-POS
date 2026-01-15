@@ -26,11 +26,12 @@ const statusClasses: Record<string, string> = {
   Refunded: "bg-gray-200 text-gray-600",
   "Partially Refunded": "bg-yellow-100 text-yellow-800",
   Unpaid: "bg-red-100 text-red-800",
+  Pending: "bg-yellow-100 text-yellow-800",
 };
 
 const columnWidths: { [key: string]: DimensionValue } = {
   serial: "8%",
-  date: "12%",
+  date: "22%",
   orderId: "10%",
   customer: "12%",
   paymentStatus: "10%",
@@ -103,12 +104,12 @@ const PreviousOrderRow: React.FC<PreviousOrderRowProps> = ({
           </Text>
           <Text className="text-base text-gray-400">{orderTime}</Text>
         </View>
-        <Text
+        {/* <Text
           style={{ width: columnWidths.orderId }}
           className="text-base font-semibold text-gray-300 px-1.5"
         >
           {order.order_number || order.id}
-        </Text>
+        </Text> */}
         <Text
           style={{ width: columnWidths.customer }}
           className="text-base font-semibold text-white px-1.5"

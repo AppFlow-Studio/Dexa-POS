@@ -1,3 +1,4 @@
+import { calculateItemEffectiveCardPrice, calculateItemEffectiveCashPrice } from "@/lib/order-calculator";
 import { CartItem, OrderProfile } from "@/lib/types";
 import { SelectedLocation } from "@/stores/useStoreSettingsStore";
 import { Printer, X } from "lucide-react-native";
@@ -166,8 +167,8 @@ const ItemRow: React.FC<{
   const itemName = item.is_open_item
     ? item.open_item_name || item.name
     : item.name;
-  const itemSubtotal = item.subtotal || item.price * item.quantity;
-  const itemCashSubtotal = item.cashSubtotal || (item.cashPrice || item.price) * item.quantity;
+  const itemSubtotal = calculateItemEffectiveCardPrice(item);
+  const itemCashSubtotal = calculateItemEffectiveCashPrice(item);
   const hasDifferentCashPrice = itemCashSubtotal !== itemSubtotal;
 
   return (
@@ -431,12 +432,12 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({
 
     // Card prices (default)
     const subtotal = items.reduce((sum, item) => {
-      return sum + (item.subtotal || item.price * item.quantity);
+      return sum + calculateItemEffectiveCardPrice(item);
     }, 0);
 
     // Cash prices
     const cashSubtotal = items.reduce((sum, item) => {
-      return sum + (item.cashSubtotal || (item.cashPrice || item.price) * item.quantity);
+      return sum + calculateItemEffectiveCashPrice(item);
     }, 0);
 
     // Use order-level tax for card, fall back to item-level calculation

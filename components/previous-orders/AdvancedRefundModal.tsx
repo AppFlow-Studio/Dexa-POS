@@ -34,6 +34,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
   AdvancedRefundModalRef,
   AdvancedRefundModalProps
 > = ({ onClose, order }, ref) => {
+  if (!order) return null;
   const bottomSheetRef = useRef<BottomSheetMethods>(null);
   const snapPoints = useMemo(() => ["95%"], []);
 
@@ -60,7 +61,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
     }
   }, [order]);
 
-  if (!order) return null;
+  // if (!order) return null;
 
   const refundableItems = useMemo(() => {
     return order.items.filter(
@@ -174,7 +175,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
 
   const calculateRefundAmount = () => {
     if (refundType === "full") {
-      return order.total;
+      return order?.total;
     }
 
     return selectedItems.reduce((total, selectedItem) => {
@@ -252,7 +253,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
             <View>
               <Text className="text-xl font-bold text-white">Process Refund</Text>
               <Text className="text-sm text-gray-400">
-                Order #{order.orderId} • ${order.total.toFixed(2)}
+                Order #{order?.orderId} • ${order?.total?.toFixed(2)}
               </Text>
             </View>
             <TouchableOpacity
@@ -288,7 +289,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                   Full Refund
                 </Text>
                 <Text className={`text-sm text-center mt-1 ${refundType === "full" ? "text-blue-300" : "text-gray-400"}`}>
-                  ${order.total.toFixed(2)}
+                  ${order?.total?.toFixed(2)}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -414,7 +415,7 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
                               {item.name}
                             </Text>
                             <Text className="text-gray-400 text-xs">
-                              {maxRefundable} × ${item.price.toFixed(2)}
+                              {maxRefundable} × ${item.price?.toFixed(2)}
                             </Text>
                           </View>
                           <TouchableOpacity
@@ -492,20 +493,20 @@ const AdvancedRefundModalComponent: React.ForwardRefRenderFunction<
               <View className="flex-row justify-between mb-1">
                 <Text className="text-sm text-gray-400">Original Total</Text>
                 <Text className="text-sm font-semibold text-white">
-                  ${order.total.toFixed(2)}
+                  ${order?.total?.toFixed(2)}
                 </Text>
               </View>
               <View className="flex-row justify-between mb-2">
                 <Text className="text-sm text-red-400">Refund Amount</Text>
                 <Text className="font-bold text-red-400 text-base">
-                  -${calculateRefundAmount().toFixed(2)}
+                  -${calculateRefundAmount()?.toFixed(2)}
                 </Text>
               </View>
               <View className="h-px bg-gray-600 mb-2" />
               <View className="flex-row justify-between">
                 <Text className="text-base text-white font-bold">New Total</Text>
                 <Text className="font-bold text-white text-lg">
-                  ${(order.total - calculateRefundAmount()).toFixed(2)}
+                  ${(order?.total - calculateRefundAmount())?.toFixed(2)}
                 </Text>
               </View>
             </View>

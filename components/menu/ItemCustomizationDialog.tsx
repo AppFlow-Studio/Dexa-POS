@@ -98,6 +98,7 @@ const ItemCustomizationDialog: React.FC = () => {
         quantity,
         originalPrice: menuItem.price,
         price: total / quantity, // includes size/add-ons
+        cashPrice: menuItem.effective_cash_price ?? menuItem.price, // Cash base price for proper modifier calculation
         image: menuItem.image,
         customizations: { size: selectedSize, addOns: selectedAddOns, notes },
         availableDiscount: menuItem.availableDiscount,

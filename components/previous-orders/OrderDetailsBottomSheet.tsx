@@ -11,6 +11,7 @@ import { Pressable, Text, TouchableOpacity, View } from "react-native";
 import BillItemsSection from "./BillItemsSection";
 import PaymentCoverageSection from "./PaymentCoverageSection";
 import PaymentTimelineSection from "./PaymentTimelineSection";
+import { useOrderStore } from "@/stores/useOrderStore";
 
 interface OrderDetailsBottomSheetProps {
   order: OrderProfile | null;
@@ -24,9 +25,10 @@ type TabType = "bill" | "payments" | "coverage";
 const OrderDetailsBottomSheet = forwardRef<BottomSheetMethods, OrderDetailsBottomSheetProps>(
   ({ order, onClose, onPrint, onRefund }, ref) => {
     const bottomSheetRef = useRef<BottomSheetMethods>(null);
-    const snapPoints = useMemo(() => ["90%"], []);
+    const snapPoints = useMemo(() => ["95%"], []);
     const [selectedTab, setSelectedTab] = useState<TabType>("bill");
-
+    const { ordersByDbId } = useOrderStore();
+    const DetailsOrder = ordersByDbId[order?.db_order_id || ""];
     useImperativeHandle(ref, () => ({
       snapToIndex: (index: number) => bottomSheetRef.current?.snapToIndex(index),
       snapToPosition: (position: string | number) =>
@@ -53,6 +55,7 @@ const OrderDetailsBottomSheet = forwardRef<BottomSheetMethods, OrderDetailsBotto
 
     if (!order) return null;
 
+    console.log("DetailsOrder", DetailsOrder);
     return (
       <BottomSheet
         ref={bottomSheetRef}
@@ -64,7 +67,7 @@ const OrderDetailsBottomSheet = forwardRef<BottomSheetMethods, OrderDetailsBotto
         handleIndicatorStyle={{ backgroundColor: "#4B5563" }}
         onClose={onClose}
       >
-        <BottomSheetView className="flex-1 bg-[#212121]">
+        <BottomSheetScrollView className="flex-1 bg-[#212121]">
           {/* Header */}
           <View className="px-4 py-3 border-b border-gray-700">
             <View className="flex-row items-center justify-between mb-2">
@@ -205,7 +208,7 @@ const OrderDetailsBottomSheet = forwardRef<BottomSheetMethods, OrderDetailsBotto
               </TouchableOpacity>
             </View>
           </View>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
     );
   }

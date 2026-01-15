@@ -1034,6 +1034,8 @@ const ModifierScreen = () => {
           isDraft: false,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
+          baseCardPrice: baseItem.price,
+          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
         console.log('[confirmedItem] confirmedItem', confirmedItem);
         addItemToActiveOrder(confirmedItem);
@@ -1063,6 +1065,8 @@ const ModifierScreen = () => {
           isDraft: false,
           addedFromCategoryId: catId || null,
           addedFromMenuId: mId || null,
+          baseCardPrice: baseItem.price,
+          baseCashPrice: baseItem.cashPrice ?? baseItem.price,
         };
         console.log('[newItem] newItem', newItem);
         addItemToActiveOrder(newItem);

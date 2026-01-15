@@ -263,236 +263,236 @@ const useTableData = (table: FloorPlanObject) => {
   }, [table, ordersById, tables, orderTotals]);
 };
 
-// const ExpandedView: React.FC<{
-//   tableData: NonNullable<ReturnType<typeof useTableData>>;
-//   onNavigateToOrder: () => void;
-//   onToggleExpand: () => void;
-//   table: FloorPlanObject; // Need table obj to get IDs
-// }> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
-// //   const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
-// //   const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
-// //   const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
-// //   const { show } = useToast();
-// //   const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
-// //   const [isReceiptOpen, setReceiptOpen] = useState(false);
-// //   const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
+const ExpandedView: React.FC<{
+  tableData: NonNullable<ReturnType<typeof useTableData>>;
+  onNavigateToOrder: () => void;
+  onToggleExpand: () => void;
+  table: FloorPlanObject; // Need table obj to get IDs
+}> = ({ tableData, onNavigateToOrder, onToggleExpand, table }) => {
+  const { updateSessionStatus } = useFloorPlanStore(); // Use updateSessionStatus instead of updateTableStatus
+  const { voidOrder, archiveOrder, deleteOrder } = useOrderStore();
+  const coursingByOrderId = useCoursingStore((s) => s.byOrderId);
+  const { show } = useToast();
+  const [isVoidConfirmOpen, setVoidConfirmOpen] = useState(false);
+  const [isReceiptOpen, setReceiptOpen] = useState(false);
+  const selectedStore = useStoreSettingsStore((s) => s.selectedStore);
 
-// //   const groupedItems = useMemo(() => {
-// //     const groups: Record<
-// //       number,
-// //       { orderId: string; items: (typeof tableData.orders)[0]["items"] }
-// //     > = {};
-// //     tableData.orders.forEach((order) => {
-// //       const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
+  const groupedItems = useMemo(() => {
+    const groups: Record<
+      number,
+      { orderId: string; items: (typeof tableData.orders)[0]["items"] }
+    > = {};
+    tableData.orders.forEach((order) => {
+      const itemCourseMap = coursingByOrderId[order.id]?.itemCourseMap || {};
 
-// //       order.items.forEach((item) => {
-// //         const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
-// //         if (!groups[courseNumber])
-// //           groups[courseNumber] = { orderId: order.id, items: [] };
-// //         groups[courseNumber].items.push(item);
-// //       });
-// //     });
-// //     return groups;
-// //   }, [tableData.orders, coursingByOrderId]);
+      order.items.forEach((item) => {
+        const courseNumber = itemCourseMap[item.id] ?? item.courseNumber ?? 1;
+        if (!groups[courseNumber])
+          groups[courseNumber] = { orderId: order.id, items: [] };
+        groups[courseNumber].items.push(item);
+      });
+    });
+    return groups;
+  }, [tableData.orders, coursingByOrderId]);
 
-// //   const handleCloseTable = async () => {
-// //     if (!tableData) return;
+  const handleCloseTable = async () => {
+    if (!tableData) return;
 
-// //     // We update session status. Assuming we have session ID.
-// //     // tableData doesn't have session ID explicitly returned in my hook above?
-// //     // table object has it.
+    // We update session status. Assuming we have session ID.
+    // tableData doesn't have session ID explicitly returned in my hook above?
+    // table object has it.
 
-// //     if (!table.session?.id) {
-// //       show({
-// //         title: "Error",
-// //         message: "No active session found.",
-// //         type: "error",
-// //       });
-// //       return;
-// //     }
-// //     const sessionId = table.session.id;
+    if (!table.session?.id) {
+      show({
+        title: "Error",
+        message: "No active session found.",
+        type: "error",
+      });
+      return;
+    }
+    const sessionId = table.session.id;
 
-// //     if (tableData.orders.length === 0) {
-// //       // Just seated or empty. Free up.
-// //       await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
-// //       // Actually DB might require 'available' to clear session?
-// //       // updateSessionStatus usually updates status field.
-// //       // If we want to CLEAR session (remove it), we might need `closeSession`.
-// //       // But let's assume 'available' or 'cleaning' is fine.
-// //       onToggleExpand();
-// //       return;
-// //     }
+    if (tableData.orders.length === 0) {
+      // Just seated or empty. Free up.
+      await updateSessionStatus(sessionId, "available"); // or 'cleaning'?
+      // Actually DB might require 'available' to clear session?
+      // updateSessionStatus usually updates status field.
+      // If we want to CLEAR session (remove it), we might need `closeSession`.
+      // But let's assume 'available' or 'cleaning' is fine.
+      onToggleExpand();
+      return;
+    }
 
-// //     const allOrdersArePaid = tableData.orders.every(
-// //       (o) => o.paid_status === "Paid"
-// //     );
+    const allOrdersArePaid = tableData.orders.every(
+      (o) => o.paid_status === "Paid"
+    );
 
-// //     if (allOrdersArePaid) {
-// //       const allItemsInGroupAreReady = tableData.orders.every((order) =>
-// //         order.items.every(
-// //           (item) =>
-// //             item.item_status === "Ready" || item.item_status === "Served"
-// //         )
-// //       );
+    if (allOrdersArePaid) {
+      const allItemsInGroupAreReady = tableData.orders.every((order) =>
+        order.items.every(
+          (item) =>
+            item.item_status === "Ready" || item.item_status === "Served"
+        )
+      );
 
-// //       if (allItemsInGroupAreReady) {
-// //         tableData.orders.forEach((order) => archiveOrder(order.id));
-// //         await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
-// //         show({
-// //           title: "Tables Cleared",
-// //           message: `Tables ${tableData.displayName} are now marked for cleaning.`,
-// //           type: "success",
-// //         });
-// //       } else {
-// //         show({
-// //           title: "Action Restricted",
-// //           message:
-// //             "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
-// //           type: "error",
-// //         });
-// //       }
-// //     } else {
-// //       const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
-// //       if (groupHasAnyItems) {
-// //         setVoidConfirmOpen(true);
-// //       } else {
-// //         tableData.orders.forEach((order) => deleteOrder(order.id));
-// //         await updateSessionStatus(sessionId, "available");
-// //       }
-// //     }
-// //   };
+      if (allItemsInGroupAreReady) {
+        tableData.orders.forEach((order) => archiveOrder(order.id));
+        await updateSessionStatus(sessionId, "cleaning"); // Mark cleaning
+        show({
+          title: "Tables Cleared",
+          message: `Tables ${tableData.displayName} are now marked for cleaning.`,
+          type: "success",
+        });
+      } else {
+        show({
+          title: "Action Restricted",
+          message:
+            "Cannot clear tables until all items are marked as 'Ready' or 'Served'.",
+          type: "error",
+        });
+      }
+    } else {
+      const groupHasAnyItems = tableData.orders.some((o) => o.items.length > 0);
+      if (groupHasAnyItems) {
+        setVoidConfirmOpen(true);
+      } else {
+        tableData.orders.forEach((order) => deleteOrder(order.id));
+        await updateSessionStatus(sessionId, "available");
+      }
+    }
+  };
 
-// //   const onConfirmVoid = async () => {
-// //     if (!tableData || !table.session?.id) return;
+  const onConfirmVoid = async () => {
+    if (!tableData || !table.session?.id) return;
 
-// //     tableData.orders.forEach((order) => voidOrder(order.id));
-// //     await updateSessionStatus(table.session.id, "available");
-// //     setVoidConfirmOpen(false);
-// //     onToggleExpand();
-// //   };
+    tableData.orders.forEach((order) => voidOrder(order.id));
+    await updateSessionStatus(table.session.id, "available");
+    setVoidConfirmOpen(false);
+    onToggleExpand();
+  };
 
-// //   return (
-// //     <Animated.View
-// //       entering={FadeIn.duration(200)}
-// //       exiting={FadeOut.duration(100)}
-// //       className="mt-3"
-// //     >
-// //       <View className="flex-row items-center gap-4 mb-3">
-// //         <Text className="text-sm text-gray-300">
-// //           Server: {tableData.server}
-// //         </Text>
-// //         <Text className="text-sm text-gray-300">
-// //           Seated:{" "}
-// //           {tableData.seatedTime?.toLocaleTimeString([], {
-// //             hour: "2-digit",
-// //             minute: "2-digit",
-// //           })}
-// //         </Text>
-// //       </View>
+  return (
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(100)}
+      className="mt-3"
+    >
+      <View className="flex-row items-center gap-4 mb-3">
+        <Text className="text-sm text-gray-300">
+          Server: {tableData.server}
+        </Text>
+        <Text className="text-sm text-gray-300">
+          Seated:{" "}
+          {tableData.seatedTime?.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </Text>
+      </View>
 
-// //       <View className="mb-4 pr-2">
-// //         {Object.entries(groupedItems)
-// //           .sort(([a], [b]) => Number(a) - Number(b))
-// //           .map(([courseNumber, { items }]) => (
-// //             <View key={courseNumber} className="mb-2">
-// //               <Text className="text-base font-semibold text-blue-400 mb-1">
-// //                 Course {courseNumber}
-// //               </Text>
-// //               {items.map((item) => (
-// //                 <View key={item.id} className="flex-row items-center ml-2">
-// //                   <Text className="text-base text-gray-300">
-// //                     {item.quantity}x {item.name}
-// //                   </Text>
-// //                   <View className="ml-2">
-// //                     {(item.item_status === "Ready" ||
-// //                       item.item_status === "Served") && (
-// //                         <CheckCircle size={14} color="#22C55E" />
-// //                       )}
-// //                     {(item.kitchen_status === "sent" ||
-// //                       item.item_status === "Preparing") && (
-// //                         <Clock size={14} color="#F59E0B" />
-// //                       )}
-// //                   </View>
-// //                 </View>
-// //               ))}
-// //             </View>
-// //           ))}
-// //         <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
-// //           <View className="flex-row justify-between">
-// //             <Text className="text-sm text-gray-400">Subtotal</Text>
-// //             <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
-// //           </View>
-// //           <View className="flex-row justify-between">
-// //             <Text className="text-sm text-gray-400">Tax</Text>
-// //             <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
-// //           </View>
-// //           <View className="flex-row justify-between mt-1">
-// //             <Text className="text-base font-semibold text-white">Total</Text>
-// //             <Text className="text-base font-semibold text-white">${tableData.total?.toFixed(2)}</Text>
-// //           </View>
+      <View className="mb-4 pr-2">
+        {Object.entries(groupedItems)
+          .sort(([a], [b]) => Number(a) - Number(b))
+          .map(([courseNumber, { items }]) => (
+            <View key={courseNumber} className="mb-2">
+              <Text className="text-base font-semibold text-blue-400 mb-1">
+                Course {courseNumber}
+              </Text>
+              {items.map((item) => (
+                <View key={item.id} className="flex-row items-center ml-2">
+                  <Text className="text-base text-gray-300">
+                    {item.quantity}x {item.name}
+                  </Text>
+                  <View className="ml-2">
+                    {(item.item_status === "Ready" ||
+                      item.item_status === "Served") && (
+                        <CheckCircle size={14} color="#22C55E" />
+                      )}
+                    {(item.kitchen_status === "sent" ||
+                      item.item_status === "Preparing") && (
+                        <Clock size={14} color="#F59E0B" />
+                      )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          ))}
+        <View className="border-t border-gray-700 mt-2 pt-2 pr-2">
+          <View className="flex-row justify-between">
+            <Text className="text-sm text-gray-400">Subtotal</Text>
+            <Text className="text-sm text-gray-400">${tableData.subtotal?.toFixed(2)}</Text>
+          </View>
+          <View className="flex-row justify-between">
+            <Text className="text-sm text-gray-400">Tax</Text>
+            <Text className="text-sm text-gray-400">${tableData.tax?.toFixed(2)}</Text>
+          </View>
+          <View className="flex-row justify-between mt-1">
+            <Text className="text-base font-semibold text-white">Total</Text>
+            <Text className="text-base font-semibold text-white">${tableData.total?.toFixed(2)}</Text>
+          </View>
 
-// //           {/* Payment Information */}
-// //           {tableData.amountPaid > 0 && (
-// //             <>
-// //               <View className="border-t border-gray-600 mt-2 pt-2" />
-// //               <View className="flex-row justify-between">
-// //                 <Text className="text-sm text-blue-400">Amount Paid</Text>
-// //                 <Text className="text-sm text-blue-400">-${tableData.amountPaid.toFixed(2)}</Text>
-// //               </View>
-// //             </>
-// //           )}
+          {/* Payment Information */}
+          {tableData.amountPaid > 0 && (
+            <>
+              <View className="border-t border-gray-600 mt-2 pt-2" />
+              <View className="flex-row justify-between">
+                <Text className="text-sm text-blue-400">Amount Paid</Text>
+                <Text className="text-sm text-blue-400">-${tableData.amountPaid.toFixed(2)}</Text>
+              </View>
+            </>
+          )}
 
-// //           <View className="flex-row justify-between mt-2 items-center">
-// //             <View className="flex-row items-center gap-2">
-// //               <Text className="text-lg font-bold text-white">Amount Due</Text>
-// //               <PaymentStatusBadge status={tableData.paidStatus} size="md" />
-// //             </View>
-// //             <Text className="text-lg font-bold text-white">${tableData.amountDue.toFixed(2)}</Text>
-// //           </View>
-// //         </View>
-// //       </View>
+          <View className="flex-row justify-between mt-2 items-center">
+            <View className="flex-row items-center gap-2">
+              <Text className="text-lg font-bold text-white">Amount Due</Text>
+              <PaymentStatusBadge status={tableData.paidStatus} size="md" />
+            </View>
+            <Text className="text-lg font-bold text-white">${tableData.amountDue.toFixed(2)}</Text>
+          </View>
+        </View>
+      </View>
 
-// //       <View className="flex-row items-center gap-2">
-// //         <QuickActionButton
-// //           label="Table"
-// //           onPress={onNavigateToOrder}
-// //           variant="primary"
-// //         />
-// //         <QuickActionButton
-// //           label="Print Bill"
-// //           onPress={() => setReceiptOpen(true)}
-// //         />
-// //         <QuickActionButton
-// //           label="Close Table"
-// //           onPress={handleCloseTable}
-// //           variant="destructive"
-// //         />
-// //       </View>
-// //       <ConfirmationModal
-// //         isOpen={isVoidConfirmOpen}
-// //         onClose={() => setVoidConfirmOpen(false)}
-// //         onConfirm={onConfirmVoid}
-// //         title="Void This Order?"
-// //         description={`No payment has been made. Do you want to void the order for ${tableData.displayName}? This cannot be undone.`}
-// //         confirmText="Yes, Void Order"
-// //         variant="destructive"
-// //       />
-// //       {tableData.orders[0] && (
-// //         <ReceiptModal
-// //           isOpen={isReceiptOpen}
-// //           onClose={() => setReceiptOpen(false)}
-// //           order={tableData.orders[0]}
-// //           location={selectedStore}
-// //           onPrint={() => {
-// //             // TODO: Integrate with thermal printer
-// //             console.log("Print receipt for order:", tableData.orders[0]?.id);
-// //             setReceiptOpen(false);
-// //           }}
-// //         />
-// //       )}
-// //     </Animated.View>
-// //   );
-// // };
+      <View className="flex-row items-center gap-2">
+        <QuickActionButton
+          label="Table"
+          onPress={onNavigateToOrder}
+          variant="primary"
+        />
+        <QuickActionButton
+          label="Print Bill"
+          onPress={() => setReceiptOpen(true)}
+        />
+        <QuickActionButton
+          label="Close Table"
+          onPress={handleCloseTable}
+          variant="destructive"
+        />
+      </View>
+      <ConfirmationModal
+        isOpen={isVoidConfirmOpen}
+        onClose={() => setVoidConfirmOpen(false)}
+        onConfirm={onConfirmVoid}
+        title="Void This Order?"
+        description={`No payment has been made. Do you want to void the order for ${tableData.displayName}? This cannot be undone.`}
+        confirmText="Yes, Void Order"
+        variant="destructive"
+      />
+      {tableData.orders[0] && (
+        <ReceiptModal
+          isOpen={isReceiptOpen}
+          onClose={() => setReceiptOpen(false)}
+          order={tableData.orders[0]}
+          location={selectedStore}
+          onPrint={() => {
+            // TODO: Integrate with thermal printer
+            console.log("Print receipt for order:", tableData.orders[0]?.id);
+            setReceiptOpen(false);
+          }}
+        />
+      )}
+    </Animated.View>
+  );
+};
 
 const TableListItem: React.FC<{
   table: FloorPlanObject;
@@ -607,14 +607,14 @@ const TableListItem: React.FC<{
               </>
             )}
           </View>
-          {/* {isExpanded && showActiveDetails && (
+          {isExpanded && showActiveDetails && (
             <ExpandedView
               tableData={tableData}
               table={table}
               onToggleExpand={onToggleExpand}
               onNavigateToOrder={onNavigateToOrder}
             />
-          )} */}
+          )}
         </TouchableOpacity>
       </Animated.View>
     );

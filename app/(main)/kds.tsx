@@ -624,7 +624,7 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
 
 const KitchenDisplayScreen = () => {
   const {
-    orders,
+    ordersByDbId,
     markCourseItemsAsCooking,
     markCourseItemsAsReady,
     markCourseItemsAsServed,
@@ -633,13 +633,13 @@ const KitchenDisplayScreen = () => {
   const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
   const [refreshing, setRefreshing] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
-
+  
   // Load coursing data for all active orders
   useEffect(() => {
-    orders.forEach((order) => {
-      loadFromServer(order.id);
+    Object.values(ordersByDbId).forEach((order) => {
+      loadFromServer(order.db_order_id || "");
     });
-  }, [orders, loadFromServer]);
+  }, [ordersByDbId, loadFromServer]);
 
   // Helper to look up table name from service_location_id
   const getTableName = useCallback(
@@ -657,7 +657,7 @@ const KitchenDisplayScreen = () => {
     const cooking: KDSCardData[] = [];
     const ready: KDSCardData[] = [];
 
-    orders.forEach((order) => {
+    Object.values(ordersByDbId).forEach((order) => {
       const relevantItems = order.items.filter(
         (item) =>
           item.kitchen_status === "sent" ||
@@ -741,7 +741,7 @@ const KitchenDisplayScreen = () => {
         ),
       },
     };
-  }, [orders, byOrderId]);
+  }, [ordersByDbId, byOrderId]);
 
   const handleStartCooking = useCallback(
     (orderId: string, itemIds: string[]) => {

@@ -11,7 +11,7 @@
 -- Enhanced version that includes station_id, order_items, and modifiers in the broadcast payload.
 -- This enables remote order management where stations can see orders from other stations
 -- with full item customization details including modifiers.
-
+-- UPDATED TO INCLUDE STATION NAME AND BASE PRICES WITH NO MODIFIERS
 CREATE OR REPLACE FUNCTION broadcast_order_changes()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -23,6 +23,7 @@ DECLARE
   order_items_data jsonb;
   v_topic text;
   v_location_id uuid;
+  v_station_name text;
 BEGIN
   -- Get location_id (handle DELETE case)
   v_location_id := COALESCE(NEW.location_id, OLD.location_id);
@@ -51,10 +52,17 @@ BEGIN
     );
   ELSE
     -- INSERT/UPDATE: Full payload with order_items and modifiers
-
+    -- 1. FETCH STATION NAME ----------------------------------------
+    -- We need to look up the name based on the station_id
+    SELECT name INTO v_station_name
+    FROM stations
+    WHERE id = NEW.station_id;
+    -----------------------------------------------------------------
     -- Fetch order items WITH their modifiers for this order
     SELECT COALESCE(jsonb_agg(
       jsonb_build_object(
+        --TODO: Might need to fetch menu_item base price 
+        -- THIS LOGIC does not work for the current modifiers calculation locally
         'id', oi.id,
         'menu_item_id', oi.menu_item_id,
         'item_name', oi.item_name,
@@ -63,6 +71,8 @@ BEGIN
         'cash_price', oi.cash_price,
         'subtotal', oi.subtotal,
         'cash_subtotal', oi.cash_subtotal,
+        'base_card_price', oi.base_card_price,
+        'base_cash_price', oi.base_cash_price,
         'tax_amount', oi.tax_amount,
         'cash_tax_amount', oi.cash_tax_amount,
         'discount_amount', COALESCE(oi.discount_amount, 0),
@@ -96,7 +106,7 @@ BEGIN
     FROM order_items oi
     WHERE oi.order_id = NEW.id
       AND COALESCE(oi.is_voided, false) = false;
-
+     
     -- Build order_data in parts to avoid 100 argument limit
     -- Part 1: Identifiers and relationships
     order_data := jsonb_build_object(
@@ -111,10 +121,12 @@ BEGIN
       'created_by_user_id', NEW.created_by_user_id,
       'assigned_server_id', NEW.assigned_server_id,
       'station_id', NEW.station_id,
+      'station_name', v_station_name,
       'order_type', NEW.order_type,
       'status', NEW.status,
       'table_number', NEW.table_number,
-      'seat_number', NEW.seat_number
+      'seat_number', NEW.seat_number,
+      'check_status', NEW.check_status
     );
 
     -- Part 2: Financial totals
@@ -142,7 +154,6 @@ BEGIN
       'effective_total', NEW.effective_total,
       'payment_pricing_mode', NEW.payment_pricing_mode,
       'payment_status', NEW.payment_status,
-      'check_status', NEW.check_status,
       'amount_paid', NEW.amount_paid,
       'amount_due', NEW.amount_due,
       'cash_amount_due', NEW.cash_amount_due
@@ -180,11 +191,13 @@ BEGIN
     );
   END IF;
 
+  -- RAISE LOG 'Active Order %', payload; 
+
   -- Broadcast using Supabase Realtime
   PERFORM realtime.send(
-    v_topic,
-    TG_OP,
     payload,
+    TG_OP,
+    v_topic,
     true
   );
 
@@ -194,7 +207,6 @@ EXCEPTION WHEN OTHERS THEN
   RAISE WARNING 'broadcast_order_changes failed: %', SQLERRM;
   RETURN NULL;
 END;
-$;
 
 -- ============================================================================
 -- TRIGGER: orders_broadcast_trigger

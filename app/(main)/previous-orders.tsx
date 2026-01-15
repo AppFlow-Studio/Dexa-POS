@@ -7,15 +7,17 @@ import PreviousOrderRow from "@/components/previous-orders/PreviousOrderRow";
 import PrintReceiptModal from "@/components/previous-orders/PrintReceiptModal";
 import SortControls from "@/components/previous-orders/SortControls";
 import StatusFilterDropdown from "@/components/previous-orders/StatusFilterDropdown";
+import ReceiptModal from "@/components/receipts/ReceiptModal";
 import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
+import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { CartItem, OrderProfile, OrderType, PaymentStatus } from "@/lib/types";
 import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { deduplicateOrders, filterPreviousOrders } from "@/utils/orderUtils";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import { filterPreviousOrders } from "@/utils/orderUtils";
 import type { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Search } from "lucide-react-native";
 import { useMemo, useRef, useState } from "react";
-import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import {
   DimensionValue,
   FlatList,
@@ -25,12 +27,11 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 
 const columns: { label: string; width: DimensionValue }[] = [
   { label: "# Serial No", width: "8%" },
-  { label: "Order Date", width: "12%" },
-  { label: "Order ID", width: "10%" },
+  { label: "Order Date", width: "22%" },
+  // { label: "Order ID", width: "10%" },
   { label: "Customer", width: "12%" },
   { label: "Payment Status", width: "10%" },
   { label: "Server/Cashier", width: "10%" },
@@ -60,8 +61,12 @@ const PreviousOrdersScreen = () => {
     "notes" | "print" | "delete" | "modifiers" | "refund" | null
   >(null);
 
+  const { selectedStore } = useStoreSettingsStore();
   const [selectedOrderItems, setSelectedOrderItems] = useState<CartItem[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<OrderProfile | null>(
+    null
+  );
+  const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderProfile | null>(
     null
   );
   const [selectedOrderForDetails, setSelectedOrderForDetails] = useState<OrderProfile | null>(
@@ -80,15 +85,16 @@ const PreviousOrdersScreen = () => {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus[]>([]);
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
-  const previousOrders = usePreviousOrders({ showCompleted: true });
-
+  // const previousOrders = usePreviousOrders({ showCompleted: false });
+  const { ordersByDbId } = useOrderStore();
+  // console.log("ordersByDbId", ordersByDbId);
+  // console.log("previousOrders", previousOrders);
   // Process orders: deduplicate, filter, and apply search/sort
   const filteredOrders = useMemo(() => {
     // Step 1: Deduplicate prefetch orders
-    const deduplicated = deduplicateOrders(previousOrders);
 
     // Step 2: Filter to show only relevant orders
-    let filtered = filterPreviousOrders(deduplicated);
+    let filtered = filterPreviousOrders(Object.values(ordersByDbId));
 
     // Step 3: Apply search filter
     if (searchText.trim()) {
@@ -132,7 +138,7 @@ const PreviousOrdersScreen = () => {
     });
 
     return filtered;
-  }, [previousOrders, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
+  }, [ordersByDbId, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
 
   const handleOpenNotes = (order: OrderProfile) => {
     setSelectedOrder(order);
@@ -145,8 +151,8 @@ const PreviousOrdersScreen = () => {
   };
 
   const handleOpenPrint = (order: OrderProfile) => {
-    setSelectedOrder(order);
-    setActiveModal("print");
+    setSelectedOrderForReceipt(order);
+    // setActiveModal("print");
   };
 
   const handleConfirmDelete = () => {
@@ -165,11 +171,11 @@ const PreviousOrdersScreen = () => {
 
     try {
       const supabase = useSupabaseClient();
-      const { activeEmployeeId } = useEmployeeStore.getState();
-
+      const { loggedInEmployee } = useEmployeeStore.getState();
+      console.log("loggedInEmployee", loggedInEmployee);
       const { data, error } = await supabase?.rpc("close_check", {
         p_order_id: order.db_order_id,
-        p_staff_id: activeEmployeeId,
+        p_staff_id: loggedInEmployee?.profileId ?? null,
       });
 
       if (error) throw error;
@@ -311,7 +317,7 @@ const PreviousOrdersScreen = () => {
           variant="destructive"
         />
 
-        <PrintReceiptModal
+        {/* <PrintReceiptModal
           isOpen={activeModal === "print"}
           onClose={() => setActiveModal(null)}
           order={selectedOrder}
@@ -321,7 +327,7 @@ const PreviousOrdersScreen = () => {
           isOpen={activeModal === "refund"}
           onClose={() => setActiveModal(null)}
           order={selectedOrder}
-        />
+        /> */}
 
         <OrderDetailsBottomSheet
           ref={orderDetailsSheetRef}
@@ -329,6 +335,13 @@ const PreviousOrdersScreen = () => {
           onClose={() => setSelectedOrderForDetails(null)}
           onPrint={handleOpenPrint}
           onRefund={handleRefund}
+        />
+
+        <ReceiptModal
+          isOpen={!!selectedOrderForReceipt}
+          onClose={() => setSelectedOrderForReceipt(null)}
+          order={selectedOrderForReceipt}
+          location={selectedStore}
         />
       </View>
     </KeyboardAvoidingView>

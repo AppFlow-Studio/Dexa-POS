@@ -425,6 +425,10 @@ export interface CartItem {
   // Distributed discount from order-level/check discounts (synced from backend)
   discount_amount?: number;      // Card pricing discount distributed to this item
   discount_cash_amount?: number; // Cash pricing discount distributed to this item
+  
+  // Actual Base Prices With no Modifiers
+  baseCardPrice: number;
+  baseCashPrice: number;
 }
 
 export interface OnlineOrder {

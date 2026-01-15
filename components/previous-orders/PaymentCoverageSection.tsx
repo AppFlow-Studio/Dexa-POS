@@ -2,6 +2,7 @@ import { CartItem, OrderProfile } from "@/lib/types";
 import { ChevronDown, ChevronRight, CreditCard, DollarSign } from "lucide-react-native";
 import React, { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { ta } from "zod/v4/locales";
 
 interface PaymentCoverageSectionProps {
   order: OrderProfile;
@@ -39,7 +40,6 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
   const paymentCoverage = useMemo((): PaymentCoverage[] => {
     const payments = (order.payments || []) as Payment[];
     const orderItems = order.items || [];
-
     return payments.map((payment, index) => {
       // Skip voided payments
       if (payment.isVoided) {
@@ -54,13 +54,21 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
       const coveredItems: { item: CartItem; quantityCovered: number }[] = [];
       let totalCovered = 0;
 
+      // Determine if this payment used cash pricing
+      const isCashPayment = payment.method?.toLowerCase().includes('cash');
+
       // If payment has itemsCovered data, use it
       if (payment.itemsCovered && payment.itemsCovered.length > 0) {
         payment.itemsCovered.forEach(({ itemId, quantity }) => {
-          const item = orderItems.find((i: any) => i.id === itemId);
+          const item = orderItems.find((i: CartItem) => i.db_order_item_id === itemId);
           if (item) {
             coveredItems.push({ item, quantityCovered: quantity });
-            totalCovered += (item.price || 0) * quantity;
+
+            // Use cash price and tax for cash payments, card price for card payments
+            const itemPrice = isCashPayment ? (item.cashPrice || item.price) : item.price;
+            const itemTax = isCashPayment ? (item.cashTaxAmount || item.taxAmount || 0) : (item.taxAmount || 0);
+
+            totalCovered += (itemPrice + itemTax) * quantity;
           }
         });
       } else {
@@ -77,7 +85,6 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
       };
     });
   }, [order.payments, order.items]);
-
   const togglePayment = (paymentId: string) => {
     setExpandedPaymentId(expandedPaymentId === paymentId ? null : paymentId);
   };
@@ -117,6 +124,7 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
         const paymentId = payment.id || `payment-${paymentIndex}`;
         const isExpanded = expandedPaymentId === paymentId;
         const paymentMethod = payment.method || "Cash";
+        const isCashPayment = paymentMethod.toLowerCase().includes('cash');
 
         return (
           <View key={paymentId} className="mb-3">
@@ -171,25 +179,30 @@ const PaymentCoverageSection: React.FC<PaymentCoverageSectionProps> = ({ order }
                     <Text className="text-gray-400 text-sm mb-3 font-semibold">
                       Items covered by this payment:
                     </Text>
-                    {coveredItems.map(({ item, quantityCovered }, idx) => (
-                      <View
-                        key={idx}
-                        className="flex-row items-center justify-between py-2 border-b border-gray-700 last:border-b-0"
-                      >
-                        <View className="flex-1">
-                          <Text className="text-white font-medium">
-                            {item.name || "Unknown Item"}
-                          </Text>
-                          <Text className="text-gray-500 text-sm">
-                            Quantity: {quantityCovered}
-                            {quantityCovered % 1 !== 0 && " (partial)"}
+                    {coveredItems.map(({ item, quantityCovered }, idx) => {
+                      // Use cash price for cash payments, card price for card payments
+                      const displayPrice = isCashPayment ? (item.cashPrice || item.price) : item.price;
+
+                      return (
+                        <View
+                          key={idx}
+                          className="flex-row items-center justify-between py-2 border-b border-gray-700 last:border-b-0"
+                        >
+                          <View className="flex-1">
+                            <Text className="text-white font-medium">
+                              {item.name || "Unknown Item"}
+                            </Text>
+                            <Text className="text-gray-500 text-sm">
+                              Quantity: {quantityCovered}
+                              {quantityCovered % 1 !== 0 && " (partial)"}
+                            </Text>
+                          </View>
+                          <Text className="text-white font-semibold">
+                            ${((displayPrice || 0) * quantityCovered).toFixed(2)}
                           </Text>
                         </View>
-                        <Text className="text-white font-semibold">
-                          ${((item.price || 0) * quantityCovered).toFixed(2)}
-                        </Text>
-                      </View>
-                    ))}
+                      );
+                    })}
 
                     {/* Total for this payment */}
                     <View className="flex-row items-center justify-between pt-3 mt-2 border-t border-gray-600">

@@ -37,11 +37,12 @@ const BillItemsSection: React.FC<BillItemsSectionProps> = ({ order }) => {
               {item.customizations.modifiers && item.customizations.modifiers.length > 0 && (
                 <View className="ml-4 mt-1">
                   {item.customizations.modifiers.map((modifier, modIndex) => (
-                    <Text key={modIndex} className="text-gray-500 text-sm">
-                      • {modifier.categoryName}
+                    <Text key={modIndex} className="text-gray-300 text-sm mr-2 flex-row flex">
+                      • {modifier.categoryName}: {" "}
                       {modifier.options.map((option, optionIndex) => (
-                        <Text key={optionIndex} className="text-gray-500 text-sm">
-                          {option.name}
+                        <Text key={optionIndex} className="text-gray-300 text-sm ">
+                          {""}
+                          {option.name} {optionIndex < modifier.options.length - 1 && ","}
                         </Text>
                       ))}
                     </Text>

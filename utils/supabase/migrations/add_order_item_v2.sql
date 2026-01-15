@@ -3,6 +3,8 @@
 -- Called by your addItemToBackend
 -- IMPORTANT: INSERT BASE PRICES, MODIFIERS WILL BE APPLIED IN THE FUNCTION ITSELF
 -- ============================================
+
+-- UPDATED TO INCLUDE BASE PRICES WITH NO MODIFIERS saved in base_card_price and base_cash_price
 CREATE OR REPLACE FUNCTION add_order_item_v2(
     p_order_id uuid,
     p_menu_item_id uuid DEFAULT NULL,
@@ -159,7 +161,10 @@ BEGIN
         paid_quantity,
         -- Timestamps
         created_at,
-        updated_at
+        updated_at,
+        -- Base Prices With no Modifiers
+        base_card_price,
+        base_cash_price
     ) VALUES (
         p_order_id,
         p_menu_item_id,
@@ -188,7 +193,10 @@ BEGIN
         0,
         -- Timestamps
         now(),
-        now()
+        now(),
+       -- Base Price with No Modifiers,
+        p_unit_price,
+        p_cash_unit_price
     )
     RETURNING id INTO v_item_id;
 

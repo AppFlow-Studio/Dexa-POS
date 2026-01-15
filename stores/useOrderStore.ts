@@ -706,8 +706,8 @@ const addItemToBackend = async (
             name: item.name,
             quantity: item.quantity,
             price: item.price,
-            unitPrice: item.unitPrice ?? item.price,
-            cashPrice: item.cashPrice,
+            unitPrice: item.baseCardPrice ?? item.price,
+            cashPrice: item.baseCashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
@@ -785,8 +785,8 @@ const addItemToBackend = async (
             locationExclusiveItemId: item.locationExclusiveItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.unitPrice,
-            cashPrice: item.cashPrice,
+            price: item.baseCardPrice,
+            cashPrice: item.baseCashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
@@ -834,8 +834,8 @@ const addItemToBackend = async (
             menuItemId: item.menuItemId,
             name: item.name,
             quantity: item.quantity,
-            price: item.unitPrice,
-            cashPrice: item.cashPrice,
+            price: item.baseCardPrice,
+            cashPrice: item.baseCashPrice,
             originalPrice: item.originalPrice,
             customizations: item.customizations,
             category_name: item.category_name,
@@ -1015,8 +1015,8 @@ const addItemToBackend = async (
       p_category_name: item.category_name || "Uncategorized",
 
       // Prices (per unit, before quantity multiplication)
-      p_unit_price: item.unitPrice ?? item.price, // Card price per unit (includes modifiers)
-      p_cash_unit_price: item.originalPrice || item.cashPrice, // Cash price per unit (includes modifiers)
+      p_unit_price: item.baseCardPrice ?? item.originalPrice, // Card base price (modifiers added by backend)
+      p_cash_unit_price: item.baseCashPrice || item.originalPrice, // Cash base price (modifiers added by backend)
 
       // Size details
       p_selected_size_id: item.customizations?.size?.id || undefined,
@@ -1131,8 +1131,8 @@ const addItemToBackend = async (
           locationExclusiveItemId: item.locationExclusiveItemId,
           name: item.name,
           quantity: item.quantity,
-          price: item.price,
-          cashPrice: item.cashPrice,
+          price: item.baseCardPrice,
+          cashPrice: item.baseCashPrice,
           originalPrice: item.originalPrice,
           customizations: item.customizations,
           category_name: item.category_name,

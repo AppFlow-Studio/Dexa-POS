@@ -96,24 +96,25 @@ export function round2(num: number): number {
 export function calculateItemEffectiveCashPrice(item: CartItem): number {
   // For synced items (from backend), cash_price already includes modifiers
   // Return it directly to avoid double-counting
-  if (item.db_order_item_id && item.cashPrice !== undefined && item.cashPrice > 0) {
-    // return round2(item.cashPrice);
-    let effectivePrice = item.cashPrice ?? 0;
-    // if (item.customizations?.modifiers) {
-    //   for (const modifierGroup of item.customizations.modifiers) {
-    //     for (const option of modifierGroup.options) {
-    //       effectivePrice += option.price ?? 0;
-    //     }
-    //   }
-    // }
+  // TODO: This is a temporary fix to ensure the correct price is used for synced items
+  if (item.db_order_item_id && item.baseCashPrice !== undefined && item.originalPrice > 0) {
+    // return round2(item.originalPrice);
+    let effectivePrice = item.baseCashPrice ?? 0;
+    if (item.customizations?.modifiers) {
+      for (const modifierGroup of item.customizations.modifiers) {
+        for (const option of modifierGroup.options) {
+          effectivePrice += option.price ?? 0;
+        }
+      }
+    }
   
     return round2(effectivePrice);
   }
 
   // For local items, calculate including modifiers
   // Use originalPrice (base cash price), then cashPrice, then unitPrice as fallback
-  let effectivePrice = item.originalPrice ?? item.cashPrice ?? item.unitPrice ?? 0;
-  console.log('CalculateItemEffective', effectivePrice)
+  let effectivePrice = item.baseCashPrice ?? item.cashPrice ?? item.unitPrice ?? 0;
+  console.log('CalculateItemEffective Cash Price', effectivePrice)
   // Add size modifier if present
   if (item.customizations?.size?.priceModifier) {
     effectivePrice += item.customizations.size.priceModifier;
@@ -127,7 +128,59 @@ export function calculateItemEffectiveCashPrice(item: CartItem): number {
       }
     }
   }
+  console.log('CalculateItemEffective Cash Price After Modifiers', effectivePrice)
+  return round2(effectivePrice);
+}
 
+/**
+ * Calculate the effective cash price for a single cart item.
+ *
+ * **Logic:**
+ * - Backend-synced items (has db_order_item_id): Returns cashPrice as-is
+ *   (backend already stored base + modifiers)
+ * - Local items (no db_order_item_id): Calculates base + modifiers
+ *
+ * Formula for local items: base cash price + size modifier + all modifier options
+ *
+ * @param item - The cart item
+ * @returns The effective unit price using cash pricing (before quantity)
+ */
+export function calculateItemEffectiveCardPrice(item: CartItem): number {
+  // For synced items (from backend), cash_price already includes modifiers
+  // Return it directly to avoid double-counting
+  if (item.db_order_item_id && item.baseCardPrice !== undefined && item.unitPrice > 0) {
+    // return round2(item.cashPrice);
+    let effectivePrice = item.baseCardPrice ?? 0;
+    if (item.customizations?.modifiers) {
+      for (const modifierGroup of item.customizations.modifiers) {
+        for (const option of modifierGroup.options) {
+          effectivePrice += option.price ?? 0;
+        }
+      }
+    }
+  
+    return round2(effectivePrice);
+  }
+
+  // For local items, calculate including modifiers
+  // Use originalPrice (base cash price), then cashPrice, then unitPrice as fallback
+  let effectivePrice = item.baseCardPrice ?? item.cashPrice ?? item.unitPrice ?? 0;
+  console.log('CalculateItemEffective', effectivePrice)
+  // Add size modifier if present
+  if (item.customizations?.size?.priceModifier) {
+    effectivePrice += item.customizations.size.priceModifier;
+  }
+
+  console.log('[CalculateItemEffective]', item.customizations?.modifiers)
+  // Add all modifier options
+  if (item.customizations?.modifiers) {
+    for (const modifierGroup of item.customizations.modifiers) {
+      for (const option of modifierGroup.options) {
+        effectivePrice += option.price ?? 0;
+      }
+    }
+  }
+  console.log('CalculateItemEffective Card Price After Modifiers', effectivePrice)
   return round2(effectivePrice);
 }
 
@@ -338,7 +391,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
   for (const item of activeItems) {
     // Card price subtotal
-    const itemSubtotal = item.price * item.quantity;
+    const effectiveCardPrice = calculateItemEffectiveCardPrice(item);
+    console.log("item [calculateOrderTotals]", item);
+    const itemSubtotal = effectiveCardPrice * item.quantity;
     subtotal += itemSubtotal;
 
     // Item-level discounts (individual item discounts, not check discount)
@@ -349,7 +404,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
     // Cash price subtotal
     const effectiveCashPrice = calculateItemEffectiveCashPrice(item);
-    console.log("effectiveCashPrice [calculateOrderTotals]", effectiveCashPrice);
+    // console.log("effectiveCashPrice [calculateOrderTotals]", effectiveCashPrice);
     const itemCashSubtotal = effectiveCashPrice * item.quantity;
     cashSubtotal += itemCashSubtotal;
 
@@ -483,7 +538,9 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   );
 
   // Cash total
-  const cashTaxableAmount = Math.max(0, cashSubtotal - totalDiscountAmount);
+  const cashProportionForDiscount = cashSubtotal > 0 ? cashSubtotal / subtotal : 0;
+  const cashDiscountForTotal = round2(totalDiscountAmount * cashProportionForDiscount);
+  const cashTaxableAmount = Math.max(0, cashSubtotal - cashDiscountForTotal);
   const cashTotalAmount = round2(cashTaxableAmount + cashTaxAmount);
 
   // Cash outstanding total

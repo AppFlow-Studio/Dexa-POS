@@ -370,7 +370,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     realtimeLocationRef.current = locationId;
 
     // Setup realtime subscriptions for tables/sessions
-    // useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
+    useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
 
     // REMOVED: Duplicate order realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
     // useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);

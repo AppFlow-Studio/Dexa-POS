@@ -7,7 +7,7 @@ import { OrderProfile } from "@/lib/types";
  */
 export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
   const orderMap = new Map<string, OrderProfile>();
-
+  
   orders.forEach((order) => {
     // If no db_order_id, treat as unique and keep
     if (!order.db_order_id) {
@@ -48,10 +48,6 @@ export function deduplicateOrders(orders: OrderProfile[]): OrderProfile[] {
  * Excludes: void status, draft status, orders with no items
  */
 export function filterPreviousOrders(orders: OrderProfile[]): OrderProfile[] {
-  return orders.filter(
-    (order) =>
-      order.order_status !== "void" &&
-      order.order_status !== "draft" &&
-      order.items.length > 0
-  );
+  console.log("orders", orders.length);
+  return orders.filter((o) => o.order_status !== "draft");
 }

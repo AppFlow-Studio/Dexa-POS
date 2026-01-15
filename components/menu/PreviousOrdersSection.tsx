@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
+import { deduplicateOrders } from "@/utils/orderUtils";
 
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
@@ -231,7 +232,7 @@ const RetrieveButton = ({
 };
 
 const PreviousOrdersSection = () => {
-  const { orders, activeOrderId, addItemToActiveOrder, generateCartItemId } =
+  const { orders, ordersByDbId, orderIds, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
   const { refreshPreviousOrders } = usePreviousOrdersStore(); // Access refresh action
 
@@ -249,20 +250,18 @@ const PreviousOrdersSection = () => {
   };
   // Phase 4: Use selector for view_scope-aware filtering
   // showCompleted: true to include all orders in history view
-  const previousOrders = usePreviousOrders({ showCompleted: true });
+  // const previousOrders = usePreviousOrders({ showCompleted: false });
 
   // Get all orders - combine previous orders selector with local orders for compatibility
   const allOrders = useMemo(() => {
     // Merge selector results with any local orders not yet in the selector
-    const selectorOrderIds = new Set(previousOrders.map(o => o.id));
-    const localOrdersNotInSelector = orders.filter(
-      (o) => o.order_status !== "void" &&
-             o.order_status !== "draft" &&
-             o.items.length > 0 &&
-             !selectorOrderIds.has(o.id)
+    // const deduplicatedOrdersAr = deduplicateOrders(previousOrders);
+    // const selectorOrderIds = new Set(deduplicatedOrdersAr.map(o => o.id));
+    const localOrdersNotInSelector = Object.values(ordersByDbId).filter(
+      (o) =>  o.order_status !== "draft"
     );
-    return [...previousOrders, ...localOrdersNotInSelector];
-  }, [previousOrders, orders]);
+    return [...localOrdersNotInSelector];
+  }, [ordersByDbId]);
 
   const totalOrder = allOrders.length;
 

@@ -45,7 +45,8 @@ export interface BroadcastOrderItemData {
   open_item_price: number | null;
   special_instructions: string | null;
   category_name: string | null;
-
+  base_card_price : number;
+  base_cash_price : number;
   // Modifiers (Phase 2.5: Order Item Sync with Modifiers)
   modifiers?: BroadcastModifierData[];
 }

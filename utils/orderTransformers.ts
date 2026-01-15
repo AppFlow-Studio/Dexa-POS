@@ -99,6 +99,9 @@ export function transformBroadcastItems(
     cashTaxAmount: item.cash_tax_amount,
     taxRate: 0, // Not included in broadcast
 
+    baseCardPrice : item.base_card_price,
+    baseCashPrice : item.base_cash_price,
+
     // Discount distribution
     discount_amount: item.discount_amount || 0,
     discount_cash_amount: item.discount_amount || 0,
