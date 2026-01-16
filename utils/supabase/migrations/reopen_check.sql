@@ -40,18 +40,18 @@ BEGIN
   -- Reopen the check
   UPDATE orders
   SET check_status = 'Opened',
-      paid_status = 'Partial', -- Allow adding more items
+      payment_status = CASE WHEN amount_paid > 0 THEN 'partial'::payment_status ELSE 'pending'::payment_status END,
       updated_at = NOW(),
       sync_version = sync_version + 1
   WHERE id = p_order_id;
 
   -- Log the action with reason (audit_logs table expected to exist)
   INSERT INTO audit_logs (
-    action_type,
-    table_name,
-    record_id,
-    staff_id,
-    new_values,
+    action,
+    resource_type,
+    resource_id,
+    staff_profile_id,
+    changes,
     created_at
   ) VALUES (
     'reopen_check',

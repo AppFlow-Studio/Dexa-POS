@@ -3,14 +3,18 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import {
   CheckCircle,
   CreditCard,
-  Loader2,
   MoreHorizontal,
-  Percent,
   RotateCcw,
   Trash2,
 } from "lucide-react-native";
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Animated,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 interface BottomActionBarProps {
   activeOrder: OrderProfile | undefined;
@@ -90,12 +94,8 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         // Show syncing state with pulsing animation
         if (isSyncing) {
           return (
-            <Animated.View
-              style={{ opacity: pulseAnim, flex: 1 }}
-            >
-              <View
-                className={`${buttonBaseClass} bg-gray-600`}
-              >
+            <Animated.View style={{ opacity: pulseAnim, flex: 1 }}>
+              <View className={`${buttonBaseClass} bg-gray-600`}>
                 <ActivityIndicator size="small" color="white" />
                 <Text
                   className="font-semibold text-white text-base"
@@ -112,7 +112,7 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
         // Close Check action has been moved to the More button's bottom sheet
         if (isBalanceZero) {
           const paymentsText = paymentCount
-            ? `${paymentCount} payment${paymentCount > 1 ? 's' : ''} made`
+            ? `${paymentCount} payment${paymentCount > 1 ? "s" : ""} made`
             : "Partially Paid";
 
           return (
@@ -203,19 +203,18 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
       return renderDefaultButtons();
     }
 
-    // LOCAL-FIRST: Prioritize local isFullyPaid calculation from parent
-    // This ensures buttons update immediately without waiting for backend sync
-    if (isFullyPaidProp) {
-      return renderClosedButtons(); // Reopen + Clear - order is fully paid locally
+    // CRITICAL: Only show Reopen button when check is ACTUALLY closed in database
+    // This prevents the "Check is not closed" error from backend
+    if (activeOrder.check_status === "Closed") {
+      return renderClosedButtons(); // Reopen + Clear
     }
 
-    // Fallback to backend status if local calculation not provided
-    if (activeOrder.check_status === "Closed") {
-      return renderClosedButtons();
+    // If fully paid but check not yet closed, show Close + Clear
+    // This gives user the option to close the check
+    if (isFullyPaidProp || activeOrder.paid_status === "Paid") {
+      return renderPaidButtons(); // Close + Clear
     }
-    if (activeOrder.paid_status === "Paid") {
-      return renderClosedButtons(); // Changed from renderPaidButtons to show Reopen + Clear
-    }
+
     return renderDefaultButtons();
   };
 

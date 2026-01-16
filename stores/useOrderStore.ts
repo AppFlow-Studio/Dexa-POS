@@ -7,6 +7,7 @@ import {
   OrderProfile,
   PaymentType,
 } from "@/lib/types";
+import { OrderService } from "@/services/orderService";
 import type {
   AddOrderItemParams,
   CreateOrderParams,
@@ -62,7 +63,6 @@ import {
   BroadcastOrderData,
   OrderBroadcastPayload,
 } from "@/hooks/realtime/useOrdersRealtime";
-import { OrderService } from "@/services/orderService";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useFloorPlanStore } from "./useFloorPlanStore";
 // Phase 6: Conflict detection imports
@@ -1590,6 +1590,32 @@ const syncPaymentToBackend = async (
 
       // Apply any queued backend updates now that payment sync is complete
       useOrderStore.getState().applyQueuedUpdates(order.id);
+
+      // CRITICAL: Auto-close check in backend if fully paid
+      // We already updated local state to "Closed" above, but we must ensure backend matches
+      // otherwise "Reopen Check" RPC will fail with "Check is not closed"
+      if (data.order_fully_paid) {
+        const supabase = getOrderStoreSupabaseClient();
+        const { loggedInEmployee } = useEmployeeStore.getState();
+        const staffId = loggedInEmployee?.profileId;
+
+        if (supabase && staffId && order.db_order_id) {
+          OrderService.closeCheck(supabase, order.db_order_id, staffId)
+            .then((res) => {
+              if (!res.success) {
+                console.error("[syncPayment] Auto-close failed:", res.error);
+              } else {
+                console.log(
+                  "[syncPayment] Auto-closed check successfully:",
+                  order.db_order_id
+                );
+              }
+            })
+            .catch((err) =>
+              console.error("[syncPayment] Auto-close exception:", err)
+            );
+        }
+      }
 
       console.log("[OrderStore] Cache invalidated after payment sync");
     }
