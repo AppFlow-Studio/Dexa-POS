@@ -43,7 +43,11 @@ const PinLoginScreen = () => {
     getEmployeeByStaffId,
     setActiveSession,
     clockIn: employeeClockIn,
+    employees,
   } = useEmployeeStore();
+
+  // console.log("employees", employees);
+
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const selectedStation = useStoreSettingsStore(
     (state) => state.selectedStation
@@ -330,7 +334,7 @@ const PinLoginScreen = () => {
       }
 
       // Check for manager-level roles
-      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner"];
+      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner","merchant.shift_manager"];
       if (!managerRoles.includes(employee.role)) {
         showDialog("Permission Denied", "Only managers can access the timeclock.", "error");
         setPin("");
