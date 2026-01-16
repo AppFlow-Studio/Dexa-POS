@@ -8,7 +8,7 @@ import {
   Calendar as CalendarIcon,
   RefreshCw,
 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,

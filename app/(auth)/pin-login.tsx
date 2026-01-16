@@ -127,13 +127,13 @@ const PinLoginScreen = () => {
         !selectedStore
           ? "No Store Selected"
           : !selectedStation
-          ? "No Station Selected"
-          : "Invalid PIN",
+            ? "No Station Selected"
+            : "Invalid PIN",
         !selectedStore
           ? "Please select a store first."
           : !selectedStation
-          ? "Please select a station first."
-          : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
+            ? "Please select a station first."
+            : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
         "error"
       );
       return;
@@ -167,7 +167,6 @@ const PinLoginScreen = () => {
       // console.log("pos_staff_login response:", data, error);
 
       if (error) throw error;
-      
 
       const response = data as PosStaffLoginResponse;
 
@@ -205,7 +204,8 @@ const PinLoginScreen = () => {
 
       // Get employee from local store using staff profile ID
       if (response.staff?.staff_profile_id) {
-        employee = getEmployeeByStaffId(response.staff.staff_profile_id) || null;
+        employee =
+          getEmployeeByStaffId(response.staff.staff_profile_id) || null;
       }
 
       if (employee) {
@@ -246,7 +246,9 @@ const PinLoginScreen = () => {
     if (!canSubmit || !selectedStore) {
       showDialog(
         !selectedStore ? "No Store Selected" : "Invalid PIN",
-        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        !selectedStore
+          ? "Please select a store first."
+          : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
         "error"
       );
       return;
@@ -260,10 +262,11 @@ const PinLoginScreen = () => {
       // Success toast is handled by the hook
       hideLoading();
       setPin("");
-    } catch (error) {
+    } catch (error: any) {
       hideLoading();
+      // Toast notification is already shown by the useTimeClock hook
+      // Just shake and clear PIN for visual feedback
       triggerShakeAnimation();
-      showDialog("Clock In Failed", "Unable to clock in. Please try again.", "error");
       setPin("");
     }
   };
@@ -272,7 +275,9 @@ const PinLoginScreen = () => {
     if (!canSubmit || !selectedStore) {
       showDialog(
         !selectedStore ? "No Store Selected" : "Invalid PIN",
-        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
+        !selectedStore
+          ? "Please select a store first."
+          : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
         "error"
       );
       return;
@@ -286,10 +291,11 @@ const PinLoginScreen = () => {
       // Success toast is handled by the hook
       hideLoading();
       setPin("");
-    } catch (error) {
+    } catch (error: any) {
       hideLoading();
+      // Toast notification is already shown by the useTimeClock hook
+      // Just shake and clear PIN for visual feedback
       triggerShakeAnimation();
-      showDialog("Clock Out Failed", "Unable to clock out. Please try again.", "error");
       setPin("");
     }
   };
@@ -298,7 +304,9 @@ const PinLoginScreen = () => {
     if (!canSubmit || !selectedStore) {
       showDialog(
         !selectedStore ? "No Store Selected" : "Invalid PIN",
-        !selectedStore ? "Please select a store first." : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
+        !selectedStore
+          ? "Please select a store first."
+          : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
         "error"
       );
       return;
@@ -330,19 +338,36 @@ const PinLoginScreen = () => {
       }
 
       // Check for manager-level roles
-      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner"];
+      const managerRoles = [
+        "merchant.manager",
+        "merchant.admin",
+        "merchant.owner",
+      ];
       if (!managerRoles.includes(employee.role)) {
-        showDialog("Permission Denied", "Only managers can access the timeclock.", "error");
+        showDialog(
+          "Permission Denied",
+          "Only managers can access the timeclock.",
+          "error"
+        );
         setPin("");
         return;
       }
 
       setPin("");
       router.push("/timeclock");
-    } catch (error) {
+    } catch (error: any) {
       hideLoading();
-      triggerShakeAnimation();
-      showDialog("Verification Failed", "Unable to verify PIN. Please try again.", "error");
+      const isHandledError =
+        error?.message?.includes("PIN") || error?.message?.includes("pin");
+
+      if (!isHandledError) {
+        triggerShakeAnimation();
+        showDialog(
+          "Verification Failed",
+          "Unable to verify PIN. Please try again.",
+          "error"
+        );
+      }
       setPin("");
     }
   };
@@ -371,8 +396,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleLogin}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-blue-400 text-xl font-bold">SIGN IN</Text>
           </TouchableOpacity>
@@ -380,8 +406,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockIn}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-green-400 text-xl font-bold">CLOCK IN</Text>
           </TouchableOpacity>
@@ -389,8 +416,9 @@ const PinLoginScreen = () => {
           <TouchableOpacity
             onPress={handleClockOut}
             disabled={!canSubmit}
-            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${!canSubmit && "opacity-50"
-              }`}
+            className={`flex-1 min-w-0 p-4 bg-[#2D2D2D] border border-gray-700 rounded-xl items-center justify-center ${
+              !canSubmit && "opacity-50"
+            }`}
           >
             <Text className="text-red-400 text-xl font-bold">CLOCK OUT</Text>
           </TouchableOpacity>
@@ -423,12 +451,13 @@ const PinLoginScreen = () => {
             }}
           >
             <Text
-              className={`text-2xl font-semibold mb-2 ${dialog.variant === "success"
-                ? "text-green-400"
-                : dialog.variant === "warning"
-                  ? "text-yellow-400"
-                  : "text-red-400"
-                }`}
+              className={`text-2xl font-semibold mb-2 ${
+                dialog.variant === "success"
+                  ? "text-green-400"
+                  : dialog.variant === "warning"
+                    ? "text-yellow-400"
+                    : "text-red-400"
+              }`}
             >
               {dialog.title}
             </Text>

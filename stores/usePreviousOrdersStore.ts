@@ -65,16 +65,22 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         order.order_status === "void" ||
         order.order_status === "cancelled";
 
-      const isClosedCheck =
-        order.check_status === "Closed";
+      const isClosedCheck = order.check_status === "Closed";
 
-      const isPaid =
-        order.paid_status === "Paid";
+      const isPaid = order.paid_status === "Paid";
 
       const isFinalState = isFinalOrderStatus || isClosedCheck || isPaid;
 
       if (!isFinalState) {
         return;
+      }
+
+      // Check if order already exists in history
+      const existingOrder = get().previousOrders.find(
+        (o) => o.orderId === order.id || o.db_order_id === order.db_order_id
+      );
+      if (existingOrder) {
+        return; // Don't add duplicates
       }
 
       // Use the actual order timestamp, not current time
@@ -87,6 +93,12 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
 
       // Calculate total from items if total_amount is not available
       const finalTotal = order.total_amount || 0;
+
+      // Determine order type with proper casting
+      const orderType = (order.order_type || "Dine In") as
+        | "Dine In"
+        | "Takeaway"
+        | "Delivery";
 
       const previousOrder: PreviousOrder = {
         serialNo,
@@ -104,11 +116,19 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
           hour12: true,
         }),
         orderId: order.id,
+        display_number: order.display_number || `#${serialNo}`,
         paymentStatus: order.paid_status === "Paid" ? "Paid" : "Unpaid",
         customer: order.customer_name || "Walk-In Customer",
         server: order.server_name || "Unknown",
+        opened_at: order.opened_at || orderTimestamp,
+        closed_at: order.closed_at || "",
+        sent_to_kitchen_at: order.sent_to_kitchen_at || "",
+        last_activity_at: order.last_activity_at || orderTimestamp,
         itemCount: order.items.length,
-        type: order.order_type || "Dine In",
+        amount_paid: order.amount_paid || 0,
+        amount_due: order.amount_due || 0,
+        cash_amount_due: order.cash_amount_due || 0,
+        type: orderType,
         total: finalTotal,
         items: order.items,
         notes: order.notes, // Order-level notes (customer requests, special instructions)
@@ -117,7 +137,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
         refundedAmount: 0,
         originalTotal: finalTotal,
         payments: order.payments,
-        service_location_id: order.service_location_id,
+        service_location_id: order.service_location_id ?? undefined,
         // Station tracking for view_scope awareness
         station_id: order.station_id,
         station_name: order._sourceStationName || undefined,
@@ -210,7 +230,7 @@ export const usePreviousOrdersStore = create<PreviousOrdersState>(
                 ...o,
                 refunded: true,
                 refundedAmount: o.total,
-                paymentStatus: "Refunded" as any,
+                paymentStatus: "Refunded" as const,
               }
             : o
         ),

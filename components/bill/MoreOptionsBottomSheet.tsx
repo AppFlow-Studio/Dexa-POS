@@ -34,7 +34,10 @@ interface MoreOptionsProps {
 const MoreOptionsComponent: React.ForwardRefRenderFunction<
   BottomSheetMethods,
   MoreOptionsProps
-> = function MoreOptionsComponent({ discountSheetRef, onVoidSuccess, onCloseCheck }, ref) {
+> = function MoreOptionsComponent(
+  { discountSheetRef, onVoidSuccess, onCloseCheck },
+  ref
+) {
   const snapPoints = useMemo(() => ["75%"], []);
   const [promoCode, setPromoCode] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
@@ -211,15 +214,14 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
   };
 
   const renderBackdrop = useMemo(
-    () => (props: any) =>
-      (
-        <BottomSheetBackdrop
-          {...props}
-          appearsOnIndex={0}
-          disappearsOnIndex={-1}
-          opacity={0.7}
-        />
-      ),
+    () => (props: any) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        opacity={0.7}
+      />
+    ),
     []
   );
 
@@ -374,25 +376,6 @@ const MoreOptionsComponent: React.ForwardRefRenderFunction<
                 placeholderTextColor="#6B7280"
                 textAlignVertical="top"
               />
-            </View>
-
-            <View className="px-4 pb-4">
-              <Text className="text-xl font-semibold text-white mb-2">
-                Tax Exempt
-              </Text>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-lg text-gray-400">Requires PIN</Text>
-                <TouchableOpacity
-                  onPress={handleTaxExemptToggle}
-                  className={`w-14 h-8 rounded-full flex-row items-center p-1 ${
-                    isTaxExempt
-                      ? "bg-blue-600 justify-end"
-                      : "bg-gray-600 justify-start"
-                  }`}
-                >
-                  <View className="w-6 h-6 bg-white rounded-full shadow-sm" />
-                </TouchableOpacity>
-              </View>
             </View>
 
             <View className="px-4 pb-4">

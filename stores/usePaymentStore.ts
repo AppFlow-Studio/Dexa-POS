@@ -13,6 +13,7 @@ import React from "react"; // FIXED: Added React import
 import { create } from "zustand";
 import {
   calculateItemEffectiveCashPrice,
+  getOrderStoreSupabaseClient,
   useOrderStore,
 } from "./useOrderStore";
 type PaymentMethod = "Card" | "Cash" | "Split";
@@ -40,6 +41,15 @@ export interface Split {
   cashAmount?: number; // Cash amount (for dual-price compliance)
   status: "pending" | "paid";
   // FIXED: Removed splitSourceView from here. It belongs in the global store state, not per-guest.
+}
+
+// Snapshot of payment info captured at the moment of success
+// This prevents real-time sync from overwriting the displayed amount
+export interface CompletedPaymentInfo {
+  totalPaid: number; // Total amount paid (sum of all payments on order)
+  totalTips: number; // Total tips (sum of all tips on order)
+  paymentMethod: string; // "Card" or "Cash"
+  transactionId: string; // Order ID (last 6 chars used for display)
 }
 
 const paymentViewToStepMap: Record<PaymentView, number> = {
@@ -71,6 +81,7 @@ interface PaymentState {
   splits: Split[];
   activeSplitId: string | null;
   splitSourceView: PaymentView | null; // FIXED: Added this missing property
+  completedPaymentInfo: CompletedPaymentInfo | null; // Snapshot of payment info for success view
   progress: {
     currentStep: number;
     totalSteps: number;
@@ -150,7 +161,10 @@ interface PaymentState {
   lockedOrderId: string | null; // Currently locked order ID
   lockExpiresAt: string | null; // ISO timestamp when lock expires
   isLocking: boolean; // True while acquiring/releasing lock
-  lockOrderForPayment: (orderId: string, expectedVersion: number) => Promise<boolean>;
+  lockOrderForPayment: (
+    orderId: string,
+    expectedVersion: number
+  ) => Promise<boolean>;
   unlockOrderForPayment: (orderId: string) => Promise<void>;
   checkAndRefreshLock: () => Promise<boolean>; // Refresh lock if about to expire
 }
@@ -165,6 +179,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   splits: [],
   activeSplitId: null,
   splitSourceView: null, // Initialized here
+  completedPaymentInfo: null, // Initialized here
   progress: { currentStep: 1, totalSteps: totalSteps },
   // Offline payment state
   pendingPaymentsCount: 0,
@@ -231,6 +246,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       splits: [],
       activeSplitId: null,
       splitSourceView: null,
+      completedPaymentInfo: null, // Clear payment info on reset
       progress: { currentStep: 1, totalSteps: totalSteps },
       isPaymentQueued: false,
     });
@@ -578,8 +594,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       // For split-by-item and pay-for-items payments, build item allocations with quantities
       // This allows the backend to track which specific items and quantities were paid
-      let itemAllocations: { itemId: string; quantity: number; amount?: number }[] | undefined;
-      const isPerItemPayment = splitSourceView === "split-by-item" || splitSourceView === "pay-for-items";
+      let itemAllocations:
+        | { itemId: string; quantity: number; amount?: number }[]
+        | undefined;
+      const isPerItemPayment =
+        splitSourceView === "split-by-item" ||
+        splitSourceView === "pay-for-items";
       if (isPerItemPayment && currentSplit.items.length > 0) {
         itemAllocations = currentSplit.items
           .filter((item) => !!item.db_order_item_id)
@@ -611,7 +631,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           ? currentSplit.cashAmount
           : currentSplit.amount;
 
-
       // Include splitLabel and cash pricing flag for backend
       const detailsWithSplitLabel = {
         ...transactionDetails,
@@ -631,10 +650,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
         // Only pass split count/index for even splits - NOT for per-item payments
         // Per-item payments use itemAllocations to track what was paid
-        ...(isPerItemPayment ? {} : {
-          splitCount: splits.length,
-          splitPortionIndex: splits.findIndex((s) => s.id === activeSplitId) + 1,
-        }),
+        ...(isPerItemPayment
+          ? {}
+          : {
+              splitCount: splits.length,
+              splitPortionIndex:
+                splits.findIndex((s) => s.id === activeSplitId) + 1,
+            }),
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
@@ -662,12 +684,36 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
         // If order was in draft status, send items to kitchen (preparing state)
         // IMPORTANT: Await this to ensure backend status is updated before continuing
-        if (order?.order_status === "draft" || order?.order_status === "pending") {
+        if (
+          order?.order_status === "draft" ||
+          order?.order_status === "pending"
+        ) {
           await sendNewItemsToKitchenForOrder(activeOrderId);
         }
 
+        // Capture payment info BEFORE setting view to success
+        // This snapshot will be used by PaymentSuccessView to prevent real-time sync overwrites
+        const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
+        const paymentsTotal = (finalOrder?.payments || []).reduce(
+          (sum, p) => sum + (p.amount || 0),
+          0
+        );
+        const tipsTotal = (finalOrder?.payments || []).reduce(
+          (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
+          0
+        );
+
         // Order is fully paid - addPaymentToOrder already set the paid status
-        set({ view: "success", activeSplitId: null });
+        set({
+          completedPaymentInfo: {
+            totalPaid: paymentsTotal,
+            totalTips: tipsTotal,
+            paymentMethod: method,
+            transactionId: activeOrderId,
+          },
+          view: "success",
+          activeSplitId: null,
+        });
       }
     } else {
       // STANDARD FLOW (full payment)
@@ -711,7 +757,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // If order was in draft status, send it to kitchen
       // IMPORTANT: Await this to ensure backend status is updated before continuing
       // This prevents race condition where realtime overwrites status to "draft"
-      if (currentOrder?.order_status === "draft" || currentOrder?.order_status === "pending") {
+      if (
+        currentOrder?.order_status === "draft" ||
+        currentOrder?.order_status === "pending"
+      ) {
         await sendNewItemsToKitchenForOrder(activeOrderId);
       }
 
@@ -731,7 +780,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }, 300);
       }
 
-      set({ view: "success" });
+      // Capture payment info BEFORE setting view to success
+      // This snapshot will be used by PaymentSuccessView to prevent real-time sync overwrites
+      const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
+      const paymentsTotal = (finalOrder?.payments || []).reduce(
+        (sum, p) => sum + (p.amount || 0),
+        0
+      );
+      const tipsTotal = (finalOrder?.payments || []).reduce(
+        (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
+        0
+      );
+
+      set({
+        completedPaymentInfo: {
+          totalPaid: paymentsTotal,
+          totalTips: tipsTotal,
+          paymentMethod: method,
+          transactionId: activeOrderId,
+        },
+        view: "success",
+      });
     }
   },
 
@@ -802,8 +871,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     set({ isLocking: true });
 
     try {
-      const supabase = createBrowserClient();
+      const supabase = getOrderStoreSupabaseClient();
       const stationId = useOrderStore.getState().currentStationId;
+
+      if (!supabase) {
+        console.warn("[PaymentLocking] No Supabase client available");
+        set({ isLocking: false });
+        return false;
+      }
 
       if (!stationId) {
         console.warn("[PaymentLocking] No station ID available");
@@ -825,16 +900,19 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Handle specific error types
         if (errorCode === "VERSION_MISMATCH") {
           toastService.show({
+            title: "Version Mismatch",
             type: "error",
             message: "Order was modified. Please refresh and try again.",
           });
         } else if (errorCode === "ORDER_LOCKED_FOR_PAYMENT") {
           toastService.show({
+            title: "Order Locked",
             type: "error",
             message: `Order is being paid by another station`,
           });
         } else if (errorCode === "ORDER_LOCKED_BY_TRANSACTION") {
           toastService.show({
+            title: "Order Busy",
             type: "error",
             message: "Order is being modified. Please wait.",
           });
@@ -856,7 +934,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         orderId,
         stationId,
         lockedAt: new Date().toISOString(),
-        expiresAt: data.lock_expires_at,
+        expiresAt: data.lock_expires_at ?? new Date().toISOString(),
       });
 
       console.log("[PaymentLocking] Lock acquired:", orderId);
@@ -877,8 +955,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     try {
-      const supabase = createBrowserClient();
+      const supabase = getOrderStoreSupabaseClient();
       const stationId = useOrderStore.getState().currentStationId;
+
+      if (!supabase) {
+        console.warn("[PaymentLocking] No Supabase client for unlock");
+        return;
+      }
 
       if (!stationId) {
         console.warn("[PaymentLocking] No station ID for unlock");

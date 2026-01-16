@@ -1,12 +1,10 @@
 import { useToast } from "@/contexts/ToastContext";
-import { getMenuItemCategory, getMenuItemCostOfGoods } from "@/lib/chartUtils";
-import { useAnalyticsStore } from "@/stores/useAnalyticsStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useMenuStore } from "@/stores/useMenuStore";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { Check, Mail, Printer } from "lucide-react-native";
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
@@ -144,21 +142,36 @@ const PaymentSuccessView = () => {
           entering={FadeInUp.delay(200)}
           className="w-full max-w-sm bg-[#2A2A2A] rounded-2xl border border-[#333] p-6 items-center"
         >
-          {/* Calculate totals from ALL payments (for split payments) */}
+          {/* Use captured payment info from store to prevent real-time sync overwrites */}
           {(() => {
-            const payments = activeOrder?.payments || [];
+            // Read from completedPaymentInfo snapshot instead of live payments
+            const { completedPaymentInfo } = usePaymentStore.getState();
 
-            // Sum all payments and tips
-            const totalPaid = payments.reduce(
-              (sum, p) => sum + (p.amount || 0),
-              0
+            // Fall back to calculating from payments if completedPaymentInfo is not set
+            // (shouldn't happen, but provides safety)
+            let totalPaid = completedPaymentInfo?.totalPaid ?? 0;
+            let totalTips = completedPaymentInfo?.totalTips ?? 0;
+
+            if (!completedPaymentInfo) {
+              // Fallback: calculate from live payments (original behavior)
+              const payments = activeOrder?.payments || [];
+              totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+              totalTips = payments.reduce((sum, p) => {
+                const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
+                return sum + tip;
+              }, 0);
+              console.warn(
+                "[PaymentSuccessView] completedPaymentInfo not set, using fallback calculation"
+              );
+            }
+
+            console.log(
+              "[PaymentSuccessView] totalPaid:",
+              totalPaid,
+              "from completedPaymentInfo:",
+              !!completedPaymentInfo
             );
-            console.log("totalPaid", totalPaid);
 
-            const totalTips = payments.reduce((sum, p) => {
-              const tip = (p as any)?.tipAmount || p?.tip_amount || 0;
-              return sum + tip;
-            }, 0);
             const grandTotal = totalPaid + totalTips;
 
             return (
@@ -172,9 +185,7 @@ const PaymentSuccessView = () => {
                       ${totalPaid.toFixed(2)}
                     </Text>
                     <View className="flex-row items-center mb-2">
-                      <Text className="text-gray-400 text-sm mr-2">
-                        {payments.length > 1 ? "Total Tips:" : "Tip:"}
-                      </Text>
+                      <Text className="text-gray-400 text-sm mr-2">Tip:</Text>
                       <Text className="text-green-400 text-lg font-bold">
                         +${totalTips.toFixed(2)}
                       </Text>
