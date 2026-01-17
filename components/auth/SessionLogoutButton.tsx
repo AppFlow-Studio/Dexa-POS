@@ -7,7 +7,7 @@ import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { PosStaffLogoutResponse } from "@/types/station";
 import { useClerk } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Text, TouchableOpacity, ViewStyle } from "react-native";
 
 interface SessionLogoutButtonProps {
@@ -43,6 +43,12 @@ export const SessionLogoutButton = ({ style }: SessionLogoutButtonProps) => {
     pinCode?: string
   ) => {
     if (!stationSessionId || !selectedStore) return;
+
+    console.log("🚨 CALLING pos_staff_logout!", {
+      stationSessionId,
+      clockOut,
+      stack: new Error().stack,
+    });
 
     try {
       const { data, error } = await supabase.rpc("pos_staff_logout", {

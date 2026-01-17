@@ -37,8 +37,8 @@ const StationSelectItem = ({
         isSelected
           ? "border-blue-500 bg-blue-900/30"
           : isAvailable
-          ? "border-gray-700 bg-[#303030]"
-          : "border-gray-700 bg-[#252525]"
+            ? "border-gray-700 bg-[#303030]"
+            : "border-gray-700 bg-[#252525]"
       }`}
     >
       <View className="flex-row items-center justify-between">
@@ -48,10 +48,7 @@ const StationSelectItem = ({
               isAvailable ? "bg-green-600/20" : "bg-amber-600/20"
             }`}
           >
-            <Monitor
-              size={24}
-              color={isAvailable ? "#4ade80" : "#fbbf24"}
-            />
+            <Monitor size={24} color={isAvailable ? "#4ade80" : "#fbbf24"} />
           </View>
           <View className="flex-1">
             <View className="flex-row items-center">
@@ -60,8 +57,8 @@ const StationSelectItem = ({
                   isSelected
                     ? "text-blue-400"
                     : isAvailable
-                    ? "text-white"
-                    : "text-gray-400"
+                      ? "text-white"
+                      : "text-gray-400"
                 }`}
               >
                 {station.station_name}
@@ -110,7 +107,9 @@ const StationSelectItem = ({
                 onPress={onTakeOver}
                 className="bg-amber-600 px-3 py-1.5 rounded"
               >
-                <Text className="text-white text-sm font-medium">Take Over</Text>
+                <Text className="text-white text-sm font-medium">
+                  Take Over
+                </Text>
               </TouchableOpacity>
             </View>
           )}
@@ -326,10 +325,10 @@ const StationSelectScreen = () => {
         title="Take Over Station?"
         description={
           stationToTakeover?.current_session
-            ? `This station is currently being used by ${stationToTakeover.current_session.staff_name}. Taking over will end their session.`
-            : "Are you sure you want to take over this station?"
+            ? `Station is used by ${stationToTakeover.current_session.staff_name}. You must enter your PIN to take over and end their session.`
+            : "Station is in use. You must enter your PIN to take over."
         }
-        confirmText="Take Over"
+        confirmText="Proceed to PIN"
         variant="destructive"
       />
     </View>

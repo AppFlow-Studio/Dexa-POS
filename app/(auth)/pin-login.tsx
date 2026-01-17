@@ -86,13 +86,21 @@ const PinLoginScreen = () => {
     title: string;
     message: string;
     variant: "success" | "warning" | "error";
+    showTakeover?: boolean;
+    currentUser?: string;
   }>({ visible: false, title: "", message: "", variant: "success" });
   const showDialog = (
     title: string,
     message: string,
-    variant: "success" | "warning" | "error"
-  ) => setDialog({ visible: true, title, message, variant });
+    variant: "success" | "warning" | "error",
+    options?: { showTakeover?: boolean; currentUser?: string }
+  ) => setDialog({ visible: true, title, message, variant, ...options });
   const hideDialog = () => setDialog((d) => ({ ...d, visible: false }));
+
+  // Store PIN temporarily for takeover action
+  const [pendingTakeoverPin, setPendingTakeoverPin] = useState<string | null>(
+    null
+  );
 
   const triggerShakeAnimation = () => {
     shakeX.value = withSequence(
@@ -102,6 +110,103 @@ const PinLoginScreen = () => {
       withTiming(10, { duration: 100 }),
       withTiming(0, { duration: 100 })
     );
+  };
+
+  // Handle takeover when user confirms
+  const handleTakeover = async () => {
+    if (!pendingTakeoverPin || !selectedStore || !selectedStation) {
+      hideDialog();
+      return;
+    }
+
+    hideDialog();
+    showLoading("Taking over station...");
+
+    try {
+      const deviceName = getDeviceName();
+
+      console.log("Calling pos_staff_login for TAKEOVER with:", {
+        p_location_id: selectedStore.id,
+        p_pin_code: pendingTakeoverPin,
+        p_station_id: selectedStation.id,
+        p_device_id: deviceId,
+        p_device_name: deviceName,
+        p_auto_clock_in: true,
+        p_force_takeover: true,
+      });
+
+      // Call the login RPC with force takeover enabled
+      const { data, error } = await supabase.rpc("pos_staff_login", {
+        p_location_id: selectedStore.id,
+        p_pin_code: pendingTakeoverPin,
+        p_station_id: selectedStation.id,
+        p_device_id: deviceId,
+        p_device_name: deviceName,
+        p_auto_clock_in: true,
+        p_force_takeover: true, // Force takeover!
+      });
+
+      console.log("Takeover response:", data, error);
+
+      if (error) throw error;
+
+      const response = data as PosStaffLoginResponse;
+
+      if (!response.success) {
+        hideLoading();
+        triggerShakeAnimation();
+        showDialog(
+          "Takeover Failed",
+          response.error || "Unable to take over station.",
+          "error"
+        );
+        setPendingTakeoverPin(null);
+        return;
+      }
+
+      // Store session ID for later logout
+      if (response.session?.session_id) {
+        setStationSessionId(response.session.session_id);
+      }
+
+      let employee: EmployeeProfile | null = null;
+
+      // Get employee from local store using staff profile ID
+      if (response.staff?.staff_profile_id) {
+        employee =
+          getEmployeeByStaffId(response.staff.staff_profile_id) || null;
+      }
+
+      if (employee) {
+        // Sync local session state
+        const existingSession = getSession(employee.id);
+        if (!existingSession) {
+          employeeClockIn(employee.id);
+          timeclockClockIn(employee.id);
+        }
+        setActiveSession(employee);
+      }
+
+      hideLoading();
+      setPendingTakeoverPin(null);
+      router.replace("/home");
+    } catch (error: any) {
+      console.error("Takeover error details:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        fullError: error,
+      });
+      hideLoading();
+      triggerShakeAnimation();
+      showDialog(
+        "Takeover Failed",
+        error?.message || "Unable to take over station. Please try again.",
+        "error"
+      );
+      setPendingTakeoverPin(null);
+    }
   };
 
   const handleKeyPress = (input: NumpadInput) => {
@@ -164,7 +269,7 @@ const PinLoginScreen = () => {
         p_force_takeover: forceTakeover === "true",
       });
 
-      // console.log("pos_staff_login response:", data, error);
+      console.log("pos_staff_login response:", data, error);
 
       if (error) throw error;
 
@@ -174,12 +279,18 @@ const PinLoginScreen = () => {
         hideLoading();
 
         if (response.error_code === "STATION_IN_USE") {
+          // Store the PIN for potential takeover
+          setPendingTakeoverPin(pin);
           showDialog(
-            "Station In Use",
+            "Take Over Station?",
             response.current_session
-              ? `This station is currently being used by ${response.current_session.staff_name}. Please select a different station or use the Take Over option.`
-              : "This station is currently in use.",
-            "warning"
+              ? `Station is being used by ${response.current_session.staff_name}. Taking over uses your PIN to end their session.`
+              : "Station is in use. Taking over uses your PIN to end the session.",
+            "warning",
+            {
+              showTakeover: true,
+              currentUser: response.current_session?.staff_name,
+            }
           );
           setPin("");
           return;
@@ -197,6 +308,10 @@ const PinLoginScreen = () => {
 
       // Store session ID for later logout
       if (response.session?.session_id) {
+        console.log(
+          "📝 Setting stationSessionId:",
+          response.session.session_id
+        );
         setStationSessionId(response.session.session_id);
       }
 
@@ -231,12 +346,19 @@ const PinLoginScreen = () => {
       setPin("");
       router.replace("/home");
     } catch (error: any) {
+      console.error("Login error details:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details,
+        hint: error?.hint,
+        fullError: error,
+      });
       hideLoading();
       triggerShakeAnimation();
       const errorMessage =
         error?.message?.includes("PIN") || error?.message?.includes("pin")
           ? "The PIN you entered is incorrect."
-          : "Unable to sign in. Please try again.";
+          : error?.message || "Unable to sign in. Please try again.";
       showDialog("Sign In Failed", errorMessage, "error");
       setPin("");
     }
@@ -462,20 +584,45 @@ const PinLoginScreen = () => {
               {dialog.title}
             </Text>
             <Text className="text-xl text-gray-200 mb-6">{dialog.message}</Text>
-            <TouchableOpacity
-              onPress={hideDialog}
-              className="self-end px-5 py-2.5 rounded-lg"
-              style={{
-                backgroundColor:
-                  dialog.variant === "success"
-                    ? "#065F46"
-                    : dialog.variant === "warning"
-                      ? "#92400E"
-                      : "#7F1D1D",
-              }}
-            >
-              <Text className="text-white text-lg font-medium">OK</Text>
-            </TouchableOpacity>
+
+            {dialog.showTakeover ? (
+              // Takeover scenario - show Take Over and Cancel buttons
+              <View className="flex-row justify-end gap-3">
+                <TouchableOpacity
+                  onPress={() => {
+                    hideDialog();
+                    setPendingTakeoverPin(null);
+                  }}
+                  className="px-5 py-2.5 rounded-lg bg-gray-600"
+                >
+                  <Text className="text-white text-lg font-medium">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleTakeover}
+                  className="px-5 py-2.5 rounded-lg bg-amber-600"
+                >
+                  <Text className="text-white text-lg font-medium">
+                    Take Over
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              // Normal dialog - just OK button
+              <TouchableOpacity
+                onPress={hideDialog}
+                className="self-end px-5 py-2.5 rounded-lg"
+                style={{
+                  backgroundColor:
+                    dialog.variant === "success"
+                      ? "#065F46"
+                      : dialog.variant === "warning"
+                        ? "#92400E"
+                        : "#7F1D1D",
+                }}
+              >
+                <Text className="text-white text-lg font-medium">OK</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </DialogContent>
       </Dialog>

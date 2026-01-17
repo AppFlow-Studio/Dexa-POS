@@ -10,6 +10,7 @@ import SearchBottomSheet from "@/components/menu/SearchBottomSheet";
 // import { SyncStatusBar } from "@/components/SyncStatusBar";
 import { LoadingProvider } from "@/contexts/LoadingContext";
 import { PosSyncProvider } from "@/contexts/PosSyncProvider";
+import { SessionKickListenerProvider } from "@/contexts/SessionKickListenerProvider";
 import { TanstackProvider } from "@/contexts/TanstackProvider";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { NAV_THEME } from "@/lib/constants";
@@ -131,36 +132,38 @@ export default function RootLayout() {
                 >
                   <ToastProvider>
                     <LoadingProvider>
-                      <StatusBar style={"dark"} translucent />
-                      <Stack screenOptions={{ headerShown: false }} />
-                      <PortalHost />
-                      <SearchBottomSheet />
-                      <ItemCustomizationDialog />
-                      <ClockInWallModal
-                        isOpen={isClockInWallOpen}
-                        onClose={hideClockInWall}
-                      />
-                      <ManagerPinModal />
-                      <CustomerSheet />
-                      <Toasts
-                        defaultStyle={{
-                          view: {
-                            backgroundColor: "#ffffff",
-                            borderWidth: 1,
-                            borderColor: "#e5e7eb",
-                            flex: 1,
-                          },
-                          text: {
-                            color: "#1f2937",
-                            fontWeight: "bold",
-                            fontSize: 24,
-                          },
-                          indicator: {
-                            backgroundColor: "#659AF0",
-                          },
-                        }}
-                      />
-                      {/* SyncStatusBar removed - now using NetworkStatusBadge in Header */}
+                      <SessionKickListenerProvider>
+                        <StatusBar style={"dark"} translucent />
+                        <Stack screenOptions={{ headerShown: false }} />
+                        <PortalHost />
+                        <SearchBottomSheet />
+                        <ItemCustomizationDialog />
+                        <ClockInWallModal
+                          isOpen={isClockInWallOpen}
+                          onClose={hideClockInWall}
+                        />
+                        <ManagerPinModal />
+                        <CustomerSheet />
+                        <Toasts
+                          defaultStyle={{
+                            view: {
+                              backgroundColor: "#ffffff",
+                              borderWidth: 1,
+                              borderColor: "#e5e7eb",
+                              flex: 1,
+                            },
+                            text: {
+                              color: "#1f2937",
+                              fontWeight: "bold",
+                              fontSize: 24,
+                            },
+                            indicator: {
+                              backgroundColor: "#659AF0",
+                            },
+                          }}
+                        />
+                        {/* SyncStatusBar removed - now using NetworkStatusBadge in Header */}
+                      </SessionKickListenerProvider>
                     </LoadingProvider>
                   </ToastProvider>
                 </ThemeProvider>
