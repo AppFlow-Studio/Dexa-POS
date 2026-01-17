@@ -3,15 +3,16 @@ import ItemProgressTracker from "@/components/bill/ItemProgressTracker";
 import MoreOptionsBottomSheet from "@/components/bill/MoreOptionsBottomSheet";
 import TableBillSection from "@/components/bill/TableBillSection";
 import MenuSection from "@/components/menu/MenuSection";
+import ConfirmationModal from "@/components/settings/reset-application/ConfirmationModal";
 import OrderInfoHeader from "@/components/tables/OrderInfoHeader";
 import TableDetailSkeleton from "@/components/tables/TableDetailSkeleton";
 import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
-import { OrderProfile } from "@/lib/types";
 import { InventoryService } from "@/services/inventoryService";
 import { OrderService } from "@/services/orderService";
 import { useCoursingStore } from "@/stores/useCoursingStore";
+import { useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { useInventoryStore } from "@/stores/useInventoryStore";
 import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
@@ -25,8 +26,7 @@ import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { useEmployeeStore } from "@/stores/useEmployeeStore";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const UpdateTableScreen = () => {
   const { defaultSittingTimeMinutes } = useSettingsStore();
@@ -59,6 +59,7 @@ const UpdateTableScreen = () => {
   const [notReadyItems, setNotReadyItems] = useState<
     { id: string; name: string; quantity: number }[]
   >([]);
+  const [isReopenModalOpen, setReopenModalOpen] = useState(false);
 
   const pricingSheetRef = useRef<BottomSheetMethods>(null);
   const moreOptionsSheetRef = useRef<BottomSheetMethods>(null);
@@ -154,7 +155,6 @@ const UpdateTableScreen = () => {
     displayBalanceDue = storeActiveOrderTotal;
   }
 
-
   // Check if order is fully paid
   const isFullyPaid = useMemo(() => {
     // If check is explicitly reopened, don't consider it fully paid
@@ -166,7 +166,12 @@ const UpdateTableScreen = () => {
       activeOrder?.paid_status === "Paid" ||
       (hasPayments && displayBalanceDue <= 0)
     );
-  }, [activeOrder?.check_status, activeOrder?.paid_status, hasPayments, displayBalanceDue]);
+  }, [
+    activeOrder?.check_status,
+    activeOrder?.paid_status,
+    hasPayments,
+    displayBalanceDue,
+  ]);
 
   useEffect(() => {
     if (
@@ -305,7 +310,9 @@ const UpdateTableScreen = () => {
         // OPTIMIZED: Check if we already have session data before fetching
         // This prevents unnecessary network call when data is already fresh (e.g., after prefetch)
         const currentTable = getTableById(currentTableId);
-        const hasExistingSession = currentTable?.session?.status && currentTable.session.status !== "available";
+        const hasExistingSession =
+          currentTable?.session?.status &&
+          currentTable.session.status !== "available";
 
         if (!hasExistingSession) {
           // Only load floor plan status if we don't have session data
@@ -313,159 +320,178 @@ const UpdateTableScreen = () => {
           await loadFloorPlanStatus();
         }
 
-      // Re-fetch table from store after status check (to get updated session data)
-      const updatedTables = useFloorPlanStore.getState().tables;
-      const updatedTable = updatedTables.find((t) => t.id === currentTableId);
-      const updatedTableStatus = updatedTable?.session?.status || "available";
+        // Re-fetch table from store after status check (to get updated session data)
+        const updatedTables = useFloorPlanStore.getState().tables;
+        const updatedTable = updatedTables.find((t) => t.id === currentTableId);
+        const updatedTableStatus = updatedTable?.session?.status || "available";
 
-      console.log("[handleAutoCreateSession] Starting...");
-      console.log("  currentTableId:", currentTableId);
-      console.log("  updatedTableStatus:", updatedTableStatus);
-      console.log("  updatedTable?.session:", updatedTable?.session?.id);
-      console.log("  existingOrderForTable:", existingOrderForTable?.id);
+        console.log("[handleAutoCreateSession] Starting...");
+        console.log("  currentTableId:", currentTableId);
+        console.log("  updatedTableStatus:", updatedTableStatus);
+        console.log("  updatedTable?.session:", updatedTable?.session?.id);
+        console.log("  existingOrderForTable:", existingOrderForTable?.id);
 
-      if (!currentTableId || !updatedTable) return;
+        if (!currentTableId || !updatedTable) return;
 
-      // Case 1: Session exists with an order
-      if (updatedTable.session?.order_id) {
-        // NEW CHECK: If active order already matches, don't re-fetch
-        const activeOrderDbId = activeOrder?.db_order_id;
-        if (activeOrderDbId === updatedTable.session.order_id) {
-          console.log("[AutoSession] Active order already matches session, skipping");
-          return;
-        }
-
-        // Use getState() for fresh data instead of stale orders array
-        const currentOrders = Object.values(useOrderStore.getState().ordersById);
-        const foundOrder = currentOrders.find(
-          (o) =>
-            o.id === updatedTable.session!.order_id ||
-            o.db_order_id === updatedTable.session!.order_id
-        );
-
-        if (foundOrder) {
-          if (activeOrderId !== foundOrder.id) {
+        // Case 1: Session exists with an order
+        if (updatedTable.session?.order_id) {
+          // NEW CHECK: If active order already matches, don't re-fetch
+          const activeOrderDbId = activeOrder?.db_order_id;
+          if (activeOrderDbId === updatedTable.session.order_id) {
             console.log(
-              "[AutoSession] Found existing order, setting active:",
-              foundOrder.id
-            );
-            setActiveOrder(foundOrder.id);
-          }
-        } else {
-          // Don't fetch if navigating away or table is being cleared
-          if (
-            isNavigatingAwayRef.current ||
-            updatedTableStatus === "cleaning" ||
-            updatedTableStatus === "available"
-          ) {
-            console.log(
-              "[AutoSession] Skipping fetch - table being cleared or navigating"
+              "[AutoSession] Active order already matches session, skipping"
             );
             return;
           }
 
-          // Before fetching, check if order already exists in store by db_order_id
-          const existingOrderByDbId = currentOrders.find(
-            (o) => o.db_order_id === updatedTable.session?.order_id
+          // Use getState() for fresh data instead of stale orders array
+          const currentOrders = Object.values(
+            useOrderStore.getState().ordersById
+          );
+          const foundOrder = currentOrders.find(
+            (o) =>
+              o.id === updatedTable.session!.order_id ||
+              o.db_order_id === updatedTable.session!.order_id
           );
 
-          if (existingOrderByDbId) {
-            // Order exists locally but wasn't found by ID
-            // Just set it active, don't fetch
-            console.log("[AutoSession] Found order by db_id:", existingOrderByDbId.id);
-            setActiveOrder(existingOrderByDbId.id);
-            return;
-          }
-
-          // Order not found - use syncOrderFromDatabase instead of manual creation
-          console.log("[AutoSession] Syncing order from database:", updatedTable.session.order_id);
-          showLoading("Restoring table session...");
-
-          try {
-            // Use the proper sync function that fetches items + payments
-            const localOrderId = await syncOrderFromDatabase(updatedTable.session.order_id);
-
-            hideLoading();
-
-            // Check again after async operation
-            if (isNavigatingAwayRef.current) {
-              console.log("[AutoSession] Skipping order restore - navigated away");
+          if (foundOrder) {
+            if (activeOrderId !== foundOrder.id) {
+              console.log(
+                "[AutoSession] Found existing order, setting active:",
+                foundOrder.id
+              );
+              setActiveOrder(foundOrder.id);
+            }
+          } else {
+            // Don't fetch if navigating away or table is being cleared
+            if (
+              isNavigatingAwayRef.current ||
+              updatedTableStatus === "cleaning" ||
+              updatedTableStatus === "available"
+            ) {
+              console.log(
+                "[AutoSession] Skipping fetch - table being cleared or navigating"
+              );
               return;
             }
 
-            if (localOrderId) {
-              console.log("[AutoSession] Order synced successfully:", localOrderId);
-              setActiveOrder(localOrderId);
+            // Before fetching, check if order already exists in store by db_order_id
+            const existingOrderByDbId = currentOrders.find(
+              (o) => o.db_order_id === updatedTable.session?.order_id
+            );
+
+            if (existingOrderByDbId) {
+              // Order exists locally but wasn't found by ID
+              // Just set it active, don't fetch
+              console.log(
+                "[AutoSession] Found order by db_id:",
+                existingOrderByDbId.id
+              );
+              setActiveOrder(existingOrderByDbId.id);
+              return;
             }
-          } catch (error) {
-            console.error("[AutoSession] Failed to sync order:", error);
-            hideLoading();
 
-            show({
-              title: "Error Loading Order",
-              message: "Failed to restore table session. Please try again.",
-              type: "error",
-            });
+            // Order not found - use syncOrderFromDatabase instead of manual creation
+            console.log(
+              "[AutoSession] Syncing order from database:",
+              updatedTable.session.order_id
+            );
+            showLoading("Restoring table session...");
+
+            try {
+              // Use the proper sync function that fetches items + payments
+              const localOrderId = await syncOrderFromDatabase(
+                updatedTable.session.order_id
+              );
+
+              hideLoading();
+
+              // Check again after async operation
+              if (isNavigatingAwayRef.current) {
+                console.log(
+                  "[AutoSession] Skipping order restore - navigated away"
+                );
+                return;
+              }
+
+              if (localOrderId) {
+                console.log(
+                  "[AutoSession] Order synced successfully:",
+                  localOrderId
+                );
+                setActiveOrder(localOrderId);
+              }
+            } catch (error) {
+              console.error("[AutoSession] Failed to sync order:", error);
+              hideLoading();
+
+              show({
+                title: "Error Loading Order",
+                message: "Failed to restore table session. Please try again.",
+                type: "error",
+              });
+            }
           }
-        }
-        return;
-      }
-
-      // Case 2: No Session - Auto-create ONLY on first mount
-      // CRITICAL: Only auto-create once per screen mount, not on every status change
-      if (
-        !updatedTable.session &&
-        updatedTableStatus === "available" &&
-        !hasInitializedRef.current
-      ) {
-        hasInitializedRef.current = true;
-
-        // Final guard check
-        if (isNavigatingAwayRef.current) {
-          console.log("[AutoSession] Skipping auto-create - navigating away");
           return;
         }
 
-        console.log(
-          "[AutoSession] Auto-creating session for table",
-          currentTableId
-        );
-        showLoading("Creating session...");
+        // Case 2: No Session - Auto-create ONLY on first mount
+        // CRITICAL: Only auto-create once per screen mount, not on every status change
+        if (
+          !updatedTable.session &&
+          updatedTableStatus === "available" &&
+          !hasInitializedRef.current
+        ) {
+          hasInitializedRef.current = true;
 
-        try {
-          // For fallback cases (direct URL navigation), try to use existing local order's guest count
-          // Use getState() for fresh data instead of stale orders array
-          const currentOrders = Object.values(useOrderStore.getState().ordersById);
-          const existingLocalOrder = currentOrders.find(
-            (o) => o.service_location_id === currentTableId
-          );
-          const partySize = existingLocalOrder?.guest_count || 1;
-
-          const { sessionId, orderId } = await useFloorPlanStore
-            .getState()
-            .seatGuests({
-              tableIds: [currentTableId],
-              partySize: partySize,
-              createOrder: true,
-            });
+          // Final guard check
+          if (isNavigatingAwayRef.current) {
+            console.log("[AutoSession] Skipping auto-create - navigating away");
+            return;
+          }
 
           console.log(
-            "[AutoSession] Created session:",
-            sessionId,
-            "Order:",
-            orderId
+            "[AutoSession] Auto-creating session for table",
+            currentTableId
           );
+          showLoading("Creating session...");
 
-          // Only set active if we haven't navigated away
-          if (!isNavigatingAwayRef.current) {
-            setActiveOrder(orderId || null);
+          try {
+            // For fallback cases (direct URL navigation), try to use existing local order's guest count
+            // Use getState() for fresh data instead of stale orders array
+            const currentOrders = Object.values(
+              useOrderStore.getState().ordersById
+            );
+            const existingLocalOrder = currentOrders.find(
+              (o) => o.service_location_id === currentTableId
+            );
+            const partySize = existingLocalOrder?.guest_count || 1;
+
+            const { sessionId, orderId } = await useFloorPlanStore
+              .getState()
+              .seatGuests({
+                tableIds: [currentTableId],
+                partySize: partySize,
+                createOrder: true,
+              });
+
+            console.log(
+              "[AutoSession] Created session:",
+              sessionId,
+              "Order:",
+              orderId
+            );
+
+            // Only set active if we haven't navigated away
+            if (!isNavigatingAwayRef.current) {
+              setActiveOrder(orderId || null);
+            }
+          } catch (err) {
+            console.error("[AutoSession] Failed to auto-seat:", err);
+          } finally {
+            hideLoading();
           }
-        } catch (err) {
-          console.error("[AutoSession] Failed to auto-seat:", err);
-        } finally {
-          hideLoading();
         }
-      }
       } finally {
         // Reset running flag when async operation completes
         isAutoSessionRunningRef.current = false;
@@ -528,74 +554,67 @@ const UpdateTableScreen = () => {
     openPaymentSheet("Card", currentTableId, "payment-method-selection");
   };
 
-  const handleReopenCheck = async () => {
+  const handleReopenCheck = () => {
+    if (!activeOrderId || !activeOrder?.db_order_id) return;
+    setReopenModalOpen(true);
+  };
+
+  const handleConfirmReopen = async () => {
+    setReopenModalOpen(false);
+
     if (!activeOrderId || !activeOrder?.db_order_id) return;
 
-    // Show confirmation dialog
-    Alert.alert(
-      "Reopen Check?",
-      "Are you sure you want to reopen this closed check? This will allow adding new items.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reopen",
-          style: "default",
-          onPress: async () => {
-            try {
-              showLoading("Reopening check...");
+    try {
+      showLoading("Reopening check...");
 
-              const supabase = getOrderStoreSupabaseClient();
-              const { activeEmployeeId } = useEmployeeStore.getState();
+      const supabase = getOrderStoreSupabaseClient();
+      const { loggedInEmployee } = useEmployeeStore.getState();
+      const staffId = loggedInEmployee?.profileId;
 
-              if (!supabase) {
-                throw new Error("Database connection unavailable");
-              }
+      if (!supabase) {
+        throw new Error("Database connection unavailable");
+      }
 
-              if (!activeEmployeeId) {
-                throw new Error("No active employee found");
-              }
+      if (!staffId) {
+        throw new Error("No active employee found");
+      }
 
-              // Call backend RPC
-              const result = await OrderService.reopenCheck(
-                supabase,
-                activeOrder.db_order_id,
-                activeEmployeeId,
-                "Adding more items" // Default reason
-              );
+      // Call backend RPC
+      const result = await OrderService.reopenCheck(
+        supabase,
+        activeOrder.db_order_id,
+        staffId,
+        "Adding more items" // Default reason
+      );
 
-              if (!result.success) {
-                throw new Error(result.error || "Failed to reopen check");
-              }
+      if (!result.success) {
+        throw new Error(result.error || "Failed to reopen check");
+      }
 
-              // Update local state
-              updateActiveOrderDetails({
-                paid_status: "Partial",
-                check_status: "Opened",
-              });
+      // Update local state
+      updateActiveOrderDetails({
+        paid_status: "Partial",
+        check_status: "Opened",
+      });
 
-              // Sync order status based on items
-              syncOrderStatus(activeOrderId);
+      // Sync order status based on items
+      syncOrderStatus(activeOrderId);
 
-              show({
-                title: "Check Reopened",
-                message: "You can now add new items to the order.",
-                type: "success",
-              });
-
-            } catch (error: any) {
-              console.error("Failed to reopen check:", error);
-              show({
-                title: "Failed to Reopen Check",
-                message: error.message || "An error occurred",
-                type: "error",
-              });
-            } finally {
-              hideLoading();
-            }
-          },
-        },
-      ]
-    );
+      show({
+        title: "Check Reopened",
+        message: "You can now add new items to the order.",
+        type: "success",
+      });
+    } catch (error: any) {
+      console.error("Failed to reopen check:", error);
+      show({
+        title: "Failed to Reopen Check",
+        message: error.message || "An error occurred",
+        type: "error",
+      });
+    } finally {
+      hideLoading();
+    }
   };
 
   const handleMarkAllReadyForCourse = (itemIds: string[]) => {
@@ -643,7 +662,8 @@ const UpdateTableScreen = () => {
 
     // Wait for server data to load before marking as initialized
     // This ensures dbIdToCourseMap is populated before sync effect runs
-    coursing.loadFromServer(orderId)
+    coursing
+      .loadFromServer(orderId)
       .then(() => {
         setCoursingInitialized(true);
       })
@@ -711,18 +731,20 @@ const UpdateTableScreen = () => {
         !syncedDbItemsRef.current.has(item.db_order_item_id)
       ) {
         const state = coursing.getForOrder(orderId);
-        
+
         // Priority for determining course:
         // 1. Item's courseNumber (from backend fetch) - most authoritative
         // 2. Backend's dbIdToCourseMap (from get_order_courses RPC)
         // 3. Local itemCourseMap
         // 4. Working course as fallback
         let course: number;
-        
+
         if (item.courseNumber !== undefined && item.courseNumber > 0) {
           // Use the course number from the fetched item data (most accurate)
           course = item.courseNumber;
-        } else if (state?.dbIdToCourseMap?.[item.db_order_item_id] !== undefined) {
+        } else if (
+          state?.dbIdToCourseMap?.[item.db_order_item_id] !== undefined
+        ) {
           // Use the DB ID mapping from backend
           course = state.dbIdToCourseMap[item.db_order_item_id];
         } else if (state?.itemCourseMap?.[item.id] !== undefined) {
@@ -738,13 +760,25 @@ const UpdateTableScreen = () => {
         const courseStatus = state?.courses?.[course]?.status;
         if (courseStatus && courseStatus !== "open") {
           // Course is already fired - update local map only, skip backend RPC
-          coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id, true);
+          coursing.setItemCourse(
+            orderId,
+            item.id,
+            course,
+            item.db_order_item_id,
+            true
+          );
           syncedDbItemsRef.current.add(item.db_order_item_id);
           return;
         }
 
         // Sync item course with DB ID (will RPC only if course is open)
-        coursing.setItemCourse(orderId, item.id, course, item.db_order_item_id, false);
+        coursing.setItemCourse(
+          orderId,
+          item.id,
+          course,
+          item.db_order_item_id,
+          false
+        );
 
         // Mark as synced
         syncedDbItemsRef.current.add(item.db_order_item_id);
@@ -899,7 +933,6 @@ const UpdateTableScreen = () => {
         message: "The check has been finalized. You can now clear the table.",
         type: "success",
       });
-
     } catch (error: any) {
       console.error("Failed to close check:", error);
       show({
@@ -1061,7 +1094,10 @@ const UpdateTableScreen = () => {
       });
     }
     return sentMap;
-  }, [activeOrder?.id, coursingStore.byOrderId[activeOrder?.id || ""]?.courses]);
+  }, [
+    activeOrder?.id,
+    coursingStore.byOrderId[activeOrder?.id || ""]?.courses,
+  ]);
 
   // Memoized items for selected course to prevent recreation on every render
   const itemsInSelectedCourse = useMemo(() => {
@@ -1070,7 +1106,12 @@ const UpdateTableScreen = () => {
     return activeOrder.items.filter(
       (item) => (courseMap?.[item.id] ?? 1) === selectedCourseIdForTracker
     );
-  }, [activeOrder?.items, activeOrder?.id, selectedCourseIdForTracker, coursingStore.byOrderId[activeOrder?.id || ""]?.itemCourseMap]);
+  }, [
+    activeOrder?.items,
+    activeOrder?.id,
+    selectedCourseIdForTracker,
+    coursingStore.byOrderId[activeOrder?.id || ""]?.itemCourseMap,
+  ]);
 
   // Show skeleton during initial load for smooth transition
   if (isInitializing) {
@@ -1165,7 +1206,10 @@ const UpdateTableScreen = () => {
               );
             } else {
               return (
-                <MenuSection onOrderClosedCheck={checkOrderClosedAndWarn} isTableOrder={true} />
+                <MenuSection
+                  onOrderClosedCheck={checkOrderClosedAndWarn}
+                  isTableOrder={true}
+                />
               );
             }
           })()}
@@ -1440,10 +1484,19 @@ const UpdateTableScreen = () => {
           </View>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reopen Check Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isReopenModalOpen}
+        onClose={() => setReopenModalOpen(false)}
+        onConfirm={handleConfirmReopen}
+        title="Reopen Check?"
+        description="Are you sure you want to reopen this closed check? This will allow adding new items."
+        confirmText="Reopen"
+        variant="default"
+      />
     </View>
   );
 };
 
 export default UpdateTableScreen;
-
-

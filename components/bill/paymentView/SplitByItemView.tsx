@@ -1,5 +1,8 @@
 import { CartItem } from "@/lib/types";
-import { calculateItemEffectiveCashPrice, getItemEffectiveCashSubtotal, getItemEffectiveSubtotal, useOrderStore } from "@/stores/useOrderStore";
+import {
+  calculateItemEffectiveCashPrice,
+  useOrderStore,
+} from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
@@ -40,7 +43,9 @@ function getItemDiscountedValues(
   const originalQuantity = originalItem?.quantity ?? splitItem.quantity;
 
   // Calculate unit price: for cash, use effective cash price (includes modifiers)
-  const unitPrice = isCash ? calculateItemEffectiveCashPrice(splitItem) : splitItem.price;
+  const unitPrice = isCash
+    ? calculateItemEffectiveCashPrice(splitItem)
+    : splitItem.price;
 
   // Get order-level discount (from backend sync) - NOT the card/cash price difference
   // Only use actual discount_amount/discount_cash_amount from order-level discounts
@@ -51,7 +56,9 @@ function getItemDiscountedValues(
   // If split quantity equals original quantity and we have a pre-calculated DB subtotal with discount, use it
   // Only use cashSubtotal/subtotal if they are valid numbers (not undefined/NaN)
   if (splitQuantity === originalQuantity && originalDiscount > 0) {
-    const preCalculatedSubtotal = isCash ? splitItem.cashSubtotal : splitItem.subtotal;
+    const preCalculatedSubtotal = isCash
+      ? splitItem.cashSubtotal
+      : splitItem.subtotal;
     if (preCalculatedSubtotal !== undefined && !isNaN(preCalculatedSubtotal)) {
       return {
         subtotal: preCalculatedSubtotal,
@@ -66,7 +73,8 @@ function getItemDiscountedValues(
   // Apply proportional discount if there's an order-level discount
   if (originalQuantity > 0 && originalDiscount > 0) {
     const perUnitDiscount = originalDiscount / originalQuantity;
-    const itemDiscountAmount = Math.round(perUnitDiscount * splitQuantity * 100) / 100;
+    const itemDiscountAmount =
+      Math.round(perUnitDiscount * splitQuantity * 100) / 100;
     return {
       subtotal: Math.round((grossSubtotal - itemDiscountAmount) * 100) / 100,
       discountAmount: itemDiscountAmount,
@@ -91,11 +99,15 @@ function calculateSplitTax(
   let tax = 0;
 
   // Build map for fast lookup of original items
-  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+  const originalItemsMap = new Map(masterItems.map((item) => [item.id, item]));
 
   for (const item of items) {
     const originalItem = originalItemsMap.get(item.id);
-    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(item, originalItem, false);
+    const { subtotal: itemSubtotal, discountAmount } = getItemDiscountedValues(
+      item,
+      originalItem,
+      false
+    );
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -129,11 +141,15 @@ function calculateSplitCashTax(
   let tax = 0;
 
   // Build map for fast lookup of original items
-  const originalItemsMap = new Map(masterItems.map(item => [item.id, item]));
+  const originalItemsMap = new Map(masterItems.map((item) => [item.id, item]));
 
   for (const item of items) {
     const originalItem = originalItemsMap.get(item.id);
-    const { subtotal: itemSubtotal } = getItemDiscountedValues(item, originalItem, true);
+    const { subtotal: itemSubtotal } = getItemDiscountedValues(
+      item,
+      originalItem,
+      true
+    );
     subtotal += itemSubtotal;
 
     // Skip tax-exempt items
@@ -197,7 +213,7 @@ const SplitByItemView = () => {
   }, [splits, activeSplitId]);
 
   const activeOrder = useMemo(
-    () => activeOrderId ? ordersById[activeOrderId] : null,
+    () => (activeOrderId ? ordersById[activeOrderId] : null),
     [ordersById, activeOrderId]
   );
 
@@ -239,24 +255,27 @@ const SplitByItemView = () => {
   // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitTotals = activeSplit
     ? calculateSplitTax(
-      activeSplit.items,
-      taxRatesMap,
-      masterItems // Pass master items to look up original quantities/discounts
-    )
+        activeSplit.items,
+        taxRatesMap,
+        masterItems // Pass master items to look up original quantities/discounts
+      )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate split totals with tax (CASH pricing)
   // Uses hybrid approach: DB values for full quantities, proportional for partial
   const activeSplitCashTotals = activeSplit
     ? calculateSplitCashTax(
-      activeSplit.items,
-      taxRatesMap,
-      masterItems // Pass master items to look up original quantities/discounts
-    )
+        activeSplit.items,
+        taxRatesMap,
+        masterItems // Pass master items to look up original quantities/discounts
+      )
     : { subtotal: 0, tax: 0, total: 0 };
 
   // Calculate savings when paying cash vs card
-  const cashSavings = Math.max(0, activeSplitTotals.total - activeSplitCashTotals.total);
+  const cashSavings = Math.max(
+    0,
+    activeSplitTotals.total - activeSplitCashTotals.total
+  );
 
   // Calculate global remaining items to control button state
   const globalRemainingItems = itemData.reduce(
@@ -332,15 +351,17 @@ const SplitByItemView = () => {
               <TouchableOpacity
                 key={split.id}
                 onPress={() => setActiveSplitId(split.id)}
-                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${isActive
-                  ? "bg-blue-600 border-blue-500"
-                  : "bg-[#2a2a2a] border-[#333]"
-                  }`}
+                className={`flex-row items-center px-4 py-2 mr-2 rounded-full border ${
+                  isActive
+                    ? "bg-blue-600 border-blue-500"
+                    : "bg-[#2a2a2a] border-[#333]"
+                }`}
               >
                 <User size={16} color={isActive ? "white" : "#9ca3af"} />
                 <Text
-                  className={`ml-2 font-semibold ${isActive ? "text-white" : "text-gray-400"
-                    }`}
+                  className={`ml-2 font-semibold ${
+                    isActive ? "text-white" : "text-gray-400"
+                  }`}
                 >
                   {split.customerName}
                 </Text>
@@ -430,28 +451,31 @@ const SplitByItemView = () => {
             return (
               <View
                 key={item.id}
-                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${isSelected
-                  ? "bg-[#1e3a8a] border-[#2563eb]"
-                  : isFullyAssignedToOthers
-                    ? "bg-[#1A1A1A] opacity-40"
-                    : "bg-[#262626]"
-                  }`}
+                className={`flex-row justify-between items-center p-4 border-b border-[#333] ${
+                  isSelected
+                    ? "bg-[#1e3a8a] border-[#2563eb]"
+                    : isFullyAssignedToOthers
+                      ? "bg-[#1A1A1A] opacity-40"
+                      : "bg-[#262626]"
+                }`}
               >
                 {/* Item Info */}
                 <View className="flex-1">
                   <Text
-                    className={`text-lg font-semibold ${isSelected
-                      ? "text-white"
-                      : isFullyAssignedToOthers
-                        ? "text-gray-500"
-                        : "text-gray-200"
-                      }`}
+                    className={`text-lg font-semibold ${
+                      isSelected
+                        ? "text-white"
+                        : isFullyAssignedToOthers
+                          ? "text-gray-500"
+                          : "text-gray-200"
+                    }`}
                   >
                     {item.name}
                   </Text>
                   <Text
-                    className={`text-sm mt-1 ${isSelected ? "text-blue-200" : "text-gray-400"
-                      }`}
+                    className={`text-sm mt-1 ${
+                      isSelected ? "text-blue-200" : "text-gray-400"
+                    }`}
                   >
                     ${item.price.toFixed(2)}
                   </Text>
@@ -469,22 +493,25 @@ const SplitByItemView = () => {
                       <TouchableOpacity
                         onPress={() => handleRemoveFromGuest(item)}
                         disabled={!canRemove}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${canRemove
-                          ? "bg-red-600 active:bg-red-700"
-                          : "bg-[#333] opacity-30"
-                          }`}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${
+                          canRemove
+                            ? "bg-red-600 active:bg-red-700"
+                            : "bg-[#333] opacity-30"
+                        }`}
                       >
                         <Minus size={16} color={canRemove ? "white" : "#666"} />
                       </TouchableOpacity>
 
                       {/* Quantity Badge */}
                       <View
-                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${isSelected ? "bg-blue-600" : "bg-[#333]"
-                          }`}
+                        className={`min-w-[36px] px-2 py-1 rounded-md items-center ${
+                          isSelected ? "bg-blue-600" : "bg-[#333]"
+                        }`}
                       >
                         <Text
-                          className={`text-sm font-bold ${isSelected ? "text-white" : "text-gray-500"
-                            }`}
+                          className={`text-sm font-bold ${
+                            isSelected ? "text-white" : "text-gray-500"
+                          }`}
                         >
                           {item.qtyInCurrent}x
                         </Text>
@@ -494,10 +521,11 @@ const SplitByItemView = () => {
                       <TouchableOpacity
                         onPress={() => handleAddToGuest(item)}
                         disabled={!canAdd}
-                        className={`w-8 h-8 rounded-full items-center justify-center ${canAdd
-                          ? "bg-green-600 active:bg-green-700"
-                          : "bg-[#333] opacity-30"
-                          }`}
+                        className={`w-8 h-8 rounded-full items-center justify-center ${
+                          canAdd
+                            ? "bg-green-600 active:bg-green-700"
+                            : "bg-[#333] opacity-30"
+                        }`}
                       >
                         <Plus size={16} color={canAdd ? "white" : "#666"} />
                       </TouchableOpacity>
@@ -527,8 +555,9 @@ const SplitByItemView = () => {
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-gray-400 text-sm">Items Remaining</Text>
           <Text
-            className={`font-bold ${globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
-              }`}
+            className={`font-bold ${
+              globalRemainingItems > 0 ? "text-red-400" : "text-green-400"
+            }`}
           >
             {globalRemainingItems}
           </Text>
@@ -537,10 +566,11 @@ const SplitByItemView = () => {
         <TouchableOpacity
           onPress={handleStartPayment}
           disabled={!isAllAssigned}
-          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${isAllAssigned
-            ? "bg-blue-600 active:bg-blue-700"
-            : "bg-[#333] opacity-80"
-            }`}
+          className={`flex-row items-center justify-center py-4 rounded-xl gap-2 ${
+            isAllAssigned
+              ? "bg-blue-600 active:bg-blue-700"
+              : "bg-[#333] opacity-80"
+          }`}
         >
           {isAllAssigned ? (
             <Play size={20} color="white" fill="white" className="mr-1" />
@@ -548,8 +578,9 @@ const SplitByItemView = () => {
             <Circle size={20} color="#666" className="mr-1" />
           )}
           <Text
-            className={`text-lg font-bold ${isAllAssigned ? "text-white" : "text-gray-500"
-              }`}
+            className={`text-lg font-bold ${
+              isAllAssigned ? "text-white" : "text-gray-500"
+            }`}
           >
             {isAllAssigned ? "Start Payment Flow" : "Assign All Items to Pay"}
           </Text>

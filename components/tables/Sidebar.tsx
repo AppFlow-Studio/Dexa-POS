@@ -52,9 +52,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const widthSV = useSharedValue(EXPANDED_WIDTH);
   const opacitySV = useSharedValue(1);
 
-  const {
-    realtimeStatus,
-  } = useFloorPlanStore();
+  const { realtimeStatus } = useFloorPlanStore();
 
   useEffect(() => {
     const config = {
@@ -123,8 +121,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
-  
-
   return (
     <>
       <Animated.View
@@ -157,26 +153,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               style={{ width: 32, height: 32 }}
               resizeMode="contain"
             />
-          </View>
-
-          {/* <Animated.View style={[textStyle, { marginLeft: 12, flex: 1 }]}>
-            <Text className="text-lg font-bold text-white" numberOfLines={1}>
-              DexaPOS
-            </Text>
-            <Text className="text-xs text-gray-400" numberOfLines={1}>
-              Main Floor
-            </Text>
-          </Animated.View> */}
-           {/* Live indicator */}
-        <View className="ml-3 flex-row items-center">
-            <View className={`w-2 h-2 rounded-full ${
-              realtimeStatus === 'connected' ? 'bg-green-500' : 
-              realtimeStatus === 'reconnecting' ? 'bg-amber-500' : 'bg-red-500'
-            }`} />
-            <Text className="text-xs text-gray-400 ml-1">
-              {realtimeStatus === 'connected' ? 'Live' : 
-               realtimeStatus === 'reconnecting' ? 'Syncing' : 'Offline'}
-            </Text>
           </View>
         </TouchableOpacity>
 
@@ -241,6 +217,31 @@ const Sidebar: React.FC<SidebarProps> = ({
         >
           {isExpanded && renderPanel()}
         </Animated.View>
+
+        {/* Live Status Indicator - Bottom of Sidebar */}
+        <View className="p-3 border-t border-gray-800 flex-row items-center justify-center">
+          <View
+            className={`w-2.5 h-2.5 rounded-full ${
+              realtimeStatus === "connected"
+                ? "bg-green-500"
+                : realtimeStatus === "reconnecting"
+                  ? "bg-amber-500"
+                  : "bg-red-500"
+            }`}
+          />
+          {isExpanded && (
+            <Animated.Text
+              style={textStyle}
+              className="text-sm text-gray-400 ml-2"
+            >
+              {realtimeStatus === "connected"
+                ? "Live"
+                : realtimeStatus === "reconnecting"
+                  ? "Syncing..."
+                  : "Offline"}
+            </Animated.Text>
+          )}
+        </View>
       </Animated.View>
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="w-fit h-fit bg-[#303030] border-gray-600 p-8">

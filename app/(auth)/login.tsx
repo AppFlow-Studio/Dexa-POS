@@ -1,5 +1,5 @@
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
-import * as Linking from 'expo-linking';
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React from "react";
@@ -16,14 +16,13 @@ import {
 // IMPORTANT: Must be called at module level for Expo Go
 WebBrowser.maybeCompleteAuthSession();
 
-
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
-  const linking = Linking.useLinkingURL()
-  const LinkRedirectUrl = Linking.createURL('oauth-native-callback', {
-    scheme: 'dexapos'
-  })
+  const linking = Linking.useLinkingURL();
+  const LinkRedirectUrl = Linking.createURL("oauth-native-callback", {
+    scheme: "dexapos",
+  });
 
   // Native OAuth flow - works in Expo Go
   const { startSSOFlow } = useSSO();
@@ -118,8 +117,8 @@ const MerchantLoginScreen = () => {
         } else {
           setError(
             err.errors[0].longMessage ||
-            err.errors[0].message ||
-            "Invalid email or password"
+              err.errors[0].message ||
+              "Invalid email or password"
           );
         }
       } else {
@@ -148,8 +147,9 @@ const MerchantLoginScreen = () => {
       <TouchableOpacity
         onPress={signInWithGoogle}
         disabled={isFormLoading}
-        className={`w-full p-4 rounded-xl items-center justify-center flex-row mb-6 ${isFormLoading ? "bg-neutral-600" : "bg-white"
-          }`}
+        className={`w-full p-4 rounded-xl items-center justify-center flex-row mb-6 ${
+          isFormLoading ? "bg-neutral-600" : "bg-white"
+        }`}
       >
         {isGoogleLoading ? (
           <ActivityIndicator color="#4285F4" size="small" />
@@ -214,10 +214,11 @@ const MerchantLoginScreen = () => {
       <TouchableOpacity
         onPress={handleLogin}
         disabled={isFormLoading || !emailAddress || !password}
-        className={`w-full p-4 rounded-xl items-center ${isFormLoading || !emailAddress || !password
-          ? "bg-blue-400"
-          : "bg-blue-600"
-          }`}
+        className={`w-full p-4 rounded-xl items-center ${
+          isFormLoading || !emailAddress || !password
+            ? "bg-blue-400"
+            : "bg-blue-600"
+        }`}
       >
         {isLoading ? (
           <ActivityIndicator color="white" size="small" />

@@ -21,13 +21,20 @@ import BottomSheet, {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import { Search, X } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 
 const CustomerSheet: React.FC = () => {
   const sheetRef = useRef<BottomSheet>(null);
   const { isOpen, closeSheet } = useCustomerSheetStore();
-  const { activeOrderId, updateActiveOrderDetails, ordersById } = useOrderStore();
+  const { activeOrderId, updateActiveOrderDetails, ordersById } =
+    useOrderStore();
   const order = ordersById[activeOrderId ?? ""];
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const { show } = useToast();
@@ -50,24 +57,27 @@ const CustomerSheet: React.FC = () => {
     }
   }, [isOpen]);
 
+  // Use ref to access latest values without causing re-renders
+  const storeRef = useRef({ selectedStore, supabase });
+  storeRef.current = { selectedStore, supabase };
+
   const refreshCustomers = useCallback(async () => {
     // Always start with cached customers (works offline)
     setCustomers(getCachedCustomers());
 
+    const { selectedStore: store, supabase: client } = storeRef.current;
+
     // If online, refresh from backend and process any queued ops
-    if (selectedStore && getIsOnline()) {
+    if (store && getIsOnline()) {
       try {
-        const updated = await fetchAndCacheCustomers(
-          supabase,
-          selectedStore.merchant_id
-        );
+        const updated = await fetchAndCacheCustomers(client, store.merchant_id);
         setCustomers(updated);
-        await processCustomerQueue(supabase);
+        await processCustomerQueue(client);
       } catch (err) {
         console.warn("Failed to refresh customers:", err);
       }
     }
-  }, [selectedStore, supabase]);
+  }, []); // Empty deps - uses ref for latest values
 
   useEffect(() => {
     if (isOpen) {
@@ -184,17 +194,17 @@ const CustomerSheet: React.FC = () => {
     try {
       const newCustomer = online
         ? await createCustomerOnline(supabase, {
-          merchantId: selectedStore.merchant_id,
-          name,
-          phone,
-          address,
-        })
+            merchantId: selectedStore.merchant_id,
+            name,
+            phone,
+            address,
+          })
         : createCustomerOffline({
-          merchantId: selectedStore.id,
-          name,
-          phone,
-          address,
-        });
+            merchantId: selectedStore.id,
+            name,
+            phone,
+            address,
+          });
 
       setCustomers(getCachedCustomers());
       await handleSelectCustomer(newCustomer);
@@ -246,8 +256,9 @@ const CustomerSheet: React.FC = () => {
             <TouchableOpacity
               disabled={isAssignDisabled}
               onPress={handleAddNewCustomer}
-              className={`w-fit py-3 px-4 rounded-xl items-center ${isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
-                }`}
+              className={`w-fit py-3 px-4 rounded-xl items-center ${
+                isAssignDisabled ? "bg-blue-600/50" : "bg-blue-600"
+              }`}
             >
               <Text className="text-lg font-bold text-white">
                 Add New Customer
@@ -294,8 +305,9 @@ const CustomerSheet: React.FC = () => {
             <TouchableOpacity
               disabled={isAssignDisabled}
               onPress={() => handleSelectCustomer(item)}
-              className={`p-3 border-b border-gray-700 ${isAssignDisabled ? "opacity-60" : ""
-                }`}
+              className={`p-3 border-b border-gray-700 ${
+                isAssignDisabled ? "opacity-60" : ""
+              }`}
             >
               <Text className="text-xl font-semibold text-white">
                 {item.name}

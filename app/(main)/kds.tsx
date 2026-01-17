@@ -633,7 +633,7 @@ const KitchenDisplayScreen = () => {
   const { getItemCourse, loadFromServer, byOrderId } = useCoursingStore();
   const [refreshing, setRefreshing] = useState(false);
   const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
-  
+
   // Load coursing data for all active orders
   useEffect(() => {
     Object.values(ordersByDbId).forEach((order) => {
@@ -670,11 +670,8 @@ const KitchenDisplayScreen = () => {
       const itemsByCourse: Record<number, CartItem[]> = {};
       relevantItems.forEach((item) => {
         // Get course number from coursing store
-        // Try db_order_item_id first as that's what the server sync uses
-        const course = getItemCourse(
-          order.id,
-          item.db_order_item_id || item.id
-        );
+        // Pass both item.id (local) and db_order_item_id (backend) for resilient lookup
+        const course = getItemCourse(order.id, item.id, item.db_order_item_id);
         if (!itemsByCourse[course]) itemsByCourse[course] = [];
         itemsByCourse[course].push(item);
       });

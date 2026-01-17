@@ -416,19 +416,22 @@ export interface CartItem {
   addedFromMenuId?: string | null;
 
   // Pre-calculated (synced from backend or calculated locally)
-  subtotal: number;           // price * quantity (or discounted subtotal if discount applied)
-  cashSubtotal: number;       // cashPrice * quantity (or discounted if discount applied)
-  taxRate: number;            // Tax rate % captured at add time
-  taxAmount: number;          // subtotal * taxRate
-  cashTaxAmount: number;      // cashSubtotal * taxRate
+  subtotal: number; // price * quantity (or discounted subtotal if discount applied)
+  cashSubtotal: number; // cashPrice * quantity (or discounted if discount applied)
+  taxRate: number; // Tax rate % captured at add time
+  taxAmount: number; // subtotal * taxRate
+  cashTaxAmount: number; // cashSubtotal * taxRate
 
   // Distributed discount from order-level/check discounts (synced from backend)
-  discount_amount?: number;      // Card pricing discount distributed to this item
+  discount_amount?: number; // Card pricing discount distributed to this item
   discount_cash_amount?: number; // Cash pricing discount distributed to this item
-  
+
   // Actual Base Prices With no Modifiers
   baseCardPrice: number;
   baseCashPrice: number;
+
+  // Course management (for multi-course dining)
+  courseNumber?: number; // Which course this item belongs to (1, 2, 3, etc.)
 }
 
 export interface OnlineOrder {
@@ -801,6 +804,9 @@ export interface OrderProfile {
   station_id?: string | null; // Station that created this order
   _sourceStationId?: string | null; // Original creating station ID (for display)
   _sourceStationName?: string | null; // Original creating station name (for display)
+
+  // === SYNC VERSION (for optimistic concurrency) ===
+  sync_version?: number; // Backend sync version for conflict detection
 }
 
 export type CheckStatus = "Pending" | "Cleared" | "Voided";

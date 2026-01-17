@@ -187,23 +187,56 @@ export const useTimeClock = (options?: UseTimeClockOptions) => {
             return { success: true, queued: true };
           } else {
             // Logic error (e.g., Wrong PIN, Already clocked in): show error
-            const errorMessages: Record<TimeClockActionType, string> = {
-              sign_in:
-                "Failed to sign in. Please check your PIN and try again.",
-              clock_in:
-                "Failed to clock in. Please check your PIN and try again.",
-              clock_out: "Failed to clock out. Please try again.",
-              break_start: "Failed to start break. Please try again.",
-              break_end: "Failed to end break. Please try again.",
-            };
+            // Check for specific backend error codes first
+            let errorTitle = "Clock Error";
+            let errorToastMessage = "";
+
+            if (errorMessage.includes("ALREADY_CLOCKED_IN")) {
+              errorTitle = "Already Clocked In";
+              errorToastMessage = "You are already clocked in.";
+            } else if (
+              errorMessage.includes("NOT_CLOCKED_IN") ||
+              errorMessage.includes("NO_ACTIVE_SHIFT")
+            ) {
+              errorTitle = "Not Clocked In";
+              errorToastMessage = "You are not currently clocked in.";
+            } else if (errorMessage.includes("ALREADY_ON_BREAK")) {
+              errorTitle = "Already On Break";
+              errorToastMessage = "You are already on break.";
+            } else if (errorMessage.includes("NOT_ON_BREAK")) {
+              errorTitle = "Not On Break";
+              errorToastMessage = "You are not currently on break.";
+            } else if (errorMessage.includes("END_BREAK_FIRST")) {
+              errorTitle = "End Break First";
+              errorToastMessage = "Please end your break before clocking out.";
+            } else if (errorMessage.includes("MUST_BE_ACTIVE_TO_BREAK")) {
+              errorTitle = "Must Be Clocked In";
+              errorToastMessage = "You must be clocked in to start a break.";
+            } else if (
+              errorMessage.includes("INVALID_PIN") ||
+              errorMessage.includes("PIN") ||
+              errorMessage.includes("pin")
+            ) {
+              errorTitle = "Invalid PIN";
+              errorToastMessage = "The PIN you entered is incorrect.";
+            } else {
+              // Fallback to generic messages
+              const errorMessages: Record<TimeClockActionType, string> = {
+                sign_in:
+                  "Failed to sign in. Please check your PIN and try again.",
+                clock_in:
+                  "Failed to clock in. Please check your PIN and try again.",
+                clock_out: "Failed to clock out. Please try again.",
+                break_start: "Failed to start break. Please try again.",
+                break_end: "Failed to end break. Please try again.",
+              };
+              errorToastMessage = errorMessages[type];
+            }
 
             toastService.show({
-              title: "Clock Error",
-              message:
-                errorMessage.includes("PIN") || errorMessage.includes("pin")
-                  ? "The PIN you entered is incorrect."
-                  : errorMessages[type],
-              type: "error",
+              title: errorTitle,
+              message: errorToastMessage,
+              type: errorTitle.includes("Invalid") ? "error" : "warning",
             });
 
             options?.onError?.(type, errorMessage);

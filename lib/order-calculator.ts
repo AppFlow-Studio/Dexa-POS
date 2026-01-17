@@ -392,7 +392,7 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
   for (const item of activeItems) {
     // Card price subtotal
     const effectiveCardPrice = calculateItemEffectiveCardPrice(item);
-    console.log("item [calculateOrderTotals]", item);
+    // console.log("item [calculateOrderTotals]", item);
     const itemSubtotal = effectiveCardPrice * item.quantity;
     subtotal += itemSubtotal;
 

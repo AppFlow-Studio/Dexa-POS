@@ -54,11 +54,11 @@ BEGIN
 
   -- Log the action (audit_logs table expected to exist)
   INSERT INTO audit_logs (
-    action_type,
-    table_name,
-    record_id,
-    staff_id,
-    new_values,
+    action,
+    resource_type,
+    resource_id,
+    staff_profile_id,
+    changes,
     created_at
   ) VALUES (
     'close_check',
