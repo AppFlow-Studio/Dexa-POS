@@ -200,7 +200,6 @@ const BillSection = ({
     ]
   );
   const [isDiscountOverlayVisible, setDiscountOverlayVisible] = useState(false);
-
   // OPTIMIZED: Wrap callbacks with useCallback to prevent recreation on each render
   const handleOpenDiscounts = useCallback(() => {
     setDiscountOverlayVisible(true);
@@ -425,7 +424,7 @@ const BillSection = ({
             activeOpacity={0.85}
           >
             {hasPendingSyncs ? (
-              <ActivityIndicator size="small" color="#60A5FA" />
+              <ActivityIndicator size={10} color="#60A5FA" />
             ) : null}
             <Text className="text-center text-lg font-bold text-white">
               Send to Kitchen ({newItemsCount})
@@ -460,7 +459,7 @@ const BillSection = ({
               }`}
             >
               {hasPendingSyncs || isProcessing ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <ActivityIndicator size={10} color="#FFFFFF" />
               ) : null}
               <Text
                 className={`text-center text-lg font-bold ${

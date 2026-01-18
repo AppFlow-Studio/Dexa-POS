@@ -257,15 +257,17 @@ export function distributeDiscountToItems(
   totalCashDiscount?: number
 ): CartItem[] {
   const cashDiscount = totalCashDiscount ?? totalCardDiscount;
-
+ console.log('distributeDiscountToItems', totalCardDiscount, totalCashDiscount)
   // Calculate totals for proportion
   let orderCardSubtotal = 0;
   let orderCashSubtotal = 0;
   const activeItems = items.filter((item) => !item.is_voided);
 
   for (const item of activeItems) {
+    console.log('items', item.cashPrice)
+
     orderCardSubtotal += item.price * item.quantity;
-    orderCashSubtotal += calculateItemEffectiveCashPrice(item) * item.quantity;
+    orderCashSubtotal += item.cashPrice * item.quantity;
   }
 
   // Track distributed amounts for rounding adjustment
@@ -451,6 +453,27 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
 
   const totalDiscountAmount = round2(itemDiscountsTotal + checkDiscountAmount);
 
+  // Calculate cash discount amount based on discount type
+  // For percentage discounts: apply same percentage to cash subtotal
+  // For fixed discounts: use same fixed amount (proportionally reduced if cash subtotal is lower)
+  let cashDiscountAmount = 0;
+
+  if (checkDiscount) {
+    if (checkDiscount.type === "percentage") {
+      // Apply the same percentage to cash subtotal
+      const cashSubtotalAfterItemDiscounts = cashSubtotal - itemDiscountsTotal;
+      cashDiscountAmount = cashSubtotalAfterItemDiscounts * checkDiscount.value;
+    } else {
+      // For fixed discounts, use the same amount but don't exceed cash subtotal
+      cashDiscountAmount = Math.min(
+        checkDiscountAmount,
+        cashSubtotal - itemDiscountsTotal
+      );
+    }
+  }
+
+  const totalCashDiscountAmount = round2(itemDiscountsTotal + cashDiscountAmount);
+
   // =========================================================================
   // SECOND PASS: Calculate taxes and outstanding amounts
   // =========================================================================
@@ -474,11 +497,11 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
       );
       taxAmount += itemTaxableAmount * data.taxRateDecimal;
 
-      // Cash price tax
+      // Cash price tax - use cash discount amount
       const cashDiscountProportion =
         cashSubtotal > 0 ? data.itemCashSubtotal / cashSubtotal : 0;
       const cashItemDiscountAmount =
-        totalDiscountAmount * cashDiscountProportion;
+        totalCashDiscountAmount * cashDiscountProportion;
       const cashItemTaxableAmount = Math.max(
         0,
         data.itemCashSubtotal - cashItemDiscountAmount
@@ -499,10 +522,10 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
         const outTaxableAmt = Math.max(0, data.unpaidSubtotal - outDiscountAmt);
         outstandingTax += outTaxableAmt * data.taxRateDecimal;
 
-        // Outstanding cash tax
+        // Outstanding cash tax - use cash discount amount
         const cashOutDiscountProp =
           cashSubtotal > 0 ? data.unpaidCashSubtotal / cashSubtotal : 0;
-        const cashOutDiscountAmt = totalDiscountAmount * cashOutDiscountProp;
+        const cashOutDiscountAmt = totalCashDiscountAmount * cashOutDiscountProp;
         const cashOutTaxableAmt = Math.max(
           0,
           data.unpaidCashSubtotal - cashOutDiscountAmt
@@ -537,17 +560,15 @@ export function calculateOrderTotals(input: OrderCalculationInput): OrderTotals 
     outstandingSubtotalAfterDiscount + outstandingTax
   );
 
-  // Cash total
-  const cashProportionForDiscount = cashSubtotal > 0 ? cashSubtotal / subtotal : 0;
-  const cashDiscountForTotal = round2(totalDiscountAmount * cashProportionForDiscount);
-  const cashTaxableAmount = Math.max(0, cashSubtotal - cashDiscountForTotal);
+  // Cash total - use the cash discount we calculated earlier
+  const cashTaxableAmount = Math.max(0, cashSubtotal - totalCashDiscountAmount);
   const cashTotalAmount = round2(cashTaxableAmount + cashTaxAmount);
 
-  // Cash outstanding total
+  // Cash outstanding total - use cash discount proportionally
   const cashProportionOutstanding =
     cashSubtotal > 0 ? cashOutstandingSubtotal / cashSubtotal : 0;
   const cashOutstandingDiscount =
-    totalDiscountAmount * cashProportionOutstanding;
+    totalCashDiscountAmount * cashProportionOutstanding;
   const cashOutstandingSubtotalAfterDiscount =
     cashOutstandingSubtotal - cashOutstandingDiscount;
   const cashOutstandingTotal = round2(
@@ -626,13 +647,26 @@ export function calculateOrderTotalsWithDetails(
   input: OrderCalculationInput
 ): OrderCalculationResult {
   const totals = calculateOrderTotals(input);
-  const { items, taxRatesMap } = input;
+  const { items, taxRatesMap, checkDiscount } = input;
 
   const activeItems = items.filter((item) => !item.is_voided);
   const itemDetails: ItemCalculationDetail[] = [];
 
   // Calculate total discount for proportional distribution
   const totalDiscount = totals.discount_amount;
+
+  // Calculate cash discount using the same logic as calculateOrderTotals
+  let totalCashDiscount = 0;
+  if (checkDiscount) {
+    if (checkDiscount.type === "percentage") {
+      // Apply the same percentage to cash subtotal
+      totalCashDiscount = totals.cash_subtotal * checkDiscount.value;
+    } else {
+      // For fixed discounts, use the same amount but don't exceed cash subtotal
+      totalCashDiscount = Math.min(totalDiscount, totals.cash_subtotal);
+    }
+  }
+  totalCashDiscount = round2(totalCashDiscount);
 
   for (const item of activeItems) {
     const cashUnitPrice = calculateItemEffectiveCashPrice(item);
@@ -649,7 +683,7 @@ export function calculateOrderTotalsWithDetails(
 
     const cashProportion =
       totals.cash_subtotal > 0 ? cashSubtotal / totals.cash_subtotal : 0;
-    const cashDiscountAmount = round2(totalDiscount * cashProportion);
+    const cashDiscountAmount = round2(totalCashDiscount * cashProportion);
 
     // Calculate taxable amounts
     const taxableAmount = Math.max(0, subtotal - discountAmount);

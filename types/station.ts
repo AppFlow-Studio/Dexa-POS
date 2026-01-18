@@ -23,6 +23,7 @@ export interface StationPaymentTerminal {
   terminal_name: string;
   tpn: string;
   register_id: string | null;
+  auth_key: string | null;
   terminal_type: 'dejavoo' | 'clover' | 'square' | 'stripe_terminal';
   terminal_model: string | null;
   is_connected: boolean;

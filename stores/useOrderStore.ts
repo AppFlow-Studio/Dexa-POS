@@ -2865,7 +2865,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
-                  stations:station_id (name)
+                  stations:station_id(name)
                 `
                 )
                 .eq("location_id", locationId)
@@ -2883,7 +2883,7 @@ export const useOrderStore = create<OrderState>()(
                 query = query.not(
                   "status",
                   "in",
-                  '("completed","voided","cancelled")'
+                  '("completed","void","cancelled")'
                 );
               }
 
@@ -2956,7 +2956,7 @@ export const useOrderStore = create<OrderState>()(
                 )
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
-                .not("status", "in", '("completed","voided","cancelled")')
+                .not("status", "in", '("completed","void","cancelled")')
                 .order("created_at", { ascending: false });
 
               if (error) throw error;
