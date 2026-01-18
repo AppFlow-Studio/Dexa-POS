@@ -10,6 +10,9 @@ import { EmployeeProfile, useEmployeeStore } from "@/stores/useEmployeeStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { PosStaffLoginResponse } from "@/types/station";
+import * as Application from "expo-application";
+import * as Device from "expo-device";
+import * as Network from "expo-network";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Lock } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,6 +26,16 @@ import Animated, {
 
 const MAX_PIN_LENGTH = 4;
 
+const getDeviceInfo = async () => {
+  const ip = await Network.getIpAddressAsync().catch(() => null);
+  return {
+    ip_address: ip,
+    app_version: Application.nativeApplicationVersion,
+    os_version: `${Device.osName} ${Device.osVersion}`,
+    hardware_model: Device.modelName,
+  };
+};
+
 const PinLoginScreen = () => {
   const router = useRouter();
   const { forceTakeover } = useLocalSearchParams<{ forceTakeover?: string }>();
@@ -34,7 +47,7 @@ const PinLoginScreen = () => {
   useFocusEffect(
     useCallback(() => {
       setPin("");
-    }, [])
+    }, []),
   );
 
   const { showLoading, hideLoading, isLoading } = useLoading();
@@ -46,10 +59,10 @@ const PinLoginScreen = () => {
   } = useEmployeeStore();
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const selectedStation = useStoreSettingsStore(
-    (state) => state.selectedStation
+    (state) => state.selectedStation,
   );
   const setStationSessionId = useStoreSettingsStore(
-    (state) => state.setStationSessionId
+    (state) => state.setStationSessionId,
   );
   const { getSession, clockIn: timeclockClockIn } = useTimeclockStore();
 
@@ -62,7 +75,7 @@ const PinLoginScreen = () => {
       !!deviceId &&
       !!selectedStore &&
       !!selectedStation,
-    [pin, isLoading, deviceId, selectedStore, selectedStation]
+    [pin, isLoading, deviceId, selectedStore, selectedStation],
   );
 
   // Get device ID on mount (synchronous with MMKV)
@@ -93,13 +106,13 @@ const PinLoginScreen = () => {
     title: string,
     message: string,
     variant: "success" | "warning" | "error",
-    options?: { showTakeover?: boolean; currentUser?: string }
+    options?: { showTakeover?: boolean; currentUser?: string },
   ) => setDialog({ visible: true, title, message, variant, ...options });
   const hideDialog = () => setDialog((d) => ({ ...d, visible: false }));
 
   // Store PIN temporarily for takeover action
   const [pendingTakeoverPin, setPendingTakeoverPin] = useState<string | null>(
-    null
+    null,
   );
 
   const triggerShakeAnimation = () => {
@@ -108,7 +121,7 @@ const PinLoginScreen = () => {
       withTiming(10, { duration: 100 }),
       withTiming(-10, { duration: 100 }),
       withTiming(10, { duration: 100 }),
-      withTiming(0, { duration: 100 })
+      withTiming(0, { duration: 100 }),
     );
   };
 
@@ -124,6 +137,7 @@ const PinLoginScreen = () => {
 
     try {
       const deviceName = getDeviceName();
+      const info = await getDeviceInfo();
 
       console.log("Calling pos_staff_login for TAKEOVER with:", {
         p_location_id: selectedStore.id,
@@ -133,6 +147,10 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: true,
+        p_ip_address: info.ip_address,
+        p_app_version: info.app_version,
+        p_os_version: info.os_version,
+        p_hardware_model: info.hardware_model,
       });
 
       // Call the login RPC with force takeover enabled
@@ -144,6 +162,10 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: true, // Force takeover!
+        p_ip_address: info.ip_address,
+        p_app_version: info.app_version,
+        p_os_version: info.os_version,
+        p_hardware_model: info.hardware_model,
       });
 
       console.log("Takeover response:", data, error);
@@ -158,7 +180,7 @@ const PinLoginScreen = () => {
         showDialog(
           "Takeover Failed",
           response.error || "Unable to take over station.",
-          "error"
+          "error",
         );
         setPendingTakeoverPin(null);
         return;
@@ -203,7 +225,7 @@ const PinLoginScreen = () => {
       showDialog(
         "Takeover Failed",
         error?.message || "Unable to take over station. Please try again.",
-        "error"
+        "error",
       );
       setPendingTakeoverPin(null);
     }
@@ -239,7 +261,7 @@ const PinLoginScreen = () => {
           : !selectedStation
             ? "Please select a station first."
             : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to sign in.`,
-        "error"
+        "error",
       );
       return;
     }
@@ -248,6 +270,7 @@ const PinLoginScreen = () => {
 
     try {
       const deviceName = getDeviceName();
+      const info = await getDeviceInfo();
 
       // Call the new combined RPC for station + clock in
       console.log("Calling pos_staff_login with:", {
@@ -258,6 +281,10 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: forceTakeover === "true",
+        p_ip_address: info.ip_address,
+        p_app_version: info.app_version,
+        p_os_version: info.os_version,
+        p_hardware_model: info.hardware_model,
       });
       const { data, error } = await supabase.rpc("pos_staff_login", {
         p_location_id: selectedStore.id,
@@ -267,6 +294,10 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: forceTakeover === "true",
+        p_ip_address: info.ip_address,
+        p_app_version: info.app_version,
+        p_os_version: info.os_version,
+        p_hardware_model: info.hardware_model,
       });
 
       console.log("pos_staff_login response:", data, error);
@@ -290,7 +321,7 @@ const PinLoginScreen = () => {
             {
               showTakeover: true,
               currentUser: response.current_session?.staff_name,
-            }
+            },
           );
           setPin("");
           return;
@@ -300,7 +331,7 @@ const PinLoginScreen = () => {
         showDialog(
           "Sign In Failed",
           response.error || "Unable to sign in.",
-          "error"
+          "error",
         );
         setPin("");
         return;
@@ -310,7 +341,7 @@ const PinLoginScreen = () => {
       if (response.session?.session_id) {
         console.log(
           "📝 Setting stationSessionId:",
-          response.session.session_id
+          response.session.session_id,
         );
         setStationSessionId(response.session.session_id);
       }
@@ -339,7 +370,7 @@ const PinLoginScreen = () => {
         // Staff found in database but not synced locally - still allow login
         console.warn(
           "Staff profile not found locally:",
-          response.staff?.staff_profile_id
+          response.staff?.staff_profile_id,
         );
       }
 
@@ -371,7 +402,7 @@ const PinLoginScreen = () => {
         !selectedStore
           ? "Please select a store first."
           : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
-        "error"
+        "error",
       );
       return;
     }
@@ -400,7 +431,7 @@ const PinLoginScreen = () => {
         !selectedStore
           ? "Please select a store first."
           : `Please enter a ${MAX_PIN_LENGTH}-digit PIN.`,
-        "error"
+        "error",
       );
       return;
     }
@@ -429,7 +460,7 @@ const PinLoginScreen = () => {
         !selectedStore
           ? "Please select a store first."
           : `Please enter a ${MAX_PIN_LENGTH}-digit PIN to open the timeclock.`,
-        "error"
+        "error",
       );
       return;
     }
@@ -469,7 +500,7 @@ const PinLoginScreen = () => {
         showDialog(
           "Permission Denied",
           "Only managers can access the timeclock.",
-          "error"
+          "error",
         );
         setPin("");
         return;
@@ -487,7 +518,7 @@ const PinLoginScreen = () => {
         showDialog(
           "Verification Failed",
           "Unable to verify PIN. Please try again.",
-          "error"
+          "error",
         );
       }
       setPin("");
