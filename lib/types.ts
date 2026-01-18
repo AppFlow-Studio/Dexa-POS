@@ -135,8 +135,8 @@ export interface Discount {
 }
 
 // === ORDER DISCOUNT TYPES (backend-aligned) ===
-export type DiscountType = "percentage" | "fixed";
-export type DiscountSource = "preset" | "custom" | "promo_code";
+export type DiscountType = "percentage" | "fixed_amount";
+export type DiscountSource = "preset" | "open" | "promo_code" | "loyalty";
 
 export interface OrderAppliedDiscount {
   local_id: string;

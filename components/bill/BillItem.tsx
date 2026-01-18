@@ -4,9 +4,18 @@ import {
   useModifierSidebarStore,
 } from "@/stores/useModifierSidebarStore";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { useItemSyncStatus, useItemSyncError } from "@/stores/useSyncStatusStore";
+import {
+  useItemSyncError,
+  useItemSyncStatus,
+} from "@/stores/useSyncStatusStore";
 import { AlertCircle, Trash2 } from "lucide-react-native";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -89,16 +98,24 @@ const ModifiersList = React.memo<{ modifiers: ModifierDisplay[] }>(
     }
 
     return true;
-  }
+  },
 );
 
-const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, isActive = false }) => {
+const BillItemComponent: React.FC<BillItemProps> = ({
+  item,
+  isEditable = false,
+  isActive = false,
+}) => {
   // FIXED: Use selectors instead of destructuring to avoid subscribing to entire store
   const activeOrderId = useOrderStore((s) => s.activeOrderId);
-  const removeItemFromActiveOrder = useOrderStore((s) => s.removeItemFromActiveOrder);
+  const removeItemFromActiveOrder = useOrderStore(
+    (s) => s.removeItemFromActiveOrder,
+  );
   const openToView = useModifierSidebarStore((s) => s.openToView);
   const openToEdit = useModifierSidebarStore((s) => s.openToEdit);
-  const setSelectedItemPosition = useModifierSidebarStore(selectSetSelectedItemPosition);
+  const setSelectedItemPosition = useModifierSidebarStore(
+    selectSetSelectedItemPosition,
+  );
 
   // Phase 7D: Sync status from dedicated store (not from item)
   // This prevents re-renders of other components when sync status changes
@@ -146,7 +163,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
         })
         .activeOffsetX([-20, 20]) // Only activate if horizontal movement exceeds 20px
         .failOffsetY([-20, 20]), // Fail if vertical movement exceeds 20px
-    [translateX]
+    [translateX],
   );
 
   // Check if item is in draft/new state (simple delete) or in kitchen (needs void reason)
@@ -233,10 +250,20 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
         isActive
           ? "border-2 border-blue-400 bg-blue-500/5"
           : isVoided
-          ? "border bg-[#2a2020] border-red-900/50 opacity-60"
-          : "border bg-[#303030] border-gray-600"
+            ? "border bg-[#2a2020] border-red-900/50 opacity-60"
+            : "border bg-[#303030] border-gray-600"
       }`}
-      style={isActive ? { shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 8 } : undefined}
+      style={
+        isActive
+          ? {
+              shadowColor: "#3B82F6",
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.5,
+              shadowRadius: 8,
+              elevation: 8,
+            }
+          : undefined
+      }
     >
       {isEditable && !isVoided && (
         <Animated.View
@@ -254,7 +281,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
 
       <GestureDetector gesture={isVoided ? Gesture.Pan() : pan}>
         <Animated.View
-          style={isVoided ? undefined : animatedStyle}
+          style={animatedStyle}
           className={isVoided ? "bg-[#2a2020]" : "bg-[#303030] z-20"}
         >
           <TouchableOpacity
@@ -297,8 +324,7 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
                     {item.name}
                   </Text>
                   {/* Sync status indicator - Phase 7D: from dedicated store */}
-                  {syncStatus === "pending" ||
-                  syncStatus === "syncing" ? (
+                  {syncStatus === "pending" || syncStatus === "syncing" ? (
                     <ActivityIndicator
                       size={10}
                       color="#60A5FA"
@@ -343,7 +369,9 @@ const BillItemComponent: React.FC<BillItemProps> = ({ item, isEditable = false, 
                   {/* OPTIMIZED: Use memoized ModifiersList component */}
                   {item.customizations.modifiers &&
                     item.customizations.modifiers.length > 0 && (
-                      <ModifiersList modifiers={item.customizations.modifiers} />
+                      <ModifiersList
+                        modifiers={item.customizations.modifiers}
+                      />
                     )}
 
                   {item.customizations.notes && (

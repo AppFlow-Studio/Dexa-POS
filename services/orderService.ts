@@ -66,12 +66,12 @@ export class OrderService {
    */
   static async createOrder(
     client: SupabaseClient,
-    params: CreateOrderParams
+    params: CreateOrderParams,
   ): Promise<{ data: Order | null; error: any }> {
     console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
     console.log(
       `[OrderService:createOrder] Params:`,
-      JSON.stringify(params, null, 2)
+      JSON.stringify(params, null, 2),
     );
 
     const { data, error } = await client.rpc("create_order_v2", params);
@@ -84,12 +84,12 @@ export class OrderService {
       console.log(
         `[OrderService:createOrder] Order ID: ${
           orderData?.order_id || orderData?.id
-        }`
+        }`,
       );
       console.log(
         `[OrderService:createOrder] Order Number: ${
           orderData?.order_number || orderData?.display_number
-        }`
+        }`,
       );
     }
 
@@ -101,15 +101,20 @@ export class OrderService {
    */
   static async addOpenItem(
     client: SupabaseClient,
-    params: AddOpenItemParams
+    params: AddOpenItemParams,
   ): Promise<{ data: AddOpenItemResult | null; error: any }> {
-    console.log(`[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`, params);
+    console.log(
+      `[OrderService:addOpenItem] ====== ADDING OPEN ITEM ======`,
+      params,
+    );
     const { data, error } = await client.rpc("add_open_item_v2", params);
     if (error || !data) {
       console.error(`[OrderService:addOpenItem] FAILED:`, error);
       return { data: data as any, error };
     }
-    console.log(`[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`);
+    console.log(
+      `[OrderService:addOpenItem] SUCCESS! order_item_id: ${data.order_item_id}`,
+    );
     return { data: data as AddOpenItemResult, error };
   }
 
@@ -118,9 +123,8 @@ export class OrderService {
    */
   static async updateOpenItem(
     client: SupabaseClient,
-    params: UpdateOpenItemParams
+    params: UpdateOpenItemParams,
   ): Promise<{ data: UpdateOpenItemResult | null; error: any }> {
-    
     const { data, error } = await client.rpc("update_order_item_v2", params);
     if (error) {
       console.error(`[OrderService:updateOpenItem] FAILED:`, error);
@@ -136,21 +140,24 @@ export class OrderService {
     params: {
       order_id: string;
       discount_id: string | null;
-      discount_type: "percentage" | "fixed";
+      discount_type: "percentage" | "fixed_amount";
       discount_value: number;
-      source: "preset" | "custom" | "promo_code";
+      source: "preset" | "open" | "promo_code";
       calculated_amount: number;
       pre_discount_subtotal: number;
       applied_by_staff_profiles_id: string | null;
       approved_by_staff_profiles_id?: string | null;
       applied_at: string;
       applied_to_item_ids?: string[] | null;
-    }
+    },
   ): Promise<{ data: any; error: any }> {
     console.log(`[OrderService:addOrderDiscount] order_id:`, params.order_id);
-    console.log(client)
-    console.log(`[OrderService:addOrderDiscount] ====== ADDING ORDER DISCOUNT `,params);
-   
+    console.log(client);
+    console.log(
+      `[OrderService:addOrderDiscount] ====== ADDING ORDER DISCOUNT `,
+      params,
+    );
+
     const { data, error } = await client
       .from("order_discounts")
       .insert({
@@ -162,7 +169,8 @@ export class OrderService {
         calculated_amount: params.calculated_amount,
         pre_discount_subtotal: params.pre_discount_subtotal,
         applied_by_staff_profiles_id: params.applied_by_staff_profiles_id,
-        approved_by_staff_profiles_id: params.approved_by_staff_profiles_id ?? null,
+        approved_by_staff_profiles_id:
+          params.approved_by_staff_profiles_id ?? null,
         applied_at: params.applied_at,
         applied_to_item_ids: params.applied_to_item_ids ?? null,
       })
@@ -176,7 +184,7 @@ export class OrderService {
    */
   static async addOrderItem(
     client: SupabaseClient,
-    params: AddOrderItemParams
+    params: AddOrderItemParams,
   ): Promise<{ data: AddOrderItemResult | null; error: any }> {
     console.log(`[OrderService:addOrderItem] ====== ADDING ITEM ======`);
     // console.log(`[OrderService:addOrderItem] Order: ${params.p_order_id}`);
@@ -203,7 +211,7 @@ export class OrderService {
     client: SupabaseClient,
     orderId: string,
     newStatus: OrderStatus,
-    reason?: string
+    reason?: string,
   ): Promise<{ data: Order | null; error: any }> {
     const { data, error } = await client.rpc("update_order_status", {
       p_order_id: orderId,
@@ -218,7 +226,7 @@ export class OrderService {
    */
   static async calculateOrderTax(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: CalculateOrderTaxResult | null; error: any }> {
     const { data, error } = await client.rpc("calculate_order_tax", {
       p_order_id: orderId,
@@ -232,12 +240,14 @@ export class OrderService {
    */
   static async processPayment(
     client: SupabaseClient,
-    params: ProcessPaymentV2Params
+    params: ProcessPaymentV2Params,
   ): Promise<{ data: ProcessPaymentResult | null; error: any }> {
-    console.log(`[OrderService:processPayment] ====== CALLING process_payment_v5 ======`);
+    console.log(
+      `[OrderService:processPayment] ====== CALLING process_payment_v5 ======`,
+    );
     console.log(`[OrderService:processPayment] Order: ${params.p_order_id}`);
     console.log(
-      `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`
+      `[OrderService:processPayment] Method: ${params.p_payment_method}, Amount: ${params.p_amount}`,
     );
 
     const { data, error } = await client.rpc("process_payment_v5", params);
@@ -247,7 +257,7 @@ export class OrderService {
     } else {
       console.log(
         `[OrderService:processPayment] SUCCESS:`,
-        JSON.stringify(data, null, 2)
+        JSON.stringify(data, null, 2),
       );
     }
 
@@ -260,7 +270,7 @@ export class OrderService {
   static async voidOrderItem(
     client: SupabaseClient,
     orderItemId: string,
-    reason: string
+    reason: string,
   ): Promise<{ data: boolean | null; error: any }> {
     const { data, error } = await client.rpc("void_order_item", {
       p_order_item_id: orderItemId,
@@ -275,7 +285,7 @@ export class OrderService {
   static async voidPayment(
     client: SupabaseClient,
     paymentId: string,
-    reason: string
+    reason: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("void_payment", {
       p_payment_id: paymentId,
@@ -290,7 +300,7 @@ export class OrderService {
   static async voidOrder(
     client: SupabaseClient,
     orderId: string,
-    voidReason?: string
+    voidReason?: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("void_order", {
       p_order_id: orderId,
@@ -305,7 +315,7 @@ export class OrderService {
   static async calculateSplitPayment(
     client: SupabaseClient,
     orderId: string,
-    splitCount: number
+    splitCount: number,
   ): Promise<{ data: CalculateSplitPaymentResult | null; error: any }> {
     const { data, error } = await client.rpc("calculate_split_payment", {
       p_order_id: orderId,
@@ -320,7 +330,7 @@ export class OrderService {
   static async getOrders(
     client: SupabaseClient,
     locationId: string,
-    statuses?: OrderStatus[]
+    statuses?: OrderStatus[],
   ): Promise<{ data: Order[] | null; error: any }> {
     let query = client
       .from("orders")
@@ -331,7 +341,7 @@ export class OrderService {
           *,
           order_item_modifiers (*)
         )
-      `
+      `,
       )
       .eq("location_id", locationId)
       .order("created_at", { ascending: false });
@@ -349,7 +359,7 @@ export class OrderService {
    */
   static async fetchOrderById(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: Order | null; error: any }> {
     const { data, error } = await client
       .from("orders")
@@ -360,7 +370,7 @@ export class OrderService {
           *,
           order_item_modifiers (*)
         )
-      `
+      `,
       )
       .eq("id", orderId)
       .single();
@@ -376,7 +386,7 @@ export class OrderService {
   static async updateOrderItemQuantity(
     client: SupabaseClient,
     orderItemId: string,
-    quantity: number
+    quantity: number,
   ): Promise<{ data: UpdateOrderItemQuantityResult | null; error: any }> {
     const { data, error } = await client.rpc("update_order_item_quantity_v2", {
       p_order_item_id: orderItemId,
@@ -390,7 +400,7 @@ export class OrderService {
    */
   static async updateOrderItem(
     client: SupabaseClient,
-    params: UpdateOrderItemParams
+    params: UpdateOrderItemParams,
   ): Promise<{ data: UpdateOrderItemResult | null; error: any }> {
     const { data, error } = await client.rpc("update_order_item_v2", params);
     return { data, error };
@@ -402,12 +412,15 @@ export class OrderService {
   static async replaceOrderItemModifiers(
     client: SupabaseClient,
     orderItemId: string,
-    modifiers: OrderItemModifier[]
+    modifiers: OrderItemModifier[],
   ): Promise<{ data: ReplaceOrderItemModifiersResult | null; error: any }> {
-    const { data, error } = await client.rpc("replace_order_item_modifiers_v2", {
-      p_order_item_id: orderItemId,
-      p_modifiers: modifiers,
-    });
+    const { data, error } = await client.rpc(
+      "replace_order_item_modifiers_v2",
+      {
+        p_order_item_id: orderItemId,
+        p_modifiers: modifiers,
+      },
+    );
     return { data, error };
   }
 
@@ -417,7 +430,7 @@ export class OrderService {
   static async addOrderItemModifier(
     client: SupabaseClient,
     orderItemId: string,
-    modifier: Omit<OrderItemModifier, "id" | "order_item_id" | "total_price">
+    modifier: Omit<OrderItemModifier, "id" | "order_item_id" | "total_price">,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("add_order_item_modifier", {
       p_order_item_id: orderItemId,
@@ -436,7 +449,7 @@ export class OrderService {
    */
   static async removeOrderItemModifier(
     client: SupabaseClient,
-    modifierId: string
+    modifierId: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("remove_order_item_modifier", {
       p_modifier_id: modifierId,
@@ -449,7 +462,7 @@ export class OrderService {
    */
   static async getOrderItem(
     client: SupabaseClient,
-    orderItemId: string
+    orderItemId: string,
   ): Promise<{ data: GetOrderItemResult | null; error: any }> {
     const { data, error } = await client.rpc("get_order_item", {
       p_order_item_id: orderItemId,
@@ -463,7 +476,7 @@ export class OrderService {
   static async duplicateOrderItem(
     client: SupabaseClient,
     orderItemId: string,
-    quantity?: number
+    quantity?: number,
   ): Promise<{ data: DuplicateOrderItemResult | null; error: any }> {
     const { data, error } = await client.rpc("duplicate_order_item", {
       p_order_item_id: orderItemId,
@@ -479,8 +492,10 @@ export class OrderService {
    */
   static async removeOrderItem(
     client: SupabaseClient,
-    orderItemId: string
+    orderItemId: string,
   ): Promise<{ data: any; error: any }> {
+    console.log("we are removing it hard ");
+
     const { data, error } = await client.rpc("remove_order_item", {
       p_order_item_id: orderItemId,
     });
@@ -492,7 +507,7 @@ export class OrderService {
    */
   static async removeOrderItemsBatch(
     client: SupabaseClient,
-    orderItemIds: string[]
+    orderItemIds: string[],
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("remove_order_items_batch", {
       p_order_item_ids: orderItemIds,
@@ -505,7 +520,7 @@ export class OrderService {
    */
   static async clearOrderItems(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("clear_order_items", {
       p_order_id: orderId,
@@ -519,7 +534,7 @@ export class OrderService {
   static async cancelOrder(
     client: SupabaseClient,
     orderId: string,
-    cancelReason?: string
+    cancelReason?: string,
   ): Promise<{ data: any; error: any }> {
     const { data, error } = await client.rpc("cancel_order", {
       p_order_id: orderId,
@@ -538,7 +553,7 @@ export class OrderService {
     client: SupabaseClient,
     orderItemIds: string[],
     status: "sent" | "preparing" | "ready" | "served",
-    staffId?: string
+    staffId?: string,
   ): Promise<{ data: any; error: any }> {
     if (orderItemIds.length === 0) {
       return { data: null, error: null };
@@ -568,7 +583,7 @@ export class OrderService {
       customer_phone?: string;
       special_instructions?: string;
       status?: string;
-    }
+    },
   ): Promise<{
     data: {
       success: boolean;
@@ -597,7 +612,7 @@ export class OrderService {
     orderId: string,
     expectedVersion: number,
     stationId: string,
-    lockDurationSeconds: number = 60
+    lockDurationSeconds: number = 60,
   ): Promise<{
     data: {
       success: boolean;
@@ -625,7 +640,7 @@ export class OrderService {
   static async unlockOrderForPayment(
     client: SupabaseClient,
     orderId: string,
-    stationId: string
+    stationId: string,
   ): Promise<{
     data: {
       success: boolean;
@@ -646,7 +661,7 @@ export class OrderService {
    */
   static async isOrderLocked(
     client: SupabaseClient,
-    orderId: string
+    orderId: string,
   ): Promise<{
     data: {
       success: boolean;
@@ -674,27 +689,27 @@ export class OrderService {
   static async closeCheck(
     client: SupabaseClient,
     orderId: string,
-    staffId?: string | null
+    staffId?: string | null,
   ): Promise<{ success: boolean; error?: string }> {
     console.log(`[OrderService:closeCheck] ====== CLOSING CHECK ======`);
     console.log(`[OrderService:closeCheck] Order ID: ${orderId}`);
-    console.log(`[OrderService:closeCheck] Staff ID: ${staffId || 'none'}`);
+    console.log(`[OrderService:closeCheck] Staff ID: ${staffId || "none"}`);
 
-    const { data, error } = await client.rpc('close_check', {
+    const { data, error } = await client.rpc("close_check", {
       p_order_id: orderId,
       p_staff_id: staffId || null,
     });
 
     if (error) {
-      console.error('[OrderService:closeCheck] RPC error:', error);
+      console.error("[OrderService:closeCheck] RPC error:", error);
       return { success: false, error: error.message };
     }
 
     const result = data as { success: boolean; error?: string };
     if (!result.success) {
-      console.error('[OrderService:closeCheck] Failed:', result.error);
+      console.error("[OrderService:closeCheck] Failed:", result.error);
     } else {
-      console.log('[OrderService:closeCheck] SUCCESS!');
+      console.log("[OrderService:closeCheck] SUCCESS!");
     }
 
     return result;
@@ -712,29 +727,31 @@ export class OrderService {
     client: SupabaseClient,
     orderId: string,
     staffId: string,
-    reason?: string
+    reason?: string,
   ): Promise<{ success: boolean; error?: string }> {
     console.log(`[OrderService:reopenCheck] ====== REOPENING CHECK ======`);
     console.log(`[OrderService:reopenCheck] Order ID: ${orderId}`);
     console.log(`[OrderService:reopenCheck] Staff ID: ${staffId}`);
-    console.log(`[OrderService:reopenCheck] Reason: ${reason || 'No reason provided'}`);
+    console.log(
+      `[OrderService:reopenCheck] Reason: ${reason || "No reason provided"}`,
+    );
 
-    const { data, error } = await client.rpc('reopen_check', {
+    const { data, error } = await client.rpc("reopen_check", {
       p_order_id: orderId,
       p_staff_id: staffId,
       p_reason: reason || null,
     });
 
     if (error) {
-      console.error('[OrderService:reopenCheck] RPC error:', error);
+      console.error("[OrderService:reopenCheck] RPC error:", error);
       return { success: false, error: error.message };
     }
 
     const result = data as { success: boolean; error?: string };
     if (!result.success) {
-      console.error('[OrderService:reopenCheck] Failed:', result.error);
+      console.error("[OrderService:reopenCheck] Failed:", result.error);
     } else {
-      console.log('[OrderService:reopenCheck] SUCCESS!');
+      console.log("[OrderService:reopenCheck] SUCCESS!");
     }
 
     return result;

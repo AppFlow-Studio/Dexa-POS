@@ -134,7 +134,7 @@ function calculateOrderTotals(
   items: CartItem[],
   checkDiscount: Discount | null | undefined,
   payments: { amount: number }[],
-  taxRatesMap: TaxRatesMap
+  taxRatesMap: TaxRatesMap,
 ): OrderTotals {
   return calculateOrderTotalsFromModule({
     items,
@@ -162,7 +162,7 @@ function transformBackendModifiers(
         price_modifier: number;
         quantity: number;
       }>
-    | undefined
+    | undefined,
 ): CartItem["customizations"]["modifiers"] {
   if (!backendModifiers || backendModifiers.length === 0) return undefined;
 
@@ -208,7 +208,7 @@ function transformBackendModifiers(
  */
 function hasItemLevelChanges(
   localItems: CartItem[],
-  backendItems: BroadcastOrderData["order_items"] | undefined
+  backendItems: BroadcastOrderData["order_items"] | undefined,
 ): boolean {
   if (!backendItems || localItems.length !== backendItems.length) {
     return true;
@@ -249,7 +249,7 @@ function hasItemLevelChanges(
     const localModCount =
       localItem.customizations?.modifiers?.reduce(
         (sum, group) => sum + group.options.length,
-        0
+        0,
       ) ?? 0;
     const backendModCount = backendItem.modifiers?.length ?? 0;
 
@@ -329,7 +329,7 @@ let draftCleanupInterval: ReturnType<typeof setInterval> | null = null;
  */
 const queueItemAddition = async (
   orderId: string,
-  addFn: () => Promise<boolean>
+  addFn: () => Promise<boolean>,
 ): Promise<boolean> => {
   // Track this addition in the pending map (for sync barrier support)
   const additionPromise = (async () => {
@@ -365,7 +365,7 @@ type SetOrderDbIdFn = (
   orderNumber: string,
   displayNumber: string,
   createdAt: string,
-  syncVersion?: number
+  syncVersion?: number,
 ) => void;
 
 /**
@@ -383,7 +383,7 @@ type SetOrderDbIdFn = (
  */
 const ensureOrderCreated = async (
   order: OrderProfile,
-  setOrderDbId: SetOrderDbIdFn
+  setOrderDbId: SetOrderDbIdFn,
 ): Promise<string | null> => {
   const supabase = _supabaseClient;
   const isNetworkOnline = getIsOnline();
@@ -399,7 +399,7 @@ const ensureOrderCreated = async (
   const currentOrder = useOrderStore.getState().ordersById[order.id];
   if (currentOrder?.db_order_id) {
     console.log(
-      `[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`
+      `[ensureOrderCreated] Order ${order.id} already has db_order_id: ${currentOrder.db_order_id}`,
     );
     return currentOrder.db_order_id;
   }
@@ -417,7 +417,7 @@ const ensureOrderCreated = async (
     const existingQueuedOrder = pendingOrderCreations.get(order.id);
     if (existingQueuedOrder) {
       console.log(
-        `[ensureOrderCreated] Already queued - returning pending_offline`
+        `[ensureOrderCreated] Already queued - returning pending_offline`,
       );
       return "pending_offline";
     }
@@ -452,7 +452,7 @@ const ensureOrderCreated = async (
     console.log(`[ensureOrderCreated] Queueing create_order operation...`);
     console.log(
       `[ensureOrderCreated] Params:`,
-      JSON.stringify(createOrderParams, null, 2)
+      JSON.stringify(createOrderParams, null, 2),
     );
 
     // Queue the create_order operation
@@ -514,7 +514,7 @@ const ensureOrderCreated = async (
       console.log(
         `[ensureOrderCreated] Waiting for pending creation for order ${
           order.id
-        } (${Math.round((now - creationStarted) / 1000)}s old)`
+        } (${Math.round((now - creationStarted) / 1000)}s old)`,
       );
       const result = await existingPromise;
       // After waiting, re-check the store for the db_order_id (it should be set now)
@@ -523,7 +523,7 @@ const ensureOrderCreated = async (
     } else {
       // Stale promise - clear it and retry
       console.log(
-        `[ensureOrderCreated] Clearing stale creation promise for order ${order.id}`
+        `[ensureOrderCreated] Clearing stale creation promise for order ${order.id}`,
       );
       pendingOrderCreations.delete(order.id);
       orderCreationTimestamps.delete(order.id);
@@ -532,7 +532,7 @@ const ensureOrderCreated = async (
 
   // ACQUIRE LOCK: We are the first caller - create the order
   console.log(
-    `[ensureOrderCreated] Acquiring lock and creating order ${order.id}`
+    `[ensureOrderCreated] Acquiring lock and creating order ${order.id}`,
   );
 
   // Record creation start time for timeout tracking
@@ -570,7 +570,7 @@ const ensureOrderCreated = async (
 
       console.log(
         "[ensureOrderCreated] Creating order with params:",
-        JSON.stringify(createOrderParams, null, 2)
+        JSON.stringify(createOrderParams, null, 2),
       );
 
       const { data: createResult, error: createError } =
@@ -581,7 +581,7 @@ const ensureOrderCreated = async (
       if (createError) {
         console.error(
           "[ensureOrderCreated] Failed to create order:",
-          createError
+          createError,
         );
 
         // Network error - queue for offline retry
@@ -590,7 +590,7 @@ const ensureOrderCreated = async (
           createError.code === "NETWORK_ERROR"
         ) {
           console.log(
-            "[ensureOrderCreated] Network error - switching to offline mode"
+            "[ensureOrderCreated] Network error - switching to offline mode",
           );
 
           // Queue the operation for later
@@ -618,7 +618,7 @@ const ensureOrderCreated = async (
 
         if (backendId) {
           console.log(
-            `[ensureOrderCreated] Order created successfully, ID: ${backendId}`
+            `[ensureOrderCreated] Order created successfully, ID: ${backendId}`,
           );
 
           // Update the store with the new db_order_id
@@ -628,7 +628,7 @@ const ensureOrderCreated = async (
             orderData.order_number,
             orderData.display_number,
             orderData.created_at || new Date().toISOString(),
-            orderData.sync_version // Pass sync_version from backend response
+            orderData.sync_version, // Pass sync_version from backend response
           );
 
           // Register mapping in ID registry
@@ -638,14 +638,14 @@ const ensureOrderCreated = async (
         } else {
           console.error(
             "[ensureOrderCreated] createOrder result invalid:",
-            createResult
+            createResult,
           );
           return null;
         }
       }
 
       console.warn(
-        "[ensureOrderCreated] createOrder returned no data and no error"
+        "[ensureOrderCreated] createOrder returned no data and no error",
       );
       return null;
     } finally {
@@ -671,14 +671,14 @@ const addItemToBackend = async (
     dbId: string,
     number: string,
     display: string,
-    createdAt: string
+    createdAt: string,
   ) => void,
   markItemFailed: (itemId: string, error: string) => void, // Changed from removeItem to markItemFailed
   onSyncComplete?: (orderId: string) => void, // Callback after successful sync
   options?: {
     isMerge?: boolean; // If true, update quantity instead of creating new item
     addedQuantity?: number; // The quantity being added (for merge operations)
-  }
+  },
 ): Promise<boolean> => {
   const { isMerge = false, addedQuantity = item.quantity } = options || {};
   const supabase = _supabaseClient;
@@ -706,7 +706,7 @@ const addItemToBackend = async (
     // This must happen BEFORE queueing the item
     const orderResult = await ensureOrderCreated(order, setOrderDbId);
     console.log(
-      `[addItemToBackend] OFFLINE - ensureOrderCreated returned: ${orderResult}`
+      `[addItemToBackend] OFFLINE - ensureOrderCreated returned: ${orderResult}`,
     );
 
     // Register item in ID registry for tracking
@@ -719,7 +719,7 @@ const addItemToBackend = async (
     if (isMerge && item.db_order_item_id) {
       // MERGE CASE: Queue quantity update operation
       console.log(
-        `[addItemToBackend] OFFLINE MERGE - Queueing quantity update for: ${item.db_order_item_id}`
+        `[addItemToBackend] OFFLINE MERGE - Queueing quantity update for: ${item.db_order_item_id}`,
       );
       itemOpId = await queueOperation({
         type: "update_item_quantity",
@@ -769,7 +769,7 @@ const addItemToBackend = async (
     }
 
     console.log(
-      `[addItemToBackend] OFFLINE - Item queued: ${item.id} (op: ${itemOpId})`
+      `[addItemToBackend] OFFLINE - Item queued: ${item.id} (op: ${itemOpId})`,
     );
 
     // Mark item as pending sync in store
@@ -778,7 +778,7 @@ const addItemToBackend = async (
       if (!currentOrder) return state;
 
       const updatedItems = currentOrder.items.map((i) =>
-        i.id === item.id ? { ...i, sync_status: "pending" as const } : i
+        i.id === item.id ? { ...i, sync_status: "pending" as const } : i,
       );
 
       return {
@@ -809,7 +809,7 @@ const addItemToBackend = async (
     // ========================================================================
     if (dbOrderId === "pending_offline") {
       console.log(
-        "[addItemToBackend] Order is pending offline sync, queueing item"
+        "[addItemToBackend] Order is pending offline sync, queueing item",
       );
 
       // Register item in ID registry
@@ -844,7 +844,7 @@ const addItemToBackend = async (
         if (!currentOrder) return state;
 
         const updatedItems = currentOrder.items.map((i) =>
-          i.id === item.id ? { ...i, sync_status: "pending" as const } : i
+          i.id === item.id ? { ...i, sync_status: "pending" as const } : i,
         );
 
         return {
@@ -865,7 +865,7 @@ const addItemToBackend = async (
     if (!dbOrderId) {
       console.error(
         "[addItemToBackend] Order creation failed for order:",
-        order.id
+        order.id,
       );
       markItemFailed(item.id, "Order creation failed");
       await queueOperation({
@@ -891,7 +891,7 @@ const addItemToBackend = async (
     }
 
     console.log(
-      `[addItemToBackend] Order ${order.id} has db_order_id: ${dbOrderId}`
+      `[addItemToBackend] Order ${order.id} has db_order_id: ${dbOrderId}`,
     );
 
     // ========================================================================
@@ -911,7 +911,7 @@ const addItemToBackend = async (
 
       console.log(
         "[addItemToBackend] add_open_item_v2 params:",
-        JSON.stringify(addOpenParams, null, 2)
+        JSON.stringify(addOpenParams, null, 2),
       );
       const { data: addResult, error: addError } =
         await OrderService.addOpenItem(supabase, addOpenParams);
@@ -947,7 +947,7 @@ const addItemToBackend = async (
                   ...i,
                   db_order_item_id: addResult.order_item_id,
                 }
-              : i
+              : i,
           );
 
           return {
@@ -986,7 +986,7 @@ const addItemToBackend = async (
     // ========================================================================
     if (isMerge && item.db_order_item_id) {
       console.log(
-        `[addItemToBackend] MERGE MODE - Updating quantity for db_order_item_id: ${item.db_order_item_id}`
+        `[addItemToBackend] MERGE MODE - Updating quantity for db_order_item_id: ${item.db_order_item_id}`,
       );
       console.log(`[addItemToBackend] New total quantity: ${item.quantity}`);
 
@@ -994,17 +994,17 @@ const addItemToBackend = async (
         await OrderService.updateOrderItemQuantity(
           supabase,
           item.db_order_item_id,
-          item.quantity // The new total quantity after merge
+          item.quantity, // The new total quantity after merge
         );
 
       if (updateError) {
         console.error(
           "Failed to update item quantity in backend:",
-          updateError
+          updateError,
         );
         markItemFailed(
           item.id,
-          updateError.message || "Quantity update failed"
+          updateError.message || "Quantity update failed",
         );
         // Queue for retry
         await queueOperation({
@@ -1023,7 +1023,7 @@ const addItemToBackend = async (
 
       console.log(
         "Item quantity updated in backend successfully:",
-        updateResult
+        updateResult,
       );
 
       // Phase 7D: Set sync status in dedicated store (not on item)
@@ -1055,15 +1055,15 @@ const addItemToBackend = async (
     console.log("[addItemToBackend] item 3", item);
     console.log(
       "[addItemToBackend] effectiveCashPrice (base + modifiers):",
-      effectiveCashPrice
+      effectiveCashPrice,
     );
     console.log(
       "[addItemToBackend] item.originalPrice (base only):",
-      item.originalPrice
+      item.originalPrice,
     );
     console.log(
       "[addItemToBackend] item.cashPrice (base only):",
-      item.cashPrice
+      item.cashPrice,
     );
 
     const addItemParams: AddOrderItemParams = {
@@ -1098,7 +1098,7 @@ const addItemToBackend = async (
           modifier_name: opt.name,
           price_modifier: opt.price,
           quantity: 1,
-        }))
+        })),
       ),
 
       // Kitchen/Coursing
@@ -1108,7 +1108,7 @@ const addItemToBackend = async (
 
     console.log(
       "Adding item to backend with params:",
-      JSON.stringify(addItemParams, null, 2)
+      JSON.stringify(addItemParams, null, 2),
     );
     console.log("Calling OrderService.addOrderItem now...");
     const { data: addResult, error: addError } =
@@ -1146,7 +1146,7 @@ const addItemToBackend = async (
                 ...i,
                 db_order_item_id: addResult.order_item_id,
               }
-            : i
+            : i,
         );
 
         return {
@@ -1169,7 +1169,7 @@ const addItemToBackend = async (
       useOrderStore.getState().applyQueuedUpdates(order.id);
 
       console.log(
-        `Saved db_order_item_id: ${addResult.order_item_id} for item: ${item.id}`
+        `Saved db_order_item_id: ${addResult.order_item_id} for item: ${item.id}`,
       );
     }
 
@@ -1235,7 +1235,7 @@ const syncPaymentToBackend = async (
     localPaymentId?: string; // Unique local ID for matching payment during sync
     paymentTimestamp?: string; // Timestamp for fallback matching
   },
-  rollbackState?: PaymentRollbackState // Previous state for reversion on failure
+  rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
 ): Promise<boolean> => {
   const supabase = _supabaseClient;
   if (!supabase) {
@@ -1254,7 +1254,7 @@ const syncPaymentToBackend = async (
   // ========================================================================
   if (!order.db_order_id) {
     console.log(
-      "[syncPaymentToBackend] Order has no db_order_id, queueing payment for later sync"
+      "[syncPaymentToBackend] Order has no db_order_id, queueing payment for later sync",
     );
 
     const isCash = paymentDetails.method === "Cash";
@@ -1372,7 +1372,7 @@ const syncPaymentToBackend = async (
     if (error) {
       console.error(
         "[syncPaymentToBackend] Failed to process payment in backend:",
-        error
+        error,
       );
 
       // ========================================================================
@@ -1389,7 +1389,7 @@ const syncPaymentToBackend = async (
         const paymentIndex = payments.findIndex(
           (p: any) =>
             p.localId === paymentDetails.localPaymentId ||
-            p.timestamp === paymentDetails.paymentTimestamp
+            p.timestamp === paymentDetails.paymentTimestamp,
         );
 
         if (paymentIndex !== -1) {
@@ -1450,7 +1450,7 @@ const syncPaymentToBackend = async (
 
       console.log(
         "[syncPaymentToBackend] Queueing payment for retry:",
-        paymentParams
+        paymentParams,
       );
 
       await queueOperation({
@@ -1504,12 +1504,12 @@ const syncPaymentToBackend = async (
           const backendItemMap = new Map<string, number>(
             data.updated_items.map(
               (item: { id: string; paid_quantity: number }) =>
-                [item.id, item.paid_quantity] as [string, number]
-            )
+                [item.id, item.paid_quantity] as [string, number],
+            ),
           );
           updatedItems = currentOrder.items.map((item) => {
             const backendPaidQty = backendItemMap.get(
-              item.db_order_item_id || ""
+              item.db_order_item_id || "",
             );
             if (typeof backendPaidQty === "number") {
               return { ...item, paidQuantity: backendPaidQty };
@@ -1541,7 +1541,7 @@ const syncPaymentToBackend = async (
                   sync_status: "synced" as const,
                   sync_error: undefined,
                 }
-              : p
+              : p,
           );
         }
 
@@ -1607,12 +1607,12 @@ const syncPaymentToBackend = async (
               } else {
                 console.log(
                   "[syncPayment] Auto-closed check successfully:",
-                  order.db_order_id
+                  order.db_order_id,
                 );
               }
             })
             .catch((err) =>
-              console.error("[syncPayment] Auto-close exception:", err)
+              console.error("[syncPayment] Auto-close exception:", err),
             );
         }
       }
@@ -1627,7 +1627,7 @@ const syncPaymentToBackend = async (
     // REVERT OPTIMISTIC STATE ON FAILURE
     if (rollbackState) {
       console.log(
-        "[syncPaymentToBackend] Reverting to previous state due to sync error"
+        "[syncPaymentToBackend] Reverting to previous state due to sync error",
       );
       const activeOrderId = useOrderStore.getState().activeOrderId;
 
@@ -1721,7 +1721,7 @@ interface OrderState {
     orderId: string,
     itemId: string,
     status: "pending" | "syncing" | "synced" | "failed",
-    error?: string
+    error?: string,
   ) => void;
   registerSyncOperation: (itemId: string, promise: Promise<boolean>) => void;
   unregisterSyncOperation: (itemId: string) => void;
@@ -1797,13 +1797,13 @@ interface OrderState {
         quantity: number;
       }>;
       sync_version?: number;
-    }
+    },
   ) => void;
   removeItemFromActiveOrder: (itemId: string, voidReason?: string) => void;
   confirmDraftItem: (itemId: string) => void;
   updateItemStatusInActiveOrder: (
     itemId: string,
-    status: "preparing" | "ready" | "served"
+    status: "preparing" | "ready" | "served",
   ) => void;
   setOpenedAt: (orderId: string, openedAt: string) => void;
   setClosedAt: (orderId: string, closedAt: string) => void;
@@ -1816,7 +1816,7 @@ interface OrderState {
   assignActiveOrderToTable: (tableId: string) => void;
   updateOrderStatus: (
     orderId: string,
-    status: OrderProfile["order_status"]
+    status: OrderProfile["order_status"],
   ) => void;
   addPaymentToOrder: (details: {
     orderId: string;
@@ -1849,7 +1849,7 @@ interface OrderState {
   markCourseItemsAsServed: (orderId: string, itemIds: string[]) => void;
   consolidateOrdersForTables: (
     tableIds: string[],
-    tableNames: string[]
+    tableNames: string[],
   ) => string;
   fireActiveOrderToKitchen: () => void;
   sendNewItemsToKitchen: () => Promise<void>;
@@ -1858,7 +1858,7 @@ interface OrderState {
   generateCartItemId: (
     menuItemId: string,
     customizations: CartItem["customizations"],
-    isDraft?: boolean
+    isDraft?: boolean,
   ) => string;
   deleteOrder: (orderId: string) => void;
   clearCart: () => void;
@@ -1887,13 +1887,13 @@ interface OrderState {
       cash_total?: number;
       cash_tax_amount?: number;
       cash_subtotal?: number;
-    }
+    },
   ) => void;
   // Update local item with DB item ID after successful sync
   updateItemDbId: (
     orderId: string,
     localItemId: string,
-    dbItemId: string
+    dbItemId: string,
   ) => void;
   // Get all orders that have items with failed sync status
   getOrdersWithFailedSyncs: () => Array<{
@@ -1903,7 +1903,7 @@ interface OrderState {
   // Update order from reconciliation data
   updateOrderFromReconciliation: (
     localOrderId: string,
-    updates: Partial<OrderProfile>
+    updates: Partial<OrderProfile>,
   ) => void;
   // Retry failed syncs for an order
   retryFailedSyncs: (orderId: string) => Promise<void>;
@@ -1920,7 +1920,7 @@ interface OrderState {
   // Mark items as paid after a successful payment
   markItemsPaid: (
     orderId: string,
-    allocations: ItemPaymentAllocation[]
+    allocations: ItemPaymentAllocation[],
   ) => void;
   // Sync order from backend after payment to ensure consistency
   syncOrderFromBackend: (orderId: string) => Promise<void>;
@@ -1956,18 +1956,18 @@ interface OrderState {
   // === ORDER VISIBILITY & MANAGEMENT (Phase 5) ===
   isOrderVisible: (
     backendOrder: BroadcastOrderData,
-    currentLocationId: string
+    currentLocationId: string,
   ) => boolean;
   upsertOrder: (
     backendOrder: BroadcastOrderData,
-    sourceStationName?: string | null
+    sourceStationName?: string | null,
   ) => void;
   removeOrder: (dbOrderId: string) => void;
 
   // @deprecated - use isOrderVisible instead
   _shouldAcceptRemoteOrder: (
     backendOrder: BroadcastOrderData,
-    currentLocationId: string
+    currentLocationId: string,
   ) => boolean;
   // @deprecated - use upsertOrder instead
   _createRemoteOrder: (backendOrder: BroadcastOrderData) => void;
@@ -2009,7 +2009,7 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
     orderRefreshTimeouts[orderId] = setTimeout(() => {
       const state = get();
       const order = Object.values(state.ordersById).find(
-        (o) => o.db_order_id === orderId || o.id === orderId
+        (o) => o.db_order_id === orderId || o.id === orderId,
       );
 
       if (order) {
@@ -2048,10 +2048,10 @@ export const useOrderStore = create<OrderState>()(
           // For dine-in orders, sync based on individual item statuses
           if (order.order_type === "Dine In") {
             const allItemsReady = order.items.every(
-              (item) => item.item_status === "ready"
+              (item) => item.item_status === "ready",
             );
             const anyItemsPreparing = order.items.some(
-              (item) => item.item_status === "preparing"
+              (item) => item.item_status === "preparing",
             );
 
             let newOrderStatus = order.order_status;
@@ -2064,7 +2064,7 @@ export const useOrderStore = create<OrderState>()(
             if (newOrderStatus !== order.order_status) {
               set((state) => ({
                 orders: state.orders.map((o) =>
-                  o.id === orderId ? { ...o, order_status: newOrderStatus } : o
+                  o.id === orderId ? { ...o, order_status: newOrderStatus } : o,
                 ),
               }));
             }
@@ -2074,7 +2074,7 @@ export const useOrderStore = create<OrderState>()(
         // --- Helper function to generate a unique composite key for cart items ---
         const generateItemCompositeKey = (
           menuItemId: string,
-          customizations: CartItem["customizations"]
+          customizations: CartItem["customizations"],
         ): string => {
           const keyParts: string[] = [menuItemId];
 
@@ -2102,7 +2102,7 @@ export const useOrderStore = create<OrderState>()(
                   `${mod.categoryId}:${mod.options
                     .map((opt) => opt.id)
                     .sort()
-                    .join(",")}`
+                    .join(",")}`,
               )
               .sort();
             keyParts.push(`modifiers:${modifierKeys.join("|")}`);
@@ -2115,11 +2115,11 @@ export const useOrderStore = create<OrderState>()(
         const generateCartItemId = (
           menuItemId: string,
           customizations: CartItem["customizations"],
-          isDraft: boolean = false
+          isDraft: boolean = false,
         ): string => {
           const compositeKey = generateItemCompositeKey(
             menuItemId,
-            customizations
+            customizations,
           );
           const timestamp = Date.now();
           const randomSuffix = Math.random().toString(36).substr(2, 9);
@@ -2180,7 +2180,7 @@ export const useOrderStore = create<OrderState>()(
           // --- STATION ACTIONS ---
           setCurrentStation: (station) => {
             console.log(
-              `[OrderStore] Station context set: ${station.station_name} (${station.view_scope || "own"})`
+              `[OrderStore] Station context set: ${station.station_name} (${station.view_scope || "own"})`,
             );
             set({
               currentStationId: station.id,
@@ -2201,7 +2201,7 @@ export const useOrderStore = create<OrderState>()(
           removeFromWorkingSet: (dbOrderId: string) => {
             set({
               workingSetOrderIds: get().workingSetOrderIds.filter(
-                (id) => id !== dbOrderId
+                (id) => id !== dbOrderId,
               ),
             });
             console.log(`[WorkingSet] Removed order ${dbOrderId}`);
@@ -2222,7 +2222,7 @@ export const useOrderStore = create<OrderState>()(
           setupOrderRealtimeSubscriptions: async (locationId: string) => {
             console.warn(
               "[OrderRealtime] setupOrderRealtimeSubscriptions is disabled. " +
-                "Realtime subscriptions are now handled by LocationRealtimeProvider with useOrdersRealtime hook."
+                "Realtime subscriptions are now handled by LocationRealtimeProvider with useOrdersRealtime hook.",
             );
             // No-op: Realtime subscription is now handled by React Query hook
           },
@@ -2265,7 +2265,7 @@ export const useOrderStore = create<OrderState>()(
             // This prevents cascading re-renders during rapid item additions
             if (isOwnStationOrder && localOrder) {
               const hasPendingItems = localOrder.items.some(
-                (item) => !item.db_order_item_id && !item.isDraft
+                (item) => !item.db_order_item_id && !item.isDraft,
               );
               if (hasPendingItems) {
                 // Let local sync complete first - broadcast will arrive again after sync
@@ -2283,7 +2283,7 @@ export const useOrderStore = create<OrderState>()(
                   if (!localOrder) {
                     console.log(
                       "[OrderBroadcast] Own INSERT confirmed:",
-                      dbOrderId
+                      dbOrderId,
                     );
                     // Order creation is handled by sync response, not broadcast
                   }
@@ -2298,7 +2298,7 @@ export const useOrderStore = create<OrderState>()(
                     const hasPendingChanges =
                       !localOrder.db_order_id || // Order not yet created in backend
                       localOrder.items.some(
-                        (item) => !item.db_order_item_id && !item.isDraft
+                        (item) => !item.db_order_item_id && !item.isDraft,
                       );
 
                     // PERFORMANCE: Skip update if no meaningful data changed
@@ -2312,7 +2312,7 @@ export const useOrderStore = create<OrderState>()(
                           localOrder.items.length) &&
                       !hasItemLevelChanges(
                         localOrder.items,
-                        backendOrder.order_items
+                        backendOrder.order_items,
                       ); // NEW: Check item-level changes
 
                     if (noMeaningfulChange && !hasPendingChanges) {
@@ -2330,7 +2330,7 @@ export const useOrderStore = create<OrderState>()(
                       amount_paid: backendOrder.amount_paid,
                       order_status: backendOrder.status,
                       paid_status: mapPaymentStatus(
-                        backendOrder.payment_status
+                        backendOrder.payment_status,
                       ),
                       total_discount: backendOrder.discount_amount,
                       items: backendOrder.order_items
@@ -2341,7 +2341,7 @@ export const useOrderStore = create<OrderState>()(
 
                     const conflict = detectConflict(
                       localOrder,
-                      serverOrderForConflict as any
+                      serverOrderForConflict as any,
                     );
 
                     if (conflict) {
@@ -2358,7 +2358,7 @@ export const useOrderStore = create<OrderState>()(
                           .addPaymentConflict(conflict);
                         console.log(
                           "[OrderBroadcast] Payment conflict detected:",
-                          conflict.conflictType
+                          conflict.conflictType,
                         );
                       } else {
                         // Non-critical - record and show toast
@@ -2400,7 +2400,7 @@ export const useOrderStore = create<OrderState>()(
                           broadcastItems.map((item) => [
                             item.db_order_item_id,
                             item,
-                          ])
+                          ]),
                         );
 
                         // Phase 7D: Use db_order_item_id check instead of sync_status
@@ -2409,7 +2409,7 @@ export const useOrderStore = create<OrderState>()(
                         const localPendingItems = existingOrder.items.filter(
                           (item) =>
                             !item.db_order_item_id || // Not yet synced
-                            item.isDraft
+                            item.isDraft,
                         );
 
                         // Use broadcast items for all synced items (they have modifiers)
@@ -2420,7 +2420,7 @@ export const useOrderStore = create<OrderState>()(
                             const localItem = existingOrder.items.find(
                               (li) =>
                                 li.db_order_item_id ===
-                                broadcastItem.db_order_item_id
+                                broadcastItem.db_order_item_id,
                             );
                             // Phase 7D: Check db_order_item_id instead of sync_status
                             if (localItem && localItem.db_order_item_id) {
@@ -2431,7 +2431,7 @@ export const useOrderStore = create<OrderState>()(
                               };
                             }
                             return broadcastItem;
-                          }
+                          },
                         );
 
                         // Combine: synced items from broadcast + local pending items
@@ -2450,7 +2450,7 @@ export const useOrderStore = create<OrderState>()(
                         amount_due: backendOrder.amount_due,
                         cash_amount_due: backendOrder.cash_amount_due,
                         paid_status: mapPaymentStatus(
-                          backendOrder.payment_status
+                          backendOrder.payment_status,
                         ),
 
                         // Update items with merged data (Phase 2.5)
@@ -2563,7 +2563,7 @@ export const useOrderStore = create<OrderState>()(
                         {
                           orderId: localOrderId,
                           fields: Object.keys(queuedUpdate.updates),
-                        }
+                        },
                       );
                     }
 
@@ -2607,13 +2607,13 @@ export const useOrderStore = create<OrderState>()(
                 if (existingOrder) {
                   console.log(
                     "[OrderBroadcast] Remote INSERT - order already exists:",
-                    dbOrderId
+                    dbOrderId,
                   );
                   return; // Skip duplicate creation
                 }
                 console.log(
                   "[OrderBroadcast] Remote INSERT - creating:",
-                  dbOrderId
+                  dbOrderId,
                 );
                 state._createRemoteOrder(backendOrder);
                 break;
@@ -2732,7 +2732,7 @@ export const useOrderStore = create<OrderState>()(
               if (existing.sync_status === "pending") {
                 console.log(
                   "[UpsertOrder] Skipping - has pending sync:",
-                  dbOrderId
+                  dbOrderId,
                 );
                 return;
               }
@@ -2744,7 +2744,7 @@ export const useOrderStore = create<OrderState>()(
             // Transform to OrderProfile
             const orderProfile = transformBroadcastToOrder(
               backendOrder,
-              sourceStationName
+              sourceStationName,
             );
 
             // Upsert to both maps
@@ -2765,7 +2765,7 @@ export const useOrderStore = create<OrderState>()(
 
             console.log(
               existing ? "[UpsertOrder] Updated:" : "[UpsertOrder] Created:",
-              dbOrderId
+              dbOrderId,
             );
           },
 
@@ -2792,7 +2792,7 @@ export const useOrderStore = create<OrderState>()(
                 orderIds: state.orderIds.filter((id) => id !== localId),
                 // Also remove from working set
                 workingSetOrderIds: state.workingSetOrderIds.filter(
-                  (id) => id !== dbOrderId
+                  (id) => id !== dbOrderId,
                 ),
               };
             });
@@ -2842,7 +2842,7 @@ export const useOrderStore = create<OrderState>()(
             // Guard: View scope doesn't allow other station orders
             if (currentStation.view_scope === "own") {
               console.log(
-                '[FetchVisible] view_scope is "own", no other station orders needed'
+                '[FetchVisible] view_scope is "own", no other station orders needed',
               );
               return;
             }
@@ -2866,7 +2866,7 @@ export const useOrderStore = create<OrderState>()(
                     order_item_modifiers (*)
                   ),
                   stations:station_id (name)
-                `
+                `,
                 )
                 .eq("location_id", locationId)
                 .neq("station_id", currentStationId) // Exclude our own station
@@ -2883,7 +2883,7 @@ export const useOrderStore = create<OrderState>()(
                 query = query.not(
                   "status",
                   "in",
-                  '("completed","voided","cancelled")'
+                  '("completed","voided","cancelled")',
                 );
               }
 
@@ -2892,13 +2892,13 @@ export const useOrderStore = create<OrderState>()(
               if (error) throw error;
 
               console.log(
-                `[FetchVisible] Fetched ${data?.length ?? 0} orders from other stations`
+                `[FetchVisible] Fetched ${data?.length ?? 0} orders from other stations`,
               );
 
               // Upsert each order
               for (const fetchedOrder of data ?? []) {
                 const normalized = normalizeFetchedOrder(
-                  fetchedOrder as FetchedOrderData
+                  fetchedOrder as FetchedOrderData,
                 );
                 const sourceStationName = fetchedOrder.stations?.name ?? null;
 
@@ -2952,7 +2952,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   )
-                `
+                `,
                 )
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
@@ -2962,7 +2962,7 @@ export const useOrderStore = create<OrderState>()(
               if (error) throw error;
 
               console.log(
-                `[FetchOwn] Fetched ${data?.length ?? 0} own station orders`
+                `[FetchOwn] Fetched ${data?.length ?? 0} own station orders`,
               );
 
               // Check for orphaned orders (on server but not locally)
@@ -2971,11 +2971,11 @@ export const useOrderStore = create<OrderState>()(
 
                 if (!existsLocally) {
                   console.log(
-                    `[FetchOwn] Found orphaned order: ${serverOrder.id}`
+                    `[FetchOwn] Found orphaned order: ${serverOrder.id}`,
                   );
                   // Create as local order (full editing capability)
                   get()._createLocalOrderFromServer(
-                    serverOrder as FetchedOrderData
+                    serverOrder as FetchedOrderData,
                   );
                 }
               }
@@ -3102,14 +3102,14 @@ export const useOrderStore = create<OrderState>()(
                   o.station_id !== currentStationId &&
                   o.db_order_id &&
                   !["completed", "voided", "cancelled"].includes(
-                    o.order_status ?? ""
-                  )
+                    o.order_status ?? "",
+                  ),
               );
 
               for (const order of otherStationOrders) {
                 if (order.db_order_id && !serverDbIds.has(order.db_order_id)) {
                   console.log(
-                    `[Cleanup] Removing stale order: ${order.db_order_id}`
+                    `[Cleanup] Removing stale order: ${order.db_order_id}`,
                   );
                   get().removeOrder(order.db_order_id);
                 }
@@ -3136,7 +3136,7 @@ export const useOrderStore = create<OrderState>()(
             console.log("[Reconcile] Starting reconciliation...");
             console.log(
               "[Reconcile] Last reconciliation:",
-              lastReconciliationAt
+              lastReconciliationAt,
             );
 
             set({ isLoadingPreviousOrders: true });
@@ -3177,7 +3177,7 @@ export const useOrderStore = create<OrderState>()(
           // REMOVED: Reconnect logic (now handled by useOrdersRealtime hook)
           _handleOrderReconnect: (locationId: string) => {
             console.warn(
-              "[OrderRealtime] _handleOrderReconnect is disabled. Reconnection is now handled by useOrdersRealtime hook."
+              "[OrderRealtime] _handleOrderReconnect is disabled. Reconnection is now handled by useOrdersRealtime hook.",
             );
             // No-op: Reconnection is now handled by React Query hook
           },
@@ -3185,7 +3185,7 @@ export const useOrderStore = create<OrderState>()(
           // REMOVED: Cleanup logic (now handled by useOrdersRealtime hook)
           cleanupOrderRealtime: () => {
             console.warn(
-              "[OrderRealtime] cleanupOrderRealtime is disabled. Cleanup is now handled by useOrdersRealtime hook."
+              "[OrderRealtime] cleanupOrderRealtime is disabled. Cleanup is now handled by useOrdersRealtime hook.",
             );
             // No-op: Cleanup is now handled by React Query hook
           },
@@ -3229,7 +3229,7 @@ export const useOrderStore = create<OrderState>()(
 
             if (promises.length > 0) {
               console.log(
-                `[SyncBarrier] Waiting for ${promises.length} pending sync operations...`
+                `[SyncBarrier] Waiting for ${promises.length} pending sync operations...`,
               );
               await Promise.all(promises);
               console.log("[SyncBarrier] All sync operations completed");
@@ -3275,7 +3275,7 @@ export const useOrderStore = create<OrderState>()(
             orderId: string,
             itemId: string,
             status: "pending" | "syncing" | "synced" | "failed",
-            error?: string
+            error?: string,
           ) => {
             // Phase 7D: Redirect to dedicated sync status store
             // This prevents ordersById from changing on every sync status update,
@@ -3286,7 +3286,7 @@ export const useOrderStore = create<OrderState>()(
 
           registerSyncOperation: (
             itemId: string,
-            promise: Promise<boolean>
+            promise: Promise<boolean>,
           ) => {
             get().pendingSyncOperations.set(itemId, promise);
           },
@@ -3353,7 +3353,7 @@ export const useOrderStore = create<OrderState>()(
           startNewOrder: (details) => {
             const { activeEmployeeId, employees } = useEmployeeStore.getState();
             const activeEmployee = employees.find(
-              (e) => e.id === activeEmployeeId
+              (e) => e.id === activeEmployeeId,
             );
 
             // Phase 1 Foundation: Get station context for new orders
@@ -3447,7 +3447,7 @@ export const useOrderStore = create<OrderState>()(
               coursingState.getForOrder(activeOrderId)?.workingCourse ?? 1;
             const newItemKey = generateItemCompositeKey(
               newItem.menuItemId,
-              newItem.customizations
+              newItem.customizations,
             );
 
             let updatedCart: CartItem[] = activeOrder.items;
@@ -3455,7 +3455,7 @@ export const useOrderStore = create<OrderState>()(
             // 1. Remove any existing drafts for this MenuItemId
             updatedCart = updatedCart.filter(
               (item) =>
-                !(item.isDraft && item.menuItemId === newItem.menuItemId)
+                !(item.isDraft && item.menuItemId === newItem.menuItemId),
             );
 
             // 2. Find a potential candidate for merging
@@ -3475,7 +3475,7 @@ export const useOrderStore = create<OrderState>()(
               }
               const existingItemKey = generateItemCompositeKey(
                 cartItem.menuItemId,
-                cartItem.customizations
+                cartItem.customizations,
               );
               return existingItemKey === newItemKey;
             });
@@ -3520,7 +3520,7 @@ export const useOrderStore = create<OrderState>()(
               coursingState.setItemCourse(
                 activeOrderId,
                 newCartItem.id,
-                currentCourse
+                currentCourse,
               );
             }
 
@@ -3534,7 +3534,7 @@ export const useOrderStore = create<OrderState>()(
               updatedCart,
               activeOrder.checkDiscount,
               activeOrder.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             set((state) => ({
@@ -3585,13 +3585,13 @@ export const useOrderStore = create<OrderState>()(
                 // OFFLINE-FIRST: Mark item as failed instead of removing it
                 const markItemFailedAction = (
                   itemId: string,
-                  error: string
+                  error: string,
                 ) => {
                   updateItemSyncStatusAction(
                     currentOrderId,
                     itemId,
                     "failed",
-                    error
+                    error,
                   );
                 };
 
@@ -3601,7 +3601,7 @@ export const useOrderStore = create<OrderState>()(
                   orderNumber: string,
                   displayNumber: string,
                   createdAt: string,
-                  syncVersion?: number
+                  syncVersion?: number,
                 ) => {
                   set((state) => ({
                     ordersById: {
@@ -3634,8 +3634,8 @@ export const useOrderStore = create<OrderState>()(
                       isMerge:
                         isMergeOperation && !!itemToSync.db_order_item_id,
                       addedQuantity: newItem.quantity,
-                    }
-                  )
+                    },
+                  ),
                 )
                   .then((success) => {
                     // Phase 7C: Removed redundant "synced" call - addItemToBackend
@@ -3646,7 +3646,7 @@ export const useOrderStore = create<OrderState>()(
                         currentOrderId,
                         syncItemId,
                         "failed",
-                        "Backend sync failed"
+                        "Backend sync failed",
                       );
                     }
                     return success;
@@ -3657,7 +3657,7 @@ export const useOrderStore = create<OrderState>()(
                       currentOrderId,
                       syncItemId,
                       "failed",
-                      err?.message || "Unknown error"
+                      err?.message || "Unknown error",
                     );
                     return false;
                   })
@@ -3682,17 +3682,17 @@ export const useOrderStore = create<OrderState>()(
             // Phase 5: Any visible order can be modified - no ownership guard needed
 
             const originalItem = order.items.find(
-              (i) => i.id === updatedItem.id
+              (i) => i.id === updatedItem.id,
             );
 
             // Update items
             const updatedItems = order.items.map((i) =>
-              i.id === updatedItem.id ? updatedItem : i
+              i.id === updatedItem.id ? updatedItem : i,
             );
             console.log(
               "updatedItems [updateItemInActiveOrder]",
               updatedItems.length,
-              updatedItems
+              updatedItems,
             );
 
             // Calculate totals SYNCHRONOUSLY
@@ -3701,7 +3701,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // SINGLE ATOMIC UPDATE
@@ -3744,7 +3744,7 @@ export const useOrderStore = create<OrderState>()(
               console.log("updatedItem quantity", updatedItem.quantity);
               console.log(
                 "originalItem quantity !== updatedItem quantity",
-                originalItem?.quantity !== updatedItem.quantity
+                originalItem?.quantity !== updatedItem.quantity,
               );
               // 1. Sync quantity change (independent check)
               if (
@@ -3754,13 +3754,13 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.updateOrderItemQuantity(
                   _supabaseClient,
                   dbOrderItemId,
-                  updatedItem.quantity
+                  updatedItem.quantity,
                 )
                   .then((response) => {
                     if (response.data && response.data.success) {
                       // SUCCESS: Apply backend-calculated data immediately
                       console.log(
-                        "[updateOrderItemQuantity] Sync succeeded, applying backend data"
+                        "[updateOrderItemQuantity] Sync succeeded, applying backend data",
                       );
 
                       try {
@@ -3787,7 +3787,7 @@ export const useOrderStore = create<OrderState>()(
                       } catch (err) {
                         console.error(
                           "[updateOrderItemQuantity] Failed to apply backend data:",
-                          err
+                          err,
                         );
                       }
                     }
@@ -3837,7 +3837,7 @@ export const useOrderStore = create<OrderState>()(
                       } catch (err) {
                         console.error(
                           "[updateOrderItem] Failed to apply backend data:",
-                          err
+                          err,
                         );
                       }
                     }
@@ -3900,13 +3900,13 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.replaceOrderItemModifiers(
                   _supabaseClient,
                   dbOrderItemId,
-                  allModifiers
+                  allModifiers,
                 )
                   .then((response) => {
                     if (response.data && response.data.success) {
                       // SUCCESS: Apply backend-calculated data immediately
                       console.log(
-                        "[replaceOrderItemModifiers] Sync succeeded, applying backend data"
+                        "[replaceOrderItemModifiers] Sync succeeded, applying backend data",
                       );
 
                       try {
@@ -3940,7 +3940,7 @@ export const useOrderStore = create<OrderState>()(
                         // Don't propagate - broadcast will catch it later
                         console.error(
                           "[replaceOrderItemModifiers] Failed to apply backend data:",
-                          err
+                          err,
                         );
                       }
                     }
@@ -4001,7 +4001,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Sync tracking
               sync_version?: number;
-            }
+            },
           ) => {
             const { activeOrderId, ordersById } = get();
             if (!activeOrderId) {
@@ -4024,7 +4024,7 @@ export const useOrderStore = create<OrderState>()(
                 // This can happen if broadcast arrives before delayed sync callback
                 console.warn(
                   `[applyBackendItemData] Skipping stale backend data for item ${itemId} ` +
-                    `(backend v${backendData.sync_version} < local v${currentOrderVersion})`
+                    `(backend v${backendData.sync_version} < local v${currentOrderVersion})`,
                 );
                 return;
               }
@@ -4032,11 +4032,11 @@ export const useOrderStore = create<OrderState>()(
 
             // Find and update the item
             const itemIndex = order.items.findIndex(
-              (item) => item.id === itemId
+              (item) => item.id === itemId,
             );
             if (itemIndex === -1) {
               console.warn(
-                `[applyBackendItemData] Item ${itemId} not found in order`
+                `[applyBackendItemData] Item ${itemId} not found in order`,
               );
               return;
             }
@@ -4103,7 +4103,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // Single atomic state update
@@ -4146,7 +4146,7 @@ export const useOrderStore = create<OrderState>()(
                 card_subtotal: backendData.card_subtotal,
                 cash_subtotal: backendData.cash_subtotal,
                 sync_version: backendData.sync_version,
-              }
+              },
             );
           },
 
@@ -4191,14 +4191,14 @@ export const useOrderStore = create<OrderState>()(
               order.service_location_id !== null
             ) {
               const allItemsServed = updatedItems.every(
-                (item) => item.item_status === "served"
+                (item) => item.item_status === "served",
               );
               const allItemsReady = updatedItems.every(
                 (item) =>
-                  item.item_status === "ready" || item.item_status === "served"
+                  item.item_status === "ready" || item.item_status === "served",
               );
               const anyItemsPreparing = updatedItems.some(
-                (item) => item.item_status === "preparing"
+                (item) => item.item_status === "preparing",
               );
 
               if (allItemsServed && updatedItems.length > 0) {
@@ -4255,7 +4255,7 @@ export const useOrderStore = create<OrderState>()(
                       is_voided: true,
                       void_reason: voidReason || "User voided",
                     }
-                  : i
+                  : i,
               );
             } else {
               // Draft/new items: remove completely
@@ -4268,7 +4268,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // SINGLE ATOMIC UPDATE (instant UI)
@@ -4300,21 +4300,39 @@ export const useOrderStore = create<OrderState>()(
             // Background sync (fire-and-forget)
             if (itemToHandle?.db_order_item_id && _supabaseClient) {
               const dbItemId = itemToHandle.db_order_item_id;
-              const reason = voidReason || "User removed";
-              OrderService.voidOrderItem(
-                _supabaseClient,
-                dbItemId,
-                reason
-              ).catch(async (err) => {
-                console.error("Failed to void item:", err);
-                // Queue for offline retry
-                await queueOperation({
-                  type: "void_item",
-                  params: { orderItemId: dbItemId, reason },
-                  localOrderId: activeOrderId,
-                  localItemId: itemId,
+
+              if (isKitchenItem) {
+                // Item was sent to kitchen - use VOID (soft delete, keeps record)
+                const reason = voidReason || "User voided";
+                OrderService.voidOrderItem(
+                  _supabaseClient,
+                  dbItemId,
+                  reason,
+                ).catch(async (err) => {
+                  console.error("Failed to void item:", err);
+                  // Queue for offline retry
+                  await queueOperation({
+                    type: "void_item",
+                    params: { orderItemId: dbItemId, reason },
+                    localOrderId: activeOrderId,
+                    localItemId: itemId,
+                  });
                 });
-              });
+              } else {
+                // Item was NOT sent to kitchen - use REMOVE (hard delete)
+                OrderService.removeOrderItem(_supabaseClient, dbItemId).catch(
+                  async (err) => {
+                    console.error("Failed to remove item:", err);
+                    // Queue for offline retry
+                    await queueOperation({
+                      type: "remove_item",
+                      params: { orderItemId: dbItemId },
+                      localOrderId: activeOrderId,
+                      localItemId: itemId,
+                    });
+                  },
+                );
+              }
             }
           },
 
@@ -4337,7 +4355,7 @@ export const useOrderStore = create<OrderState>()(
                     kitchen_status: "new" as const,
                     sync_status: "pending" as const,
                   }
-                : i
+                : i,
             );
 
             // Calculate totals
@@ -4346,7 +4364,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             set((state) => ({
@@ -4388,13 +4406,13 @@ export const useOrderStore = create<OrderState>()(
               // OFFLINE-FIRST: Mark item as failed instead of removing it
               const markItemFailedAction = (
                 itemIdToMark: string,
-                error: string
+                error: string,
               ) => {
                 updateItemSyncStatusAction(
                   currentOrderId,
                   itemIdToMark,
                   "failed",
-                  error
+                  error,
                 );
               };
 
@@ -4404,7 +4422,7 @@ export const useOrderStore = create<OrderState>()(
                 orderNumber: string,
                 displayNumber: string,
                 createdAt: string,
-                syncVersion?: number
+                syncVersion?: number,
               ) => {
                 set((state) => ({
                   ordersById: {
@@ -4430,8 +4448,8 @@ export const useOrderStore = create<OrderState>()(
                   { ...itemToConfirm, isDraft: false },
                   setOrderDbIdAction,
                   markItemFailedAction, // Changed from removeItemAction
-                  undefined
-                )
+                  undefined,
+                ),
               )
                 .then((success) => {
                   // Phase 7C: Removed redundant "synced" call - addItemToBackend
@@ -4441,7 +4459,7 @@ export const useOrderStore = create<OrderState>()(
                       currentOrderId,
                       itemId,
                       "failed",
-                      "Backend sync failed"
+                      "Backend sync failed",
                     );
                   }
                   return success;
@@ -4452,7 +4470,7 @@ export const useOrderStore = create<OrderState>()(
                     currentOrderId,
                     itemId,
                     "failed",
-                    err?.message || "Unknown error"
+                    err?.message || "Unknown error",
                   );
                   return false;
                 })
@@ -4556,7 +4574,7 @@ export const useOrderStore = create<OrderState>()(
               order.items,
               normalizedDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // Build applied discount metadata for syncing
@@ -4592,13 +4610,16 @@ export const useOrderStore = create<OrderState>()(
               discount_type:
                 normalizedDiscount.type === "percentage"
                   ? "percentage"
-                  : "fixed",
+                  : "fixed_amount",
               discount_value: rawDiscountValue,
               discount_name: discountName,
-              source: "preset",
+              source: isRecord ? "preset" : "open",
               calculated_amount: Math.round(calculatedAmount * 100) / 100,
               pre_discount_subtotal: preDiscountSubtotal,
               applied_by_staff_profiles_id: staffId,
+              // For custom discounts, auto-approve with the applying staff member
+              // Preset discounts use their own approval settings from the discounts table
+              approved_by_staff_profiles_id: isRecord ? null : staffId,
               applied_at: new Date().toISOString(),
               sync_status: order.db_order_id ? "pending" : "pending",
             };
@@ -4607,7 +4628,7 @@ export const useOrderStore = create<OrderState>()(
             // This ensures split payment views show correct prices even before RPC completes
             const itemsWithDistributedDiscount = distributeDiscountToItems(
               order.items,
-              totals.discount_amount
+              totals.discount_amount,
             );
 
             set((state) => ({
@@ -4654,7 +4675,7 @@ export const useOrderStore = create<OrderState>()(
             if (supabase && dbOrderId && isOnline && staffId) {
               console.log(
                 "[applyDiscountToCheck] syncing discount via RPC",
-                applied
+                applied,
               );
               OrderDiscountService.applyDiscount(supabase, {
                 order_id: dbOrderId,
@@ -4663,7 +4684,7 @@ export const useOrderStore = create<OrderState>()(
                 discount_name: discountName,
                 discount_type: applied.discount_type,
                 discount_value: applied.discount_value,
-                source: applied.source as "preset" | "custom" | "promo_code",
+                source: applied.source as "preset" | "open" | "promo_code",
                 reason: null,
                 applied_to_item_ids: null,
                 approved_by_staff_id:
@@ -4693,14 +4714,14 @@ export const useOrderStore = create<OrderState>()(
                         AffectedItemFromBackend
                       >(
                         (result.affected_items || []).map(
-                          (ai: AffectedItemFromBackend) => [ai.id, ai]
-                        )
+                          (ai: AffectedItemFromBackend) => [ai.id, ai],
+                        ),
                       );
 
                       // Update items with authoritative discount values from backend
                       const updatedItems = existingOrder.items.map((item) => {
                         const affected = affectedMap.get(
-                          item.db_order_item_id || ""
+                          item.db_order_item_id || "",
                         );
                         if (affected) {
                           return {
@@ -4731,7 +4752,7 @@ export const useOrderStore = create<OrderState>()(
                                         result.order_discount_id,
                                       sync_status: "synced" as const,
                                     }
-                                  : d
+                                  : d,
                               ),
                           },
                         },
@@ -4741,17 +4762,17 @@ export const useOrderStore = create<OrderState>()(
                       "[applyDiscountToCheck] RPC success, order_discount_id:",
                       result.order_discount_id,
                       "affected_items:",
-                      result.affected_items?.length
+                      result.affected_items?.length,
                     );
                   } else if (result.requires_approval) {
                     console.warn(
-                      "[applyDiscountToCheck] Discount requires manager approval"
+                      "[applyDiscountToCheck] Discount requires manager approval",
                     );
                     // Could emit an event or show a toast here
                   } else if (!result.success) {
                     console.error(
                       "[applyDiscountToCheck] RPC failed:",
-                      result.error
+                      result.error,
                     );
                     // Queue for retry
                     queueOperation({
@@ -4767,7 +4788,7 @@ export const useOrderStore = create<OrderState>()(
                 .catch((err) => {
                   console.error(
                     "Failed to sync discount via RPC, queueing:",
-                    err
+                    err,
                   );
                   queueOperation({
                     type: "apply_discount",
@@ -4797,7 +4818,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Get applied discounts that need to be voided
             const discountsToVoid = (order.applied_discounts || []).filter(
-              (d) => d.source === "preset" && d.order_discount_id
+              (d) => d.source === "preset" && d.order_discount_id,
             );
 
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -4805,7 +4826,7 @@ export const useOrderStore = create<OrderState>()(
               order.items,
               null,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // Update state optimistically
@@ -4866,12 +4887,12 @@ export const useOrderStore = create<OrderState>()(
                       if (!result.success) {
                         console.error(
                           "[removeCheckDiscount] Failed to void discount:",
-                          result.error
+                          result.error,
                         );
                       } else {
                         console.log(
                           "[removeCheckDiscount] Successfully voided discount:",
-                          discount.order_discount_id
+                          discount.order_discount_id,
                         );
                       }
                     })
@@ -4924,7 +4945,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             set((state) => ({
@@ -4962,7 +4983,7 @@ export const useOrderStore = create<OrderState>()(
             if (!order) return;
 
             const updatedItems = order.items.map((item) =>
-              item.id === itemId ? { ...item, appliedDiscount: null } : item
+              item.id === itemId ? { ...item, appliedDiscount: null } : item,
             );
 
             const taxRatesMap = useStoreSettingsStore.getState().taxRatesMap;
@@ -4970,7 +4991,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             set((state) => ({
@@ -5086,7 +5107,7 @@ export const useOrderStore = create<OrderState>()(
               OrderService.updateOrderStatus(
                 supabase,
                 orderToAssign.db_order_id,
-                "preparing"
+                "preparing",
               ).catch((err) => console.error("Failed to sync status:", err));
             }
           },
@@ -5107,7 +5128,7 @@ export const useOrderStore = create<OrderState>()(
                     params: { orderId: dbOrderId, status },
                     localOrderId: orderId,
                   });
-                }
+                },
               );
             }
 
@@ -5203,22 +5224,22 @@ export const useOrderStore = create<OrderState>()(
             if (itemAllocations && itemAllocations.length > 0) {
               // Build a map for quick lookup: itemId -> quantity being paid
               const allocationMap = new Map(
-                itemAllocations.map((alloc) => [alloc.itemId, alloc.quantity])
+                itemAllocations.map((alloc) => [alloc.itemId, alloc.quantity]),
               );
 
               console.log(
                 "[allocationMap | addPaymentToOrder] allocationMap",
-                allocationMap
+                allocationMap,
               );
               // Per-item payment: Increment paidQuantity by the specified quantity (not full quantity)
               updatedItems = order.items.map((item) => {
                 const quantityToPay = allocationMap.get(
-                  item.db_order_item_id || ""
+                  item.db_order_item_id || "",
                 );
                 if (quantityToPay !== undefined && quantityToPay > 0) {
                   const newPaidQty = Math.min(
                     (item.paidQuantity || 0) + quantityToPay,
-                    item.quantity // Don't exceed total quantity
+                    item.quantity, // Don't exceed total quantity
                   );
                   const isFullyPaid = newPaidQty >= item.quantity;
                   // Update this item's status to preparing if it's currently "new"
@@ -5246,7 +5267,7 @@ export const useOrderStore = create<OrderState>()(
 
                 const maxCoverQty = Math.min(
                   unpaidQty,
-                  Math.floor(remaining / unitPrice + 1e-6)
+                  Math.floor(remaining / unitPrice + 1e-6),
                 );
                 if (maxCoverQty <= 0) return item;
                 remaining -= maxCoverQty * unitPrice;
@@ -5271,7 +5292,7 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               newPayments,
-              taxRatesMap
+              taxRatesMap,
             );
 
             // Determine if order is fully paid based on outstanding amount
@@ -5348,7 +5369,7 @@ export const useOrderStore = create<OrderState>()(
                   const item = order.items.find(
                     (i) =>
                       i.db_order_item_id === alloc.itemId ||
-                      i.id === alloc.itemId
+                      i.id === alloc.itemId,
                   );
                   // Prefer backend ID if present, otherwise use local ID
                   return {
@@ -5372,7 +5393,7 @@ export const useOrderStore = create<OrderState>()(
                 localPaymentId, // Unique local ID for matching payment during sync
                 paymentTimestamp, // Timestamp for fallback matching
               },
-              rollbackState // Previous state for rollback on failure
+              rollbackState, // Previous state for rollback on failure
             );
 
             return syncSuccess;
@@ -5391,7 +5412,7 @@ export const useOrderStore = create<OrderState>()(
               order.items,
               order.checkDiscount,
               order.payments || [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             set((state) => ({
@@ -5433,7 +5454,7 @@ export const useOrderStore = create<OrderState>()(
             // Validate order is in archivable state
             const isArchivable =
               ["void", "completed", "cancelled"].includes(
-                order.order_status as string
+                order.order_status as string,
               ) ||
               order.check_status === "Closed" ||
               order.paid_status === "Paid";
@@ -5475,12 +5496,12 @@ export const useOrderStore = create<OrderState>()(
                         if (error) {
                           console.error(
                             "[archiveOrder] Backend inventory deduction failed:",
-                            error
+                            error,
                           );
                           // Queue for retry if needed
                         } else {
                           console.log(
-                            "[archiveOrder] Backend inventory deduction successful"
+                            "[archiveOrder] Backend inventory deduction successful",
                           );
                         }
                       });
@@ -5506,7 +5527,7 @@ export const useOrderStore = create<OrderState>()(
                 order.total_amount ||
                 order.items.reduce(
                   (sum, item) => sum + item.price * item.quantity,
-                  0
+                  0,
                 ) ||
                 0,
               total_tax:
@@ -5602,7 +5623,7 @@ export const useOrderStore = create<OrderState>()(
                 idsToRemove.push(order.id);
                 console.log(
                   `[cleanupAbandonedDrafts] Removing abandoned draft: ${order.id}`,
-                  `(inactive for ${Math.floor(inactivityMs / 60000)} minutes)`
+                  `(inactive for ${Math.floor(inactivityMs / 60000)} minutes)`,
                 );
               }
             });
@@ -5613,7 +5634,7 @@ export const useOrderStore = create<OrderState>()(
               idsToRemove.forEach((id) => delete newOrdersById[id]);
 
               const newOrderIds = orderIds.filter(
-                (id) => !idsToRemove.includes(id)
+                (id) => !idsToRemove.includes(id),
               );
 
               set({
@@ -5622,7 +5643,7 @@ export const useOrderStore = create<OrderState>()(
               });
 
               console.log(
-                `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`
+                `[cleanupAbandonedDrafts] Removed ${idsToRemove.length} abandoned draft(s)`,
               );
             }
           },
@@ -5691,7 +5712,7 @@ export const useOrderStore = create<OrderState>()(
                 orders.sort(
                   (a, b) =>
                     new Date(a.opened_at || 0).getTime() -
-                    new Date(b.opened_at || 0).getTime()
+                    new Date(b.opened_at || 0).getTime(),
                 );
 
                 // Keep first, remove rest
@@ -5699,7 +5720,7 @@ export const useOrderStore = create<OrderState>()(
                 duplicates.forEach((order) => {
                   idsToRemove.push(order.id);
                   console.log(
-                    `[CleanupDuplicates] Removing duplicate: ${order.display_number} (${order.id})`
+                    `[CleanupDuplicates] Removing duplicate: ${order.display_number} (${order.id})`,
                   );
                 });
               }
@@ -5725,7 +5746,7 @@ export const useOrderStore = create<OrderState>()(
               });
 
               console.log(
-                `[CleanupDuplicates] Removed ${idsToRemove.length} duplicate drafts`
+                `[CleanupDuplicates] Removed ${idsToRemove.length} duplicate drafts`,
               );
             } else {
               console.log(`[CleanupDuplicates] No duplicates found`);
@@ -5795,11 +5816,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "ready"
+                  "ready",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend item statuses to ready:",
-                    err
+                    err,
                   );
                 });
 
@@ -5807,11 +5828,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.updateOrderStatus(
                   supabase,
                   order.db_order_id,
-                  "ready"
+                  "ready",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend order status to ready:",
-                    err
+                    err,
                   );
                 });
               }
@@ -5857,11 +5878,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "served"
+                  "served",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend item statuses to served:",
-                    err
+                    err,
                   );
                 });
               }
@@ -5899,7 +5920,7 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
               const targetItems = updatedItems.filter((item) =>
-                itemIds.includes(item.id)
+                itemIds.includes(item.id),
               );
               const dbItemIds = targetItems
                 .map((item) => item.db_order_item_id)
@@ -5909,11 +5930,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "preparing"
+                  "preparing",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend items to preparing:",
-                    err
+                    err,
                   );
                 });
               }
@@ -5950,7 +5971,7 @@ export const useOrderStore = create<OrderState>()(
             const supabase = getOrderStoreSupabaseClient();
             if (supabase && order.db_order_id) {
               const targetItems = updatedItems.filter((item) =>
-                itemIds.includes(item.id)
+                itemIds.includes(item.id),
               );
               const dbItemIds = targetItems
                 .map((item) => item.db_order_item_id)
@@ -5960,11 +5981,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "ready"
+                  "ready",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend items to ready:",
-                    err
+                    err,
                   );
                 });
               }
@@ -5989,7 +6010,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Check if ALL items in the order are now served
             const allItemsServed = updatedItems.every(
-              (item) => item.kitchen_status === "served"
+              (item) => item.kitchen_status === "served",
             );
 
             // If all items served, set order_status to "ready" (ready for payment/pickup)
@@ -6013,7 +6034,7 @@ export const useOrderStore = create<OrderState>()(
             if (supabase && order.db_order_id) {
               // Update item statuses
               const targetItems = updatedItems.filter((item) =>
-                itemIds.includes(item.id)
+                itemIds.includes(item.id),
               );
               const dbItemIds = targetItems
                 .map((item) => item.db_order_item_id)
@@ -6023,11 +6044,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "served"
+                  "served",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend items to served:",
-                    err
+                    err,
                   );
                 });
               }
@@ -6037,11 +6058,11 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.updateOrderStatus(
                   supabase,
                   order.db_order_id,
-                  "ready"
+                  "ready",
                 ).catch((err) => {
                   console.error(
                     "Failed to update backend order status to ready:",
-                    err
+                    err,
                   );
                 });
               }
@@ -6053,7 +6074,7 @@ export const useOrderStore = create<OrderState>()(
             const ordersToMerge = orders.filter(
               (o) =>
                 o.service_location_id &&
-                tableIds.includes(o.service_location_id)
+                tableIds.includes(o.service_location_id),
             );
 
             const allItems = ordersToMerge.flatMap((o) => o.items);
@@ -6065,7 +6086,7 @@ export const useOrderStore = create<OrderState>()(
               (earliest: number | null, currentOrder) => {
                 if (currentOrder.opened_at) {
                   const currentOpenTime = new Date(
-                    currentOrder.opened_at
+                    currentOrder.opened_at,
                   ).getTime();
                   // If earliest is null or current time is earlier, update.
                   if (earliest === null || currentOpenTime < earliest) {
@@ -6074,7 +6095,7 @@ export const useOrderStore = create<OrderState>()(
                 }
                 return earliest;
               },
-              null // Initialize with null
+              null, // Initialize with null
             );
 
             const newMergedOrderData = {
@@ -6088,7 +6109,7 @@ export const useOrderStore = create<OrderState>()(
               server_name: ordersToMerge[0]?.server_name || "Unknown",
               guest_count: ordersToMerge.reduce(
                 (sum, o) => sum + (o.guest_count || 1),
-                0
+                0,
               ),
               opened_at: earliestStartTime
                 ? new Date(earliestStartTime).toISOString()
@@ -6104,7 +6125,7 @@ export const useOrderStore = create<OrderState>()(
               newOrdersById[newMergedOrderData.id] = newMergedOrderData;
 
               const newOrderIds = state.orderIds.filter(
-                (id) => !oldOrderIds.includes(id)
+                (id) => !oldOrderIds.includes(id),
               );
               newOrderIds.push(newMergedOrderData.id);
 
@@ -6187,7 +6208,7 @@ export const useOrderStore = create<OrderState>()(
               OrderService.updateOrderStatus(
                 supabase,
                 currentOrder.db_order_id,
-                "preparing"
+                "preparing",
               ).then(({ error }) => {
                 if (error) {
                   // If order is already preparing (e.g. from previous sync), ignore the error
@@ -6199,7 +6220,7 @@ export const useOrderStore = create<OrderState>()(
                   }
                   console.error(
                     "Failed to update backend order status:",
-                    error
+                    error,
                   );
                 }
               });
@@ -6239,7 +6260,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Work with current local state (no blocking on syncs)
             const newItems = currentOrder.items.filter(
-              (item) => !item.kitchen_status || item.kitchen_status === "new"
+              (item) => !item.kitchen_status || item.kitchen_status === "new",
             );
 
             if (newItems.length === 0) return;
@@ -6257,11 +6278,11 @@ export const useOrderStore = create<OrderState>()(
 
                 const key1 = generateItemCompositeKey(
                   item.menuItemId,
-                  item.customizations
+                  item.customizations,
                 );
                 const key2 = generateItemCompositeKey(
                   newItem.menuItemId,
-                  newItem.customizations
+                  newItem.customizations,
                 );
 
                 return key1 === key2;
@@ -6270,7 +6291,7 @@ export const useOrderStore = create<OrderState>()(
               if (mergeCandidate) {
                 // If we found a match, update its quantity in the final list
                 const existingInFinal = itemsToKeep.find(
-                  (i) => i.id === mergeCandidate.id
+                  (i) => i.id === mergeCandidate.id,
                 );
                 if (existingInFinal) {
                   existingInFinal.quantity += newItem.quantity;
@@ -6347,13 +6368,13 @@ export const useOrderStore = create<OrderState>()(
                   if (error) {
                     console.error(
                       "Failed to update backend order status:",
-                      error
+                      error,
                     );
                     // Queue for retry
                     queueFailedOperation(
                       "send_to_kitchen",
                       { localOrderId: activeOrderId, localItemIds },
-                      activeOrderId
+                      activeOrderId,
                     );
                   }
                 });
@@ -6367,7 +6388,7 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "sent"
+                  "sent",
                 ).catch((err) => {
                   console.error("Failed to bulk update item statuses:", err);
                 });
@@ -6375,12 +6396,12 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // Offline or order not synced: queue for later
               console.log(
-                "[sendNewItemsToKitchen] Queueing send_to_kitchen operation for later sync"
+                "[sendNewItemsToKitchen] Queueing send_to_kitchen operation for later sync",
               );
               queueFailedOperation(
                 "send_to_kitchen",
                 { localOrderId: activeOrderId, localItemIds },
-                activeOrderId
+                activeOrderId,
               );
             }
 
@@ -6404,7 +6425,7 @@ export const useOrderStore = create<OrderState>()(
             if (
               !order ||
               order.items.filter(
-                (item) => !item.kitchen_status || item.kitchen_status === "new"
+                (item) => !item.kitchen_status || item.kitchen_status === "new",
               ).length === 0
             ) {
               return; // No new items to send
@@ -6452,7 +6473,7 @@ export const useOrderStore = create<OrderState>()(
 
             // Get items that need to be sent
             const newItems = order.items.filter(
-              (item) => !item.kitchen_status || item.kitchen_status === "new"
+              (item) => !item.kitchen_status || item.kitchen_status === "new",
             );
             const localItemIds = newItems.map((item) => item.id);
 
@@ -6472,7 +6493,7 @@ export const useOrderStore = create<OrderState>()(
                 queueFailedOperation(
                   "send_to_kitchen",
                   { localOrderId: orderId, localItemIds },
-                  orderId
+                  orderId,
                 );
               }
 
@@ -6485,7 +6506,7 @@ export const useOrderStore = create<OrderState>()(
                 OrderService.bulkUpdateOrderItemStatus(
                   supabase,
                   dbItemIds,
-                  "sent"
+                  "sent",
                 ).catch((err) => {
                   console.error("Failed to bulk update item statuses:", err);
                 });
@@ -6493,12 +6514,12 @@ export const useOrderStore = create<OrderState>()(
             } else {
               // Offline or order not synced: queue for later
               console.log(
-                "[sendNewItemsToKitchenForOrder] Queueing send_to_kitchen operation for later sync"
+                "[sendNewItemsToKitchenForOrder] Queueing send_to_kitchen operation for later sync",
               );
               queueFailedOperation(
                 "send_to_kitchen",
                 { localOrderId: orderId, localItemIds },
-                orderId
+                orderId,
               );
             }
 
@@ -6606,7 +6627,7 @@ export const useOrderStore = create<OrderState>()(
               OrderService.voidOrder(
                 supabase,
                 order.db_order_id,
-                "Order voided"
+                "Order voided",
               )
                 .then(({ error }) => {
                   if (error) {
@@ -6643,14 +6664,14 @@ export const useOrderStore = create<OrderState>()(
             // Find and clear the table session for this order
             const { tables, tablesById } = useFloorPlanStore.getState();
             const affectedTable = Object.values(tablesById).find(
-              (t) => t.session?.order_id === order.db_order_id
+              (t) => t.session?.order_id === order.db_order_id,
             );
             if (affectedTable) {
               useFloorPlanStore.setState((state) => {
                 const newTables = state.tables.map((t) =>
                   t.id === affectedTable.id
                     ? { ...t, session: undefined } // Clear session
-                    : t
+                    : t,
                 );
                 return {
                   tables: newTables,
@@ -6659,7 +6680,7 @@ export const useOrderStore = create<OrderState>()(
                       acc[table.id] = table;
                       return acc;
                     },
-                    {} as Record<string, (typeof tables)[0]>
+                    {} as Record<string, (typeof tables)[0]>,
                   ),
                 };
               });
@@ -6673,7 +6694,7 @@ export const useOrderStore = create<OrderState>()(
           // ============================================================================
           voidPayment: async (
             orderId: string,
-            paymentIndex: number
+            paymentIndex: number,
           ): Promise<boolean> => {
             const { ordersById, activeOrderId } = get();
             const order = ordersById[orderId];
@@ -6688,7 +6709,7 @@ export const useOrderStore = create<OrderState>()(
 
             // 1. OPTIMISTIC UPDATE: Remove payment and restore paidQuantity
             const updatedPayments = order.payments.filter(
-              (_, i) => i !== paymentIndex
+              (_, i) => i !== paymentIndex,
             );
 
             // Restore paidQuantity for items covered by this payment
@@ -6707,7 +6728,7 @@ export const useOrderStore = create<OrderState>()(
             }
             const updatedItems = order.items.map((item) => {
               const quantityToRestore = itemsCoveredMap.get(
-                item.db_order_item_id || ""
+                item.db_order_item_id || "",
               );
               if (quantityToRestore !== undefined) {
                 // Decrement by specific quantity (not reset to 0)
@@ -6726,13 +6747,13 @@ export const useOrderStore = create<OrderState>()(
               updatedItems,
               order.checkDiscount,
               updatedPayments,
-              taxRatesMap
+              taxRatesMap,
             );
 
             // Calculate new amounts
             const newAmountPaid = updatedPayments.reduce(
               (acc, p) => acc + p.amount + (p.tip_amount || 0),
-              0
+              0,
             );
             const newAmountDue = totals.total_amount - newAmountPaid;
             const isStillPaid = newAmountDue < 0.01;
@@ -6873,7 +6894,7 @@ export const useOrderStore = create<OrderState>()(
               };
             });
             console.log(
-              `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`
+              `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`,
             );
           },
 
@@ -6890,7 +6911,7 @@ export const useOrderStore = create<OrderState>()(
               cash_total?: number;
               cash_tax_amount?: number;
               cash_subtotal?: number;
-            }
+            },
           ) => {
             set((state) => {
               const order = state.ordersById[localOrderId];
@@ -6948,7 +6969,7 @@ export const useOrderStore = create<OrderState>()(
             });
             console.log(
               `[updateOrderFromSync] Updated order ${localOrderId} with backend data:`,
-              backendData
+              backendData,
             );
           },
 
@@ -6956,7 +6977,7 @@ export const useOrderStore = create<OrderState>()(
           updateItemDbId: (
             orderId: string,
             localItemId: string,
-            dbItemId: string
+            dbItemId: string,
           ) => {
             set((state) => {
               const order = state.ordersById[orderId];
@@ -6969,7 +6990,7 @@ export const useOrderStore = create<OrderState>()(
                       db_order_item_id: dbItemId,
                       sync_status: "synced" as const,
                     }
-                  : item
+                  : item,
               );
 
               return {
@@ -6983,7 +7004,7 @@ export const useOrderStore = create<OrderState>()(
               };
             });
             console.log(
-              `[updateItemDbId] Updated item ${localItemId} with db_order_item_id: ${dbItemId}`
+              `[updateItemDbId] Updated item ${localItemId} with db_order_item_id: ${dbItemId}`,
             );
           },
 
@@ -7018,7 +7039,7 @@ export const useOrderStore = create<OrderState>()(
           // Update order from reconciliation data
           updateOrderFromReconciliation: (
             localOrderId: string,
-            updates: Partial<OrderProfile>
+            updates: Partial<OrderProfile>,
           ) => {
             set((state) => {
               const order = state.ordersById[localOrderId];
@@ -7043,7 +7064,7 @@ export const useOrderStore = create<OrderState>()(
               };
             });
             console.log(
-              `[updateOrderFromReconciliation] Updated order ${localOrderId}`
+              `[updateOrderFromReconciliation] Updated order ${localOrderId}`,
             );
           },
 
@@ -7070,13 +7091,13 @@ export const useOrderStore = create<OrderState>()(
 
             if (failedItems.length === 0) {
               console.log(
-                `[retryFailedSyncs] No failed items to retry for order ${orderId}`
+                `[retryFailedSyncs] No failed items to retry for order ${orderId}`,
               );
               return;
             }
 
             console.log(
-              `[retryFailedSyncs] Retrying ${failedItems.length} failed items for order ${orderId}`
+              `[retryFailedSyncs] Retrying ${failedItems.length} failed items for order ${orderId}`,
             );
 
             for (const item of failedItems) {
@@ -7094,7 +7115,7 @@ export const useOrderStore = create<OrderState>()(
                 orderNumber: string,
                 displayNumber: string,
                 createdAt: string,
-                syncVersion?: number
+                syncVersion?: number,
               ) => {
                 set((state) => ({
                   ordersById: {
@@ -7119,8 +7140,8 @@ export const useOrderStore = create<OrderState>()(
                   item,
                   setOrderDbIdAction,
                   markItemFailedAction,
-                  undefined
-                )
+                  undefined,
+                ),
               )
                 .then((success) => {
                   // Phase 7C: Removed redundant "synced" call - addItemToBackend
@@ -7130,13 +7151,13 @@ export const useOrderStore = create<OrderState>()(
                 .catch((err) => {
                   console.error(
                     `[retryFailedSyncs] Retry failed for item ${item.id}:`,
-                    err
+                    err,
                   );
                   updateItemSyncStatus(
                     orderId,
                     item.id,
                     "failed",
-                    err?.message || "Retry failed"
+                    err?.message || "Retry failed",
                   );
                   return false;
                 })
@@ -7159,12 +7180,12 @@ export const useOrderStore = create<OrderState>()(
            * @returns Promise with success status and optional error message
            */
           syncOrderFromDatabase: async (
-            dbOrderIdOrLocalId: string
+            dbOrderIdOrLocalId: string,
           ): Promise<string | null> => {
             const supabase = _supabaseClient;
             if (!supabase) {
               console.log(
-                "[syncOrderFromDatabase] No Supabase client available"
+                "[syncOrderFromDatabase] No Supabase client available",
               );
               return null;
             }
@@ -7177,7 +7198,7 @@ export const useOrderStore = create<OrderState>()(
             if (!order) {
               // Try to find by db_order_id
               const orderByDbId = Object.values(get().ordersById).find(
-                (o) => o.db_order_id === dbOrderIdOrLocalId
+                (o) => o.db_order_id === dbOrderIdOrLocalId,
               );
               if (orderByDbId) {
                 order = orderByDbId;
@@ -7193,7 +7214,7 @@ export const useOrderStore = create<OrderState>()(
             const dbOrderId = order?.db_order_id || dbOrderIdOrLocalId;
 
             console.log(
-              `[syncOrderFromDatabase] Syncing order (local: ${localOrderId}, db: ${dbOrderId})`
+              `[syncOrderFromDatabase] Syncing order (local: ${localOrderId}, db: ${dbOrderId})`,
             );
 
             try {
@@ -7207,7 +7228,7 @@ export const useOrderStore = create<OrderState>()(
               if (orderError) {
                 console.error(
                   "[syncOrderFromDatabase] Order fetch error:",
-                  orderError
+                  orderError,
                 );
                 throw new Error(orderError.message);
               }
@@ -7226,7 +7247,7 @@ export const useOrderStore = create<OrderState>()(
               if (itemsError) {
                 console.error(
                   "[syncOrderFromDatabase] Items fetch error:",
-                  itemsError
+                  itemsError,
                 );
                 throw new Error(itemsError.message);
               }
@@ -7248,7 +7269,7 @@ export const useOrderStore = create<OrderState>()(
               if (paymentsError) {
                 console.error(
                   "[syncOrderFromDatabase] Payments fetch error:",
-                  paymentsError
+                  paymentsError,
                 );
                 // Non-fatal - continue without payments
               }
@@ -7268,7 +7289,7 @@ export const useOrderStore = create<OrderState>()(
                 const syncedItems = localOrder
                   ? localOrder.items.map((localItem) => {
                       const dbItem = dbItems?.find(
-                        (db) => db.id === localItem.db_order_item_id
+                        (db) => db.id === localItem.db_order_item_id,
                       );
                       if (dbItem) {
                         return {
@@ -7303,7 +7324,7 @@ export const useOrderStore = create<OrderState>()(
                 const localItemDbIds = new Set(
                   (localOrder?.items || [])
                     .map((i) => i.db_order_item_id)
-                    .filter(Boolean)
+                    .filter(Boolean),
                 );
                 const newItemsFromDb: CartItem[] =
                   dbItems
@@ -7416,7 +7437,7 @@ export const useOrderStore = create<OrderState>()(
                   dbOrder.card_total || dbOrder.total_amount || 0;
                 const syncedPaidStatus = calculatePaidStatusFromPayments(
                   syncedPayments,
-                  orderTotalAmount
+                  orderTotalAmount,
                 );
                 const isPaid = syncedPaidStatus === "Paid";
 
@@ -7480,7 +7501,7 @@ export const useOrderStore = create<OrderState>()(
               });
 
               console.log(
-                "[syncOrderFromDatabase] Successfully synced order from database"
+                "[syncOrderFromDatabase] Successfully synced order from database",
               );
               return localOrderId;
             } catch (error: any) {
@@ -7508,13 +7529,13 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order || !order.db_order_id) {
               console.log(
-                "[syncPaymentStatus] Order not found or not synced to DB"
+                "[syncPaymentStatus] Order not found or not synced to DB",
               );
               return;
             }
 
             console.log(
-              `[syncPaymentStatus] Starting sync for order ${orderId}`
+              `[syncPaymentStatus] Starting sync for order ${orderId}`,
             );
             set({ paymentSyncStatus: "syncing" });
 
@@ -7523,7 +7544,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbOrder, error: orderError } = await supabase
                 .from("orders")
                 .select(
-                  "payment_status, amount_due, cash_amount_due, amount_paid, card_total, cash_total, total_amount"
+                  "payment_status, amount_due, cash_amount_due, amount_paid, card_total, cash_total, total_amount",
                 )
                 .eq("id", order.db_order_id)
                 .single();
@@ -7540,7 +7561,7 @@ export const useOrderStore = create<OrderState>()(
               if (paymentsError) {
                 console.warn(
                   "[syncPaymentStatus] Payments fetch error:",
-                  paymentsError
+                  paymentsError,
                 );
               }
 
@@ -7568,7 +7589,7 @@ export const useOrderStore = create<OrderState>()(
                 dbOrder.card_total || dbOrder.total_amount || 0;
               const freshPaidStatus = calculatePaidStatusFromPayments(
                 syncedPayments,
-                orderTotalAmount
+                orderTotalAmount,
               );
               const isPaid = freshPaidStatus === "Paid";
 
@@ -7609,7 +7630,7 @@ export const useOrderStore = create<OrderState>()(
               }));
 
               console.log(
-                "[syncPaymentStatus] Successfully synced payment status"
+                "[syncPaymentStatus] Successfully synced payment status",
               );
             } catch (error: any) {
               console.error("[syncPaymentStatus] Error:", error);
@@ -7640,7 +7661,7 @@ export const useOrderStore = create<OrderState>()(
             console.log(
               "[prefetchOrders] Fetching",
               uncachedIds.length,
-              "orders"
+              "orders",
             );
 
             try {
@@ -7807,7 +7828,7 @@ export const useOrderStore = create<OrderState>()(
               order.items,
               order.checkDiscount ?? null,
               order.payments ?? [],
-              taxRatesMap
+              taxRatesMap,
             );
 
             // PRIORITY: If order has backend-synced amount_due, use it as authoritative
@@ -7858,7 +7879,7 @@ export const useOrderStore = create<OrderState>()(
             if (hasItems) {
               const correctPaidStatus = calculatePaidStatusFromPayments(
                 order.payments,
-                totals.total_amount
+                totals.total_amount,
               );
               if (correctPaidStatus !== order.paid_status) {
                 set((state) => ({
@@ -7888,7 +7909,7 @@ export const useOrderStore = create<OrderState>()(
            */
           markItemsPaid: (
             orderId: string,
-            allocations: ItemPaymentAllocation[]
+            allocations: ItemPaymentAllocation[],
           ): void => {
             const order = get().ordersById[orderId];
             if (!order) return;
@@ -7919,7 +7940,7 @@ export const useOrderStore = create<OrderState>()(
             const order = get().ordersById[orderId];
             if (!order?.db_order_id) {
               console.log(
-                "[syncOrderFromBackend] Order not found or not synced to DB"
+                "[syncOrderFromBackend] Order not found or not synced to DB",
               );
               return;
             }
@@ -7939,7 +7960,7 @@ export const useOrderStore = create<OrderState>()(
                   id, total_amount, subtotal, tax_amount, discount_amount,
                   amount_paid, amount_due, payment_status,
                   card_total, cash_total, cash_amount_due
-                `
+                `,
                 )
                 .eq("id", order.db_order_id)
                 .single();
@@ -7950,7 +7971,7 @@ export const useOrderStore = create<OrderState>()(
               const { data: dbItems, error: itemsError } = await supabase
                 .from("order_items")
                 .select(
-                  "id, paid_quantity, subtotal, tax_amount, discount_amount"
+                  "id, paid_quantity, subtotal, tax_amount, discount_amount",
                 )
                 .eq("order_id", order.db_order_id);
 
@@ -7964,7 +7985,7 @@ export const useOrderStore = create<OrderState>()(
                 // Update items with backend paid_quantity
                 const updatedItems = currentOrder.items.map((item) => {
                   const dbItem = dbItems?.find(
-                    (di) => di.id === item.db_order_item_id
+                    (di) => di.id === item.db_order_item_id,
                   );
                   if (!dbItem) return item;
                   return {
@@ -8018,7 +8039,7 @@ export const useOrderStore = create<OrderState>()(
 
               console.log(
                 "[syncOrderFromBackend] Successfully synced order",
-                orderId
+                orderId,
               );
             } catch (error: any) {
               console.error("[syncOrderFromBackend] Error:", error);
@@ -8063,7 +8084,7 @@ export const useOrderStore = create<OrderState>()(
                 source: queuedUpdate.source,
                 queuedAt: new Date(queuedUpdate.timestamp).toISOString(),
                 fields: Object.keys(queuedUpdate.updates),
-              }
+              },
             );
 
             // Apply the queued updates
@@ -8094,7 +8115,7 @@ export const useOrderStore = create<OrderState>()(
 
             console.log(
               "[applyQueuedUpdates] Successfully applied queued updates for order:",
-              orderId
+              orderId,
             );
           },
 
@@ -8118,7 +8139,7 @@ export const useOrderStore = create<OrderState>()(
                       orderId,
                       age: Math.round((now - update.timestamp) / 1000),
                       source: update.source,
-                    }
+                    },
                   );
                   newMap.delete(orderId);
                   cleanedCount++;
@@ -8129,7 +8150,7 @@ export const useOrderStore = create<OrderState>()(
                 console.log(
                   "[cleanupStaleQueuedUpdates] Cleaned up",
                   cleanedCount,
-                  "stale updates"
+                  "stale updates",
                 );
                 return { pendingBackendUpdates: newMap };
               }
@@ -8165,9 +8186,9 @@ export const useOrderStore = create<OrderState>()(
             }
           };
         },
-      }
-    )
-  )
+      },
+    ),
+  ),
 );
 
 // OPTIMIZED: Only sync ordersByDbId (O(n) on keys only, not full array recreation)
@@ -8185,7 +8206,7 @@ useOrderStore.subscribe(
       }
     }
     useOrderStore.setState({ ordersByDbId });
-  }
+  },
 );
 
 // ============================================================================
@@ -8269,7 +8290,7 @@ useStoreSettingsStore.subscribe((state) => {
 
         console.log(
           "[OrderStore] Initial order fetch completed for station:",
-          station.station_name
+          station.station_name,
         );
       }, 100);
     } else {

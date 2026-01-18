@@ -93,7 +93,7 @@ interface PaymentState {
   open: (
     method: PaymentMethod,
     tableId?: string | null,
-    initialView?: PaymentView
+    initialView?: PaymentView,
   ) => void;
   close: () => void;
   setView: (view: PaymentView) => void;
@@ -119,7 +119,8 @@ interface PaymentState {
   handlePaymentCompletion: (
     method: string,
     tipAmount?: number,
-    transactionDetails?: Record<string, any>
+    transactionDetails?: Record<string, any>,
+    amountOverride?: number,
   ) => Promise<void>;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
@@ -137,14 +138,14 @@ interface PaymentState {
   setPaymentProgress: (step: number, total: number) => void;
   resetPaymentState: () => void;
   setPaymentBottomSheetRef: (
-    ref: React.RefObject<BottomSheetMethods> | null
+    ref: React.RefObject<BottomSheetMethods> | null,
   ) => void; // New action to set ref
   setPaymentClean: () => void; // New action to set isDirty to false
   markPaymentAsDirty: () => void; // New action to explicitly mark as dirty
   splitEvenly: (
     numberOfPeople: number,
     amountPerPerson: number,
-    cashAmountPerPerson?: number
+    cashAmountPerPerson?: number,
   ) => void; // New action for evenly splitting with dual pricing
   resetSplits: () => void; // Action to clear splits when going back
   handleSuccessClose: () => void; // Action to run Done logic when success view is closed by dragging
@@ -163,7 +164,7 @@ interface PaymentState {
   isLocking: boolean; // True while acquiring/releasing lock
   lockOrderForPayment: (
     orderId: string,
-    expectedVersion: number
+    expectedVersion: number,
   ) => Promise<boolean>;
   unlockOrderForPayment: (orderId: string) => Promise<void>;
   checkAndRefreshLock: () => Promise<boolean>; // Refresh lock if about to expire
@@ -359,14 +360,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         updatedSplits = updatedSplits.filter(
           (s) =>
             s.items.length > 0 ||
-            updatedSplits.filter((sp) => sp.items.length > 0).length === 0
+            updatedSplits.filter((sp) => sp.items.length > 0).length === 0,
         );
       }
 
       // If active split was removed, switch to first available
       const currentActiveSplitId = state.activeSplitId;
       const activeStillExists = updatedSplits.some(
-        (s) => s.id === currentActiveSplitId
+        (s) => s.id === currentActiveSplitId,
       );
       const newActiveSplitId = activeStillExists
         ? currentActiveSplitId
@@ -383,7 +384,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   updateSplitAmount: (splitId, amount) => {
     set((state) => ({
       splits: state.splits.map((s) =>
-        s.id === splitId ? { ...s, amount } : s
+        s.id === splitId ? { ...s, amount } : s,
       ),
       isDirty: true,
     }));
@@ -392,7 +393,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   updateSplitCustomerName: (splitId, newName) => {
     set((state) => ({
       splits: state.splits.map((s) =>
-        s.id === splitId ? { ...s, customerName: newName } : s
+        s.id === splitId ? { ...s, customerName: newName } : s,
       ),
       isDirty: true,
     }));
@@ -450,20 +451,20 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // Calculate order subtotal and discount for proportional tax calculation
     // Filter out voided items - they should not be included in totals
     const masterItems = (activeOrder?.items || []).filter(
-      (item) => !item.is_voided
+      (item) => !item.is_voided,
     );
 
     // Card pricing subtotal
     const orderSubtotal = masterItems.reduce(
       (acc, item) => acc + item.price * item.quantity,
-      0
+      0,
     );
 
     // Cash pricing subtotal - uses calculateItemEffectiveCashPrice to include modifiers and add-ons
     const orderCashSubtotal = masterItems.reduce(
       (acc, item) =>
         acc + calculateItemEffectiveCashPrice(item) * item.quantity,
-      0
+      0,
     );
 
     const itemDiscountsTotal = masterItems.reduce((acc, item) => {
@@ -577,7 +578,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   handlePaymentCompletion: async (
     method: string,
     tipAmount?: number,
-    transactionDetails?: Record<string, any>
+    transactionDetails?: Record<string, any>,
+    amountOverride?: number,
   ) => {
     const { activeSplitId, splits, splitSourceView, close } = get();
     const { activeOrderId, addPaymentToOrder } = useOrderStore.getState();
@@ -627,9 +629,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // For split-evenly: cashAmount is set when splits were created
       // For split-by-item: amount is calculated from items at startSplitPaymentFlow time
       const paymentAmount =
-        isCashPayment && currentSplit.cashAmount !== undefined
-          ? currentSplit.cashAmount
-          : currentSplit.amount;
+        amountOverride !== undefined
+          ? amountOverride
+          : isCashPayment && currentSplit.cashAmount !== undefined
+            ? currentSplit.cashAmount
+            : currentSplit.amount;
 
       // Include splitLabel and cash pricing flag for backend
       const detailsWithSplitLabel = {
@@ -666,7 +670,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       }
 
       const updatedSplits = splits.map((s) =>
-        s.id === activeSplitId ? { ...s, status: "paid" as const } : s
+        s.id === activeSplitId ? { ...s, status: "paid" as const } : s,
       );
 
       // Find NEXT pending
@@ -696,11 +700,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
         const paymentsTotal = (finalOrder?.payments || []).reduce(
           (sum, p) => sum + (p.amount || 0),
-          0
+          0,
         );
         const tipsTotal = (finalOrder?.payments || []).reduce(
           (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
-          0
+          0,
         );
 
         // Order is fully paid - addPaymentToOrder already set the paid status
@@ -726,9 +730,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const currentOrder = ordersById[activeOrderId];
 
       // Use cash outstanding for cash payments, card outstanding for card payments
-      const paymentAmount = isCashPayment
-        ? activeOrderOutstandingCash
-        : activeOrderOutstandingTotal;
+      // Or use explicit amount override if provided (prevents race conditions)
+      const paymentAmount =
+        amountOverride !== undefined
+          ? amountOverride
+          : isCashPayment
+            ? activeOrderOutstandingCash
+            : activeOrderOutstandingTotal;
       // Include cash pricing flag in transaction details
       const detailsWithCashFlag = {
         ...transactionDetails,
@@ -785,11 +793,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
       const paymentsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + (p.amount || 0),
-        0
+        0,
       );
       const tipsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
-        0
+        0,
       );
 
       set({
@@ -891,7 +899,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         orderId,
         expectedVersion,
         stationId,
-        60 // 60 second lock duration
+        60, // 60 second lock duration
       );
 
       if (error || !data?.success) {

@@ -1,4 +1,3 @@
-import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
@@ -14,7 +13,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 const CardPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
-  useRefreshActiveOrder();
+  // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
 
   const {
     activeOrderDiscount,
@@ -33,7 +32,7 @@ const CardPaymentView = () => {
   >("ready");
   const [tipInput, setTipInput] = useState("");
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
-    null
+    null,
   );
 
   const TIP_PRESETS = [18, 20, 25];
@@ -57,18 +56,19 @@ const CardPaymentView = () => {
 
   // --- LOGIC: DETERMINE AMOUNT TO PAY ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
-  // Priority: backend amount_due > store outstanding total > full order total
+  // Priority: local store outstanding total (has discounts) > backend amount_due > full order total
   // Note: useRefreshActiveOrder ensures data is fresh on mount and reconnection
+  // But local store has the most up-to-date discount calculations
   const effectiveOutstandingTotal =
-    activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01
-      ? activeOrder.amount_due
-      : activeOrderOutstandingTotal > 0
-        ? activeOrderOutstandingTotal
+    activeOrderOutstandingTotal > 0
+      ? activeOrderOutstandingTotal
+      : activeOrder?.amount_due !== undefined && activeOrder.amount_due >= 0.01
+        ? activeOrder.amount_due
         : activeOrderTotal;
   const totalToPay = activeSplit
     ? activeSplit.amount
     : effectiveOutstandingTotal;
-  console.log('CardPaymentView', activeOrderOutstandingTotal);
+  console.log("CardPaymentView", activeOrderOutstandingTotal);
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = totalToPay + tipAmount;
 
@@ -86,11 +86,16 @@ const CardPaymentView = () => {
     if (status === "success" && activeOrderId) {
       // Use central handler instead of direct store call
       // Pass the tip amount and explicit card pricing flag
-      handlePaymentCompletion("Card", tipAmount, {
-        terminalType: "manual", // Default for now
-        authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
-        isCashPriced: false, // Explicit card pricing
-      });
+      handlePaymentCompletion(
+        "Card",
+        tipAmount,
+        {
+          terminalType: "manual", // Default for now
+          authorizationCode: "AUTH" + Math.floor(Math.random() * 10000),
+          isCashPriced: false, // Explicit card pricing
+        },
+        totalToPay,
+      );
     }
   }, [status, activeOrderId, handlePaymentCompletion, tipAmount]);
 
@@ -129,24 +134,27 @@ const CardPaymentView = () => {
                     <TouchableOpacity
                       key={percent}
                       onPress={() => handleTipPreset(percent)}
-                      className={`flex-1 py-3 rounded-xl border ${selectedTipPreset === percent
-                        ? "bg-blue-600 border-blue-500"
-                        : "bg-[#333] border-[#404040]"
-                        }`}
+                      className={`flex-1 py-3 rounded-xl border ${
+                        selectedTipPreset === percent
+                          ? "bg-blue-600 border-blue-500"
+                          : "bg-[#333] border-[#404040]"
+                      }`}
                     >
                       <Text
-                        className={`text-center font-bold ${selectedTipPreset === percent
-                          ? "text-white"
-                          : "text-gray-300"
-                          }`}
+                        className={`text-center font-bold ${
+                          selectedTipPreset === percent
+                            ? "text-white"
+                            : "text-gray-300"
+                        }`}
                       >
                         {percent}%
                       </Text>
                       <Text
-                        className={`text-center text-xs mt-1 ${selectedTipPreset === percent
-                          ? "text-blue-200"
-                          : "text-gray-500"
-                          }`}
+                        className={`text-center text-xs mt-1 ${
+                          selectedTipPreset === percent
+                            ? "text-blue-200"
+                            : "text-gray-500"
+                        }`}
                       >
                         ${((percent / 100) * totalToPay).toFixed(2)}
                       </Text>

@@ -1,4 +1,3 @@
-import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
@@ -13,9 +12,14 @@ import {
 
 const CashPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
-  useRefreshActiveOrder();
+  // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
 
-  const { activeOrderOutstandingCash, activeOrderTotalCash, activeOrderId, ordersById } = useOrderStore();
+  const {
+    activeOrderOutstandingCash,
+    activeOrderTotalCash,
+    activeOrderId,
+    ordersById,
+  } = useOrderStore();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
@@ -23,7 +27,7 @@ const CashPaymentView = () => {
   const [amountTendered, setAmountTendered] = useState("");
   const [tipInput, setTipInput] = useState("");
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
-    null
+    null,
   );
 
   const TIP_PRESETS = [18, 20, 25];
@@ -34,23 +38,23 @@ const CashPaymentView = () => {
   // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // For cash payments, use cash outstanding total (unpaid items at cash prices)
-  // Priority: backend cash_amount_due > store outstanding cash > full cash total
-  // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
+  // Priority: local store outstanding cash (has discounts) > backend cash_amount_due > full cash total
+  // Local store has the most up-to-date discount calculations
   const effectiveOutstandingCash =
-    activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0.01 // never pay 0.00
-      ? activeOrder.cash_amount_due
-      : activeOrderOutstandingCash > 0
-        ? activeOrderOutstandingCash
+    activeOrderOutstandingCash > 0
+      ? activeOrderOutstandingCash
+      : activeOrder?.cash_amount_due !== undefined &&
+          activeOrder.cash_amount_due >= 0.01
+        ? activeOrder.cash_amount_due
         : activeOrderTotalCash;
   // console.log("effectiveOutstandingCash", effectiveOutstandingCash);
-
 
   // For split payments, prefer cashAmount (cash pricing) over amount (card pricing)
   // This ensures cash payments use the correct discounted cash price
   const total = activeSplit
     ? (activeSplit.cashAmount ?? activeSplit.amount)
     : effectiveOutstandingCash;
-    // console.log("total", total);
+  // console.log("total", total);
 
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = total + tipAmount; // Total including tip
@@ -62,7 +66,7 @@ const CashPaymentView = () => {
   const suggestions = useMemo(() => {
     const bills = [10, 20, 50, 100];
     return bills.filter(
-      (bill) => bill >= grandTotal || bill === 100 || bill === 50
+      (bill) => bill >= grandTotal || bill === 100 || bill === 50,
     );
   }, [grandTotal]);
 
@@ -92,10 +96,15 @@ const CashPaymentView = () => {
     // Use the central handler to manage splits loop
     const tipAmount = parseFloat(tipInput) || 0;
     const amountTenderedNum = parseFloat(amountTendered) || 0;
-    handlePaymentCompletion("Cash", tipAmount, {
-      amountTendered: amountTenderedNum,
-      isCashPriced: true, // Explicit cash pricing for dual-price compliance
-    });
+    handlePaymentCompletion(
+      "Cash",
+      tipAmount,
+      {
+        amountTendered: amountTenderedNum,
+        isCashPriced: true, // Explicit cash pricing for dual-price compliance
+      },
+      total,
+    );
   };
 
   const handleBack = () => {
@@ -190,24 +199,27 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={percent}
                   onPress={() => handleTipPreset(percent)}
-                  className={`flex-1 py-2 rounded-xl border ${selectedTipPreset === percent
-                    ? "bg-blue-600 border-blue-500"
-                    : "bg-[#333] border-[#404040]"
-                    }`}
+                  className={`flex-1 py-2 rounded-xl border ${
+                    selectedTipPreset === percent
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-[#333] border-[#404040]"
+                  }`}
                 >
                   <Text
-                    className={`text-center font-bold ${selectedTipPreset === percent
-                      ? "text-white"
-                      : "text-gray-300"
-                      }`}
+                    className={`text-center font-bold ${
+                      selectedTipPreset === percent
+                        ? "text-white"
+                        : "text-gray-300"
+                    }`}
                   >
                     {percent}%
                   </Text>
                   <Text
-                    className={`text-center text-xs mt-1 ${selectedTipPreset === percent
-                      ? "text-blue-200"
-                      : "text-gray-500"
-                      }`}
+                    className={`text-center text-xs mt-1 ${
+                      selectedTipPreset === percent
+                        ? "text-blue-200"
+                        : "text-gray-500"
+                    }`}
                   >
                     ${((percent / 100) * total).toFixed(2)}
                   </Text>
@@ -252,15 +264,17 @@ const CashPaymentView = () => {
 
           {/* Bottom Section: Change Calculation */}
           <View
-            className={`p-6 flex-row justify-between items-center ${isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
-              }`}
+            className={`p-6 flex-row justify-between items-center ${
+              isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
+            }`}
           >
             <Text className="text-lg font-medium text-gray-300">
               Change Due
             </Text>
             <Text
-              className={`text-3xl font-bold ${isSufficient ? "text-green-400" : "text-gray-500"
-                }`}
+              className={`text-3xl font-bold ${
+                isSufficient ? "text-green-400" : "text-gray-500"
+              }`}
             >
               ${changeDue > 0 ? changeDue.toFixed(2) : "0.00"}
             </Text>
@@ -283,14 +297,16 @@ const CashPaymentView = () => {
             onPress={handleProcessCashPayment}
             disabled={!isSufficient && total > 0}
             className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-sm 
-              ${isSufficient || total === 0
-                ? "bg-blue-600 active:bg-blue-700"
-                : "bg-[#333] border border-[#404040]"
+              ${
+                isSufficient || total === 0
+                  ? "bg-blue-600 active:bg-blue-700"
+                  : "bg-[#333] border border-[#404040]"
               }`}
           >
             <Text
-              className={`font-bold text-lg ${isSufficient || total === 0 ? "text-white" : "text-gray-500"
-                }`}
+              className={`font-bold text-lg ${
+                isSufficient || total === 0 ? "text-white" : "text-gray-500"
+              }`}
             >
               {total === 0 ? "Complete Order" : "Finalize Payment"}
             </Text>
