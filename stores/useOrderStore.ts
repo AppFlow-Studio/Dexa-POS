@@ -1779,6 +1779,8 @@ interface OrderState {
   startNewOrder: (details?: {
     tableId?: string;
     guestCount?: number;
+    sessionId?: string;        // Backend session UUID
+    localSessionId?: string;   // Local session ID for offline
   }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
@@ -1918,8 +1920,12 @@ interface OrderState {
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
   // Prefetch multiple orders by their database IDs (for cache warming)
   prefetchOrders: (orderIds: string[]) => Promise<void>;
+  // Cleanup duplicate orders by db_order_id (keeps best version)
+  cleanupDuplicateOrders: () => void;
   // Sync payment status from backend (shows loading state during sync)
   syncPaymentStatus: (orderId: string) => Promise<void>;
+  // Link an order to a table session bidirectionally (handles online/offline)
+  linkOrderToSession: (orderId: string, sessionId: string) => Promise<boolean>;
 
   // === NEW: Order Calculation Actions ===
   // Recalculate order totals and update state (call after any item/discount change)
@@ -2003,8 +2009,9 @@ interface OrderState {
 const orderRefreshTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // PERFORMANCE: Per-order broadcast throttle to prevent rapid-fire updates
+// Reduced from 500ms to 50ms to minimize stale data while still preventing spam
 const lastBroadcastTime: Record<string, number> = {};
-const BROADCAST_THROTTLE_MS = 500; // Max 1 update per 500ms per order
+const BROADCAST_THROTTLE_MS = 50; // Max 1 update per 50ms per order
 
 const createDebouncedOrderRefresh = (get: () => OrderState) => {
   return (orderId: string) => {
@@ -3387,6 +3394,10 @@ export const useOrderStore = create<OrderState>()(
               amount_due: 0,
               cash_amount_due: 0,
               amount_paid: 0,
+
+              // Session tracking - bidirectional relationship
+              session_id: details?.sessionId,
+              local_session_id: details?.localSessionId,
 
               // Station tracking
               station_id: currentStationId,
@@ -6671,7 +6682,7 @@ export const useOrderStore = create<OrderState>()(
 
             // OPTIMISTIC UPDATE (Phase 1.3): Instead of full refresh, update affected table optimistically
             // Find and clear the table session for this order
-            const { tables, tablesById } = useFloorPlanStore.getState();
+            const { tablesById } = useFloorPlanStore.getState();
             const affectedTable = Object.values(tablesById).find(
               (t) => t.session?.order_id === order.db_order_id,
             );
@@ -6684,12 +6695,12 @@ export const useOrderStore = create<OrderState>()(
                 );
                 return {
                   tables: newTables,
-                  tablesById: tables.reduce(
+                  tablesById: newTables.reduce(
                     (acc, table) => {
                       acc[table.id] = table;
                       return acc;
                     },
-                    {} as Record<string, (typeof tables)[0]>,
+                    {} as Record<string, (typeof newTables)[0]>,
                   ),
                 };
               });
@@ -7484,6 +7495,8 @@ export const useOrderStore = create<OrderState>()(
                       check_status: isPaid
                         ? ("Closed" as const)
                         : ("Opened" as const),
+                      // Session tracking - sync from database
+                      session_id: dbOrder.session_id,
                       sync_status: "synced" as const,
                     },
                   },
@@ -7651,6 +7664,108 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
+          // ============================================================================
+          // LINK ORDER TO SESSION - Bidirectionally link order and session
+          // ============================================================================
+          linkOrderToSession: async (
+            orderId: string,
+            sessionId: string,
+          ): Promise<boolean> => {
+            const order = get().ordersById[orderId];
+            if (!order) {
+              console.error(`[linkOrderToSession] Order ${orderId} not found`);
+              return false;
+            }
+
+            console.log(
+              `[linkOrderToSession] Linking order ${orderId} to session ${sessionId}`,
+            );
+
+            // 1. OPTIMISTIC UPDATE: Set session_id on order immediately
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...order,
+                  session_id: sessionId,
+                  local_session_id: sessionId, // Also set local_session_id for offline tracking
+                },
+              },
+            }));
+
+            // 2. SYNC TO BACKEND: Call RPC if online and order has DB ID
+            const isOnline = getIsOnline();
+            if (isOnline && order.db_order_id) {
+              try {
+                const supabase = _supabaseClient;
+                if (!supabase) {
+                  console.warn(
+                    "[linkOrderToSession] No Supabase client, will queue for offline sync",
+                  );
+                } else {
+                  console.log(
+                    `[linkOrderToSession] Calling RPC for order ${order.db_order_id}`,
+                  );
+
+                  const { data, error } = await supabase.rpc(
+                    "link_order_to_session",
+                    {
+                      p_order_id: order.db_order_id,
+                      p_session_id: sessionId,
+                    },
+                  );
+
+                  if (error) {
+                    console.error("[linkOrderToSession] RPC error:", error);
+                    // Queue for offline sync as fallback
+                    await queueOperation({
+                      type: "link_order_to_session",
+                      params: {
+                        orderId: order.db_order_id,
+                        sessionId,
+                      },
+                      localOrderId: orderId,
+                    });
+                    return false;
+                  }
+
+                  console.log(
+                    "[linkOrderToSession] Successfully linked:",
+                    data,
+                  );
+                  return true;
+                }
+              } catch (err) {
+                console.error("[linkOrderToSession] Exception:", err);
+                // Queue for offline sync
+                await queueOperation({
+                  type: "link_order_to_session",
+                  params: {
+                    orderId: order.db_order_id || orderId,
+                    sessionId,
+                  },
+                  localOrderId: orderId,
+                });
+                return false;
+              }
+            }
+
+            // 3. OFFLINE MODE: Queue operation for later sync
+            console.log(
+              "[linkOrderToSession] Offline mode - queueing operation",
+            );
+            await queueOperation({
+              type: "link_order_to_session",
+              params: {
+                orderId: order.db_order_id || orderId,
+                sessionId,
+              },
+              localOrderId: orderId,
+            });
+
+            return true;
+          },
+
           // Prefetch multiple orders by their database IDs for cache warming
           prefetchOrders: async (orderIds: string[]): Promise<void> => {
             const supabase = _supabaseClient;
@@ -7658,8 +7773,26 @@ export const useOrderStore = create<OrderState>()(
 
             // Filter out already cached orders (check by db_order_id)
             const uncachedIds = orderIds.filter((id) => {
-              const exists = get().ordersByDbId[id];
-              return !exists;
+              // Check 1: Already indexed by DB ID
+              if (get().ordersByDbId[id]) return false;
+
+              // Check 2: Exists as local ID (direct lookup)
+              if (get().ordersById[id]) return false;
+
+              // Check 3: Scan for matching db_order_id (expensive fallback)
+              const existingOrder = Object.values(get().ordersById).find(
+                (order) => order.db_order_id === id
+              );
+
+              if (existingOrder) {
+                // Found it! Update the index so next lookup is fast
+                set((state) => ({
+                  ordersByDbId: { ...state.ordersByDbId, [id]: existingOrder },
+                }));
+                return false;
+              }
+
+              return true; // Not cached - needs fetch
             });
 
             if (uncachedIds.length === 0) {
@@ -7692,10 +7825,12 @@ export const useOrderStore = create<OrderState>()(
 
               // Transform and inject into store
               const newOrders: Record<string, OrderProfile> = {};
+              const newOrdersByDbId: Record<string, OrderProfile> = {};
               const newOrderIds: string[] = [];
 
               for (const order of data) {
                 const localId = `prefetch_${order.id}_${Date.now()}`;
+
                 const orderProfile: OrderProfile = {
                   id: localId,
                   db_order_id: order.id,
@@ -7788,18 +7923,90 @@ export const useOrderStore = create<OrderState>()(
                 };
 
                 newOrders[localId] = orderProfile;
+                newOrdersByDbId[order.id] = orderProfile; // Map DB ID to OrderProfile
                 newOrderIds.push(localId);
               }
 
               // Merge into store
               set((state) => ({
                 ordersById: { ...state.ordersById, ...newOrders },
+                ordersByDbId: { ...state.ordersByDbId, ...newOrdersByDbId },
                 orderIds: [...state.orderIds, ...newOrderIds],
               }));
 
               // console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
             } catch (error: any) {
               console.error("[prefetchOrders] Error:", error);
+            }
+          },
+
+          /**
+           * Cleanup duplicate orders by db_order_id.
+           * Keeps the best version (non-prefetch > most recent activity).
+           */
+          cleanupDuplicateOrders: () => {
+            const { ordersById, orderIds, ordersByDbId } = get();
+
+            // Find duplicates by db_order_id
+            const dbIdGroups = new Map<string, string[]>();
+
+            orderIds.forEach((localId) => {
+              const order = ordersById[localId];
+              if (!order?.db_order_id) return;
+
+              if (!dbIdGroups.has(order.db_order_id)) {
+                dbIdGroups.set(order.db_order_id, []);
+              }
+              dbIdGroups.get(order.db_order_id)!.push(localId);
+            });
+
+            // For each duplicate group, keep best one
+            const toRemove: string[] = [];
+            dbIdGroups.forEach((localIds, dbId) => {
+              if (localIds.length <= 1) return; // No duplicates
+
+              // Keep: non-prefetch > most recent activity
+              const sorted = localIds.sort((a, b) => {
+                const orderA = ordersById[a];
+                const orderB = ordersById[b];
+
+                // Prefer non-prefetch
+                const aIsPrefetch = a.startsWith("prefetch_");
+                const bIsPrefetch = b.startsWith("prefetch_");
+                if (aIsPrefetch && !bIsPrefetch) return 1;
+                if (!aIsPrefetch && bIsPrefetch) return -1;
+
+                // Prefer most recent activity
+                const aActivity =
+                  orderA.last_activity_at || orderA.opened_at || "";
+                const bActivity =
+                  orderB.last_activity_at || orderB.opened_at || "";
+                return bActivity.localeCompare(aActivity);
+              });
+
+              // Remove all except first (best)
+              toRemove.push(...sorted.slice(1));
+            });
+
+            // Remove duplicates from state
+            if (toRemove.length > 0) {
+              const newOrdersById = { ...ordersById };
+              const newOrdersByDbId = { ...ordersByDbId };
+              const newOrderIds = orderIds.filter(
+                (id) => !toRemove.includes(id)
+              );
+
+              toRemove.forEach((id) => {
+                const order = newOrdersById[id];
+                delete newOrdersById[id];
+                // Also remove from ordersByDbId if this was the indexed one
+                if (order?.db_order_id && newOrdersByDbId[order.db_order_id]?.id === id) {
+                  delete newOrdersByDbId[order.db_order_id];
+                }
+              });
+
+              set({ ordersById: newOrdersById, ordersByDbId: newOrdersByDbId, orderIds: newOrderIds });
+              console.log(`[cleanup] Removed ${toRemove.length} duplicate orders`);
             }
           },
 

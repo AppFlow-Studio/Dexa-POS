@@ -111,6 +111,8 @@ interface FloorPlanState {
     reservationId?: string;
     waitlistId?: string;
     createOrder?: boolean;
+    selected_station?: string;
+    device_id?: string;
   }) => Promise<{ sessionId: string; orderId?: string }>;
 
   updateSessionStatus: (
@@ -193,7 +195,9 @@ interface FloorPlanState {
 }
 
 // Helper to build tablesById map from tables array
-const buildTablesById = (
+// Helper function to rebuild the tablesById lookup map
+// Exported for use in other stores that need to update table state
+export const buildTablesById = (
   tables: FloorPlanObject[]
 ): Record<string, FloorPlanObject> => {
   return tables.reduce((acc, table) => {
@@ -601,19 +605,33 @@ manualReconnect: () => {
                 const { useOrderStore } = await import("./useOrderStore");
                 const { ordersById, ordersByDbId } = useOrderStore.getState();
 
-                // OPTIMIZED (Phase 1.4): Filter out already-cached orders
-                const uncachedOrderIds = orderIds.filter(
-                  id => !ordersById[id] && !ordersByDbId[id]
-                );
+                // Enhanced filtering with logging
+                const uncachedOrderIds = orderIds.filter((id) => {
+                  const inLocalCache = ordersById[id];
+                  const inDbIdCache = ordersByDbId[id];
+                  const cached = inLocalCache || inDbIdCache;
 
-                // Reduced from 10 → 5 and only prefetch if not empty
+                  if (!cached) {
+                    console.log(`[prefetch] Order ${id} not cached, will fetch`);
+                  }
+
+                  return !cached;
+                });
+
                 if (uncachedOrderIds.length > 0) {
+                  console.log(
+                    `[prefetch] Fetching ${uncachedOrderIds.length} orders`
+                  );
                   await useOrderStore.getState().prefetchOrders(
                     uncachedOrderIds.slice(0, 5)
                   );
+                } else {
+                  console.log(
+                    `[prefetch] All ${orderIds.length} orders already cached`
+                  );
                 }
               } catch (err) {
-                console.warn("[loadFloorPlanStatus] Order prefetch failed:", err);
+                console.error("[prefetch] Failed:", err);
               }
             });
           }
@@ -868,12 +886,14 @@ manualReconnect: () => {
                 {
                   p_table_ids: params.tableIds,
                   p_party_size: params.partySize,
-                  p_guest_name: params.guestName,
-                  p_guest_phone: params.guestPhone,
-                  p_guest_notes: params.guestNotes,
-                  p_reservation_id: params.reservationId,
-                  p_waitlist_id: params.waitlistId,
+                  p_guest_name: params.guestName || null,
+                  p_guest_phone: params.guestPhone || null,
+                  p_guest_notes: params.guestNotes || null,
+                  p_reservation_id: params.reservationId || null,
+                  p_waitlist_id: params.waitlistId || null,
                   p_create_order: params.createOrder ?? true,
+                  p_device_id :params.device_id || null,
+                  p_station_id : params.selected_station || null,
                   p_staff_id:
                     useEmployeeStore.getState().loggedInEmployee?.profileId,
                 }
@@ -903,6 +923,28 @@ manualReconnect: () => {
                 // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
                 // Realtime sync will handle any additional changes
                 // await get().loadFloorPlanStatus();
+                console.log('[SeatGuests] Data Link Order To Session Data', data)
+
+                // PHASE 2: Safety check - ensure bidirectional order-session link
+                if (data.order_id) {
+                  // Import useOrderStore dynamically to avoid circular dependency
+                  const { useOrderStore } = await import("./useOrderStore");
+                  const orderStore = useOrderStore.getState();
+
+                  // Find the order by backend UUID or local ID
+                  const order = Object.values(orderStore.ordersById).find(
+                    (o) => o.db_order_id === data.order_id || o.id === localOrderId
+                  );
+
+                  // If order exists and doesn't have session_id set, link them
+                  console.log('[SeatGuests] Data Link Order To Session', data)
+                  if (order && !order.session_id) {
+                    console.log(
+                      "[seatGuests] Order missing session_id, establishing bidirectional link"
+                    );
+                    await orderStore.linkOrderToSession(order.id, data.session_id);
+                  }
+                }
 
                 return {
                   sessionId: data.session_id,
@@ -1153,6 +1195,9 @@ manualReconnect: () => {
           const table = get().tablesById[tableId];
           const sessionId = table?.session?.id;
 
+          // Capture original session for rollback if needed
+          const originalSession = table?.session;
+
           // 1. ALWAYS update local state first (optimistic)
           set((state) => {
             const newTables = state.tables.map((t) =>
@@ -1182,13 +1227,34 @@ manualReconnect: () => {
 
               if (error) {
                 console.error("[clearTableSession] Backend error:", error);
+                // ROLLBACK: Restore original session on backend failure
+                set((state) => {
+                  const newTables = state.tables.map((t) =>
+                    t.id === tableId ? { ...t, session: originalSession } : t
+                  );
+                  return {
+                    tables: newTables,
+                    tablesById: buildTablesById(newTables),
+                  };
+                });
+                throw new Error(`Failed to clear session: ${error.message || error}`);
               } else {
-                // REMOVED (Phase 2.1): Full refresh - optimistic update already applied
+                // Success - optimistic update already applied
                 // Realtime sync will handle any additional changes
-                // await get().loadFloorPlanStatus();
               }
             } catch (err) {
               console.error("[clearTableSession] Exception:", err);
+              // ROLLBACK: Restore original session on exception
+              set((state) => {
+                const newTables = state.tables.map((t) =>
+                  t.id === tableId ? { ...t, session: originalSession } : t
+                );
+                return {
+                  tables: newTables,
+                  tablesById: buildTablesById(newTables),
+                };
+              });
+              throw err; // Re-throw so caller knows it failed
             }
           }
         },

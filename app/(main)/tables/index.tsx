@@ -4,6 +4,7 @@ import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
+import { getDeviceId } from "@/lib/deviceId";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -11,6 +12,7 @@ import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
@@ -38,11 +40,13 @@ const TablesScreen = () => {
     mergeTable,
     unmergeTable,
     isLoading: floorPlanLoading,
-    realtimeStatus,
-    realtimeChannel,
-    realtimeError,
-    manualReconnect,
+    // realtimeStatus,
+    // realtimeChannel,
+    // realtimeError,
+    // manualReconnect,
   } = useFloorPlanStore();
+  const { selectedStation } = useStoreSettingsStore();
+  const device_id = getDeviceId()
   const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
@@ -265,6 +269,8 @@ const TablesScreen = () => {
           tableIds: tableIdsToSeat,
           partySize: guestCount,
           createOrder: true,
+          selected_station : selectedStation?.id,
+          device_id : device_id
         });
 
       console.log(
@@ -370,7 +376,6 @@ const TablesScreen = () => {
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
         />
-       
 
         {/* Right Side: Floor Plan */}
         <View className="flex-1 p-4">

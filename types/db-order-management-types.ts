@@ -53,6 +53,7 @@ export interface Order {
   customer_name?: string;
   customer_phone?: string;
   table_number?: string;
+  session_id?: string; // Bidirectional link to table session (for dine-in orders)
   subtotal: number;
   tax_amount: number;
   tip_amount: number;

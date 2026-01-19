@@ -142,7 +142,7 @@ export class FloorPlanService {
     data: { session_id: string; order_id?: string } | null;
     error: any;
   }> {
-    const { data, error } = await client.rpc("seat_guests", params);
+    const { data, error } = await client.rpc("seat_guests_v2", params);
     return { data, error };
   }
 

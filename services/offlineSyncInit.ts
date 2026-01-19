@@ -16,6 +16,8 @@ import {
   isValidUUID,
   mapLocalToBackend,
   resolveToBackendId,
+  findRelatedEntities,
+  registerRelationship,
 } from "@/lib/offlineIdRegistry";
 import {
   getFailedPayments,
@@ -117,6 +119,11 @@ export async function initializeOfflineSync(): Promise<void> {
         } else {
           console.log("[OfflineSync] No orders with failed syncs found");
         }
+
+        // NEW: Run reconciliation to fix any broken order-session relationships
+        // This handles out-of-order syncing where orders and sessions sync separately
+        console.log("[OfflineSync] Running relationship reconciliation...");
+        await reconcileRelationships();
       }
     },
     onQueueChange: (count) => {
@@ -180,7 +187,7 @@ function resolveOrderId(localOrderId: string): string | null {
 
 /**
  * Resolve a local item ID to backend UUID.
- * 
+ *
  * @returns Backend UUID string, or null if item hasn't been synced yet
  */
 function resolveItemId(
@@ -201,6 +208,35 @@ function resolveItemId(
   const order = store.ordersById[localOrderId];
   const item = order?.items.find((i) => i.id === localItemId);
   return item?.db_order_item_id || null;
+}
+
+/**
+ * Resolve a local session ID to backend UUID.
+ *
+ * Strategy:
+ * 1. If it's already a valid UUID, return it (it's a backend ID)
+ * 2. If it's a local ID, resolve it via registry
+ * 3. Fall back to FloorPlanStore lookup
+ *
+ * @returns Backend UUID string, or null if session hasn't been synced yet
+ */
+function resolveSessionId(localSessionId: string): string | null {
+  // First check if it's already a valid UUID (backend ID)
+  if (isValidUUID(localSessionId)) {
+    return localSessionId;
+  }
+
+  // It's a local ID - try registry first
+  const fromRegistry = resolveToBackendId(localSessionId);
+  if (fromRegistry) {
+    console.log(`[resolveSessionId] Resolved ${localSessionId} from registry: ${fromRegistry}`);
+    return fromRegistry;
+  }
+
+  // Fall back to FloorPlanStore lookup
+  // TODO: Implement when FloorPlanStore has session lookup
+  console.log(`[resolveSessionId] Cannot resolve ${localSessionId} - session not synced yet`);
+  return null;
 }
 
 /**
@@ -987,6 +1023,48 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
       }
 
       // ================================================================
+      // LINK ORDER TO SESSION - Bidirectional linking
+      // ================================================================
+      case "link_order_to_session": {
+        const { orderId, sessionId } = op.params;
+
+        console.log("[OfflineSync:link_order_to_session] Linking order to session", {
+          orderId,
+          sessionId,
+        });
+
+        // Resolve IDs if they are local IDs
+        const resolvedOrderId = resolveOrderId(orderId);
+        if (!resolvedOrderId) {
+          console.log(`[OfflineSync:link_order_to_session] BLOCKED - Order ${orderId} not synced yet`);
+          return false;
+        }
+
+        // Session ID should already be a backend UUID if from seatGuests
+        // But check if it needs resolution
+        const resolvedSessionId = sessionId; // Assuming sessionId is already backend UUID
+
+        try {
+          // Call the RPC function to link bidirectionally
+          const { data, error } = await _supabaseClient.rpc("link_order_to_session", {
+            p_order_id: resolvedOrderId,
+            p_session_id: resolvedSessionId,
+          });
+
+          if (error) {
+            console.error("[OfflineSync:link_order_to_session] RPC error:", error);
+            return false;
+          }
+
+          console.log("[OfflineSync:link_order_to_session] Successfully linked:", data);
+          return true;
+        } catch (err) {
+          console.error("[OfflineSync:link_order_to_session] Exception:", err);
+          return false;
+        }
+      }
+
+      // ================================================================
       // SEND TO KITCHEN - Updates order status + item statuses
       // ================================================================
       case "send_to_kitchen": {
@@ -1120,6 +1198,98 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
   } catch (error) {
     console.error("[OfflineSync] Error executing operation:", op.type, error);
     return false;
+  }
+}
+
+// ============================================================================
+// RECONCILIATION LOGIC (Phase 3.2)
+// ============================================================================
+
+/**
+ * Reconcile order-session relationships after out-of-order syncing.
+ *
+ * This function runs after each sync batch to fix broken links between orders
+ * and sessions that occurred when one entity synced before the other.
+ *
+ * Example scenario:
+ * 1. Offline: Create order (local_order_123) + session (local_session_456)
+ * 2. Go online
+ * 3. Order syncs first → gets UUID (uuid-abc)
+ * 4. Session syncs second → still references local_order_123
+ * 5. This function fixes the link by finding related entities and updating them
+ */
+export async function reconcileRelationships(): Promise<void> {
+  if (!_supabaseClient) {
+    console.warn("[reconcile] No Supabase client available, skipping");
+    return;
+  }
+
+  console.log("[reconcile] ====== STARTING RECONCILIATION ======");
+
+  try {
+    // ================================================================
+    // PASS 1: Find orders missing session_id
+    // ================================================================
+    const { ordersById } = useOrderStore.getState();
+    const orphanedOrders = Object.values(ordersById).filter(
+      (order) => order.local_session_id && !order.session_id
+    );
+
+    console.log(`[reconcile] Found ${orphanedOrders.length} orders missing session_id`);
+
+    for (const order of orphanedOrders) {
+      try {
+        // Try to resolve the local session ID to a backend UUID
+        const backendSessionId = resolveSessionId(order.local_session_id);
+
+        if (backendSessionId) {
+          console.log(
+            `[reconcile] ✓ Linking order ${order.id} to session ${backendSessionId}`
+          );
+
+          // Call the RPC to set bidirectional link
+          const { data, error } = await _supabaseClient.rpc("link_order_to_session", {
+            p_order_id: order.db_order_id,
+            p_session_id: backendSessionId,
+          });
+
+          if (error) {
+            console.error(`[reconcile] Failed to link order ${order.id}:`, error);
+          } else {
+            console.log(`[reconcile] Successfully linked order ${order.id}`, data);
+
+            // Update local state
+            useOrderStore.setState((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [order.id]: {
+                  ...order,
+                  session_id: backendSessionId,
+                },
+              },
+            }));
+          }
+        } else {
+          console.warn(
+            `[reconcile] ⚠ Session ${order.local_session_id} not synced yet, will retry later`
+          );
+        }
+      } catch (err) {
+        console.error(`[reconcile] Error processing order ${order.id}:`, err);
+      }
+    }
+
+    // ================================================================
+    // PASS 2: Find sessions with local order IDs
+    // ================================================================
+    // This would require FloorPlanStore integration
+    // For now, we rely on PASS 1 which handles most cases
+    // TODO: Add FloorPlanStore reconciliation when available
+
+    console.log("[reconcile] ====== RECONCILIATION COMPLETE ======");
+  } catch (error) {
+    console.error("[reconcile] Reconciliation failed:", error);
+    // Don't throw - reconciliation will retry on next sync
   }
 }
 

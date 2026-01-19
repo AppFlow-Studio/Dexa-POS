@@ -200,10 +200,12 @@ const OrderRow: React.FC<OrderRowProps> = ({
           )}
 
           <Text className="text-xs text-gray-400 text-right w-full">
-            {new Date(order.opened_at).toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+          {new Date(order.opened_at).toLocaleDateString("en-US",
+              {
+                hour : '2-digit',
+                minute : '2-digit'
+              }
+            )}
           </Text>
         </View>
       </View>

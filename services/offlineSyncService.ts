@@ -12,6 +12,11 @@
  */
 
 import { getSyncJSON, setSyncJSON } from "@/lib/storage";
+import {
+  isValidUUID,
+  resolveToBackendId,
+  isSynced,
+} from "@/lib/offlineIdRegistry";
 import { isLocalOrder } from "@/utils/orderIdHelpers";
 // @ts-ignore - NetInfo types not recognized but package is installed
 import NetInfo from "@react-native-community/netinfo";
@@ -42,6 +47,7 @@ export type OperationType =
   // Floor plan operations
   | "seat_guests"
   | "update_session_status"
+  | "link_order_to_session"  // Bidirectional order-session linking
   // Coursing operations
   | "fire_course";
 
@@ -54,6 +60,7 @@ export const OPERATION_PRIORITY: Record<OperationType, number> = {
   create_order: 1,
   seat_guests: 1,
   update_session_status: 1,
+  link_order_to_session: 1,  // Relationship operation, high priority
 
   // Item operations after order exists
   add_item: 2,
@@ -873,6 +880,56 @@ function areDependenciesSatisfied(op: OfflineOperation): boolean {
         `[OfflineSync] ${op.type} blocked - waiting for create_order of ${op.localOrderId}`
       );
       return false;
+    }
+  }
+
+  // ================================================================
+  // NEW (Phase 3.3): RELATIONSHIP dependency checking
+  // ================================================================
+  // Check if referenced entities have been synced (have backend UUIDs)
+
+  // link_order_to_session needs both order AND session to be synced
+  if (op.type === "link_order_to_session") {
+    const { orderId, sessionId } = op.params;
+
+    // Check if order has been synced (has backend UUID)
+    const orderReady = isValidUUID(orderId) || isSynced(orderId);
+    if (!orderReady) {
+      console.log(
+        `[OfflineSync] link_order_to_session blocked - order ${orderId} not synced yet`
+      );
+      return false;
+    }
+
+    // Check if session has been synced (has backend UUID)
+    const sessionReady = isValidUUID(sessionId) || isSynced(sessionId);
+    if (!sessionReady) {
+      console.log(
+        `[OfflineSync] link_order_to_session blocked - session ${sessionId} not synced yet`
+      );
+      return false;
+    }
+  }
+
+  // Item operations need parent order synced (additional check beyond create_order)
+  if (
+    (op.type === "add_item" ||
+      op.type === "update_item" ||
+      op.type === "update_item_quantity" ||
+      op.type === "replace_modifiers" ||
+      op.type === "remove_item" ||
+      op.type === "void_item") &&
+    op.localOrderId
+  ) {
+    // If localOrderId is still local (not a UUID), check if it's been synced
+    if (!isValidUUID(op.localOrderId)) {
+      const orderSynced = isSynced(op.localOrderId);
+      if (!orderSynced) {
+        console.log(
+          `[OfflineSync] ${op.type} blocked - parent order ${op.localOrderId} not synced yet`
+        );
+        return false;
+      }
     }
   }
 

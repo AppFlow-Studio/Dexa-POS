@@ -330,15 +330,17 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
           <View className="flex-row justify-between items-center">
             <View className="flex-1">
               <Text className="text-lg font-bold text-white" numberOfLines={1}>
-                
                 {order.display_number ||
                   order.order_number?.slice(-4) ||
                   "----"}
                 <Text className="text-amber-400"> C{courseNumber}</Text>
+
               </Text>
               {tableName && (
                 <Text className="text-sm text-gray-400">{tableName}</Text>
               )}
+              <Text className="text-white text-sm">{order.opened_at ? new Date(order.opened_at).toLocaleDateString('en-US') : ''}</Text>
+
             </View>
             <View className="items-end">
               <View className="flex-row items-center">
@@ -658,11 +660,28 @@ const KitchenDisplayScreen = () => {
     const ready: KDSCardData[] = [];
 
     Object.values(ordersByDbId).forEach((order) => {
+      // FILTER 1: Exclude orders with inactive statuses
+      // These should NEVER appear in KDS regardless of item status
+      const inactiveStatuses = ["completed", "cancelled", "void", "voided", "refunded"];
+      if (inactiveStatuses.includes(order.order_status)) {
+        return; // Skip this order
+      }
+
+      // FILTER 2: Exclude orders where all items are served
+      // Kitchen work is complete for these orders
+      const allItemsServed = order.items.every(
+        (item) => item.kitchen_status === "served"
+      );
+      if (allItemsServed) {
+        return; // Skip fully served orders
+      }
+
       const relevantItems = order.items.filter(
         (item) =>
-          item.kitchen_status === "sent" ||
+          !item.is_voided && // NEW: Exclude voided items
+          (item.kitchen_status === "sent" ||
           item.kitchen_status === "preparing" ||
-          item.kitchen_status === "ready"
+          item.kitchen_status === "ready")
       );
 
       if (relevantItems.length === 0) return;
