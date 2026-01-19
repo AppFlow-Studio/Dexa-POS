@@ -1,10 +1,13 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useTerminalStatus } from "@/hooks/useTerminalStatus";
+import { isTerminalConnectivityError, getTerminalErrorMessage } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
+import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
 import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { CheckCircle2, Wifi } from "lucide-react-native";
 import { useEffect, useState } from "react";
@@ -43,6 +46,18 @@ const CardPaymentView = () => {
 
   const { selectedStation } = useStoreSettingsStore();
   console.log('selectedStation', selectedStation);
+
+  // Check terminal status on mount
+  const {
+    status: terminalStatus,
+    isReady: terminalReady,
+    errorMessage: terminalErrorMessage,
+    recheckStatus
+  } = useTerminalStatus(
+    selectedStation?.payment_terminal?.id,
+    selectedStation?.payment_terminal
+  );
+
   const TIP_PRESETS = [18, 20, 25];
 
   // Get the active order for backend amount_due
@@ -157,14 +172,29 @@ const CardPaymentView = () => {
         console.log('=== END DEJAVOO RESPONSE ===');
   
         // 6. Handle result
-        if (result.success) {
-           setStatus("success");
+        // Check for terminal connectivity error first
+        if (!result.success && isTerminalConnectivityError(result)) {
+          const errorMsg = getTerminalErrorMessage(result);
+          toastService.show({
+            title: 'Terminal Disconnected',
+            message: errorMsg,
+            type: 'error',
+            duration: 5000,
+          });
+          close(); // Immediate safe close
+          return;
         }
-        else{
+
+        // Handle all other transaction errors (declined, timeout, etc.)
+        if (!result.success) {
           setDejavooError(result.error || 'Transaction failed');
           setStatus("ready");
-          
           return;
+        }
+
+        // Success
+        if (result.success) {
+           setStatus("success");
         }
         } catch (error) {
           console.error('[CardPayment] Error processing payment:', error);
@@ -218,6 +248,17 @@ const CardPaymentView = () => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Terminal Status Banner */}
+        {terminalStatus !== 'online' && (
+          <View className="mb-4">
+            <TerminalStatusBanner
+              status={terminalStatus}
+              errorMessage={terminalErrorMessage || undefined}
+              onRetry={recheckStatus}
+            />
+          </View>
+        )}
+
         {/* Top Section: Status Indicator */}
         <View className="items-center justify-center flex-1">
           {/* READY STATE: Tip Input */}
@@ -340,14 +381,6 @@ const CardPaymentView = () => {
             </View>
           )}
         </View>
-   {/* Terminal Selection Warning */}
-   {!selectedStation?.payment_terminal && (
-        <View className="absolute bottom-24 left-4 right-4 p-4 bg-yellow-900/20 border border-yellow-500 rounded-xl">
-          <Text className="text-yellow-400 font-medium">
-            No payment terminal selected. Please select a terminal in settings.
-          </Text>
-        </View>
-      )}
 
       {/* Error Display */}
       {dejavooError && (
@@ -415,7 +448,12 @@ const CardPaymentView = () => {
           {status === "ready" && (
             <TouchableOpacity
               onPress={handleChargeCard}
-              className="w-full py-4 bg-blue-600 rounded-xl mb-4 active:bg-blue-700 items-center"
+              disabled={!terminalReady}
+              className={`w-full py-4 rounded-xl mb-4 items-center ${
+                terminalReady
+                  ? "bg-blue-600 active:bg-blue-700"
+                  : "bg-gray-600 opacity-50"
+              }`}
             >
               <Text className="text-white font-bold text-lg">
                 Charge Card ${grandTotal.toFixed(2)}

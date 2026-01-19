@@ -330,7 +330,7 @@ const KDSOrderCard: React.FC<KDSOrderCardProps> = ({
           <View className="flex-row justify-between items-center">
             <View className="flex-1">
               <Text className="text-lg font-bold text-white" numberOfLines={1}>
-                #
+                
                 {order.display_number ||
                   order.order_number?.slice(-4) ||
                   "----"}

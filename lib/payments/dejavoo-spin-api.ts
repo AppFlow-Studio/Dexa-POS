@@ -291,6 +291,7 @@ export class DejavooSpinAPI {
       const url = `${this.getBaseUrl()}/v2/Common/TerminalStatus`;
       const params = new URLSearchParams({
         'request.tpn': this.credentials.tpn,
+        'request.registerId': this.credentials.registerId!,
         'request.authkey': this.credentials.authKey,
       });
 

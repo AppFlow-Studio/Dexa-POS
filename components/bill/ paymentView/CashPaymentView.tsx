@@ -1,10 +1,13 @@
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
+import { useTerminalStatus } from "@/hooks/useTerminalStatus";
+import { isTerminalConnectivityError, getTerminalErrorMessage } from "@/lib/payments/dejavoo-error-detector";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { generateRefId } from "@/types/dejavoo-spin-api";
+import { TerminalStatusBanner } from "@/components/payment/TerminalStatusBanner";
 import { ArrowLeft, Banknote, Delete, DollarSign } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
@@ -41,6 +44,17 @@ const CashPaymentView = () => {
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [dejavooError, setDejavooError] = useState<string | null>(null);
+
+  // Check terminal status on mount
+  const {
+    status: terminalStatus,
+    isReady: terminalReady,
+    errorMessage: terminalErrorMessage,
+    recheckStatus
+  } = useTerminalStatus(
+    selectedStation?.payment_terminal?.id,
+    selectedStation?.payment_terminal
+  );
 
   const TIP_PRESETS = [18, 20, 25];
 
@@ -187,8 +201,36 @@ const CashPaymentView = () => {
       console.log('=== END DEJAVOO RESPONSE ===');
 
       // 6. Handle result
+      // Check for terminal connectivity error first
+      if (!result.success && isTerminalConnectivityError(result)) {
+        const errorMsg = getTerminalErrorMessage(result);
+        toastService.show({
+          title: 'Terminal Disconnected',
+          message: errorMsg,
+          type: 'error',
+          duration: 5000,
+        });
+        setIsProcessing(false);
+        close(); // Immediate safe close
+        return;
+      }
+
+      // Handle all other transaction errors (declined, timeout, etc.)
+      // if (!result.success) {
+      //   const errorMsg = result.error || 'Transaction failed';
+      //   console.error('[CashPayment] Transaction failed:', errorMsg);
+      //   setDejavooError(errorMsg);
+      //   toastService.show({
+      //     title: 'Transaction Failed',
+      //     message: errorMsg,
+      //     type: 'error',
+      //   });
+      //   close();
+      //   return;
+      // }
+
+      // Success - Pass Dejavoo transaction details to payment handler
       if (result.success) {
-        // Pass Dejavoo transaction details to payment handler
         handlePaymentCompletion({
           method: "Cash",
           tipAmount: tipAmount,
@@ -213,18 +255,6 @@ const CashPaymentView = () => {
             cardLast4: result.helpers?.getCardLast4(),
           },
         }});
-      } else {
-        // Transaction failed
-        const errorMsg = result.error || 'Transaction failed';
-        console.error('[CashPayment] Transaction failed:', errorMsg);
-        setDejavooError(errorMsg);
-
-        // Show error toast
-        toastService.show({
-          title: 'Transaction Failed',
-          message: errorMsg,
-          type: 'error',
-        });
       }
     } catch (error) {
       console.error('[CashPayment] Error processing payment:', error);
@@ -237,6 +267,8 @@ const CashPaymentView = () => {
         message: errorMsg,
         type: 'error',
       });
+      close();
+
     } finally {
       setIsProcessing(false);
     }
@@ -264,6 +296,17 @@ const CashPaymentView = () => {
               : "Enter amount received"}
           </Text>
         </View>
+
+        {/* Terminal Status Banner */}
+        {/* {terminalStatus !== 'online' && (
+          <View className="mx-4 mb-4">
+            <TerminalStatusBanner
+              status={terminalStatus}
+              errorMessage={terminalErrorMessage || undefined}
+              onRetry={recheckStatus}
+            />
+          </View>
+        )} */}
 
         {/* Main Card */}
         <View className="mx-4 bg-[#2A2A2A] rounded-2xl border border-[#333] overflow-hidden">
@@ -417,15 +460,6 @@ const CashPaymentView = () => {
         </View>
       </ScrollView>
 
-      {/* Terminal Selection Warning */}
-      {!selectedStation?.payment_terminal && (
-        <View className="absolute bottom-24 left-4 right-4 p-4 bg-yellow-900/20 border border-yellow-500 rounded-xl">
-          <Text className="text-yellow-400 font-medium">
-            No payment terminal selected. Please select a terminal in settings.
-          </Text>
-        </View>
-      )}
-
       {/* Error Display */}
       {dejavooError && (
         <View className="absolute bottom-24 left-4 right-4 p-4 bg-red-900/20 border border-red-500 rounded-xl">
@@ -448,16 +482,16 @@ const CashPaymentView = () => {
 
           <TouchableOpacity
             onPress={handleProcessCashPayment}
-            disabled={(!isSufficient && total > 0) || isProcessing}
+            disabled={(!isSufficient && total > 0) || isProcessing || !terminalReady}
             className={`flex-[2] py-4 rounded-xl flex-row items-center justify-center shadow-sm
-              ${(isSufficient || total === 0) && !isProcessing
+              ${(isSufficient || total === 0) && !isProcessing && terminalReady
                 ? "bg-blue-600 active:bg-blue-700"
                 : "bg-[#333] border border-[#404040]"
               }`}
           >
             <Text
               className={`font-bold text-lg ${
-                (isSufficient || total === 0) && !isProcessing
+                (isSufficient || total === 0) && !isProcessing && terminalReady
                   ? "text-white"
                   : "text-gray-500"
               }`}
