@@ -7717,6 +7717,7 @@ export const useOrderStore = create<OrderState>()(
                     (order.order_items || []).map((item: any) => ({
                       id: `item_${item.id}`,
                       isDraft: false,
+                      
                       menuItemId: item.menu_item_id || "",
                       // For open items, use open_item_name; otherwise use item_name
                       name: item.is_open_item
@@ -7728,7 +7729,7 @@ export const useOrderStore = create<OrderState>()(
                         : item.unit_price || 0,
                       unitPrice: item.is_open_item
                         ? item.open_item_price || 0
-                        : item.unit_price || 0,
+                        : item.baseCardPrice || 0,
                       cashPrice:
                         item.cash_price ||
                         item.cash_unit_price ||
@@ -7777,6 +7778,7 @@ export const useOrderStore = create<OrderState>()(
                       discount_amount: item.discount_amount ?? 0,
                       discount_cash_amount:
                         item.discount_cash_amount ?? item.discount_amount ?? 0,
+                      
                     })) || [],
                   payments: [],
                   opened_at: order.created_at,

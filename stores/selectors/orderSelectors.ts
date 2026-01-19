@@ -315,7 +315,7 @@ export function useOtherStationOrders(): OrderProfile[] {
 
 export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
-  const OnlyUncomplete = stationOrders.filter((o) =>( o.order_status !== 'completed' || o.order_status !== 'ready' ) && o.paid_status !== 'Paid')
+  const OnlyUncomplete = stationOrders.filter((o) => ( o.order_status !== 'completed' && o.order_status !== 'ready' ) && o.paid_status !== 'Paid')
   return useMemo(() => {
     return {
       All: OnlyUncomplete.length,
