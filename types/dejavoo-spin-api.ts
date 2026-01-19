@@ -18,7 +18,8 @@ export type PaymentType =
   | 'EBT_Food'    // EBT Food Stamps
   | 'EBT_Cash'    // EBT Cash Benefits
   | 'Gift'        // Gift card
-  | 'userChoice'; // Let customer choose payment method
+  | 'userChoice' // Let customer choose payment method
+  | 'Cash'; // Cash payment
 
 /**
  * Transaction operation types
@@ -129,7 +130,7 @@ export interface DejavooSaleRequest {
    * Gratuity/tip amount (requires terminal enablement)
    * @optional
    */
-  Tip?: number;
+  TipAmount?: number;
 
   /**
    * Merchant-defined custom fee amount
@@ -1462,3 +1463,20 @@ export function createRefundRequest(
 }
 
 
+export interface DejavooSaleTransactionResponse {
+  referenceId: string 
+  transactionNumber: string 
+  invoiceNumber: string 
+  batchNumber: string 
+  authCode: string 
+  totalAmount: string 
+  baseAmount: string 
+  tipAmount: string 
+  cardType: string
+  cardLast4: string
+  entryMode: string 
+  resultCode: string 
+  statusCode: string 
+  message: string
+  rrn: string 
+}

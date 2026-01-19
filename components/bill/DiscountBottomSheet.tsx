@@ -9,7 +9,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetScrollView,
-  BottomSheetView
+  BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Check, X } from "lucide-react-native";
@@ -29,6 +29,12 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const snapPoints = useMemo(() => ["50%", "100%"], []);
   const [activeTab, setActiveTab] = useState<"check" | "items">("check");
 
+  // Custom discount state
+  const [customDiscountType, setCustomDiscountType] = useState<
+    "percentage" | "fixed"
+  >("percentage");
+  const [customDiscountValue, setCustomDiscountValue] = useState("");
+
   const {
     activeOrderId,
     ordersById,
@@ -44,7 +50,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const activeOrder = activeOrderId ? ordersById[activeOrderId] : undefined;
   const cartItems = activeOrder?.items || [];
   const itemsWithAvailableDiscounts = cartItems.filter(
-    (item) => !!item.availableDiscount
+    (item) => !!item.availableDiscount,
   );
 
   const eligibilityResults = useMemo(() => {
@@ -80,7 +86,10 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
     const incomingNonStackable = (discount as any)?.stackable === false;
 
     // Enforce non-stackable rule: block applying when a non-stackable exists or incoming is non-stackable
-    if (existingCheckDiscount && (existingNonStackable || incomingNonStackable)) {
+    if (
+      existingCheckDiscount &&
+      (existingNonStackable || incomingNonStackable)
+    ) {
       show({
         title: "Cannot stack discounts",
         message: "Remove the existing discount before applying this one.",
@@ -96,6 +105,51 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
   const handleRemoveCheckDiscount = () => {
     if (!activeOrderId) return;
     removeCheckDiscount(activeOrderId);
+    onClose();
+  };
+
+  const handleApplyCustomDiscount = () => {
+    if (!activeOrderId || !customDiscountValue) return;
+
+    const numericValue = parseFloat(customDiscountValue);
+    if (isNaN(numericValue) || numericValue <= 0) {
+      show({
+        title: "Invalid discount",
+        message: "Please enter a valid discount amount.",
+        type: "error",
+      });
+      return;
+    }
+
+    // Validate percentage doesn't exceed 100%
+    if (customDiscountType === "percentage" && numericValue > 100) {
+      show({
+        title: "Invalid percentage",
+        message: "Percentage discount cannot exceed 100%.",
+        type: "error",
+      });
+      return;
+    }
+
+    // Create a custom discount object compatible with applyDiscountToCheck
+    const customDiscount = {
+      id: `custom_${Date.now()}`,
+      label:
+        customDiscountType === "percentage"
+          ? `Custom ${numericValue}% Off`
+          : `Custom $${numericValue.toFixed(2)} Off`,
+      value:
+        customDiscountType === "percentage"
+          ? numericValue / 100 // Convert to decimal for percentage
+          : numericValue,
+      type: customDiscountType,
+    };
+
+    applyDiscountToCheck(activeOrderId, customDiscount as any);
+
+    // Reset custom discount form
+    setCustomDiscountValue("");
+
     onClose();
   };
 
@@ -117,7 +171,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         opacity={0.7}
       />
     ),
-    []
+    [],
   );
 
   return (
@@ -136,7 +190,7 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
       android_keyboardInputMode="adjustResize"
       topInset={60}
     >
-      <BottomSheetView className="flex-1 bg-[#212121] px-4 pb-6">
+      <BottomSheetScrollView className="flex-1 bg-[#212121] px-4 pb-6">
         {/* Header */}
         <View className="flex-row justify-between items-center mb-4 border-b border-gray-700 pb-3">
           <Text className="text-xl font-bold text-white">Apply Discount</Text>
@@ -157,7 +211,8 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
               </Text>
               {activeOrder.checkDiscount.type === "percentage" ? (
                 <Text className="text-gray-300">
-                  {Math.round((activeOrder.checkDiscount.value || 0) * 100)}% off
+                  {Math.round((activeOrder.checkDiscount.value || 0) * 100)}%
+                  off
                 </Text>
               ) : (
                 <Text className="text-gray-300">
@@ -178,8 +233,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         <View className="flex-row bg-[#303030] p-1 rounded-xl mb-5 border border-gray-700">
           <TouchableOpacity
             onPress={() => setActiveTab("check")}
-            className={`flex-1 py-2 rounded-lg items-center ${activeTab === "check" ? "bg-[#4B5563]" : ""
-              }`}
+            className={`flex-1 py-2 rounded-lg items-center ${
+              activeTab === "check" ? "bg-[#4B5563]" : ""
+            }`}
           >
             <Text
               className={`font-semibold ${activeTab === "check" ? "text-white" : "text-gray-400"}`}
@@ -189,8 +245,9 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setActiveTab("items")}
-            className={`flex-1 py-2 rounded-lg items-center ${activeTab === "items" ? "bg-[#4B5563]" : ""
-              }`}
+            className={`flex-1 py-2 rounded-lg items-center ${
+              activeTab === "items" ? "bg-[#4B5563]" : ""
+            }`}
           >
             <Text
               className={`font-semibold ${activeTab === "items" ? "text-white" : "text-gray-400"}`}
@@ -201,31 +258,182 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
         </View>
 
         {/* Content */}
-        <BottomSheetScrollView
-          showsVerticalScrollIndicator={false}
-          // FIX 3: Add large bottom padding.
-          // This ensures that when the keyboard comes up, there is enough 'scrollable'
-          // area to push the input to the top of the screen.
-          contentContainerStyle={{ paddingBottom: 150 }}
+        <View
+        // FIX 3: Add large bottom padding.
+        // This ensures that when the keyboard comes up, there is enough 'scrollable'
+        // area to push the input to the top of the screen.
         >
           {activeTab === "check" && (
             <View className="flex-1">
+              {/* Custom Discount Section */}
+              <View className="mb-6">
+                <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
+                  Custom Discount
+                </Text>
+                <View className="bg-[#303030] border border-gray-700 rounded-xl p-4">
+                  {/* Discount Type Tabs */}
+                  <View className="flex-row bg-[#212121] p-1 rounded-lg mb-4">
+                    <TouchableOpacity
+                      onPress={() => setCustomDiscountType("percentage")}
+                      className={`flex-1 py-2 rounded-md items-center ${
+                        customDiscountType === "percentage" ? "bg-blue-600" : ""
+                      }`}
+                    >
+                      <Text
+                        className={`font-semibold ${
+                          customDiscountType === "percentage"
+                            ? "text-white"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        % Percentage
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setCustomDiscountType("fixed")}
+                      className={`flex-1 py-2 rounded-md items-center ${
+                        customDiscountType === "fixed" ? "bg-green-600" : ""
+                      }`}
+                    >
+                      <Text
+                        className={`font-semibold ${
+                          customDiscountType === "fixed"
+                            ? "text-white"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        $ Dollar Amount
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Quick Value Buttons */}
+                  <View className="flex-row flex-wrap gap-2 mb-4">
+                    {customDiscountType === "percentage"
+                      ? [5, 10, 15, 20, 25, 50].map((pct) => (
+                          <TouchableOpacity
+                            key={pct}
+                            onPress={() =>
+                              setCustomDiscountValue(pct.toString())
+                            }
+                            className={`px-4 py-2 rounded-lg border ${
+                              customDiscountValue === pct.toString()
+                                ? "bg-blue-600 border-blue-500"
+                                : "bg-[#212121] border-gray-600"
+                            }`}
+                          >
+                            <Text
+                              className={`font-semibold ${
+                                customDiscountValue === pct.toString()
+                                  ? "text-white"
+                                  : "text-gray-300"
+                              }`}
+                            >
+                              {pct}%
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      : [5, 10, 15, 20, 25, 50].map((amt) => (
+                          <TouchableOpacity
+                            key={amt}
+                            onPress={() =>
+                              setCustomDiscountValue(amt.toString())
+                            }
+                            className={`px-4 py-2 rounded-lg border ${
+                              customDiscountValue === amt.toString()
+                                ? "bg-green-600 border-green-500"
+                                : "bg-[#212121] border-gray-600"
+                            }`}
+                          >
+                            <Text
+                              className={`font-semibold ${
+                                customDiscountValue === amt.toString()
+                                  ? "text-white"
+                                  : "text-gray-300"
+                              }`}
+                            >
+                              ${amt}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                  </View>
+
+                  {/* Custom Input */}
+                  <View className="flex-row items-center gap-3">
+                    <View className="flex-1 flex-row items-center bg-[#212121] rounded-lg border border-gray-600 px-3">
+                      <Text className="text-gray-400 text-lg mr-1">
+                        {customDiscountType === "percentage" ? "%" : "$"}
+                      </Text>
+                      <BottomSheetTextInput
+                        value={customDiscountValue}
+                        onChangeText={setCustomDiscountValue}
+                        placeholder={
+                          customDiscountType === "percentage"
+                            ? "Enter %"
+                            : "Enter $"
+                        }
+                        placeholderTextColor="#6B7280"
+                        keyboardType="decimal-pad"
+                        className="flex-1 py-3 text-white text-lg"
+                        style={{ color: "#FFFFFF" }}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      onPress={handleApplyCustomDiscount}
+                      disabled={
+                        !customDiscountValue ||
+                        parseFloat(customDiscountValue) <= 0
+                      }
+                      className={`px-6 py-3 rounded-lg ${
+                        customDiscountValue &&
+                        parseFloat(customDiscountValue) > 0
+                          ? customDiscountType === "percentage"
+                            ? "bg-blue-600"
+                            : "bg-green-600"
+                          : "bg-gray-600"
+                      }`}
+                    >
+                      <Text className="text-white font-bold">Apply</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Preview */}
+                  {customDiscountValue &&
+                    parseFloat(customDiscountValue) > 0 && (
+                      <View className="mt-3 p-2 bg-[#212121] rounded-lg border border-dashed border-gray-600">
+                        <Text className="text-gray-400 text-sm text-center">
+                          Will save:{" "}
+                          <Text className="text-green-400 font-bold">
+                            {customDiscountType === "percentage"
+                              ? `${customDiscountValue}% off`
+                              : `$${parseFloat(customDiscountValue).toFixed(2)} off`}
+                          </Text>
+                        </Text>
+                      </View>
+                    )}
+                </View>
+              </View>
+
+              {/* Available Discounts (Preset) */}
               <Text className="text-gray-400 text-sm mb-3 uppercase tracking-wider font-semibold">
-                Available Discounts
+                Preset Discounts
               </Text>
               <View className="flex-col gap-y-3">
                 {eligibilityResults.length === 0 ? (
-                  <Text className="text-gray-500">No discounts available</Text>
+                  <Text className="text-gray-500">
+                    No preset discounts available
+                  </Text>
                 ) : (
                   eligibilityResults.map((d) => (
                     <TouchableOpacity
                       key={d.discount.id}
                       disabled={!d.eligible}
                       onPress={() => handleApplyCheckDiscount(d.discount)}
-                      className={`p-3 rounded-xl border ${d.eligible
-                        ? "border-blue-500 bg-blue-500/10"
-                        : "border-gray-700 bg-[#303030]"
-                        }`}
+                      className={`p-3 rounded-xl border ${
+                        d.eligible
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-gray-700 bg-[#303030]"
+                      }`}
                     >
                       <View className="flex-row justify-between items-center">
                         <View>
@@ -264,10 +472,11 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
                     <TouchableOpacity
                       key={item.id}
                       onPress={() => handleToggleItemDiscount(item)}
-                      className={`flex-row justify-between items-center p-3 rounded-xl border ${isApplied
-                        ? "bg-blue-900/20 border-blue-500"
-                        : "bg-[#303030] border-gray-700"
-                        }`}
+                      className={`flex-row justify-between items-center p-3 rounded-xl border ${
+                        isApplied
+                          ? "bg-blue-900/20 border-blue-500"
+                          : "bg-[#303030] border-gray-700"
+                      }`}
                     >
                       <View className="flex-1 mr-4">
                         <Text className="text-white font-semibold text-lg">
@@ -294,8 +503,8 @@ const DiscountBottomSheetComponent: React.ForwardRefRenderFunction<
               )}
             </View>
           )}
-        </BottomSheetScrollView>
-      </BottomSheetView>
+        </View>
+      </BottomSheetScrollView>
     </BottomSheet>
   );
 };

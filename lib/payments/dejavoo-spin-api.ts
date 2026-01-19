@@ -50,11 +50,20 @@ export interface DejavooAPIResponse<T extends DejavooBaseResponse> {
   /** Helper methods for easy access to important transaction data */
   helpers?: {
     // Transaction identifiers
+    getTransactionType(): string | undefined;
+    getTransactionDate(): string | undefined;
+    getTransactionTime(): string | undefined;
+    getTransactionAmount(): number | undefined;
+    getTransactionTip(): number | undefined;
+    getTransactionFee(): number | undefined;
+    getTransactionTax(): number | undefined;
+    getTransactionTotal(): number | undefined;
+    getTransactionStatus(): string | undefined;
     getReferenceId(): string | undefined;
     getTransactionNumber(): string | undefined;
     getInvoiceNumber(): string | undefined;
     getBatchNumber(): string | undefined;
-    getTraceNumber(): string | undefined;
+    getAuthCode(): string | undefined;
 
     // Amounts
     getTotalAmount(): number | undefined;
@@ -72,6 +81,7 @@ export interface DejavooAPIResponse<T extends DejavooBaseResponse> {
     getResultCode(): string | undefined;
     getStatusCode(): string | undefined;
     getMessage(): string | undefined;
+    getRRN(): string | undefined;
   };
 }
 
@@ -392,6 +402,11 @@ export class DejavooSpinAPI {
 
       // Create helper methods for easy data access
       const helpers = {
+        getTransactionType: () => {
+          // New format
+          if ('TransactionType' in data) return (data as any).TransactionType;
+          return undefined;
+        },
         // Transaction identifiers
         getReferenceId: () => {
           // New format
@@ -416,15 +431,17 @@ export class DejavooSpinAPI {
           // Old format - check parsedExtData
           return parsedExtData?.BatchNum;
         },
-        getTraceNumber: () => {
+        getAuthCode: () => {
           // New format - nested in ExtendedDataByApplication
-          if ('ExtendedDataByApplication' in data) {
-            const extData = (data as any).ExtendedDataByApplication;
-            return extData?.['0']?.TraceNum;
-          }
+          if ('AuthCode' in data) return (data as any).AuthCode;
           return undefined;
         },
 
+        getRRN: () => {
+          // New format
+          if ('RRN' in data) return (data as any).RRN;
+          return undefined;
+        },
         // Amounts
         getTotalAmount: () => {
           // New format
@@ -513,6 +530,10 @@ export class DejavooSpinAPI {
         if (errorCode) {
           console.error('[DejavooSpinAPI] Error code:', errorCode, '-', DEJAVOO_ERROR_CODES[errorCode]);
         }
+        return {
+            success: false,
+            error: result.error,
+          };
       }
 
       return result;
@@ -995,7 +1016,7 @@ export class SaleTransactionBuilder {
         Amount: this._amount,
         ReferenceId: this._refId,
         // PerformedBy: this._performedBy,
-        Tip: this._tip,
+        TipAmount: this._tip,
         CustomFee: this._customFee,
         TaxAmount: this._taxAmount,
         InvoiceNumber: this._invoiceNumber,

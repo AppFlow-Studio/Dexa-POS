@@ -9,7 +9,6 @@ export function ClerkSessionKeeper() {
   const { isSignedIn } = useAuth();
   const { session } = useSession();
   const touchIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
   useEffect(() => {
     if (!isSignedIn || !session) {
       // Clear any existing interval

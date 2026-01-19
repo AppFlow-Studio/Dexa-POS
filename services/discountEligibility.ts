@@ -1,10 +1,10 @@
 import {
-    DiscountRecord,
-    getLocalMenuItemDiscounts,
-    MenuItemDiscountRecord,
+  DiscountRecord,
+  getLocalMenuItemDiscounts,
+  MenuItemDiscountRecord,
 } from "@/services/discountSync";
 
-export type DiscountType = "percentage" | "fixed";
+export type DiscountType = "percentage" | "fixed_amount";
 
 export interface EligibilityContext {
   orderType: "dine_in" | "takeout" | "delivery";
@@ -40,7 +40,7 @@ function isTimeInWindow(current: string, start: string, end: string): boolean {
 function getApplicableItems(
   discount: DiscountRecord,
   items: EligibilityContext["items"],
-  menuItemDiscounts: MenuItemDiscountRecord[]
+  menuItemDiscounts: MenuItemDiscountRecord[],
 ) {
   const itemSpecificIds = menuItemDiscounts
     .filter((mid) => mid.discount_id === discount.id)
@@ -69,13 +69,20 @@ function getApplicableItems(
 export function calculateDiscountAmount(
   discount:
     | DiscountRecord
-    | { discount_type: DiscountType; discount_value: number; max_discount_amount?: number | null },
-  applicableAmount: number
+    | {
+        discount_type: DiscountType;
+        discount_value: number;
+        max_discount_amount?: number | null;
+      },
+  applicableAmount: number,
 ): number {
   let amount: number;
   if (discount.discount_type === "percentage") {
     amount = applicableAmount * (discount.discount_value / 100);
-    if ("max_discount_amount" in discount && discount.max_discount_amount !== null) {
+    if (
+      "max_discount_amount" in discount &&
+      discount.max_discount_amount !== null
+    ) {
       amount = Math.min(amount, discount.max_discount_amount);
     }
   } else {
@@ -86,30 +93,66 @@ export function calculateDiscountAmount(
 
 export function checkDiscountEligibility(
   discount: DiscountRecord,
-  context: EligibilityContext
+  context: EligibilityContext,
 ): DiscountEligibility {
   const { currentDate, dailyUsageCounts, orderType, items, subtotal } = context;
 
   if (!discount.is_active) {
-    return { eligible: false, reason: "Inactive", discount, applicable_amount: 0, calculated_savings: 0 };
+    return {
+      eligible: false,
+      reason: "Inactive",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
   if (discount.start_date && new Date(discount.start_date) > currentDate) {
-    return { eligible: false, reason: "Not started", discount, applicable_amount: 0, calculated_savings: 0 };
+    return {
+      eligible: false,
+      reason: "Not started",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
   if (discount.end_date && new Date(discount.end_date) < currentDate) {
-    return { eligible: false, reason: "Expired", discount, applicable_amount: 0, calculated_savings: 0 };
+    return {
+      eligible: false,
+      reason: "Expired",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
   const currentDay = currentDate.getDay();
   if (!discount.applicable_days.includes(currentDay)) {
-    return { eligible: false, reason: "Not valid today", discount, applicable_amount: 0, calculated_savings: 0 };
+    return {
+      eligible: false,
+      reason: "Not valid today",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
   if (discount.applicable_hours_start && discount.applicable_hours_end) {
     const now = formatTime(currentDate);
-    if (!isTimeInWindow(now, discount.applicable_hours_start, discount.applicable_hours_end)) {
-      return { eligible: false, reason: "Outside hours", discount, applicable_amount: 0, calculated_savings: 0 };
+    if (
+      !isTimeInWindow(
+        now,
+        discount.applicable_hours_start,
+        discount.applicable_hours_end,
+      )
+    ) {
+      return {
+        eligible: false,
+        reason: "Outside hours",
+        discount,
+        applicable_amount: 0,
+        calculated_savings: 0,
+      };
     }
   }
 
@@ -120,24 +163,46 @@ export function checkDiscountEligibility(
       both: ["dine_in", "takeout", "delivery"],
     };
     if (!map[discount.scope]?.includes(orderType)) {
-      return { eligible: false, reason: `Only for ${discount.scope}`, discount, applicable_amount: 0, calculated_savings: 0 };
+      return {
+        eligible: false,
+        reason: `Only for ${discount.scope}`,
+        discount,
+        applicable_amount: 0,
+        calculated_savings: 0,
+      };
     }
   }
 
   if (discount.max_uses_per_day !== null) {
     const usedToday = dailyUsageCounts[discount.id] || 0;
     if (usedToday >= discount.max_uses_per_day) {
-      return { eligible: false, reason: "Daily limit reached", discount, applicable_amount: 0, calculated_savings: 0 };
+      return {
+        eligible: false,
+        reason: "Daily limit reached",
+        discount,
+        applicable_amount: 0,
+        calculated_savings: 0,
+      };
     }
   }
 
   // Stackability check left to caller (based on cart state)
 
   const menuItemDiscounts = getLocalMenuItemDiscounts();
-  const applicableItems = getApplicableItems(discount, items, menuItemDiscounts);
-  const applicableAmount = applicableItems.reduce((sum, i) => sum + i.item_total, 0);
+  const applicableItems = getApplicableItems(
+    discount,
+    items,
+    menuItemDiscounts,
+  );
+  const applicableAmount = applicableItems.reduce(
+    (sum, i) => sum + i.item_total,
+    0,
+  );
 
-  if (discount.min_purchase_amount !== null && applicableAmount < discount.min_purchase_amount) {
+  if (
+    discount.min_purchase_amount !== null &&
+    applicableAmount < discount.min_purchase_amount
+  ) {
     return {
       eligible: false,
       reason: `Min $${discount.min_purchase_amount.toFixed(2)}`,
@@ -148,10 +213,19 @@ export function checkDiscountEligibility(
   }
 
   if (applicableAmount <= 0) {
-    return { eligible: false, reason: "No eligible items", discount, applicable_amount: 0, calculated_savings: 0 };
+    return {
+      eligible: false,
+      reason: "No eligible items",
+      discount,
+      applicable_amount: 0,
+      calculated_savings: 0,
+    };
   }
 
-  const calculated_savings = calculateDiscountAmount(discount, applicableAmount);
+  const calculated_savings = calculateDiscountAmount(
+    discount,
+    applicableAmount,
+  );
 
   return {
     eligible: true,
@@ -163,7 +237,7 @@ export function checkDiscountEligibility(
 
 export function getEligibleDiscounts(
   discounts: DiscountRecord[],
-  context: EligibilityContext
+  context: EligibilityContext,
 ): DiscountEligibility[] {
   return discounts
     .map((d) => checkDiscountEligibility(d, context))
@@ -172,4 +246,3 @@ export function getEligibleDiscounts(
       return a.discount.display_order - b.discount.display_order;
     });
 }
-

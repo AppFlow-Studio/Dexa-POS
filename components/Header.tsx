@@ -1,4 +1,5 @@
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
+import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 import {
   Href,
   useGlobalSearchParams,
@@ -6,18 +7,17 @@ import {
   useRouter,
 } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { NetworkStatusBadge } from "./NetworkStatusBadge";
 import SessionDock from "./SessionDock";
-import { useModifierSidebarStore } from "@/stores/useModifierSidebarStore";
 
 const Header = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { tables, tablesById } = useFloorPlanStore();
   const globalParams = useGlobalSearchParams();
-  
+
   const showBackButton =
     pathname === "/open-shifts" ||
     pathname === "/pto" ||
@@ -50,8 +50,10 @@ const Header = () => {
     (pathname.startsWith("/tables/") && pathname.split("/").length === 3) ||
     (pathname.startsWith("/tables/clean-table/") &&
       pathname.split("/").length === 4);
-   const cancelAndRemoveDraft = useModifierSidebarStore((state) => state.cancelAndRemoveDraft);
-   const closeModifierSidebar = useModifierSidebarStore((state) => state.close);
+  const cancelAndRemoveDraft = useModifierSidebarStore(
+    (state) => state.cancelAndRemoveDraft,
+  );
+  const closeModifierSidebar = useModifierSidebarStore((state) => state.close);
   const title = useMemo(() => {
     if (pathname === "/" || pathname === "/home") return "Menu";
     if (pathname === "/scheduling/reports") return "Reports";
@@ -121,7 +123,7 @@ const Header = () => {
   }, [pathname, tables]);
 
   const handleBackPress = () => {
-    // In handleBackPress:
+    // Check for explicit returnTo parameter first
     if (globalParams.returnTo && typeof globalParams.returnTo === "string") {
       router.push(globalParams.returnTo as Href);
       return;
@@ -148,8 +150,15 @@ const Header = () => {
       return;
     }
 
+    // Context-aware back navigation for /tables
     if (pathname === "/tables") {
-      router.push("/home");
+      // Check if we can go back in history
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        // Fallback to /home if no history
+        router.push("/home");
+      }
       return;
     }
 

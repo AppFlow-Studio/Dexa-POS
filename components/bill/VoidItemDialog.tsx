@@ -104,12 +104,23 @@ const VoidItemDialog: React.FC<VoidItemDialogProps> = ({
                 contentContainerStyle={{ flexGrow: 1 }}
               >
                 <View className="p-4">
+                  {/* Void warning banner */}
+                  <View className="bg-red-900/30 border border-red-600/50 rounded-lg p-3 mb-4">
+                    <Text className="text-red-400 text-sm font-medium">
+                      ⚠️ This item was sent to the kitchen
+                    </Text>
+                    <Text className="text-red-300/80 text-xs mt-1">
+                      Voiding requires a reason for tracking. Manager approval
+                      may be needed.
+                    </Text>
+                  </View>
+
                   <Text className="text-gray-300 text-base mb-2">
-                    Removing:{" "}
+                    Voiding:{" "}
                     <Text className="text-white font-semibold">{itemName}</Text>
                   </Text>
                   <Text className="text-gray-400 text-sm mb-4">
-                    Why are you removing this item?
+                    Select a reason for voiding this item:
                   </Text>
 
                   {/* Predefined Reasons */}

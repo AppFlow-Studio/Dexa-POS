@@ -86,8 +86,8 @@ const OrderRow: React.FC<OrderRowProps> = ({
   onAssignToBill,
 }) => {
   const isReady = order.order_status === "ready";
-  const statusBg = isReady ? "bg-green-600/20" : "bg-yellow-600/20";
-  const statusText = isReady ? "text-green-400" : "text-yellow-400";
+  const statusBg = order.order_status === "completed" ? "bg-blue-400/20" : isReady ? "bg-green-600/20" : "bg-yellow-600/20";
+  const statusText = order.order_status === "completed" ? "text-blue-400" : isReady ? "text-green-400" : "text-yellow-400";
 
   // Calculate outstanding amount and partial payment status
   const amountPaid = order.amount_paid || 0;

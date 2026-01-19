@@ -1,4 +1,3 @@
-import { useRefreshActiveOrder } from "@/hooks/pos/useRefreshActiveOrder";
 import { useSupabaseClient } from "@/hooks/useSupabaseClient";
 import { DejavooSpinAPI } from "@/lib/payments/dejavoo-spin-api";
 import { toastService } from "@/lib/toastService";
@@ -17,9 +16,14 @@ import {
 } from "react-native";
 const CashPaymentView = () => {
   // Refresh order data on mount and realtime reconnection
-  useRefreshActiveOrder();
+  // useRefreshActiveOrder(); -> REMOVED to prevent overwriting local discount state with stale backend data
 
-  const { activeOrderOutstandingCash, activeOrderTotalCash, activeOrderId, ordersById } = useOrderStore();
+  const {
+    activeOrderOutstandingCash,
+    activeOrderTotalCash,
+    activeOrderId,
+    ordersById,
+  } = useOrderStore();
   // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
   const { close, setView, activeSplitId, splits, handlePaymentCompletion } =
     usePaymentStore();
@@ -33,7 +37,7 @@ const CashPaymentView = () => {
   const [amountTendered, setAmountTendered] = useState("");
   const [tipInput, setTipInput] = useState("");
   const [selectedTipPreset, setSelectedTipPreset] = useState<number | null>(
-    null
+    null,
   );
   const [isProcessing, setIsProcessing] = useState(false);
   const [dejavooError, setDejavooError] = useState<string | null>(null);
@@ -46,23 +50,23 @@ const CashPaymentView = () => {
   // --- LOGIC: DETERMINE AMOUNT TO PAY (CASH PRICING) ---
   const activeSplit = splits.find((s) => s.id === activeSplitId);
   // For cash payments, use cash outstanding total (unpaid items at cash prices)
-  // Priority: backend cash_amount_due > store outstanding cash > full cash total
-  // console.log("activeOrderOutstandingCash", activeOrderOutstandingCash);
+  // Priority: local store outstanding cash (has discounts) > backend cash_amount_due > full cash total
+  // Local store has the most up-to-date discount calculations
   const effectiveOutstandingCash =
-    activeOrder?.cash_amount_due !== undefined && activeOrder.cash_amount_due >= 0.01 // never pay 0.00
-      ? activeOrder.cash_amount_due
-      : activeOrderOutstandingCash > 0
-        ? activeOrderOutstandingCash
+    activeOrderOutstandingCash > 0
+      ? activeOrderOutstandingCash
+      : activeOrder?.cash_amount_due !== undefined &&
+          activeOrder.cash_amount_due >= 0.01
+        ? activeOrder.cash_amount_due
         : activeOrderTotalCash;
   // console.log("effectiveOutstandingCash", effectiveOutstandingCash);
-
 
   // For split payments, prefer cashAmount (cash pricing) over amount (card pricing)
   // This ensures cash payments use the correct discounted cash price
   const total = activeSplit
     ? (activeSplit.cashAmount ?? activeSplit.amount)
     : effectiveOutstandingCash;
-    // console.log("total", total);
+  // console.log("total", total);
 
   const tipAmount = parseFloat(tipInput) || 0;
   const grandTotal = total + tipAmount; // Total including tip
@@ -74,7 +78,7 @@ const CashPaymentView = () => {
   const suggestions = useMemo(() => {
     const bills = [10, 20, 50, 100];
     return bills.filter(
-      (bill) => bill >= grandTotal || bill === 100 || bill === 50
+      (bill) => bill >= grandTotal || bill === 100 || bill === 50,
     );
   }, [grandTotal]);
 
@@ -112,11 +116,11 @@ const CashPaymentView = () => {
     try {
       // 1. Initialize Dejavoo API
       console.log('[CashPayment] Initializing Dejavoo API...');
-      const api = new DejavooSpinAPI(supabase);
+      const DejavooAPI = new DejavooSpinAPI(supabase);
 
       // 2. Load terminal credentials (fast path with local credentials)
       console.log('[CashPayment] Loading terminal:', selectedStation?.payment_terminal);
-      const loaded = await api.loadTerminal(
+      const loaded = await DejavooAPI.loadTerminal(
         selectedStation.payment_terminal.id,
         selectedStation.payment_terminal // Pass local credentials for fast path
       );
@@ -143,7 +147,7 @@ const CashPaymentView = () => {
       });
 
       // 4. Execute sale transaction
-      const result = await api
+      const result = await DejavooAPI
         .sale()
         .amount(total)
         .tip(tipAmount)
@@ -167,7 +171,7 @@ const CashPaymentView = () => {
         console.log('Transaction Number:', result.helpers.getTransactionNumber());
         console.log('Invoice Number:', result.helpers.getInvoiceNumber());
         console.log('Batch Number:', result.helpers.getBatchNumber());
-        console.log('Trace Number:', result.helpers.getTraceNumber());
+        console.log('Auth Number:', result.helpers.getAuthCode());
         console.log('Total Amount:', result.helpers.getTotalAmount());
         console.log('Base Amount:', result.helpers.getBaseAmount());
         console.log('Tip Amount:', result.helpers.getTipAmount());
@@ -185,7 +189,10 @@ const CashPaymentView = () => {
       // 6. Handle result
       if (result.success) {
         // Pass Dejavoo transaction details to payment handler
-        handlePaymentCompletion("Cash", tipAmount, {
+        handlePaymentCompletion({
+          method: "Cash",
+          tipAmount: tipAmount,
+          transactionDetails: {
           amountTendered: amountTenderedNum,
           isCashPriced: true,
           dejavooTransaction: {
@@ -193,7 +200,7 @@ const CashPaymentView = () => {
             transactionNumber: result.helpers?.getTransactionNumber(),
             invoiceNumber: result.helpers?.getInvoiceNumber(),
             batchNumber: result.helpers?.getBatchNumber(),
-            traceNumber: result.helpers?.getTraceNumber(),
+            authCode: result.helpers?.getAuthCode(),
             totalAmount: result.helpers?.getTotalAmount(),
             baseAmount: result.helpers?.getBaseAmount(),
             tipAmount: result.helpers?.getTipAmount(),
@@ -202,8 +209,10 @@ const CashPaymentView = () => {
             resultCode: result.helpers?.getResultCode(),
             statusCode: result.helpers?.getStatusCode(),
             message: result.helpers?.getMessage(),
+            rrn: result.helpers?.getRRN(),
+            cardLast4: result.helpers?.getCardLast4(),
           },
-        });
+        }});
       } else {
         // Transaction failed
         const errorMsg = result.error || 'Transaction failed';
@@ -325,24 +334,27 @@ const CashPaymentView = () => {
                 <TouchableOpacity
                   key={percent}
                   onPress={() => handleTipPreset(percent)}
-                  className={`flex-1 py-2 rounded-xl border ${selectedTipPreset === percent
-                    ? "bg-blue-600 border-blue-500"
-                    : "bg-[#333] border-[#404040]"
-                    }`}
+                  className={`flex-1 py-2 rounded-xl border ${
+                    selectedTipPreset === percent
+                      ? "bg-blue-600 border-blue-500"
+                      : "bg-[#333] border-[#404040]"
+                  }`}
                 >
                   <Text
-                    className={`text-center font-bold ${selectedTipPreset === percent
-                      ? "text-white"
-                      : "text-gray-300"
-                      }`}
+                    className={`text-center font-bold ${
+                      selectedTipPreset === percent
+                        ? "text-white"
+                        : "text-gray-300"
+                    }`}
                   >
                     {percent}%
                   </Text>
                   <Text
-                    className={`text-center text-xs mt-1 ${selectedTipPreset === percent
-                      ? "text-blue-200"
-                      : "text-gray-500"
-                      }`}
+                    className={`text-center text-xs mt-1 ${
+                      selectedTipPreset === percent
+                        ? "text-blue-200"
+                        : "text-gray-500"
+                    }`}
                   >
                     ${((percent / 100) * total).toFixed(2)}
                   </Text>
@@ -387,15 +399,17 @@ const CashPaymentView = () => {
 
           {/* Bottom Section: Change Calculation */}
           <View
-            className={`p-6 flex-row justify-between items-center ${isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
-              }`}
+            className={`p-6 flex-row justify-between items-center ${
+              isSufficient ? "bg-green-900/10" : "bg-[#2A2A2A]"
+            }`}
           >
             <Text className="text-lg font-medium text-gray-300">
               Change Due
             </Text>
             <Text
-              className={`text-3xl font-bold ${isSufficient ? "text-green-400" : "text-gray-500"
-                }`}
+              className={`text-3xl font-bold ${
+                isSufficient ? "text-green-400" : "text-gray-500"
+              }`}
             >
               ${changeDue > 0 ? changeDue.toFixed(2) : "0.00"}
             </Text>

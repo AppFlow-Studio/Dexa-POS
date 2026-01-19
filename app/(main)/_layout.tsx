@@ -15,7 +15,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
+import * as SecureStore from 'expo-secure-store'
+import { TokenCache } from '@clerk/clerk-expo'
 export default function MainLayout() {
   const { isSignedIn, isLoaded } = useAuth();
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
