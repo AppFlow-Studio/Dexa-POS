@@ -38,15 +38,15 @@ const OrderActionsMenu: React.FC<OrderActionsMenuProps> = ({
   orderId,
   onViewDetails,
 }) => {
-  const { ordersByDbId, ordersById, activeOrderId, addItemToActiveOrder, generateCartItemId } =
+  const { ordersById, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
   const { show } = useToast();
 
-  // Get order
+  // Get order (single index lookup - ordersById is keyed by DB UUID)
   const order = useMemo(() => {
     if (!orderId) return null;
-    return ordersById[orderId] || ordersByDbId[orderId] || null;
-  }, [orderId, ordersById, ordersByDbId]);
+    return ordersById[orderId] || null;
+  }, [orderId, ordersById]);
 
   // Handle add to bill
   const handleAddToBill = () => {

@@ -22,6 +22,7 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
@@ -86,6 +87,7 @@ const UpdateTableScreen = () => {
     archiveOrder,
     // syncOrderFromBackend,
     syncOrderFromBackendComplete,
+    syncOrderFromDatabase, // Phase 12.1: For restoring table orders
   } = useOrderStore();
 
   const {
@@ -338,10 +340,23 @@ const UpdateTableScreen = () => {
             return;
           }
 
-          // Use getState() for fresh data instead of stale orders array
-          const currentOrders = Object.values(
-            useOrderStore.getState().ordersById
-          );
+          // FIX: Direct O(1) lookup by DB UUID (single-index architecture)
+          // Orders are now keyed by DB UUID, so direct lookup is fastest and most reliable
+          const ordersById = useOrderStore.getState().ordersById;
+          const directLookup = ordersById[updatedTable.session.order_id];
+          if (directLookup) {
+            if (activeOrderId !== directLookup.id) {
+              console.log(
+                "[AutoSession] Found order by direct lookup:",
+                directLookup.id
+              );
+              setActiveOrder(directLookup.id);
+            }
+            return;
+          }
+
+          // Fallback: Use getState() for fresh data and search by id or db_order_id
+          const currentOrders = Object.values(ordersById);
           const foundOrder = currentOrders.find(
             (o) =>
               o.id === updatedTable.session!.order_id ||
@@ -351,7 +366,7 @@ const UpdateTableScreen = () => {
           if (foundOrder) {
             if (activeOrderId !== foundOrder.id) {
               console.log(
-                "[AutoSession] Found existing order, setting active:",
+                "[AutoSession] Found existing order via fallback search:",
                 foundOrder.id
               );
               setActiveOrder(foundOrder.id);
@@ -385,46 +400,65 @@ const UpdateTableScreen = () => {
               return;
             }
 
-            // Order not found - use syncOrderFromDatabase instead of manual creation
-            // console.log(
-            //   "[AutoSession] Syncing order from database:",
-            //   updatedTable.session.order_id
-            // );
-            // showLoading("Restoring table session...");
+            // Phase 12.1: Order not found locally - fetch from database
+            console.log(
+              "[AutoSession] Syncing order from database:",
+              updatedTable.session.order_id
+            );
+            showLoading("Restoring table session...");
 
-            // try {
-            //   // Use the proper sync function that fetches items + payments
-            //   const localOrderId = await syncOrderFromDatabase(
-            //     updatedTable.session.order_id
-            //   );
+            try {
+              // Use the proper sync function that fetches items + payments
+              const localOrderId = await syncOrderFromDatabase(
+                updatedTable.session.order_id
+              );
 
-            //   hideLoading();
+              hideLoading();
 
-            //   // Check again after async operation
-            //   if (isNavigatingAwayRef.current) {
-            //     console.log(
-            //       "[AutoSession] Skipping order restore - navigated away"
-            //     );
-            //     return;
-            //   }
+              // Check again after async operation
+              if (isNavigatingAwayRef.current) {
+                console.log(
+                  "[AutoSession] Skipping order restore - navigated away"
+                );
+                return;
+              }
 
-            //   if (localOrderId) {
-            //     console.log(
-            //       "[AutoSession] Order synced successfully:",
-            //       localOrderId
-            //     );
-            //     setActiveOrder(localOrderId);
-            //   }
-            // } catch (error) {
-            //   console.error("[AutoSession] Failed to sync order:", error);
-            //   hideLoading();
+              if (localOrderId) {
+                console.log(
+                  "[AutoSession] Order synced successfully:",
+                  localOrderId
+                );
+                setActiveOrder(localOrderId);
+              }
+            } catch (error) {
+              console.error("[AutoSession] Failed to sync single order, trying full init:", error);
 
-            //   show({
-            //     title: "Error Loading Order",
-            //     message: "Failed to restore table session. Please try again.",
-            //     type: "error",
-            //   });
-            // }
+              // Phase 12.1: FALLBACK - Try full initializeOrders as safety net
+              try {
+                const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                if (locationId) {
+                  await useOrderStore.getState().initializeOrders(locationId);
+
+                  // After init, check if order is now available
+                  const refreshedOrder = useOrderStore.getState().ordersById[updatedTable.session.order_id];
+                  if (refreshedOrder) {
+                    console.log("[AutoSession] Order found after fallback init:", refreshedOrder.id);
+                    setActiveOrder(refreshedOrder.id);
+                    hideLoading();
+                    return;
+                  }
+                }
+              } catch (fallbackError) {
+                console.error("[AutoSession] Fallback init also failed:", fallbackError);
+              }
+
+              hideLoading();
+              show({
+                title: "Error Loading Order",
+                message: "Failed to restore table session. Please try again.",
+                type: "error",
+              });
+            }
           }
           return;
         }

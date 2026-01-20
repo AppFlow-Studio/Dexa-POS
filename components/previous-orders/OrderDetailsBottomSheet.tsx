@@ -27,8 +27,8 @@ const OrderDetailsBottomSheet = forwardRef<BottomSheetMethods, OrderDetailsBotto
     const bottomSheetRef = useRef<BottomSheetMethods>(null);
     const snapPoints = useMemo(() => ["95%"], []);
     const [selectedTab, setSelectedTab] = useState<TabType>("bill");
-    const { ordersByDbId } = useOrderStore();
-    const DetailsOrder = ordersByDbId[order?.db_order_id || ""];
+    const { ordersById } = useOrderStore();
+    const DetailsOrder = ordersById[order?.db_order_id || ""];
     useImperativeHandle(ref, () => ({
       snapToIndex: (index: number) => bottomSheetRef.current?.snapToIndex(index),
       snapToPosition: (position: string | number) =>

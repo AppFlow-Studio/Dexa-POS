@@ -398,6 +398,10 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
       syncEmployees(selectedStore.id);
       syncFloorPlans(selectedStore.id);
       syncTaxRates(selectedStore.id);
+
+      // Phase 11.1: Initialize orders in background (non-blocking)
+      // This populates ordersById with active orders for the location
+      useOrderStore.getState().initializeOrders(selectedStore.id);
     }
   }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
 
@@ -405,16 +409,23 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active") {
-        console.log("[PosSyncProvider] App became active - reconnecting realtime");
+        console.log("[PosSyncProvider] App became active - refreshing data");
         const floorPlanStore = useFloorPlanStore.getState();
-        
+        const storeSettings = useStoreSettingsStore.getState();
+
         // Reconnect realtime if disconnected or reconnecting
         if (floorPlanStore.realtimeStatus !== 'connected') {
           floorPlanStore.manualReconnect();
         }
-        
-        // Also refresh stale data
+
+        // Refresh stale floor plan data
         floorPlanStore.loadFloorPlanStatusIfStale();
+
+        // Phase 11.2: Refresh orders when app resumes from background
+        // This ensures orders are up-to-date after tablet sleep/wake
+        if (storeSettings.selectedStore?.id) {
+          useOrderStore.getState().initializeOrders(storeSettings.selectedStore.id);
+        }
       }
     };
 

@@ -603,13 +603,11 @@ manualReconnect: () => {
               try {
                 // Dynamic import to avoid circular dependency
                 const { useOrderStore } = await import("./useOrderStore");
-                const { ordersById, ordersByDbId } = useOrderStore.getState();
+                const { ordersById } = useOrderStore.getState();
 
-                // Enhanced filtering with logging
+                // Enhanced filtering with logging (single index lookup)
                 const uncachedOrderIds = orderIds.filter((id) => {
-                  const inLocalCache = ordersById[id];
-                  const inDbIdCache = ordersByDbId[id];
-                  const cached = inLocalCache || inDbIdCache;
+                  const cached = ordersById[id];
 
                   if (!cached) {
                     console.log(`[prefetch] Order ${id} not cached, will fetch`);
@@ -620,11 +618,10 @@ manualReconnect: () => {
 
                 if (uncachedOrderIds.length > 0) {
                   console.log(
-                    `[prefetch] Fetching ${uncachedOrderIds.length} orders`
+                    `[prefetch] ${uncachedOrderIds.length} orders not cached - initializeOrders should handle this`
                   );
-                  await useOrderStore.getState().prefetchOrders(
-                    uncachedOrderIds.slice(0, 5)
-                  );
+                  // Note: initializeOrders loads all active orders on login,
+                  // individual prefetch is no longer needed
                 } else {
                   console.log(
                     `[prefetch] All ${orderIds.length} orders already cached`

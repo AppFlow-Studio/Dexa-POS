@@ -197,19 +197,19 @@ export function useOrderTotals(orderId: string | null): ActiveOrderTotals | null
 // Orders the user is actively working on (persisted across restarts)
 
 export function useWorkingSetOrders(): OrderProfile[] {
-  const ordersByDbId = useOrderStore((s) => s.ordersByDbId);
+  const ordersById = useOrderStore((s) => s.ordersById);
   const workingSetOrderIds = useOrderStore((s) => s.workingSetOrderIds);
 
   return useMemo(() => {
     return workingSetOrderIds
-      .map((dbId) => ordersByDbId[dbId])
+      .map((dbId) => ordersById[dbId])
       .filter(Boolean)
       .sort((a, b) => {
         const aTime = new Date(a.opened_at || 0).getTime();
         const bTime = new Date(b.opened_at || 0).getTime();
         return bTime - aTime;
       });
-  }, [ordersByDbId, workingSetOrderIds]);
+  }, [ordersById, workingSetOrderIds]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

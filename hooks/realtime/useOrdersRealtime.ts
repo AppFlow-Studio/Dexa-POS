@@ -157,7 +157,7 @@ export const ordersQueryKeys = {
  * Subscribes to: `location:{locationId}:orders`
  *
  * Events handled:
- * - ORDER_INSERT: New order created
+ * - ORDER_INSERT: New order createFd
  * - ORDER_UPDATE: Order status/amount changed
  * - ORDER_DELETE: Order deleted/voided
  * - PAYMENT_INSERT: Payment added

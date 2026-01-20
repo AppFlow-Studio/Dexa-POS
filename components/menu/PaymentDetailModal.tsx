@@ -32,14 +32,14 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   onClose,
   orderId,
 }) => {
-  const { ordersByDbId, ordersById } = useOrderStore();
+  const { ordersById } = useOrderStore();
   const { show } = useToast();
 
-  // Get order data
+  // Get order data (single index lookup - ordersById is keyed by DB UUID)
   const order: OrderProfile | null = useMemo(() => {
     if (!orderId) return null;
-    return ordersById[orderId] || ordersByDbId[orderId] || null;
-  }, [orderId, ordersById, ordersByDbId]);
+    return ordersById[orderId] || null;
+  }, [orderId, ordersById]);
 
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
@@ -142,8 +142,8 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl p-0 bg-[#1a1a1a]">
-        <View className="bg-[#1a1a1a] rounded-lg overflow-hidden">
+      <DialogContent className="max-w-5xl border border-red-500 w-[700px] h-[90%] p-0 bg-[#1a1a1a]">
+        <View className="bg-[#1a1a1a] w-full h-full  border rounded-lg overflow-hidden">
           {/* Header */}
           <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
             <Text className="text-2xl font-bold text-white">Payment Summary</Text>

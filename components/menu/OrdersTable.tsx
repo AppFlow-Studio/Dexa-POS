@@ -239,6 +239,7 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
       </View>
 
       {/* Table Body */}
+      {/* Flatlist it */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
         {sortedOrders.length === 0 ? (
           <View className="py-20 items-center justify-center">

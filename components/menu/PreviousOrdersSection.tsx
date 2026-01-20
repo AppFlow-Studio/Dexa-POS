@@ -1,6 +1,7 @@
 import { useToast } from "@/contexts/ToastContext";
 import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
+import { OrderProfile } from "@/lib/types";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
 import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { Search, X } from "lucide-react-native";
@@ -82,7 +83,7 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder, activeTa
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  const { orders, ordersByDbId, orderIds, activeOrderId, addItemToActiveOrder, generateCartItemId } =
+  const { orders, ordersById, orderIds, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
   const { refreshPreviousOrders } = usePreviousOrdersStore();
   const { orders: ordersRealtime } = useLocationRealtime();
@@ -115,13 +116,13 @@ const PreviousOrdersSection = () => {
   // PHASE 3C: Subscribe to store changes
   useEffect(() => {
     const unsubscribe = useOrderStore.subscribe(
-      (state) => state.ordersByDbId,
-      (ordersByDbId) => {
-        console.log('🔄 [Store Subscribe] ordersByDbId changed:', {
-          orderCount: Object.keys(ordersByDbId).length,
-          orderNumbers: Object.values(ordersByDbId)
-            .filter(o => o.order_status !== "draft")
-            .map(o => o.display_number),
+      (state) => state.ordersById,
+      (ordersById) => {
+        console.log('🔄 [Store Subscribe] ordersById changed:', {
+          orderCount: Object.keys(ordersById).length,
+          orderNumbers: Object.values(ordersById)
+            .filter((o: OrderProfile) => o.order_status !== "draft")
+            .map((o: OrderProfile) => o.display_number),
         });
       }
     );
@@ -139,22 +140,20 @@ const PreviousOrdersSection = () => {
   // const previousOrders = usePreviousOrders({ showCompleted: false });
 
   // Get all orders - combine previous orders selector with local orders for compatibility
-  const allOrders = useMemo(() => {
-    // Merge selector results with any local orders not yet in the selector
-    // const deduplicatedOrdersAr = deduplicateOrders(previousOrders);
-    // const selectorOrderIds = new Set(deduplicatedOrdersAr.map(o => o.id));
-    const localOrdersNotInSelector = Object.values(ordersByDbId).filter(
-      (o) =>  o.order_status !== "draft"
+  const allOrders: OrderProfile[] = useMemo(() => {
+    // Filter to show only non-draft orders
+    const localOrdersNotInSelector = Object.values(ordersById).filter(
+      (o: OrderProfile) =>  o.order_status !== "draft"
     );
 
     // PHASE 1: Log all orders in store for diagnostics
-    console.log('📋 [PreviousOrdersSection] Orders from store:', {
-      totalOrders: localOrdersNotInSelector.length,
-      orderIds: localOrdersNotInSelector.map(o => `${o.display_number} (station: ${o.station_id?.slice(0, 8) || 'none'})`),
-    });
+    // console.log('📋 [PreviousOrdersSection] Orders from store:', {
+    //   totalOrders: localOrdersNotInSelector.length,
+    //   orderIds: localOrdersNotInSelector.map(o => `${o.display_number} (station: ${o.station_id?.slice(0, 8) || 'none'})`),
+    // });
 
     return [...localOrdersNotInSelector];
-  }, [ordersByDbId]);
+  }, [ordersById]);
 
   const totalOrder = allOrders.length;
 
