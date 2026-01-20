@@ -64,6 +64,7 @@
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "expo": "~53.0.25",
+    "expo-application": "~6.1.5",
     "expo-auth-session": "~6.2.1",
     "expo-blur": "~14.1.5",
     "expo-build-properties": "~0.14.8",
