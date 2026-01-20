@@ -171,7 +171,6 @@ export default function RootLayout() {
                               },
                             }}
                           />
-                          {/* SyncStatusBar removed - now using NetworkStatusBadge in Header */}
                         </SessionKickListenerProvider>
                       </LoadingProvider>
                     </ToastProvider>

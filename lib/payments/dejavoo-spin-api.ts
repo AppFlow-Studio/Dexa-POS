@@ -287,19 +287,25 @@ export class DejavooSpinAPI {
 
     try {
       console.log('[DejavooSpinAPI] Checking terminal status...');
+     // ${this.getBaseUrl()}
+      const url = `https://test.spinpos.net/v2/Common/TerminalStatus`;
+      console.log('[DejavooSpinAPI] Credentials:', this.credentials);
 
-      const url = `${this.getBaseUrl()}/v2/Common/TerminalStatus`;
       const params = new URLSearchParams({
         'request.tpn': this.credentials.tpn,
         'request.registerId': this.credentials.registerId!,
         'request.authkey': this.credentials.authKey,
       });
 
-      const response = await fetch(`${url}?${params}`, {
+      // Log the params as a string to see the actual values
+      console.log('[Check Status] Params string:', params.toString());
+      console.log('[Check Status] Full URL:', `${url}?${params.toString()}`);
+
+      const response = await fetch(`${url}?${params.toString()}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
-
+     
       const data = await response.json();
 
       console.log('[DejavooSpinAPI] Terminal status:', data.TerminalStatus);

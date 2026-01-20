@@ -1,16 +1,16 @@
 // hooks/useRealtimeChannel.ts
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js';
-import { useSupabaseClient } from '@/hooks/useSupabaseClient';
-import type { 
-  RealtimeChannelTopic, 
-  RealtimeEventType, 
+import { RealtimeChannel, REALTIME_SUBSCRIBE_STATES, SupabaseClient } from '@supabase/supabase-js';
+import type {
+  RealtimeChannelTopic,
+  RealtimeEventType,
   ChannelState,
-  ChannelStatus 
+  ChannelStatus
 } from '@/types/real-time';
 
 interface UseRealtimeChannelOptions<T> {
+  supabaseClient: SupabaseClient; // NEW: Required prop to avoid hooks violation
   topic: RealtimeChannelTopic;
   events: RealtimeEventType[];
   onMessage: (event: RealtimeEventType, payload: T) => void;
@@ -27,6 +27,7 @@ interface UseRealtimeChannelReturn {
 }
 
 export function useRealtimeChannel<T>({
+  supabaseClient, // NEW: Accept as prop instead of calling hook
   topic,
   events,
   onMessage,
@@ -38,7 +39,7 @@ export function useRealtimeChannel<T>({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  
+
   const [status, setStatus] = useState<ChannelStatus>({
     topic,
     state: 'CLOSED',
@@ -58,18 +59,18 @@ export function useRealtimeChannel<T>({
 
   // Core subscription logic
   const subscribe = useCallback(async () => {
-    const supabase = useSupabaseClient();
+    // FIXED: Use prop instead of calling hook inside callback
     // Clean up existing channel
     if (channelRef.current) {
-      await supabase.removeChannel(channelRef.current);
+      await supabaseClient.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
     // Set auth token for Realtime Authorization
-    await supabase.realtime.setAuth();
+    await supabaseClient.realtime.setAuth();
 
     // Create new channel with private config
-    const channel = supabase.channel(topic, {
+    const channel = supabaseClient.channel(topic, {
       config: { private: true },
     });
 
@@ -82,7 +83,7 @@ export function useRealtimeChannel<T>({
 
     // Handle subscription state changes
     channel.subscribe((state, err) => {
-      console.log(`[Realtime] Channel ${topic} state: ${state}`, err);
+      console.log(`[Realtime] Channel ${topic} state: ${state}`, `${err ? err : ''}`);
 
       switch (state) {
         case REALTIME_SUBSCRIBE_STATES.SUBSCRIBED:
@@ -115,7 +116,7 @@ export function useRealtimeChannel<T>({
     });
 
     channelRef.current = channel;
-  }, [topic, events, onMessage, updateStatus]);
+  }, [supabaseClient, topic, events, onMessage, updateStatus]);
 
   // Reconnection logic with exponential backoff
   const handleReconnect = useCallback(() => {
@@ -144,16 +145,16 @@ export function useRealtimeChannel<T>({
     console.log(`[Realtime] Reconnecting ${topic} in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
 
     reconnectTimeoutRef.current = setTimeout(async () => {
-      const supabase = useSupabaseClient();
+      // FIXED: Use prop instead of calling hook inside setTimeout
       // Unsubscribe first (Reddit pattern)
       if (channelRef.current) {
-        await supabase.removeChannel(channelRef.current);
+        await supabaseClient.removeChannel(channelRef.current);
         channelRef.current = null;
       }
       // Re-subscribe
       subscribe();
     }, delay);
-  }, [topic, maxReconnectAttempts, reconnectDelay, subscribe, updateStatus]);
+  }, [supabaseClient, topic, maxReconnectAttempts, reconnectDelay, subscribe, updateStatus]);
 
   // Manual reconnect trigger
   const reconnect = useCallback(() => {
@@ -163,16 +164,16 @@ export function useRealtimeChannel<T>({
 
   // Disconnect
   const disconnect = useCallback(async () => {
-    const supabase = useSupabaseClient();
+    // FIXED: Use prop instead of calling hook inside callback
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
     }
     if (channelRef.current) {
-      await supabase.removeChannel(channelRef.current);
+      await supabaseClient.removeChannel(channelRef.current);
       channelRef.current = null;
     }
     updateStatus({ state: 'CLOSED', subscribedAt: null });
-  }, [updateStatus]);
+  }, [supabaseClient, updateStatus]);
 
   // Main effect
   useEffect(() => {

@@ -4,6 +4,8 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRealtimeChannel } from './useRealtimechannel';
+import { useFloorPlanStore } from '@/stores/useFloorPlanStore';
+import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import type {
   TableSessionPayload,
   TableAssignmentPayload,
@@ -42,6 +44,7 @@ export function useFloorRealtime({
   onOrderUpdate,
 }: UseFloorRealtimeOptions) {
   const queryClient = useQueryClient();
+  const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
 
   // Events we care about for floor view
   const events: RealtimeEventType[] = useMemo(
@@ -70,6 +73,10 @@ export function useFloorRealtime({
           // Session changes - invalidate queries and call callback
           const sessionPayload = payload as TableSessionPayload;
 
+          // UPDATE STORE STATE (NEW): This ensures UI gets real-time data
+          const store = useFloorPlanStore.getState();
+          store._handleSessionChange(sessionPayload);
+
           // Invalidate floor sessions list
           queryClient.invalidateQueries({
             queryKey: floorQueryKeys.sessions(locationId),
@@ -96,6 +103,10 @@ export function useFloorRealtime({
         case 'TABLE_ASSIGNMENT_DELETE': {
           // Table assignments changed
           const assignmentPayload = payload as TableAssignmentPayload;
+
+          // UPDATE STORE STATE (NEW): Refresh table data when assignments change
+          const store = useFloorPlanStore.getState();
+          store.loadFloorPlanStatus();
 
           queryClient.invalidateQueries({
             queryKey: floorQueryKeys.sessions(locationId),
@@ -159,10 +170,11 @@ export function useFloorRealtime({
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
+    supabaseClient: supabase, // Pass supabase client as prop
     topic: `location:${locationId}:tables`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!locationId,
+    enabled: enabled && !!locationId && !!supabase, // Add supabase check
   });
 
   return {
@@ -188,6 +200,7 @@ export function useSessionEventsRealtime({
   onEvent?: (payload: SessionEventPayload) => void;
 }) {
   const queryClient = useQueryClient();
+  const supabase = useSupabaseClient(); // Call at component level
 
   const events: RealtimeEventType[] = useMemo(() => ['SESSION_EVENT'], []);
 
@@ -207,10 +220,11 @@ export function useSessionEventsRealtime({
 
   // Note: This subscribes to session-specific channel for granular updates
   const { status, reconnect } = useRealtimeChannel<unknown>({
+    supabaseClient: supabase, // Pass supabase client as prop
     topic: `session:${sessionId}:events`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!sessionId,
+    enabled: enabled && !!sessionId && !!supabase, // Add supabase check
   });
 
   return {

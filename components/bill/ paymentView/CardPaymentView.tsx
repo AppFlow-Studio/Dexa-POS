@@ -45,7 +45,7 @@ const CardPaymentView = () => {
   const [dejavooError, setDejavooError] = useState<string | null>(null);
 
   const { selectedStation } = useStoreSettingsStore();
-  console.log('selectedStation', selectedStation);
+  // console.log('selectedStation', selectedStation);
 
   // Check terminal status on mount
   const {

@@ -350,25 +350,6 @@ const TablesScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">
-      {/* {realtimeStatus !== 'connected' && (
-        <TouchableOpacity 
-          onPress={manualReconnect}
-          className={`py-2 px-4 flex-row items-center justify-center ${
-            realtimeStatus === 'reconnecting' 
-              ? 'bg-amber-600' 
-              : 'bg-red-600'
-          }`}
-        >
-          <View className={`w-2 h-2 rounded-full mr-2 ${
-            realtimeStatus === 'reconnecting' ? 'bg-amber-300' : 'bg-red-300'
-          }`} />
-          <Text className="text-white font-medium">
-            {realtimeStatus === 'reconnecting' 
-              ? 'Reconnecting...' 
-              : 'Offline - Tap to reconnect'}
-          </Text>
-        </TouchableOpacity>
-      )} */}
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* NEW: Sidebar Component */}
         <Sidebar

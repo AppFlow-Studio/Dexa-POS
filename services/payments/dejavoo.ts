@@ -20,7 +20,7 @@ import {
 } from '@/types/dejavoo-spin-api';
 
 const SPIN_API_URLS = {
-  sandbox: 'https://test.spinpos.net/spin',
+  sandbox: 'https://test.spinpos.net',
   production: 'https://api.spinpos.net',
 };
 

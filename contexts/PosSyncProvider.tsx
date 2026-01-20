@@ -364,18 +364,19 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // Cleanup previous subscriptions if switching locations
     if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
       useFloorPlanStore.getState().cleanup();
-      useOrderStore.getState().cleanupOrderRealtime();
+      // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
+      // useOrderStore.getState().cleanupOrderRealtime();
     }
 
     realtimeLocationRef.current = locationId;
 
     // Setup realtime subscriptions for tables/sessions
-    useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
+    // useFloorPlanStore.getState().setupRealtimeSubscriptions(locationId);
 
     // REMOVED: Duplicate order realtime subscription (now handled by LocationRealtimeProvider with useOrdersRealtime hook)
     // useOrderStore.getState().setupOrderRealtimeSubscriptions(locationId);
 
-    console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
+    // console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
 
     // Cleanup function
     return () => {

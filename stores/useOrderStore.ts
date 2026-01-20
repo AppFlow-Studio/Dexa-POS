@@ -1107,11 +1107,11 @@ const addItemToBackend = async (
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
     };
 
-    console.log(
-      "Adding item to backend with params:",
-      JSON.stringify(addItemParams, null, 2),
-    );
-    console.log("Calling OrderService.addOrderItem now...");
+    // console.log(
+    //   "Adding item to backend with params:",
+    //   JSON.stringify(addItemParams, null, 2),
+    // );
+    // console.log("Calling OrderService.addOrderItem now...");
     const { data: addResult, error: addError } =
       await OrderService.addOrderItem(supabase, addItemParams);
 
@@ -1960,7 +1960,7 @@ interface OrderState {
   // manualOrderReconnect: () => void;
 
   // REMOVED: Internal realtime handlers (now handled by useOrdersRealtime hook)
-  // _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
+  _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
   // _handleItemBroadcast: (payload: OrderItemBroadcastPayload) => void;
   // _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
   _debouncedOrderRefresh: (dbOrderId: string) => void;
@@ -2249,6 +2249,19 @@ export const useOrderStore = create<OrderState>()(
             const { operation, data } = payload;
             const backendOrder = data.order;
             const dbOrderId = backendOrder?.id;
+
+            // PHASE 2.2: Log START of broadcast processing
+            console.log('🎯 [_handleOrderBroadcast] START:', {
+              operation,
+              orderId: backendOrder?.id,
+              orderNumber: backendOrder?.order_number,
+              displayNumber: backendOrder?.display_number,
+              stationId: backendOrder?.station_id,
+              stationName: backendOrder?.station_name,
+              orderType: backendOrder?.order_type,
+              status: backendOrder?.status,
+              itemCount: backendOrder?.order_items?.length || 0,
+            });
 
             if (!dbOrderId) {
               console.warn("[OrderBroadcast] No order ID in payload");
@@ -2602,13 +2615,29 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // DECISION POINT 2: Should we accept this remote order?
-            if (
-              !currentLocationId ||
-              !state._shouldAcceptRemoteOrder(backendOrder, currentLocationId)
-            ) {
-              console.log("[OrderBroadcast] Rejected (view_scope):", dbOrderId);
+            // PHASE 2.2: Log view_scope check details
+            const shouldAccept = state._shouldAcceptRemoteOrder(backendOrder, currentLocationId);
+
+            console.log('🔍 [_handleOrderBroadcast] Should accept?', {
+              shouldAccept,
+              viewScope: state.currentStation?.view_scope,
+              stationMatch: backendOrder.station_id === currentStationId,
+              locationMatch: backendOrder.location_id === currentLocationId,
+              currentLocationId,
+              orderLocationId: backendOrder.location_id,
+            });
+
+            if (!currentLocationId || !shouldAccept) {
+              console.warn('❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter', {
+                reason: !currentLocationId ? 'No current location ID' : 'Failed _shouldAcceptRemoteOrder check',
+                orderId: dbOrderId,
+                orderStation: backendOrder.station_id,
+                currentStation: currentStationId,
+              });
               return;
             }
+
+            console.log('✅ [_handleOrderBroadcast] ACCEPTED - Processing remote order...');
 
             // ═══════════════════════════════════════════════════════════
             // REMOTE ORDER - Handle differently
@@ -2642,6 +2671,14 @@ export const useOrderStore = create<OrderState>()(
                 state._removeRemoteOrder(dbOrderId);
                 break;
             }
+
+            // PHASE 2.2: Log after store update
+            console.log('💾 [_handleOrderBroadcast] Store updated:', {
+              ordersInStore: Object.keys(get().ordersByDbId).length,
+              thisOrderInStore: !!get().ordersByDbId[dbOrderId],
+              orderStatus: get().ordersByDbId[dbOrderId]?.order_status,
+              orderDisplayNumber: get().ordersByDbId[dbOrderId]?.display_number,
+            });
           },
 
           // ============================================================================
@@ -2651,14 +2688,26 @@ export const useOrderStore = create<OrderState>()(
           _shouldAcceptRemoteOrder: (backendOrder, currentLocationId) => {
             const { currentStation, currentStationId } = get();
 
+            // PHASE 2.3: Detailed logging for view_scope filter
+            console.log('🧪 [_shouldAcceptRemoteOrder] Checking:', {
+              hasStation: !!currentStation,
+              viewScope: currentStation?.view_scope,
+              orderStationId: backendOrder.station_id,
+              currentStationId,
+              orderLocationId: backendOrder.location_id,
+              currentLocationId,
+              orderType: backendOrder.order_type,
+            });
+
             // 1. If no currentStation set, reject all remote orders
             if (!currentStation || !currentStationId) {
-              console.log("[RemoteOrder] No station context, rejecting");
+              console.warn("[RemoteOrder] REJECT: No station context");
               return false;
             }
 
             // 2. If order is from our own station, this isn't a "remote" order
             if (backendOrder.station_id === currentStationId) {
+              console.log("[RemoteOrder] REJECT: Own station order (not remote)");
               return false;
             }
 
@@ -2668,20 +2717,35 @@ export const useOrderStore = create<OrderState>()(
             switch (viewScope) {
               case "own":
                 // Never accept remote orders
+                console.log("[RemoteOrder] REJECT: view_scope='own' blocks all remote orders");
                 return false;
 
-              case "location":
+              case "location": {
                 // Accept all orders from this location
-                return backendOrder.location_id === currentLocationId;
+                const accept = backendOrder.location_id === currentLocationId;
+                console.log(`[RemoteOrder] view_scope='location': ${accept ? 'ACCEPT' : 'REJECT'}`, {
+                  locationMatch: accept,
+                  orderLocation: backendOrder.location_id,
+                  currentLocation: currentLocationId,
+                });
+                return accept;
+              }
 
-              case "online":
+              case "online": {
                 // Accept only online/delivery orders from this location
-                return (
-                  backendOrder.location_id === currentLocationId &&
-                  ["delivery", "takeout"].includes(backendOrder.order_type)
-                );
+                const locationMatch = backendOrder.location_id === currentLocationId;
+                const isOnlineOrder = ["delivery", "takeout"].includes(backendOrder.order_type);
+                const accept = locationMatch && isOnlineOrder;
+                console.log(`[RemoteOrder] view_scope='online': ${accept ? 'ACCEPT' : 'REJECT'}`, {
+                  locationMatch,
+                  isOnlineOrder,
+                  orderType: backendOrder.order_type,
+                });
+                return accept;
+              }
 
               default:
+                console.warn(`[RemoteOrder] REJECT: Unknown view_scope='${viewScope}'`);
                 return false;
             }
           },

@@ -24,6 +24,7 @@ import type {
  * IMPORTANT: Call this ONCE during app initialization (e.g., in app/_layout.tsx).
  * Do not call multiple times as it will create duplicate subscriptions.
  */
+// TODO: Maybe can set this up 
 export const initializeEventSubscribers = () => {
   console.log("[EventSubscribers] ====== INITIALIZING ======");
 

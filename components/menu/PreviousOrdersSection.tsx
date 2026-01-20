@@ -1,13 +1,14 @@
 import { useToast } from "@/contexts/ToastContext";
 import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore"; // New import
-import { Eye, Plus, Repeat2, Search, X } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
+import { Search, X } from "lucide-react-native";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  FlatList,
   Pressable,
   RefreshControl,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,6 +16,9 @@ import {
 } from "react-native";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
 import { deduplicateOrders } from "@/utils/orderUtils";
+import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
+import PaymentDetailModal from "./PaymentDetailModal";
+import OrderActionsMenu from "./OrderActionsMenu";
 
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
@@ -24,13 +28,15 @@ interface Tab {
   count?: number;
 }
 
+// Remove old OrderRow and RetrieveButton components - replaced by table view
+
 interface OrderTabsProps {
   onTabChange: (tab: TabName) => void;
   totalOrder: number;
+  activeTab: string;
 }
 
-const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
-  const [activeWindow, setActiveWindow] = useState("All");
+const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder, activeTab }) => {
   const TABS: Tab[] = [
     { name: "All", count: totalOrder },
     { name: "Dine In" },
@@ -39,29 +45,28 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
   ];
 
   const handlePress = (tabName: TabName) => {
-    setActiveWindow(tabName);
     onTabChange(tabName);
   };
 
   return (
-    <View className="bg-[#303030] border border-gray-600 p-1 rounded-xl flex-row self-start">
+    <View className="bg-[#252525] border border-gray-700 p-1 rounded-lg flex-row self-start">
       {TABS.map((tab) => {
-        const isActive = activeWindow === tab.name;
+        const isActive = activeTab === tab.name;
         return (
           <Pressable
             key={tab.name}
             onPress={() => handlePress(tab.name)}
-            className={`py-2.5 px-4 rounded-lg flex-row items-center ${isActive ? "bg-[#212121]" : ""
+            className={`py-2 px-4 rounded-md flex-row items-center ${isActive ? "bg-[#3a3a3a] shadow-sm" : ""
               }`}
           >
             <Text
-              className={`font-semibold ${isActive ? "text-blue-400" : "text-gray-400"
+              className={`font-semibold text-sm ${isActive ? "text-blue-400" : "text-gray-400"
                 }`}
             >
               {tab.name}
             </Text>
-            {tab.count !== undefined && tab.count > 0 && (
-              <View className="bg-blue-500 rounded-full w-6 h-6 items-center justify-center ml-2">
+            {tab.count !== undefined && tab.count > 0 && isActive && (
+              <View className="bg-blue-500 rounded-full w-5 h-5 items-center justify-center ml-2">
                 <Text className="text-white font-bold text-xs">
                   {String(tab.count)}
                 </Text>
@@ -74,176 +79,55 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder }) => {
   );
 };
 
-interface OrderRowProps {
-  order: any;
-  onViewItems: () => void;
-  onAssignToBill: () => void;
-}
-
-const OrderRow: React.FC<OrderRowProps> = ({
-  order,
-  onViewItems,
-  onAssignToBill,
-}) => {
-  const isReady = order.order_status === "ready";
-  const statusBg = order.order_status === "completed" ? "bg-blue-400/20" : isReady ? "bg-green-600/20" : "bg-yellow-600/20";
-  const statusText = order.order_status === "completed" ? "text-blue-400" : isReady ? "text-green-400" : "text-yellow-400";
-
-  // Calculate outstanding amount and partial payment status
-  const amountPaid = order.amount_paid || 0;
-  const totalAmount = order.total_amount || 0;
-  const outstandingAmount = Math.max(0, totalAmount - amountPaid);
-  const isPartiallyPaid = amountPaid > 0 && order.paid_status !== "Paid";
-
-  // Payment status badge styling
-  let paidBg, paidText, paidLabel;
-  if (order.paid_status === "Paid") {
-    paidBg = "bg-green-600/20";
-    paidText = "text-green-400";
-    paidLabel = "Paid";
-  } else if (isPartiallyPaid) {
-    paidBg = "bg-orange-600/20";
-    paidText = "text-orange-400";
-    paidLabel = "Partial";
-  } else if (order.paid_status === "Pending") {
-    paidBg = "bg-yellow-600/20";
-    paidText = "text-yellow-400";
-    paidLabel = "Pending";
-  } else {
-    paidBg = "bg-red-600/20";
-    paidText = "text-red-400";
-    paidLabel = order.paid_status || "Unpaid";
-  }
-
-  return (
-    <View className="bg-[#303030] p-3 rounded-lg border border-gray-700 mb-2">
-      <View className="flex-row items-center justify-between">
-        <View className="flex-1">
-          <View className="flex-row items-center gap-2 mb-1.5">
-            <View className={`px-2 py-0.5 rounded-full ${statusBg}`}>
-              <Text className={`text-xs font-bold ${statusText}`}>
-                {order.order_status}
-              </Text>
-            </View>
-            <View className={`px-2 py-0.5 rounded-full ${paidBg}`}>
-              <Text className={`text-xs font-bold ${paidText}`}>
-                {paidLabel}
-              </Text>
-            </View>
-          </View>
-          <Text className="text-lg font-bold text-white mb-1">
-            {order.customer_name || "Walk-In"} {order?.display_number}
-          </Text>
-          <View className="flex-row items-center gap-2">
-            <Text className="text-sm text-gray-400">
-              {order.order_type}
-              {order.service_location_id && (
-                <> • Table {order.service_location_id}</>
-              )}
-            </Text>
-            {/* Show total amount */}
-            <Text className="text-sm text-gray-300">
-              • ${totalAmount.toFixed(2)}
-            </Text>
-          </View>
-
-          {/* Show source station for orders from other stations */}
-          {order._sourceStationName && order.station_id !== useOrderStore.getState().currentStationId && (
-            <View className="flex-row items-center mt-1">
-              <Repeat2 color="#3b82f6" size={12} />
-              <Text className="text-blue-400 text-xs ml-1">
-                From: {order._sourceStationName}
-              </Text>
-            </View>
-          )}
-
-          {/* Show outstanding amount for unpaid/partial orders */}
-          {order.paid_status !== "Paid" && outstandingAmount > 0 && (
-            <View className="mt-1 flex-row items-center">
-              <Text className="text-sm text-yellow-400 font-bold">
-                Outstanding: ${outstandingAmount.toFixed(2)}
-              </Text>
-              {isPartiallyPaid && (
-                <Text className="text-xs text-gray-500 ml-2">
-                  (Paid: ${amountPaid.toFixed(2)})
-                </Text>
-              )}
-            </View>
-          )}
-        </View>
-        <View className="flex-col flex items-end gap-y-2">
-          <View className="flex-row gap-2">
-            <TouchableOpacity
-              onPress={onViewItems}
-              className="flex-row items-center justify-center p-2 rounded-lg border border-gray-600 bg-[#212121]"
-            >
-              <Eye color="#9CA3AF" size={14} />
-              <Text className="font-semibold text-white ml-1.5 text-sm">
-                View Items
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onAssignToBill}
-              className="flex-row items-center justify-center p-2 rounded-lg bg-blue-600"
-            >
-              <Plus color="#FFFFFF" size={14} />
-              <Text className="font-semibold text-white ml-1.5 text-sm">
-                Add to Bill
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {order.paid_status !== "Paid" && (
-            <View className="w-full">
-              <RetrieveButton orderId={order.id} outstandingAmount={outstandingAmount} />
-            </View>
-          )}
-
-          <Text className="text-xs text-gray-400 text-right w-full">
-          {new Date(order.opened_at).toLocaleDateString("en-US",
-              {
-                hour : '2-digit',
-                minute : '2-digit'
-              }
-            )}
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-const RetrieveButton = ({
-  orderId,
-  outstandingAmount
-}: {
-  orderId: string;
-  outstandingAmount: number;
-}) => {
-  const { setActiveOrder } = useOrderStore();
-  return (
-    <TouchableOpacity
-      onPress={() => setActiveOrder(orderId)}
-      className="flex-row items-center justify-center p-2 rounded-lg bg-green-700"
-    >
-      <Text className="font-semibold text-white text-sm">
-        Pay ${outstandingAmount.toFixed(2)}
-      </Text>
-    </TouchableOpacity>
-  );
-};
+// Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
   const { orders, ordersByDbId, orderIds, activeOrderId, addItemToActiveOrder, generateCartItemId } =
     useOrderStore();
-  const { refreshPreviousOrders } = usePreviousOrdersStore(); // Access refresh action
+  const { refreshPreviousOrders } = usePreviousOrdersStore();
+  const { orders: ordersRealtime } = useLocationRealtime();
 
   const { show } = useToast();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false); // New state for refreshing
-  const [searchQuery, setSearchQuery] = useState(""); // New state for search
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // New state for table view
+  const [sortColumn, setSortColumn] = useState<SortColumn>("time");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [isPaymentDetailOpen, setPaymentDetailOpen] = useState(false);
+  const [isMenuOpen, setMenuOpen] = useState(false);
+  const [menuOrderId, setMenuOrderId] = useState<string | null>(null);
+
+  // PHASE 1.2: Check subscription status
+  useEffect(() => {
+    console.log('🔌 [OrdersChannel] Connection status:', {
+      state: ordersRealtime.connectionStatus.state,
+      isConnected: ordersRealtime.isConnected,
+      isReconnecting: ordersRealtime.isReconnecting,
+      reconnectAttempts: ordersRealtime.connectionStatus.reconnectAttempts,
+      subscribedAt: ordersRealtime.connectionStatus.subscribedAt,
+    });
+  }, [ordersRealtime]);
+
+  // PHASE 3C: Subscribe to store changes
+  useEffect(() => {
+    const unsubscribe = useOrderStore.subscribe(
+      (state) => state.ordersByDbId,
+      (ordersByDbId) => {
+        console.log('🔄 [Store Subscribe] ordersByDbId changed:', {
+          orderCount: Object.keys(ordersByDbId).length,
+          orderNumbers: Object.values(ordersByDbId)
+            .filter(o => o.order_status !== "draft")
+            .map(o => o.display_number),
+        });
+      }
+    );
+
+    return unsubscribe;
+  }, []);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -262,6 +146,13 @@ const PreviousOrdersSection = () => {
     const localOrdersNotInSelector = Object.values(ordersByDbId).filter(
       (o) =>  o.order_status !== "draft"
     );
+
+    // PHASE 1: Log all orders in store for diagnostics
+    console.log('📋 [PreviousOrdersSection] Orders from store:', {
+      totalOrders: localOrdersNotInSelector.length,
+      orderIds: localOrdersNotInSelector.map(o => `${o.display_number} (station: ${o.station_id?.slice(0, 8) || 'none'})`),
+    });
+
     return [...localOrdersNotInSelector];
   }, [ordersByDbId]);
 
@@ -295,73 +186,57 @@ const PreviousOrdersSection = () => {
     setActiveTab(tabName);
   };
 
-  const handleViewItems = (orderId: string) => {
-    setSelectedOrderId(orderId);
-    setItemsModalOpen(true);
+  // Handle sort
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle direction
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      // New column, default to descending
+      setSortColumn(column);
+      setSortDirection("desc");
+    }
   };
 
-  const handleAssignToBill = (orderId: string) => {
-    if (!activeOrderId) {
-      show({
-        title: "No Active Order",
-        message: "Please start a new order before adding items.",
-        type: "error",
-      });
-      return;
+  // Handle row click - open payment detail modal
+  const handleRowClick = (orderId: string) => {
+    setSelectedOrderId(orderId);
+    setPaymentDetailOpen(true);
+  };
+
+  // Handle more button click - open actions menu
+  const handleMoreClick = (orderId: string) => {
+    setMenuOrderId(orderId);
+    setMenuOpen(true);
+  };
+
+  // Handle view details from menu
+  const handleViewDetails = () => {
+    if (menuOrderId) {
+      setSelectedOrderId(menuOrderId);
+      setPaymentDetailOpen(true);
     }
-
-    const previousOrder = orders.find((o) => o.id === orderId);
-    if (!previousOrder) {
-      show({
-        title: "Order Not Found",
-        message: "The selected previous order could not be found.",
-        type: "error",
-      });
-      return;
-    }
-
-    if (!previousOrder.items || previousOrder.items.length === 0) {
-      show({
-        title: "No Items to Add",
-        message: "This previous order has no items to add to the bill.",
-        type: "warning",
-      });
-      return;
-    }
-
-    // Add items from the previous order to the current active order
-    let addedCount = 0;
-    previousOrder.items.forEach((item) => {
-      // Create a new item with a unique ID for the current order
-      const newItem = {
-        ...item,
-        id: generateCartItemId(item.menuItemId, item.customizations),
-        isDraft: false,
-      };
-      addItemToActiveOrder(newItem);
-      addedCount++;
-    });
-
-    show({
-      title: "Items Added",
-      message: `${addedCount} items from the previous order have been added to the current bill.`,
-      type: "success",
-    });
   };
 
   return (
-    <View className="flex-1">
+    <View className="flex-1 bg-[#0a0a0a]">
+      {/* Header with Tabs and Search */}
       <View className="flex-row justify-between items-center mb-4 gap-x-4">
-        <OrderTabs onTabChange={handleTabChange} totalOrder={totalOrder || 0} />
-         {/* Search Bar */}
-        <View className="bg-[#303030] border border-gray-600 rounded-xl p-1 mb-4 flex-row items-center w-1/2">
-          <Search color="#9CA3AF" size={20} />
+        <OrderTabs
+          onTabChange={handleTabChange}
+          totalOrder={totalOrder || 0}
+          activeTab={activeTab}
+        />
+
+        {/* Search Bar */}
+        <View className="bg-[#1a1a1a] border border-gray-700 rounded-lg p-2 flex-row items-center flex-1 max-w-md">
+          <Search color="#9CA3AF" size={18} />
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholder="Search by order number or customer name..."
             placeholderTextColor="#6B7280"
-            className="flex-1 ml-3 text-white text-base"
+            className="flex-1 ml-2 text-white text-sm"
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -370,35 +245,41 @@ const PreviousOrdersSection = () => {
               onPress={() => setSearchQuery("")}
               className="ml-2 p-1"
             >
-              <X color="#9CA3AF" size={20} />
+              <X color="#9CA3AF" size={18} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-     
-
-      <FlatList
-        data={filteredOrders.slice().reverse()}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
+      {/* Orders Table */}
+      <ScrollView
         className="flex-1"
         refreshControl={
-          // New prop for pull-to-refresh
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
         }
-        renderItem={({ item }) => (
-          <OrderRow
-            order={item}
-            onViewItems={() => handleViewItems(item.id)}
-            onAssignToBill={() => handleAssignToBill(item.id)}
-          />
-        )}
-        ListEmptyComponent={
-          <View className="h-40 items-center justify-center w-full">
-            <Text className="text-gray-400">No previous orders found.</Text>
-          </View>
-        }
+      >
+        <OrdersTable
+          orders={filteredOrders}
+          sortColumn={sortColumn}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          onRowClick={handleRowClick}
+          onMoreClick={handleMoreClick}
+        />
+      </ScrollView>
+
+      {/* Modals */}
+      <PaymentDetailModal
+        isOpen={isPaymentDetailOpen}
+        onClose={() => setPaymentDetailOpen(false)}
+        orderId={selectedOrderId}
+      />
+
+      <OrderActionsMenu
+        isOpen={isMenuOpen}
+        onClose={() => setMenuOpen(false)}
+        orderId={menuOrderId}
+        onViewDetails={handleViewDetails}
       />
 
       <OrderLineItemsModal

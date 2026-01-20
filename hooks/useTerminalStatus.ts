@@ -61,10 +61,9 @@ export function useTerminalStatus(
     try {
       // Initialize Dejavoo API
       const dejavooAPI = new DejavooSpinAPI(supabase);
-
+    
       // Load terminal credentials (fast path with local credentials)
       const loaded = await dejavooAPI.loadTerminal(terminalId, paymentTerminal);
-
       if (!loaded) {
         setStatus('offline');
         setErrorMessage('Failed to load terminal credentials');

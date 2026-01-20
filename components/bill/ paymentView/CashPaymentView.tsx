@@ -32,7 +32,7 @@ const CashPaymentView = () => {
     usePaymentStore();
 
   const { selectedStation } = useStoreSettingsStore();
-  console.log('selectedStation', selectedStation);
+  // console.log('selectedStation', selectedStation);
   // Dejavoo integration
   const supabase = useSupabaseClient();
   // const { activeTerminalId } = usePaymentTerminalStore();
@@ -298,7 +298,7 @@ const CashPaymentView = () => {
         </View>
 
         {/* Terminal Status Banner */}
-        {/* {terminalStatus !== 'online' && (
+        {terminalStatus !== 'online' && (
           <View className="mx-4 mb-4">
             <TerminalStatusBanner
               status={terminalStatus}
@@ -306,7 +306,7 @@ const CashPaymentView = () => {
               onRetry={recheckStatus}
             />
           </View>
-        )} */}
+        )}
 
         {/* Main Card */}
         <View className="mx-4 bg-[#2A2A2A] rounded-2xl border border-[#333] overflow-hidden">
