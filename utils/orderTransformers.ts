@@ -257,6 +257,7 @@ export interface FetchedOrderData {
   station_id?: string | null;
   station_name?: string | null;
   check_status?: string | null;
+  session_id?: string | null;
   order_type: string;
   status: string;
   table_number?: string | null;
@@ -325,6 +326,8 @@ export interface FetchedOrderItem {
   category_name?: string | null;
   // Nested modifiers from Supabase
   order_item_modifiers?: FetchedOrderItemModifier[];
+  base_card_price : number;
+  base_cash_price : number;
 }
 
 export interface FetchedOrderItemModifier {
@@ -392,6 +395,8 @@ function normalizeFetchedItems(
     category_name: item.category_name ?? null,
     // Normalize nested modifiers
     modifiers: normalizeFetchedModifiers(item.order_item_modifiers),
+    base_card_price : item.base_card_price,
+    base_cash_price : item.base_cash_price
   }));
 }
 
@@ -480,5 +485,8 @@ export function normalizeFetchedOrder(
 
     // Normalize nested order_items
     order_items: normalizeFetchedItems(fetchedOrder.order_items),
+    session_id : fetchedOrder.session_id,
+    station_name : fetchedOrder.station_name,
+    check_status : fetchedOrder.check_status
   };
 }

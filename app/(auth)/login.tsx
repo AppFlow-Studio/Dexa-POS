@@ -1,7 +1,8 @@
+import { ClerkVerificationScreen } from "@/components/tests/ClerkVerificationScreen";
+// import { DebugSignInScreen } from "@/components/tests/DebugSigninScreen";
 import { useSSO, useSignIn } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
   ActivityIndicator,
@@ -13,13 +14,15 @@ import {
   View,
 } from "react-native";
 
-// IMPORTANT: Must be called at module level for Expo Go
-WebBrowser.maybeCompleteAuthSession();
-
 const MerchantLoginScreen = () => {
   const { signIn, setActive, isLoaded } = useSignIn();
+  console.log('useSignIn result:', {
+    signIn: !!signIn,
+    signInType: typeof signIn,
+    signInKeys: signIn ? Object.keys(signIn) : 'null',
+    isLoaded,
+  })
   const router = useRouter();
-  const linking = Linking.useLinkingURL();
   const LinkRedirectUrl = Linking.createURL("oauth-native-callback", {
     scheme: "dexapos",
   });
@@ -95,7 +98,7 @@ const MerchantLoginScreen = () => {
         identifier: trimmedEmail,
         password,
       });
-
+  
       if (signInAttempt.status === "complete") {
         await setActive({ session: signInAttempt.createdSessionId });
         router.replace("/store-select");
@@ -130,7 +133,9 @@ const MerchantLoginScreen = () => {
   };
 
   const isFormLoading = isLoading || isGoogleLoading;
-
+//  if( true ){
+//   return <DebugSignInScreen />
+//  }
   return (
     <View className="w-full">
       <Text className="text-3xl font-semibold text-white text-center mb-8">

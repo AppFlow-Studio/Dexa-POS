@@ -1,13 +1,18 @@
 import PaymentBottomSheet from "@/components/bill/PaymentBottomSheet";
 import Header from "@/components/Header";
 import NotificationBottomSheet from "@/components/notifications/NotificationBottomSheet";
+import { LocationRealtimeProvider } from "@/contexts/LocationRealtimeProvider";
+import type { OrderBroadcastPayload } from "@/hooks/realtime/useOrdersRealtime";
 import { useNotificationSheetStore } from "@/stores/useNotificationSheetStore";
+import { useOrderStore } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
+import type { OrderPayload, PaymentPayload } from "@/types/real-time";
 import { useAuth } from "@clerk/clerk-expo";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { Redirect, Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,9 +20,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 export default function MainLayout() {
   const { isSignedIn, isLoaded } = useAuth();
+  const { selectedStore } = useStoreSettingsStore()
+
   const notificationSheetRef = useRef<BottomSheetMethods>(null);
   const paymentBottomSheetRef = useRef<BottomSheetMethods>(null);
   const { setSheetRef } = useNotificationSheetStore();
@@ -26,6 +32,18 @@ export default function MainLayout() {
     setSheetRef(notificationSheetRef as React.RefObject<BottomSheetMethods>);
   }, [setSheetRef]);
 
+  // DEBUG: Verify station context is initialized before broadcasts arrive (Step 4)
+  useEffect(() => {
+    const orderStore = useOrderStore.getState();
+    console.log('🔧 [MainLayout Init] Station context:', {
+      hasStation: !!orderStore.currentStation,
+      stationId: orderStore.currentStationId,
+      viewScope: orderStore.currentStation?.view_scope,
+      stationName: orderStore.currentStation?.station_name,
+      timestamp: new Date().toISOString(),
+    });
+  }, []);
+
   useEffect(() => {
     usePaymentStore
       .getState()
@@ -33,6 +51,41 @@ export default function MainLayout() {
         paymentBottomSheetRef as React.RefObject<BottomSheetMethods>
       );
   }, [paymentBottomSheetRef]);
+
+  // Realtime order syncing callbacks
+  const handleOrderChange = useCallback((payload: OrderPayload) => {
+    // Backend sends OrderBroadcastPayload with full order data
+    const broadcastPayload = payload as unknown as OrderBroadcastPayload;
+
+    // DEBUG: Log received broadcast
+    console.log('🔔 [MainLayout] Broadcast received:', {
+      operation: broadcastPayload.operation,
+      orderId: broadcastPayload.data?.order?.id,
+      orderNumber: broadcastPayload.data?.order?.order_number,
+      stationId: broadcastPayload.data?.order?.station_id,
+      stationName: broadcastPayload.data?.order?.station_name,
+    });
+
+    // DEBUG: Log current station context
+    const orderStore = useOrderStore.getState();
+    console.log('📍 [MainLayout] Current station context:', {
+      currentStationId: orderStore.currentStationId,
+      stationName: orderStore.currentStation?.station_name,
+      viewScope: orderStore.currentStation?.view_scope,
+    });
+
+    orderStore._handleOrderBroadcast(broadcastPayload);
+  }, []);
+
+  const handlePaymentChange = useCallback((payload: PaymentPayload) => {
+    console.log('[MainLayout] Payment changed:', payload);
+    // Payment changes are handled through order updates
+    // The order store will receive an ORDER_UPDATE event with updated amount_paid
+  }, []);
+
+  if( !selectedStore || !selectedStore?.id  ){
+     return <Redirect href="/login" />
+  }
 
   // Show loading indicator while Clerk is loading
   if (!isLoaded) {
@@ -49,6 +102,13 @@ export default function MainLayout() {
   }
 
   return (
+    <LocationRealtimeProvider
+      locationId={selectedStore?.id}
+      callbacks={{
+        onOrderChange: handleOrderChange,
+        onPaymentChange: handlePaymentChange,
+      }}
+    >
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1"
@@ -89,5 +149,7 @@ export default function MainLayout() {
         </View>
       </SafeAreaView>
     </KeyboardAvoidingView>
+      </LocationRealtimeProvider>
+
   );
 }

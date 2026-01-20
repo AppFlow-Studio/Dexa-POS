@@ -68,11 +68,11 @@ export class OrderService {
     client: SupabaseClient,
     params: CreateOrderParams,
   ): Promise<{ data: Order | null; error: any }> {
-    console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
-    console.log(
-      `[OrderService:createOrder] Params:`,
-      JSON.stringify(params, null, 2),
-    );
+    // console.log(`[OrderService:createOrder] ====== CREATING ORDER ======`);
+    // console.log(
+    //   `[OrderService:createOrder] Params:`,
+    //   JSON.stringify(params, null, 2),
+    // );
 
     const { data, error } = await client.rpc("create_order_v2", params);
 

@@ -4,6 +4,7 @@ import TableLayoutSkeleton from "@/components/tables/TableLayoutSkeleton";
 import TableLayoutView from "@/components/tables/TableLayoutView";
 import { useLoading } from "@/contexts/LoadingContext";
 import { useToast } from "@/contexts/ToastContext";
+import { getDeviceId } from "@/lib/deviceId";
 import { OrderProfile } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
 import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
@@ -11,6 +12,7 @@ import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "@/stores/useOrderStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { FloorPlanObject } from "@/types/db-floor-plan-types";
 import { Href, useRouter } from "expo-router";
@@ -38,11 +40,13 @@ const TablesScreen = () => {
     mergeTable,
     unmergeTable,
     isLoading: floorPlanLoading,
-    realtimeStatus,
-    realtimeChannel,
-    realtimeError,
-    manualReconnect,
+    // realtimeStatus,
+    // realtimeChannel,
+    // realtimeError,
+    // manualReconnect,
   } = useFloorPlanStore();
+  const { selectedStation } = useStoreSettingsStore();
+  const device_id = getDeviceId()
   const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
@@ -265,6 +269,8 @@ const TablesScreen = () => {
           tableIds: tableIdsToSeat,
           partySize: guestCount,
           createOrder: true,
+          selected_station : selectedStation?.id,
+          device_id : device_id
         });
 
       console.log(
@@ -344,25 +350,6 @@ const TablesScreen = () => {
 
   return (
     <View className="flex-1 bg-[#212121] px-2 py-1">
-      {/* {realtimeStatus !== 'connected' && (
-        <TouchableOpacity 
-          onPress={manualReconnect}
-          className={`py-2 px-4 flex-row items-center justify-center ${
-            realtimeStatus === 'reconnecting' 
-              ? 'bg-amber-600' 
-              : 'bg-red-600'
-          }`}
-        >
-          <View className={`w-2 h-2 rounded-full mr-2 ${
-            realtimeStatus === 'reconnecting' ? 'bg-amber-300' : 'bg-red-300'
-          }`} />
-          <Text className="text-white font-medium">
-            {realtimeStatus === 'reconnecting' 
-              ? 'Reconnecting...' 
-              : 'Offline - Tap to reconnect'}
-          </Text>
-        </TouchableOpacity>
-      )} */}
       <View className="flex-1 flex-row bg-[#212121] rounded-lg border border-gray-700">
         {/* NEW: Sidebar Component */}
         <Sidebar
@@ -370,7 +357,6 @@ const TablesScreen = () => {
           activeLayoutId={activeFloorPlanId}
           setActiveLayout={setActiveFloorPlan}
         />
-       
 
         {/* Right Side: Floor Plan */}
         <View className="flex-1 p-4">

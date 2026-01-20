@@ -180,13 +180,15 @@ export interface BatchUpdateObjectParams {
 export interface SeatGuestsParams {
   p_table_ids: string[];
   p_party_size: number;
-  p_guest_name?: string;
-  p_guest_phone?: string;
-  p_guest_notes?: string;
-  p_reservation_id?: string;
-  p_waitlist_id?: string;
+  p_guest_name?: string | null;
+  p_guest_phone?: string | null;
+  p_guest_notes?: string | null;
+  p_reservation_id?: string | null;
+  p_waitlist_id?: string | null;
   p_create_order?: boolean;
-  p_staff_id?: string;
+  p_staff_id?: string | null;
+  p_device_id?: string | null;
+  p_station_id?: string | null;
 }
 
 export interface UpdateTableSessionStatusParams {

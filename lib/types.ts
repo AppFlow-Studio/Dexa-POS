@@ -724,6 +724,10 @@ export interface OrderProfile {
   // If it's `null', it's not a dine-in order.
   service_location_id: string | null;
 
+  // Session tracking - bidirectional relationship with table sessions
+  session_id?: string; // Backend session UUID (for dine-in orders)
+  local_session_id?: string; // Local session ID (for offline reconciliation)
+
   // The current lifecycle stage of the order.
   // Supports both legacy (PascalCase) and new backend (lowercase) values
   // Supports only backend values now

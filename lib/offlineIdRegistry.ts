@@ -27,9 +27,15 @@ export interface IdMapping {
   syncedAt?: string;
 }
 
+export interface Relationship {
+  relatedTo: string[]; // Array of entity IDs this is connected to
+  relationType: "parent" | "child" | "linked";
+}
+
 interface IdRegistryState {
   mappings: Record<string, IdMapping>; // keyed by localId
   backendToLocal: Record<string, string>; // reverse lookup: backendId -> localId
+  relationships: Record<string, Relationship>; // NEW: Track entity relationships
 }
 
 // ============================================================================
@@ -56,6 +62,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 let state: IdRegistryState = {
   mappings: {},
   backendToLocal: {},
+  relationships: {},
 };
 
 let initialized = false;
@@ -76,15 +83,19 @@ export async function initIdRegistry(): Promise<void> {
     // Synchronous read from MMKV
     const stored = getSyncJSON<IdRegistryState>(STORAGE_KEY);
     if (stored) {
-      state = stored;
+      // Ensure backward compatibility: add relationships field if missing
+      state = {
+        ...stored,
+        relationships: stored.relationships || {},
+      };
       console.log(
-        `[IdRegistry] Loaded ${Object.keys(state.mappings).length} mappings`
+        `[IdRegistry] Loaded ${Object.keys(state.mappings).length} mappings, ${Object.keys(state.relationships).length} relationships`
       );
     }
     initialized = true;
   } catch (error) {
     console.error("[IdRegistry] Failed to load from storage:", error);
-    state = { mappings: {}, backendToLocal: {} };
+    state = { mappings: {}, backendToLocal: {}, relationships: {} };
     initialized = true;
   }
 }
@@ -396,9 +407,79 @@ export async function cleanupOldMappings(daysOld: number = 7): Promise<number> {
  * Now synchronous thanks to MMKV!
  */
 export async function clearAllMappings(): Promise<void> {
-  state = { mappings: {}, backendToLocal: {} };
+  state = { mappings: {}, backendToLocal: {}, relationships: {} };
   persistState();
-  console.log("[IdRegistry] Cleared all mappings");
+  console.log("[IdRegistry] Cleared all mappings and relationships");
+}
+
+// ============================================================================
+// RELATIONSHIP TRACKING (Phase 3.1)
+// ============================================================================
+
+/**
+ * Register a relationship between two entities.
+ *
+ * This enables us to track which entities are connected (e.g., order ↔ session)
+ * so we can reconcile their relationships after out-of-order syncing.
+ *
+ * Example:
+ *   registerRelationship("local_order_123", "local_session_456", "linked");
+ *   registerRelationship("local_session_456", "local_order_123", "linked");
+ *
+ * Now if one syncs before the other, we can find and update the relationship.
+ */
+export function registerRelationship(
+  entityId: string,
+  relatedEntityId: string,
+  relationType: "parent" | "child" | "linked"
+): void {
+  const existing = state.relationships[entityId] || {
+    relatedTo: [],
+    relationType,
+  };
+
+  // Add related entity if not already present (prevent duplicates)
+  if (!existing.relatedTo.includes(relatedEntityId)) {
+    state.relationships[entityId] = {
+      ...existing,
+      relatedTo: [...existing.relatedTo, relatedEntityId],
+    };
+
+    persistState();
+
+    console.log(
+      `[IdRegistry] Registered relationship: ${entityId} ${relationType} ${relatedEntityId}`
+    );
+  }
+}
+
+/**
+ * Find all entities related to a given entity.
+ *
+ * Example:
+ *   findRelatedEntities("local_order_123")
+ *   // Returns: ["local_session_456", "local_payment_789"]
+ *
+ * This is used during reconciliation to find which entities need updating
+ * when one entity syncs before another.
+ */
+export function findRelatedEntities(entityId: string): string[] {
+  return state.relationships[entityId]?.relatedTo || [];
+}
+
+/**
+ * Clear relationships for a specific entity.
+ *
+ * Call this when an entity is removed or archived to prevent stale relationships
+ * from accumulating in storage.
+ */
+export function clearRelationships(entityId: string): void {
+  if (state.relationships[entityId]) {
+    delete state.relationships[entityId];
+    persistState();
+
+    console.log(`[IdRegistry] Cleared relationships for: ${entityId}`);
+  }
 }
 
 // ============================================================================
@@ -406,13 +487,14 @@ export async function clearAllMappings(): Promise<void> {
 // ============================================================================
 
 /**
- * Get statistics about current mappings.
+ * Get statistics about current mappings and relationships.
  */
 export function getStats(): {
   total: number;
   synced: number;
   pending: number;
   byType: Record<EntityType, { synced: number; pending: number }>;
+  relationships: number; // NEW: Total relationship count
 } {
   const mappings = Object.values(state.mappings);
 
@@ -426,6 +508,7 @@ export function getStats(): {
       payment: { synced: 0, pending: 0 },
       session: { synced: 0, pending: 0 },
     },
+    relationships: Object.keys(state.relationships).length,
   };
 
   for (const mapping of mappings) {

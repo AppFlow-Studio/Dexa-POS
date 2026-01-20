@@ -19,7 +19,7 @@ import { useOrderStore } from "@/stores/useOrderStore";
 import { usePtoStore } from "@/stores/usePtoStore";
 import { useTimeclockStore } from "@/stores/useTimeclockStore";
 import { Toasts } from "@backpackapp-io/react-native-toast";
-import { ClerkProvider } from "@clerk/clerk-expo";
+import { ClerkLoaded, ClerkProvider, TokenCache } from "@clerk/clerk-expo";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import {
   DarkTheme,
@@ -30,27 +30,32 @@ import {
 import { Stack } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import * as React from "react";
 import { Platform, Text, View } from "react-native";
+
+// IMPORTANT: Must be called once at module level for OAuth to work correctly
+WebBrowser.maybeCompleteAuthSession();
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-const tokenCache = {
+export const tokenCache: TokenCache = {
   async getToken(key: string) {
     try {
-      return SecureStore.getItemAsync(key);
-    } catch (err) {
-      return null;
+      return await SecureStore.getItemAsync(key)
+    } catch (error) {
+      console.error('[TokenCache] Error:', error)
+      return null
     }
   },
   async saveToken(key: string, value: string) {
     try {
-      return SecureStore.setItemAsync(key, value);
-    } catch (err) {
-      return;
+      await SecureStore.setItemAsync(key, value)
+    } catch (error) {
+      console.error('[TokenCache] Error:', error)
     }
   },
-};
+}
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -65,7 +70,7 @@ const DARK_THEME: Theme = {
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from "expo-router";
 
 export default function RootLayout() {
@@ -120,58 +125,62 @@ export default function RootLayout() {
     );
   }
 
+  console.log('Clerk Key:', publishableKey?.substring(0, 20))
+  console.log('TokenCache:', typeof tokenCache)
+
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <TanstackProvider>
-        <PosSyncProvider>
-          <GestureHandlerRootView>
-            <BottomSheetModalProvider>
-              <SafeAreaProvider>
-                <ThemeProvider
-                  value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
-                >
-                  <ToastProvider>
-                    <LoadingProvider>
-                      <SessionKickListenerProvider>
-                        <StatusBar style={"dark"} translucent />
-                        <Stack screenOptions={{ headerShown: false }} />
-                        <PortalHost />
-                        <SearchBottomSheet />
-                        <ItemCustomizationDialog />
-                        <ClockInWallModal
-                          isOpen={isClockInWallOpen}
-                          onClose={hideClockInWall}
-                        />
-                        <ManagerPinModal />
-                        <CustomerSheet />
-                        <Toasts
-                          defaultStyle={{
-                            view: {
-                              backgroundColor: "#ffffff",
-                              borderWidth: 1,
-                              borderColor: "#e5e7eb",
-                              flex: 1,
-                            },
-                            text: {
-                              color: "#1f2937",
-                              fontWeight: "bold",
-                              fontSize: 24,
-                            },
-                            indicator: {
-                              backgroundColor: "#659AF0",
-                            },
-                          }}
-                        />
-                        {/* SyncStatusBar removed - now using NetworkStatusBadge in Header */}
-                      </SessionKickListenerProvider>
-                    </LoadingProvider>
-                  </ToastProvider>
-                </ThemeProvider>
-              </SafeAreaProvider>
-            </BottomSheetModalProvider>
-          </GestureHandlerRootView>
-        </PosSyncProvider>
-      </TanstackProvider>
+     {/* <ClerkLoaded> */}
+        <TanstackProvider>
+          <PosSyncProvider>
+            <GestureHandlerRootView>
+              <BottomSheetModalProvider>
+                <SafeAreaProvider>
+                  <ThemeProvider
+                    value={isDarkColorScheme ? DARK_THEME : LIGHT_THEME}
+                  >
+                    <ToastProvider>
+                      <LoadingProvider>
+                        <SessionKickListenerProvider>
+                          <StatusBar style={"dark"} translucent />
+                          <Stack screenOptions={{ headerShown: false }} />
+                          <PortalHost />
+                          <SearchBottomSheet />
+                          <ItemCustomizationDialog />
+                          <ClockInWallModal
+                            isOpen={isClockInWallOpen}
+                            onClose={hideClockInWall}
+                          />
+                          <ManagerPinModal />
+                          <CustomerSheet />
+                          <Toasts
+                            defaultStyle={{
+                              view: {
+                                backgroundColor: "#ffffff",
+                                borderWidth: 1,
+                                borderColor: "#e5e7eb",
+                                flex: 1,
+                              },
+                              text: {
+                                color: "#1f2937",
+                                fontWeight: "bold",
+                                fontSize: 24,
+                              },
+                              indicator: {
+                                backgroundColor: "#659AF0",
+                              },
+                            }}
+                          />
+                        </SessionKickListenerProvider>
+                      </LoadingProvider>
+                    </ToastProvider>
+                  </ThemeProvider>
+                </SafeAreaProvider>
+              </BottomSheetModalProvider>
+            </GestureHandlerRootView>
+          </PosSyncProvider>
+        </TanstackProvider>
+     {/* </ClerkLoaded> */}
     </ClerkProvider>
   );
 }

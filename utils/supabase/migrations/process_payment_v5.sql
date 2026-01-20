@@ -68,6 +68,17 @@ DECLARE
 
     -- Phase 6: Sync version for conflict detection
     v_new_sync_version integer;
+
+    -- Dejavoo transaction tracking
+    v_dejavoo_reference_id text;
+    v_dejavoo_trace_number text;
+    v_dejavoo_batch_number text;
+    v_dejavoo_invoice_number text;
+    v_dejavoo_rrn text;
+    v_dejavoo_entry_mode text;
+    v_dejavoo_result_code text;
+    v_dejavoo_status_code text;
+    v_has_dejavoo_transaction boolean := false;
 BEGIN
     v_is_cash := p_payment_method = 'cash';
     v_is_item_payment := p_item_allocations IS NOT NULL AND jsonb_array_length(p_item_allocations) > 0;
@@ -207,66 +218,7 @@ BEGIN
     -- 6. Calculate Payment Amount Based on Scenario
     -- ============================================
     IF v_is_item_payment THEN
-        -- ========================================
-        -- PER-ITEM PAYMENT (with per-item quantities)
-        -- ========================================
-        -- Calculate totals based on allocated quantities (not full remaining quantity)
-        -- SELECT
-        --     COALESCE(SUM(
-        --         CASE WHEN v_is_cash
-        --             THEN LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
-        --             ELSE LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
-        --         END
-        --     ), 0),
-        --     COALESCE(SUM(
-        --         CASE WHEN v_is_cash
-        --             THEN ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-        --             ELSE ROUND(LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-        --         END
-        --     ), 0),
-        --     array_agg(oi.id)
-        -- INTO v_items_subtotal, v_items_tax, v_covered_items
-        -- FROM jsonb_array_elements(p_item_allocations) AS alloc
-        -- JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
-        -- WHERE oi.order_id = p_order_id
-        --   AND oi.is_voided = false
-        --   AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-
-        -- v_payment_total := v_items_subtotal + v_items_tax;
-        -- v_subtotal_portion := v_items_subtotal;
-        -- v_tax_portion := v_items_tax;
-
-        -- -- Build detailed items JSON with allocated quantities
-        -- SELECT COALESCE(jsonb_agg(jsonb_build_object(
-        --     'order_item_id', oi.id,
-        --     'item_name', oi.item_name,
-        --     'quantity_paid', LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)),
-        --     'unit_price', CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
-        --     'subtotal', CASE WHEN v_is_cash
-        --         THEN LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price
-        --         ELSE LEAST(COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)), oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price
-        --     END
-        -- )), '[]'::jsonb)
-        -- INTO v_covered_items_json
-        -- FROM jsonb_array_elements(p_item_allocations) AS alloc
-        -- JOIN public.order_items oi ON oi.id = (alloc.value->>'order_item_id')::uuid
-        -- WHERE oi.order_id = p_order_id
-        --   AND oi.is_voided = false
-        --   AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-
-        -- -- Update items with allocated quantities (increment paid_quantity, not set to full)
-        -- UPDATE public.order_items oi
-        -- SET
-        --     paid_quantity = COALESCE(oi.paid_quantity, 0) + LEAST(
-        --         COALESCE((alloc.value->>'quantity')::integer, oi.quantity - COALESCE(oi.paid_quantity, 0)),
-        --         oi.quantity - COALESCE(oi.paid_quantity, 0)
-        --     ),
-        --     price_paid = CASE WHEN v_is_cash THEN oi.cash_price ELSE oi.unit_price END,
-        --     updated_at = now()
-        -- FROM jsonb_array_elements(p_item_allocations) AS alloc
-        -- WHERE oi.id = (alloc.value->>'order_item_id')::uuid
-        --   AND oi.order_id = p_order_id
-        --   AND oi.is_voided = false;
+      
 
         WITH payment_calc AS (
             SELECT
@@ -542,71 +494,26 @@ BEGIN
     -- ============================================
     IF v_is_cash THEN
         v_change_given := GREATEST(
-            COALESCE(p_amount_tendered, v_payment_total) - (v_payment_total + COALESCE(p_tip_amount, 0)), 
+            COALESCE(p_amount_tendered, v_payment_total) - (v_payment_total + COALESCE(p_tip_amount, 0)),
             0
         );
     END IF;
-    
+
     -- ============================================
-    -- 7. Create Payment Record
+    -- 6.5. Extract Dejavoo Transaction Details (if present)
     -- ============================================
-    -- INSERT INTO public.order_payments (
-    --     order_id,
-    --     payment_method,
-    --     amount,
-    --     tip_amount,
-    --     total_amount,
-    --     subtotal_portion,
-    --     tax_portion,
-    --     amount_tendered,
-    --     change_given,
-    --     is_cash_priced,
-    --     cash_discount_applied,
-    --     original_amount,
-    --     covers_items,
-    --     split_portion_index,
-    --     split_count,
-    --     status,
-    --     terminal_type,
-    --     processed_by_staff_id,
-    --     processor_response,
-    --     transaction_id,
-    --     authorization_code,
-    --     card_type,
-    --     card_last_four,
-    --     captured_at,
-    --     initiated_at
-    -- ) VALUES (
-    --     p_order_id,
-    --     p_payment_method::payment_method,
-    --     v_payment_total,
-    --     COALESCE(p_tip_amount, 0),
-    --     v_payment_total + COALESCE(p_tip_amount, 0),
-    --     v_subtotal_portion,
-    --     v_tax_portion,
-    --     CASE WHEN v_is_cash THEN COALESCE(p_amount_tendered, v_payment_total) END,
-    --     v_change_given,
-    --     v_is_cash,
-    --     v_is_cash,
-    --     CASE WHEN v_is_cash 
-    --         THEN ROUND(v_payment_total * v_order.card_total / NULLIF(v_order.cash_total, 0), 2)
-    --         ELSE v_payment_total 
-    --     END,
-    --     CASE WHEN v_is_item_payment THEN v_covered_items ELSE NULL END,
-    --     p_split_portion_index,
-    --     p_split_count,
-    --     'captured',
-    --     CASE WHEN v_is_cash THEN 'cash_drawer' ELSE 'dejavoo' END::terminal_type,
-    --     p_staff_id,
-    --     p_terminal_response,
-    --     p_terminal_response->>'transaction_id',
-    --     p_terminal_response->>'authorization_code',
-    --     p_terminal_response->>'card_type',
-    --     p_terminal_response->>'card_last_four',
-    --     now(),
-    --     now()
-    -- )
-    -- RETURNING id INTO v_payment_id;
+    IF p_terminal_response ? 'dejavoo_transaction' THEN
+        v_has_dejavoo_transaction := true;
+        v_dejavoo_reference_id := p_terminal_response->'dejavoo_transaction'->>'referenceId';
+        v_dejavoo_trace_number := p_terminal_response->'dejavoo_transaction'->>'traceNumber';
+        v_dejavoo_batch_number := p_terminal_response->'dejavoo_transaction'->>'batchNumber';
+        v_dejavoo_invoice_number := p_terminal_response->'dejavoo_transaction'->>'invoiceNumber';
+        v_dejavoo_rrn := p_terminal_response->'dejavoo_transaction'->>'rrn';
+        v_dejavoo_entry_mode := p_terminal_response->'dejavoo_transaction'->>'entryMode';
+        v_dejavoo_result_code := p_terminal_response->'dejavoo_transaction'->>'resultCode';
+        v_dejavoo_status_code := p_terminal_response->'dejavoo_transaction'->>'statusCode';
+    END IF;
+
      INSERT INTO public.order_payments (
         order_id,
         payment_method,
@@ -646,9 +553,9 @@ BEGIN
         v_is_cash,
         v_is_cash,
         -- original_amount: what this would cost at card price
-        CASE WHEN v_is_cash 
+        CASE WHEN v_is_cash
             THEN ROUND(v_payment_total * v_order.card_total / NULLIF(v_order.cash_total, 0), 2)
-            ELSE v_payment_total 
+            ELSE v_payment_total
         END,
         CASE WHEN array_length(v_covered_items, 1) > 0 THEN v_covered_items ELSE NULL END,
         p_split_portion_index,
@@ -656,10 +563,24 @@ BEGIN
         'captured',
         CASE WHEN v_is_cash THEN 'cash_drawer' ELSE 'dejavoo' END::terminal_type,
         p_staff_id,
+        -- Store full terminal response including nested dejavoo_transaction
         p_terminal_response,
-        p_terminal_response->>'transaction_id',
-        p_terminal_response->>'authorization_code',
-        p_terminal_response->>'card_type',
+        -- Use Dejavoo referenceId as primary transaction_id, fallback to top-level
+        COALESCE(
+            v_dejavoo_reference_id,
+            p_terminal_response->>'transaction_id'
+        ),
+        -- Use Dejavoo traceNumber as authorization_code, fallback to top-level
+        COALESCE(
+            v_dejavoo_trace_number,
+            p_terminal_response->>'authorization_code'
+        ),
+        -- Use Dejavoo cardType, fallback to top-level
+        COALESCE(
+            p_terminal_response->'dejavoo_transaction'->>'cardType',
+            p_terminal_response->>'card_type'
+        ),
+        -- Keep existing card_last_four logic (no Dejavoo equivalent)
         p_terminal_response->>'card_last_four',
         now(),
         now()
@@ -778,40 +699,7 @@ BEGIN
     -- Total amount_paid for the order (sum of all payments)
     v_new_amount_paid := v_total_cash_paid + v_total_card_paid;
 
-    -- -- ============================================
-    -- -- 10. Calculate Unpaid Totals (ALWAYS both prices)
-    -- -- ============================================
-    -- IF v_is_item_payment THEN
-    --     -- For item-based: calculate from remaining unpaid items
-    --     SELECT 
-    --         COUNT(*),
-    --         COALESCE(SUM(
-    --             (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price +
-    --             ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.unit_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-    --         ), 0),
-    --         COALESCE(SUM(
-    --             (oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price +
-    --             ROUND((oi.quantity - COALESCE(oi.paid_quantity, 0)) * oi.cash_price * COALESCE(oi.tax_rate, 0) / 100, 2)
-    --         ), 0)
-    --     INTO v_unpaid_items_count, v_unpaid_card_total, v_unpaid_cash_total
-    --     FROM public.order_items oi
-    --     WHERE oi.order_id = p_order_id
-    --       AND oi.is_voided = false
-    --       AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-          
-    -- ELSE
-    --     -- For amount-based: calculate from order totals minus payments
-    --     v_unpaid_card_total := GREATEST(v_order.card_total - v_total_card_paid, 0);
-    --     v_unpaid_cash_total := GREATEST(v_order.cash_total - v_total_cash_paid, 0);
-        
-    --     -- Count unpaid items for reference
-    --     SELECT COUNT(*)
-    --     INTO v_unpaid_items_count
-    --     FROM public.order_items oi
-    --     WHERE oi.order_id = p_order_id
-    --       AND oi.is_voided = false
-    --       AND oi.quantity > COALESCE(oi.paid_quantity, 0);
-    -- END IF;
+   
 -- ============================================
     -- 11. Calculate NEW Unpaid Totals from Items
     --     (AFTER this payment - the source of truth)
@@ -968,51 +856,6 @@ BEGIN
         END,
         updated_at = now()
     WHERE id = p_order_id;
-    -- ============================================
-    -- 14. Return Result
-    -- ============================================
-    -- RETURN jsonb_build_object(
-    --     'success', true,
-    --     'payment_id', v_payment_id,
-    --     'payment_method', p_payment_method,
-    --     'amount_charged', v_payment_total,
-    --     'tip_amount', COALESCE(p_tip_amount, 0),
-    --     'total_collected', v_payment_total + COALESCE(p_tip_amount, 0),
-    --     'change_given', v_change_given,
-    --     'is_cash_priced', v_is_cash,
-    --     'pricing_mode', v_new_pricing_mode,
-        
-    --     -- Payment type flags
-    --     'is_item_payment', v_is_item_payment,
-    --     'is_split_payment', v_is_split_payment,
-        
-    --     -- Split info
-    --     'split_count', p_split_count,
-    --     'split_portion_index', p_split_portion_index,
-    --     'portions_paid', v_portions_paid,
-    --     'portions_remaining', v_portions_remaining,
-    --     'split_card_portion', v_split_card_portion,
-    --     'split_cash_portion', v_split_cash_portion,
-        
-    --     -- Item info
-    --     'items_paid', v_covered_items_json,
-    --     'items_covered', v_covered_items,
-        
-    --     -- Payment totals by type
-    --     'total_cash_paid', v_total_cash_paid,
-    --     'total_card_paid', v_total_card_paid,
-        
-    --     -- Order state (amount_due is ALWAYS card price)
-    --     'order_amount_paid', v_new_amount_paid,
-    --     'order_amount_due', v_new_amount_due,           -- Card price
-    --     'order_cash_amount_due', v_new_cash_amount_due, -- Cash price (for UI)
-    --     'order_fully_paid', v_order_fully_paid,
-        
-    --     -- Unpaid details
-    --     'unpaid_items_count', v_unpaid_items_count,
-    --     'unpaid_card_total', v_unpaid_card_total,
-    --     'unpaid_cash_total', v_unpaid_cash_total
-    -- );
     -- ============================================
     -- 15. Phase 6: Increment sync_version
     -- ============================================

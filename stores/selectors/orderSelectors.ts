@@ -315,14 +315,14 @@ export function useOtherStationOrders(): OrderProfile[] {
 
 export function useOrderTypeCounts(): Record<string, number> {
   const stationOrders = useStationOrders();
-
+  const OnlyUncomplete = stationOrders.filter((o) => ( o.order_status !== 'completed' && o.order_status !== 'ready' ) && o.paid_status !== 'Paid')
   return useMemo(() => {
     return {
-      All: stationOrders.length,
-      Takeaway: stationOrders.filter(
+      All: OnlyUncomplete.length,
+      Takeaway: OnlyUncomplete.filter(
         (o) => o.order_type === "takeout" || o.order_type === "Takeaway"
       ).length,
-      Delivery: stationOrders.filter(
+      Delivery: OnlyUncomplete.filter(
         (o) => o.order_type === "delivery" || o.order_type === "Delivery"
       ).length,
     };

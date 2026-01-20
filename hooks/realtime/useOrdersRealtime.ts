@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { debounce } from 'lodash';
 import { useRealtimeChannel } from './useRealtimechannel';
+import { useSupabaseClient } from '@/hooks/useSupabaseClient';
 import type {
   OrderPayload,
   PaymentPayload,
@@ -65,6 +66,7 @@ export interface BroadcastOrderData {
   created_by_staff_id: string | null;
   created_by_user_id: string | null;
   assigned_server_id: string | null;
+  session_id: string | null;  // Bidirectional link to table sessions
 
   // Station tracking (Phase 2: Remote Order Management)
   station_id: string | null;
@@ -168,14 +170,13 @@ export function useOrdersRealtime({
   onPaymentChange,
 }: UseOrdersRealtimeOptions) {
   const queryClient = useQueryClient();
+  const supabase = useSupabaseClient(); // Call at component level (not inside callbacks)
 
   const events: RealtimeEventType[] = useMemo(
     () => [
-      'ORDER_INSERT',
-      'ORDER_UPDATE',
-      'ORDER_DELETE',
-      'PAYMENT_INSERT',
-      'PAYMENT_UPDATE',
+      'INSERT',
+      'UPDATE',
+      'DELETE',
     ],
     []
   );
@@ -232,15 +233,22 @@ export function useOrdersRealtime({
 
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
-      console.log(`[OrdersRealtime] Event: ${event}`, payload);
+      console.log(`📨 [OrdersRealtime] Received ${event} event:`, {
+        event,
+        hasPayload: !!payload,
+        orderId: (payload as any)?.data?.order?.id,
+        operation: (payload as any)?.operation,
+      });
 
-      // Handle order events
-      if (event.startsWith('ORDER_')) {
-        const orderPayload = payload as OrderPayload;
+      // Handle order events (all events on orders channel are order events)
+      if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
+        // Backend sends OrderBroadcastPayload with full order data including items
+        const broadcastPayload = payload as OrderBroadcastPayload;
+        const order = broadcastPayload.data?.order;
 
         // IMMEDIATE: Specific order (< 50ms perceived latency)
-        if (orderPayload.order?.id) {
-          invalidateOrderDetail(orderPayload.order.id);
+        if (order?.id) {
+          invalidateOrderDetail(order.id);
         }
 
         // DEBOUNCED: Lists and aggregates (300ms batch window)
@@ -248,42 +256,39 @@ export function useOrdersRealtime({
 
         // CONDITIONAL + DEBOUNCED: Kitchen queue
         if (
-          orderPayload.order?.status === 'sent' ||
-          orderPayload.order?.status === 'preparing' ||
-          orderPayload.order?.status === 'ready'
+          order?.status === 'pending' ||
+          order?.status === 'preparing' ||
+          order?.status === 'ready'
         ) {
           debouncedInvalidateKitchen(locationId);
         }
 
         // CONDITIONAL + DEBOUNCED: Stats
         if (
-          orderPayload.order?.status === 'completed' ||
-          orderPayload.previous_status === 'completed'
+          order?.status === 'completed'
         ) {
           debouncedInvalidateStats(locationId);
         }
 
-        onOrderChange?.(orderPayload);
-      }
-
-      // Handle payment events
-      if (event.startsWith('PAYMENT_')) {
-        const paymentPayload = payload as PaymentPayload;
-
-        // IMMEDIATE: Order detail + payments
-        if (paymentPayload.order?.id) {
-          invalidateOrderDetail(paymentPayload.order.id);
+        // Call the callback with the full broadcast payload
+        // Cast to OrderPayload for type compatibility (contains same data structure)
+        // DEFENSIVE EXECUTION (NEW): Ensure callback fires reliably
+        if (onOrderChange) {
+          try {
+            onOrderChange(broadcastPayload as unknown as OrderPayload);
+          } catch (error) {
+            console.error('[OrdersRealtime] Callback execution error:', error);
+            console.error('[OrdersRealtime] Failed payload:', broadcastPayload);
+          }
+        } else {
+          console.warn('[OrdersRealtime] No onOrderChange callback registered! Order update will not reach store.');
+          console.warn('[OrdersRealtime] Order details:', {
+            orderId: order?.id,
+            orderNumber: order?.order_number,
+            stationId: order?.station_id,
+            operation: broadcastPayload.operation,
+          });
         }
-
-        // DEBOUNCED: Orders list
-        debouncedInvalidateList(locationId);
-
-        // CONDITIONAL + DEBOUNCED: Stats
-        if (paymentPayload.payment?.status === 'completed') {
-          debouncedInvalidateStats(locationId);
-        }
-
-        onPaymentChange?.(paymentPayload);
       }
     },
     [
@@ -293,15 +298,15 @@ export function useOrdersRealtime({
       debouncedInvalidateKitchen,
       debouncedInvalidateStats,
       onOrderChange,
-      onPaymentChange,
     ]
   );
 
   const { status, reconnect, disconnect } = useRealtimeChannel<unknown>({
+    supabaseClient: supabase, // Pass supabase client as prop
     topic: `location:${locationId}:orders`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!locationId,
+    enabled: enabled && !!locationId && !!supabase, // Add supabase check
   });
 
   return {
@@ -327,6 +332,7 @@ export function useKitchenRealtime({
   onOrderStatusChange?: (payload: OrderPayload) => void;
 }) {
   const queryClient = useQueryClient();
+  const supabase = useSupabaseClient(); // Call at component level
 
   const events: RealtimeEventType[] = useMemo(
     () => ['ORDER_INSERT', 'ORDER_UPDATE'],
@@ -338,7 +344,7 @@ export function useKitchenRealtime({
       const orderPayload = payload as OrderPayload;
 
       // Only care about orders in kitchen-relevant statuses
-      const kitchenStatuses = ['sent', 'preparing', 'ready'];
+      const kitchenStatuses = ['pending', 'preparing', 'ready'];
       if (
         !kitchenStatuses.includes(orderPayload.order?.status) &&
         !kitchenStatuses.includes(orderPayload.previous_status || '')
@@ -360,10 +366,11 @@ export function useKitchenRealtime({
 
   // Subscribe to location kitchen channel
   const { status, reconnect } = useRealtimeChannel<unknown>({
+    supabaseClient: supabase, // Pass supabase client as prop
     topic: `location:${locationId}:kitchen`,
     events,
     onMessage: handleMessage,
-    enabled: enabled && !!locationId,
+    enabled: enabled && !!locationId && !!supabase, // Add supabase check
   });
 
   return {

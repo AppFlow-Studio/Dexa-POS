@@ -25,11 +25,26 @@ import Animated, {
 } from "react-native-reanimated";
 
 const MAX_PIN_LENGTH = 4;
+// Helper function to validate and clean IP address
+const sanitizeIpAddress = (ip: string | null | undefined): string | null => {
+  if (!ip || ip.trim() === '') return null;
+  
+  // Basic IPv4 validation (optional but good practice)
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+  
+  const trimmed = ip.trim();
+  if (ipv4Regex.test(trimmed) || ipv6Regex.test(trimmed)) {
+    return trimmed;
+  }
+  
+  return null; // Invalid format, send null instead of crashing DB
+};
 
 const getDeviceInfo = async () => {
   const ip = await Network.getIpAddressAsync().catch(() => null);
   return {
-    ip_address: ip,
+    ip_address: ip !== '' ? ip : null,
     app_version: Application.nativeApplicationVersion,
     os_version: `${Device.osName} ${Device.osVersion}`,
     hardware_model: Device.modelName,
@@ -56,7 +71,11 @@ const PinLoginScreen = () => {
     getEmployeeByStaffId,
     setActiveSession,
     clockIn: employeeClockIn,
+    employees,
   } = useEmployeeStore();
+
+  // console.log("employees", employees);
+
   const selectedStore = useStoreSettingsStore((state) => state.selectedStore);
   const selectedStation = useStoreSettingsStore(
     (state) => state.selectedStation,
@@ -154,7 +173,7 @@ const PinLoginScreen = () => {
       });
 
       // Call the login RPC with force takeover enabled
-      const { data, error } = await supabase.rpc("pos_staff_login", {
+      const { data, error } = await supabase.rpc("pos_staff_login_v2", {
         p_location_id: selectedStore.id,
         p_pin_code: pendingTakeoverPin,
         p_station_id: selectedStation.id,
@@ -281,12 +300,12 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: forceTakeover === "true",
-        p_ip_address: info.ip_address,
+        p_ip_address: sanitizeIpAddress(info.ip_address),
         p_app_version: info.app_version,
         p_os_version: info.os_version,
         p_hardware_model: info.hardware_model,
       });
-      const { data, error } = await supabase.rpc("pos_staff_login", {
+      const { data, error } = await supabase.rpc("pos_staff_login_v2", {
         p_location_id: selectedStore.id,
         p_pin_code: pin,
         p_station_id: selectedStation.id,
@@ -294,7 +313,7 @@ const PinLoginScreen = () => {
         p_device_name: deviceName,
         p_auto_clock_in: true,
         p_force_takeover: forceTakeover === "true",
-        p_ip_address: info.ip_address,
+        p_ip_address: sanitizeIpAddress(info.ip_address),
         p_app_version: info.app_version,
         p_os_version: info.os_version,
         p_hardware_model: info.hardware_model,
@@ -491,11 +510,7 @@ const PinLoginScreen = () => {
       }
 
       // Check for manager-level roles
-      const managerRoles = [
-        "merchant.manager",
-        "merchant.admin",
-        "merchant.owner",
-      ];
+      const managerRoles = ["merchant.manager", "merchant.admin", "merchant.owner","merchant.shift_manager"];
       if (!managerRoles.includes(employee.role)) {
         showDialog(
           "Permission Denied",

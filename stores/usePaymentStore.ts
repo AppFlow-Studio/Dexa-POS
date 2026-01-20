@@ -1,5 +1,6 @@
 import { toastService } from "@/lib/toastService";
 import { CartItem } from "@/lib/types";
+import { eventBus, OrderPaidEvent } from "@/lib/eventBus";
 import {
   getFailedPayments,
   getPendingPaymentsCount,
@@ -16,6 +17,7 @@ import {
   getOrderStoreSupabaseClient,
   useOrderStore,
 } from "./useOrderStore";
+import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 type PaymentMethod = "Card" | "Cash" | "Split";
 export type PaymentView =
   | "review"
@@ -115,13 +117,34 @@ interface PaymentState {
   // splitEvenly: (numberOfPeople: number, amountPerPerson: number) => void;
 
   // Flow Actions
+  // referenceId: result.helpers?.getReferenceId(),
+  // transactionNumber: result.helpers?.getTransactionNumber(),
+  // invoiceNumber: result.helpers?.getInvoiceNumber(),
+  // batchNumber: result.helpers?.getBatchNumber(),
+  // traceNumber: result.helpers?.getTraceNumber(),
+  // totalAmount: result.helpers?.getTotalAmount(),
+  // baseAmount: result.helpers?.getBaseAmount(),
+  // tipAmount: result.helpers?.getTipAmount(),
+  // cardType: result.helpers?.getCardType(),
+  // entryMode: result.helpers?.getEntryMode(),
+  // resultCode: result.helpers?.getResultCode(),
+  // statusCode: result.helpers?.getStatusCode(),
+  // message: result.helpers?.getMessage(),
+  // rrn: result.helpers?.getRRN(),
   startSplitPaymentFlow: (source: PaymentView) => void;
-  handlePaymentCompletion: (
-    method: string,
-    tipAmount?: number,
-    transactionDetails?: Record<string, any>,
-    amountOverride?: number,
-  ) => Promise<void>;
+  handlePaymentCompletion: ({
+    method, 
+    tipAmount, 
+    transactionDetails, 
+    dejavooTransaction,
+    amountOverride,
+} : { 
+  method: string, 
+  tipAmount?: number, 
+  transactionDetails?: Record<string, any>, 
+  dejavooTransaction?: DejavooSaleTransactionResponse,
+  amountOverride?: number 
+}) => Promise<void>;
   moveToNextSplit: () => void;
   processManualCardPayment(details: {
     cardBrand: string;
@@ -576,10 +599,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   handlePaymentCompletion: async (
-    method: string,
-    tipAmount?: number,
-    transactionDetails?: Record<string, any>,
-    amountOverride?: number,
+    { method, tipAmount, transactionDetails, amountOverride, dejavooTransaction }: { method: string, tipAmount?: number, transactionDetails?: Record<string, any>, amountOverride?: number, dejavooTransaction?: DejavooSaleTransactionResponse }
   ) => {
     const { activeSplitId, splits, splitSourceView, close } = get();
     const { activeOrderId, addPaymentToOrder } = useOrderStore.getState();
@@ -651,6 +671,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         method: method as any, // method comes from handlePaymentCompletion ("Cash" or "Card")
         tipAmount,
         transactionDetails: detailsWithSplitLabel,
+        dejavooTransaction,
         itemAllocations, // Pass item allocations with quantities for per-item payment tracking
         // Only pass split count/index for even splits - NOT for per-item payments
         // Per-item payments use itemAllocations to track what was paid
@@ -681,22 +702,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       if (nextPending) {
         set({ view: "split-payment-success" });
       } else {
-        // All splits paid - check if we need to send items to kitchen
-        const { ordersById, sendNewItemsToKitchenForOrder } =
-          useOrderStore.getState();
-        const order = ordersById[activeOrderId];
-
-        // If order was in draft status, send items to kitchen (preparing state)
-        // IMPORTANT: Await this to ensure backend status is updated before continuing
-        if (
-          order?.order_status === "draft" ||
-          order?.order_status === "pending"
-        ) {
-          await sendNewItemsToKitchenForOrder(activeOrderId);
-        }
-
-        // Capture payment info BEFORE setting view to success
-        // This snapshot will be used by PaymentSuccessView to prevent real-time sync overwrites
+        // All splits paid - capture final order state
         const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
         const paymentsTotal = (finalOrder?.payments || []).reduce(
           (sum, p) => sum + (p.amount || 0),
@@ -706,6 +712,24 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
           0,
         );
+
+        // ================================================================
+        // NEW (Phase 4.2): Emit order:paid event
+        // ================================================================
+        // Subscribers will handle: sending to kitchen, updating table status, analytics, etc.
+        const eventPayload: OrderPaidEvent = {
+          orderId: activeOrderId,
+          orderType: finalOrder?.order_type || "unknown",
+          totalAmount: paymentsTotal,
+          cashAmount: (finalOrder?.payments || [])
+            .filter((p) => p.payment_method === "Cash" || p.payment_method === "cash")
+            .reduce((sum, p) => sum + (p.amount || 0), 0),
+          paymentMethod: method,
+          sessionId: finalOrder?.session_id,
+          tableId: finalOrder?.service_location_id,
+        };
+
+        await eventBus.emit("order:paid", eventPayload);
 
         // Order is fully paid - addPaymentToOrder already set the paid status
         set({
@@ -750,6 +774,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         method: method as any,
         tipAmount,
         transactionDetails: detailsWithCashFlag,
+        dejavooTransaction,
       });
 
       // If payment failed, close the payment sheet (error toast already shown by syncPaymentToBackend)
@@ -761,35 +786,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Refresh order state after payment
       const updatedOrder = useOrderStore.getState().ordersById[activeOrderId];
 
-      // Payment succeeded - addPaymentToOrder already set the paid status
-      // If order was in draft status, send it to kitchen
-      // IMPORTANT: Await this to ensure backend status is updated before continuing
-      // This prevents race condition where realtime overwrites status to "draft"
-      if (
-        currentOrder?.order_status === "draft" ||
-        currentOrder?.order_status === "pending"
-      ) {
-        await sendNewItemsToKitchenForOrder(activeOrderId);
-      }
-
-      // If this is a takeaway/delivery order that's already ready and now paid, archive it
-      // This triggers inventory deduction via archiveOrder
-      if (
-        updatedOrder &&
-        (updatedOrder.order_type === "Takeaway" ||
-          updatedOrder.order_type === "takeout" ||
-          updatedOrder.order_type === "Delivery") &&
-        updatedOrder.order_status === "ready" &&
-        updatedOrder.paid_status === "Paid"
-      ) {
-        // Use a slight delay to ensure payment state is fully updated
-        setTimeout(() => {
-          useOrderStore.getState().archiveOrder(activeOrderId);
-        }, 300);
-      }
-
-      // Capture payment info BEFORE setting view to success
-      // This snapshot will be used by PaymentSuccessView to prevent real-time sync overwrites
+      // Capture payment info for success view
       const finalOrder = useOrderStore.getState().ordersById[activeOrderId];
       const paymentsTotal = (finalOrder?.payments || []).reduce(
         (sum, p) => sum + (p.amount || 0),
@@ -799,6 +796,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         (sum, p) => sum + ((p as any)?.tipAmount || p?.tip_amount || 0),
         0,
       );
+
+      // ================================================================
+      // NEW (Phase 4.2): Emit order:paid event
+      // ================================================================
+      // Removed direct calls to:
+      // - sendNewItemsToKitchenForOrder (now handled by event subscriber)
+      // - archiveOrder (now handled by event subscriber)
+      //
+      // Subscribers will handle: sending to kitchen, archiving takeout orders,
+      // updating table status, analytics, inventory deduction, etc.
+      const eventPayload: OrderPaidEvent = {
+        orderId: activeOrderId,
+        orderType: finalOrder?.order_type || "unknown",
+        totalAmount: paymentsTotal,
+        cashAmount: (finalOrder?.payments || [])
+          .filter((p) => p.payment_method === "Cash" || p.payment_method === "cash")
+          .reduce((sum, p) => sum + (p.amount || 0), 0),
+        paymentMethod: method,
+        sessionId: finalOrder?.session_id,
+        tableId: finalOrder?.service_location_id,
+      };
+
+      await eventBus.emit("order:paid", eventPayload);
 
       set({
         completedPaymentInfo: {

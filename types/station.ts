@@ -15,6 +15,22 @@ export interface StationCapabilities {
   can_update_kitchen_status: boolean;
 }
 
+// === PAYMENT TERMINAL (Non-sensitive metadata only) ===
+// Payment terminal linked to a station
+// NOTE: auth_key is NEVER included here - fetched separately when needed
+export interface StationPaymentTerminal {
+  id: string;
+  terminal_name: string;
+  tpn: string;
+  register_id: string | null;
+  auth_key: string | null;
+  terminal_type: 'dejavoo' | 'clover' | 'square' | 'stripe_terminal';
+  terminal_model: string | null;
+  is_connected: boolean;
+  last_connection_status: 'Online' | 'Offline' | 'NotFound' | null;
+  last_connection_test_at: string | null;
+}
+
 // Station as returned from get_location_stations_with_status RPC
 export interface Station {
   id: string;
@@ -35,6 +51,9 @@ export interface Station {
   can_update_kitchen_status?: boolean;
   is_online?: boolean;
   last_heartbeat_at?: string | null;
+
+  // Payment terminal linked to this station (non-sensitive metadata only)
+  payment_terminal?: StationPaymentTerminal | null;
 }
 
 export interface StationCurrentSession {
@@ -58,6 +77,8 @@ export interface SelectedStation {
   can_void_orders?: boolean;
   can_apply_discounts?: boolean;
   can_update_kitchen_status?: boolean;
+  // Payment terminal linked to this station (safe to persist - non-sensitive metadata only)
+  payment_terminal?: StationPaymentTerminal | null;
 }
 
 // Response from pos_staff_login RPC

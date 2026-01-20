@@ -1,6 +1,5 @@
 import { useOAuth, useSignUp } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import React from "react";
 import {
     ActivityIndicator,
@@ -11,9 +10,6 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-
-// IMPORTANT: Must be called at module level for Expo Go
-WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen() {
     const { isLoaded, signUp, setActive } = useSignUp();

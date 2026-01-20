@@ -189,6 +189,8 @@ const StationSelectScreen = () => {
         can_void_orders: station.can_void_orders,
         can_apply_discounts: station.can_apply_discounts,
         can_update_kitchen_status: station.can_update_kitchen_status,
+        // Payment terminal metadata (non-sensitive: tpn, register_id)
+        payment_terminal: station.payment_terminal || null,
       };
       setSelectedStation(stationData);
       router.push({
@@ -212,6 +214,8 @@ const StationSelectScreen = () => {
         can_void_orders: stationToTakeover.can_void_orders,
         can_apply_discounts: stationToTakeover.can_apply_discounts,
         can_update_kitchen_status: stationToTakeover.can_update_kitchen_status,
+        // Payment terminal metadata (non-sensitive: tpn, register_id)
+        payment_terminal: stationToTakeover.payment_terminal || null,
       };
       setSelectedStation(stationData);
       setShowTakeoverConfirm(false);

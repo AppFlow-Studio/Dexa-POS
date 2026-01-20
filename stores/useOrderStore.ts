@@ -72,6 +72,7 @@ import {
   generateConflictToast,
   isConflictCritical,
 } from "@/types/conflict-resolution";
+import { DejavooSaleTransactionResponse } from "@/types/dejavoo-spin-api";
 
 // ============================================================================
 // PURE CALCULATION FUNCTIONS (Delegating to order-calculator module)
@@ -1106,11 +1107,11 @@ const addItemToBackend = async (
         useCoursingStore.getState().getWorkingCourse(order.id) || 1, // Use working course or default to 1
     };
 
-    console.log(
-      "Adding item to backend with params:",
-      JSON.stringify(addItemParams, null, 2),
-    );
-    console.log("Calling OrderService.addOrderItem now...");
+    // console.log(
+    //   "Adding item to backend with params:",
+    //   JSON.stringify(addItemParams, null, 2),
+    // );
+    // console.log("Calling OrderService.addOrderItem now...");
     const { data: addResult, error: addError } =
       await OrderService.addOrderItem(supabase, addItemParams);
 
@@ -1234,6 +1235,7 @@ const syncPaymentToBackend = async (
     splitPortionIndex?: number; // Optional: split portion index for split payments
     localPaymentId?: string; // Unique local ID for matching payment during sync
     paymentTimestamp?: string; // Timestamp for fallback matching
+    dejavooTransaction?: DejavooSaleTransactionResponse,
   },
   rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -1249,16 +1251,18 @@ const syncPaymentToBackend = async (
     return true;
   }
 
+  console.log("[syncPaymentToBackend] paymentDetails:", paymentDetails);
   // ========================================================================
   // OFFLINE-FIRST: Queue payment for later sync if order not in DB yet
   // ========================================================================
+  // TODO: ADD DEJAVOO TRANSACTION TO THE PAYMENT DETAILS OFFLINE
   if (!order.db_order_id) {
     console.log(
       "[syncPaymentToBackend] Order has no db_order_id, queueing payment for later sync",
     );
 
     const isCash = paymentDetails.method === "Cash";
-
+   
     // Build terminal response for card payments
     const terminalResponse =
       !isCash && paymentDetails.transactionDetails
@@ -1330,8 +1334,9 @@ const syncPaymentToBackend = async (
             card_type: paymentDetails.transactionDetails.cardType,
             card_last_four: paymentDetails.transactionDetails.last4,
             transaction_id: paymentDetails.transactionDetails.transactionId,
+            ...(paymentDetails.transactionDetails?.dejavooTransaction ? { dejavoo_transaction: paymentDetails.transactionDetails.dejavooTransaction } : {}),
           }
-        : null;
+        : paymentDetails.transactionDetails?.dejavooTransaction ? { dejavoo_transaction: paymentDetails?.transactionDetails?.dejavooTransaction  } : null;
 
     // Build item allocations for per-item payments (convert to backend format)
     // Filter out undefined amount values to avoid JSON serialization issues
@@ -1351,6 +1356,7 @@ const syncPaymentToBackend = async (
       itemAllocations: itemAllocationsForRpc,
       splitCount: paymentDetails.splitCount,
       splitPortionIndex: paymentDetails.splitPortionIndex,
+      terminalResponse: terminalResponse,
     });
 
     const { data, error } = await supabase.rpc("process_payment_v5", {
@@ -1773,6 +1779,8 @@ interface OrderState {
   startNewOrder: (details?: {
     tableId?: string;
     guestCount?: number;
+    sessionId?: string;        // Backend session UUID
+    localSessionId?: string;   // Local session ID for offline
   }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
@@ -1826,6 +1834,7 @@ interface OrderState {
     last4?: string;
     tipAmount?: number;
     transactionDetails?: Record<string, any>;
+    dejavooTransaction?: DejavooSaleTransactionResponse | undefined;
     itemAllocations?: { itemId: string; quantity: number; amount?: number }[]; // Optional: per-item allocations with quantities
     splitCount?: number; // Optional: split count for split payments
     splitPortionIndex?: number; // Optional: split portion index for split payments
@@ -1911,8 +1920,12 @@ interface OrderState {
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
   // Prefetch multiple orders by their database IDs (for cache warming)
   prefetchOrders: (orderIds: string[]) => Promise<void>;
+  // Cleanup duplicate orders by db_order_id (keeps best version)
+  cleanupDuplicateOrders: () => void;
   // Sync payment status from backend (shows loading state during sync)
   syncPaymentStatus: (orderId: string) => Promise<void>;
+  // Link an order to a table session bidirectionally (handles online/offline)
+  linkOrderToSession: (orderId: string, sessionId: string) => Promise<boolean>;
 
   // === NEW: Order Calculation Actions ===
   // Recalculate order totals and update state (call after any item/discount change)
@@ -1947,7 +1960,7 @@ interface OrderState {
   // manualOrderReconnect: () => void;
 
   // REMOVED: Internal realtime handlers (now handled by useOrdersRealtime hook)
-  // _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
+  _handleOrderBroadcast: (payload: OrderBroadcastPayload) => void;
   // _handleItemBroadcast: (payload: OrderItemBroadcastPayload) => void;
   // _handlePaymentBroadcast: (payload: PaymentBroadcastPayload) => void;
   _debouncedOrderRefresh: (dbOrderId: string) => void;
@@ -1996,8 +2009,9 @@ interface OrderState {
 const orderRefreshTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
 // PERFORMANCE: Per-order broadcast throttle to prevent rapid-fire updates
+// Reduced from 500ms to 50ms to minimize stale data while still preventing spam
 const lastBroadcastTime: Record<string, number> = {};
-const BROADCAST_THROTTLE_MS = 500; // Max 1 update per 500ms per order
+const BROADCAST_THROTTLE_MS = 50; // Max 1 update per 50ms per order
 
 const createDebouncedOrderRefresh = (get: () => OrderState) => {
   return (orderId: string) => {
@@ -2235,6 +2249,19 @@ export const useOrderStore = create<OrderState>()(
             const { operation, data } = payload;
             const backendOrder = data.order;
             const dbOrderId = backendOrder?.id;
+
+            // PHASE 2.2: Log START of broadcast processing
+            console.log('🎯 [_handleOrderBroadcast] START:', {
+              operation,
+              orderId: backendOrder?.id,
+              orderNumber: backendOrder?.order_number,
+              displayNumber: backendOrder?.display_number,
+              stationId: backendOrder?.station_id,
+              stationName: backendOrder?.station_name,
+              orderType: backendOrder?.order_type,
+              status: backendOrder?.status,
+              itemCount: backendOrder?.order_items?.length || 0,
+            });
 
             if (!dbOrderId) {
               console.warn("[OrderBroadcast] No order ID in payload");
@@ -2588,13 +2615,29 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // DECISION POINT 2: Should we accept this remote order?
-            if (
-              !currentLocationId ||
-              !state._shouldAcceptRemoteOrder(backendOrder, currentLocationId)
-            ) {
-              console.log("[OrderBroadcast] Rejected (view_scope):", dbOrderId);
+            // PHASE 2.2: Log view_scope check details
+            const shouldAccept = state._shouldAcceptRemoteOrder(backendOrder, currentLocationId);
+
+            console.log('🔍 [_handleOrderBroadcast] Should accept?', {
+              shouldAccept,
+              viewScope: state.currentStation?.view_scope,
+              stationMatch: backendOrder.station_id === currentStationId,
+              locationMatch: backendOrder.location_id === currentLocationId,
+              currentLocationId,
+              orderLocationId: backendOrder.location_id,
+            });
+
+            if (!currentLocationId || !shouldAccept) {
+              console.warn('❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter', {
+                reason: !currentLocationId ? 'No current location ID' : 'Failed _shouldAcceptRemoteOrder check',
+                orderId: dbOrderId,
+                orderStation: backendOrder.station_id,
+                currentStation: currentStationId,
+              });
               return;
             }
+
+            console.log('✅ [_handleOrderBroadcast] ACCEPTED - Processing remote order...');
 
             // ═══════════════════════════════════════════════════════════
             // REMOTE ORDER - Handle differently
@@ -2628,6 +2671,14 @@ export const useOrderStore = create<OrderState>()(
                 state._removeRemoteOrder(dbOrderId);
                 break;
             }
+
+            // PHASE 2.2: Log after store update
+            console.log('💾 [_handleOrderBroadcast] Store updated:', {
+              ordersInStore: Object.keys(get().ordersByDbId).length,
+              thisOrderInStore: !!get().ordersByDbId[dbOrderId],
+              orderStatus: get().ordersByDbId[dbOrderId]?.order_status,
+              orderDisplayNumber: get().ordersByDbId[dbOrderId]?.display_number,
+            });
           },
 
           // ============================================================================
@@ -2637,14 +2688,26 @@ export const useOrderStore = create<OrderState>()(
           _shouldAcceptRemoteOrder: (backendOrder, currentLocationId) => {
             const { currentStation, currentStationId } = get();
 
+            // PHASE 2.3: Detailed logging for view_scope filter
+            console.log('🧪 [_shouldAcceptRemoteOrder] Checking:', {
+              hasStation: !!currentStation,
+              viewScope: currentStation?.view_scope,
+              orderStationId: backendOrder.station_id,
+              currentStationId,
+              orderLocationId: backendOrder.location_id,
+              currentLocationId,
+              orderType: backendOrder.order_type,
+            });
+
             // 1. If no currentStation set, reject all remote orders
             if (!currentStation || !currentStationId) {
-              console.log("[RemoteOrder] No station context, rejecting");
+              console.warn("[RemoteOrder] REJECT: No station context");
               return false;
             }
 
             // 2. If order is from our own station, this isn't a "remote" order
             if (backendOrder.station_id === currentStationId) {
+              console.log("[RemoteOrder] REJECT: Own station order (not remote)");
               return false;
             }
 
@@ -2654,20 +2717,35 @@ export const useOrderStore = create<OrderState>()(
             switch (viewScope) {
               case "own":
                 // Never accept remote orders
+                console.log("[RemoteOrder] REJECT: view_scope='own' blocks all remote orders");
                 return false;
 
-              case "location":
+              case "location": {
                 // Accept all orders from this location
-                return backendOrder.location_id === currentLocationId;
+                const accept = backendOrder.location_id === currentLocationId;
+                console.log(`[RemoteOrder] view_scope='location': ${accept ? 'ACCEPT' : 'REJECT'}`, {
+                  locationMatch: accept,
+                  orderLocation: backendOrder.location_id,
+                  currentLocation: currentLocationId,
+                });
+                return accept;
+              }
 
-              case "online":
+              case "online": {
                 // Accept only online/delivery orders from this location
-                return (
-                  backendOrder.location_id === currentLocationId &&
-                  ["delivery", "takeout"].includes(backendOrder.order_type)
-                );
+                const locationMatch = backendOrder.location_id === currentLocationId;
+                const isOnlineOrder = ["delivery", "takeout"].includes(backendOrder.order_type);
+                const accept = locationMatch && isOnlineOrder;
+                console.log(`[RemoteOrder] view_scope='online': ${accept ? 'ACCEPT' : 'REJECT'}`, {
+                  locationMatch,
+                  isOnlineOrder,
+                  orderType: backendOrder.order_type,
+                });
+                return accept;
+              }
 
               default:
+                console.warn(`[RemoteOrder] REJECT: Unknown view_scope='${viewScope}'`);
                 return false;
             }
           },
@@ -2865,8 +2943,8 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
-                  stations:station_id (name)
-                `,
+                  stations:station_id(name)
+                `
                 )
                 .eq("location_id", locationId)
                 .neq("station_id", currentStationId) // Exclude our own station
@@ -2883,7 +2961,7 @@ export const useOrderStore = create<OrderState>()(
                 query = query.not(
                   "status",
                   "in",
-                  '("completed","voided","cancelled")',
+                  '("completed","void","cancelled")'
                 );
               }
 
@@ -2956,7 +3034,7 @@ export const useOrderStore = create<OrderState>()(
                 )
                 .eq("location_id", locationId)
                 .eq("station_id", currentStationId)
-                .not("status", "in", '("completed","voided","cancelled")')
+                .not("status", "in", '("completed","void","cancelled")')
                 .order("created_at", { ascending: false });
 
               if (error) throw error;
@@ -3380,6 +3458,10 @@ export const useOrderStore = create<OrderState>()(
               amount_due: 0,
               cash_amount_due: 0,
               amount_paid: 0,
+
+              // Session tracking - bidirectional relationship
+              session_id: details?.sessionId,
+              local_session_id: details?.localSessionId,
 
               // Station tracking
               station_id: currentStationId,
@@ -5154,6 +5236,7 @@ export const useOrderStore = create<OrderState>()(
             last4,
             tipAmount,
             transactionDetails,
+            dejavooTransaction,
             itemAllocations, // Per-item allocations with quantities for partial payments
             splitCount, // Optional: split count for split payments
             splitPortionIndex, // Optional: split portion index for split payments
@@ -5392,6 +5475,7 @@ export const useOrderStore = create<OrderState>()(
                 splitPortionIndex, // Pass split portion index for split payments
                 localPaymentId, // Unique local ID for matching payment during sync
                 paymentTimestamp, // Timestamp for fallback matching
+                dejavooTransaction,
               },
               rollbackState, // Previous state for rollback on failure
             );
@@ -6662,7 +6746,7 @@ export const useOrderStore = create<OrderState>()(
 
             // OPTIMISTIC UPDATE (Phase 1.3): Instead of full refresh, update affected table optimistically
             // Find and clear the table session for this order
-            const { tables, tablesById } = useFloorPlanStore.getState();
+            const { tablesById } = useFloorPlanStore.getState();
             const affectedTable = Object.values(tablesById).find(
               (t) => t.session?.order_id === order.db_order_id,
             );
@@ -6675,12 +6759,12 @@ export const useOrderStore = create<OrderState>()(
                 );
                 return {
                   tables: newTables,
-                  tablesById: tables.reduce(
+                  tablesById: newTables.reduce(
                     (acc, table) => {
                       acc[table.id] = table;
                       return acc;
                     },
-                    {} as Record<string, (typeof tables)[0]>,
+                    {} as Record<string, (typeof newTables)[0]>,
                   ),
                 };
               });
@@ -7475,6 +7559,8 @@ export const useOrderStore = create<OrderState>()(
                       check_status: isPaid
                         ? ("Closed" as const)
                         : ("Opened" as const),
+                      // Session tracking - sync from database
+                      session_id: dbOrder.session_id,
                       sync_status: "synced" as const,
                     },
                   },
@@ -7642,6 +7728,108 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
+          // ============================================================================
+          // LINK ORDER TO SESSION - Bidirectionally link order and session
+          // ============================================================================
+          linkOrderToSession: async (
+            orderId: string,
+            sessionId: string,
+          ): Promise<boolean> => {
+            const order = get().ordersById[orderId];
+            if (!order) {
+              console.error(`[linkOrderToSession] Order ${orderId} not found`);
+              return false;
+            }
+
+            console.log(
+              `[linkOrderToSession] Linking order ${orderId} to session ${sessionId}`,
+            );
+
+            // 1. OPTIMISTIC UPDATE: Set session_id on order immediately
+            set((state) => ({
+              ordersById: {
+                ...state.ordersById,
+                [orderId]: {
+                  ...order,
+                  session_id: sessionId,
+                  local_session_id: sessionId, // Also set local_session_id for offline tracking
+                },
+              },
+            }));
+
+            // 2. SYNC TO BACKEND: Call RPC if online and order has DB ID
+            const isOnline = getIsOnline();
+            if (isOnline && order.db_order_id) {
+              try {
+                const supabase = _supabaseClient;
+                if (!supabase) {
+                  console.warn(
+                    "[linkOrderToSession] No Supabase client, will queue for offline sync",
+                  );
+                } else {
+                  console.log(
+                    `[linkOrderToSession] Calling RPC for order ${order.db_order_id}`,
+                  );
+
+                  const { data, error } = await supabase.rpc(
+                    "link_order_to_session",
+                    {
+                      p_order_id: order.db_order_id,
+                      p_session_id: sessionId,
+                    },
+                  );
+
+                  if (error) {
+                    console.error("[linkOrderToSession] RPC error:", error);
+                    // Queue for offline sync as fallback
+                    await queueOperation({
+                      type: "link_order_to_session",
+                      params: {
+                        orderId: order.db_order_id,
+                        sessionId,
+                      },
+                      localOrderId: orderId,
+                    });
+                    return false;
+                  }
+
+                  console.log(
+                    "[linkOrderToSession] Successfully linked:",
+                    data,
+                  );
+                  return true;
+                }
+              } catch (err) {
+                console.error("[linkOrderToSession] Exception:", err);
+                // Queue for offline sync
+                await queueOperation({
+                  type: "link_order_to_session",
+                  params: {
+                    orderId: order.db_order_id || orderId,
+                    sessionId,
+                  },
+                  localOrderId: orderId,
+                });
+                return false;
+              }
+            }
+
+            // 3. OFFLINE MODE: Queue operation for later sync
+            console.log(
+              "[linkOrderToSession] Offline mode - queueing operation",
+            );
+            await queueOperation({
+              type: "link_order_to_session",
+              params: {
+                orderId: order.db_order_id || orderId,
+                sessionId,
+              },
+              localOrderId: orderId,
+            });
+
+            return true;
+          },
+
           // Prefetch multiple orders by their database IDs for cache warming
           prefetchOrders: async (orderIds: string[]): Promise<void> => {
             const supabase = _supabaseClient;
@@ -7649,8 +7837,26 @@ export const useOrderStore = create<OrderState>()(
 
             // Filter out already cached orders (check by db_order_id)
             const uncachedIds = orderIds.filter((id) => {
-              const exists = get().ordersByDbId[id];
-              return !exists;
+              // Check 1: Already indexed by DB ID
+              if (get().ordersByDbId[id]) return false;
+
+              // Check 2: Exists as local ID (direct lookup)
+              if (get().ordersById[id]) return false;
+
+              // Check 3: Scan for matching db_order_id (expensive fallback)
+              const existingOrder = Object.values(get().ordersById).find(
+                (order) => order.db_order_id === id
+              );
+
+              if (existingOrder) {
+                // Found it! Update the index so next lookup is fast
+                set((state) => ({
+                  ordersByDbId: { ...state.ordersByDbId, [id]: existingOrder },
+                }));
+                return false;
+              }
+
+              return true; // Not cached - needs fetch
             });
 
             if (uncachedIds.length === 0) {
@@ -7683,10 +7889,12 @@ export const useOrderStore = create<OrderState>()(
 
               // Transform and inject into store
               const newOrders: Record<string, OrderProfile> = {};
+              const newOrdersByDbId: Record<string, OrderProfile> = {};
               const newOrderIds: string[] = [];
 
               for (const order of data) {
                 const localId = `prefetch_${order.id}_${Date.now()}`;
+
                 const orderProfile: OrderProfile = {
                   id: localId,
                   db_order_id: order.id,
@@ -7708,6 +7916,7 @@ export const useOrderStore = create<OrderState>()(
                     (order.order_items || []).map((item: any) => ({
                       id: `item_${item.id}`,
                       isDraft: false,
+                      
                       menuItemId: item.menu_item_id || "",
                       // For open items, use open_item_name; otherwise use item_name
                       name: item.is_open_item
@@ -7719,7 +7928,7 @@ export const useOrderStore = create<OrderState>()(
                         : item.unit_price || 0,
                       unitPrice: item.is_open_item
                         ? item.open_item_price || 0
-                        : item.unit_price || 0,
+                        : item.baseCardPrice || 0,
                       cashPrice:
                         item.cash_price ||
                         item.cash_unit_price ||
@@ -7768,6 +7977,7 @@ export const useOrderStore = create<OrderState>()(
                       discount_amount: item.discount_amount ?? 0,
                       discount_cash_amount:
                         item.discount_cash_amount ?? item.discount_amount ?? 0,
+                      
                     })) || [],
                   payments: [],
                   opened_at: order.created_at,
@@ -7777,18 +7987,90 @@ export const useOrderStore = create<OrderState>()(
                 };
 
                 newOrders[localId] = orderProfile;
+                newOrdersByDbId[order.id] = orderProfile; // Map DB ID to OrderProfile
                 newOrderIds.push(localId);
               }
 
               // Merge into store
               set((state) => ({
                 ordersById: { ...state.ordersById, ...newOrders },
+                ordersByDbId: { ...state.ordersByDbId, ...newOrdersByDbId },
                 orderIds: [...state.orderIds, ...newOrderIds],
               }));
 
               // console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
             } catch (error: any) {
               console.error("[prefetchOrders] Error:", error);
+            }
+          },
+
+          /**
+           * Cleanup duplicate orders by db_order_id.
+           * Keeps the best version (non-prefetch > most recent activity).
+           */
+          cleanupDuplicateOrders: () => {
+            const { ordersById, orderIds, ordersByDbId } = get();
+
+            // Find duplicates by db_order_id
+            const dbIdGroups = new Map<string, string[]>();
+
+            orderIds.forEach((localId) => {
+              const order = ordersById[localId];
+              if (!order?.db_order_id) return;
+
+              if (!dbIdGroups.has(order.db_order_id)) {
+                dbIdGroups.set(order.db_order_id, []);
+              }
+              dbIdGroups.get(order.db_order_id)!.push(localId);
+            });
+
+            // For each duplicate group, keep best one
+            const toRemove: string[] = [];
+            dbIdGroups.forEach((localIds, dbId) => {
+              if (localIds.length <= 1) return; // No duplicates
+
+              // Keep: non-prefetch > most recent activity
+              const sorted = localIds.sort((a, b) => {
+                const orderA = ordersById[a];
+                const orderB = ordersById[b];
+
+                // Prefer non-prefetch
+                const aIsPrefetch = a.startsWith("prefetch_");
+                const bIsPrefetch = b.startsWith("prefetch_");
+                if (aIsPrefetch && !bIsPrefetch) return 1;
+                if (!aIsPrefetch && bIsPrefetch) return -1;
+
+                // Prefer most recent activity
+                const aActivity =
+                  orderA.last_activity_at || orderA.opened_at || "";
+                const bActivity =
+                  orderB.last_activity_at || orderB.opened_at || "";
+                return bActivity.localeCompare(aActivity);
+              });
+
+              // Remove all except first (best)
+              toRemove.push(...sorted.slice(1));
+            });
+
+            // Remove duplicates from state
+            if (toRemove.length > 0) {
+              const newOrdersById = { ...ordersById };
+              const newOrdersByDbId = { ...ordersByDbId };
+              const newOrderIds = orderIds.filter(
+                (id) => !toRemove.includes(id)
+              );
+
+              toRemove.forEach((id) => {
+                const order = newOrdersById[id];
+                delete newOrdersById[id];
+                // Also remove from ordersByDbId if this was the indexed one
+                if (order?.db_order_id && newOrdersByDbId[order.db_order_id]?.id === id) {
+                  delete newOrdersByDbId[order.db_order_id];
+                }
+              });
+
+              set({ ordersById: newOrdersById, ordersByDbId: newOrdersByDbId, orderIds: newOrderIds });
+              console.log(`[cleanup] Removed ${toRemove.length} duplicate orders`);
             }
           },
 
