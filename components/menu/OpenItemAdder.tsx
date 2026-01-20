@@ -99,7 +99,7 @@ const OpenItemAdder = () => {
 
     // Check if the active order is closed
     const activeOrder = orders.find((o) => o.id === activeOrderId);
-    if (activeOrder?.order_status === "Closed") {
+    if (activeOrder?.order_status === "completed") {
       show({
         title: "Order Closed",
         message: "This order is closed. Please reopen the check to add items.",
@@ -117,7 +117,10 @@ const OpenItemAdder = () => {
       name: itemName,
       quantity: 1,
       originalPrice: cashPrice,
+      baseCashPrice: cashPrice,
       price: price,
+      unitPrice: price,
+      baseCardPrice: price,
       cashPrice: cashPrice,
       customizations: {
         notes: "Open Item",
@@ -129,6 +132,14 @@ const OpenItemAdder = () => {
       open_item_price: price,
       category_name: "Open Items",
       is_tax_exempt: false,
+      paidQuantity: 0,
+      subtotal: price,
+      cashSubtotal: cashPrice,
+      taxRate: 0,
+      taxAmount: 0,
+      cashTaxAmount: 0,
+      discount_amount: 0,
+      discount_cash_amount: 0,
     };
 
     addItemToActiveOrder(newOpenItem);
@@ -154,8 +165,9 @@ const OpenItemAdder = () => {
   }> = ({ value, onPress, isDestructive }) => (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-1 h-12 rounded-lg items-center justify-center ${isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
-        }`}
+      className={`flex-1 h-12 rounded-lg items-center justify-center ${
+        isDestructive ? "bg-red-600" : "bg-[#303030] border border-gray-600"
+      }`}
     >
       <Text className="text-xl font-bold text-white">{value}</Text>
     </TouchableOpacity>

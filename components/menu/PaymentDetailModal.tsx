@@ -1,15 +1,19 @@
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
 import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Check, Repeat2, X } from "lucide-react-native";
-import React, { useMemo } from "react";
+import { useRouter } from "expo-router";
 import {
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  CircleDollarSign,
+  CreditCard,
+  DollarSign,
+  Printer,
+  RefreshCcw,
+  RotateCcw,
+  X,
+} from "lucide-react-native";
+import React, { useMemo } from "react";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface PaymentDetailModalProps {
   isOpen: boolean;
@@ -25,21 +29,133 @@ interface PaymentRowData {
   collected: number;
   isVoided: boolean;
   last4?: string;
+  cardBrand?: string;
 }
 
+// ============================================================================
+// PROFESSIONAL-GRADE ACTION BUTTON COMPONENT
+// ============================================================================
+interface ActionButtonProps {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  variant?: "default" | "danger" | "success" | "primary";
+  disabled?: boolean;
+}
+
+const ActionButton: React.FC<ActionButtonProps> = ({
+  icon,
+  label,
+  onPress,
+  variant = "default",
+  disabled = false,
+}) => {
+  const getButtonStyles = () => {
+    if (disabled) {
+      return "bg-gray-800/50 border-gray-700";
+    }
+    switch (variant) {
+      case "danger":
+        return "bg-red-500/10 border-red-500/50";
+      case "success":
+        return "bg-emerald-500/10 border-emerald-500/50";
+      case "primary":
+        return "bg-blue-500/10 border-blue-500/50";
+      default:
+        return "bg-[#2a2a2a] border-gray-600 active:bg-gray-700";
+    }
+  };
+
+  const getTextColor = () => {
+    if (disabled) return "text-gray-600";
+    switch (variant) {
+      case "danger":
+        return "text-red-400";
+      case "success":
+        return "text-emerald-400";
+      case "primary":
+        return "text-blue-400";
+      default:
+        return "text-white";
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      className={`
+        flex-1 min-w-[100px] py-4 px-3 rounded-xl border
+        items-center justify-center gap-2
+        ${getButtonStyles()}
+      `}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+    >
+      {icon}
+      <Text
+        className={`text-xs font-semibold text-center ${getTextColor()}`}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+// ============================================================================
+// SUMMARY CARD COMPONENT
+// ============================================================================
+interface SummaryCardProps {
+  amount: number;
+  label: string;
+  icon: React.ReactNode;
+  isNegative?: boolean;
+  accentColor?: string;
+}
+
+const SummaryCard: React.FC<SummaryCardProps> = ({
+  amount,
+  label,
+  icon,
+  isNegative = false,
+  accentColor = "#3B82F6",
+}) => (
+  <View
+    className="flex-1 bg-[#1f1f1f] rounded-xl p-4 border border-gray-800"
+    style={{ borderLeftWidth: 3, borderLeftColor: accentColor, minWidth: 160 }}
+  >
+    <View className="flex-row items-center justify-between mb-3">
+      <View
+        className="w-10 h-10 rounded-full items-center justify-center"
+        style={{ backgroundColor: `${accentColor}15` }}
+      >
+        {icon}
+      </View>
+    </View>
+    <Text className="text-2xl font-bold text-white" numberOfLines={1}>
+      {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
+    </Text>
+    <Text className="text-xs text-gray-400 mt-1 font-medium">{label}</Text>
+  </View>
+);
+
+// ============================================================================
+// MAIN COMPONENT
+// ============================================================================
 const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   isOpen,
   onClose,
   orderId,
 }) => {
-  const { ordersByDbId, ordersById } = useOrderStore();
   const { show } = useToast();
+  const router = useRouter();
 
-  // Get order data
+  // PERFORMANCE: Use getState() for O(1) lookup
   const order: OrderProfile | null = useMemo(() => {
     if (!orderId) return null;
-    return ordersById[orderId] || ordersByDbId[orderId] || null;
-  }, [orderId, ordersById, ordersByDbId]);
+    const state = useOrderStore.getState();
+    return state.ordersById[orderId] || state.ordersByDbId[orderId] || null;
+  }, [orderId]);
 
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
@@ -56,13 +172,11 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     let totalCollected = 0;
     const payments: PaymentRowData[] = [];
 
-    // Process payments
     if (order.payments && order.payments.length > 0) {
       order.payments.forEach((payment) => {
         const orderAmount = payment.amount || 0;
         const tipAmount = payment.tip_amount || 0;
         const isVoided = payment.isVoided || false;
-
         const collected = isVoided ? 0 : orderAmount + tipAmount;
 
         if (isVoided) {
@@ -79,6 +193,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           collected,
           isVoided,
           last4: (payment as any).last4,
+          cardBrand: payment.cardBrand,
         });
       });
     }
@@ -91,11 +206,22 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     };
   }, [order]);
 
-  // Format timestamp
+  // Format timestamp elegantly
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    if (isToday) {
+      return `Today, ${date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })}`;
+    }
+
     return date.toLocaleString("en-US", {
-      month: "numeric",
+      month: "short",
       day: "numeric",
       hour: "numeric",
       minute: "2-digit",
@@ -108,7 +234,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     show({
       title: "Re-open Order",
       message: "Re-opening order functionality coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
@@ -116,23 +242,21 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     show({
       title: "Adjust Tip",
       message: "Tip adjustment functionality coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
   const handleRefund = () => {
-    show({
-      title: "Refund",
-      message: "Refund functionality coming soon",
-      type: "info",
-    });
+    if (!orderId) return;
+    onClose();
+    router.push(`/previous-orders/${orderId}`);
   };
 
   const handleIssueReceipt = () => {
     show({
       title: "Issue Receipt",
       message: "Receipt printing functionality coming soon",
-      type: "info",
+      type: "warning",
     });
   };
 
@@ -142,101 +266,162 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl p-0 bg-[#1a1a1a]">
-        <View className="bg-[#1a1a1a] rounded-lg overflow-hidden">
-          {/* Header */}
-          <View className="flex-row items-center justify-between p-6 border-b border-gray-700">
-            <Text className="text-2xl font-bold text-white">Payment Summary</Text>
-            <TouchableOpacity onPress={onClose} className="p-2">
-              <X size={24} color="#9CA3AF" />
-            </TouchableOpacity>
+      <DialogContent
+        className="p-0 bg-[#161616] border-gray-800"
+        style={{ width: 650, maxWidth: "95%" }}
+      >
+        <View
+          className="bg-[#161616] rounded-2xl overflow-hidden"
+          style={{ width: "100%" }}
+        >
+          {/* ============================================================ */}
+          {/* HEADER - Clean, minimal with subtle gradient accent */}
+          {/* ============================================================ */}
+          <View className="relative">
+            {/* Gradient accent line */}
+            <View
+              className="absolute top-0 left-0 right-0 h-1"
+              style={{
+                backgroundColor: "#3B82F6",
+                opacity: 0.8,
+              }}
+            />
+
+            <View className="flex-row items-center justify-between px-6 py-5">
+              <View>
+                <Text className="text-xl font-bold text-white tracking-tight">
+                  Payment Summary
+                </Text>
+                <Text className="text-sm text-gray-500 mt-0.5">
+                  Order #
+                  {order.display_number || order.order_number?.slice(-6) || "—"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={onClose}
+                className="w-9 h-9 rounded-full bg-gray-800 items-center justify-center"
+              >
+                <X size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <ScrollView className="max-h-[70vh]">
-            {/* Summary Cards */}
-            <View className="flex-row p-6 gap-4 border-b border-gray-700">
-              {/* Order Total */}
-              <View className="flex-1 items-center">
-                <Text className="text-4xl font-bold text-white">
-                  ${paymentSummary.orderTotal.toFixed(2)}
-                </Text>
-                <Text className="text-sm text-gray-400 mt-2">Order</Text>
-              </View>
-
-              {/* Refunds */}
-              <View className="flex-1 items-center border-l border-r border-gray-700">
-                <Text className="text-4xl font-bold text-white">
-                  {paymentSummary.refunds > 0 ? "−" : ""}
-                  ${paymentSummary.refunds.toFixed(2)}
-                </Text>
-                <Text className="text-sm text-gray-400 mt-2">Refunds</Text>
-              </View>
-
-              {/* Order Collected */}
-              <View className="flex-1 items-center">
-                <Text className="text-4xl font-bold text-white">
-                  ${paymentSummary.collected.toFixed(2)}
-                </Text>
-                <Text className="text-sm text-gray-400 mt-2">Order Collected</Text>
+          <ScrollView
+            className="max-h-[65vh]"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* ============================================================ */}
+            {/* SUMMARY CARDS - Premium card design with accent borders */}
+            {/* ============================================================ */}
+            <View className="px-6 pb-5">
+              <View className="flex-row gap-3">
+                <SummaryCard
+                  amount={paymentSummary.orderTotal}
+                  label="Order Total"
+                  icon={<DollarSign size={20} color="#3B82F6" />}
+                  accentColor="#3B82F6"
+                />
+                <SummaryCard
+                  amount={paymentSummary.refunds}
+                  label="Refunds"
+                  icon={<RefreshCcw size={18} color="#EF4444" />}
+                  isNegative
+                  accentColor="#EF4444"
+                />
+                <SummaryCard
+                  amount={paymentSummary.collected}
+                  label="Collected"
+                  icon={<CircleDollarSign size={20} color="#22C55E" />}
+                  accentColor="#22C55E"
+                />
               </View>
             </View>
 
-            {/* Payment Table */}
-            <View className="p-6">
+            {/* ============================================================ */}
+            {/* PAYMENTS TABLE - Clean, scannable rows */}
+            {/* ============================================================ */}
+            <View className="px-6 pb-6">
+              {/* Section Header */}
+              <View className="flex-row items-center mb-4">
+                <Text className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Payment History
+                </Text>
+                <View className="flex-1 h-px bg-gray-800 ml-3" />
+              </View>
+
               {/* Table Header */}
-              <View className="flex-row pb-3 border-b border-gray-700">
+              <View className="flex-row pb-3 mb-2 border-b border-gray-800">
                 <View className="flex-[2.5]">
-                  <Text className="text-xs font-bold text-gray-400 uppercase">
-                    PAYMENTS
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Method
                   </Text>
                 </View>
                 <View className="flex-1 items-end">
-                  <Text className="text-xs font-bold text-gray-400 uppercase">
-                    ORDER
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Amount
                   </Text>
                 </View>
                 <View className="flex-1 items-end">
-                  <Text className="text-xs font-bold text-gray-400 uppercase">
-                    TIPS + GRAT
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Tip
                   </Text>
                 </View>
                 <View className="flex-1 items-end">
-                  <Text className="text-xs font-bold text-gray-400 uppercase">
-                    COLLECTED
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Total
                   </Text>
                 </View>
               </View>
 
               {/* Payment Rows */}
               {paymentSummary.payments.length === 0 ? (
-                <View className="py-8 items-center">
-                  <Text className="text-gray-500 text-sm">No payments recorded</Text>
+                <View className="py-12 items-center">
+                  <View className="w-16 h-16 rounded-full bg-gray-800/50 items-center justify-center mb-4">
+                    <CreditCard size={28} color="#4B5563" />
+                  </View>
+                  <Text className="text-gray-500 text-sm font-medium">
+                    No payments recorded
+                  </Text>
+                  <Text className="text-gray-600 text-xs mt-1">
+                    Payments will appear here once processed
+                  </Text>
                 </View>
               ) : (
                 paymentSummary.payments.map((payment, index) => (
                   <View
                     key={index}
-                    className="flex-row items-center py-4 border-b border-gray-800"
+                    className={`flex-row items-center py-4 ${
+                      index < paymentSummary.payments.length - 1
+                        ? "border-b border-gray-800/50"
+                        : ""
+                    }`}
                   >
-                    {/* Payment Method + Timestamp */}
+                    {/* Payment Method */}
                     <View className="flex-[2.5] flex-row items-center">
-                      {/* Status Icon */}
-                      <View className="mr-3">
+                      <View
+                        className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${
+                          payment.isVoided ? "bg-red-500/10" : "bg-gray-800"
+                        }`}
+                      >
                         {payment.isVoided ? (
-                          <Repeat2 size={18} color="#EF4444" />
+                          <X size={14} color="#EF4444" />
+                        ) : payment.method === "Card" ? (
+                          <CreditCard size={14} color="#9CA3AF" />
                         ) : (
-                          <Check size={18} color="#22C55E" />
+                          <DollarSign size={14} color="#22C55E" />
                         )}
                       </View>
-
-                      {/* Method and Timestamp */}
                       <View className="flex-1">
-                        <Text className="text-sm font-medium text-white">
+                        <Text
+                          className={`text-sm font-medium ${
+                            payment.isVoided ? "text-gray-500" : "text-white"
+                          }`}
+                        >
                           {payment.method === "Card" && payment.last4
-                            ? `Card •••• ${payment.last4}`
+                            ? `•••• ${payment.last4}`
                             : payment.method}
                         </Text>
-                        <Text className="text-xs text-gray-400 mt-0.5">
+                        <Text className="text-xs text-gray-500 mt-0.5">
                           {formatTimestamp(payment.timestamp)}
                         </Text>
                       </View>
@@ -247,46 +432,42 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                       <Text
                         className={`text-sm font-medium ${
                           payment.isVoided
-                            ? "text-gray-500 line-through"
+                            ? "text-gray-600 line-through"
                             : "text-white"
                         }`}
                       >
                         ${payment.orderAmount.toFixed(2)}
                       </Text>
-                      {payment.isVoided && (
-                        <Text className="text-xs text-red-500 mt-0.5">Voided</Text>
-                      )}
                     </View>
 
-                    {/* Tips Amount */}
+                    {/* Tip Amount */}
                     <View className="flex-1 items-end">
                       <Text
                         className={`text-sm font-medium ${
                           payment.isVoided
-                            ? "text-gray-500 line-through"
+                            ? "text-gray-600 line-through"
                             : payment.tipAmount > 0
-                            ? "text-blue-400"
-                            : "text-white"
+                              ? "text-blue-400"
+                              : "text-gray-500"
                         }`}
                       >
-                        ${payment.tipAmount.toFixed(2)}
+                        {payment.tipAmount > 0
+                          ? `$${payment.tipAmount.toFixed(2)}`
+                          : "—"}
                       </Text>
-                      {payment.isVoided && (
-                        <Text className="text-xs text-red-500 mt-0.5">Voided</Text>
-                      )}
                     </View>
 
-                    {/* Collected Amount */}
+                    {/* Total Collected */}
                     <View className="flex-1 items-end">
-                      <Text className="text-sm font-bold text-white">
-                        ${payment.collected.toFixed(2)}
+                      <Text
+                        className={`text-sm font-bold ${
+                          payment.isVoided ? "text-red-400" : "text-emerald-400"
+                        }`}
+                      >
+                        {payment.isVoided
+                          ? "Voided"
+                          : `$${payment.collected.toFixed(2)}`}
                       </Text>
-                      {payment.isVoided && (
-                        <Text className="text-xs text-gray-500 mt-0.5">
-                          Incl. Cash Discount of −$
-                          {(payment.orderAmount + payment.tipAmount - payment.collected).toFixed(2)}
-                        </Text>
-                      )}
                     </View>
                   </View>
                 ))
@@ -294,50 +475,42 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
             </View>
           </ScrollView>
 
-          {/* Footer Actions */}
-          <View className="flex-row gap-3 p-6 border-t border-gray-700 bg-[#252525]">
-            <TouchableOpacity
-              onPress={handleReOpenOrder}
-              className="flex-1 py-3 px-4 rounded-lg border border-gray-600 bg-[#2a2a2a] items-center justify-center"
-            >
-              <Text className="text-sm font-semibold text-white whitespace-nowrap">
-                RE-OPEN ORDER
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleAdjustTip}
-              disabled={!hasTips}
-              className={`flex-1 py-3 px-4 rounded-lg items-center justify-center ${
-                hasTips ? "bg-gray-700" : "bg-gray-800"
-              }`}
-            >
-              <Text
-                className={`text-sm font-semibold whitespace-nowrap ${
-                  hasTips ? "text-white" : "text-gray-500"
-                }`}
-              >
-                ADJUST TIP
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleRefund}
-              className="flex-1 py-3 px-4 rounded-lg border border-red-500 bg-[#2a2a2a] items-center justify-center"
-            >
-              <Text className="text-sm font-semibold text-red-500 whitespace-nowrap">
-                REFUND
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleIssueReceipt}
-              className="flex-1 py-3 px-4 rounded-lg bg-green-600 items-center justify-center"
-            >
-              <Text className="text-sm font-semibold text-white whitespace-nowrap">
-                ISSUE RECEIPT
-              </Text>
-            </TouchableOpacity>
+          {/* ============================================================ */}
+          {/* ACTION BUTTONS - Icon + Label, proper spacing */}
+          {/* ============================================================ */}
+          <View className="px-6 py-5 border-t border-gray-800 bg-[#1a1a1a]">
+            <View className="flex-row gap-3">
+              <ActionButton
+                icon={<RotateCcw size={18} color="#9CA3AF" />}
+                label="Re-open"
+                onPress={handleReOpenOrder}
+                variant="default"
+              />
+              <ActionButton
+                icon={
+                  <DollarSign
+                    size={18}
+                    color={hasTips ? "#9CA3AF" : "#4B5563"}
+                  />
+                }
+                label="Adjust Tip"
+                onPress={handleAdjustTip}
+                variant="default"
+                disabled={!hasTips}
+              />
+              <ActionButton
+                icon={<RefreshCcw size={18} color="#EF4444" />}
+                label="Refund"
+                onPress={handleRefund}
+                variant="danger"
+              />
+              <ActionButton
+                icon={<Printer size={18} color="#22C55E" />}
+                label="Receipt"
+                onPress={handleIssueReceipt}
+                variant="success"
+              />
+            </View>
           </View>
         </View>
       </DialogContent>

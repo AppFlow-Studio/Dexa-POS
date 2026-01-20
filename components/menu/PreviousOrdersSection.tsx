@@ -1,24 +1,20 @@
+import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { useToast } from "@/contexts/ToastContext";
-import { usePreviousOrders } from "@/stores/selectors/orderSelectors";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { usePreviousOrdersStore } from "@/stores/usePreviousOrdersStore";
-import { useLocationRealtime } from "@/contexts/LocationRealtimeProvider";
 import { Search, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
-  RefreshControl,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import OrderLineItemsModal from "../order/OrderLineItemsModal";
-import { deduplicateOrders } from "@/utils/orderUtils";
+import OrderActionsMenu from "./OrderActionsMenu";
 import OrdersTable, { SortColumn, SortDirection } from "./OrdersTable";
 import PaymentDetailModal from "./PaymentDetailModal";
-import OrderActionsMenu from "./OrderActionsMenu";
 
 // Define types for props
 type TabName = "All" | "Dine In" | "Takeaway" | "Delivery";
@@ -36,7 +32,11 @@ interface OrderTabsProps {
   activeTab: string;
 }
 
-const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder, activeTab }) => {
+const OrderTabs: React.FC<OrderTabsProps> = ({
+  onTabChange,
+  totalOrder,
+  activeTab,
+}) => {
   const TABS: Tab[] = [
     { name: "All", count: totalOrder },
     { name: "Dine In" },
@@ -56,12 +56,14 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder, activeTa
           <Pressable
             key={tab.name}
             onPress={() => handlePress(tab.name)}
-            className={`py-2 px-4 rounded-md flex-row items-center ${isActive ? "bg-[#3a3a3a] shadow-sm" : ""
-              }`}
+            className={`py-2 px-4 rounded-md flex-row items-center ${
+              isActive ? "bg-[#3a3a3a] shadow-sm" : ""
+            }`}
           >
             <Text
-              className={`font-semibold text-sm ${isActive ? "text-blue-400" : "text-gray-400"
-                }`}
+              className={`font-semibold text-sm ${
+                isActive ? "text-blue-400" : "text-gray-400"
+              }`}
             >
               {tab.name}
             </Text>
@@ -82,8 +84,14 @@ const OrderTabs: React.FC<OrderTabsProps> = ({ onTabChange, totalOrder, activeTa
 // Old OrderRow and RetrieveButton components removed - replaced by OrdersTable
 
 const PreviousOrdersSection = () => {
-  const { orders, ordersByDbId, orderIds, activeOrderId, addItemToActiveOrder, generateCartItemId } =
-    useOrderStore();
+  const {
+    orders,
+    ordersByDbId,
+    orderIds,
+    activeOrderId,
+    addItemToActiveOrder,
+    generateCartItemId,
+  } = useOrderStore();
   const { refreshPreviousOrders } = usePreviousOrdersStore();
   const { orders: ordersRealtime } = useLocationRealtime();
 
@@ -117,13 +125,13 @@ const PreviousOrdersSection = () => {
     const unsubscribe = useOrderStore.subscribe(
       (state) => state.ordersByDbId,
       (ordersByDbId) => {
-        console.log('🔄 [Store Subscribe] ordersByDbId changed:', {
+        console.log("🔄 [Store Subscribe] ordersByDbId changed:", {
           orderCount: Object.keys(ordersByDbId).length,
           orderNumbers: Object.values(ordersByDbId)
-            .filter(o => o.order_status !== "draft")
-            .map(o => o.display_number),
+            .filter((o) => o.order_status !== "draft")
+            .map((o) => o.display_number),
         });
-      }
+      },
     );
 
     return unsubscribe;
@@ -144,13 +152,16 @@ const PreviousOrdersSection = () => {
     // const deduplicatedOrdersAr = deduplicateOrders(previousOrders);
     // const selectorOrderIds = new Set(deduplicatedOrdersAr.map(o => o.id));
     const localOrdersNotInSelector = Object.values(ordersByDbId).filter(
-      (o) =>  o.order_status !== "draft"
+      (o) => o.order_status !== "draft",
     );
 
     // PHASE 1: Log all orders in store for diagnostics
-    console.log('📋 [PreviousOrdersSection] Orders from store:', {
+    console.log("📋 [PreviousOrdersSection] Orders from store:", {
       totalOrders: localOrdersNotInSelector.length,
-      orderIds: localOrdersNotInSelector.map(o => `${o.display_number} (station: ${o.station_id?.slice(0, 8) || 'none'})`),
+      orderIds: localOrdersNotInSelector.map(
+        (o) =>
+          `${o.display_number} (station: ${o.station_id?.slice(0, 8) || "none"})`,
+      ),
     });
 
     return [...localOrdersNotInSelector];
@@ -165,7 +176,7 @@ const PreviousOrdersSection = () => {
     // Filter by tab
     if (activeTab !== "All") {
       filtered = filtered.filter(
-        (o) => o.order_type === activeTab && o.items.length > 0
+        (o) => o.order_type === activeTab && o.items.length > 0,
       );
     }
 
@@ -252,21 +263,17 @@ const PreviousOrdersSection = () => {
       </View>
 
       {/* Orders Table */}
-      <ScrollView
-        className="flex-1"
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-        }
-      >
-        <OrdersTable
-          orders={filteredOrders}
-          sortColumn={sortColumn}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          onRowClick={handleRowClick}
-          onMoreClick={handleMoreClick}
-        />
-      </ScrollView>
+      {/* Orders Table - No ScrollView wrapper to avoid nested VirtualizedLists */}
+      <OrdersTable
+        orders={filteredOrders}
+        sortColumn={sortColumn}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        onRowClick={handleRowClick}
+        onMoreClick={handleMoreClick}
+        refreshing={isRefreshing}
+        onRefresh={handleRefresh}
+      />
 
       {/* Modals */}
       <PaymentDetailModal

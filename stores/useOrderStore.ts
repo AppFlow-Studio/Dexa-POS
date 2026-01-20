@@ -1235,7 +1235,7 @@ const syncPaymentToBackend = async (
     splitPortionIndex?: number; // Optional: split portion index for split payments
     localPaymentId?: string; // Unique local ID for matching payment during sync
     paymentTimestamp?: string; // Timestamp for fallback matching
-    dejavooTransaction?: DejavooSaleTransactionResponse,
+    dejavooTransaction?: DejavooSaleTransactionResponse;
   },
   rollbackState?: PaymentRollbackState, // Previous state for reversion on failure
 ): Promise<boolean> => {
@@ -1262,7 +1262,7 @@ const syncPaymentToBackend = async (
     );
 
     const isCash = paymentDetails.method === "Cash";
-   
+
     // Build terminal response for card payments
     const terminalResponse =
       !isCash && paymentDetails.transactionDetails
@@ -1334,9 +1334,19 @@ const syncPaymentToBackend = async (
             card_type: paymentDetails.transactionDetails.cardType,
             card_last_four: paymentDetails.transactionDetails.last4,
             transaction_id: paymentDetails.transactionDetails.transactionId,
-            ...(paymentDetails.transactionDetails?.dejavooTransaction ? { dejavoo_transaction: paymentDetails.transactionDetails.dejavooTransaction } : {}),
+            ...(paymentDetails.transactionDetails?.dejavooTransaction
+              ? {
+                  dejavoo_transaction:
+                    paymentDetails.transactionDetails.dejavooTransaction,
+                }
+              : {}),
           }
-        : paymentDetails.transactionDetails?.dejavooTransaction ? { dejavoo_transaction: paymentDetails?.transactionDetails?.dejavooTransaction  } : null;
+        : paymentDetails.transactionDetails?.dejavooTransaction
+          ? {
+              dejavoo_transaction:
+                paymentDetails?.transactionDetails?.dejavooTransaction,
+            }
+          : null;
 
     // Build item allocations for per-item payments (convert to backend format)
     // Filter out undefined amount values to avoid JSON serialization issues
@@ -1779,8 +1789,8 @@ interface OrderState {
   startNewOrder: (details?: {
     tableId?: string;
     guestCount?: number;
-    sessionId?: string;        // Backend session UUID
-    localSessionId?: string;   // Local session ID for offline
+    sessionId?: string; // Backend session UUID
+    localSessionId?: string; // Local session ID for offline
   }) => OrderProfile;
   addItemToActiveOrder: (newItem: CartItem) => void;
   updateItemInActiveOrder: (updatedItem: CartItem) => void;
@@ -1969,7 +1979,7 @@ interface OrderState {
   // === ORDER VISIBILITY & MANAGEMENT (Phase 5) ===
   isOrderVisible: (
     backendOrder: BroadcastOrderData,
-    currentLocationId: string,
+    currentLocationId: string | undefined,
   ) => boolean;
   upsertOrder: (
     backendOrder: BroadcastOrderData,
@@ -1980,7 +1990,7 @@ interface OrderState {
   // @deprecated - use isOrderVisible instead
   _shouldAcceptRemoteOrder: (
     backendOrder: BroadcastOrderData,
-    currentLocationId: string,
+    currentLocationId: string | undefined,
   ) => boolean;
   // @deprecated - use upsertOrder instead
   _createRemoteOrder: (backendOrder: BroadcastOrderData) => void;
@@ -2251,7 +2261,7 @@ export const useOrderStore = create<OrderState>()(
             const dbOrderId = backendOrder?.id;
 
             // PHASE 2.2: Log START of broadcast processing
-            console.log('🎯 [_handleOrderBroadcast] START:', {
+            console.log("🎯 [_handleOrderBroadcast] START:", {
               operation,
               orderId: backendOrder?.id,
               orderNumber: backendOrder?.order_number,
@@ -2616,9 +2626,12 @@ export const useOrderStore = create<OrderState>()(
 
             // DECISION POINT 2: Should we accept this remote order?
             // PHASE 2.2: Log view_scope check details
-            const shouldAccept = state._shouldAcceptRemoteOrder(backendOrder, currentLocationId);
+            const shouldAccept = state._shouldAcceptRemoteOrder(
+              backendOrder,
+              currentLocationId,
+            );
 
-            console.log('🔍 [_handleOrderBroadcast] Should accept?', {
+            console.log("🔍 [_handleOrderBroadcast] Should accept?", {
               shouldAccept,
               viewScope: state.currentStation?.view_scope,
               stationMatch: backendOrder.station_id === currentStationId,
@@ -2628,16 +2641,23 @@ export const useOrderStore = create<OrderState>()(
             });
 
             if (!currentLocationId || !shouldAccept) {
-              console.warn('❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter', {
-                reason: !currentLocationId ? 'No current location ID' : 'Failed _shouldAcceptRemoteOrder check',
-                orderId: dbOrderId,
-                orderStation: backendOrder.station_id,
-                currentStation: currentStationId,
-              });
+              console.warn(
+                "❌ [_handleOrderBroadcast] REJECTED - Order does not pass view_scope filter",
+                {
+                  reason: !currentLocationId
+                    ? "No current location ID"
+                    : "Failed _shouldAcceptRemoteOrder check",
+                  orderId: dbOrderId,
+                  orderStation: backendOrder.station_id,
+                  currentStation: currentStationId,
+                },
+              );
               return;
             }
 
-            console.log('✅ [_handleOrderBroadcast] ACCEPTED - Processing remote order...');
+            console.log(
+              "✅ [_handleOrderBroadcast] ACCEPTED - Processing remote order...",
+            );
 
             // ═══════════════════════════════════════════════════════════
             // REMOTE ORDER - Handle differently
@@ -2673,7 +2693,7 @@ export const useOrderStore = create<OrderState>()(
             }
 
             // PHASE 2.2: Log after store update
-            console.log('💾 [_handleOrderBroadcast] Store updated:', {
+            console.log("💾 [_handleOrderBroadcast] Store updated:", {
               ordersInStore: Object.keys(get().ordersByDbId).length,
               thisOrderInStore: !!get().ordersByDbId[dbOrderId],
               orderStatus: get().ordersByDbId[dbOrderId]?.order_status,
@@ -2689,7 +2709,7 @@ export const useOrderStore = create<OrderState>()(
             const { currentStation, currentStationId } = get();
 
             // PHASE 2.3: Detailed logging for view_scope filter
-            console.log('🧪 [_shouldAcceptRemoteOrder] Checking:', {
+            console.log("🧪 [_shouldAcceptRemoteOrder] Checking:", {
               hasStation: !!currentStation,
               viewScope: currentStation?.view_scope,
               orderStationId: backendOrder.station_id,
@@ -2707,7 +2727,9 @@ export const useOrderStore = create<OrderState>()(
 
             // 2. If order is from our own station, this isn't a "remote" order
             if (backendOrder.station_id === currentStationId) {
-              console.log("[RemoteOrder] REJECT: Own station order (not remote)");
+              console.log(
+                "[RemoteOrder] REJECT: Own station order (not remote)",
+              );
               return false;
             }
 
@@ -2717,35 +2739,48 @@ export const useOrderStore = create<OrderState>()(
             switch (viewScope) {
               case "own":
                 // Never accept remote orders
-                console.log("[RemoteOrder] REJECT: view_scope='own' blocks all remote orders");
+                console.log(
+                  "[RemoteOrder] REJECT: view_scope='own' blocks all remote orders",
+                );
                 return false;
 
               case "location": {
                 // Accept all orders from this location
                 const accept = backendOrder.location_id === currentLocationId;
-                console.log(`[RemoteOrder] view_scope='location': ${accept ? 'ACCEPT' : 'REJECT'}`, {
-                  locationMatch: accept,
-                  orderLocation: backendOrder.location_id,
-                  currentLocation: currentLocationId,
-                });
+                console.log(
+                  `[RemoteOrder] view_scope='location': ${accept ? "ACCEPT" : "REJECT"}`,
+                  {
+                    locationMatch: accept,
+                    orderLocation: backendOrder.location_id,
+                    currentLocation: currentLocationId,
+                  },
+                );
                 return accept;
               }
 
               case "online": {
                 // Accept only online/delivery orders from this location
-                const locationMatch = backendOrder.location_id === currentLocationId;
-                const isOnlineOrder = ["delivery", "takeout"].includes(backendOrder.order_type);
+                const locationMatch =
+                  backendOrder.location_id === currentLocationId;
+                const isOnlineOrder = ["delivery", "takeout"].includes(
+                  backendOrder.order_type,
+                );
                 const accept = locationMatch && isOnlineOrder;
-                console.log(`[RemoteOrder] view_scope='online': ${accept ? 'ACCEPT' : 'REJECT'}`, {
-                  locationMatch,
-                  isOnlineOrder,
-                  orderType: backendOrder.order_type,
-                });
+                console.log(
+                  `[RemoteOrder] view_scope='online': ${accept ? "ACCEPT" : "REJECT"}`,
+                  {
+                    locationMatch,
+                    isOnlineOrder,
+                    orderType: backendOrder.order_type,
+                  },
+                );
                 return accept;
               }
 
               default:
-                console.warn(`[RemoteOrder] REJECT: Unknown view_scope='${viewScope}'`);
+                console.warn(
+                  `[RemoteOrder] REJECT: Unknown view_scope='${viewScope}'`,
+                );
                 return false;
             }
           },
@@ -2944,7 +2979,7 @@ export const useOrderStore = create<OrderState>()(
                     order_item_modifiers (*)
                   ),
                   stations:station_id(name)
-                `
+                `,
                 )
                 .eq("location_id", locationId)
                 .neq("station_id", currentStationId) // Exclude our own station
@@ -2961,7 +2996,7 @@ export const useOrderStore = create<OrderState>()(
                 query = query.not(
                   "status",
                   "in",
-                  '("completed","void","cancelled")'
+                  '("completed","void","cancelled")',
                 );
               }
 
@@ -7845,7 +7880,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Check 3: Scan for matching db_order_id (expensive fallback)
               const existingOrder = Object.values(get().ordersById).find(
-                (order) => order.db_order_id === id
+                (order) => order.db_order_id === id,
               );
 
               if (existingOrder) {
@@ -7916,7 +7951,7 @@ export const useOrderStore = create<OrderState>()(
                     (order.order_items || []).map((item: any) => ({
                       id: `item_${item.id}`,
                       isDraft: false,
-                      
+
                       menuItemId: item.menu_item_id || "",
                       // For open items, use open_item_name; otherwise use item_name
                       name: item.is_open_item
@@ -7928,7 +7963,7 @@ export const useOrderStore = create<OrderState>()(
                         : item.unit_price || 0,
                       unitPrice: item.is_open_item
                         ? item.open_item_price || 0
-                        : item.baseCardPrice || 0,
+                        : item.unit_price || 0,
                       cashPrice:
                         item.cash_price ||
                         item.cash_unit_price ||
@@ -7977,7 +8012,6 @@ export const useOrderStore = create<OrderState>()(
                       discount_amount: item.discount_amount ?? 0,
                       discount_cash_amount:
                         item.discount_cash_amount ?? item.discount_amount ?? 0,
-                      
                     })) || [],
                   payments: [],
                   opened_at: order.created_at,
@@ -8057,20 +8091,29 @@ export const useOrderStore = create<OrderState>()(
               const newOrdersById = { ...ordersById };
               const newOrdersByDbId = { ...ordersByDbId };
               const newOrderIds = orderIds.filter(
-                (id) => !toRemove.includes(id)
+                (id) => !toRemove.includes(id),
               );
 
               toRemove.forEach((id) => {
                 const order = newOrdersById[id];
                 delete newOrdersById[id];
                 // Also remove from ordersByDbId if this was the indexed one
-                if (order?.db_order_id && newOrdersByDbId[order.db_order_id]?.id === id) {
+                if (
+                  order?.db_order_id &&
+                  newOrdersByDbId[order.db_order_id]?.id === id
+                ) {
                   delete newOrdersByDbId[order.db_order_id];
                 }
               });
 
-              set({ ordersById: newOrdersById, ordersByDbId: newOrdersByDbId, orderIds: newOrderIds });
-              console.log(`[cleanup] Removed ${toRemove.length} duplicate orders`);
+              set({
+                ordersById: newOrdersById,
+                ordersByDbId: newOrdersByDbId,
+                orderIds: newOrderIds,
+              });
+              console.log(
+                `[cleanup] Removed ${toRemove.length} duplicate orders`,
+              );
             }
           },
 

@@ -1,14 +1,15 @@
 import { OrderProfile } from "@/lib/types";
+import { useFloorPlanStore } from "@/stores/useFloorPlanStore";
 import { ArrowDown, ArrowUp, MoreVertical } from "lucide-react-native";
-import React, { memo, useMemo, useCallback } from "react";
-import {
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { memo, useCallback, useMemo } from "react";
+import { FlatList, Text, TouchableOpacity, View } from "react-native";
 
-export type SortColumn = "time" | "assignee" | "assignment" | "customer" | "total";
+export type SortColumn =
+  | "time"
+  | "assignee"
+  | "assignment"
+  | "customer"
+  | "total";
 export type SortDirection = "asc" | "desc";
 
 interface ColumnConfig {
@@ -35,6 +36,8 @@ interface OrdersTableProps {
   onSort: (column: SortColumn) => void;
   onRowClick: (orderId: string) => void;
   onMoreClick: (orderId: string) => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 // Memoized row component for better performance
@@ -43,117 +46,134 @@ interface OrderRowProps {
   isEven: boolean;
   onRowClick: (orderId: string) => void;
   onMoreClick: (orderId: string) => void;
+  getTableName: (tableId: string | null | undefined) => string;
 }
 
-const OrderRow = memo<OrderRowProps>(({ order, isEven, onRowClick, onMoreClick }) => {
-  const formatTime = useCallback((timestamp: string | null | undefined) => {
-    if (!timestamp) return { time: "—", date: "—" };
-    const date = new Date(timestamp);
-    const time = date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+const OrderRow = memo<OrderRowProps>(
+  ({ order, isEven, onRowClick, onMoreClick, getTableName }) => {
+    // Memoize the time formatting to avoid recalculation on every render
+    const timeDisplay = useMemo(() => {
+      const timestamp = order.opened_at;
+      if (!timestamp) return { time: "—", date: "—" };
+      const date = new Date(timestamp);
+      const time = date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
 
-    const now = new Date();
-    const diffDays = Math.floor(
-      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+      const now = new Date();
+      const diffDays = Math.floor(
+        (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      let dateStr: string;
+      if (diffDays === 0) dateStr = "Today";
+      else if (diffDays === 1) dateStr = "Yesterday";
+      else
+        dateStr = date.toLocaleDateString("en-US", {
+          month: "numeric",
+          day: "numeric",
+          year: "numeric",
+        });
+
+      return { time, date: dateStr };
+    }, [order.opened_at]);
+
+    const handleRowPress = useCallback(() => {
+      onRowClick(order.id);
+    }, [order.id, onRowClick]);
+
+    const handleMorePress = useCallback(
+      (e: any) => {
+        e.stopPropagation();
+        onMoreClick(order.id);
+      },
+      [order.id, onMoreClick],
     );
-    let dateStr: string;
-    if (diffDays === 0) dateStr = "Today";
-    else if (diffDays === 1) dateStr = "Yesterday";
-    else dateStr = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "numeric" });
 
-    return { time, date: dateStr };
-  }, []);
-
-  const timeDisplay = formatTime(order.opened_at);
-
-  const handleRowPress = useCallback(() => {
-    onRowClick(order.id);
-  }, [order.id, onRowClick]);
-
-  const handleMorePress = useCallback((e: any) => {
-    e.stopPropagation();
-    onMoreClick(order.id);
-  }, [order.id, onMoreClick]);
-
-  return (
-    <TouchableOpacity
-      onPress={handleRowPress}
-      className={`
+    return (
+      <TouchableOpacity
+        onPress={handleRowPress}
+        className={`
         flex-row items-center border-b border-gray-800
         ${isEven ? "bg-[#1a1a1a]" : "bg-[#202020]"}
-        hover:bg-gray-800 active:bg-gray-700
+        active:bg-gray-700
       `}
-      style={{ minHeight: 60 }}
-    >
-      {/* TIME Column */}
-      <View className="flex-[1.5] py-3 px-4">
-        <Text className="text-sm font-medium text-white">
-          {timeDisplay.time}
-        </Text>
-        <Text className="text-xs text-gray-400 mt-0.5">
-          {timeDisplay.date}
-        </Text>
-      </View>
-
-      {/* ASSIGNEE Column */}
-      <View className="flex-[2] py-3 px-4">
-        <Text className="text-sm font-medium text-white">
-          {order._sourceStationName || "Unknown"}
-        </Text>
-        <Text className="text-xs text-gray-500 mt-0.5">
-          {order.display_number || order.order_number?.slice(-6) || "—"}
-        </Text>
-      </View>
-
-      {/* ASSIGNMENT Column */}
-      <View className="flex-[1.8] py-3 px-4">
-        <Text className="text-sm font-medium text-white">
-          {order.order_type || "—"}
-        </Text>
-        {order.service_location_id && (
-          <Text className="text-xs text-gray-500 mt-0.5">
-            Table {order.service_location_id}
+        style={{ minHeight: 60 }}
+      >
+        {/* TIME Column - now includes order number */}
+        <View className="flex-[1.5] py-3 px-4">
+          <Text className="text-sm font-medium text-white">
+            {timeDisplay.time}
           </Text>
-        )}
-      </View>
+          <Text className="text-xs text-gray-400 mt-0.5">
+            {timeDisplay.date}
+          </Text>
+          <Text className="text-xs text-gray-500 mt-0.5">
+            {order.display_number || order.order_number?.slice(-6) || "—"}
+          </Text>
+        </View>
 
-      {/* CUSTOMER Column */}
-      <View className="flex-[2] py-3 px-4">
-        <Text className="text-sm font-medium text-white">
-          {order.customer_name || "—"}
-        </Text>
-      </View>
+        {/* ASSIGNEE Column - station/staff name only */}
+        <View className="flex-[2] py-3 px-4">
+          <Text className="text-sm font-medium text-white">
+            {order._sourceStationName || order.server_name || "Unknown"}
+          </Text>
+        </View>
 
-      {/* TOTAL Column */}
-      <View className="flex-[1.5] py-3 px-4 items-end">
-        <Text className="text-base font-bold text-white">
-          ${(order.total_amount || 0).toFixed(2)}
-        </Text>
-        <Text
-          className={`
+        {/* ASSIGNMENT Column */}
+        <View className="flex-[1.8] py-3 px-4">
+          <Text className="text-sm font-medium text-white">
+            {order.order_type || "—"}
+          </Text>
+          {order.service_location_id && (
+            <Text className="text-xs text-gray-500 mt-0.5">
+              Table {getTableName(order.service_location_id)}
+            </Text>
+          )}
+        </View>
+
+        {/* CUSTOMER Column */}
+        <View className="flex-[2] py-3 px-4">
+          <Text className="text-sm font-medium text-white">
+            {order.customer_name || "—"}
+          </Text>
+        </View>
+
+        {/* TOTAL Column with improved payment status colors */}
+        <View className="flex-[1.5] py-3 px-4 items-end">
+          <Text className="text-base font-bold text-white">
+            ${(order.total_amount || 0).toFixed(2)}
+          </Text>
+          <Text
+            className={`
             text-xs font-medium mt-0.5
-            ${order.paid_status === "Paid" ? "text-gray-500" : "text-green-400"}
+            ${
+              order.paid_status === "Paid"
+                ? "text-green-400"
+                : order.paid_status === "Partial"
+                  ? "text-blue-400"
+                  : "text-orange-400"
+            }
           `}
-        >
-          {order.paid_status}
-        </Text>
-      </View>
+          >
+            {order.paid_status}
+          </Text>
+        </View>
 
-      {/* ACTIONS Column */}
-      <View className="w-[60px] py-3 px-4 items-center">
-        <TouchableOpacity
-          onPress={handleMorePress}
-          className="p-2 rounded-full hover:bg-gray-700 active:bg-gray-600"
-        >
-          <MoreVertical size={16} color="#9CA3AF" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
-});
+        {/* ACTIONS Column */}
+        <View className="w-[60px] py-3 px-4 items-center">
+          <TouchableOpacity
+            onPress={handleMorePress}
+            className="p-2 rounded-full active:bg-gray-600"
+          >
+            <MoreVertical size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+);
 
 OrderRow.displayName = "OrderRow";
 
@@ -164,8 +184,24 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
   onSort,
   onRowClick,
   onMoreClick,
+  refreshing,
+  onRefresh,
 }) => {
+  // Lift store access to parent to simple prop passing
+  const { tablesById } = useFloorPlanStore();
+
+  // Stable table lookup function
+  const getTableName = useCallback(
+    (tableId: string | null | undefined): string => {
+      if (!tableId) return "Unknown";
+      const table = tablesById[tableId];
+      return table?.name || "Unknown";
+    },
+    [tablesById],
+  );
+
   // Sort orders based on current sort column and direction
+  // This is expensive, so we memoize strictly
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => {
       let aVal: any;
@@ -202,6 +238,21 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
     });
   }, [orders, sortColumn, sortDirection]);
 
+  // Use FlatList for better performance with large lists
+  // This renders only items currently on screen
+  const renderItem = useCallback(
+    ({ item, index }: { item: OrderProfile; index: number }) => (
+      <OrderRow
+        order={item}
+        isEven={index % 2 === 0}
+        onRowClick={onRowClick}
+        onMoreClick={onMoreClick}
+        getTableName={getTableName}
+      />
+    ),
+    [onRowClick, onMoreClick, getTableName],
+  );
+
   return (
     <View className="flex-1 bg-[#1a1a1a] rounded-lg border border-gray-700">
       {/* Table Header */}
@@ -220,7 +271,10 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
               ${column.key === "total" ? "flex-[1.5]" : ""}
               ${column.key === "actions" ? "w-[60px]" : ""}
             `}
-            style={{ justifyContent: column.align === "right" ? "flex-end" : "flex-start" }}
+            style={{
+              justifyContent:
+                column.align === "right" ? "flex-end" : "flex-start",
+            }}
           >
             <Text className="text-xs font-bold text-gray-400 uppercase">
               {column.label}
@@ -238,24 +292,25 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
         ))}
       </View>
 
-      {/* Table Body */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
-        {sortedOrders.length === 0 ? (
+      {/* Table Body - Optimized with FlatList */}
+      <FlatList
+        data={sortedOrders}
+        renderItem={renderItem}
+        keyExtractor={(item: OrderProfile) => item.id}
+        contentContainerStyle={{ flexGrow: 1 }}
+        ListEmptyComponent={() => (
           <View className="py-20 items-center justify-center">
             <Text className="text-gray-500 text-sm">No orders found</Text>
           </View>
-        ) : (
-          sortedOrders.map((order, index) => (
-            <OrderRow
-              key={order.id}
-              order={order}
-              isEven={index % 2 === 0}
-              onRowClick={onRowClick}
-              onMoreClick={onMoreClick}
-            />
-          ))
         )}
-      </ScrollView>
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        removeClippedSubviews={true}
+        showsVerticalScrollIndicator={true}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+      />
     </View>
   );
 };
