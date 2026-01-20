@@ -104,11 +104,11 @@ const PreviousOrdersSection = () => {
   // PHASE 1.2: Check subscription status
   useEffect(() => {
     console.log('🔌 [OrdersChannel] Connection status:', {
-      state: ordersRealtime.connectionStatus.state,
+      state: ordersRealtime?.connectionStatus?.state,
       isConnected: ordersRealtime.isConnected,
       isReconnecting: ordersRealtime.isReconnecting,
-      reconnectAttempts: ordersRealtime.connectionStatus.reconnectAttempts,
-      subscribedAt: ordersRealtime.connectionStatus.subscribedAt,
+      reconnectAttempts: ordersRealtime?.connectionStatus?.reconnectAttempts,
+      subscribedAt: ordersRealtime?.connectionStatus?.subscribedAt,
     });
   }, [ordersRealtime]);
 
