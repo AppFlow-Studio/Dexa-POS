@@ -84,7 +84,6 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    syncOrderFromDatabase,
     // syncOrderFromBackend,
     syncOrderFromBackendComplete,
   } = useOrderStore();
@@ -111,17 +110,11 @@ const UpdateTableScreen = () => {
 
   // REACTIVE SUBSCRIPTION: Subscribe directly to the order from the store
   // This ensures we always get the latest data when payment updates the store
+  // Phase 2.2: Use universal getOrder() for O(1) lookup
   const activeOrder = useOrderStore((state) => {
     if (sessionOrderId) {
-      // First try direct lookup by local ID
-      if (state.ordersById[sessionOrderId]) {
-        return state.ordersById[sessionOrderId];
-      }
-      // Fallback: Find by db_order_id
-      const orderByDbId = Object.values(state.ordersById).find(
-        (order) => order.db_order_id === sessionOrderId
-      );
-      if (orderByDbId) return orderByDbId;
+      // Use universal getter (works with both local and DB IDs)
+      return state.getOrder(sessionOrderId);
     }
     // Fall back to active order
     if (state.activeOrderId) {
@@ -275,7 +268,7 @@ const UpdateTableScreen = () => {
 
     // Update ref
     wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
-  }, [isPaymentSheetOpen, activeOrder?.id, syncOrderFromDatabase]);
+  }, [isPaymentSheetOpen, activeOrder?.id]);
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
@@ -393,45 +386,45 @@ const UpdateTableScreen = () => {
             }
 
             // Order not found - use syncOrderFromDatabase instead of manual creation
-            console.log(
-              "[AutoSession] Syncing order from database:",
-              updatedTable.session.order_id
-            );
-            showLoading("Restoring table session...");
+            // console.log(
+            //   "[AutoSession] Syncing order from database:",
+            //   updatedTable.session.order_id
+            // );
+            // showLoading("Restoring table session...");
 
-            try {
-              // Use the proper sync function that fetches items + payments
-              const localOrderId = await syncOrderFromDatabase(
-                updatedTable.session.order_id
-              );
+            // try {
+            //   // Use the proper sync function that fetches items + payments
+            //   const localOrderId = await syncOrderFromDatabase(
+            //     updatedTable.session.order_id
+            //   );
 
-              hideLoading();
+            //   hideLoading();
 
-              // Check again after async operation
-              if (isNavigatingAwayRef.current) {
-                console.log(
-                  "[AutoSession] Skipping order restore - navigated away"
-                );
-                return;
-              }
+            //   // Check again after async operation
+            //   if (isNavigatingAwayRef.current) {
+            //     console.log(
+            //       "[AutoSession] Skipping order restore - navigated away"
+            //     );
+            //     return;
+            //   }
 
-              if (localOrderId) {
-                console.log(
-                  "[AutoSession] Order synced successfully:",
-                  localOrderId
-                );
-                setActiveOrder(localOrderId);
-              }
-            } catch (error) {
-              console.error("[AutoSession] Failed to sync order:", error);
-              hideLoading();
+            //   if (localOrderId) {
+            //     console.log(
+            //       "[AutoSession] Order synced successfully:",
+            //       localOrderId
+            //     );
+            //     setActiveOrder(localOrderId);
+            //   }
+            // } catch (error) {
+            //   console.error("[AutoSession] Failed to sync order:", error);
+            //   hideLoading();
 
-              show({
-                title: "Error Loading Order",
-                message: "Failed to restore table session. Please try again.",
-                type: "error",
-              });
-            }
+            //   show({
+            //     title: "Error Loading Order",
+            //     message: "Failed to restore table session. Please try again.",
+            //     type: "error",
+            //   });
+            // }
           }
           return;
         }

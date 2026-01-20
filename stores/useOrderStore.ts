@@ -1880,6 +1880,9 @@ interface OrderState {
   // O(1) Getter for order by db_order_id
   getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined;
 
+  // Phase 2.1: Universal order getter (works with local ID or DB ID)
+  getOrder: (idOrDbId: string) => OrderProfile | undefined;
+
   // === OFFLINE-FIRST HELPER METHODS ===
   // Update local order with DB order ID after successful sync
   updateOrderDbId: (localOrderId: string, dbOrderId: string) => void;
@@ -1925,6 +1928,8 @@ interface OrderState {
   prefetchOrders: (orderIds: string[]) => Promise<void>;
   // Cleanup duplicate orders by db_order_id (keeps best version)
   cleanupDuplicateOrders: () => void;
+  // Phase 6: Validate that ordersById and ordersByDbId stay synchronized (dev only)
+  validateOrderIndices: () => string[];
   // Sync payment status from backend (shows loading state during sync)
   syncPaymentStatus: (orderId: string) => Promise<void>;
   // Link an order to a table session bidirectionally (handles online/offline)
@@ -2025,18 +2030,36 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
 
     orderRefreshTimeouts[orderId] = setTimeout(() => {
       const state = get();
-      const order = Object.values(state.ordersById).find(
-        (o) => o.db_order_id === orderId || o.id === orderId,
-      );
+
+      // ✅ FIX: Use O(1) ordersByDbId index instead of linear search
+      // orderId is a DB UUID from broadcast, ordersByDbId provides direct lookup
+      const order = state.ordersByDbId[orderId];
 
       if (order) {
-        // Sync this specific order from backend
-        state.syncOrderFromDatabase(order.id);
+        // Sync this specific order from backend (pass local ID)
+        state.syncOrderFromBackendComplete(order.id);
+      } else {
+        console.warn('[_debouncedOrderRefresh] Order not found for DB ID:', orderId);
       }
 
       delete orderRefreshTimeouts[orderId];
     }, 500); // 500ms debounce (increased from 300ms for performance)
   };
+};
+
+// Phase 6: Throttled validation scheduler (dev only)
+let validationThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+
+const scheduleValidation = () => {
+  if (process.env.NODE_ENV !== 'development') return;
+
+  // Throttle: Only run once per 5 seconds
+  if (validationThrottleTimer) return;
+
+  validationThrottleTimer = setTimeout(() => {
+    useOrderStore.getState().validateOrderIndices();
+    validationThrottleTimer = null;
+  }, 5000);
 };
 
 export const useOrderStore = create<OrderState>()(
@@ -2600,7 +2623,7 @@ export const useOrderStore = create<OrderState>()(
                     // Invalidate calculation cache after broadcast update
                     invalidateCalculationCache();
 
-                    // Full sync if status changed
+                    // Full sync if status changed, 
                     if (localOrder.order_status !== backendOrder.status) {
                       get()._debouncedOrderRefresh(dbOrderId);
                     }
@@ -3755,6 +3778,9 @@ export const useOrderStore = create<OrderState>()(
                 registerSyncOp(syncItemId, syncPromise);
               }
             }
+
+            // Phase 6: Schedule validation check (throttled, dev only)
+            scheduleValidation();
           },
 
           updateItemInActiveOrder: (updatedItem) => {
@@ -6983,6 +7009,36 @@ export const useOrderStore = create<OrderState>()(
             console.log(
               `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`,
             );
+
+            // Phase 6: Schedule validation check (throttled, dev only)
+            scheduleValidation();
+          },
+
+          /**
+           * Phase 2.1: Universal order getter - works with local ID or DB ID
+           * @param idOrDbId - Local order ID (e.g., "order_xxx") or DB order ID (UUID)
+           * @returns OrderProfile if found, undefined otherwise
+           */
+          getOrder: (idOrDbId: string): OrderProfile | undefined => {
+            const state = get();
+
+            // Try local ID first (most common case for active orders)
+            if (state.ordersById[idOrDbId]) {
+              return state.ordersById[idOrDbId];
+            }
+
+            // Try DB ID (for table lookups, prefetched orders)
+            if (state.ordersByDbId[idOrDbId]) {
+              return state.ordersByDbId[idOrDbId];
+            }
+
+            // Try prefetch ID format (edge case for stable prefetch IDs)
+            const prefetchId = `prefetch_${idOrDbId}`;
+            if (state.ordersById[prefetchId]) {
+              return state.ordersById[prefetchId];
+            }
+
+            return undefined;
           },
 
           // Update local order with backend-generated data after sync
@@ -7843,6 +7899,13 @@ export const useOrderStore = create<OrderState>()(
               // Check 1: Already indexed by DB ID
               if (get().ordersByDbId[id]) return false;
 
+              // Phase 1.2: Check if we already have a prefetch version with stable ID
+              const prefetchId = `prefetch_${id}`;
+              if (get().ordersById[prefetchId]) {
+                console.log(`[prefetchOrders] Already have prefetch version: ${prefetchId}`);
+                return false;
+              }
+
               // Check 2: Exists as local ID (direct lookup)
               if (get().ordersById[id]) return false;
 
@@ -7896,7 +7959,8 @@ export const useOrderStore = create<OrderState>()(
               const newOrderIds: string[] = [];
 
               for (const order of data) {
-                const localId = `prefetch_${order.id}_${Date.now()}`;
+                // Phase 1.1: Stable prefetch ID (no timestamp) to prevent duplicates
+                const localId = `prefetch_${order.id}`;
 
                 const orderProfile: OrderProfile = {
                   id: localId,
@@ -8002,6 +8066,9 @@ export const useOrderStore = create<OrderState>()(
               }));
 
               // console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
+
+              // Phase 6: Schedule validation check (throttled, dev only)
+              scheduleValidation();
             } catch (error: any) {
               console.error("[prefetchOrders] Error:", error);
             }
@@ -8075,6 +8142,66 @@ export const useOrderStore = create<OrderState>()(
               set({ ordersById: newOrdersById, ordersByDbId: newOrdersByDbId, orderIds: newOrderIds });
               console.log(`[cleanup] Removed ${toRemove.length} duplicate orders`);
             }
+          },
+
+          /**
+           * Phase 6: Development helper to validate that ordersById and ordersByDbId stay synchronized.
+           * Run this periodically in dev mode to catch divergence bugs early.
+           */
+          validateOrderIndices: () => {
+            if (process.env.NODE_ENV !== 'development') return [];
+
+            const { ordersById, ordersByDbId } = get();
+            const issues: string[] = [];
+
+            // Check 1: All orders with db_order_id should be in ordersByDbId
+            Object.entries(ordersById).forEach(([localId, order]) => {
+              if (order.db_order_id) {
+                const dbIndexOrder = ordersByDbId[order.db_order_id];
+
+                if (!dbIndexOrder) {
+                  issues.push(`Order ${localId} has db_order_id ${order.db_order_id} but missing from ordersByDbId`);
+                } else if (dbIndexOrder.id !== localId) {
+                  issues.push(`Order ${localId} has db_order_id ${order.db_order_id} but ordersByDbId points to ${dbIndexOrder.id}`);
+                } else if (dbIndexOrder !== order) {
+                  issues.push(`Order ${localId} has DIFFERENT object reference in ordersByDbId (divergence!)`);
+                }
+              }
+            });
+
+            // Check 2: All entries in ordersByDbId should exist in ordersById
+            Object.entries(ordersByDbId).forEach(([dbId, order]) => {
+              const localOrder = ordersById[order.id];
+
+              if (!localOrder) {
+                issues.push(`ordersByDbId[${dbId}] references order ${order.id} which doesn't exist in ordersById`);
+              } else if (localOrder !== order) {
+                issues.push(`ordersByDbId[${dbId}] has DIFFERENT object reference than ordersById[${order.id}] (divergence!)`);
+              }
+            });
+
+            // Check 3: No duplicate db_order_id entries
+            const dbIdCounts = new Map<string, number>();
+            Object.values(ordersById).forEach(order => {
+              if (order.db_order_id) {
+                dbIdCounts.set(order.db_order_id, (dbIdCounts.get(order.db_order_id) || 0) + 1);
+              }
+            });
+
+            dbIdCounts.forEach((count, dbId) => {
+              if (count > 1) {
+                issues.push(`Found ${count} orders with same db_order_id: ${dbId}`);
+              }
+            });
+
+            if (issues.length > 0) {
+              console.error('❌ ORDER INDICES VALIDATION FAILED:');
+              issues.forEach(issue => console.error(`  - ${issue}`));
+            } else {
+              console.log('✅ Order indices validation passed');
+            }
+
+            return issues;
           },
 
           // ============================================================================
@@ -8356,23 +8483,47 @@ export const useOrderStore = create<OrderState>()(
             }
 
             try {
-              console.log(`[syncOrderFromBackendComplete] Fetching complete order: ${order.db_order_id}`);
+              console.log('[syncOrderFromBackendComplete] Starting sync:', {
+                localOrderId: orderId,
+                dbOrderId: order.db_order_id,
+                currentItemsCount: order.items?.length || 0,
+              });
 
               // Call get_order_details RPC
               const { data, error } = await supabase.rpc('get_order_details', {
                 p_order_id: order.db_order_id
               });
 
-              if (error) throw error;
+              if (error) {
+                console.error('[syncOrderFromBackendComplete] RPC error:', error);
+                throw error;
+              }
+
               if (!data) {
-                console.warn('[syncOrderFromBackendComplete] No data returned');
+                console.warn('[syncOrderFromBackendComplete] No data returned from RPC');
                 return;
               }
+
+              console.log('[syncOrderFromBackendComplete] RPC response received:', {
+                hasOrder: !!data.order,
+                itemsCount: data.items?.length || 0,
+                paymentsCount: data.payments?.length || 0,
+                rawItemsData: data.items,
+              });
 
               // Extract response components
               const orderData = data.order;
               const itemsData = data.items || [];
               const paymentsData = data.payments || [];
+
+              if (!orderData) {
+                console.error('[syncOrderFromBackendComplete] No order data in response');
+                return;
+              }
+
+              if (itemsData.length === 0) {
+                console.warn('[syncOrderFromBackendComplete] ⚠️ No items in response - order may be empty or all items voided');
+              }
 
               // Transform items with nested modifiers to CartItem format
               const transformedItems: CartItem[] = itemsData.map((itemWrapper: any) => {
@@ -8428,29 +8579,60 @@ export const useOrderStore = create<OrderState>()(
                     ? "Partial"
                     : "Pending";
 
+              console.log('[syncOrderFromBackendComplete] Transformed data:', {
+                transformedItemsCount: transformedItems.length,
+                transformedPaymentsCount: transformedPayments.length,
+                firstItemSample: transformedItems[0] ? {
+                  id: transformedItems[0].id,
+                  name: transformedItems[0].name,
+                  quantity: transformedItems[0].quantity,
+                } : null,
+              });
+
               // Update local store with complete order data
               set((state) => {
                 const currentOrder = state.ordersById[orderId];
-                if (!currentOrder) return state;
+                if (!currentOrder) {
+                  console.error('[syncOrderFromBackendComplete] ❌ Order not found in store during update!', { orderId });
+                  return state;
+                }
+                console.log('PASSED LOCAL ID', orderId)
+                console.log('ACTIVE ORDER', state.activeOrderId)
+                console.log('[syncOrderFromBackendComplete] Updating store:', {
+                  orderId,
+                  dbOrderId: currentOrder.db_order_id,
+                  isActiveOrder: true, // orderId === state.activeOrderId
+                  updatingItems: transformedItems.length,
+                  updatingPayments: transformedPayments.length,
+                });
+
+                // Build the updated order once to avoid duplication
+                const updatedOrder: OrderProfile = {
+                  ...currentOrder,
+                  items: transformedItems,
+                  payments: transformedPayments,
+                  total_amount: orderData.card_total ?? orderData.total_amount,
+                  total_tax: orderData.tax_amount,
+                  total_discount: orderData.discount_amount,
+                  amount_paid: orderData.amount_paid,
+                  amount_due: orderData.amount_due,
+                  cash_amount_due: orderData.cash_amount_due,
+                  paid_status: paidStatus,
+                  order_status: orderData.status,
+                  sync_version: orderData.sync_version,
+                  check_status: orderData.check_status || currentOrder.check_status,
+                };
 
                 return {
                   ordersById: {
                     ...state.ordersById,
-                    [orderId]: {
-                      ...currentOrder,
-                      items: transformedItems,
-                      payments: transformedPayments,
-                      total_amount: orderData.card_total ?? orderData.total_amount,
-                      total_tax: orderData.tax_amount,
-                      total_discount: orderData.discount_amount,
-                      amount_paid: orderData.amount_paid,
-                      amount_due: orderData.amount_due,
-                      cash_amount_due: orderData.cash_amount_due,
-                      paid_status: paidStatus,
-                      order_status: orderData.status,
-                      sync_version: orderData.sync_version,
-                    },
+                    [orderId]: updatedOrder,
                   },
+                  // ✅ FIX: Also update ordersByDbId index for DB UUID lookups
+                  ordersByDbId: currentOrder.db_order_id ? {
+                    ...state.ordersByDbId,
+                    [currentOrder.db_order_id]: updatedOrder,
+                  } : state.ordersByDbId,
                   // Update active order derived state if this is the active order
                   ...(orderId === state.activeOrderId
                     ? {
@@ -8468,10 +8650,15 @@ export const useOrderStore = create<OrderState>()(
               // Invalidate cache
               paymentPreviewService.invalidateCache(orderId);
 
-              console.log(
-                "[syncOrderFromBackendComplete] ✅ Order synced successfully",
+              // Verify the update
+              const updatedOrder = get().ordersById[orderId];
+              console.log('[syncOrderFromBackendComplete] ✅ Order synced successfully:', {
                 orderId,
-              );
+                itemsInStore: updatedOrder?.items?.length || 0,
+                paymentsInStore: updatedOrder?.payments?.length || 0,
+                checkStatus: updatedOrder?.check_status,
+                paidStatus: updatedOrder?.paid_status,
+              });
             } catch (error: any) {
               console.error("[syncOrderFromBackendComplete] Failed:", error);
               throw error;

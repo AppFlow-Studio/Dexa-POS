@@ -67,7 +67,7 @@ const PaymentSuccessView = () => {
 
     // For dine-in orders on a table, we just want to close the sheet
     // The payment is already processed and status is set optimistically
-    if (activeOrder?.order_type === "Dine In" && activeTableId) {
+    if ((activeOrder?.order_type === "Dine In" || activeOrder?.order_type == 'dine_in') && activeTableId) {
       close();
       return;
     }
@@ -257,7 +257,7 @@ const PaymentSuccessView = () => {
             className="w-full py-4 bg-blue-600 rounded-xl items-center shadow-lg shadow-blue-900/20 active:bg-blue-700"
           >
             <Text className="text-white font-bold text-xl">
-              {activeOrder?.order_type === "Dine In"
+              {activeOrder?.order_type === "dine_in" || activeOrder?.order_type == 'Dine In'
                 ? "Finalize Payment"
                 : "Start New Order"}
             </Text>
