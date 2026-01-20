@@ -76,7 +76,9 @@ export function useRealtimeChannel<T>({
 
     // Register event handlers
     events.forEach(event => {
+      console.log(`[Realtime] Registering handler for event: ${event} on ${topic}`);
       channel.on('broadcast', { event }, (payload) => {
+        console.log(`[Realtime] Received event: ${event} on ${topic}`, payload);
         onMessage(event, payload.payload as T);
       });
     });
@@ -88,6 +90,10 @@ export function useRealtimeChannel<T>({
       switch (state) {
         case REALTIME_SUBSCRIBE_STATES.SUBSCRIBED:
           reconnectAttemptsRef.current = 0;
+          console.log(`✅ [Realtime] Successfully subscribed to ${topic}`, {
+            registeredEvents: events,
+            channelState: state,
+          });
           updateStatus({
             state: 'SUBSCRIBED',
             lastError: null,
@@ -151,6 +157,13 @@ export function useRealtimeChannel<T>({
         await supabaseClient.removeChannel(channelRef.current);
         channelRef.current = null;
       }
+      // Refresh auth token before re-subscribing
+      try {
+        await supabaseClient.realtime.setAuth();
+        console.log('[Realtime] Auth token refreshed before reconnect');
+      } catch (error) {
+        console.error('[Realtime] Failed to refresh auth token on reconnect:', error);
+      }
       // Re-subscribe
       subscribe();
     }, delay);
@@ -188,6 +201,23 @@ export function useRealtimeChannel<T>({
       disconnect();
     };
   }, [enabled, subscribe, disconnect]);
+
+  // Periodic auth token refresh (every 50 minutes, tokens expire at 60 minutes)
+  useEffect(() => {
+    if (!enabled || status.state !== 'SUBSCRIBED') return;
+
+    const refreshInterval = setInterval(async () => {
+      console.log('[Realtime] Refreshing auth token...');
+      try {
+        await supabaseClient.realtime.setAuth();
+        console.log('[Realtime] Auth token refreshed successfully');
+      } catch (error) {
+        console.error('[Realtime] Failed to refresh auth token:', error);
+      }
+    }, 50 * 60 * 1000); // 50 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [enabled, status.state, supabaseClient]);
 
   return { status, reconnect, disconnect };
 }

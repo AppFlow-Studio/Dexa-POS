@@ -102,15 +102,15 @@ const PreviousOrdersSection = () => {
   const [menuOrderId, setMenuOrderId] = useState<string | null>(null);
 
   // PHASE 1.2: Check subscription status
-  useEffect(() => {
-    console.log('🔌 [OrdersChannel] Connection status:', {
-      state: ordersRealtime?.connectionStatus?.state,
-      isConnected: ordersRealtime.isConnected,
-      isReconnecting: ordersRealtime.isReconnecting,
-      reconnectAttempts: ordersRealtime?.connectionStatus?.reconnectAttempts,
-      subscribedAt: ordersRealtime?.connectionStatus?.subscribedAt,
-    });
-  }, [ordersRealtime]);
+  // useEffect(() => {
+  //   console.log('🔌 [OrdersChannel] Connection status:', {
+  //     state: ordersRealtime?.connectionStatus?.state,
+  //     isConnected: ordersRealtime.isConnected,
+  //     isReconnecting: ordersRealtime.isReconnecting,
+  //     reconnectAttempts: ordersRealtime?.connectionStatus?.reconnectAttempts,
+  //     subscribedAt: ordersRealtime?.connectionStatus?.subscribedAt,
+  //   });
+  // }, [ordersRealtime]);
 
   // PHASE 3C: Subscribe to store changes
   useEffect(() => {

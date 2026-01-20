@@ -174,11 +174,9 @@ export function useOrdersRealtime({
 
   const events: RealtimeEventType[] = useMemo(
     () => [
-      'ORDER_INSERT',
-      'ORDER_UPDATE',
-      'ORDER_DELETE',
-      'PAYMENT_INSERT',
-      'PAYMENT_UPDATE',
+      'INSERT',
+      'UPDATE',
+      'DELETE',
     ],
     []
   );
@@ -235,10 +233,15 @@ export function useOrdersRealtime({
 
   const handleMessage = useCallback(
     (event: RealtimeEventType, payload: unknown) => {
-      console.log(`[OrdersRealtime] Event: ${event}`, payload);
+      console.log(`📨 [OrdersRealtime] Received ${event} event:`, {
+        event,
+        hasPayload: !!payload,
+        orderId: (payload as any)?.data?.order?.id,
+        operation: (payload as any)?.operation,
+      });
 
-      // Handle order events
-      if (event.startsWith('ORDER_')) {
+      // Handle order events (all events on orders channel are order events)
+      if (event === 'INSERT' || event === 'UPDATE' || event === 'DELETE') {
         // Backend sends OrderBroadcastPayload with full order data including items
         const broadcastPayload = payload as OrderBroadcastPayload;
         const order = broadcastPayload.data?.order;
@@ -253,7 +256,7 @@ export function useOrdersRealtime({
 
         // CONDITIONAL + DEBOUNCED: Kitchen queue
         if (
-          order?.status === 'sent' ||
+          order?.status === 'pending' ||
           order?.status === 'preparing' ||
           order?.status === 'ready'
         ) {
@@ -287,36 +290,6 @@ export function useOrdersRealtime({
           });
         }
       }
-
-      // Handle payment events
-      if (event.startsWith('PAYMENT_')) {
-        const paymentPayload = payload as PaymentPayload;
-
-        // IMMEDIATE: Order detail + payments
-        if (paymentPayload.order?.id) {
-          invalidateOrderDetail(paymentPayload.order.id);
-        }
-
-        // DEBOUNCED: Orders list
-        debouncedInvalidateList(locationId);
-
-        // CONDITIONAL + DEBOUNCED: Stats
-        if (paymentPayload.payment?.status === 'completed') {
-          debouncedInvalidateStats(locationId);
-        }
-
-        // DEFENSIVE EXECUTION (NEW): Ensure payment callback fires reliably
-        if (onPaymentChange) {
-          try {
-            onPaymentChange(paymentPayload);
-          } catch (error) {
-            console.error('[OrdersRealtime] Payment callback execution error:', error);
-            console.error('[OrdersRealtime] Failed payment payload:', paymentPayload);
-          }
-        } else {
-          console.warn('[OrdersRealtime] No onPaymentChange callback registered.');
-        }
-      }
     },
     [
       locationId,
@@ -325,7 +298,6 @@ export function useOrdersRealtime({
       debouncedInvalidateKitchen,
       debouncedInvalidateStats,
       onOrderChange,
-      onPaymentChange,
     ]
   );
 
@@ -372,7 +344,7 @@ export function useKitchenRealtime({
       const orderPayload = payload as OrderPayload;
 
       // Only care about orders in kitchen-relevant statuses
-      const kitchenStatuses = ['sent', 'preparing', 'ready'];
+      const kitchenStatuses = ['pending', 'preparing', 'ready'];
       if (
         !kitchenStatuses.includes(orderPayload.order?.status) &&
         !kitchenStatuses.includes(orderPayload.previous_status || '')

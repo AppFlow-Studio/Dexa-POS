@@ -13,24 +13,28 @@ export type RealtimeChannelTopic =
   | `session:${string}:events`;
 
 export type RealtimeEventType =
-  // Table Session Events
+  // Generic Events (used by multiple channels)
+  // - location:*:orders channel uses: INSERT, UPDATE, DELETE
+  // - location:*:tables channel uses: INSERT, UPDATE, DELETE (for session changes)
   | 'INSERT'
   | 'UPDATE'
   | 'DELETE'
+  // Table-specific Events (location:*:tables channel)
   | 'TABLE_ASSIGNMENT_INSERT'
   | 'TABLE_ASSIGNMENT_UPDATE'
   | 'TABLE_ASSIGNMENT_DELETE'
   | 'SESSION_EVENT'
   | 'SESSION_ORDER_UPDATE'
-  // Waitlist Events
+  // Waitlist Events (location:*:waitlist channel)
   | 'WAITLIST_INSERT'
   | 'WAITLIST_UPDATE'
   | 'WAITLIST_DELETE'
-  // Order Events
+  // DEPRECATED: These are not actually used
+  // Orders channel uses INSERT/UPDATE/DELETE (not ORDER_INSERT, etc.)
+  // Payments come through order updates, not separate events
   | 'ORDER_INSERT'
   | 'ORDER_UPDATE'
   | 'ORDER_DELETE'
-  // Payment Events
   | 'PAYMENT_INSERT'
   | 'PAYMENT_UPDATE';
 

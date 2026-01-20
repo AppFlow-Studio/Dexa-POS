@@ -103,6 +103,7 @@ const CardPaymentView = () => {
           throw new Error('No payment terminal selected');
         }
         try{
+          
             const DejavooAPI = new DejavooSpinAPI(supabase);
             // 2. Load terminal credentials (fast path with local credentials)
             console.log('[CashPayment] Loading terminal:', selectedStation?.payment_terminal);

@@ -125,7 +125,7 @@ export function LocationRealtimeProvider({
     floorRealtime.reconnect();
     // waitlistRealtime.reconnect();
     ordersRealtime.reconnect();
-  }, [floorRealtime]);
+  }, [floorRealtime, ordersRealtime]);
 
   // Disconnect all channels
   const disconnectAll = useCallback(() => {
@@ -133,7 +133,7 @@ export function LocationRealtimeProvider({
     floorRealtime.disconnect();
     // waitlistRealtime.disconnect();
     ordersRealtime.disconnect();
-  }, [floorRealtime]);
+  }, [floorRealtime, ordersRealtime]);
 
   // Aggregate status
   const allConnected =
