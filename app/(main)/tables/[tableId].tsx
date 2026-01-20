@@ -85,7 +85,8 @@ const UpdateTableScreen = () => {
     syncOrderStatus,
     archiveOrder,
     syncOrderFromDatabase,
-    syncOrderFromBackend,
+    // syncOrderFromBackend,
+    syncOrderFromBackendComplete,
   } = useOrderStore();
 
   const {
@@ -257,9 +258,9 @@ const UpdateTableScreen = () => {
       if (orderId) {
         setTimeout(async () => {
           try {
-            // Use syncOrderFromDatabase instead of syncPaymentStatus
-            // This fetches FULL order including items and payments
-            await syncOrderFromBackend(orderId);
+            // Use syncOrderFromBackendComplete for complete order details
+            // This fetches FULL order including items, modifiers, payments, and status history
+            await syncOrderFromBackendComplete(orderId);
           } catch (error) {
             console.error("[Payment] Failed to sync order:", error);
           } finally {

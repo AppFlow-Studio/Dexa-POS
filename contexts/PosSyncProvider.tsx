@@ -362,11 +362,11 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Cleanup previous subscriptions if switching locations
-    if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
-      useFloorPlanStore.getState().cleanup();
-      // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
-      // useOrderStore.getState().cleanupOrderRealtime();
-    }
+    // if (realtimeLocationRef.current && realtimeLocationRef.current !== locationId) {
+    //   useFloorPlanStore.getState().cleanup();
+    //   // REMOVED: Cleanup for duplicate order subscription (now handled by useOrdersRealtime hook)
+    //   // useOrderStore.getState().cleanupOrderRealtime();
+    // }
 
     realtimeLocationRef.current = locationId;
 
@@ -379,12 +379,12 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
     // console.log('[PosSyncProvider] Realtime subscriptions enabled for location:', locationId);
 
     // Cleanup function
-    return () => {
-      useFloorPlanStore.getState().cleanup();
-      // REMOVED: Cleanup for duplicate order subscription
-      // useOrderStore.getState().cleanupOrderRealtime();
-      realtimeLocationRef.current = null;
-    };
+    // return () => {
+    //   useFloorPlanStore.getState().cleanup();
+    //   // REMOVED: Cleanup for duplicate order subscription
+    //   // useOrderStore.getState().cleanupOrderRealtime();
+    //   realtimeLocationRef.current = null;
+    // };
   }, [selectedStore?.id]);
 
   useEffect(() => {

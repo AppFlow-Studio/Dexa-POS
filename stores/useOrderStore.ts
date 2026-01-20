@@ -1918,6 +1918,9 @@ interface OrderState {
   retryFailedSyncs: (orderId: string) => Promise<void>;
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
+  // Sync order from database complete ( manual refresh )
+  syncOrderFromBackendComplete: (orderId: string) => Promise<string | null>;
+
   // Prefetch multiple orders by their database IDs (for cache warming)
   prefetchOrders: (orderIds: string[]) => Promise<void>;
   // Cleanup duplicate orders by db_order_id (keeps best version)
@@ -8241,7 +8244,7 @@ export const useOrderStore = create<OrderState>()(
                   `
                   id, total_amount, subtotal, tax_amount, discount_amount,
                   amount_paid, amount_due, payment_status,
-                  card_total, cash_total, cash_amount_due
+                  card_total, cash_total, cash_amount_due,check_status
                 `,
                 )
                 .eq("id", order.db_order_id)
@@ -8325,6 +8328,153 @@ export const useOrderStore = create<OrderState>()(
               );
             } catch (error: any) {
               console.error("[syncOrderFromBackend] Error:", error);
+            }
+          },
+
+          /**
+           * Sync complete order from backend using get_order_details RPC.
+           * Fetches ALL order data: items, modifiers, payments, status_history.
+           *
+           * This function provides complete order state after critical operations like payment.
+           * Unlike syncOrderFromBackend(), this fetches full details for accurate UI display.
+           *
+           * @param orderId - The local order ID to sync
+           */
+          syncOrderFromBackendComplete: async (orderId: string): Promise<void> => {
+            const order = get().ordersById[orderId];
+            if (!order?.db_order_id) {
+              console.log(
+                "[syncOrderFromBackendComplete] Order not found or not synced to DB",
+              );
+              return;
+            }
+
+            const supabase = _supabaseClient;
+            if (!supabase || !getIsOnline()) {
+              console.log("[syncOrderFromBackendComplete] Offline or no client");
+              return;
+            }
+
+            try {
+              console.log(`[syncOrderFromBackendComplete] Fetching complete order: ${order.db_order_id}`);
+
+              // Call get_order_details RPC
+              const { data, error } = await supabase.rpc('get_order_details', {
+                p_order_id: order.db_order_id
+              });
+
+              if (error) throw error;
+              if (!data) {
+                console.warn('[syncOrderFromBackendComplete] No data returned');
+                return;
+              }
+
+              // Extract response components
+              const orderData = data.order;
+              const itemsData = data.items || [];
+              const paymentsData = data.payments || [];
+
+              // Transform items with nested modifiers to CartItem format
+              const transformedItems: CartItem[] = itemsData.map((itemWrapper: any) => {
+                const item = itemWrapper.item;
+                const modifiers = itemWrapper.modifiers || [];
+
+                // Transform modifiers to CartItem format
+                const transformedModifiers = transformBackendModifiers(modifiers);
+
+                return {
+                  id: item.id,
+                  db_order_item_id: item.id,
+                  menuItemId: item.menu_item_id || '',
+                  name: item.item_name,
+                  quantity: item.quantity,
+                  price: item.unit_price,
+                  cashPrice: item.cash_price || item.unit_price,
+                  paidQuantity: item.paid_quantity || 0,
+                  subtotal: item.subtotal,
+                  taxAmount: item.tax_amount || 0,
+                  discount_amount: item.discount_amount || 0,
+                  customizations: {
+                    size: item.selected_size_id ? {
+                      id: item.selected_size_id,
+                      name: item.selected_size_name || '',
+                      priceModifier: item.size_price_modifier || 0,
+                    } : undefined,
+                    modifiers: transformedModifiers,
+                    notes: item.special_instructions || undefined,
+                  },
+                  item_status: item.item_status || 'pending',
+                  sync_status: 'synced' as const,
+                };
+              });
+
+              // Transform payments to OrderProfile format
+              const transformedPayments = paymentsData.map((payment: any) => ({
+                id: payment.id,
+                amount: payment.amount,
+                method: payment.payment_method as PaymentType,
+                cardBrand: payment.card_type,
+                last4: payment.card_last_four,
+                tip_amount: payment.tip_amount || 0,
+                timestamp: payment.initiated_at,
+                sync_status: 'synced' as const,
+              }));
+
+              // Calculate paid status from backend payment_status
+              const paidStatus =
+                orderData.payment_status === "paid"
+                  ? "Paid"
+                  : orderData.payment_status === "partial"
+                    ? "Partial"
+                    : "Pending";
+
+              // Update local store with complete order data
+              set((state) => {
+                const currentOrder = state.ordersById[orderId];
+                if (!currentOrder) return state;
+
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: {
+                      ...currentOrder,
+                      items: transformedItems,
+                      payments: transformedPayments,
+                      total_amount: orderData.card_total ?? orderData.total_amount,
+                      total_tax: orderData.tax_amount,
+                      total_discount: orderData.discount_amount,
+                      amount_paid: orderData.amount_paid,
+                      amount_due: orderData.amount_due,
+                      cash_amount_due: orderData.cash_amount_due,
+                      paid_status: paidStatus,
+                      order_status: orderData.status,
+                      sync_version: orderData.sync_version,
+                    },
+                  },
+                  // Update active order derived state if this is the active order
+                  ...(orderId === state.activeOrderId
+                    ? {
+                        activeOrderTotal:
+                          orderData.card_total ?? orderData.total_amount,
+                        activeOrderTax: orderData.tax_amount,
+                        activeOrderDiscount: orderData.discount_amount,
+                        activeOrderOutstandingTotal: orderData.amount_due,
+                        activeOrderOutstandingCash: orderData.cash_amount_due,
+                      }
+                    : {}),
+                };
+              });
+
+              // Invalidate cache
+              paymentPreviewService.invalidateCache(orderId);
+
+              console.log(
+                "[syncOrderFromBackendComplete] ✅ Order synced successfully",
+                orderId,
+              );
+            } catch (error: any) {
+              console.error("[syncOrderFromBackendComplete] Failed:", error);
+              throw error;
             }
           },
 

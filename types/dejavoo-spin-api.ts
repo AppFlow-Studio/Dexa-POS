@@ -1080,6 +1080,56 @@ export interface DejavooRefundResponse extends DejavooBaseResponse {
 }
 
 /**
+ * RETURN Transaction Request
+ * Returns/refunds payment to customer via /v2/Payment/Return endpoint
+ *
+ * Note: Internal fields like PerformedBy and Tag1-3 are NOT sent to Dejavoo API.
+ * They are used for backend logging in Supabase only.
+ */
+export interface DejavooReturnRequest {
+  // Auth fields (required by Dejavoo API)
+  Authkey: string;
+  RegisterId: string;
+  Tpn?: string;
+
+  // Transaction fields
+  Amount: number;
+  PaymentType: PaymentType;
+  ReferenceId: string;
+  OriginalRefId?: string;
+
+  // Receipt options
+  PrintReceipt?: 'Yes' | 'No';
+  GetReceipt?: 'Yes' | 'No';
+
+  // Additional fields
+  InvoiceNumber?: string;
+  MerchantNumber?: string | null;
+  CaptureSignature?: boolean;
+  GetExtendedData?: boolean;
+  IsReadyForIS?: boolean;
+  SPInProxyTimeout?: number | null;
+
+  // Callback
+  CallbackInfo?: {
+    Url: string;
+  };
+
+  // Custom data
+  CustomFields?: Record<string, any>;
+}
+
+/**
+ * RETURN Transaction Response
+ */
+export interface DejavooReturnResponse extends DejavooBaseResponse {
+  PaymentType: PaymentType;
+  Amount: number;
+  ReferenceId: string;
+  TransactionNumber?: string;
+}
+
+/**
  * AUTH Transaction Response
  */
 export interface DejavooAuthResponse extends DejavooBaseResponse {

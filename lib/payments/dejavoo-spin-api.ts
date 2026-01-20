@@ -10,6 +10,8 @@ import {
   DejavooCredentials,
   DejavooSaleRequest,
   DejavooSaleResponse,
+  DejavooReturnRequest,
+  DejavooReturnResponse,
   DejavooBaseResponse,
   DejavooEnvironment,
   PaymentType,
@@ -171,7 +173,7 @@ export class DejavooSpinAPI {
         // Use local credentials with default environment settings
         // TODO: These defaults should ideally come from a config or the terminal object
         const environment: DejavooEnvironment = 'sandbox'; // or 'sandbox' based on config
-        const baseUrl = 'https://test.spinpos.net/spin';
+        const baseUrl = 'https://test.spinpos.net';
         //   environment === 'production'
         //     ? 'https://spinpos.net:443'
         //     : 'https://test.spinpos.net:443';
@@ -353,6 +355,37 @@ export class DejavooSpinAPI {
    */
   sale(): SaleTransactionBuilder {
     return new SaleTransactionBuilder(this);
+  }
+
+  /**
+   * Create a RETURN transaction builder
+   *
+   * Returns a fluent builder for constructing and executing a return/refund transaction.
+   * Supports standalone returns or returns linked to original sale transactions.
+   *
+   * @returns ReturnTransactionBuilder for method chaining
+   *
+   * @example
+   * ```typescript
+   * // Basic return
+   * const result = await api
+   *   .return()
+   *   .amount(25.99)
+   *   .performedBy('manager@example.com')
+   *   .execute();
+   *
+   * // Linked return (refund original sale)
+   * const result = await api
+   *   .return()
+   *   .amount(50.00)
+   *   .originalRefId('SALE_1234567_1234')
+   *   .performedBy('manager@example.com')
+   *   .withTags('Damaged', 'RefundFull')
+   *   .execute();
+   * ```
+   */
+  return(): ReturnTransactionBuilder {
+    return new ReturnTransactionBuilder(this);
   }
 
   // ============================================================
@@ -1055,6 +1088,7 @@ export class SaleTransactionBuilder {
           type: 'success',
           duration: 3000,
         });
+        // TODO: Log PerformedBy: 
       } else {
         const errorMsg = response.error || 'Transaction declined';
         const detailedMsg = response.errorCode
@@ -1087,5 +1121,529 @@ export class SaleTransactionBuilder {
         error: errorMsg,
       };
     }
+  }
+}
+
+// ============================================================
+// RETURN TRANSACTION BUILDER
+// ============================================================
+
+/**
+ * Fluent builder for RETURN transactions
+ *
+ * Provides chainable methods for constructing return/refund requests with:
+ * - Required field validation
+ * - Type-safe parameters
+ * - Auto-generation of reference IDs
+ * - Field mapping to API format (internal short names → API names)
+ *
+ * @example
+ * ```typescript
+ * const result = await api
+ *   .return()
+ *   .amount(50.00)
+ *   .originalRefId('SALE_1234567_1234')
+ *   .performedBy('manager@restaurant.com')
+ *   .withTags('Refund', 'Damaged')
+ *   .printReceipt('Both')
+ *   .execute();
+ * ```
+ */
+export class ReturnTransactionBuilder {
+  private api: DejavooSpinAPI;
+
+  // Required fields
+  private _amount?: number;
+  private _performedBy?: string; // For backend logging only, not sent to Dejavoo API
+
+  // Optional fields with defaults
+  private _paymentType: PaymentType = 'Credit';
+  private _refId?: string;
+  private _originalRefId?: string;
+  private _printReceipt?: 'Yes' | 'No';
+  private _getReceipt?: 'Yes' | 'No';
+  private _invoiceNumber?: string;
+  private _merchantNumber?: string | null;
+  private _captureSignature?: boolean;
+  private _getExtendedData?: boolean;
+  private _isReadyForIS?: boolean;
+  private _callbackUrl?: string;
+  private _customFields?: Record<string, any>;
+  private _timeout?: number;
+  private _tag1?: string;
+  private _tag2?: string;
+  private _tag3?: string;
+
+  constructor(api: DejavooSpinAPI) {
+    this.api = api;
+  }
+
+  // ============================================================
+  // REQUIRED FIELDS
+  // ============================================================
+
+  /**
+   * Set transaction amount (REQUIRED)
+   *
+   * @param value - Amount in dollars (must be > 0)
+   * @returns this for chaining
+   * @throws Error if amount <= 0
+   *
+   * @example
+   * ```typescript
+   * builder.amount(25.99)
+   * ```
+   */
+  amount(value: number): this {
+    if (value <= 0) {
+      throw new Error('Amount must be greater than 0');
+    }
+    this._amount = value;
+    return this;
+  }
+
+  /**
+   * Set user performing the transaction (for backend logging only)
+   *
+   * Note: This field is NOT sent to the Dejavoo API.
+   * It's used for internal Supabase logging.
+   *
+   * @param value - User identifier, typically email (max 100 chars)
+   * @returns this for chaining
+   * @throws Error if length > 100
+   *
+   * @example
+   * ```typescript
+   * builder.performedBy('manager@restaurant.com')
+   * ```
+   */
+  performedBy(value: string): this {
+    if (value.length > 100) {
+      throw new Error('PerformedBy cannot exceed 100 characters');
+    }
+    this._performedBy = value;
+    return this;
+  }
+
+  // ============================================================
+  // OPTIONAL FIELDS
+  // ============================================================
+
+  /**
+   * Set reference ID of original transaction (for linked returns)
+   *
+   * Use this to link the return to the original sale transaction.
+   * Useful for partial refunds and audit trails.
+   *
+   * @param value - Original transaction reference ID (max 50 chars)
+   * @returns this for chaining
+   * @throws Error if length > 50
+   *
+   * @example
+   * ```typescript
+   * builder.originalRefId('SALE_1234567_1234')
+   * ```
+   */
+  originalRefId(value: string): this {
+    if (value.length > 50) {
+      throw new Error('OriginalRefId cannot exceed 50 characters');
+    }
+    this._originalRefId = value;
+    return this;
+  }
+
+  /**
+   * Set reference ID (OPTIONAL - auto-generated if not provided)
+   *
+   * Must be unique within the current open batch.
+   *
+   * @param value - Reference ID (max 50 chars)
+   * @returns this for chaining
+   * @throws Error if length > 50
+   *
+   * @example
+   * ```typescript
+   * builder.refId('RETURN_12345')
+   * ```
+   */
+  refId(value: string): this {
+    if (value.length > 50) {
+      throw new Error('RefId cannot exceed 50 characters');
+    }
+    this._refId = value;
+    return this;
+  }
+
+  /**
+   * Set payment type
+   *
+   * @param value - Payment method type
+   * @returns this for chaining
+   * @default 'Credit'
+   *
+   * @example
+   * ```typescript
+   * builder.paymentType('Debit')
+   * ```
+   */
+  paymentType(value: PaymentType): this {
+    this._paymentType = value;
+    return this;
+  }
+
+  /**
+   * Set receipt printing preference
+   *
+   * @param value - Print option ('Yes' or 'No')
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.printReceipt('Yes')
+   * ```
+   */
+  printReceipt(value: 'Yes' | 'No'): this {
+    this._printReceipt = value;
+    return this;
+  }
+
+  /**
+   * Set whether to retrieve receipt data
+   *
+   * @param value - Get receipt option ('Yes' or 'No')
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.getReceipt('Yes')
+   * ```
+   */
+  getReceipt(value: 'Yes' | 'No'): this {
+    this._getReceipt = value;
+    return this;
+  }
+
+  /**
+   * Set invoice number for reference
+   *
+   * @param value - Invoice number
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.invoiceNumber('INV-2024-001')
+   * ```
+   */
+  invoiceNumber(value: string): this {
+    this._invoiceNumber = value;
+    return this;
+  }
+
+  /**
+   * Set merchant number
+   *
+   * @param value - Merchant number or null
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.merchantNumber('MERCH_12345')
+   * ```
+   */
+  merchantNumber(value: string | null): this {
+    this._merchantNumber = value;
+    return this;
+  }
+
+  /**
+   * Set signature capture preference
+   *
+   * @param value - Whether to capture signature
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.captureSignature(true)
+   * ```
+   */
+  captureSignature(value: boolean): this {
+    this._captureSignature = value;
+    return this;
+  }
+
+  /**
+   * Set whether to request extended transaction data
+   *
+   * @param value - Whether to get extended data
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.getExtendedData(true)
+   * ```
+   */
+  getExtendedData(value: boolean): this {
+    this._getExtendedData = value;
+    return this;
+  }
+
+  /**
+   * Set integration service readiness flag
+   *
+   * @param value - IS readiness flag
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.isReadyForIS(false)
+   * ```
+   */
+  isReadyForIS(value: boolean): this {
+    this._isReadyForIS = value;
+    return this;
+  }
+
+  /**
+   * Set webhook callback URL
+   *
+   * @param value - Callback URL for transaction updates
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.callbackUrl('https://myapp.com/webhooks/return')
+   * ```
+   */
+  callbackUrl(value: string): this {
+    this._callbackUrl = value;
+    return this;
+  }
+
+  /**
+   * Set custom fields for additional data
+   *
+   * @param value - Custom fields object
+   * @returns this for chaining
+   *
+   * @example
+   * ```typescript
+   * builder.customFields({ orderId: '12345', reason: 'damaged' })
+   * ```
+   */
+  customFields(value: Record<string, any>): this {
+    this._customFields = value;
+    return this;
+  }
+
+  /**
+   * Set custom timeout in seconds
+   *
+   * Overrides the terminal's default timeout.
+   *
+   * @param value - Timeout in seconds (1-720)
+   * @returns this for chaining
+   * @throws Error if not in range 1-720
+   *
+   * @example
+   * ```typescript
+   * builder.timeout(180) // 3 minutes
+   * ```
+   */
+  timeout(value: number): this {
+    if (value < DEJAVOO_TIMEOUTS.min || value > DEJAVOO_TIMEOUTS.max) {
+      throw new Error(
+        `Timeout must be between ${DEJAVOO_TIMEOUTS.min} and ${DEJAVOO_TIMEOUTS.max} seconds`
+      );
+    }
+    this._timeout = value;
+    return this;
+  }
+
+  /**
+   * Set transaction tags for categorization and reporting
+   *
+   * Supports 1-3 tags, each up to 8 characters.
+   * Note: Tags are for backend logging only, not sent to Dejavoo API.
+   *
+   * @param tags - Up to 3 tags (8 chars each max)
+   * @returns this for chaining
+   * @throws Error if more than 3 tags or any tag > 8 chars
+   *
+   * @example
+   * ```typescript
+   * builder.withTags('Refund', 'Damaged', 'FullRefnd')
+   * ```
+   */
+  withTags(...tags: string[]): this {
+    if (tags.length > 3) {
+      throw new Error('Maximum 3 tags allowed');
+    }
+
+    tags.forEach((tag, i) => {
+      if (tag.length > 8) {
+        throw new Error(`Tag ${i + 1} exceeds 8 character limit`);
+      }
+    });
+
+    this._tag1 = tags[0];
+    this._tag2 = tags[1];
+    this._tag3 = tags[2];
+
+    return this;
+  }
+
+  // ============================================================
+  // EXECUTE
+  // ============================================================
+
+  /**
+   * Execute the RETURN transaction
+   *
+   * Validates required fields, builds the request with proper field mapping,
+   * and sends to the Dejavoo terminal. Shows toast notification for user feedback.
+   *
+   * Field mapping (internal → API):
+   * - refId → ReferenceId
+   * - authKey → Authkey
+   * - timeout → SPInProxyTimeout
+   * - callbackUrl → CallbackInfo.Url
+   *
+   * @returns Promise with transaction result
+   *
+   * @example
+   * ```typescript
+   * const result = await builder.execute();
+   *
+   * if (result.success) {
+   *   console.log('Return approved!', result.data?.AuthCode);
+   *   console.log('Card:', result.parsedExtData?.CardType);
+   * } else {
+   *   console.error('Return failed:', result.error);
+   * }
+   * ```
+   */
+  async execute(): Promise<DejavooAPIResponse<DejavooReturnResponse>> {
+    // Validate required fields
+    if (!this._amount) {
+      const error = 'Amount is required. Call .amount() before execute()';
+      console.error('[ReturnTransactionBuilder]', error);
+      return { success: false, error };
+    }
+
+    // Auto-generate RefId if not provided
+    if (!this._refId) {
+      this._refId = generateRefId('RETURN');
+      console.log('[ReturnTransactionBuilder] Auto-generated RefId:', this._refId);
+    }
+
+    try {
+      // Get auth params from API instance
+      const authParams = this.api.getAuthParams();
+
+      // Build request object with field mapping
+      // Internal short names → API expected names
+      const request: DejavooReturnRequest = {
+        // Auth fields (mapped from authParams)
+        Authkey: authParams.AuthKey,
+        RegisterId: authParams.RegisterId,
+        Tpn: authParams.Tpn,
+
+        // Transaction fields
+        Amount: this._amount,
+        PaymentType: this._paymentType,
+        ReferenceId: this._refId,
+        OriginalRefId: this._originalRefId,
+
+        // Receipt options
+        PrintReceipt: this._printReceipt,
+        GetReceipt: this._getReceipt,
+
+        // Additional fields
+        InvoiceNumber: this._invoiceNumber,
+        MerchantNumber: this._merchantNumber,
+        CaptureSignature: this._captureSignature,
+        GetExtendedData: this._getExtendedData,
+        IsReadyForIS: this._isReadyForIS,
+        SPInProxyTimeout: this._timeout || authParams.OperationalTimeout,
+
+        // Callback (only if URL provided)
+        CallbackInfo: this._callbackUrl ? { Url: this._callbackUrl } : undefined,
+
+        // Custom fields
+        CustomFields: this._customFields,
+      };
+
+      // Note: PerformedBy and Tag fields are NOT included in the API request
+      // They are stored separately for backend logging in Supabase
+
+      console.log('[ReturnTransactionBuilder] PerformedBy (backend only):', this._performedBy);
+      console.log('[ReturnTransactionBuilder] Tags (backend only):', this._tag1, this._tag2, this._tag3);
+
+      // Execute request through API
+      const response = await this.api.executeRequest<DejavooReturnResponse>(
+        '/v2/Payment/Return',
+        request
+      );
+
+      // Show toast notification for user feedback
+      if (response.success) {
+        toastService.show({
+          title: 'Return Approved',
+          message: `$${this._amount.toFixed(2)} refunded successfully`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else {
+        const errorMsg = response.error || 'Return transaction declined';
+        const detailedMsg = response.errorCode
+          ? `${errorMsg} (${DEJAVOO_ERROR_CODES[response.errorCode] || `Code ${response.errorCode}`})`
+          : errorMsg;
+
+        toastService.show({
+          title: 'Return Failed',
+          message: detailedMsg,
+          type: 'error',
+          duration: 5000,
+        });
+      }
+
+      return response;
+    } catch (err) {
+      console.error('[ReturnTransactionBuilder] Execute failed:', err);
+
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+
+      toastService.show({
+        title: 'Return Error',
+        message: errorMsg,
+        type: 'error',
+        duration: 5000,
+      });
+
+      return {
+        success: false,
+        error: errorMsg,
+      };
+    }
+  }
+
+  // ============================================================
+  // GETTERS (for backend logging access)
+  // ============================================================
+
+  /**
+   * Get the performedBy value for backend logging
+   * @returns User who performed the transaction
+   */
+  getPerformedBy(): string | undefined {
+    return this._performedBy;
+  }
+
+  /**
+   * Get the tags for backend logging
+   * @returns Array of tags [tag1, tag2, tag3]
+   */
+  getTags(): (string | undefined)[] {
+    return [this._tag1, this._tag2, this._tag3];
   }
 }
