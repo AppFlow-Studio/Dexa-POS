@@ -51,6 +51,51 @@ export interface BroadcastOrderItemData {
   modifiers?: BroadcastModifierData[];
 }
 
+// Order payments in broadcast payload
+export interface BroadcastOrderPaymentData {
+  // Core identifiers
+  id: string;
+  order_id: string;
+
+  // Payment basics (normalized with non-null defaults)
+  payment_method: "cash" | "card";
+  amount: number;
+  tip_amount: number;
+  total_amount: number;
+  status: "pending" | "captured" | "failed" | "voided" | "refunded";
+
+  // Portions
+  subtotal_portion: number;
+  tax_portion: number;
+
+  // Cash fields
+  amount_tendered: number | null;
+  change_given: number;
+  is_cash_priced: boolean;
+  original_amount: number | null;
+
+  // Split tracking
+  split_portion_index: number | null;
+  split_count: number | null;
+
+  // Item coverage (just UUIDs - quantities derived from order_items.paid_quantity)
+  covers_items: string[];
+
+  // Card/Terminal (simplified)
+  card_type: string | null;
+  card_last_four: string | null;
+  transaction_id: string | null;
+  terminal_type: string | null;
+
+  // Void tracking
+  is_voided: boolean;
+  void_reason: string | null;
+
+  // Timestamps
+  captured_at: string | null;
+  created_at: string;
+}
+
 export interface BroadcastOrderData {
   // Identifiers
   id: string;
@@ -139,6 +184,9 @@ export interface BroadcastOrderData {
 
   // Order items (Phase 2: Remote Order Management)
   order_items?: BroadcastOrderItemData[];
+
+  // Order payments
+  order_payments?: BroadcastOrderPaymentData[];
 }
 
 export interface OrderBroadcastPayload {

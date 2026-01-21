@@ -684,7 +684,7 @@ async function executeQueuedOperation(op: OfflineOperation): Promise<boolean> {
         };
 
         console.log(
-          "[OfflineSync:payment] Calling process_payment_v6 with:",
+          "[OfflineSync:payment] Calling process_payment_v5 with:",
           JSON.stringify({
             orderId: finalParams.p_order_id,
             method: finalParams.p_payment_method,

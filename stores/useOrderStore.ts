@@ -4,7 +4,9 @@ import {
   CartItem,
   Discount,
   OrderAppliedDiscount,
+  OrderPaymentItemCoverage,
   OrderProfile,
+  OrderProfilePayment,
   PaymentType,
 } from "@/lib/types";
 import { OrderService } from "@/services/orderService";
@@ -1358,7 +1360,7 @@ const syncPaymentToBackend = async (
       })) || null;
 
     // Call process_payment_v2 RPC directly
-    console.log("[syncPaymentToBackend] Calling process_payment_v6:", {
+    console.log("[syncPaymentToBackend] Calling process_payment_v5:", {
       orderId: order.db_order_id,
       method: paymentMethod,
       amount: paymentDetails.amount,
@@ -1369,7 +1371,7 @@ const syncPaymentToBackend = async (
       terminalResponse: terminalResponse,
     });
 
-    const { data, error } = await supabase.rpc("process_payment_v6", {
+    const { data, error } = await supabase.rpc("process_payment_v5", {
       p_order_id: order.db_order_id,
       p_payment_method: paymentMethod,
       p_amount: paymentDetails.amount,
@@ -7769,24 +7771,72 @@ export const useOrderStore = create<OrderState>()(
                 );
               }
 
-              // Map payments to local format
-              const syncedPayments =
-                dbPayments?.map((p) => ({
-                  id: p.id,
-                  amount: p.amount,
-                  method: (p.payment_method === "card"
-                    ? "Card"
-                    : "Cash") as PaymentType,
-                  cardBrand: p.card_brand,
-                  last4: p.card_last4,
-                  tip_amount: p.tip_amount,
-                  itemsCovered: (p.item_ids || []).map((itemId: string) => ({
+              // Map payments to local format (OrderProfilePayment[])
+              const syncedPayments: OrderProfilePayment[] =
+                dbPayments?.map((p): OrderProfilePayment => {
+                  const method: PaymentType =
+                    p.payment_method === "cash" ? "Cash" : "Card";
+                  const tipAmount = p.tip_amount ?? 0;
+
+                  // Derive item coverage from covers_items
+                  const itemsCovered: OrderPaymentItemCoverage[] = (
+                    p.covers_items || []
+                  ).map((itemId: string) => ({
                     itemId,
-                    quantity: 1,
-                  })),
-                  timestamp: p.created_at,
-                  isVoided: p.status === "voided",
-                })) || [];
+                    itemName: "Unknown Item", // Would need items context to derive
+                    quantity: 1, // Default - would need items context
+                    unitPrice: 0,
+                    subtotal: 0,
+                  }));
+
+                  // Build split info if applicable
+                  const splitInfo =
+                    p.split_count && p.split_portion_index
+                      ? {
+                          portionIndex: p.split_portion_index,
+                          totalPortions: p.split_count,
+                          isLastPortion:
+                            p.split_portion_index === p.split_count,
+                        }
+                      : undefined;
+
+                  // Calculate cash savings if applicable
+                  const cashSavings =
+                    p.is_cash_priced && p.original_amount
+                      ? p.original_amount - p.amount
+                      : undefined;
+
+                  return {
+                    id: `payment_${p.id}`,
+                    db_payment_id: p.id,
+                    amount: p.amount,
+                    method,
+                    tip_amount: tipAmount,
+                    total_collected: p.total_amount ?? p.amount + tipAmount,
+                    cardBrand: p.card_type ?? undefined,
+                    last4: p.card_last_four ?? undefined,
+                    amountTendered: p.amount_tendered ?? undefined,
+                    changeGiven:
+                      p.change_given > 0 ? p.change_given : undefined,
+                    isCashPriced: p.is_cash_priced ?? undefined,
+                    cashSavings,
+                    subtotal_portion: p.subtotal_portion ?? undefined,
+                    tax_portion: p.tax_portion ?? undefined,
+                    splitInfo,
+                    itemsCovered,
+                    status: p.is_voided
+                      ? "voided"
+                      : p.status === "refunded"
+                        ? "refunded"
+                        : p.status === "captured"
+                          ? "captured"
+                          : "pending",
+                    timestamp: p.captured_at ?? p.created_at,
+                    isVoided: p.is_voided ?? false,
+                    voidReason: p.void_reason ?? undefined,
+                    sync_status: "synced",
+                  };
+                }) || [];
 
               // Calculate status from fresh payments
               const orderTotalAmount =
@@ -7987,6 +8037,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
+                  order_payments(*),
                   stations(station_name),
                   created_by_staff:staff_profiles!created_by_staff_id(first_name, last_name)
                 `,

@@ -63,6 +63,7 @@
     "d3-shape": "^3.2.0",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "decimal.js": "^10.6.0",
     "expo": "~53.0.25",
     "expo-application": "~6.1.5",
     "expo-auth-session": "~6.2.1",

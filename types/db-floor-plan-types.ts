@@ -68,13 +68,13 @@ export interface FloorPlanObject {
 
 export interface TableSession {
   id: string;
-  session_number: string;
+  session_number: string | null | undefined;
   status: TableStatus;
   party_size: number;
-  guest_name?: string;
+  guest_name?: string | null | undefined;
   guest_phone?: string;
   guest_notes?: string;
-  order_id?: string;
+  order_id?: string | null | undefined;
   server_staff_id?: string;
   seated_at: string;
   current_course: number;

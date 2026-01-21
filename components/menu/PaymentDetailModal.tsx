@@ -1,17 +1,22 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
+import type { OrderPaymentItemCoverage } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import {
+  Banknote,
+  ChevronDown,
+  ChevronUp,
   CircleDollarSign,
   CreditCard,
   DollarSign,
+  Package,
   Printer,
   RefreshCcw,
   RotateCcw,
   X,
 } from "lucide-react-native";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 interface PaymentDetailModalProps {
@@ -29,6 +34,11 @@ interface PaymentRowData {
   isVoided: boolean;
   last4?: string;
   cardBrand?: string;
+  itemsCovered?: OrderPaymentItemCoverage[];
+  isCashPriced?: boolean;
+  cashSavings?: number;
+  subtotal_portion?: number;
+  tax_portion?: number;
 }
 
 // ============================================================================
@@ -106,6 +116,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
 // ============================================================================
 interface SummaryCardProps {
   amount: number;
+  cashAmount?: number;
   label: string;
   icon: React.ReactNode;
   isNegative?: boolean;
@@ -114,6 +125,7 @@ interface SummaryCardProps {
 
 const SummaryCard: React.FC<SummaryCardProps> = ({
   amount,
+  cashAmount,
   label,
   icon,
   isNegative = false,
@@ -134,6 +146,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     <Text className="text-2xl font-bold text-white" numberOfLines={1}>
       {isNegative && amount > 0 ? "−" : ""}${amount.toFixed(2)}
     </Text>
+    {cashAmount && 
+    <Text className="text-lg font-bold text-white flex flex-row items-center justify-center" numberOfLines={1}>
+      <Banknote color={'green'} size={20} /> {(isNegative && cashAmount) && cashAmount > 0 ?  "-": ""}${cashAmount?.toFixed(2)}
+    </Text>
+    }
     <Text className="text-xs text-gray-400 mt-1 font-medium">{label}</Text>
   </View>
 );
@@ -148,17 +165,27 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
 }) => {
   const { show } = useToast();
   const router = useRouter();
+  const [expandedPaymentIndex, setExpandedPaymentIndex] = useState<
+    number | null
+  >(null);
 
   const order = useOrderStore((state) => {
     if (!orderId) return null;
     return state.ordersById[orderId] || null;
   });
 
+  // Toggle payment expansion
+  const togglePaymentExpansion = (index: number) => {
+    setExpandedPaymentIndex(expandedPaymentIndex === index ? null : index);
+  };
+
+  console.log(order)
   // Calculate payment summary
   const paymentSummary = useMemo(() => {
     if (!order) {
       return {
         orderTotal: 0,
+        orderCashTotal : 0,
         refunds: 0,
         collected: 0,
         payments: [] as PaymentRowData[],
@@ -189,14 +216,20 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
           tipAmount,
           collected,
           isVoided,
-          last4: (payment as any).last4,
+          last4: payment.last4,
           cardBrand: payment.cardBrand,
+          itemsCovered: payment.itemsCovered,
+          isCashPriced: payment.isCashPriced,
+          cashSavings: payment.cashSavings,
+          subtotal_portion: payment.subtotal_portion,
+          tax_portion: payment.tax_portion,
         });
       });
     }
 
     return {
       orderTotal: order.total_amount || 0,
+      orderCashTotal : order.total_cash_amount || 0,
       refunds: totalRefunded,
       collected: totalCollected,
       payments,
@@ -260,7 +293,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   if (!order) return null;
 
   const hasTips = paymentSummary.payments.some((p) => p.tipAmount > 0);
-
+  console.log('Payment Detail Modal', )
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
@@ -290,7 +323,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   Payment Summary
                 </Text>
                 <Text className="text-sm text-gray-500 mt-0.5">
-                  Order #
+                  Order
                   {order.display_number || order.order_number?.slice(-6) || "—"}
                 </Text>
               </View>
@@ -314,6 +347,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               <View className="flex-row gap-3">
                 <SummaryCard
                   amount={paymentSummary.orderTotal}
+                  cashAmount={paymentSummary.orderCashTotal}
                   label="Order Total"
                   icon={<DollarSign size={20} color="#3B82F6" />}
                   accentColor="#3B82F6"
@@ -384,90 +418,217 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   </Text>
                 </View>
               ) : (
-                paymentSummary.payments.map((payment, index) => (
-                  <View
-                    key={index}
-                    className={`flex-row items-center py-4 ${
-                      index < paymentSummary.payments.length - 1
-                        ? "border-b border-gray-800/50"
-                        : ""
-                    }`}
-                  >
-                    {/* Payment Method */}
-                    <View className="flex-[2.5] flex-row items-center">
-                      <View
-                        className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${
-                          payment.isVoided ? "bg-red-500/10" : "bg-gray-800"
-                        }`}
-                      >
-                        {payment.isVoided ? (
-                          <X size={14} color="#EF4444" />
-                        ) : payment.method === "Card" ? (
-                          <CreditCard size={14} color="#9CA3AF" />
-                        ) : (
-                          <DollarSign size={14} color="#22C55E" />
-                        )}
-                      </View>
-                      <View className="flex-1">
-                        <Text
-                          className={`text-sm font-medium ${
-                            payment.isVoided ? "text-gray-500" : "text-white"
-                          }`}
-                        >
-                          {payment.method === "Card" && payment.last4
-                            ? `•••• ${payment.last4}`
-                            : payment.method}
-                        </Text>
-                        <Text className="text-xs text-gray-500 mt-0.5">
-                          {formatTimestamp(payment.timestamp)}
-                        </Text>
-                      </View>
-                    </View>
+                paymentSummary.payments.map((payment, index) => {
+                  const hasItemsCovered =
+                    payment.itemsCovered && payment.itemsCovered.length > 0;
+                  const isExpanded = expandedPaymentIndex === index;
 
-                    {/* Order Amount */}
-                    <View className="flex-1 items-end">
-                      <Text
-                        className={`text-sm font-medium ${
-                          payment.isVoided
-                            ? "text-gray-600 line-through"
-                            : "text-white"
-                        }`}
+                  return (
+                    <View
+                      key={index}
+                      className={`${
+                        index < paymentSummary.payments.length - 1
+                          ? "border-b border-gray-800/50"
+                          : ""
+                      }`}
+                    >
+                      {/* Payment Row - Clickable if has items */}
+                      <TouchableOpacity
+                        onPress={() =>
+                          hasItemsCovered && togglePaymentExpansion(index)
+                        }
+                        activeOpacity={hasItemsCovered ? 0.7 : 1}
+                        className="flex-row items-center py-4"
                       >
-                        ${payment.orderAmount.toFixed(2)}
-                      </Text>
-                    </View>
+                        {/* Payment Method */}
+                        <View className="flex-[2.5] flex-row items-center">
+                          <View
+                            className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${
+                              payment.isVoided ? "bg-red-500/10" : "bg-gray-800"
+                            }`}
+                          >
+                            {payment.isVoided ? (
+                              <X size={14} color="#EF4444" />
+                            ) : payment.method === "Card" ? (
+                              <CreditCard size={14} color="#9CA3AF" />
+                            ) : (
+                              <DollarSign size={14} color="#22C55E" />
+                            )}
+                          </View>
+                          <View className="flex-1">
+                            <View className="flex-row items-center">
+                              <Text
+                                className={`text-sm font-medium ${
+                                  payment.isVoided
+                                    ? "text-gray-500"
+                                    : "text-white"
+                                }`}
+                              >
+                                {payment.method === "Card" && payment.last4
+                                  ? `•••• ${payment.last4}`
+                                  : payment.method}
+                              </Text>
+                              {payment.isCashPriced && payment.cashSavings && payment.cashSavings > 0 && (
+                                <View className="ml-2 px-1.5 py-0.5 bg-emerald-500/20 rounded">
+                                  <Text className="text-[10px] text-emerald-400 font-medium">
+                                    Saved ${payment.cashSavings.toFixed(2)}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                            <View className="flex-row items-center mt-0.5">
+                              <Text className="text-xs text-gray-500">
+                                {formatTimestamp(payment.timestamp)}
+                              </Text>
+                              {hasItemsCovered && (
+                                <View className="flex-row items-center ml-2">
+                                  <Package size={10} color="#6B7280" />
+                                  <Text className="text-xs text-gray-500 ml-1">
+                                    {payment.itemsCovered!.length} item
+                                    {payment.itemsCovered!.length !== 1
+                                      ? "s"
+                                      : ""}
+                                  </Text>
+                                  {isExpanded ? (
+                                    <ChevronUp
+                                      size={12}
+                                      color="#6B7280"
+                                      style={{ marginLeft: 4 }}
+                                    />
+                                  ) : (
+                                    <ChevronDown
+                                      size={12}
+                                      color="#6B7280"
+                                      style={{ marginLeft: 4 }}
+                                    />
+                                  )}
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        </View>
 
-                    {/* Tip Amount */}
-                    <View className="flex-1 items-end">
-                      <Text
-                        className={`text-sm font-medium ${
-                          payment.isVoided
-                            ? "text-gray-600 line-through"
-                            : payment.tipAmount > 0
-                              ? "text-blue-400"
-                              : "text-gray-500"
-                        }`}
-                      >
-                        {payment.tipAmount > 0
-                          ? `$${payment.tipAmount.toFixed(2)}`
-                          : "—"}
-                      </Text>
-                    </View>
+                        {/* Order Amount */}
+                        <View className="flex-1 items-end">
+                          <Text
+                            className={`text-sm font-medium ${
+                              payment.isVoided
+                                ? "text-gray-600 line-through"
+                                : "text-white"
+                            }`}
+                          >
+                            ${payment.orderAmount.toFixed(2)}
+                          </Text>
+                        </View>
 
-                    {/* Total Collected */}
-                    <View className="flex-1 items-end">
-                      <Text
-                        className={`text-sm font-bold ${
-                          payment.isVoided ? "text-red-400" : "text-emerald-400"
-                        }`}
-                      >
-                        {payment.isVoided
-                          ? "Voided"
-                          : `$${payment.collected.toFixed(2)}`}
-                      </Text>
+                        {/* Tip Amount */}
+                        <View className="flex-1 items-end">
+                          <Text
+                            className={`text-sm font-medium ${
+                              payment.isVoided
+                                ? "text-gray-600 line-through"
+                                : payment.tipAmount > 0
+                                  ? "text-blue-400"
+                                  : "text-gray-500"
+                            }`}
+                          >
+                            {payment.tipAmount > 0
+                              ? `$${payment.tipAmount.toFixed(2)}`
+                              : "—"}
+                          </Text>
+                        </View>
+
+                        {/* Total Collected */}
+                        <View className="flex-1 items-end">
+                          <Text
+                            className={`text-sm font-bold ${
+                              payment.isVoided
+                                ? "text-red-400"
+                                : "text-emerald-400"
+                            }`}
+                          >
+                            {payment.isVoided
+                              ? "Voided"
+                              : `$${payment.collected.toFixed(2)}`}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {/* Expanded Items Section */}
+                      {isExpanded && hasItemsCovered && (
+                        <View className="bg-[#1a1a1a] rounded-lg mx-2 mb-3 p-3 border border-gray-800">
+                          <View className="flex-row items-center mb-2 pb-2 border-b border-gray-800">
+                            <Package size={12} color="#6B7280" />
+                            <Text className="text-xs font-semibold text-gray-400 ml-1.5 uppercase tracking-wide">
+                              Items Covered
+                            </Text>
+                          </View>
+                          {payment.itemsCovered!.map((item, itemIndex) => (
+                            <View
+                              key={item.itemId || itemIndex}
+                              className={`flex-row items-center justify-between py-2 ${
+                                itemIndex < payment.itemsCovered!.length - 1
+                                  ? "border-b border-gray-800/50"
+                                  : ""
+                              }`}
+                            >
+                              <View className="flex-1 flex-row items-center">
+                                <View className="w-6 h-6 rounded bg-gray-800 items-center justify-center mr-2">
+                                  <Text className="text-xs font-bold text-gray-400">
+                                    {item.quantity}x
+                                  </Text>
+                                </View>
+                                <Text
+                                  className="text-sm text-gray-300 flex-1"
+                                  numberOfLines={1}
+                                >
+                                  {item.itemName || "Unknown Item"}
+                                </Text>
+                              </View>
+                              <View className="items-end">
+                                {item.unitPrice > 0 && (
+                                  <Text className="text-xs text-gray-500">
+                                    @ ${item.unitPrice.toFixed(2)} ea
+                                  </Text>
+                                )}
+                                {item.subtotal > 0 && (
+                                  <Text className="text-sm font-medium text-white">
+                                    ${item.subtotal.toFixed(2)}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          ))}
+                          {/* Subtotal/Tax breakdown if available */}
+                          {(payment.subtotal_portion || payment.tax_portion) && (
+                            <View className="mt-2 pt-2 border-t border-gray-700">
+                              {payment.subtotal_portion !== undefined && payment.subtotal_portion > 0 && (
+                                <View className="flex-row justify-between">
+                                  <Text className="text-xs text-gray-500">
+                                    Subtotal
+                                  </Text>
+                                  <Text className="text-xs text-gray-400">
+                                    ${payment.subtotal_portion.toFixed(2)}
+                                  </Text>
+                                </View>
+                              )}
+                              {payment.tax_portion !== undefined && payment.tax_portion > 0 && (
+                                <View className="flex-row justify-between mt-1">
+                                  <Text className="text-xs text-gray-500">
+                                    Tax
+                                  </Text>
+                                  <Text className="text-xs text-gray-400">
+                                    ${payment.tax_portion.toFixed(2)}
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      )}
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
           </ScrollView>

@@ -21,7 +21,7 @@ function PopoverContent({
   return (
     <PopoverPrimitive.Portal hostName={portalHost}>
       <PopoverPrimitive.Overlay style={Platform.OS !== 'web' ? StyleSheet.absoluteFill : undefined}>
-        <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut}>
+        <Animated.View entering={FadeIn.duration(10)} exiting={FadeOut.duration(10)}>
           <TextClassContext.Provider value='text-popover-foreground'>
             <PopoverPrimitive.Content
               align={align}

@@ -1,4 +1,4 @@
--- =====================================================================
+ -- =====================================================================
 -- Migration: Update seat_guests RPC to Set Bidirectional Link
 -- =====================================================================
 -- This migration modifies the existing seat_guests RPC to automatically

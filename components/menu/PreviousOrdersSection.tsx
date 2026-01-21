@@ -86,17 +86,9 @@ const OrderTabs: React.FC<OrderTabsProps> = ({
 
 const PreviousOrdersSection = () => {
   const {
-    orders,
-    ordersById,
-    orderIds,
-    activeOrderId,
-    addItemToActiveOrder,
-    generateCartItemId,
+    ordersById
   } = useOrderStore();
   const { refreshPreviousOrders } = usePreviousOrdersStore();
-  const { orders: ordersRealtime } = useLocationRealtime();
-
-  const { show } = useToast();
   const [activeTab, setActiveTab] = useState("All");
   const [isItemsModalOpen, setItemsModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -117,34 +109,8 @@ const PreviousOrdersSection = () => {
     height: number;
   } | null>(null);
 
-  // PHASE 1.2: Check subscription status
-  // useEffect(() => {
-  //   console.log('🔌 [OrdersChannel] Connection status:', {
-  //     state: ordersRealtime?.connectionStatus?.state,
-  //     isConnected: ordersRealtime.isConnected,
-  //     isReconnecting: ordersRealtime.isReconnecting,
-  //     reconnectAttempts: ordersRealtime?.connectionStatus?.reconnectAttempts,
-  //     subscribedAt: ordersRealtime?.connectionStatus?.subscribedAt,
-  //   });
-  // }, [ordersRealtime]);
 
   // PHASE 3C: Subscribe to store changes
-  useEffect(() => {
-    const unsubscribe = useOrderStore.subscribe(
-      (state) => state.ordersById,
-      (ordersById) => {
-        console.log("🔄 [Store Subscribe] ordersById changed:", {
-          orderCount: Object.keys(ordersById).length,
-          orderNumbers: Object.values(ordersById)
-            .filter((o: OrderProfile) => o.order_status !== "draft")
-            .map((o: OrderProfile) => o.display_number),
-        });
-      },
-    );
-
-    return unsubscribe;
-  }, []);
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await refreshPreviousOrders(); // Call the store action
@@ -158,7 +124,7 @@ const PreviousOrdersSection = () => {
   const allOrders: OrderProfile[] = useMemo(() => {
     // Filter to show only non-draft orders
     const localOrdersNotInSelector = Object.values(ordersById).filter(
-      (o: OrderProfile) => o.order_status !== "draft",
+      (o: OrderProfile) => o.order_status !== "draft" || ( o.order_status == 'draft' && o.items.length >= 0),
     );
 
     // PHASE 1: Log all orders in store for diagnostics
@@ -171,6 +137,8 @@ const PreviousOrdersSection = () => {
   }, [ordersById]);
 
   const totalOrder = allOrders.length;
+  console.log('OrdersById Length', Object.keys(ordersById).length)
+  console.log('All Orders Length', allOrders.length)
 
   // Filter orders based on active tab and search query
   const filteredOrders = useMemo(() => {
@@ -239,7 +207,7 @@ const PreviousOrdersSection = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#0a0a0a]">
+  <View className="flex-1 ">
       {/* Header with Tabs and Search */}
       <View className="flex-row justify-between items-center mb-4 gap-x-4">
         <OrderTabs

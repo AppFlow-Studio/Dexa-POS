@@ -711,6 +711,72 @@ export interface TrackedOrder {
 
 export type PaymentType = "Card" | "Cash" | "Split";
 
+/**
+ * Item coverage detail for a payment.
+ * Tracks which items and quantities were covered by this payment.
+ */
+export interface OrderPaymentItemCoverage {
+  itemId: string; // db_order_item_id
+  itemName: string; // For UI display
+  quantity: number; // Units paid
+  unitPrice: number; // Price per unit used
+  subtotal: number; // quantity * unitPrice
+}
+
+/**
+ * Payment record for UI consumption with enhanced item coverage tracking.
+ * Used in OrderProfile.payments array.
+ */
+export interface OrderProfilePayment {
+  // Core identifiers
+  id: string;
+  db_payment_id?: string; // Backend ID for void operations
+
+  // Payment basics
+  amount: number;
+  method: PaymentType;
+  tip_amount: number;
+  total_collected: number; // amount + tip_amount
+
+  // Card details (when applicable)
+  cardBrand?: string;
+  last4?: string;
+
+  // Cash details (when applicable)
+  amountTendered?: number;
+  changeGiven?: number;
+  isCashPriced?: boolean;
+  cashSavings?: number; // original_amount - amount (discount received)
+
+  // Portions (for detailed breakdown)
+  subtotal_portion?: number;
+  tax_portion?: number;
+  discount_portion?: number;
+
+  // Split payment info
+  splitInfo?: {
+    portionIndex: number;
+    totalPortions: number;
+    isLastPortion: boolean;
+  };
+
+  // Item coverage with quantity tracking
+  itemsCovered: OrderPaymentItemCoverage[];
+
+  // Status and timestamps
+  status: "pending" | "captured" | "voided" | "refunded";
+  timestamp: string;
+
+  // Void tracking
+  isVoided: boolean;
+  voidReason?: string;
+  voidedAt?: string;
+
+  // Sync status (for offline-first reliability)
+  sync_status?: "synced" | "pending" | "failed";
+  sync_error?: string;
+}
+
 export interface OrderProfile {
   id: string; // The unique ID for this order (e.g., "order_1755...")
   customer_id?: string; // The ID of the customer associated with this order ( For analytics Tracking trigger)
@@ -768,6 +834,7 @@ export interface OrderProfile {
 
   // Final calculated values, set upon closing the order
   total_amount?: number;
+  total_cash_amount?:number;
   total_tax?: number;
   total_discount?: number;
 
@@ -785,23 +852,7 @@ export interface OrderProfile {
   checkDiscount?: Discount | null;
   applied_discounts?: OrderAppliedDiscount[];
   paymentMethod?: PaymentType; // Example usage
-  payments?: {
-    id?: string; // Backend payment ID (for void operations)
-    amount: number;
-    method: PaymentType;
-    cardBrand?: string;
-    last4?: string;
-    tip_amount?: number;
-    // NEW: Fields for payment tracking and void operations
-    itemsCovered?: { itemId: string; quantity: number }[]; // Items and quantities paid by this payment
-    timestamp?: string; // When payment was made (ISO string)
-    isVoided?: boolean; // Whether payment has been voided
-    voidReason?: string; // Reason for void if voided
-    // NEW: Sync status tracking for offline-first reliability
-    sync_status?: "synced" | "pending" | "failed"; // Sync status with backend
-    sync_error?: string; // Error message if sync failed
-    sync_attempt_count?: number; // Number of sync attempts made
-  }[]; // Payment records
+  payments?: OrderProfilePayment[]; // Payment records with full details
   notes?: string; // Order-level notes (customer requests, special instructions)
 
   // === STATION TRACKING ===

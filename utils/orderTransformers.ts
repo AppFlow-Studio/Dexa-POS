@@ -9,8 +9,14 @@ import type {
   BroadcastModifierData,
   BroadcastOrderData,
   BroadcastOrderItemData,
+  BroadcastOrderPaymentData,
 } from "@/hooks/realtime/useOrdersRealtime";
-import type { CartItem, OrderProfile } from "@/lib/types";
+import type {
+  CartItem,
+  OrderPaymentItemCoverage,
+  OrderProfile,
+  OrderProfilePayment,
+} from "@/lib/types";
 
 /**
  * Transform broadcast modifiers to CartItem customizations.modifiers format.
@@ -133,6 +139,156 @@ export function transformBroadcastItems(
 }
 
 /**
+ * Derive item coverage with quantities from covers_items UUIDs and order items.
+ *
+ * Strategy:
+ * 1. If covers_items has UUIDs, find matching items and use paid_quantity
+ * 2. If item has paid_quantity > 0 and is in covers_items, use that quantity
+ * 3. Fallback: assume quantity of 1 for each covered item
+ *
+ * @param coversItems - Array of item UUIDs covered by this payment
+ * @param orderItems - Order items array to derive quantities from
+ * @param isCashPriced - Whether the payment used cash pricing
+ * @returns Array of item coverage details
+ */
+function deriveItemCoverage(
+  coversItems: string[],
+  orderItems?: BroadcastOrderItemData[],
+  isCashPriced?: boolean,
+): OrderPaymentItemCoverage[] {
+  if (!coversItems || coversItems.length === 0) return [];
+
+  if (!orderItems || orderItems.length === 0) {
+    // No items available - return basic coverage with unknown quantities
+    return coversItems.map((itemId) => ({
+      itemId,
+      itemName: "Unknown Item",
+      quantity: 1, // Default assumption
+      unitPrice: 0,
+      subtotal: 0,
+    }));
+  }
+
+  return coversItems
+    .map((itemId) => {
+      const item = orderItems.find((oi) => oi.id === itemId);
+      if (!item) {
+        return {
+          itemId,
+          itemName: "Unknown Item",
+          quantity: 1,
+          unitPrice: 0,
+          subtotal: 0,
+        };
+      }
+
+      // Use paid_quantity from item, or fallback to item quantity
+      const quantity = item.paid_quantity > 0 ? item.paid_quantity : item.quantity;
+      const unitPrice = isCashPriced ? item.cash_price : item.unit_price;
+
+      return {
+        itemId: item.id,
+        itemName: item.item_name,
+        quantity,
+        unitPrice,
+        subtotal: quantity * unitPrice,
+      };
+    })
+    .filter((coverage) => coverage.quantity > 0);
+}
+
+/**
+ * Transform broadcast payment data to OrderProfile payment format.
+ *
+ * @param payment - Payment data from broadcast or normalized fetch
+ * @param orderItems - Order items array to derive item coverage with quantities
+ * @returns OrderProfilePayment for UI consumption
+ */
+function transformBroadcastPaymentToProfile(
+  payment: BroadcastOrderPaymentData,
+  orderItems?: BroadcastOrderItemData[],
+): OrderProfilePayment {
+  // Derive item coverage with quantities from order_items
+  const itemsCovered = deriveItemCoverage(
+    payment.covers_items,
+    orderItems,
+    payment.is_cash_priced,
+  );
+
+  // Determine PaymentType for UI
+  const method = payment.payment_method === "cash" ? "Cash" : "Card";
+
+  // Calculate cash savings if applicable
+  const cashSavings =
+    payment.is_cash_priced && payment.original_amount
+      ? payment.original_amount - payment.amount
+      : undefined;
+
+  // Build split info if applicable
+  const splitInfo =
+    payment.split_count && payment.split_portion_index
+      ? {
+          portionIndex: payment.split_portion_index,
+          totalPortions: payment.split_count,
+          isLastPortion: payment.split_portion_index === payment.split_count,
+        }
+      : undefined;
+
+  // Map status
+  const status = ((): OrderProfilePayment["status"] => {
+    switch (payment.status) {
+      case "voided":
+        return "voided";
+      case "refunded":
+        return "refunded";
+      case "captured":
+        return "captured";
+      default:
+        return "pending";
+    }
+  })();
+
+  return {
+    id: `payment_${payment.id}`,
+    db_payment_id: payment.id,
+    amount: payment.amount,
+    method,
+    tip_amount: payment.tip_amount,
+    total_collected: payment.total_amount,
+    cardBrand: payment.card_type ?? undefined,
+    last4: payment.card_last_four ?? undefined,
+    amountTendered: payment.amount_tendered ?? undefined,
+    changeGiven: payment.change_given > 0 ? payment.change_given : undefined,
+    isCashPriced: payment.is_cash_priced || undefined,
+    cashSavings,
+    subtotal_portion: payment.subtotal_portion,
+    tax_portion: payment.tax_portion,
+    splitInfo,
+    itemsCovered,
+    status,
+    timestamp: payment.captured_at ?? payment.created_at,
+    isVoided: payment.is_voided,
+    voidReason: payment.void_reason ?? undefined,
+    sync_status: "synced",
+  };
+}
+
+/**
+ * Transform array of broadcast payments to OrderProfile payments.
+ *
+ * @param payments - Array of payment data from broadcast or normalized fetch
+ * @param orderItems - Order items array to derive item coverage with quantities
+ * @returns Array of OrderProfilePayment for UI consumption
+ */
+export function transformBroadcastPaymentsToProfile(
+  payments: BroadcastOrderPaymentData[] | undefined,
+  orderItems?: BroadcastOrderItemData[],
+): OrderProfilePayment[] {
+  if (!payments || payments.length === 0) return [];
+  return payments.map((p) => transformBroadcastPaymentToProfile(p, orderItems));
+}
+
+/**
  * Map backend payment_status to local paid_status format.
  *
  * @param paymentStatus - Backend payment status string
@@ -215,6 +371,7 @@ export function transformBroadcastToOrder(
 
     // Financial - use card pricing as default
     total_amount: backendOrder.card_total || backendOrder.total_amount,
+    total_cash_amount: backendOrder.cash_total || backendOrder.card_total || backendOrder.total_amount,
     total_tax: backendOrder.card_tax_amount || backendOrder.tax_amount,
     total_discount: backendOrder.discount_amount,
     amount_paid: backendOrder.amount_paid,
@@ -223,6 +380,12 @@ export function transformBroadcastToOrder(
 
     // Items
     items: transformBroadcastItems(backendOrder.order_items),
+
+    // Payments - transform with item context for coverage derivation
+    payments: transformBroadcastPaymentsToProfile(
+      backendOrder.order_payments,
+      backendOrder.order_items,
+    ),
 
     // Timestamps
     opened_at: backendOrder.created_at,
@@ -302,6 +465,7 @@ export interface FetchedOrderData {
   is_offline?: boolean | null;
   // Nested relations from Supabase
   order_items?: FetchedOrderItem[];
+  order_payments?: FetchedOrderPayment[];
   stations?: { station_name: string } | null;
   created_by_staff?: { first_name: string; last_name: string } | null;
 }
@@ -341,6 +505,70 @@ export interface FetchedOrderItemModifier {
   modifier_name: string;
   price_modifier: number;
   quantity?: number | null;
+}
+
+/**
+ * Raw payment data from Supabase order_payments table.
+ * Maps directly to database column names with null handling.
+ */
+export interface FetchedOrderPayment {
+  // Core identifiers
+  id: string;
+  order_id: string;
+
+  // Payment basics
+  payment_method: string;
+  amount: number;
+  tip_amount: number | null;
+  total_amount: number;
+  status: string;
+
+  // Portions (for prorated calculations)
+  subtotal_portion: number | null;
+  tax_portion: number | null;
+  discount_portion: number | null;
+
+  // Cash-specific fields
+  amount_tendered: number | null;
+  change_given: number | null;
+  is_cash_priced: boolean | null;
+  cash_discount_applied: boolean | null;
+  original_amount: number | null;
+
+  // Split payment tracking
+  split_portion_index: number | null;
+  split_count: number | null;
+
+  // Item coverage (UUID array)
+  covers_items: string[] | null;
+
+  // Terminal/Card details
+  terminal_type: string | null;
+  terminal_id: string | null;
+  card_type: string | null;
+  card_last_four: string | null;
+  transaction_id: string | null;
+  authorization_code: string | null;
+  processor_response: Record<string, unknown> | null;
+
+  // Void/Refund tracking
+  is_voided: boolean | null;
+  voided_at: string | null;
+  voided_by: string | null;
+  void_reason: string | null;
+  refunded_amount: number | null;
+
+  // Staff tracking
+  processed_by_staff_id: string | null;
+
+  // Timestamps
+  initiated_at: string | null;
+  captured_at: string | null;
+  created_at: string;
+  updated_at: string;
+
+  // Metadata
+  metadata: Record<string, unknown> | null;
 }
 
 /**
@@ -402,6 +630,78 @@ function normalizeFetchedItems(
     base_card_price: item.base_card_price,
     base_cash_price: item.base_cash_price,
   }));
+}
+
+/**
+ * Normalize a single fetched payment to broadcast format.
+ *
+ * @param payment - Payment data from Supabase fetch
+ * @returns BroadcastOrderPaymentData for transformer
+ */
+function normalizeFetchedPayment(
+  payment: FetchedOrderPayment,
+): BroadcastOrderPaymentData {
+  // Simplify payment_method to 'cash' | 'card'
+  const normalizedMethod: "cash" | "card" =
+    payment.payment_method === "cash" ? "cash" : "card";
+
+  // Normalize status to simplified enum
+  const normalizedStatus = ((): BroadcastOrderPaymentData["status"] => {
+    switch (payment.status) {
+      case "captured":
+        return "captured";
+      case "void":
+        return "voided";
+      case "refunded":
+      case "partially_refunded":
+        return "refunded";
+      case "failed":
+      case "declined":
+        return "failed";
+      default:
+        return "pending";
+    }
+  })();
+
+  return {
+    id: payment.id,
+    order_id: payment.order_id,
+    payment_method: normalizedMethod,
+    amount: payment.amount,
+    tip_amount: payment.tip_amount ?? 0,
+    total_amount: payment.total_amount,
+    status: normalizedStatus,
+    subtotal_portion: payment.subtotal_portion ?? 0,
+    tax_portion: payment.tax_portion ?? 0,
+    amount_tendered: payment.amount_tendered,
+    change_given: payment.change_given ?? 0,
+    is_cash_priced: payment.is_cash_priced ?? false,
+    original_amount: payment.original_amount,
+    split_portion_index: payment.split_portion_index,
+    split_count: payment.split_count,
+    covers_items: payment.covers_items ?? [],
+    card_type: payment.card_type,
+    card_last_four: payment.card_last_four,
+    transaction_id: payment.transaction_id,
+    terminal_type: payment.terminal_type,
+    is_voided: payment.is_voided ?? false,
+    void_reason: payment.void_reason,
+    captured_at: payment.captured_at,
+    created_at: payment.created_at,
+  };
+}
+
+/**
+ * Normalize array of fetched payments to broadcast format.
+ *
+ * @param payments - Array of payments from Supabase fetch
+ * @returns Array of BroadcastOrderPaymentData for transformer
+ */
+function normalizeFetchedPayments(
+  payments: FetchedOrderPayment[] | undefined,
+): BroadcastOrderPaymentData[] {
+  if (!payments || payments.length === 0) return [];
+  return payments.map(normalizeFetchedPayment);
 }
 
 /**
@@ -488,8 +788,11 @@ export function normalizeFetchedOrder(
     is_offline: fetchedOrder.is_offline ?? false,
 
     // Normalize nested order_items
-    // Normalize nested order_items
     order_items: normalizeFetchedItems(fetchedOrder.order_items),
+
+    // Normalize nested order_payments
+    order_payments: normalizeFetchedPayments(fetchedOrder.order_payments),
+
     session_id: fetchedOrder.session_id ?? null,
     station_name:
       fetchedOrder.stations?.station_name ?? fetchedOrder.station_name ?? null,

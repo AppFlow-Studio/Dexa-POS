@@ -401,7 +401,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
 
       // Phase 11.1: Initialize orders in background (non-blocking)
       // This populates ordersById with active orders for the location
-      useOrderStore.getState().initializeOrders(selectedStore.id);
+      useOrderStore.getState().initializeOrders(selectedStore.id, true);
     }
   }, [selectedStore?.id, syncEmployees, syncFloorPlans, syncTaxRates]);
 
@@ -424,7 +424,7 @@ export function PosSyncProvider({ children }: { children: React.ReactNode }) {
         // Phase 11.2: Refresh orders when app resumes from background
         // This ensures orders are up-to-date after tablet sleep/wake
         if (storeSettings.selectedStore?.id) {
-          useOrderStore.getState().initializeOrders(storeSettings.selectedStore.id);
+          useOrderStore.getState().initializeOrders(storeSettings.selectedStore.id, true);
         }
       }
     };

@@ -9,6 +9,7 @@ export type SortColumn =
   | "assignee"
   | "assignment"
   | "customer"
+  | "items"
   | "total";
 export type SortDirection = "asc" | "desc";
 
@@ -25,6 +26,7 @@ const columns: ColumnConfig[] = [
   { key: "assignee", label: "ASSIGNEE", sortable: true },
   { key: "assignment", label: "ASSIGNMENT", sortable: true },
   { key: "customer", label: "CUSTOMER", sortable: true },
+  { key: "items", label: "ITEMS", sortable: true, align: "center" },
   { key: "total", label: "TOTAL", sortable: true, align: "right" },
   { key: "actions", label: "", sortable: false },
 ];
@@ -77,9 +79,9 @@ const OrderRow = memo<OrderRowProps>(
         (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24),
       );
       let dateStr: string;
-      if (diffDays === 0) dateStr = "Today";
-      else if (diffDays === 1) dateStr = "Yesterday";
-      else
+      // if (diffDays === 0) dateStr = "Today";
+      // else if (diffDays === 1) dateStr = "Yesterday";
+      // else
         dateStr = date.toLocaleDateString("en-US", {
           month: "numeric",
           day: "numeric",
@@ -152,6 +154,15 @@ const OrderRow = memo<OrderRowProps>(
           <Text className="text-sm font-medium text-white">
             {order.customer_name || "—"}
           </Text>
+        </View>
+
+        {/* ITEMS Column */}
+        <View className="flex-1 py-3 px-4 items-center">
+          <View className="bg-gray-700 rounded-full px-3 py-1 min-w-[32px] items-center">
+            <Text className="text-sm font-semibold text-white">
+              {order.items?.length || 0}
+            </Text>
+          </View>
         </View>
 
         {/* TOTAL Column with improved payment status colors */}
@@ -239,6 +250,10 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
           aVal = (a.customer_name || "walk-in").toLowerCase();
           bVal = (b.customer_name || "walk-in").toLowerCase();
           break;
+        case "items":
+          aVal = a.items?.length || 0;
+          bVal = b.items?.length || 0;
+          break;
         case "total":
           aVal = a.total_amount || 0;
           bVal = b.total_amount || 0;
@@ -283,12 +298,17 @@ const OrdersTable: React.FC<OrdersTableProps> = ({
               ${column.key === "assignee" ? "flex-[2]" : ""}
               ${column.key === "assignment" ? "flex-[1.8]" : ""}
               ${column.key === "customer" ? "flex-[2]" : ""}
+              ${column.key === "items" ? "flex-1" : ""}
               ${column.key === "total" ? "flex-[1.5]" : ""}
               ${column.key === "actions" ? "w-[60px]" : ""}
             `}
             style={{
               justifyContent:
-                column.align === "right" ? "flex-end" : "flex-start",
+                column.align === "right"
+                  ? "flex-end"
+                  : column.align === "center"
+                    ? "center"
+                    : "flex-start",
             }}
           >
             <Text className="text-xs font-bold text-gray-400 uppercase">
