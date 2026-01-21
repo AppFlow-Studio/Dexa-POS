@@ -2956,7 +2956,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
-                  stations:station_id(name)
+                  stations(name)
                 `
                 )
                 .eq("location_id", locationId)
@@ -7026,8 +7026,14 @@ export const useOrderStore = create<OrderState>()(
            */
           getOrder: (idOrDbId: string): OrderProfile | undefined => {
             const state = get();
-            // Single index lookup - ordersById is keyed by DB UUID (or temp ID for unsync'd orders)
-            return state.ordersById[idOrDbId];
+            // Primary: Direct O(1) lookup by key
+            const directLookup = state.ordersById[idOrDbId];
+            if (directLookup) return directLookup;
+
+            // Fallback: Search by db_order_id (for orders not yet rekeyed)
+            // This handles the case where order was synced but key wasn't updated
+            const orders = Object.values(state.ordersById);
+            return orders.find((o) => o.db_order_id === idOrDbId);
           },
 
           // Update local order with backend-generated data after sync

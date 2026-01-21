@@ -325,6 +325,7 @@ const UpdateTableScreen = () => {
         console.log("  currentTableId:", currentTableId);
         console.log("  updatedTableStatus:", updatedTableStatus);
         console.log("  updatedTable?.session:", updatedTable?.session?.id);
+        console.log("  session.order_id:", updatedTable?.session?.order_id);
         console.log("  existingOrderForTable:", existingOrderForTable?.id);
 
         if (!currentTableId || !updatedTable) return;
@@ -511,8 +512,29 @@ const UpdateTableScreen = () => {
             );
 
             // Only set active if we haven't navigated away
-            if (!isNavigatingAwayRef.current) {
-              setActiveOrder(orderId || null);
+            if (orderId && !isNavigatingAwayRef.current) {
+              // FIX: Check if order exists in store - seatGuests creates on backend only
+              const orderExists = useOrderStore.getState().ordersById[orderId];
+
+              if (!orderExists) {
+                // Order created on backend but not in local store - sync it
+                console.log("[AutoSession] Order not in store, syncing:", orderId);
+                try {
+                  await syncOrderFromDatabase(orderId);
+                } catch (syncError) {
+                  console.error("[AutoSession] Failed to sync new order:", syncError);
+                  // Fallback: Try full initializeOrders
+                  const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                  if (locationId) {
+                    await useOrderStore.getState().initializeOrders(locationId);
+                  }
+                }
+              }
+
+              // Now set active order (it should exist in store now)
+              setActiveOrder(orderId);
+            } else if (!orderId && !isNavigatingAwayRef.current) {
+              setActiveOrder(null);
             }
           } catch (err) {
             console.error("[AutoSession] Failed to auto-seat:", err);
