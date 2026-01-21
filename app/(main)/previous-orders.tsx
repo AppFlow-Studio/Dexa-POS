@@ -86,15 +86,13 @@ const PreviousOrdersScreen = () => {
   const [orderTypeFilter, setOrderTypeFilter] = useState<OrderType[]>([]);
 
   // const previousOrders = usePreviousOrders({ showCompleted: false });
-  const { ordersByDbId } = useOrderStore();
-  // console.log("ordersByDbId", ordersByDbId);
+  const { ordersById } = useOrderStore();
+  // console.log("ordersById", ordersById);
   // console.log("previousOrders", previousOrders);
   // Process orders: deduplicate, filter, and apply search/sort
   const filteredOrders = useMemo(() => {
-    // Step 1: Deduplicate prefetch orders
-
-    // Step 2: Filter to show only relevant orders
-    let filtered = filterPreviousOrders(Object.values(ordersByDbId));
+    // Filter to show only relevant orders
+    let filtered = filterPreviousOrders(Object.values(ordersById));
 
     // Step 3: Apply search filter
     if (searchText.trim()) {
@@ -138,7 +136,7 @@ const PreviousOrdersScreen = () => {
     });
 
     return filtered;
-  }, [ordersByDbId, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
+  }, [ordersById, searchText, statusFilter, orderTypeFilter, sortBy, sortOrder]);
 
   const handleOpenNotes = (order: OrderProfile) => {
     setSelectedOrder(order);

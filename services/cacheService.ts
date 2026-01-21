@@ -46,7 +46,6 @@ export function clearCache(): CacheClearResult {
     // Reset order store to initial state
     useOrderStore.setState({
       ordersById: {},
-      ordersByDbId: {},
       orderIds: [],
       activeOrderId: null,
       orders: [],

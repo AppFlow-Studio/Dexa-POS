@@ -47,7 +47,7 @@ const TablesScreen = () => {
   } = useFloorPlanStore();
   const { selectedStation } = useStoreSettingsStore();
   const device_id = getDeviceId()
-  const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId } = useOrderStore();
+  const { startNewOrder, setActiveOrder, ordersById, getOrderByDbId, getOrder } = useOrderStore();
   const { show } = useToast();
   const { showLoading, hideLoading } = useLoading();
 
@@ -102,8 +102,9 @@ const TablesScreen = () => {
       case "paid":
         // OPTIMIZED: Prefetch order before navigation for faster table view load
         // This sets the active order immediately so the table view doesn't need to look it up
+        // Phase 2.2: Use universal getOrder() for O(1) lookup
         if (table.session?.order_id) {
-          const existingOrder = ordersById[table.session.order_id] || getOrderByDbId(table.session.order_id);
+          const existingOrder = getOrder(table.session.order_id);
           if (existingOrder) {
             setActiveOrder(existingOrder.id);
           }

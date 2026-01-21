@@ -22,6 +22,7 @@ import {
 } from "@/stores/useOrderStore";
 import { usePaymentStore } from "@/stores/usePaymentStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
+import { useStoreSettingsStore } from "@/stores/useStoreSettingsStore";
 import { BottomSheetMethods } from "@gorhom/bottom-sheet/lib/typescript/types";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AlertTriangle } from "lucide-react-native";
@@ -84,8 +85,9 @@ const UpdateTableScreen = () => {
     updateItemStatusInActiveOrder,
     syncOrderStatus,
     archiveOrder,
-    syncOrderFromDatabase,
-    syncOrderFromBackend,
+    // syncOrderFromBackend,
+    syncOrderFromBackendComplete,
+    syncOrderFromDatabase, // Phase 12.1: For restoring table orders
   } = useOrderStore();
 
   const {
@@ -110,17 +112,11 @@ const UpdateTableScreen = () => {
 
   // REACTIVE SUBSCRIPTION: Subscribe directly to the order from the store
   // This ensures we always get the latest data when payment updates the store
+  // Phase 2.2: Use universal getOrder() for O(1) lookup
   const activeOrder = useOrderStore((state) => {
     if (sessionOrderId) {
-      // First try direct lookup by local ID
-      if (state.ordersById[sessionOrderId]) {
-        return state.ordersById[sessionOrderId];
-      }
-      // Fallback: Find by db_order_id
-      const orderByDbId = Object.values(state.ordersById).find(
-        (order) => order.db_order_id === sessionOrderId
-      );
-      if (orderByDbId) return orderByDbId;
+      // Use universal getter (works with both local and DB IDs)
+      return state.getOrder(sessionOrderId);
     }
     // Fall back to active order
     if (state.activeOrderId) {
@@ -257,9 +253,9 @@ const UpdateTableScreen = () => {
       if (orderId) {
         setTimeout(async () => {
           try {
-            // Use syncOrderFromDatabase instead of syncPaymentStatus
-            // This fetches FULL order including items and payments
-            await syncOrderFromBackend(orderId);
+            // Use syncOrderFromBackendComplete for complete order details
+            // This fetches FULL order including items, modifiers, payments, and status history
+            await syncOrderFromBackendComplete(orderId);
           } catch (error) {
             console.error("[Payment] Failed to sync order:", error);
           } finally {
@@ -274,7 +270,7 @@ const UpdateTableScreen = () => {
 
     // Update ref
     wasPaymentSheetOpenRef.current = isPaymentSheetOpen;
-  }, [isPaymentSheetOpen, activeOrder?.id, syncOrderFromDatabase]);
+  }, [isPaymentSheetOpen, activeOrder?.id]);
 
   // --- Auto-Session & Order Sync Logic ---
   useEffect(() => {
@@ -329,6 +325,7 @@ const UpdateTableScreen = () => {
         console.log("  currentTableId:", currentTableId);
         console.log("  updatedTableStatus:", updatedTableStatus);
         console.log("  updatedTable?.session:", updatedTable?.session?.id);
+        console.log("  session.order_id:", updatedTable?.session?.order_id);
         console.log("  existingOrderForTable:", existingOrderForTable?.id);
 
         if (!currentTableId || !updatedTable) return;
@@ -344,10 +341,23 @@ const UpdateTableScreen = () => {
             return;
           }
 
-          // Use getState() for fresh data instead of stale orders array
-          const currentOrders = Object.values(
-            useOrderStore.getState().ordersById
-          );
+          // FIX: Direct O(1) lookup by DB UUID (single-index architecture)
+          // Orders are now keyed by DB UUID, so direct lookup is fastest and most reliable
+          const ordersById = useOrderStore.getState().ordersById;
+          const directLookup = ordersById[updatedTable.session.order_id];
+          if (directLookup) {
+            if (activeOrderId !== directLookup.id) {
+              console.log(
+                "[AutoSession] Found order by direct lookup:",
+                directLookup.id
+              );
+              setActiveOrder(directLookup.id);
+            }
+            return;
+          }
+
+          // Fallback: Use getState() for fresh data and search by id or db_order_id
+          const currentOrders = Object.values(ordersById);
           const foundOrder = currentOrders.find(
             (o) =>
               o.id === updatedTable.session!.order_id ||
@@ -357,7 +367,7 @@ const UpdateTableScreen = () => {
           if (foundOrder) {
             if (activeOrderId !== foundOrder.id) {
               console.log(
-                "[AutoSession] Found existing order, setting active:",
+                "[AutoSession] Found existing order via fallback search:",
                 foundOrder.id
               );
               setActiveOrder(foundOrder.id);
@@ -391,7 +401,7 @@ const UpdateTableScreen = () => {
               return;
             }
 
-            // Order not found - use syncOrderFromDatabase instead of manual creation
+            // Phase 12.1: Order not found locally - fetch from database
             console.log(
               "[AutoSession] Syncing order from database:",
               updatedTable.session.order_id
@@ -422,9 +432,28 @@ const UpdateTableScreen = () => {
                 setActiveOrder(localOrderId);
               }
             } catch (error) {
-              console.error("[AutoSession] Failed to sync order:", error);
-              hideLoading();
+              console.error("[AutoSession] Failed to sync single order, trying full init:", error);
 
+              // Phase 12.1: FALLBACK - Try full initializeOrders as safety net
+              try {
+                const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                if (locationId) {
+                  await useOrderStore.getState().initializeOrders(locationId);
+
+                  // After init, check if order is now available
+                  const refreshedOrder = useOrderStore.getState().ordersById[updatedTable.session.order_id];
+                  if (refreshedOrder) {
+                    console.log("[AutoSession] Order found after fallback init:", refreshedOrder.id);
+                    setActiveOrder(refreshedOrder.id);
+                    hideLoading();
+                    return;
+                  }
+                }
+              } catch (fallbackError) {
+                console.error("[AutoSession] Fallback init also failed:", fallbackError);
+              }
+
+              hideLoading();
               show({
                 title: "Error Loading Order",
                 message: "Failed to restore table session. Please try again.",
@@ -483,8 +512,29 @@ const UpdateTableScreen = () => {
             );
 
             // Only set active if we haven't navigated away
-            if (!isNavigatingAwayRef.current) {
-              setActiveOrder(orderId || null);
+            if (orderId && !isNavigatingAwayRef.current) {
+              // FIX: Check if order exists in store - seatGuests creates on backend only
+              const orderExists = useOrderStore.getState().ordersById[orderId];
+
+              if (!orderExists) {
+                // Order created on backend but not in local store - sync it
+                console.log("[AutoSession] Order not in store, syncing:", orderId);
+                try {
+                  await syncOrderFromDatabase(orderId);
+                } catch (syncError) {
+                  console.error("[AutoSession] Failed to sync new order:", syncError);
+                  // Fallback: Try full initializeOrders
+                  const locationId = useStoreSettingsStore.getState().selectedStore?.id;
+                  if (locationId) {
+                    await useOrderStore.getState().initializeOrders(locationId);
+                  }
+                }
+              }
+
+              // Now set active order (it should exist in store now)
+              setActiveOrder(orderId);
+            } else if (!orderId && !isNavigatingAwayRef.current) {
+              setActiveOrder(null);
             }
           } catch (err) {
             console.error("[AutoSession] Failed to auto-seat:", err);

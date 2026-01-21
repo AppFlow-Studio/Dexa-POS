@@ -1,6 +1,5 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useToast } from "@/contexts/ToastContext";
-import { OrderProfile } from "@/lib/types";
 import { useOrderStore } from "@/stores/useOrderStore";
 import { useRouter } from "expo-router";
 import {
@@ -150,12 +149,10 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   const { show } = useToast();
   const router = useRouter();
 
-  // PERFORMANCE: Use getState() for O(1) lookup
-  const order: OrderProfile | null = useMemo(() => {
+  const order = useOrderStore((state) => {
     if (!orderId) return null;
-    const state = useOrderStore.getState();
-    return state.ordersById[orderId] || state.ordersByDbId[orderId] || null;
-  }, [orderId]);
+    return state.ordersById[orderId] || null;
+  });
 
   // Calculate payment summary
   const paymentSummary = useMemo(() => {

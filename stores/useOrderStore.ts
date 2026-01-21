@@ -1699,11 +1699,15 @@ interface QueuedUpdate {
 }
 
 interface OrderState {
-  // === OPTIMIZED DATA STRUCTURE (O(1) lookup) ===
+  // === SIMPLIFIED DATA STRUCTURE (Single index by DB UUID or temp ID) ===
+  // After sync, orders are keyed by DB UUID. Temp IDs only exist during optimistic create.
   ordersById: Record<string, OrderProfile>;
-  ordersByDbId: Record<string, OrderProfile>; // O(1) lookup by db_order_id
   orderIds: string[]; // Maintains insertion order for iteration
   activeOrderId: string | null;
+
+  // === PENDING ORDER SYNCS (for rekey pattern) ===
+  // Maps temp ID -> sync promise that resolves to DB UUID
+  pendingOrderSyncs: Map<string, Promise<string>>;
 
   // === BACKWARD COMPATIBLE GETTER ===
   // Consumers can still use: const orders = useOrderStore(state => state.orders)
@@ -1712,6 +1716,9 @@ interface OrderState {
   // === OFFLINE SYNC STATE ===
   isOnline: boolean;
   pendingSyncCount: number;
+
+  // === ORDER INITIALIZATION STATE (Phase 11.3) ===
+  isInitializing: boolean;
 
   // === PAYMENT SYNC STATE ===
   // Tracks whether we're syncing payment status from backend
@@ -1890,6 +1897,9 @@ interface OrderState {
   // O(1) Getter for order by db_order_id
   getOrderByDbId: (dbOrderId: string) => OrderProfile | undefined;
 
+  // Phase 2.1: Universal order getter (works with local ID or DB ID)
+  getOrder: (idOrDbId: string) => OrderProfile | undefined;
+
   // === OFFLINE-FIRST HELPER METHODS ===
   // Update local order with DB order ID after successful sync
   updateOrderDbId: (localOrderId: string, dbOrderId: string) => void;
@@ -1928,10 +1938,14 @@ interface OrderState {
   retryFailedSyncs: (orderId: string) => Promise<void>;
   // Sync order from database (manual refresh)
   syncOrderFromDatabase: (orderId: string) => Promise<string | null>;
-  // Prefetch multiple orders by their database IDs (for cache warming)
-  prefetchOrders: (orderIds: string[]) => Promise<void>;
-  // Cleanup duplicate orders by db_order_id (keeps best version)
-  cleanupDuplicateOrders: () => void;
+  // Sync order from database complete ( manual refresh )
+  syncOrderFromBackendComplete: (orderId: string) => Promise<void>;
+
+  // Initialize orders - fetch all active orders on login (replaces prefetchOrders)
+  initializeOrders: (locationId: string) => Promise<void>;
+
+  // Rekey order from temp ID to DB UUID after sync
+  rekeyOrder: (tempId: string, dbUuid: string) => void;
   // Sync payment status from backend (shows loading state during sync)
   syncPaymentStatus: (orderId: string) => Promise<void>;
   // Link an order to a table session bidirectionally (handles online/offline)
@@ -2032,24 +2046,29 @@ const createDebouncedOrderRefresh = (get: () => OrderState) => {
 
     orderRefreshTimeouts[orderId] = setTimeout(() => {
       const state = get();
-      const order = Object.values(state.ordersById).find(
-        (o) => o.db_order_id === orderId || o.id === orderId,
-      );
+
+      // orderId is a DB UUID from broadcast, ordersById is now keyed by DB UUID
+      const order = state.ordersById[orderId];
 
       if (order) {
         // Sync this specific order from backend
-        state.syncOrderFromDatabase(order.id);
+        state.syncOrderFromBackendComplete(orderId);
+      } else {
+        console.warn(
+          "[_debouncedOrderRefresh] Order not found for DB ID:",
+          orderId,
+        );
       }
 
       delete orderRefreshTimeouts[orderId];
-    }, 500); // 500ms debounce (increased from 300ms for performance)
+    }, 500); // 500ms debounce
   };
 };
 
 export const useOrderStore = create<OrderState>()(
   subscribeWithSelector(
     persist(
-      (set, get) => {
+      (set, get, store) => {
         // --- PRIVATE HELPER FUNCTION ---
         // This function calculates and sets the totals for the currently active order.
 
@@ -2156,18 +2175,19 @@ export const useOrderStore = create<OrderState>()(
         };
 
         return {
-          // --- INITIAL STATE (OPTIMIZED STRUCTURE) ---
-          ordersById: {},
-          ordersByDbId: {}, // O(1) lookup by db_order_id
+          // --- INITIAL STATE (SIMPLIFIED STRUCTURE) ---
+          ordersById: {}, // Single index: keyed by DB UUID (or temp ID during optimistic create)
           orderIds: [],
           activeOrderId: null,
+          // Pending order syncs for rekey pattern
+          pendingOrderSyncs: new Map<string, Promise<string>>(),
           // Explicitly maintain orders array for reactivity (synced via subscription below)
           orders: [],
           // Offline sync state
           isOnline: true,
           pendingSyncCount: 0,
-          // REMOVED: Realtime subscription state (now handled by useOrdersRealtime hook)
-          // orderRealtimeChannel: null,
+          // Order initialization state (Phase 11.3)
+          isInitializing: false,
           // Sync tracking state
           pendingSyncOperations: new Map<string, Promise<boolean>>(),
           // Queued backend updates (Phase 3: Race Condition Prevention)
@@ -2290,7 +2310,7 @@ export const useOrderStore = create<OrderState>()(
 
             const state = get();
             const { currentStationId } = state;
-            const localOrder = state.ordersByDbId[dbOrderId];
+            const localOrder = state.ordersById[dbOrderId];
             const currentLocationId =
               useStoreSettingsStore.getState().selectedStore?.id;
 
@@ -2526,10 +2546,6 @@ export const useOrderStore = create<OrderState>()(
                           ...state.ordersById,
                           [localOrderId]: updatedOrder,
                         },
-                        ordersByDbId: {
-                          ...state.ordersByDbId,
-                          [dbOrderId]: updatedOrder,
-                        },
                         // Update derived state if active order AND no pending changes
                         // PERFORMANCE FIX: Don't overwrite local totals while user is actively editing
                         ...(localOrderId === state.activeOrderId &&
@@ -2607,7 +2623,7 @@ export const useOrderStore = create<OrderState>()(
                     // Invalidate calculation cache after broadcast update
                     invalidateCalculationCache();
 
-                    // Full sync if status changed
+                    // Full sync if status changed,
                     if (localOrder.order_status !== backendOrder.status) {
                       get()._debouncedOrderRefresh(dbOrderId);
                     }
@@ -2666,7 +2682,7 @@ export const useOrderStore = create<OrderState>()(
             switch (operation) {
               case "INSERT":
                 // DEDUPLICATION: Only create if order doesn't exist locally
-                const existingOrder = state.ordersByDbId[dbOrderId];
+                const existingOrder = state.ordersById[dbOrderId];
                 if (existingOrder) {
                   console.log(
                     "[OrderBroadcast] Remote INSERT - order already exists:",
@@ -2694,10 +2710,10 @@ export const useOrderStore = create<OrderState>()(
 
             // PHASE 2.2: Log after store update
             console.log("💾 [_handleOrderBroadcast] Store updated:", {
-              ordersInStore: Object.keys(get().ordersByDbId).length,
-              thisOrderInStore: !!get().ordersByDbId[dbOrderId],
-              orderStatus: get().ordersByDbId[dbOrderId]?.order_status,
-              orderDisplayNumber: get().ordersByDbId[dbOrderId]?.display_number,
+              ordersInStore: Object.keys(get().ordersById).length,
+              thisOrderInStore: !!get().ordersById[dbOrderId],
+              orderStatus: get().ordersById[dbOrderId]?.order_status,
+              orderDisplayNumber: get().ordersById[dbOrderId]?.display_number,
             });
           },
 
@@ -2705,7 +2721,10 @@ export const useOrderStore = create<OrderState>()(
           // REMOTE ORDER VIEW SCOPE FILTER (Phase 2)
           // ============================================================================
 
-          _shouldAcceptRemoteOrder: (backendOrder, currentLocationId) => {
+          _shouldAcceptRemoteOrder: (
+            backendOrder: BroadcastOrderData,
+            currentLocationId: string | undefined,
+          ) => {
             const { currentStation, currentStationId } = get();
 
             // PHASE 2.3: Detailed logging for view_scope filter
@@ -2793,7 +2812,10 @@ export const useOrderStore = create<OrderState>()(
            * Check if an order should be visible to this station.
            * Simplified: includes own station orders, no ownership distinction.
            */
-          isOrderVisible: (backendOrder, currentLocationId) => {
+          isOrderVisible: (
+            backendOrder: BroadcastOrderData,
+            currentLocationId: string | undefined,
+          ) => {
             const { currentStation, currentStationId } = get();
 
             // No station context = only show local orders
@@ -2828,17 +2850,16 @@ export const useOrderStore = create<OrderState>()(
 
           /**
            * Unified upsert for any order (from broadcast or fetch).
-           * Uses db_order_id directly as local ID - no ownership flags.
+           * Uses db_order_id directly as local ID - single index architecture.
            */
-          upsertOrder: (backendOrder, sourceStationName) => {
+          upsertOrder: (
+            backendOrder: BroadcastOrderData,
+            sourceStationName?: string | null,
+          ) => {
             const dbOrderId = backendOrder.id;
 
-            // ============================================================================
-            // DEDUPLICATION: Check if order already exists before creating
-            // ============================================================================
-            const existingByDbId = get().ordersByDbId[dbOrderId];
-            const existingById = get().ordersById[dbOrderId]; // Since db_order_id = id for remote orders
-            const existing = existingByDbId || existingById;
+            // Check if order already exists (single index lookup)
+            const existing = get().ordersById[dbOrderId];
 
             if (existing) {
               // Don't overwrite orders with pending local changes
@@ -2850,30 +2871,40 @@ export const useOrderStore = create<OrderState>()(
                 return;
               }
 
+              // Phase 8: Version check - skip if server version is not newer
+              const existingVersion = existing.sync_version ?? 0;
+              const serverVersion = backendOrder.sync_version ?? 0;
+              if (serverVersion <= existingVersion) {
+                console.log(
+                  "[UpsertOrder] Skipping - server version not newer:",
+                  { dbOrderId, existingVersion, serverVersion },
+                );
+                return;
+              }
+
               // Order already exists - this will be an update operation
-              console.log("[UpsertOrder] Updating existing order:", dbOrderId);
+              console.log("[UpsertOrder] Updating existing order:", dbOrderId, {
+                existingVersion,
+                serverVersion,
+              });
             }
 
-            // Transform to OrderProfile
+            // Transform to OrderProfile (uses dbOrderId as id)
             const orderProfile = transformBroadcastToOrder(
               backendOrder,
               sourceStationName,
             );
 
-            // Upsert to both maps
+            // Upsert to single index
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
-                [orderProfile.id]: orderProfile,
-              },
-              ordersByDbId: {
-                ...state.ordersByDbId,
                 [dbOrderId]: orderProfile,
               },
               // Only add to orderIds if new
               orderIds: existing
                 ? state.orderIds
-                : [...state.orderIds, orderProfile.id],
+                : [...state.orderIds, dbOrderId],
             }));
 
             console.log(
@@ -2885,28 +2916,28 @@ export const useOrderStore = create<OrderState>()(
           /**
            * Remove an order by its database ID.
            */
-          removeOrder: (dbOrderId) => {
-            const existing = get().ordersByDbId[dbOrderId];
+          removeOrder: (dbOrderId: string) => {
+            const existing = get().ordersById[dbOrderId];
             if (!existing) {
               console.log("[RemoveOrder] Not found:", dbOrderId);
               return;
             }
 
-            const localId = existing.id;
-
             set((state) => {
-              const { [localId]: removedById, ...restById } = state.ordersById;
-              const { [dbOrderId]: removedByDbId, ...restByDbId } =
-                state.ordersByDbId;
+              const { [dbOrderId]: removed, ...restById } = state.ordersById;
 
               return {
                 ordersById: restById,
-                ordersByDbId: restByDbId,
-                orderIds: state.orderIds.filter((id) => id !== localId),
+                orderIds: state.orderIds.filter((id) => id !== dbOrderId),
                 // Also remove from working set
                 workingSetOrderIds: state.workingSetOrderIds.filter(
                   (id) => id !== dbOrderId,
                 ),
+                // Clear active order if it was removed
+                activeOrderId:
+                  state.activeOrderId === dbOrderId
+                    ? null
+                    : state.activeOrderId,
               };
             });
 
@@ -2978,7 +3009,7 @@ export const useOrderStore = create<OrderState>()(
                     *,
                     order_item_modifiers (*)
                   ),
-                  stations:station_id(name)
+                  stations(name)
                 `,
                 )
                 .eq("location_id", locationId)
@@ -3040,7 +3071,7 @@ export const useOrderStore = create<OrderState>()(
            * (e.g., after app reinstall or created on another device with same station).
            */
           fetchOwnStationOrders: async () => {
-            const { currentStation, currentStationId, ordersByDbId } = get();
+            const { currentStation, currentStationId } = get();
             const locationId =
               useStoreSettingsStore.getState().selectedStore?.id;
 
@@ -3080,7 +3111,7 @@ export const useOrderStore = create<OrderState>()(
 
               // Check for orphaned orders (on server but not locally)
               for (const serverOrder of data ?? []) {
-                const existsLocally = ordersByDbId[serverOrder.id];
+                const existsLocally = get().ordersById[serverOrder.id];
 
                 if (!existsLocally) {
                   console.log(
@@ -3100,17 +3131,14 @@ export const useOrderStore = create<OrderState>()(
           /**
            * Create a local order from server data (for orphaned orders).
            * These are our station's orders that we don't have locally.
+           * Uses DB UUID as the key in ordersById.
            */
           _createLocalOrderFromServer: (serverOrder) => {
-            // Generate a local ID that indicates this came from server
-            const localId = `local_order_${serverOrder.id}`;
+            const dbOrderId = serverOrder.id;
 
-            // Check if already exists
-            if (
-              get().ordersById[localId] ||
-              get().ordersByDbId[serverOrder.id]
-            ) {
-              console.log("[CreateFromServer] Already exists:", serverOrder.id);
+            // Check if already exists (single index lookup)
+            if (get().ordersById[dbOrderId]) {
+              console.log("[CreateFromServer] Already exists:", dbOrderId);
               return;
             }
 
@@ -3118,10 +3146,10 @@ export const useOrderStore = create<OrderState>()(
             const normalized = normalizeFetchedOrder(serverOrder);
             const items = transformBroadcastItems(normalized.order_items);
 
-            // Map to local OrderProfile format
+            // Map to local OrderProfile format (use DB UUID as id)
             const localOrder: OrderProfile = {
-              id: localId,
-              db_order_id: serverOrder.id,
+              id: dbOrderId,
+              db_order_id: dbOrderId,
               order_number: serverOrder.order_number,
               display_number: serverOrder.display_number,
 
@@ -3165,20 +3193,16 @@ export const useOrderStore = create<OrderState>()(
               _sourceStationName: null,
             };
 
-            // Add to store
+            // Add to store (single index by DB UUID)
             set((state) => ({
               ordersById: {
                 ...state.ordersById,
-                [localId]: localOrder,
+                [dbOrderId]: localOrder,
               },
-              ordersByDbId: {
-                ...state.ordersByDbId,
-                [serverOrder.id]: localOrder,
-              },
-              orderIds: [...state.orderIds, localId],
+              orderIds: [...state.orderIds, dbOrderId],
             }));
 
-            console.log("[CreateFromServer] Created local order:", localId);
+            console.log("[CreateFromServer] Created local order:", dbOrderId);
           },
 
           /**
@@ -3418,18 +3442,14 @@ export const useOrderStore = create<OrderState>()(
               total_discount: o.total_discount ?? 0,
               items: o.items || [],
             }));
-            // Convert array to ordersById and ordersByDbId structures
+            // Convert array to ordersById (single index)
             const ordersById: Record<string, OrderProfile> = {};
-            const ordersByDbId: Record<string, OrderProfile> = {};
             const orderIds: string[] = [];
             for (const order of sanitizedOrders) {
               ordersById[order.id] = order;
-              if (order.db_order_id) {
-                ordersByDbId[order.db_order_id] = order;
-              }
               orderIds.push(order.id);
             }
-            set({ ordersById, ordersByDbId, orderIds });
+            set({ ordersById, orderIds });
           },
 
           setActiveOrder: (orderId) => {
@@ -3787,6 +3807,9 @@ export const useOrderStore = create<OrderState>()(
                 registerSyncOp(syncItemId, syncPromise);
               }
             }
+
+            // Phase 6: Schedule validation check (throttled, dev only)
+            // scheduleValidation();
           },
 
           updateItemInActiveOrder: (updatedItem) => {
@@ -5803,7 +5826,7 @@ export const useOrderStore = create<OrderState>()(
            * Keeps oldest order, removes subsequent duplicates with same display_number + station_id
            */
           cleanupDraftDuplicates: () => {
-            const { ordersById, ordersByDbId, orderIds } = get();
+            const { ordersById, orderIds } = get();
 
             // Group drafts by display_number and station_id
             const draftGroups = new Map<string, OrderProfile[]>();
@@ -5848,19 +5871,13 @@ export const useOrderStore = create<OrderState>()(
             // Remove duplicates
             if (idsToRemove.length > 0) {
               const newOrdersById = { ...ordersById };
-              const newOrdersByDbId = { ...ordersByDbId };
 
               idsToRemove.forEach((id) => {
-                const order = ordersById[id];
                 delete newOrdersById[id];
-                if (order?.db_order_id) {
-                  delete newOrdersByDbId[order.db_order_id];
-                }
               });
 
               set({
                 ordersById: newOrdersById,
-                ordersByDbId: newOrdersByDbId,
                 orderIds: orderIds.filter((id) => !idsToRemove.includes(id)),
               });
 
@@ -6984,13 +7001,59 @@ export const useOrderStore = create<OrderState>()(
             return true;
           },
 
-          // O(1) Getter for order by db_order_id
-          getOrderByDbId: (dbOrderId: string) => get().ordersByDbId[dbOrderId],
+          // O(1) Getter for order by ID (single index - DB UUID is the key after sync)
+          getOrderByDbId: (dbOrderId: string) => get().ordersById[dbOrderId],
 
           // === OFFLINE-FIRST HELPER METHODS ===
 
-          // Update local order with DB order ID after successful sync
+          /**
+           * Rekey order from temp ID to DB UUID after successful sync.
+           * This is the core of the single-index architecture.
+           */
+          rekeyOrder: (tempId: string, dbUuid: string) => {
+            set((state) => {
+              const order = state.ordersById[tempId];
+              if (!order) {
+                console.warn(`[rekeyOrder] Order not found: ${tempId}`);
+                return state;
+              }
+
+              // Create updated order with DB UUID as id
+              const updatedOrder = {
+                ...order,
+                id: dbUuid,
+                db_order_id: dbUuid,
+                sync_status: "synced" as const,
+              };
+
+              // Remove temp entry, add DB UUID entry
+              const { [tempId]: _removed, ...restOrders } = state.ordersById;
+
+              return {
+                ordersById: { ...restOrders, [dbUuid]: updatedOrder },
+                orderIds: state.orderIds.map((id) =>
+                  id === tempId ? dbUuid : id,
+                ),
+                activeOrderId:
+                  state.activeOrderId === tempId ? dbUuid : state.activeOrderId,
+              };
+            });
+            console.log(`[rekeyOrder] Rekeyed order ${tempId} -> ${dbUuid}`);
+          },
+
+          // Legacy: Update local order with DB order ID (for backward compatibility)
+          // Use rekeyOrder for new code
           updateOrderDbId: (localOrderId: string, dbOrderId: string) => {
+            // If the localOrderId is a temp ID, use rekey pattern
+            if (
+              localOrderId.startsWith("order_") ||
+              localOrderId.startsWith("temp_")
+            ) {
+              get().rekeyOrder(localOrderId, dbOrderId);
+              return;
+            }
+
+            // Otherwise, just update the db_order_id field
             set((state) => {
               const order = state.ordersById[localOrderId];
               if (!order) return state;
@@ -7006,15 +7069,28 @@ export const useOrderStore = create<OrderState>()(
                   ...state.ordersById,
                   [localOrderId]: updatedOrder,
                 },
-                ordersByDbId: {
-                  ...state.ordersByDbId,
-                  [dbOrderId]: updatedOrder,
-                },
               };
             });
             console.log(
               `[updateOrderDbId] Updated order ${localOrderId} with db_order_id: ${dbOrderId}`,
             );
+          },
+
+          /**
+           * Universal order getter - single index lookup by ID or DB UUID
+           * @param idOrDbId - Order ID (DB UUID after sync, or temp ID before)
+           * @returns OrderProfile if found, undefined otherwise
+           */
+          getOrder: (idOrDbId: string): OrderProfile | undefined => {
+            const state = get();
+            // Primary: Direct O(1) lookup by key
+            const directLookup = state.ordersById[idOrDbId];
+            if (directLookup) return directLookup;
+
+            // Fallback: Search by db_order_id (for orders not yet rekeyed)
+            // This handles the case where order was synced but key wasn't updated
+            const orders = Object.values(state.ordersById);
+            return orders.find((o) => o.db_order_id === idOrDbId);
           },
 
           // Update local order with backend-generated data after sync
@@ -7073,17 +7149,11 @@ export const useOrderStore = create<OrderState>()(
                 }),
               };
 
-              // Also update ordersByDbId if this order has a db_order_id
-              const updatedOrdersByDbId = order.db_order_id
-                ? { ...state.ordersByDbId, [order.db_order_id]: updatedOrder }
-                : state.ordersByDbId;
-
               return {
                 ordersById: {
                   ...state.ordersById,
                   [localOrderId]: updatedOrder,
                 },
-                ordersByDbId: updatedOrdersByDbId,
               };
             });
             console.log(
@@ -7169,17 +7239,11 @@ export const useOrderStore = create<OrderState>()(
                 ...updates,
               };
 
-              const newOrdersByDbId = { ...state.ordersByDbId };
-              if (updatedOrder.db_order_id) {
-                newOrdersByDbId[updatedOrder.db_order_id] = updatedOrder;
-              }
-
               return {
                 ordersById: {
                   ...state.ordersById,
                   [localOrderId]: updatedOrder,
                 },
-                ordersByDbId: newOrdersByDbId,
               };
             });
             console.log(
@@ -7865,185 +7929,101 @@ export const useOrderStore = create<OrderState>()(
             return true;
           },
 
-          // Prefetch multiple orders by their database IDs for cache warming
-          prefetchOrders: async (orderIds: string[]): Promise<void> => {
-            const supabase = _supabaseClient;
-            if (!supabase || orderIds.length === 0) return;
-
-            // Filter out already cached orders (check by db_order_id)
-            const uncachedIds = orderIds.filter((id) => {
-              // Check 1: Already indexed by DB ID
-              if (get().ordersByDbId[id]) return false;
-
-              // Check 2: Exists as local ID (direct lookup)
-              if (get().ordersById[id]) return false;
-
-              // Check 3: Scan for matching db_order_id (expensive fallback)
-              const existingOrder = Object.values(get().ordersById).find(
-                (order) => order.db_order_id === id,
-              );
-
-              if (existingOrder) {
-                // Found it! Update the index so next lookup is fast
-                set((state) => ({
-                  ordersByDbId: { ...state.ordersByDbId, [id]: existingOrder },
-                }));
-                return false;
-              }
-
-              return true; // Not cached - needs fetch
-            });
-
-            if (uncachedIds.length === 0) {
-              // console.log("[prefetchOrders] All orders already cached");
+          /**
+           * Initialize orders - fetch all active orders on login.
+           * Replaces prefetchOrders with a cleaner single-index approach.
+           */
+          initializeOrders: async (locationId: string): Promise<void> => {
+            // Phase 11.3: Prevent concurrent calls
+            if (get().isInitializing) {
+              console.log("[initializeOrders] Already initializing, skipping");
               return;
             }
 
+            const supabase = _supabaseClient;
+            if (!supabase || !locationId) {
+              console.warn(
+                "[initializeOrders] No supabase client or locationId",
+              );
+              return;
+            }
+
+            set({ isInitializing: true });
             console.log(
-              "[prefetchOrders] Fetching",
-              uncachedIds.length,
-              "orders",
+              "[initializeOrders] Fetching active orders for location:",
+              locationId,
             );
 
             try {
-              // Batch fetch orders with items
+              // Fetch all active orders with items and modifiers
               const { data, error } = await supabase
                 .from("orders")
-                .select("*, order_items(*)")
-                .in("id", uncachedIds);
+                .select(
+                  `
+                  *,
+                  order_items (
+                    *,
+                    order_item_modifiers (*)
+                  )
+                `,
+                )
+                .eq("location_id", locationId)
+                .in("status", ["draft", "pending", "preparing", "ready"])
+                .order("created_at", { ascending: false });
 
               if (error) {
-                console.error("[prefetchOrders] Fetch error:", error);
-                return;
+                console.error("[initializeOrders] Fetch error:", error);
+                throw error;
               }
 
               if (!data || data.length === 0) {
-                console.log("[prefetchOrders] No orders found");
+                console.log("[initializeOrders] No active orders found");
                 return;
               }
 
-              // Transform and inject into store
+              // Transform and index by DB UUID (single index)
               const newOrders: Record<string, OrderProfile> = {};
-              const newOrdersByDbId: Record<string, OrderProfile> = {};
               const newOrderIds: string[] = [];
 
-              for (const order of data) {
-                const localId = `prefetch_${order.id}_${Date.now()}`;
+              for (const serverOrder of data) {
+                // Skip if already in store
+                if (get().ordersById[serverOrder.id]) {
+                  continue;
+                }
 
-                const orderProfile: OrderProfile = {
-                  id: localId,
-                  db_order_id: order.id,
-                  order_number: order.order_number,
-                  display_number: order.display_number,
-                  sync_status: "synced",
-                  service_location_id: order.table_id || "",
-                  order_status: order.status || "draft",
-                  check_status:
-                    order.status === "completed" ? "Closed" : "Opened",
-                  paid_status:
-                    order.payment_status === "paid"
-                      ? "Paid"
-                      : order.payment_status === "partial"
-                        ? "Partial"
-                        : "Unpaid",
-                  order_type: (order.order_type as any) || "Dine In",
-                  items:
-                    (order.order_items || []).map((item: any) => ({
-                      id: `item_${item.id}`,
-                      isDraft: false,
+                // Normalize and transform
+                const normalized = normalizeFetchedOrder(
+                  serverOrder as FetchedOrderData,
+                );
+                const orderProfile = transformBroadcastToOrder(normalized);
 
-                      menuItemId: item.menu_item_id || "",
-                      // For open items, use open_item_name; otherwise use item_name
-                      name: item.is_open_item
-                        ? item.open_item_name || "Open Item"
-                        : item.item_name || "Unknown Item",
-                      // For open items, use open_item_price; otherwise use unit_price
-                      price: item.is_open_item
-                        ? item.open_item_price || 0
-                        : item.unit_price || 0,
-                      unitPrice: item.is_open_item
-                        ? item.open_item_price || 0
-                        : item.unit_price || 0,
-                      cashPrice:
-                        item.cash_price ||
-                        item.cash_unit_price ||
-                        (item.is_open_item
-                          ? item.open_item_price
-                          : item.unit_price) ||
-                        0,
-                      originalPrice:
-                        item.cash_price ||
-                        item.cash_unit_price ||
-                        (item.is_open_item
-                          ? item.open_item_price
-                          : item.unit_price) ||
-                        0,
-                      quantity: item.quantity || 1,
-                      paidQuantity: item.paid_quantity || 0,
-                      db_order_item_id: item.id,
-                      courseNumber: item.course_number || 1,
-                      category_name: item.category_name || "Uncategorized",
-                      item_status: item.item_status || "pending",
-                      kitchen_status: item.item_status || "pending",
-                      is_voided: item.is_voided || false,
-                      // Open item support
-                      is_open_item: item.is_open_item || false,
-                      open_item_name: item.open_item_name || undefined,
-                      open_item_price: item.open_item_price || undefined,
-                      customizations: {
-                        notes: item.special_instructions || undefined,
-                        modifiers: [],
-                      },
-                      // Financial fields
-                      subtotal:
-                        item.subtotal ||
-                        (item.is_open_item
-                          ? item.open_item_price
-                          : item.unit_price) * item.quantity ||
-                        0,
-                      cashSubtotal:
-                        item.cash_subtotal ||
-                        item.cash_price * item.quantity ||
-                        0,
-                      taxRate: item.tax_rate || 0,
-                      taxAmount: item.tax_amount || 0,
-                      cashTaxAmount: item.cash_tax_amount || 0,
-                      // Discount distribution fields
-                      discount_amount: item.discount_amount ?? 0,
-                      discount_cash_amount:
-                        item.discount_cash_amount ?? item.discount_amount ?? 0,
-                    })) || [],
-                  payments: [],
-                  opened_at: order.created_at,
-                  amount_due: order.amount_due,
-                  cash_amount_due: order.cash_amount_due,
-                  amount_paid: order.amount_paid,
-                };
-
-                newOrders[localId] = orderProfile;
-                newOrdersByDbId[order.id] = orderProfile; // Map DB ID to OrderProfile
-                newOrderIds.push(localId);
+                // Use DB UUID as the key
+                newOrders[serverOrder.id] = orderProfile;
+                newOrderIds.push(serverOrder.id);
               }
 
               // Merge into store
               set((state) => ({
                 ordersById: { ...state.ordersById, ...newOrders },
-                ordersByDbId: { ...state.ordersByDbId, ...newOrdersByDbId },
                 orderIds: [...state.orderIds, ...newOrderIds],
               }));
 
-              // console.log("[prefetchOrders] Prefetched", newOrderIds.length, "orders");
-            } catch (error: any) {
-              console.error("[prefetchOrders] Error:", error);
+              console.log(
+                `[initializeOrders] Loaded ${newOrderIds.length} orders`,
+              );
+            } catch (error) {
+              console.error("[initializeOrders] Error:", error);
+            } finally {
+              // Phase 11.3: Reset initialization flag
+              set({ isInitializing: false });
             }
           },
 
           /**
-           * Cleanup duplicate orders by db_order_id.
-           * Keeps the best version (non-prefetch > most recent activity).
+           * @deprecated Use initializeOrders instead. Kept for backward compatibility.
            */
           cleanupDuplicateOrders: () => {
-            const { ordersById, orderIds, ordersByDbId } = get();
+            const { ordersById, orderIds } = get();
 
             // Find duplicates by db_order_id
             const dbIdGroups = new Map<string, string[]>();
@@ -8089,32 +8069,27 @@ export const useOrderStore = create<OrderState>()(
             // Remove duplicates from state
             if (toRemove.length > 0) {
               const newOrdersById = { ...ordersById };
-              const newOrdersByDbId = { ...ordersByDbId };
               const newOrderIds = orderIds.filter(
                 (id) => !toRemove.includes(id),
               );
 
               toRemove.forEach((id) => {
-                const order = newOrdersById[id];
                 delete newOrdersById[id];
-                // Also remove from ordersByDbId if this was the indexed one
-                if (
-                  order?.db_order_id &&
-                  newOrdersByDbId[order.db_order_id]?.id === id
-                ) {
-                  delete newOrdersByDbId[order.db_order_id];
-                }
               });
 
-              set({
-                ordersById: newOrdersById,
-                ordersByDbId: newOrdersByDbId,
-                orderIds: newOrderIds,
-              });
+              set({ ordersById: newOrdersById, orderIds: newOrderIds });
               console.log(
                 `[cleanup] Removed ${toRemove.length} duplicate orders`,
               );
             }
+          },
+
+          /**
+           * @deprecated No longer needed with single-index architecture.
+           */
+          validateOrderIndices: () => {
+            // No-op - no longer needed with single index
+            return [];
           },
 
           // ============================================================================
@@ -8284,7 +8259,7 @@ export const useOrderStore = create<OrderState>()(
                   `
                   id, total_amount, subtotal, tax_amount, discount_amount,
                   amount_paid, amount_due, payment_status,
-                  card_total, cash_total, cash_amount_due
+                  card_total, cash_total, cash_amount_due,check_status
                 `,
                 )
                 .eq("id", order.db_order_id)
@@ -8371,6 +8346,238 @@ export const useOrderStore = create<OrderState>()(
             }
           },
 
+          /**
+           * Sync complete order from backend using get_order_details RPC.
+           * Fetches ALL order data: items, modifiers, payments, status_history.
+           *
+           * This function provides complete order state after critical operations like payment.
+           * Unlike syncOrderFromBackend(), this fetches full details for accurate UI display.
+           *
+           * @param orderId - The local order ID to sync
+           */
+          syncOrderFromBackendComplete: async (
+            orderId: string,
+          ): Promise<void> => {
+            const order = get().ordersById[orderId];
+            if (!order?.db_order_id) {
+              console.log(
+                "[syncOrderFromBackendComplete] Order not found or not synced to DB",
+              );
+              return;
+            }
+
+            const supabase = _supabaseClient;
+            if (!supabase || !getIsOnline()) {
+              console.log(
+                "[syncOrderFromBackendComplete] Offline or no client",
+              );
+              return;
+            }
+
+            try {
+              console.log("[syncOrderFromBackendComplete] Starting sync:", {
+                localOrderId: orderId,
+                dbOrderId: order.db_order_id,
+                currentItemsCount: order.items?.length || 0,
+              });
+
+              // Call get_order_details RPC
+              const { data, error } = await supabase.rpc("get_order_details", {
+                p_order_id: order.db_order_id,
+              });
+
+              if (error) {
+                console.error(
+                  "[syncOrderFromBackendComplete] RPC error:",
+                  error,
+                );
+                throw error;
+              }
+
+              if (!data) {
+                console.warn(
+                  "[syncOrderFromBackendComplete] No data returned from RPC",
+                );
+                return;
+              }
+
+              console.log(
+                "[syncOrderFromBackendComplete] RPC response received:",
+                {
+                  hasOrder: !!data.order,
+                  itemsCount: data.items?.length || 0,
+                  paymentsCount: data.payments?.length || 0,
+                  rawItemsData: data.items,
+                },
+              );
+
+              // Extract response components
+              const orderData = data.order;
+              const itemsData = data.items || [];
+              const paymentsData = data.payments || [];
+
+              if (!orderData) {
+                console.error(
+                  "[syncOrderFromBackendComplete] No order data in response",
+                );
+                return;
+              }
+
+              if (itemsData.length === 0) {
+                console.warn(
+                  "[syncOrderFromBackendComplete] ⚠️ No items in response - order may be empty or all items voided",
+                );
+              }
+
+              // Transform items with nested modifiers to CartItem format
+              const transformedItems: CartItem[] = itemsData.map(
+                (itemWrapper: any) => {
+                  const item = itemWrapper.item;
+                  const modifiers = itemWrapper.modifiers || [];
+
+                  // Transform modifiers to CartItem format
+                  const transformedModifiers =
+                    transformBackendModifiers(modifiers);
+
+                  return {
+                    id: item.id,
+                    db_order_item_id: item.id,
+                    menuItemId: item.menu_item_id || "",
+                    name: item.item_name,
+                    quantity: item.quantity,
+                    price: item.unit_price,
+                    cashPrice: item.cash_price || item.unit_price,
+                    paidQuantity: item.paid_quantity || 0,
+                    subtotal: item.subtotal,
+                    taxAmount: item.tax_amount || 0,
+                    discount_amount: item.discount_amount || 0,
+                    customizations: {
+                      size: item.selected_size_id
+                        ? {
+                            id: item.selected_size_id,
+                            name: item.selected_size_name || "",
+                            priceModifier: item.size_price_modifier || 0,
+                          }
+                        : undefined,
+                      modifiers: transformedModifiers,
+                      notes: item.special_instructions || undefined,
+                    },
+                    item_status: item.item_status || "pending",
+                    sync_status: "synced" as const,
+                  };
+                },
+              );
+
+              // Transform payments to OrderProfile format
+              const transformedPayments = paymentsData.map((payment: any) => ({
+                id: payment.id,
+                amount: payment.amount,
+                method: payment.payment_method as PaymentType,
+                cardBrand: payment.card_type,
+                last4: payment.card_last_four,
+                tip_amount: payment.tip_amount || 0,
+                timestamp: payment.initiated_at,
+                sync_status: "synced" as const,
+              }));
+
+              // Calculate paid status from backend payment_status
+              const paidStatus =
+                orderData.payment_status === "paid"
+                  ? "Paid"
+                  : orderData.payment_status === "partial"
+                    ? "Partial"
+                    : "Pending";
+
+              console.log("[syncOrderFromBackendComplete] Transformed data:", {
+                transformedItemsCount: transformedItems.length,
+                transformedPaymentsCount: transformedPayments.length,
+                firstItemSample: transformedItems[0]
+                  ? {
+                      id: transformedItems[0].id,
+                      name: transformedItems[0].name,
+                      quantity: transformedItems[0].quantity,
+                    }
+                  : null,
+              });
+
+              // Update local store with complete order data
+              set((state) => {
+                const currentOrder = state.ordersById[orderId];
+                if (!currentOrder) {
+                  console.error(
+                    "[syncOrderFromBackendComplete] ❌ Order not found in store during update!",
+                    { orderId },
+                  );
+                  return state;
+                }
+                console.log("PASSED LOCAL ID", orderId);
+                console.log("ACTIVE ORDER", state.activeOrderId);
+                console.log("[syncOrderFromBackendComplete] Updating store:", {
+                  orderId,
+                  dbOrderId: currentOrder.db_order_id,
+                  isActiveOrder: true, // orderId === state.activeOrderId
+                  updatingItems: transformedItems.length,
+                  updatingPayments: transformedPayments.length,
+                });
+
+                // Build the updated order once to avoid duplication
+                const updatedOrder: OrderProfile = {
+                  ...currentOrder,
+                  items: transformedItems,
+                  payments: transformedPayments,
+                  total_amount: orderData.card_total ?? orderData.total_amount,
+                  total_tax: orderData.tax_amount,
+                  total_discount: orderData.discount_amount,
+                  amount_paid: orderData.amount_paid,
+                  amount_due: orderData.amount_due,
+                  cash_amount_due: orderData.cash_amount_due,
+                  paid_status: paidStatus,
+                  order_status: orderData.status,
+                  sync_version: orderData.sync_version,
+                  check_status:
+                    orderData.check_status || currentOrder.check_status,
+                };
+
+                return {
+                  ordersById: {
+                    ...state.ordersById,
+                    [orderId]: updatedOrder,
+                  },
+                  // Update active order derived state if this is the active order
+                  ...(orderId === state.activeOrderId
+                    ? {
+                        activeOrderTotal:
+                          orderData.card_total ?? orderData.total_amount,
+                        activeOrderTax: orderData.tax_amount,
+                        activeOrderDiscount: orderData.discount_amount,
+                        activeOrderOutstandingTotal: orderData.amount_due,
+                        activeOrderOutstandingCash: orderData.cash_amount_due,
+                      }
+                    : {}),
+                };
+              });
+
+              // Invalidate cache
+              paymentPreviewService.invalidateCache(orderId);
+
+              // Verify the update
+              const updatedOrder = get().ordersById[orderId];
+              console.log(
+                "[syncOrderFromBackendComplete] ✅ Order synced successfully:",
+                {
+                  orderId,
+                  itemsInStore: updatedOrder?.items?.length || 0,
+                  paymentsInStore: updatedOrder?.payments?.length || 0,
+                  checkStatus: updatedOrder?.check_status,
+                  paidStatus: updatedOrder?.paid_status,
+                },
+              );
+            } catch (error: any) {
+              console.error("[syncOrderFromBackendComplete] Failed:", error);
+              throw error;
+            }
+          },
+
           // ===================================================================
           // QUEUED UPDATE ACTIONS (Phase 3: Race Condition Prevention)
           // ===================================================================
@@ -8425,15 +8632,6 @@ export const useOrderStore = create<OrderState>()(
                   ...state.ordersById,
                   [orderId]: updatedOrder,
                 },
-                // Update ordersByDbId if db_order_id exists
-                ...(updatedOrder.db_order_id
-                  ? {
-                      ordersByDbId: {
-                        ...state.ordersByDbId,
-                        [updatedOrder.db_order_id]: updatedOrder,
-                      },
-                    }
-                  : {}),
                 pendingBackendUpdates: newMap,
               };
             });
@@ -8516,23 +8714,8 @@ export const useOrderStore = create<OrderState>()(
   ),
 );
 
-// OPTIMIZED: Only sync ordersByDbId (O(n) on keys only, not full array recreation)
-// Removed 'orders' array sync - use Object.values(ordersById) when iteration is needed
-// This eliminates O(n) array recreation on every order change
-useOrderStore.subscribe(
-  (state) => state.ordersById,
-  (ordersById) => {
-    // Build ordersByDbId index for O(1) lookup by db_order_id
-    const ordersByDbId: Record<string, OrderProfile> = {};
-    for (const id in ordersById) {
-      const order = ordersById[id];
-      if (order.db_order_id) {
-        ordersByDbId[order.db_order_id] = order;
-      }
-    }
-    useOrderStore.setState({ ordersByDbId });
-  },
-);
+// Single-index architecture: ordersById is keyed by DB UUID (or temp ID before sync)
+// No need for separate ordersByDbId index
 
 // ============================================================================
 // PHASE 1 FOUNDATION: Auto-sync station context from useStoreSettingsStore

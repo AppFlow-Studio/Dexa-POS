@@ -175,7 +175,6 @@ function calculateSplitCashTax(
 const SplitByItemView = () => {
   const activeOrderId = useOrderStore((state) => state.activeOrderId);
   const ordersById = useOrderStore((state) => state.ordersById);
-  const ordersByDbId = useOrderStore((state) => state.ordersByDbId);
   const taxRatesMap = useStoreSettingsStore((state) => state.taxRatesMap);
 
   const {

@@ -626,7 +626,7 @@ const KDSColumn: React.FC<KDSColumnProps> = ({
 
 const KitchenDisplayScreen = () => {
   const {
-    ordersByDbId,
+    ordersById,
     markCourseItemsAsCooking,
     markCourseItemsAsReady,
     markCourseItemsAsServed,
@@ -638,10 +638,10 @@ const KitchenDisplayScreen = () => {
 
   // Load coursing data for all active orders
   useEffect(() => {
-    Object.values(ordersByDbId).forEach((order) => {
-      loadFromServer(order.db_order_id || "");
+    Object.values(ordersById).forEach((order: OrderProfile) => {
+      loadFromServer(order.db_order_id || order.id || "");
     });
-  }, [ordersByDbId, loadFromServer]);
+  }, [ordersById, loadFromServer]);
 
   // Helper to look up table name from service_location_id
   const getTableName = useCallback(
@@ -659,7 +659,7 @@ const KitchenDisplayScreen = () => {
     const cooking: KDSCardData[] = [];
     const ready: KDSCardData[] = [];
 
-    Object.values(ordersByDbId).forEach((order) => {
+    Object.values(ordersById).forEach((order: OrderProfile) => {
       // FILTER 1: Exclude orders with inactive statuses
       // These should NEVER appear in KDS regardless of item status
       const inactiveStatuses = ["completed", "cancelled", "void", "voided", "refunded"];
@@ -757,7 +757,7 @@ const KitchenDisplayScreen = () => {
         ),
       },
     };
-  }, [ordersByDbId, byOrderId]);
+  }, [ordersById, byOrderId]);
 
   const handleStartCooking = useCallback(
     (orderId: string, itemIds: string[]) => {

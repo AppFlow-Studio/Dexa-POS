@@ -1044,7 +1044,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     // Try to refresh the lock by acquiring a new one
-    const order = useOrderStore.getState().ordersByDbId[lockedOrderId];
+    const order = useOrderStore.getState().ordersById[lockedOrderId];
     if (!order) {
       return false;
     }
